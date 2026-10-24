@@ -187,6 +187,7 @@ fn registered(
         segment_breaks: surgeist_text::DocumentSegmentBreaks::LineFeedDefault,
         paragraph_strut: surgeist_text::ParagraphStrut::DefaultFont,
         origins: vec![surgeist_text::ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, length),
             aggregate: Range::new(0, length),

@@ -23,6 +23,7 @@ pub(super) fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding
             let source = text::Source::new(*piece);
             let len = source.text().len();
             let origin = text::ParagraphOrigin {
+                text_node: None,
                 source,
                 local: text::Range::new(0, len),
                 aggregate: text::Range::new(at, at + len),

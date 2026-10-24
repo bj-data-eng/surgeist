@@ -30,6 +30,7 @@ fn analyzed(placement: text::HyphenationPlacement) -> text::AnalyzedSource {
         terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         origins: vec![text::ParagraphOrigin {
+            text_node: None,
             source,
             local: text::Range::new(0, 6),
             aggregate: text::Range::new(0, 6),

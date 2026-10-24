@@ -83,6 +83,7 @@ fn css(
         base_direction: direction,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: crate::Range::new(0, text.encode_utf16().count()),
             aggregate: crate::Range::new(0, text.encode_utf16().count()),
@@ -299,6 +300,7 @@ fn captured(
         base_direction: direction,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: crate::Range::new(0, end),
             aggregate: crate::Range::new(0, end),

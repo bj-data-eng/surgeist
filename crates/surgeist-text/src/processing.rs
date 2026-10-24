@@ -159,7 +159,7 @@ pub fn process_source_whitespace(
     base_style: Style,
     segment_breaks: DocumentSegmentBreaks,
 ) -> Result<ProcessedSource> {
-    process_with_boundaries(source, base_style, segment_breaks, &[])
+    process_with_boundaries(source, base_style, segment_breaks, &[], None)
 }
 
 pub(crate) fn process_paragraph(
@@ -195,7 +195,13 @@ pub(crate) fn process_paragraph(
     }
     barriers.sort_unstable();
     barriers.dedup();
-    process_with_boundaries(source, base_style, segment_breaks, &barriers)
+    process_with_boundaries(
+        source,
+        base_style,
+        segment_breaks,
+        &barriers,
+        Some(paragraph),
+    )
 }
 
 fn delimiter_crosses(breaks: &DocumentSegmentBreaks, at: usize) -> bool {
@@ -213,6 +219,7 @@ fn process_with_boundaries(
     base_style: Style,
     segment_breaks: DocumentSegmentBreaks,
     barriers: &[usize],
+    paragraph: Option<&crate::protocol::paragraph::ParagraphData>,
 ) -> Result<ProcessedSource> {
     crate::source_model::validate_structure(&source)?;
     validate_delimiters(&source, &segment_breaks)?;
@@ -223,6 +230,18 @@ fn process_with_boundaries(
     validate_crossings(&source, &segment_breaks, &box_order)?;
     let modes = effective_modes(&source, &base_style)?;
     validate_modes(&modes, &segment_breaks)?;
+    if let Some(paragraph) = paragraph {
+        for (index, origin) in paragraph.origins.iter().enumerate() {
+            admit_text_node(
+                &source,
+                origin.aggregate,
+                origin.text_node.as_ref(),
+                index,
+                &base_style,
+                &modes,
+            )?;
+        }
+    }
 
     let (units, map, tokens) =
         lexical::execute(lexical::ValidatedProcessingRequest::SourceLocal {
@@ -842,6 +861,73 @@ fn effective_modes(source: &Source, base: &Style) -> Result<Vec<EffectiveInterva
         at = end;
     }
     Ok(intervals)
+}
+
+/// Uses the already admitted winning span, never resource styles or hidden spans.
+fn admit_text_node(
+    source: &Source,
+    range: Range,
+    node: Option<&crate::CompleteTextNodeContribution>,
+    origin: usize,
+    base: &Style,
+    modes: &[EffectiveInterval],
+) -> Result<()> {
+    if range.is_empty() || node.is_some() {
+        return Ok(());
+    }
+    let first = modes.partition_point(|interval| interval.range.end <= range.start);
+    if modes[first..]
+        .iter()
+        .take_while(|interval| interval.range.start < range.end)
+        .any(|interval| {
+            interval
+                .span
+                .map_or(base, |i| source.spans()[i].style())
+                .text_transform
+                == crate::TextTransform::MathAuto
+        })
+    {
+        return Err(Error::new(
+            ErrorCode::UnsupportedFeature,
+            "math-auto requires complete original Text-node context",
+        )
+        .with_detail(ErrorDetail::TextTransform {
+            reason: crate::TextTransformError::MissingTextNodeContext { origin },
+        }));
+    }
+    Ok(())
+}
+
+/// Split the same aggregate winners by genuine contextual domains once, before
+/// admission and the shared lexer consume these exact intervals.
+fn contextual_modes(
+    source: &Source,
+    context: &contextual::ProcessingContext,
+) -> Result<Vec<EffectiveInterval>> {
+    let effective = effective_modes(source, &context.domains[0].style)?;
+    let mut modes = Vec::new();
+    for (range, domain) in &context.origins {
+        let first = effective.partition_point(|interval| interval.range.end <= range.start);
+        for interval in effective[first..]
+            .iter()
+            .take_while(|interval| interval.range.start < range.end)
+        {
+            reserve(&mut modes, 1)?;
+            modes.push(EffectiveInterval {
+                range: Range::new(
+                    range.start.max(interval.range.start),
+                    range.end.min(interval.range.end),
+                ),
+                mode: interval
+                    .span
+                    .map_or(context.domains[*domain].style.white_space, |_| {
+                        interval.mode
+                    }),
+                ..*interval
+            });
+        }
+    }
+    Ok(modes)
 }
 
 fn validate_modes(intervals: &[EffectiveInterval], breaks: &DocumentSegmentBreaks) -> Result<()> {

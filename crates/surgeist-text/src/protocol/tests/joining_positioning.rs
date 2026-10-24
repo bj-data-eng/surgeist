@@ -17,6 +17,7 @@ fn input(source: Source, direction: ParagraphBaseDirection) -> ParagraphInput {
         base_direction: direction,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, length),
             aggregate: Range::new(0, length),

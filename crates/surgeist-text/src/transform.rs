@@ -15,6 +15,8 @@ mod casing;
 mod execute;
 mod greek;
 mod irish;
+mod math;
+mod math_data;
 pub(crate) mod relation;
 mod width;
 mod width_data;

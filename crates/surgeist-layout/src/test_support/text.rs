@@ -273,6 +273,7 @@ impl PreparedParagraph {
                     }
                     let local = surgeist_text::Range::new(0, source.text().len());
                     origins.push(ParagraphOrigin {
+                        text_node: None,
                         source,
                         local,
                         aggregate: range,

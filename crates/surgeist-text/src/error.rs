@@ -302,6 +302,16 @@ pub enum ErrorDetail {
 /// Exact source-transform admission or execution refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextTransformError {
+    InvalidTextNodeRange {
+        range: crate::Range,
+        text_len: usize,
+    },
+    TextNodeMismatch {
+        origin: usize,
+    },
+    MissingTextNodeContext {
+        origin: usize,
+    },
     CasingDataUnavailable,
     InvalidCasingData,
     InvalidContentLocale,

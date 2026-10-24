@@ -75,6 +75,7 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
             .into_iter()
             .enumerate()
             .map(|(index, value)| text::ParagraphOrigin {
+                text_node: None,
                 source: text::Source::new(value),
                 local: text::Range::new(0, 1),
                 aggregate: text::Range::new(index, index + 1),

@@ -32,6 +32,7 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
         base_direction: ParagraphBaseDirection::RightToLeft,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, 6),
             aggregate: Range::new(0, 6),

@@ -8,7 +8,9 @@ fn kana_style() -> Style {
         size: 10.0,
         line_height: LineHeight::Absolute(10.0),
         white_space: WhiteSpace::Preserve,
-        text_transform: TextTransform::none().with_full_size_kana(true),
+        text_transform: TextTransform::Set(
+            crate::TextTransformSet::none().with_full_size_kana(true),
+        ),
         ..Style::default()
     }
 }
@@ -23,6 +25,7 @@ fn input(source: Source, style: Style) -> ParagraphInput {
         segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, len),
             aggregate: Range::new(0, len),
@@ -210,7 +213,9 @@ fn actual_enabled_and_neutral_styles_cross_origins_and_transparent_occurrences()
         source.span(
             Range::new(1, 3),
             Style {
-                text_transform: TextTransform::none().with_full_size_kana(enabled),
+                text_transform: TextTransform::Set(
+                    crate::TextTransformSet::none().with_full_size_kana(enabled),
+                ),
                 ..kana_style()
             },
         );
@@ -224,6 +229,7 @@ fn actual_enabled_and_neutral_styles_cross_origins_and_transparent_occurrences()
         i.origins = [(0, 1), (1, 3), (3, 3), (3, 4)]
             .into_iter()
             .map(|(a, b)| paragraph::ParagraphOrigin {
+                text_node: None,
                 source: source.clone(),
                 local: Range::new(a, b),
                 aggregate: Range::new(a, b),
@@ -299,6 +305,7 @@ fn transformed_base_and_cross_origin_mark_keep_one_real_gpos_unit_and_component_
     i.origins = [(0, 2), (2, 3)]
         .into_iter()
         .map(|(a, b)| paragraph::ParagraphOrigin {
+            text_node: None,
             source: source.clone(),
             local: Range::new(a, b),
             aggregate: Range::new(a, b),
@@ -374,7 +381,9 @@ fn standalone_wrap_and_warm_cache_use_transformed_metrics_without_mutating_sourc
         (true, 25.0, 36),
     ] {
         let st = Style {
-            text_transform: TextTransform::none().with_full_size_kana(enabled),
+            text_transform: TextTransform::Set(
+                crate::TextTransformSet::none().with_full_size_kana(enabled),
+            ),
             ..kana_style()
         };
         let options = crate::Options {

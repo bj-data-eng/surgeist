@@ -3,7 +3,7 @@ use crate::{AnalyzedSource, CaseTransform, Range, Source, Style, Text, TextTrans
 
 fn style(case: CaseTransform, locale: Option<&str>) -> Style {
     Style {
-        text_transform: TextTransform::none().with_case(case),
+        text_transform: TextTransform::Set(crate::TextTransformSet::none().with_case(case)),
         locale: locale.map(str::to_owned),
         ..Style::default()
     }
@@ -217,9 +217,11 @@ fn opaque_original_units_and_kana_composition_keep_independent_phase_custody() {
     let analyzed = AnalyzedSource::new(
         source.clone(),
         Style {
-            text_transform: TextTransform::none()
-                .with_case(CaseTransform::Uppercase)
-                .with_full_size_kana(true),
+            text_transform: TextTransform::Set(
+                crate::TextTransformSet::none()
+                    .with_case(CaseTransform::Uppercase)
+                    .with_full_size_kana(true),
+            ),
             ..Style::default()
         },
     )
@@ -275,6 +277,7 @@ fn immutable_context_crosses_connected_origins_and_neutral_oof_but_not_real_doma
             origins: [(0, 2), (2, 3)]
                 .into_iter()
                 .map(|(start, end)| crate::ParagraphOrigin {
+                    text_node: None,
                     source: source.clone(),
                     local: Range::new(start, end),
                     aggregate: Range::new(start, end),
@@ -355,6 +358,7 @@ fn split_origin_dot_and_acute_use_actual_context_through_neutral_oof() {
                     .into_iter()
                     .enumerate()
                     .map(|(index, original)| crate::ParagraphOrigin {
+                        text_node: None,
                         source: original,
                         local: Range::new(0, 1),
                         aggregate: Range::new(index, index + 1),

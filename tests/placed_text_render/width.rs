@@ -125,6 +125,7 @@ fn capture(
         terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         origins: vec![text::ParagraphOrigin {
+            text_node: None,
             source: source.clone(),
             local: range,
             aggregate: range,
@@ -257,7 +258,7 @@ fn width_maps_real_glyph_advance_without_expanding_ink_or_original_selection() {
         let (batch, origin, source) = capture(
             &mut system,
             "A",
-            text::TextTransform::none().with_full_width(enabled),
+            text::TextTransform::Set(text::TextTransformSet::none().with_full_width(enabled)),
             text::WhiteSpace::Preserve,
             text::WordBreak::Normal,
             layout::Available::Definite(30.0),
@@ -388,9 +389,11 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
             30.0,
         ),
     ] {
-        let transform = text::TextTransform::none()
-            .with_case(case)
-            .with_full_width(width);
+        let transform = text::TextTransform::Set(
+            text::TextTransformSet::none()
+                .with_case(case)
+                .with_full_width(width),
+        );
         let (batch, origin, source) = capture(
             &mut system,
             "ß",
@@ -476,7 +479,8 @@ fn normal_wrap_uses_mapped_character_opportunities_and_real_twenty_pixel_advance
     // Ordinary Latin AA is one20px word. Fullwidth letters have normal
     // ideographic opportunities: two20px glyphs cannot share a25px line.
     for enabled in [false, true] {
-        let transform = text::TextTransform::none().with_full_width(enabled);
+        let transform =
+            text::TextTransform::Set(text::TextTransformSet::none().with_full_width(enabled));
         let (batch, _, source) = capture(
             &mut system,
             "AA",
@@ -565,7 +569,7 @@ fn genuine_preserved_space_maps_but_surviving_collapsed_space_stays_narrow() {
         let (batch, origin, source) = capture(
             &mut system,
             value,
-            text::TextTransform::none().with_full_width(enabled),
+            text::TextTransform::Set(text::TextTransformSet::none().with_full_width(enabled)),
             mode,
             text::WordBreak::Normal,
             layout::Available::Definite(100.0),
@@ -641,9 +645,11 @@ fn width_accessibility_keeps_original_sharp_s_with_actual_thirty_pixel_geometry(
     let (batch, _, _) = capture(
         &mut system,
         "ß",
-        text::TextTransform::none()
-            .with_case(text::CaseTransform::Uppercase)
-            .with_full_width(true),
+        text::TextTransform::Set(
+            text::TextTransformSet::none()
+                .with_case(text::CaseTransform::Uppercase)
+                .with_full_width(true),
+        ),
         text::WhiteSpace::Preserve,
         text::WordBreak::Normal,
         layout::Available::Definite(40.0),

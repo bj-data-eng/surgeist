@@ -68,6 +68,7 @@ fn prepare_paragraph_at(
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![ParagraphOrigin {
+            text_node: None,
             source: source.clone(),
             local: Range::new(0, length),
             aggregate: Range::new(0, length),

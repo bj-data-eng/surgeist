@@ -28,6 +28,7 @@ fn prepare(system: &mut System, text: &str, whitespace: WhiteSpace) -> PreparedT
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, end),
             aggregate: Range::new(0, end),

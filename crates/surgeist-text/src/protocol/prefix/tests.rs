@@ -112,6 +112,7 @@ fn native(
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, len),
             aggregate: Range::new(0, len),
@@ -720,18 +721,21 @@ fn finalized_original_prefix_empty_occurrences_inherit_only_actual_preceding_con
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![
             ParagraphOrigin {
+                text_node: None,
                 source: Source::new(""),
                 local: Range::new(0, 0),
                 aggregate: Range::new(0, 0),
                 kind: ParagraphOriginKind::Authored,
             },
             ParagraphOrigin {
+                text_node: None,
                 source: Source::new("A"),
                 local: Range::new(0, 1),
                 aggregate: Range::new(0, 1),
                 kind: ParagraphOriginKind::Authored,
             },
             ParagraphOrigin {
+                text_node: None,
                 source: Source::new(""),
                 local: Range::new(0, 0),
                 aggregate: Range::new(1, 1),

@@ -835,6 +835,7 @@ pub surgeist_text::TextStyleFeature::LetterSpacing
 pub surgeist_text::TextStyleFeature::LineHeight
 pub surgeist_text::TextStyleFeature::Locale
 pub surgeist_text::TextStyleFeature::Lowercase
+pub surgeist_text::TextStyleFeature::MathAuto
 pub surgeist_text::TextStyleFeature::NamedFontWeight
 pub surgeist_text::TextStyleFeature::NumericFontWeight
 pub surgeist_text::TextStyleFeature::ObliqueSlant
@@ -867,14 +868,29 @@ pub surgeist_text::TextStylePhase::Standalone
 pub enum surgeist_text::TextStyleSupport
 pub surgeist_text::TextStyleSupport::Supported
 pub surgeist_text::TextStyleSupport::Unsupported(surgeist_text::UnsupportedTextStyleReason)
+pub enum surgeist_text::TextTransform
+pub surgeist_text::TextTransform::MathAuto
+pub surgeist_text::TextTransform::Set(surgeist_text::TextTransformSet)
+impl surgeist_text::TextTransform
+pub const fn surgeist_text::TextTransform::none() -> Self
+impl core::default::Default for surgeist_text::TextTransform
+pub fn surgeist_text::TextTransform::default() -> Self
 pub enum surgeist_text::TextTransformError
 pub surgeist_text::TextTransformError::Capacity
 pub surgeist_text::TextTransformError::CasingDataUnavailable
 pub surgeist_text::TextTransformError::InvalidCasingData
 pub surgeist_text::TextTransformError::InvalidContentLocale
+pub surgeist_text::TextTransformError::InvalidTextNodeRange
+pub surgeist_text::TextTransformError::InvalidTextNodeRange::range: surgeist_text::Range
+pub surgeist_text::TextTransformError::InvalidTextNodeRange::text_len: usize
+pub surgeist_text::TextTransformError::MissingTextNodeContext
+pub surgeist_text::TextTransformError::MissingTextNodeContext::origin: usize
+pub surgeist_text::TextTransformError::TextNodeMismatch
+pub surgeist_text::TextTransformError::TextNodeMismatch::origin: usize
 pub enum surgeist_text::UnsupportedTextStyleReason
 pub surgeist_text::UnsupportedTextStyleReason::RequiresBroadVerticalAlignPolicy
 pub surgeist_text::UnsupportedTextStyleReason::RequiresColorResolution
+pub surgeist_text::UnsupportedTextStyleReason::RequiresCompleteTextNodeContext
 pub surgeist_text::UnsupportedTextStyleReason::RequiresDecorationSelectionPolicy
 pub surgeist_text::UnsupportedTextStyleReason::RequiresFontPolicy
 pub surgeist_text::UnsupportedTextStyleReason::RequiresInlineMetricContract
@@ -1031,6 +1047,11 @@ impl surgeist_text::Cluster
 pub const fn surgeist_text::Cluster::bounds(self) -> surgeist_text::Rect
 pub const fn surgeist_text::Cluster::new(range: surgeist_text::Range, bounds: surgeist_text::Rect) -> Self
 pub const fn surgeist_text::Cluster::range(self) -> surgeist_text::Range
+pub struct surgeist_text::CompleteTextNodeContribution
+impl surgeist_text::CompleteTextNodeContribution
+pub fn surgeist_text::CompleteTextNodeContribution::new(text: surgeist_text::Text, range: surgeist_text::Range) -> surgeist_text::Result<Self>
+pub const fn surgeist_text::CompleteTextNodeContribution::range(&self) -> surgeist_text::Range
+pub const fn surgeist_text::CompleteTextNodeContribution::text(&self) -> &surgeist_text::Text
 pub struct surgeist_text::Composer
 impl surgeist_text::Composer
 pub fn surgeist_text::Composer::box_(&mut self, id: surgeist_text::Id, kind: surgeist_text::InlineBoxKind, size: surgeist_text::Size) -> &mut Self
@@ -1563,6 +1584,7 @@ pub surgeist_text::ParagraphOrigin::aggregate: surgeist_text::Range
 pub surgeist_text::ParagraphOrigin::kind: surgeist_text::ParagraphOriginKind
 pub surgeist_text::ParagraphOrigin::local: surgeist_text::Range
 pub surgeist_text::ParagraphOrigin::source: surgeist_text::Source
+pub surgeist_text::ParagraphOrigin::text_node: core::option::Option<surgeist_text::CompleteTextNodeContribution>
 pub struct surgeist_text::ParagraphReplacement
 impl surgeist_text::ParagraphReplacement
 pub const fn surgeist_text::ParagraphReplacement::definition(&self) -> surgeist_text::ParagraphReplacementDefinition
@@ -2262,15 +2284,15 @@ pub fn surgeist_text::TextEdit::insert(source: &surgeist_text::Source, index: us
 pub fn surgeist_text::TextEdit::inserted_text(&self) -> &surgeist_text::Text
 pub const fn surgeist_text::TextEdit::range(&self) -> surgeist_text::Range
 pub fn surgeist_text::TextEdit::replace(source: &surgeist_text::Source, range: surgeist_text::Range, text: impl core::convert::Into<surgeist_text::Text>) -> surgeist_text::Result<Self>
-pub struct surgeist_text::TextTransform
-impl surgeist_text::TextTransform
-pub const fn surgeist_text::TextTransform::case(self) -> surgeist_text::CaseTransform
-pub const fn surgeist_text::TextTransform::full_size_kana(self) -> bool
-pub const fn surgeist_text::TextTransform::full_width(self) -> bool
-pub const fn surgeist_text::TextTransform::none() -> Self
-pub const fn surgeist_text::TextTransform::with_case(self, case: surgeist_text::CaseTransform) -> Self
-pub const fn surgeist_text::TextTransform::with_full_size_kana(self, enabled: bool) -> Self
-pub const fn surgeist_text::TextTransform::with_full_width(self, enabled: bool) -> Self
+pub struct surgeist_text::TextTransformSet
+impl surgeist_text::TextTransformSet
+pub const fn surgeist_text::TextTransformSet::case(self) -> surgeist_text::CaseTransform
+pub const fn surgeist_text::TextTransformSet::full_size_kana(self) -> bool
+pub const fn surgeist_text::TextTransformSet::full_width(self) -> bool
+pub const fn surgeist_text::TextTransformSet::none() -> Self
+pub const fn surgeist_text::TextTransformSet::with_case(self, case: surgeist_text::CaseTransform) -> Self
+pub const fn surgeist_text::TextTransformSet::with_full_size_kana(self, enabled: bool) -> Self
+pub const fn surgeist_text::TextTransformSet::with_full_width(self, enabled: bool) -> Self
 pub struct surgeist_text::ValidatedOptions
 impl surgeist_text::ValidatedOptions
 pub const fn surgeist_text::ValidatedOptions::authored(self) -> surgeist_text::Options

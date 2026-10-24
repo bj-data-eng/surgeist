@@ -14,6 +14,7 @@ fn input(text: &str) -> ParagraphInput {
         terminal_edge: ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         origins: vec![ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, end),
             aggregate: Range::new(0, end),
@@ -82,12 +83,14 @@ fn connected_origins_and_effective_instances_share_one_word_but_disconnections_d
         );
         value.origins = vec![
             ParagraphOrigin {
+                text_node: None,
                 source: value.source.clone(),
                 local: Range::new(0, 2),
                 aggregate: Range::new(0, 2),
                 kind: ParagraphOriginKind::Authored,
             },
             ParagraphOrigin {
+                text_node: None,
                 source: value.source.clone(),
                 local: Range::new(2, 6),
                 aggregate: Range::new(2, 6),
@@ -257,6 +260,7 @@ fn child_domain_hole_cannot_supply_or_remove_the_parent_words_counting_units() {
         let origins = [Range::new(0, 2), Range::new(2, 3), Range::new(3, end)]
             .into_iter()
             .map(|range| ParagraphOrigin {
+                text_node: None,
                 source: source.clone(),
                 local: range,
                 aggregate: range,

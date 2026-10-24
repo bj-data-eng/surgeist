@@ -18,6 +18,7 @@ fn input(text: &str, terminal: Terminal, mode: WhiteSpace) -> ParagraphInput {
         paragraph_strut: ParagraphStrut::DefaultFont,
         tab_reference: None,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, end),
             aggregate: Range::new(0, end),

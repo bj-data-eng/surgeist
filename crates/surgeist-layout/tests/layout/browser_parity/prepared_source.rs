@@ -221,6 +221,7 @@ impl Capture {
             source.span(aggregate, resolved.clone());
             origin_children.push(child);
             origins.push(text::ParagraphOrigin {
+                text_node: None,
                 source: original,
                 local: text::Range::new(0, aggregate.len()),
                 aggregate,

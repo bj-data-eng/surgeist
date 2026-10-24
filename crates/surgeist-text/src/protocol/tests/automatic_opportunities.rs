@@ -38,6 +38,7 @@ fn auto_prepare(word: &str, hyphens: Hyphens, locale: Option<&str>) -> (Prepared
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, word.len()),
             aggregate: Range::new(0, word.len()),

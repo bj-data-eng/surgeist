@@ -14,7 +14,7 @@ fn case_style(case: CaseTransform, locale: Option<&str>) -> Style {
         white_space: WhiteSpace::Preserve,
         overflow_wrap: crate::OverflowWrap::Anywhere,
         locale: locale.map(str::to_owned),
-        text_transform: TextTransform::none().with_case(case),
+        text_transform: TextTransform::Set(crate::TextTransformSet::none().with_case(case)),
         ..Style::default()
     }
 }
@@ -30,6 +30,7 @@ fn capture_source(source: Source, base_style: Style, font: Vec<u8>) -> PreparedT
         segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, len),
             aggregate: Range::new(0, len),

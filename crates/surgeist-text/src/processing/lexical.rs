@@ -62,6 +62,7 @@ pub(super) enum ValidatedProcessingRequest<'a> {
         source: &'a Source,
         breaks: &'a DocumentSegmentBreaks,
         context: &'a super::contextual::ProcessingContext,
+        modes: &'a [EffectiveInterval],
     },
 }
 pub(super) fn execute(
@@ -83,7 +84,8 @@ pub(super) fn execute(
             source,
             breaks,
             context,
-        } => execute_contextual(source, breaks, context),
+            modes,
+        } => execute_contextual(source, breaks, context, modes),
     }
 }
 
@@ -393,30 +395,8 @@ fn execute_contextual(
     source: &Source,
     breaks: &DocumentSegmentBreaks,
     context: &super::contextual::ProcessingContext,
+    modes: &[EffectiveInterval],
 ) -> Result<(Vec<u16>, Vec<MappingPiece>, Vec<super::PlaintextToken>)> {
-    let effective = super::effective_modes(source, &context.domains[0].style)?;
-    let mut modes = Vec::new();
-    for (range, domain) in &context.origins {
-        let first = effective.partition_point(|interval| interval.range.end <= range.start);
-        for interval in effective[first..]
-            .iter()
-            .take_while(|interval| interval.range.start < range.end)
-        {
-            let start = range.start.max(interval.range.start);
-            let end = range.end.min(interval.range.end);
-            reserve(&mut modes, 1)?;
-            modes.push(super::EffectiveInterval {
-                range: Range::new(start, end),
-                mode: interval
-                    .span
-                    .map_or(context.domains[*domain].style.white_space, |_| {
-                        interval.mode
-                    }),
-                ..*interval
-            });
-        }
-    }
-    super::validate_modes(&modes, breaks)?;
     let mut decode_barriers = Vec::new();
     for pair in context.origins.windows(2) {
         if pair[0].1 != pair[1].1 {
@@ -426,7 +406,7 @@ fn execute_contextual(
     decode_barriers.extend(context.barriers.iter().map(|barrier| barrier.at));
     decode_barriers.sort_unstable();
     decode_barriers.dedup();
-    let mut tokens = tokenize(source, breaks, &modes, &[], &decode_barriers)?;
+    let mut tokens = tokenize(source, breaks, modes, &[], &decode_barriers)?;
     tokens.retain(|token| token.kind != Kind::Barrier);
     for token in &mut tokens {
         let origin = context

@@ -21,6 +21,7 @@ fn paragraph(source: Source) -> ParagraphInput {
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, len),
             aggregate: Range::new(0, len),
@@ -375,6 +376,7 @@ fn atomic_transparent_input(
             input.origins.clear();
             if at != 0 {
                 input.origins.push(ParagraphOrigin {
+                    text_node: None,
                     source: input.source.clone(),
                     local: Range::new(0, at),
                     aggregate: Range::new(0, at),
@@ -383,6 +385,7 @@ fn atomic_transparent_input(
             }
             let empty = input.origins.len();
             input.origins.push(ParagraphOrigin {
+                text_node: None,
                 source: Source::new(""),
                 local: Range::new(0, 0),
                 aggregate: Range::new(at, at),
@@ -390,6 +393,7 @@ fn atomic_transparent_input(
             });
             if at != len {
                 input.origins.push(ParagraphOrigin {
+                    text_node: None,
                     source: input.source.clone(),
                     local: Range::new(at, len),
                     aggregate: Range::new(at, len),
@@ -757,12 +761,14 @@ fn native_connection_space_owner_depends_on_actual_disappearance() {
                 input.base_style.wrap = local_wrap;
                 input.origins = vec![
                     ParagraphOrigin {
+                        text_node: None,
                         source: Source::new("A "),
                         local: Range::new(0, 2),
                         aggregate: Range::new(0, 2),
                         kind: ParagraphOriginKind::Authored,
                     },
                     ParagraphOrigin {
+                        text_node: None,
                         source: Source::new("B"),
                         local: Range::new(0, 1),
                         aggregate: Range::new(2, 3),
@@ -846,24 +852,28 @@ fn discarded_original_coverage_and_distinct_empty_occurrences_survive_selection(
     input.base_style.white_space = WhiteSpace::Discard;
     input.origins = vec![
         ParagraphOrigin {
+            text_node: None,
             source: Source::new(" A "),
             local: Range::new(0, 3),
             aggregate: Range::new(0, 3),
             kind: ParagraphOriginKind::Authored,
         },
         ParagraphOrigin {
+            text_node: None,
             source: Source::new(""),
             local: Range::new(0, 0),
             aggregate: Range::new(3, 3),
             kind: ParagraphOriginKind::Generated,
         },
         ParagraphOrigin {
+            text_node: None,
             source: Source::new(""),
             local: Range::new(0, 0),
             aggregate: Range::new(3, 3),
             kind: ParagraphOriginKind::Authored,
         },
         ParagraphOrigin {
+            text_node: None,
             source: Source::new("  B"),
             local: Range::new(0, 3),
             aggregate: Range::new(3, 6),

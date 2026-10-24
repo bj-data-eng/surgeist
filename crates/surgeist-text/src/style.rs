@@ -337,12 +337,32 @@ pub enum OverflowWrap {
     BreakWord,
 }
 
-/// Computed presentation transformations executed before Unicode analysis.
-///
-/// Casing, full-width and full-size-kana execute in that order. Math-auto is
-/// not accepted by this native input.
+/// Computed presentation operation, executed before Unicode analysis.
+/// Math-auto requires an explicit complete-original-Text-node capture.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum TextTransform {
+    Set(TextTransformSet),
+    MathAuto,
+}
+
+impl Default for TextTransform {
+    fn default() -> Self {
+        Self::none()
+    }
+}
+
+impl TextTransform {
+    /// The neutral case, width and kana set.
+    #[must_use]
+    pub const fn none() -> Self {
+        Self::Set(TextTransformSet::none())
+    }
+}
+
+/// Composable computed case, full-width and full-size-kana operations.
+/// The empty set is the valid neutral value; execution follows that order.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct TextTransform {
+pub struct TextTransformSet {
     case: CaseTransform,
     full_width: bool,
     full_size_kana: bool,
@@ -359,7 +379,7 @@ pub enum CaseTransform {
     Capitalize,
 }
 
-impl TextTransform {
+impl TextTransformSet {
     /// The neutral presentation operation.
     #[must_use]
     pub const fn none() -> Self {
@@ -658,6 +678,17 @@ enum StyleInputPhase {
 }
 
 fn validate_style(style: &Style, phase: StyleInputPhase) -> Result<ParsedStyle> {
+    if phase == StyleInputPhase::Standalone && style.text_transform == TextTransform::MathAuto {
+        return Err(Error::new(
+            ErrorCode::UnsupportedFeature,
+            "math-auto requires complete original Text-node capture",
+        )
+        .with_detail(ErrorDetail::UnsupportedTextStyle {
+            feature: TextStyleFeature::MathAuto,
+            reason: UnsupportedTextStyleReason::RequiresCompleteTextNodeContext,
+        }));
+    }
+
     if style.direction != Direction::Auto {
         return Err(Error::new(
             ErrorCode::UnsupportedFeature,

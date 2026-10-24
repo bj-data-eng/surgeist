@@ -766,7 +766,9 @@ mod tests {
                     size: 10.0,
                     line_height: LineHeight::Absolute(10.0),
                     white_space: crate::WhiteSpace::Preserve,
-                    text_transform: crate::TextTransform::none().with_case(case),
+                    text_transform: crate::TextTransform::Set(
+                        crate::TextTransformSet::none().with_case(case),
+                    ),
                     locale: locale.map(str::to_owned),
                     ..Style::default()
                 },
@@ -801,8 +803,9 @@ mod tests {
             .layout(
                 Source::new("ß"),
                 Style {
-                    text_transform: crate::TextTransform::none()
-                        .with_case(crate::CaseTransform::Uppercase),
+                    text_transform: crate::TextTransform::Set(
+                        crate::TextTransformSet::none().with_case(crate::CaseTransform::Uppercase),
+                    ),
                     ..native_style()
                 },
                 crate::Options {
@@ -1054,6 +1057,7 @@ mod tests {
             .iter()
             .enumerate()
             .map(|(index, source)| crate::ParagraphOrigin {
+                text_node: None,
                 source: source.clone(),
                 local: Range::new(0, 1),
                 aggregate: Range::new(index, index + 1),
@@ -1088,6 +1092,7 @@ mod tests {
     fn native_plaintext_uses_executed_collapse_while_original_extraction_retains_spaces() {
         let source = Source::new("A  B");
         let origins = vec![crate::ParagraphOrigin {
+            text_node: None,
             source: source.clone(),
             local: Range::new(0, 4),
             aggregate: Range::new(0, 4),
@@ -1214,6 +1219,7 @@ mod tests {
     fn removal_adjoining_a_real_zero_width_control_does_not_select_its_slot() {
         let source = Source::new("I\u{307}B");
         let origins = vec![crate::ParagraphOrigin {
+            text_node: None,
             source: source.clone(),
             local: Range::new(0, 3),
             aggregate: Range::new(0, 3),
@@ -1224,8 +1230,9 @@ mod tests {
             origins,
             Style {
                 locale: Some("tr".to_owned()),
-                text_transform: crate::TextTransform::none()
-                    .with_case(crate::CaseTransform::Lowercase),
+                text_transform: crate::TextTransform::Set(
+                    crate::TextTransformSet::none().with_case(crate::CaseTransform::Lowercase),
+                ),
                 ..native_style()
             },
             vec![ParagraphControl {
@@ -1265,7 +1272,9 @@ mod tests {
             .layout(
                 Source::new("A\u{1b132}C"),
                 Style {
-                    text_transform: crate::TextTransform::none().with_full_size_kana(true),
+                    text_transform: crate::TextTransform::Set(
+                        crate::TextTransformSet::none().with_full_size_kana(true),
+                    ),
                     ..native_style()
                 },
                 crate::Options {
@@ -1304,6 +1313,7 @@ mod tests {
     fn real_rtl_override_expansion_keeps_both_interior_affinities_and_exact_coverage() {
         let source = Source::new("ß");
         let origins = vec![crate::ParagraphOrigin {
+            text_node: None,
             source: source.clone(),
             local: Range::new(0, 1),
             aggregate: Range::new(0, 1),
@@ -1313,8 +1323,9 @@ mod tests {
             source,
             origins,
             Style {
-                text_transform: crate::TextTransform::none()
-                    .with_case(crate::CaseTransform::Uppercase),
+                text_transform: crate::TextTransform::Set(
+                    crate::TextTransformSet::none().with_case(crate::CaseTransform::Uppercase),
+                ),
                 ..native_style()
             },
             vec![
@@ -1456,12 +1467,14 @@ mod tests {
                 assert_eq!(text, "AB");
                 vec![
                     crate::ParagraphOrigin {
+                        text_node: None,
                         source: Source::new("A"),
                         local: Range::new(0, 1),
                         aggregate: Range::new(0, 1),
                         kind: crate::ParagraphOriginKind::Authored,
                     },
                     crate::ParagraphOrigin {
+                        text_node: None,
                         source: Source::new("B"),
                         local: Range::new(0, 1),
                         aggregate: Range::new(1, 2),
@@ -1470,6 +1483,7 @@ mod tests {
                 ]
             } else if source_end != 0 {
                 vec![crate::ParagraphOrigin {
+                    text_node: None,
                     source,
                     local: Range::new(0, source_end),
                     aggregate: Range::new(0, source_end),
@@ -1700,6 +1714,7 @@ mod tests {
             base_direction: ParagraphBaseDirection::LeftToRight,
             paragraph_strut: crate::ParagraphStrut::DefaultFont,
             origins: vec![crate::ParagraphOrigin {
+                text_node: None,
                 source,
                 local: Range::new(0, 6),
                 aggregate: Range::new(0, 6),
@@ -1961,6 +1976,7 @@ mod tests {
             base_direction,
             paragraph_strut: crate::ParagraphStrut::DefaultFont,
             origins: vec![crate::ParagraphOrigin {
+                text_node: None,
                 source,
                 local: Range::new(0, end),
                 aggregate: Range::new(0, end),

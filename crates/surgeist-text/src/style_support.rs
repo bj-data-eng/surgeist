@@ -42,6 +42,7 @@ pub enum TextStyleFeature {
     DecorationStyle,
     ConcreteDecorationColor,
     SymbolicDecorationColor,
+    MathAuto,
     FullSizeKana,
     FullWidth,
     Uppercase,
@@ -100,6 +101,7 @@ impl TextStyleFeature {
         Self::DecorationStyle,
         Self::ConcreteDecorationColor,
         Self::SymbolicDecorationColor,
+        Self::MathAuto,
         Self::FullSizeKana,
         Self::FullWidth,
         Self::Uppercase,
@@ -113,12 +115,18 @@ impl TextStyleFeature {
         if matches!(phase, TextStylePhase::ProcessedParagraph)
             && matches!(
                 self,
-                Self::WhiteSpaceCollapse | Self::WhiteSpaceDiscard | Self::WhiteSpacePreserveSpaces
+                Self::MathAuto
+                    | Self::WhiteSpaceCollapse
+                    | Self::WhiteSpaceDiscard
+                    | Self::WhiteSpacePreserveSpaces
             )
         {
             return TextStyleSupport::Supported;
         }
         match self {
+            Self::MathAuto => TextStyleSupport::Unsupported(
+                UnsupportedTextStyleReason::RequiresCompleteTextNodeContext,
+            ),
             Self::FontFamilyList
             | Self::NamedFontWeight
             | Self::NumericFontWeight
@@ -190,6 +198,7 @@ pub enum TextStyleSupport {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum UnsupportedTextStyleReason {
+    RequiresCompleteTextNodeContext,
     RequiresParagraphBaseDirection,
     /// This standalone input requires the explicit processed-paragraph executor.
     RequiresProcessedSourceLayout,

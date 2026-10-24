@@ -10,7 +10,9 @@ fn width_maps_source_body_but_leaves_each_chosen_indication_exact_on_both_sides(
     ] {
         let source = Source::new("AA\u{ad}AAA");
         let style = Style {
-            text_transform: crate::TextTransform::none().with_full_width(true),
+            text_transform: crate::TextTransform::Set(
+                crate::TextTransformSet::none().with_full_width(true),
+            ),
             ..own_style("A", placement)
         };
         let p = capture(source.clone(), style, &bytes);

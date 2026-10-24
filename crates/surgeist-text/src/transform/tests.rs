@@ -1,11 +1,14 @@
 use crate::{AnalyzedSource, Source, Style, Text, TextTransform};
 
 mod casing;
+mod math;
 mod width;
 
 fn style() -> Style {
     Style {
-        text_transform: TextTransform::none().with_full_size_kana(true),
+        text_transform: TextTransform::Set(
+            crate::TextTransformSet::none().with_full_size_kana(true),
+        ),
         ..Style::default()
     }
 }
@@ -104,6 +107,7 @@ fn native_whitespace_plaintext_and_style_winners_precede_semantic_transform() {
             segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
             base_direction: crate::ParagraphBaseDirection::LeftToRight,
             origins: vec![crate::ParagraphOrigin {
+                text_node: None,
                 source: source.clone(),
                 local: crate::Range::new(0, 4),
                 aggregate: crate::Range::new(0, 4),

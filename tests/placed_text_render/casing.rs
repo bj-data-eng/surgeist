@@ -18,11 +18,13 @@ fn capture(
         line_height: text::LineHeight::Absolute(10.0),
         white_space: text::WhiteSpace::Preserve,
         word_break: text::WordBreak::BreakAll,
-        text_transform: text::TextTransform::none().with_case(if uppercase {
-            text::CaseTransform::Uppercase
-        } else {
-            text::CaseTransform::None
-        }),
+        text_transform: text::TextTransform::Set(text::TextTransformSet::none().with_case(
+            if uppercase {
+                text::CaseTransform::Uppercase
+            } else {
+                text::CaseTransform::None
+            },
+        )),
         ..text::Style::default()
     };
     let ancestor_wrap = style.wrap;
@@ -35,6 +37,7 @@ fn capture(
         terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         origins: vec![text::ParagraphOrigin {
+            text_node: None,
             source: source.clone(),
             local: text::Range::new(0, 1),
             aggregate: text::Range::new(0, 1),

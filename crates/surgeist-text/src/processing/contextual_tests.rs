@@ -2,6 +2,7 @@
 use crate::*;
 use std::sync::Arc;
 
+mod math;
 mod phase_two;
 
 #[test]
@@ -51,7 +52,8 @@ fn full_width_parent_projection_keeps_real_child_holes_and_each_domain_style() {
         let SourceProcessingScope::Block { base_style, .. } = &mut capture.scopes[0] else {
             unreachable!()
         };
-        base_style.text_transform = TextTransform::none().with_full_width(true);
+        base_style.text_transform =
+            TextTransform::Set(crate::TextTransformSet::none().with_full_width(true));
         let result = Arc::new(process_contextual_source(capture).unwrap());
         let views: Vec<_> = result.paragraphs().collect();
         assert_eq!(
@@ -137,6 +139,7 @@ fn facts(direction: ParagraphBaseDirection) -> SourceProcessingParagraph {
 }
 fn origin(source: &Source, range: Range) -> ParagraphOrigin {
     ParagraphOrigin {
+        text_node: None,
         source: source.clone(),
         local: range,
         aggregate: range,

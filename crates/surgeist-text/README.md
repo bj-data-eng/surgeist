@@ -23,12 +23,17 @@ count those units. Edits can split or join surrogate pairs. `AnalyzedSource`
 retains original source and pre-font semantic analysis. Contextual casing,
 full-width mapping and the complete pinned full-size-kana transform execute in
 that order after Phase I and before analysis, shaping and wrapping. Use
-`TextTransform::none().with_case(CaseTransform::Uppercase)`,
-`.with_full_width(true)` or `.with_full_size_kana(true)`; lowercase and capitalize
-are also supported. Full-width uses the raw Unicode wide/narrow relation and
+`TextTransform::Set` combines operations built with `TextTransformSet`:
+`.with_case(CaseTransform::Uppercase)`, `.with_full_width(true)` and
+`.with_full_size_kana(true)`; lowercase and capitalize are also supported.
+Full-width uses the raw Unicode wide/narrow relation and
 maps SPACE only when the executed processing preserved it.
 Original UTF-16 and plaintext remain unchanged through expansions and removals.
-Math-auto is not exposed. Layout uses a separate glyph projection
+The exclusive `TextTransform::MathAuto` requires complete original Text-node
+content captured on native paragraph origins. It maps eligible surviving text
+through the pinned MathML Core relation; raw standalone layout refuses the
+missing context. See [transformation inputs](docs/reference.md#defaults-and-validation).
+Layout uses a separate glyph projection
 for isolated units. Source-only accessibility needs no placement and
 omits unsupported geometry. Positioned accessibility, interaction and paint
 readback share the committed layout. Shaping boundaries inside an original pair

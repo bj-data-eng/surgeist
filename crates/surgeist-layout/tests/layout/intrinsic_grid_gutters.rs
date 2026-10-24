@@ -579,12 +579,14 @@ fn prepare_wrapping_text() -> surgeist_text::PreparedText {
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![
             ParagraphOrigin {
+                text_node: None,
                 source: first,
                 local: Range::new(0, 6),
                 aggregate: Range::new(0, 6),
                 kind: ParagraphOriginKind::Authored,
             },
             ParagraphOrigin {
+                text_node: None,
                 source: second,
                 local: Range::new(0, 4),
                 aggregate: Range::new(6, 10),

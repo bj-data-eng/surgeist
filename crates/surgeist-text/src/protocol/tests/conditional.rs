@@ -16,6 +16,7 @@ fn input(text: &str, overflow_wrap: OverflowWrap) -> ParagraphInput {
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, length),
             aggregate: Range::new(0, length),
@@ -1083,6 +1084,7 @@ fn true_outer_permission_does_not_vote_immediate_empty_chain_facts_or_collapse_c
     }
     value.origins = [("A", 0, 1), ("", 1, 1), ("", 1, 1), ("B", 1, 2)]
         .map(|(text, start, end)| ParagraphOrigin {
+            text_node: None,
             source: Source::new(text),
             local: Range::new(0, end - start),
             aggregate: Range::new(start, end),
@@ -1185,6 +1187,7 @@ fn deleted_bridge_relations_keep_real_original_endpoints_and_logical_before_styl
     value.base_style.white_space = WhiteSpace::Discard;
     value.origins = [("A", 0), (" ", 1), ("B", 2)]
         .map(|(text, start)| ParagraphOrigin {
+            text_node: None,
             source: Source::new(text),
             local: Range::new(0, 1),
             aggregate: Range::new(start, start + 1),
@@ -1456,6 +1459,7 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
         envelope: SourceProcessingEnvelope::Complete,
         origins: (0..3)
             .map(|index| ParagraphOrigin {
+                text_node: None,
                 source: source.clone(),
                 local: Range::new(index, index + 1),
                 aggregate: Range::new(index, index + 1),

@@ -34,6 +34,7 @@ fn input(
         origins: cuts
             .windows(2)
             .map(|p| ParagraphOrigin {
+                text_node: None,
                 source: source.clone(),
                 local: Range::new(p[0], p[1]),
                 aggregate: Range::new(p[0], p[1]),
@@ -960,6 +961,7 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
         envelope: SourceProcessingEnvelope::Complete,
         origins: (0..3)
             .map(|i| ParagraphOrigin {
+                text_node: None,
                 source: source.clone(),
                 local: Range::new(i, i + 1),
                 aggregate: Range::new(i, i + 1),

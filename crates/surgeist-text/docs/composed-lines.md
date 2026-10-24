@@ -30,12 +30,18 @@ uses the same selected-line and placement machinery.
    `AnalyzedSource::from_paragraph` validates this complete capture and retains the
    executed `ProcessedSource`; original code-unit ownership remains available
    through the processed correspondence. Contextual casing selected with
-   `TextTransform::none().with_case(...)` runs after Phase I, followed by
-   `.with_full_width(true)` and then the complete full-size-kana operation when
-   `.with_full_size_kana(true)` is enabled. Width maps SPACE only when the actual
+   `TextTransform::Set` accepts a `TextTransformSet` built with `.with_case`.
+   Casing runs after Phase I, followed by width when `.with_full_width(true)` is
+   enabled on that set, then full-size-kana with `.with_full_size_kana(true)`.
+   Width maps SPACE only when the actual
    Phase-I processing preserved it. These operations run before semantic
    analysis. Original/Phase-I offsets remain distinct
    from actual transformed presentation offsets; plaintext remains original.
+   For the exclusive `TextTransform::MathAuto`, supply each demanded origin's
+   complete original Text-node content and node-relative contribution through
+   `ParagraphOrigin::text_node`. Eligibility uses that original complete content;
+   execution maps its actual Phase-I survivor. Missing demanded context refuses
+   before trimming or deletion. An origin slice alone supplies no node authority.
    See [transformation and source custody](reference.md#defaults-and-validation).
 2. Call `System::prepare(&analysis, PreparationOptions)` with the actual scale and
    `TabPreparation::FontAdvance` or `TabPreparation::CssStops` demand.

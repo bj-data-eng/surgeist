@@ -53,6 +53,7 @@ fn capture(source: Source, base_style: Style, bytes: &[u8]) -> PreparedText {
         terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, length),
             aggregate: Range::new(0, length),
@@ -855,6 +856,7 @@ fn full_receiving_level_and_real_formatting_receiver_remain_distinct_from_local_
                 terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 origins: vec![paragraph::ParagraphOrigin {
+                    text_node: None,
                     source,
                     local: Range::new(0, len),
                     aggregate: Range::new(0, len),
@@ -984,6 +986,7 @@ fn source_less_control_retains_its_actual_size_and_empty_after_has_no_pending_em
                 terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 origins: vec![paragraph::ParagraphOrigin {
+                    text_node: None,
                     source,
                     local: Range::new(0, 5),
                     aggregate: Range::new(0, 5),
@@ -1071,6 +1074,7 @@ fn indication_hard_separators_refuse_while_actual_tabs_keep_the_chosen_operation
                 terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
                 tab_reference: None,
                 origins: vec![paragraph::ParagraphOrigin {
+                    text_node: None,
                     source,
                     local: Range::new(0, 6),
                     aggregate: Range::new(0, 6),
@@ -1157,6 +1161,7 @@ fn incoming_css_tab_is_glyph_free_and_retains_its_real_source_anchor() {
         paragraph_strut: ParagraphStrut::DefaultFont,
         terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, 6),
             aggregate: Range::new(0, 6),
@@ -1372,6 +1377,7 @@ fn transparent_oof_does_not_split_the_actual_mixed_in_flow_rtl_run() {
             terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             origins: vec![paragraph::ParagraphOrigin {
+                text_node: None,
                 source,
                 local: Range::new(0, 1),
                 aggregate: Range::new(0, 1),

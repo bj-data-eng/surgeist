@@ -12,6 +12,7 @@ fn with_forced_control(text: &str, at: usize) -> PreparedText {
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: crate::Range::new(0, text.encode_utf16().count()),
             aggregate: crate::Range::new(0, text.encode_utf16().count()),

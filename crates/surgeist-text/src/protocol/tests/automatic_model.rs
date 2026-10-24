@@ -40,6 +40,7 @@ fn input(source: Source, cuts: &[usize]) -> ParagraphInput {
         origins: cuts
             .windows(2)
             .map(|p| ParagraphOrigin {
+                text_node: None,
                 source: source.clone(),
                 local: Range::new(p[0], p[1]),
                 aggregate: Range::new(p[0], p[1]),
@@ -675,6 +676,7 @@ fn transparent_child_holes_keep_automatic_source_anchor_separate_from_mixed_cut_
         ]
         .into_iter()
         .map(|range| ParagraphOrigin {
+            text_node: None,
             source: source.clone(),
             local: range,
             aggregate: range,

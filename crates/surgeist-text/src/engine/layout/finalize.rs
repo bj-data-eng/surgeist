@@ -1888,6 +1888,7 @@ mod tests {
             paragraph_strut: ParagraphStrut::DefaultFont,
             base_direction: ParagraphBaseDirection::LeftToRight,
             origins: vec![ParagraphOrigin {
+                text_node: None,
                 source,
                 local: crate::Range::new(0, source_len),
                 aggregate: crate::Range::new(0, source_len),
@@ -2623,6 +2624,7 @@ mod tests {
             .into_iter()
             .enumerate()
             .map(|(index, (text, start, end))| ParagraphOrigin {
+                text_node: None,
                 source: Source::identified(text, Id::from_u64(1451 + index as u64), 1),
                 local: Range::new(0, end - start),
                 aggregate: Range::new(start, end),

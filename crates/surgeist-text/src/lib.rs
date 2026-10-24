@@ -70,10 +70,10 @@ pub use processing::{
     WhiteSpaceTrim, process_contextual_source, process_source_whitespace,
 };
 pub use protocol::paragraph::{
-    ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
-    ParagraphConnection, ParagraphConnectionKind, ParagraphControl, ParagraphControlKind,
-    ParagraphOrigin, ParagraphOriginKind, ParagraphReplacement, ParagraphReplacementDefinition,
-    ParagraphStrut,
+    CompleteTextNodeContribution, ParagraphAnchor, ParagraphAnchorItem,
+    ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnection,
+    ParagraphConnectionKind, ParagraphControl, ParagraphControlKind, ParagraphOrigin,
+    ParagraphOriginKind, ParagraphReplacement, ParagraphReplacementDefinition, ParagraphStrut,
 };
 pub use protocol::prefix::{FinalizedPrefixView, FinalizedSharedUnitView, TextSeam};
 pub use protocol::readback::{
@@ -109,7 +109,7 @@ pub use style::{
     Brush, CaseTransform, Decoration, DecorationBrush, DecorationOffset, DecorationOffsetValue,
     DecorationThickness, DecorationThicknessValue, Direction, Font, FontVariant, FontWeightValue,
     FontWidthRatio, LineHeight, OverflowWrap, SelectionPaint, Slant, Style, TextTransform,
-    ValidatedStyle, Weight, WhiteSpace, Width, WordBreak, Wrap,
+    TextTransformSet, ValidatedStyle, Weight, WhiteSpace, Width, WordBreak, Wrap,
 };
 pub use style_support::{
     TextStyleFeature, TextStylePhase, TextStyleSupport, UnsupportedTextStyleReason,

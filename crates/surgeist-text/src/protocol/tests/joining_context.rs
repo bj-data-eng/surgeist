@@ -114,6 +114,7 @@ fn native_input(source: Source) -> ParagraphInput {
         base_direction: ParagraphBaseDirection::RightToLeft,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, length),
             aggregate: Range::new(0, length),
@@ -284,6 +285,7 @@ fn actual_forced_and_disconnected_boundaries_stop_joining_context() {
     input.origins[0].local = Range::new(0, 1);
     input.origins[0].aggregate = Range::new(0, 1);
     input.origins.push(paragraph::ParagraphOrigin {
+        text_node: None,
         source: input.source.clone(),
         local: Range::new(1, 2),
         aggregate: Range::new(1, 2),
@@ -489,6 +491,7 @@ fn child_domain_hole_is_excluded_from_parent_joining_context() {
         envelope: SourceProcessingEnvelope::Complete,
         origins: (0..3)
             .map(|i| ParagraphOrigin {
+                text_node: None,
                 source: source.clone(),
                 local: Range::new(i, i + 1),
                 aggregate: Range::new(i, i + 1),
@@ -961,6 +964,7 @@ fn selected_source_shy_context_stops_at_actual_disconnected_origin() {
     input.origins[0].local = Range::new(0, 6);
     input.origins[0].aggregate = Range::new(0, 6);
     input.origins.push(paragraph::ParagraphOrigin {
+        text_node: None,
         source,
         local: Range::new(6, 7),
         aggregate: Range::new(6, 7),

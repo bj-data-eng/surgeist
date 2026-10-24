@@ -32,6 +32,7 @@ fn capture_with_breaks(
         segment_breaks,
         base_direction: ParagraphBaseDirection::LeftToRight,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, len),
             aggregate: Range::new(0, len),
@@ -65,7 +66,7 @@ fn preserved_document_delimiter_maps_one_blank_unit_but_retains_both_original_un
     let p = capture_with_breaks(
         source.clone(),
         width_style(
-            TextTransform::none().with_full_width(true),
+            TextTransform::Set(crate::TextTransformSet::none().with_full_width(true)),
             WhiteSpace::PreserveSpaces,
         ),
         crate::DocumentSegmentBreaks::Defined(vec![Range::new(1, 3)]),
@@ -129,20 +130,21 @@ fn glyphs(line: &FinalizedLine) -> Vec<(u32, f32)> {
 
 #[test]
 fn width_uses_actual_target_fonts_metrics_and_canonical_shaping_after_raw_mapping() {
-    let width = TextTransform::none().with_full_width(true);
+    let width_set = crate::TextTransformSet::none().with_full_width(true);
+    let width = TextTransform::Set(width_set);
     for (input, transform, semantic, expected, advance) in [
         ("A", TextTransform::none(), "A", vec![(35, 10.0)], 10.0),
         ("A", width, "Ａ", vec![(36, 20.0)], 20.0),
         (
             "ß",
-            width.with_case(CaseTransform::Uppercase),
+            TextTransform::Set(width_set.with_case(CaseTransform::Uppercase)),
             "ＳＳ",
             vec![(58, 15.0), (58, 15.0)],
             30.0,
         ),
         (
             "ß",
-            width.with_case(CaseTransform::Capitalize),
+            TextTransform::Set(width_set.with_case(CaseTransform::Capitalize)),
             "Ｓｓ",
             vec![(58, 15.0), (86, 12.5)],
             27.5,
@@ -150,7 +152,7 @@ fn width_uses_actual_target_fonts_metrics_and_canonical_shaping_after_raw_mappin
         ("ｧ", width, "ァ", vec![(67, 8.0)], 8.0),
         (
             "ｧ",
-            width.with_full_size_kana(true),
+            TextTransform::Set(width_set.with_full_size_kana(true)),
             "ア",
             vec![(36, 20.0)],
             20.0,
@@ -191,7 +193,7 @@ fn width_uses_actual_target_fonts_metrics_and_canonical_shaping_after_raw_mappin
 
 #[test]
 fn actual_preserved_space_range_and_exact_selection_use_blank_twenty_pixel_target() {
-    let width = TextTransform::none().with_full_width(true);
+    let width = TextTransform::Set(crate::TextTransformSet::none().with_full_width(true));
     for (mode, expected, advance) in [
         (
             WhiteSpace::Collapse,
@@ -258,7 +260,7 @@ fn width_style_hashing_distinguishes_warm_and_fresh_raw_layout_results() {
         (false, vec![(35, 10.0), (3, 5.0), (35, 10.0)], 25.0),
     ] {
         let style = width_style(
-            TextTransform::none().with_full_width(enabled),
+            TextTransform::Set(crate::TextTransformSet::none().with_full_width(enabled)),
             WhiteSpace::Preserve,
         );
         let options = crate::Options {
@@ -325,7 +327,7 @@ fn fullwidth_semantics_create_real_normal_opportunities_while_narrow_letters_nee
     let wide = capture(
         Source::new("AA"),
         width_style(
-            TextTransform::none().with_full_width(true),
+            TextTransform::Set(crate::TextTransformSet::none().with_full_width(true)),
             WhiteSpace::Preserve,
         ),
     );
@@ -359,7 +361,7 @@ fn width_accessibility_keeps_original_source_and_actual_twenty_pixel_geometry() 
     let p = capture(
         Source::new("A"),
         width_style(
-            TextTransform::none().with_full_width(true),
+            TextTransform::Set(crate::TextTransformSet::none().with_full_width(true)),
             WhiteSpace::Preserve,
         ),
     );

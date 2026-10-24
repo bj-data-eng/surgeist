@@ -84,6 +84,7 @@ fn prepare(
         let source = Source::identified(*part, text::Id::from_u64(66100 + index as u64), 7);
         let len = source.text().len();
         origins.push(text::ParagraphOrigin {
+            text_node: None,
             source,
             local: text::Range::new(0, len),
             aggregate: text::Range::new(offset, offset + len),

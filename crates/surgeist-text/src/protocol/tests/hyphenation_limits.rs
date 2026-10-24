@@ -34,6 +34,7 @@ fn input(source: Source, base_style: Style) -> ParagraphInput {
         terminal_edge: ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         origins: vec![ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, end),
             aggregate: Range::new(0, end),

@@ -36,6 +36,7 @@ fn native_hard_separator(separator: u16, class: LineBreak, white_space: WhiteSpa
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![ParagraphOrigin {
+            text_node: None,
             source: source.clone(),
             local: Range::new(0, 3),
             aggregate: Range::new(0, 3),

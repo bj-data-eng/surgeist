@@ -36,6 +36,7 @@ fn input(
         tab_reference: block
             .map(|style| crate::ParagraphTabReference::new(style, direction).unwrap()),
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, length),
             aggregate: Range::new(0, length),

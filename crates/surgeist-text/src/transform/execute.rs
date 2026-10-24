@@ -14,7 +14,7 @@ use super::{
     relation::{Emission, RelationEvent, TransformMap},
 };
 use crate::{
-    CaseTransform, Error, ErrorCode, ErrorDetail, ProcessedSource, Range, Result,
+    CaseTransform, Error, ErrorCode, ErrorDetail, ProcessedSource, Range, Result, TextTransform,
     TextTransformError,
     engine::{OriginalAtom, analysis::wrapping::Event, resolve::AnalyzedStyleRun},
     projection::SourceProjection,
@@ -198,7 +198,7 @@ pub(super) fn apply(
     let casing = map
         .rows
         .iter()
-        .any(|row| styles[row.style].style.text_transform().case() != CaseTransform::None);
+        .any(|row| matches!(styles[row.style].style.text_transform(), TextTransform::Set(set) if set.case() != CaseTransform::None));
     let mapper = casing.then(Mapper::new).transpose().map_err(failed)?;
     let mut stops = input.barrier_atoms.clone();
     stops.extend([0, input.atoms.len()]);
@@ -230,13 +230,19 @@ pub(super) fn apply(
     for domain in stops.windows(2) {
         for row in domain[0]..domain[1] {
             let style = &styles[map.rows[row].style].style;
-            let operation = match style.text_transform().case() {
-                CaseTransform::None => None,
-                CaseTransform::Uppercase => Some(Operation::Upper),
-                CaseTransform::Lowercase => Some(Operation::Lower),
-                CaseTransform::Capitalize if initial[row].title => Some(Operation::Title),
-                CaseTransform::Capitalize if initial[row].context => Some(Operation::TitleContext),
-                CaseTransform::Capitalize => None,
+            let transform = style.text_transform();
+            let operation = match transform {
+                TextTransform::MathAuto => None,
+                TextTransform::Set(set) => match set.case() {
+                    CaseTransform::None => None,
+                    CaseTransform::Uppercase => Some(Operation::Upper),
+                    CaseTransform::Lowercase => Some(Operation::Lower),
+                    CaseTransform::Capitalize if initial[row].title => Some(Operation::Title),
+                    CaseTransform::Capitalize if initial[row].context => {
+                        Some(Operation::TitleContext)
+                    }
+                    CaseTransform::Capitalize => None,
+                },
             };
             operations.push(operation);
             let start = output.len();
@@ -282,19 +288,36 @@ pub(super) fn apply(
                     )
                     .map_err(failed)?;
             }
-            if style.text_transform().full_width() {
-                for cp in &mut output[start..] {
-                    if (*cp != 0x20 || processed.preserves_space_at(map.rows[row].processed.start))
-                        && let Some(target) = super::width::map(*cp)
-                    {
-                        *cp = target;
-                    }
+            if transform == TextTransform::MathAuto {
+                let pieces = &map.pieces[map.rows[row].pieces.clone()];
+                if !pieces.is_empty()
+                    && pieces.iter().all(|piece| {
+                        paragraph.origins[piece.origin]
+                            .text_node
+                            .as_ref()
+                            .is_some_and(|node| super::math::eligible(node.text()))
+                    })
+                    && let Some(target) = super::math::map(values[row])
+                {
+                    output[start] = target;
                 }
             }
-            if style.text_transform().full_size_kana() {
-                for cp in &mut output[start..] {
-                    if let Some(target) = super::full_size_kana(*cp) {
-                        *cp = u32::from(target);
+            if let TextTransform::Set(set) = transform {
+                if set.full_width() {
+                    for cp in &mut output[start..] {
+                        if (*cp != 0x20
+                            || processed.preserves_space_at(map.rows[row].processed.start))
+                            && let Some(target) = super::width::map(*cp)
+                        {
+                            *cp = target;
+                        }
+                    }
+                }
+                if set.full_size_kana() {
+                    for cp in &mut output[start..] {
+                        if let Some(target) = super::full_size_kana(*cp) {
+                            *cp = u32::from(target);
+                        }
                     }
                 }
             }

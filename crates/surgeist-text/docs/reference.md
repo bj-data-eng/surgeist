@@ -327,14 +327,15 @@ unchanged. `SourceRevision::checked_next` returns `None` at exhaustion.
 
 `AnalyzedSource::new(Source, Style)` captures the original source and effective
 style winners once, without fonts. The post-Phase-I transform phase executes
-before semantic Unicode analysis. `TextTransform::none()` is neutral;
-`.with_case(...)` selects `CaseTransform::{Uppercase, Lowercase, Capitalize}` for
+before semantic Unicode analysis. `TextTransform::none()` is neutral.
+`TextTransform::Set` holds a `TextTransformSet`. Its `.with_case` builder selects
+`CaseTransform::{Uppercase, Lowercase, Capitalize}` for
 full contextual casing with each component's effective language and operation.
 Capitalize uses pre-casing native UAX29 words and the first effective
 Letter/Number unit, preserving the word tail. Connected styles and occurrences
 retain context. The [transformation contract](../../../docs/text-layout-contract.md#text-transformations-and-correspondence)
 defines mixed-component policy, language/script resolution and exact source custody.
-`.with_full_width(true)` applies the 226 raw wide/narrow mappings from
+On the same set, `.with_full_width(true)` applies the 226 raw wide/narrow mappings from
 [UnicodeData 18.0.0](../../../references/SOURCE-EDITIONS.md#text-full-width-mapping-data)
 after casing. It maps U+0020 only when actual Phase-I processing preserved that
 space: a surviving collapsed space remains U+0020, while PreserveSpaces' converted
@@ -344,10 +345,31 @@ compatibility characters remain unchanged; this is not NFKC or NFKD.
 `.with_full_size_kana(true)` then enables all 58 mappings in the pinned
 [CSS kana table](../../../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#small-kana).
 Full-size-kana alone retains halfwidth forms; width plus kana maps halfwidth small
-kana through its full-width small form to the full-size form. Math-auto is not
-exposed. Real transformed code points drive analysis, shaping and wrapping;
+kana through its full-width small form to the full-size form.
+Real transformed code points drive analysis, shaping and wrapping;
 segmentation still uses a separately proven private projection for isolated units.
 Original/source AX and plaintext retain their own original/Phase-I projections.
+
+`TextTransform::MathAuto` is an exclusive computed alternative. Native paragraph
+origins supply `text_node: Some(CompleteTextNodeContribution::new(text, range)?)`:
+the actual complete original Text-node content and its node-relative contributed
+UTF-16 range. The constructor validates bounds; capture validates length and
+exact units against the origin's local source. Supplied facts always validate,
+including empty contributions and styles without MathAuto. The capture does not
+assign host node identity or infer it from Source IDs, origin slices or equal text.
+
+Eligibility uses the complete original node's single listed scalar, then maps
+the actual surviving Phase-I code point through the pinned
+[MathML Core table](../tools/math-auto/README.md). A one-character slice of a
+longer node stays ineligible. Original `SPACE c SPACE` stays ineligible after
+Discard leaves `c`. Known complete non-key or multicharacter content succeeds
+unchanged. An actual positive MathAuto-demanded contribution without a node
+fact returns `TextTransformError::MissingTextNodeContext` before trim or Phase I;
+invalid ranges and mismatched source content have distinct typed errors. Empty
+origins and non-text controls create no positive text demand. Explicit computed
+MathAuto has no inferred namespace gate; the actual MathML default-style adapter
+remains separate. Raw standalone analysis/layout has no such capture and refuses
+MathAuto with `RequiresCompleteTextNodeContext`.
 
 Original, processed and presentation coordinates remain distinct: for `A𛄲C`,
 original and Phase-I length are 4, with middle processed interval 1..3; transformed
@@ -429,6 +451,8 @@ style resolver.
 `TextStyleFeature::{Uppercase, Lowercase, Capitalize, FullWidth, FullSizeKana}` report the
 executed operations as Supported for both standalone and processed-paragraph
 analysis. These entries do not certify the entire CSS text-transform property.
+`TextStyleFeature::MathAuto` reports support for ProcessedParagraph only;
+Standalone reports `RequiresCompleteTextNodeContext`.
 
 `FontVariant::Normal`, `TextOverflow::Clip`, `TextAlignLast::Auto`, and
 `TextTransform::none()` are the exposed default values. Their acceptance does not

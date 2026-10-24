@@ -41,6 +41,64 @@ pub enum ParagraphOriginKind {
     Generated,
 }
 
+/// Actual immutable complete original Text-node content and this occurrence's
+/// contributed node-relative UTF-16 range. Resource identity does not imply a node.
+#[derive(Clone, Debug)]
+pub struct CompleteTextNodeContribution {
+    text: Text,
+    range: Range,
+}
+
+impl CompleteTextNodeContribution {
+    /// Captures complete original content. Interior UTF-16 endpoints are valid.
+    pub fn new(text: Text, range: Range) -> Result<Self> {
+        if range.start > range.end || range.end > text.len() {
+            return Err(crate::Error::new(
+                crate::ErrorCode::InvalidRange,
+                "Text-node contribution is outside its complete original content",
+            )
+            .with_detail(crate::ErrorDetail::TextTransform {
+                reason: crate::TextTransformError::InvalidTextNodeRange {
+                    range,
+                    text_len: text.len(),
+                },
+            }));
+        }
+        Ok(Self { text, range })
+    }
+
+    #[must_use]
+    pub const fn text(&self) -> &Text {
+        &self.text
+    }
+    #[must_use]
+    pub const fn range(&self) -> Range {
+        self.range
+    }
+
+    pub(crate) fn validate_origin(
+        &self,
+        source: &Source,
+        local: Range,
+        origin: usize,
+        code: crate::ErrorCode,
+    ) -> Result<()> {
+        if self.range.len() != local.len()
+            || self.text.code_units()[self.range.start..self.range.end]
+                != source.text().code_units()[local.start..local.end]
+        {
+            return Err(crate::Error::new(
+                code,
+                "Text-node contribution differs from its original occurrence",
+            )
+            .with_detail(crate::ErrorDetail::TextTransform {
+                reason: crate::TextTransformError::TextNodeMismatch { origin },
+            }));
+        }
+        Ok(())
+    }
+}
+
 /// One explicit captured occurrence. Repeating the same Source creates another occurrence.
 #[derive(Clone, Debug)]
 pub struct ParagraphOrigin {
@@ -48,6 +106,8 @@ pub struct ParagraphOrigin {
     pub local: Range,
     pub aggregate: Range,
     pub kind: ParagraphOriginKind,
+    /// Complete original Text-node authority; absence means unknown context.
+    pub text_node: Option<CompleteTextNodeContribution>,
 }
 
 /// Whether two original occurrences are genuinely text-contiguous.
@@ -317,6 +377,7 @@ pub(crate) struct OriginData {
     pub(crate) local: Range,
     pub(crate) aggregate: Range,
     pub(crate) kind: ParagraphOriginKind,
+    pub(crate) text_node: Option<CompleteTextNodeContribution>,
 }
 
 impl OriginData {
@@ -456,6 +517,7 @@ impl ParagraphData {
                 local: Range::new(0, source_len),
                 aggregate: Range::new(0, source_len),
                 kind: ParagraphOriginKind::Authored,
+                text_node: None,
             }],
             connections: Vec::new(),
             connection_ends: None,
@@ -574,6 +636,7 @@ impl AnalyzedSource {
                     local: origin.local,
                     aggregate: origin.aggregate,
                     kind: origin.kind,
+                    text_node: origin.text_node,
                 })
                 .collect(),
             connections,
@@ -711,6 +774,14 @@ fn validate_origins(input: &ParagraphInput) -> Result<()> {
             || origin.local.len() != origin.aggregate.len()
         {
             return Err(invalid());
+        }
+        if let Some(node) = &origin.text_node {
+            node.validate_origin(
+                &origin.source,
+                origin.local,
+                index,
+                crate::ErrorCode::InvalidTextProtocol,
+            )?;
         }
         if origin.aggregate.start != cursor {
             return Err(protocol_error(ProtocolError::IncompleteOriginCoverage {

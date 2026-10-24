@@ -14,6 +14,9 @@ mod casing_transform;
 #[path = "placed_text_render/width.rs"]
 mod width_transform;
 
+#[path = "placed_text_render/math.rs"]
+mod math_transform;
+
 struct Tree {
     inputs: [layout::LayoutInput; 2],
     non_box: layout::NodeInput,
@@ -124,6 +127,7 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
         base_direction: text::ParagraphBaseDirection::LeftToRight,
         paragraph_strut: text::ParagraphStrut::DefaultFont,
         origins: vec![text::ParagraphOrigin {
+            text_node: None,
             source: source.clone(),
             local: text::Range::new(0, 3),
             aggregate: text::Range::new(0, 3),
@@ -267,6 +271,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
     };
     let ancestor_wrap = style.wrap;
     let origins = vec![text::ParagraphOrigin {
+        text_node: None,
         source: source.clone(),
         local: text::Range::new(0, source.text().len()),
         aggregate: text::Range::new(0, source.text().len()),
@@ -645,6 +650,7 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
         terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
         origins: vec![text::ParagraphOrigin {
+            text_node: None,
             source: source.clone(),
             local: text::Range::new(0, 6),
             aggregate: text::Range::new(0, 6),
@@ -1019,10 +1025,15 @@ mod kana_transform {
             size: 10.0,
             line_height: text::LineHeight::Absolute(10.0),
             white_space: text::WhiteSpace::Preserve,
-            text_transform: text::TextTransform::none().with_full_size_kana(enabled),
+            text_transform: text::TextTransform::Set(
+                text::TextTransformSet::none().with_full_size_kana(enabled),
+            ),
             ..text::Style::default()
         };
-        assert_eq!(style.text_transform.full_size_kana(), enabled);
+        let text::TextTransform::Set(set) = style.text_transform else {
+            panic!("expected composable set")
+        };
+        assert_eq!(set.full_size_kana(), enabled);
         let style = text::Style {
             word_break: text::WordBreak::BreakAll,
             ..style
@@ -1037,6 +1048,7 @@ mod kana_transform {
             terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             origins: vec![text::ParagraphOrigin {
+                text_node: None,
                 source: source.clone(),
                 local: text::Range::new(0, 4),
                 aggregate: text::Range::new(0, 4),

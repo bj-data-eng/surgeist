@@ -2,7 +2,7 @@ use crate::{AnalyzedSource, CaseTransform, Range, Source, Style, Text, TextTrans
 
 fn style() -> Style {
     Style {
-        text_transform: TextTransform::none().with_full_width(true),
+        text_transform: TextTransform::Set(crate::TextTransformSet::none().with_full_width(true)),
         ..Style::default()
     }
 }
@@ -21,6 +21,7 @@ fn input(source: Source, white_space: WhiteSpace) -> crate::ParagraphInput {
         segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: crate::ParagraphBaseDirection::LeftToRight,
         origins: vec![crate::ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, len),
             aggregate: Range::new(0, len),
@@ -52,6 +53,7 @@ fn width_and_neutral_component_styles_preserve_connected_origin_mark_and_oof_cus
     i.origins = [(0, 1), (1, 2), (2, 3), (3, 3), (3, 4)]
         .into_iter()
         .map(|(start, end)| crate::ParagraphOrigin {
+            text_node: None,
             source: source.clone(),
             local: Range::new(start, end),
             aggregate: Range::new(start, end),
@@ -177,10 +179,12 @@ fn actual_case_then_width_then_kana_keep_each_original_emission_owner() {
         let analyzed = AnalyzedSource::new(
             source.clone(),
             Style {
-                text_transform: TextTransform::none()
-                    .with_case(case)
-                    .with_full_width(width)
-                    .with_full_size_kana(kana),
+                text_transform: TextTransform::Set(
+                    crate::TextTransformSet::none()
+                        .with_case(case)
+                        .with_full_width(width)
+                        .with_full_size_kana(kana),
+                ),
                 ..Style::default()
             },
         )
@@ -226,11 +230,13 @@ fn actual_case_then_width_then_kana_keep_each_original_emission_owner() {
         );
     }
     assert!(crate::TextStyleFeature::ALL.contains(&crate::TextStyleFeature::FullWidth));
-    assert!(!TextTransform::none().full_width());
+    assert!(!crate::TextTransformSet::none().full_width());
     assert_eq!(
-        TextTransform::none()
-            .with_full_width(true)
-            .with_full_width(false),
+        TextTransform::Set(
+            crate::TextTransformSet::none()
+                .with_full_width(true)
+                .with_full_width(false)
+        ),
         TextTransform::none()
     );
 }

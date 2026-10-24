@@ -484,6 +484,14 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 {
                     return Err(invalid(SourceProcessingError::OriginCorrespondence));
                 }
+                if let Some(node) = &row.text_node {
+                    node.validate_origin(
+                        &row.source,
+                        row.local,
+                        origin,
+                        crate::ErrorCode::InvalidSourceProcessing,
+                    )?;
+                }
                 let local = captures[p].origins.len();
                 captures[p].origins.push(origin);
                 if row.aggregate.is_empty() {
@@ -611,10 +619,23 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             }
         }
     }
+    let modes = super::contextual_modes(&input.source, &context)?;
+    super::validate_modes(&modes, &input.segment_breaks)?;
     let mut records = Vec::new();
     let mut used_policies = vec![false; input.boundary_policies.len()];
     let mut used_replacements = vec![false; input.replacements.len()];
     for (index, capture) in captures.into_iter().enumerate() {
+        for &origin in &capture.origins {
+            let row = &input.origins[origin];
+            super::admit_text_node(
+                &input.source,
+                row.aggregate,
+                row.text_node.as_ref(),
+                origin,
+                &context.domains[capture.domain].style,
+                &modes,
+            )?;
+        }
         if capture.connections.len() != capture.origins.len().saturating_sub(1) {
             return Err(invalid(SourceProcessingError::Connection));
         }
@@ -779,6 +800,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                         local: row.local,
                         aggregate: row.aggregate,
                         kind: row.kind,
+                        text_node: row.text_node.clone(),
                     }
                 })
                 .collect(),
@@ -829,6 +851,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             source: &input.source,
             breaks: &input.segment_breaks,
             context: &context,
+            modes: &modes,
         })?;
     let preserved_spaces = super::preserved_spaces(&units, &plaintext_tokens)?;
     Ok(ProcessedSource {

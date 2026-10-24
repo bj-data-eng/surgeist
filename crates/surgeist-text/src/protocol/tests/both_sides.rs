@@ -201,6 +201,7 @@ fn a_source_less_control_owns_the_same_two_emissions_and_its_actual_font_size() 
             terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             origins: vec![paragraph::ParagraphOrigin {
+                text_node: None,
                 source,
                 local: Range::new(0, 5),
                 aggregate: Range::new(0, 5),

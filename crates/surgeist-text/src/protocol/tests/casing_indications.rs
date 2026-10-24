@@ -4,7 +4,9 @@ use super::*;
 fn upper(automatic: bool) -> Style {
     let locale = if automatic { "en-US" } else { "und-Latn" };
     Style {
-        text_transform: crate::TextTransform::none().with_case(crate::CaseTransform::Uppercase),
+        text_transform: crate::TextTransform::Set(
+            crate::TextTransformSet::none().with_case(crate::CaseTransform::Uppercase),
+        ),
         hyphens: if automatic {
             Hyphens::Auto
         } else {
@@ -133,6 +135,7 @@ fn transformed_control_both_sides_keeps_emissions_source_less() {
             terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
             tab_reference: None,
             origins: vec![paragraph::ParagraphOrigin {
+                text_node: None,
                 source: source.clone(),
                 local: Range::new(0, 5),
                 aggregate: Range::new(0, 5),
@@ -252,12 +255,14 @@ fn real_barrier_before_expansion_does_not_split_its_internal_ss_ligature_on_indi
             tab_reference: None,
             origins: vec![
                 paragraph::ParagraphOrigin {
+                    text_node: None,
                     source: source.clone(),
                     local: Range::new(0, 1),
                     aggregate: Range::new(0, 1),
                     kind: paragraph::ParagraphOriginKind::Authored,
                 },
                 paragraph::ParagraphOrigin {
+                    text_node: None,
                     source: source.clone(),
                     local: Range::new(1, 7),
                     aggregate: Range::new(1, 7),

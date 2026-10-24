@@ -36,6 +36,7 @@ fn prepare_source(bytes: &[u8], source: Source, base_style: Style, cuts: &[usize
         origins: cuts
             .windows(2)
             .map(|pair| ParagraphOrigin {
+                text_node: None,
                 source: source.clone(),
                 local: Range::new(pair[0], pair[1]),
                 aggregate: Range::new(pair[0], pair[1]),

@@ -908,12 +908,14 @@ mod tests {
             paragraph_strut: crate::ParagraphStrut::AllocatedContributions,
             origins: vec![
                 crate::ParagraphOrigin {
+                    text_node: None,
                     source: Source::new(Text::from_code_units(vec![0xd800])),
                     local: Range::new(0, 1),
                     aggregate: Range::new(0, 1),
                     kind: crate::ParagraphOriginKind::Authored,
                 },
                 crate::ParagraphOrigin {
+                    text_node: None,
                     source: Source::new(Text::from_code_units(vec![0xdc00])),
                     local: Range::new(0, 1),
                     aggregate: Range::new(1, 2),

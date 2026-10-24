@@ -14,6 +14,7 @@ mod joining_positioning;
 mod kana;
 mod mandatory_breaks;
 mod manual_hyphenation;
+mod math;
 mod metric_heights;
 mod negative_tabs;
 mod phase_two;
@@ -59,6 +60,7 @@ fn prepared(system: &mut System, text: &str, whitespace: WhiteSpace) -> Prepared
         segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: crate::Range::new(0, text.encode_utf16().count()),
             aggregate: crate::Range::new(0, text.encode_utf16().count()),
@@ -388,6 +390,7 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
         paragraph_strut: policy,
         base_direction: ParagraphBaseDirection::LeftToRight,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: crate::Range::new(0, 1),
             aggregate: crate::Range::new(0, 1),
@@ -603,6 +606,7 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
         base_direction: ParagraphBaseDirection::RightToLeft,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: crate::Range::new(0, 3),
             aggregate: crate::Range::new(0, 3),

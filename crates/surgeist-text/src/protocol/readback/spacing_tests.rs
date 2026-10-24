@@ -25,6 +25,7 @@ fn input(text: &str, mode: WhiteSpace) -> ParagraphInput {
             vec![]
         } else {
             vec![ParagraphOrigin {
+                text_node: None,
                 source,
                 local: Range::new(0, length),
                 aggregate: Range::new(0, length),

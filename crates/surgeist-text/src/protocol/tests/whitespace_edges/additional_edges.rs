@@ -26,6 +26,7 @@ fn prepare_direction(
         base_direction: direction,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, end),
             aggregate: Range::new(0, end),

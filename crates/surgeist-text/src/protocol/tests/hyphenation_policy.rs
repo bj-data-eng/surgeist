@@ -18,6 +18,7 @@ fn input(text: &str, base_style: Style) -> ParagraphInput {
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::AllocatedContributions,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, len),
             aggregate: Range::new(0, len),
@@ -691,6 +692,7 @@ fn incident_empty_origin_cannot_own_a_positive_source_shy_native_group() {
             v.origins.insert(
                 0,
                 paragraph::ParagraphOrigin {
+                    text_node: None,
                     source: Source::new(""),
                     local: Range::new(0, 0),
                     aggregate: Range::new(0, 0),
@@ -758,18 +760,21 @@ fn empty_after_shy_input(mode: Hyphens) -> ParagraphInput {
     let source = v.source.clone();
     v.origins = vec![
         paragraph::ParagraphOrigin {
+            text_node: None,
             source: source.clone(),
             local: Range::new(0, 3),
             aggregate: Range::new(0, 3),
             kind: paragraph::ParagraphOriginKind::Authored,
         },
         paragraph::ParagraphOrigin {
+            text_node: None,
             source: Source::new(""),
             local: Range::new(0, 0),
             aggregate: Range::new(3, 3),
             kind: paragraph::ParagraphOriginKind::Authored,
         },
         paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(3, 6),
             aggregate: Range::new(3, 6),
