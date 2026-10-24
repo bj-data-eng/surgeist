@@ -266,7 +266,7 @@ fn intrinsic(
 }
 
 #[test]
-fn intrinsic_css_tabs_use_only_proved_phase_even_with_a_known_canonical_block() {
+fn intrinsic_css_tabs_use_the_logical_grid_across_block_directions() {
     for available in [AvailableOf::MAX_CONTENT, AvailableOf::MIN_CONTENT] {
         for rtl in [false, true] {
             let prepared = paragraph("A\tB", rtl, rtl, false);
@@ -312,13 +312,43 @@ fn intrinsic_css_tabs_use_only_proved_phase_even_with_a_known_canonical_block() 
             );
 
             let opposite = paragraph("A\tB", rtl, !rtl, false);
-            let error = intrinsic(&opposite, !rtl, available).err().unwrap();
-            assert!(matches!(error, super::super::fit::FitError::Text(error)
-            if matches!(error.detail(), Some(surgeist_text::ErrorDetail::InvalidTextProtocol {
-                reason: surgeist_text::ProtocolError::UnsupportedContext {
-                    field: surgeist_text::ProtocolContextField::IntrinsicTabPhase
-                }
-            }))));
+            let opposite_output = intrinsic(&opposite, !rtl, available).unwrap_or_else(|_| {
+                panic!("opposite-start intrinsic logical grid must be available")
+            });
+            assert_eq!(
+                opposite_output
+                    .paragraph
+                    .lines
+                    .iter()
+                    .map(|line| line.line.feedback().advance)
+                    .collect::<Vec<_>>(),
+                expected.0,
+                "opposite block edge: {available:?}/{rtl}"
+            );
+            // A Soft-ending preserved TAB keeps its raw30px but hangs out of
+            // intrinsic contributions. Raw line width is not min-content size.
+            let contribution = if available == AvailableOf::MIN_CONTENT {
+                10.0
+            } else {
+                50.0
+            };
+            assert_eq!(output.report.inline_extent, contribution);
+            assert_eq!(opposite_output.report.inline_extent, contribution);
+            if available == AvailableOf::MIN_CONTENT {
+                assert_eq!(
+                    opposite_output
+                        .paragraph
+                        .lines
+                        .iter()
+                        .map(|line| line
+                            .line
+                            .measurements()
+                            .min_content_contribution()
+                            .advance())
+                        .collect::<Vec<_>>(),
+                    [10.0, 10.0]
+                );
+            }
 
             let output = zero_output;
             assert_eq!(
