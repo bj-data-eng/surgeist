@@ -38,6 +38,8 @@ mod manual_css_minima;
 mod negative_tabs;
 #[path = "tests/scope_continuation.rs"]
 mod scope_continuation;
+#[path = "tests/scope_domain_binding.rs"]
+mod scope_domain_binding;
 #[path = "tests/tab_stops.rs"]
 mod tab_stops;
 #[path = "tests/wbr.rs"]
