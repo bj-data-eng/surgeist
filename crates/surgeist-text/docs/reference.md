@@ -467,17 +467,26 @@ The complete computed Style owns replacement, subsequent transforms and metrics.
 control; positive Space/IdeographicSpace produces a text contribution with its
 actual control identity. It requires no duplicate control allocation.
 
+Every genuine wbr separates original UTF-16 decoding before Phase I, including
+None and suppressed requests. High/low surrogate units on opposite sides remain
+isolated original units; provider-only replacement glyphs do not supply their
+semantic properties. Later projections preserve that distinction and the exact
+original code units. This native decoding rule does not disconnect whitespace,
+casing, word/phrase, bidi or shaping context. Ordinary origin splits, inline
+boundaries and out-of-flow boxes remain transparent to scalar formation.
+
 Insertion uses the exact post-Phase-I scalar cut, before rebuilding graphemes.
 It can therefore separate a base from a following combining mark without moving
 to an old grapheme boundary. Deletions retain their actual mixed-event seam;
 same-anchor occurrences retain distinct order and identities. Ordinary anchors
 retain their documented affinity on the rebuilt units; equal projected positions
-do not merge or reorder captured occurrences. A positive request
-inside a retained supplementary scalar or multi-unit document-delimiter
-replacement returns `TextTransformError::UnrepresentableSeparatorSeam`, identifying
-the control, anchor and indivisible original interval. None and demonstrably
-forced-suppressed requests do not demand that insertion capability. These native
-refusals remain support limits.
+do not merge or reorder captured occurrences. A positive request inside a
+multi-unit document-delimiter replacement returns
+`TextTransformError::UnrepresentableSeparatorSeam`, identifying the control,
+anchor and indivisible original interval. None and demonstrably forced-suppressed
+requests do not demand that insertion capability. Contextual capture rejects
+connections inside declared delimiters; the broader flat interface retains this
+precise replacement-interior refusal.
 
 Contextual capture also retains the actual event side of disconnected text joins.
 A positive direct request coincident with such a join requires that execution

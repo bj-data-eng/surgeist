@@ -160,15 +160,8 @@ fn different_source_cuts_in_one_old_egc_use_rebuilt_typography_without_reorderin
     }
 }
 #[test]
-fn no_emission_retains_real_surrogate_and_replacement_projection_but_positive_seams_refuse() {
+fn no_emission_retains_phase_i_replacement_projection_but_positive_interior_seams_refuse() {
     for (text, mode, breaks, expected, retained) in [
-        (
-            "A\u{1f600}A",
-            WhiteSpace::PreserveSpaces,
-            DocumentSegmentBreaks::LineFeedDefault,
-            "A\u{1f600}A",
-            Range::new(1, 3),
-        ),
         (
             "A\r\nA",
             WhiteSpace::PreserveSpaces,

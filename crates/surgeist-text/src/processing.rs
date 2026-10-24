@@ -243,6 +243,13 @@ fn process_with_boundaries(
         }
     }
 
+    let mut decode_boundaries = Vec::new();
+    if let Some(paragraph) = paragraph {
+        reserve(&mut decode_boundaries, paragraph.controls.len())?;
+        decode_boundaries.extend(paragraph.wbr_decode_boundaries());
+        decode_boundaries.sort_unstable();
+        decode_boundaries.dedup();
+    }
     let (units, map, tokens) =
         lexical::execute(lexical::ValidatedProcessingRequest::SourceLocal {
             source: &source,
@@ -250,6 +257,7 @@ fn process_with_boundaries(
             modes: &modes,
             box_order: &box_order,
             barriers,
+            decode_boundaries: &decode_boundaries,
         })?;
     let preserved_spaces = preserved_spaces(&units, &tokens)?;
     Ok(ProcessedSource {

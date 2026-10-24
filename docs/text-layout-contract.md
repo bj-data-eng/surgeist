@@ -89,11 +89,18 @@ text with its own control authority and no original pieces; it does not add a
 second control participant or allocation. Generated-only Text units retain their
 control bindings in Layout's occurrence-order validation.
 
-If positive expansion requires an interior cut in a retained supplementary scalar
-or indivisible document-delimiter replacement, return the precise native seam
-refusal before publication. None and demonstrably forced-suppressed occurrences
-retain their unexpanded behavior. Do not move the anchor using grapheme affinity
-or split Phase-I output. Such refused inputs remain outstanding support.
+A genuine wbr separates original UTF-16 decoding before Phase I regardless of
+replacement or suppression. Surrogate halves across it remain isolated original
+units through later projections; provider-only glyph repair cannot change their
+semantics. Keep this decoding boundary separate from whitespace, word/phrase,
+casing, bidi and shaping context. Ordinary origin, inline and out-of-flow seams
+do not gain a decoding boundary.
+
+If positive expansion requires an interior cut in an indivisible document-delimiter
+replacement, return the precise native seam refusal before publication. None and
+demonstrably forced-suppressed occurrences retain their unexpanded behavior.
+Do not move the anchor using grapheme affinity or split Phase-I output. Keep
+contextual delimiter validation intact; it does not admit such interior controls.
 
 Retain contextual connection-event order through lowering. Use actual in-flow
 atomic/forced occurrences and connection receipts for semantic barriers; numeric

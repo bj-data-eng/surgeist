@@ -419,6 +419,14 @@ pub(crate) struct ParagraphData {
 }
 
 impl ParagraphData {
+    /// Genuine Wbr separates original decoding, regardless of its replacement.
+    /// These positions do not disconnect lexical or typographic context.
+    pub(crate) fn wbr_decode_boundaries(&self) -> impl Iterator<Item = usize> + '_ {
+        self.controls.iter().filter_map(|control| {
+            matches!(control.kind, ParagraphControlKind::Wbr { .. }).then_some(control.at)
+        })
+    }
+
     pub(crate) fn base_style<'a>(&'a self, processed: &'a ProcessedSource) -> &'a Style {
         self.domain_style.as_ref().unwrap_or(processed.base_style())
     }

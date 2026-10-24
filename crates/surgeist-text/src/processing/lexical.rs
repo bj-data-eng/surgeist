@@ -57,6 +57,7 @@ pub(super) enum ValidatedProcessingRequest<'a> {
         modes: &'a [EffectiveInterval],
         box_order: &'a [usize],
         barriers: &'a [usize],
+        decode_boundaries: &'a [usize],
     },
     Contextual {
         source: &'a Source,
@@ -75,8 +76,16 @@ pub(super) fn execute(
             modes,
             box_order,
             barriers,
+            decode_boundaries,
         } => {
-            let mut tokens = tokenize(source, breaks, modes, box_order, barriers)?;
+            let mut tokens = tokenize(
+                source,
+                breaks,
+                modes,
+                box_order,
+                barriers,
+                decode_boundaries,
+            )?;
             phase_one(&mut tokens);
             emit(source, tokens)
         }
@@ -184,6 +193,8 @@ fn tokenize(
     modes: &[EffectiveInterval],
     box_order: &[usize],
     extra_barriers: &[usize],
+    // Sorted original-unit cuts. Unlike barriers these emit no context token.
+    decode_boundaries: &[usize],
 ) -> Result<Vec<Token>> {
     let mut barriers = Vec::new();
     for &ordinal in box_order {
@@ -286,6 +297,7 @@ fn tokenize(
                     .get(one_end)
                     .is_some_and(|low| (0xdc00..=0xdfff).contains(low))
                 && barriers.get(next_barrier) != Some(&one_end)
+                && decode_boundaries.binary_search(&one_end).is_err()
                 && !next_delimiter
             {
                 end = one_end.checked_add(1).ok_or_else(overflow)?;
@@ -406,7 +418,35 @@ fn execute_contextual(
     decode_barriers.extend(context.barriers.iter().map(|barrier| barrier.at));
     decode_barriers.sort_unstable();
     decode_barriers.dedup();
-    let mut tokens = tokenize(source, breaks, modes, &[], &decode_barriers)?;
+    let domain_at = |at| {
+        context
+            .origins
+            .get(
+                context
+                    .origins
+                    .partition_point(|(range, _)| range.end <= at),
+            )
+            .filter(|(range, _)| range.start <= at)
+            .map(|(_, domain)| *domain)
+    };
+    let mut decode_boundaries = Vec::new();
+    reserve(&mut decode_boundaries, context.decode_boundaries.len())?;
+    for &(at, domain) in &context.decode_boundaries {
+        // An empty child can own a Wbr at a parent's raw unit cut. Only that
+        // control's actual incident original domain may consume its decode cut;
+        // ordinary domain transitions already have their own decode barriers.
+        if at.checked_sub(1).and_then(&domain_at) == Some(domain) && domain_at(at) == Some(domain) {
+            decode_boundaries.push(at);
+        }
+    }
+    let mut tokens = tokenize(
+        source,
+        breaks,
+        modes,
+        &[],
+        &decode_barriers,
+        &decode_boundaries,
+    )?;
     tokens.retain(|token| token.kind != Kind::Barrier);
     for token in &mut tokens {
         let origin = context

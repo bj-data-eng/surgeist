@@ -340,6 +340,8 @@ pub(super) struct ProcessingContext {
     pub(super) origins: Vec<(Range, usize)>,
     pub(super) boundaries: Vec<TrimBoundary>,
     pub(super) barriers: Vec<ProcessingBarrier>,
+    /// Genuine Wbr cuts with their actual formatting domain, without resets.
+    pub(super) decode_boundaries: Vec<(usize, usize)>,
 }
 
 fn take(seen: &mut [bool], index: usize) -> Result<()> {
@@ -377,6 +379,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         origins: Vec::new(),
         boundaries: Vec::new(),
         barriers: Vec::new(),
+        decode_boundaries: Vec::new(),
     };
     let mut cursor = 0;
     let mut topology = ScopeCapture {
@@ -658,6 +661,15 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                     item: ParagraphAnchorItem::Control(local),
                     affinity,
                 });
+                if matches!(
+                    input.controls[control].kind,
+                    ParagraphControlKind::Wbr { .. }
+                ) {
+                    super::reserve(&mut context.decode_boundaries, 1)?;
+                    context
+                        .decode_boundaries
+                        .push((cursor, domain.expect("admitted domain")));
+                }
                 if input.controls[control].kind == ParagraphControlKind::ForcedBreak {
                     context.barriers.push(ProcessingBarrier {
                         at: cursor,

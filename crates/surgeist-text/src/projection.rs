@@ -129,7 +129,7 @@ impl SourceProjection {
     }
 
     /// Original host/source projection, independent of lexical deletion or
-    /// replacement. Only explicitly disconnected or in-flow edges sever atoms.
+    /// replacement. Genuine Wbr also separates decoding without resetting context.
     pub(crate) fn host(
         source: &Source,
         paragraph: &crate::protocol::paragraph::ParagraphData,
@@ -138,14 +138,15 @@ impl SourceProjection {
             return Self::new(source);
         }
         let barriers = paragraph_barriers(source, paragraph);
-        admit_connected(source, &barriers, paragraph)?;
+        let decode_boundaries = paragraph_decode_boundaries(paragraph, &barriers);
+        admit_connected(source, &decode_boundaries, paragraph)?;
         let mut atoms = Vec::new();
         for range in paragraph.intersections(Range::new(0, source.text().len())) {
             decode_copy(
                 &source.text().code_units()[range.start..range.end],
                 range.start,
                 range.start,
-                &barriers,
+                &decode_boundaries,
                 &mut atoms,
             )?;
         }
@@ -191,7 +192,8 @@ impl SourceProjection {
         use crate::processing::MappingKind;
         let source = processed.source();
         let barriers = paragraph_barriers(source, paragraph);
-        admit_connected(source, &barriers, paragraph)?;
+        let decode_boundaries = paragraph_decode_boundaries(paragraph, &barriers);
+        admit_connected(source, &decode_boundaries, paragraph)?;
         let mut atoms = Vec::new();
         for piece in processed.operations() {
             match piece.kind {
@@ -201,7 +203,7 @@ impl SourceProjection {
                             &source.text().code_units()[range.start..range.end],
                             range.start,
                             piece.processed + range.start - piece.source.start,
-                            &barriers,
+                            &decode_boundaries,
                             &mut atoms,
                         )?;
                     }
@@ -417,9 +419,22 @@ fn paragraph_barriers(
     barriers
 }
 
+/// Decoding cuts are consumed before original atoms are frozen. Only the real
+/// context barriers are retained by the rebuilt projection and its consumers.
+fn paragraph_decode_boundaries(
+    paragraph: &crate::protocol::paragraph::ParagraphData,
+    barriers: &[usize],
+) -> Vec<usize> {
+    let mut cuts = barriers.to_vec();
+    cuts.extend(paragraph.wbr_decode_boundaries());
+    cuts.sort_unstable();
+    cuts.dedup();
+    cuts
+}
+
 fn admit_connected(
     source: &Source,
-    barriers: &[usize],
+    decode_boundaries: &[usize],
     paragraph: &crate::protocol::paragraph::ParagraphData,
 ) -> Result<()> {
     let owned_text = paragraph
@@ -439,7 +454,7 @@ fn admit_connected(
                     .iter()
                     .any(|piece| piece.start < at && at < piece.end)
             });
-            if incident_text && barriers.binary_search(&at).is_err() {
+            if incident_text && decode_boundaries.binary_search(&at).is_err() {
                 SourceProjection::admit_boundary(source.text(), at, kind)?;
             }
         }
@@ -451,7 +466,7 @@ fn decode_copy(
     units: &[u16],
     original_start: usize,
     processed_start: usize,
-    barriers: &[usize],
+    decode_boundaries: &[usize],
     atoms: &mut Vec<OriginalAtom>,
 ) -> Result<()> {
     if units.is_empty() {
@@ -460,10 +475,10 @@ fn decode_copy(
     let original_end = original_start
         .checked_add(units.len())
         .ok_or_else(length_overflow)?;
-    let first = barriers.partition_point(|&at| at <= original_start);
-    let end = barriers.partition_point(|&at| at < original_end);
+    let first = decode_boundaries.partition_point(|&at| at <= original_start);
+    let end = decode_boundaries.partition_point(|&at| at < original_end);
     let mut starts = std::iter::once(original_start)
-        .chain(barriers[first..end].iter().copied())
+        .chain(decode_boundaries[first..end].iter().copied())
         .chain(std::iter::once(original_end));
     let Some(mut start) = starts.next() else {
         return Ok(());
