@@ -357,11 +357,13 @@ impl Layout {
         })
     }
 
+    /// Selects between actual placement cuts, preserving exact original
+    /// occurrence coverage separately from geometry and processed plaintext.
     pub fn position_selection(
         &self,
         anchor: &PlacedPosition,
         focus: &PlacedPosition,
-    ) -> Result<SelectionGeometry> {
+    ) -> Result<PlacedSelection> {
         editing::position::selection(
             &self.inner,
             self.admit_position(anchor)?,
@@ -1181,6 +1183,98 @@ impl Selection {
             self.anchor.index.min(self.focus.index),
             self.anchor.index.max(self.focus.index),
         )
+    }
+}
+
+/// One selected original interval in an actual captured text occurrence.
+/// Equal text in a different occurrence does not identify this piece.
+#[derive(Clone, Debug)]
+pub struct PlacedSelectionPiece {
+    pub(crate) origin: crate::PreparedOrigin,
+    pub(crate) local: Range,
+    pub(crate) aggregate: Range,
+}
+
+impl PlacedSelectionPiece {
+    #[must_use]
+    pub fn origin(&self) -> &crate::PreparedOrigin {
+        &self.origin
+    }
+
+    #[must_use]
+    pub const fn local_range(&self) -> Range {
+        self.local
+    }
+
+    #[must_use]
+    pub const fn aggregate_range(&self) -> Range {
+        self.aggregate
+    }
+
+    /// Exact original UTF-16, including isolated units; never transformed text.
+    #[must_use]
+    pub fn code_units(&self) -> &[u16] {
+        let prepared = &self.origin.prepared;
+        let source = prepared.analyzed.paragraph.origins[self.origin.index]
+            .original(&prepared.analyzed.processed);
+        &source.text().code_units()[self.local.start..self.local.end]
+    }
+}
+
+/// An exact selection issued by one immutable placement's relation cuts.
+/// Geometry, original extraction and plaintext are distinct observations.
+#[derive(Clone)]
+pub struct PlacedSelection {
+    // Retain the issuing snapshot even when the selected cuts cover no source.
+    pub(crate) _placement: Arc<PlacedLayout>,
+    pub(crate) geometry: SelectionGeometry,
+    pub(crate) pieces: Vec<PlacedSelectionPiece>,
+    pub(crate) source_text: crate::Text,
+    pub(crate) plaintext: crate::Text,
+    pub(crate) collapsed: bool,
+}
+
+impl PlacedSelection {
+    #[must_use]
+    pub fn geometry(&self) -> &SelectionGeometry {
+        &self.geometry
+    }
+
+    /// Normalized original pieces in original logical order, without holes filled.
+    #[must_use]
+    pub fn source_pieces(&self) -> &[PlacedSelectionPiece] {
+        &self.pieces
+    }
+
+    /// Covered original UTF-16 once per occurrence, in original logical order.
+    #[must_use]
+    pub fn source_text(&self) -> &crate::Text {
+        &self.source_text
+    }
+
+    /// The processing owner's plaintext policy over this original coverage.
+    #[must_use]
+    pub fn plaintext(&self) -> &crate::Text {
+        &self.plaintext
+    }
+
+    /// Whether both endpoints alias one actual cut. A removal-only selection
+    /// can have no rectangle while remaining noncollapsed.
+    #[must_use]
+    pub const fn is_collapsed(&self) -> bool {
+        self.collapsed
+    }
+}
+
+impl fmt::Debug for PlacedSelection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PlacedSelection")
+            .field("geometry", &self.geometry)
+            .field("source_pieces", &self.pieces)
+            .field("source_text", &self.source_text)
+            .field("plaintext", &self.plaintext)
+            .field("collapsed", &self.collapsed)
+            .finish_non_exhaustive()
     }
 }
 

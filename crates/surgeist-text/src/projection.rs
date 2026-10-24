@@ -23,6 +23,9 @@ pub(crate) struct SourceProjection {
     pub(crate) anchor_atoms: Vec<Option<usize>>,
     /// Canonical replacement style rows; absence resolves original source ownership.
     pub(crate) style_rows: Vec<Option<usize>>,
+    /// Actual semantic component boundaries, independent of original offsets.
+    pub(crate) barrier_atoms: Vec<usize>,
+    pub(crate) transform: Option<std::sync::Arc<crate::transform::relation::TransformMap>>,
     segmentation_offsets: Vec<(usize, usize)>,
     /// Genuine zero-width original occurrences that need no incident atom.
     #[cfg(any(test, feature = "text-accessibility"))]
@@ -115,6 +118,8 @@ impl SourceProjection {
             barriers: Vec::new(),
             anchor_atoms: Vec::new(),
             style_rows: Vec::new(),
+            barrier_atoms: Vec::new(),
+            transform: None,
         };
         projection.graphemes = GraphemeClusterSegmenter::new()
             .segment_str(&projection.segmentation)
@@ -229,9 +234,22 @@ impl SourceProjection {
 
     /// Reuses exact admitted atom provenance for a selected substituted sequence.
     pub(crate) fn from_atoms(
+        atoms: Vec<OriginalAtom>,
+        semantic_len: usize,
+        barriers: Vec<usize>,
+    ) -> Result<Self> {
+        let barrier_atoms = barriers
+            .iter()
+            .map(|at| atoms.partition_point(|atom| atom.source.end <= *at))
+            .collect();
+        Self::from_atoms_at_barriers(atoms, semantic_len, barriers, barrier_atoms)
+    }
+
+    pub(crate) fn from_atoms_at_barriers(
         mut atoms: Vec<OriginalAtom>,
         semantic_len: usize,
         barriers: Vec<usize>,
+        barrier_atoms: Vec<usize>,
     ) -> Result<Self> {
         let mut text = String::new();
         let mut segmentation = String::new();
@@ -264,19 +282,16 @@ impl SourceProjection {
             barriers,
             anchor_atoms: Vec::new(),
             style_rows: Vec::new(),
+            barrier_atoms,
+            transform: None,
             segmentation_offsets,
             #[cfg(any(test, feature = "text-accessibility"))]
             original_points: Vec::new(),
         };
         let mut stops: Vec<_> = projection
-            .barriers
+            .barrier_atoms
             .iter()
-            .map(|&at| {
-                let atom = projection
-                    .atoms
-                    .partition_point(|atom| atom.source.end <= at);
-                projection.segmentation_offsets[atom].1
-            })
+            .map(|&atom| projection.segmentation_offsets[atom].1)
             .collect();
         stops.extend([0, projection.segmentation.len()]);
         stops.sort_unstable();
@@ -360,7 +375,6 @@ impl SourceProjection {
             .map_err(|_| boundary_error(byte))
     }
 
-    #[cfg(test)]
     pub(crate) fn segmentation_byte(&self, unit: usize) -> usize {
         let index = self
             .segmentation_offsets

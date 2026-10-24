@@ -85,6 +85,7 @@ pub(crate) struct BoundaryData {
     pub(crate) participant: usize,
     pub(crate) atom: usize,
     pub(crate) processed: usize,
+    pub(crate) relation_cut: usize,
     pub(crate) source_before: usize,
     pub(crate) source_after: usize,
     /// Exact old chooser endpoint, only when a real preliminary item boundary.
@@ -195,6 +196,7 @@ pub(crate) struct SelectedMapping {
 /// built once, then shared by spacing admission and retained-face shaping.
 pub(crate) struct SelectedPresentation {
     pub(crate) source: Range,
+    pub(crate) selected_relation: SelectedRelation,
     pub(crate) units: Vec<PresentationUnit>,
     pub(crate) projection: SourceProjection,
     pub(crate) analysis: Analysis,
@@ -202,6 +204,21 @@ pub(crate) struct SelectedPresentation {
     pub(crate) originals: Vec<Option<usize>>,
     pub(crate) domains: Vec<presentation::IndicationDomain>,
     pub(crate) mapping: std::sync::Arc<SelectedMapping>,
+}
+
+/// Executed logical relation for one selection. Indication atoms retain their
+/// selected-local identity and never pretend to be transformed authored atoms.
+#[derive(Clone, Debug)]
+pub(crate) enum SelectedRelationEvent {
+    Base { event: usize },
+    Indication { unit: usize, atom: usize },
+}
+
+#[derive(Default)]
+pub(crate) struct SelectedRelation {
+    pub(crate) events: Vec<SelectedRelationEvent>,
+    pub(crate) atom_events: Vec<usize>,
+    pub(crate) unit_events: Vec<IndexRange<usize>>,
 }
 
 #[derive(Clone, Debug)]
@@ -305,6 +322,7 @@ pub(crate) fn prepare_tables(
     tables.boundaries.push(BoundaryData {
         participant: 0,
         atom: 0,
+        relation_cut: 0,
         processed: analyzed
             .processed
             .project(owned_source, crate::Affinity::Before),
@@ -481,6 +499,9 @@ pub(crate) fn prepare_tables(
                 .is_some_and(|cluster| shaped.clusters[cluster].ligature_component);
             tables.boundaries.push(BoundaryData {
                 participant: tables.participants.len(),
+                relation_cut: analyzed
+                    .transform
+                    .cut_for_participant(tables.participants.len()),
                 atom: next_atom,
                 processed,
                 source_before: owned_source,
@@ -1278,16 +1299,20 @@ fn replacement_projection(
             original,
         )
     } else {
+        // A source-defined alternative replaces its genuine retained SHY row.
+        // Reordered or overlapping transform emissions are not source-sorted.
         original
             .atoms
-            .partition_point(|atom| atom.source.end <= replacement.replaced_source().start)
+            .iter()
+            .position(|atom| {
+                atom.source == replacement.replaced_source() && atom.code_point == 0x00ad
+            })
+            .expect("issued source alternative retains its original SHY atom")
     };
     let end = if replacement.replaced_source().is_empty() {
         start
     } else {
-        original
-            .atoms
-            .partition_point(|atom| atom.source.start < replacement.replaced_source().end)
+        start + 1
     };
     let processed_anchor = analyzed
         .processed
@@ -1323,13 +1348,36 @@ fn replacement_projection(
         atom.presentation = Range::new(presentation, next);
         presentation = next;
     }
-    let mut projection =
-        SourceProjection::from_atoms(atoms, presentation, original.barriers.clone())?;
+    let project_atom = |atom: usize| {
+        if atom <= start {
+            atom
+        } else if atom >= end {
+            inserted.end + (atom - end)
+        } else {
+            inserted.start
+        }
+    };
+    let barrier_atoms = original
+        .barrier_atoms
+        .iter()
+        .copied()
+        .map(project_atom)
+        .collect();
+    let mut projection = SourceProjection::from_atoms_at_barriers(
+        atoms,
+        presentation,
+        original.barriers.clone(),
+        barrier_atoms,
+    )?;
     projection.style_rows = vec![None; projection.atoms.len()];
     for atom in inserted.clone() {
         projection.style_rows[atom] = Some(replacement.style);
     }
-    projection.anchor_atoms = vec![None; analyzed.paragraph.anchor_order.len()];
+    projection.anchor_atoms = original
+        .anchor_atoms
+        .iter()
+        .map(|atom| atom.map(project_atom))
+        .collect();
     if let Some(control) = replacement.control() {
         let defining = analyzed
             .paragraph

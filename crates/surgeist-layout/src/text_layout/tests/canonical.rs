@@ -324,12 +324,13 @@ fn assert_placement<S: LayoutScalar>(
     let selection = placed
         .position_selection(positions.first().unwrap(), positions.last().unwrap())
         .unwrap();
-    assert_eq!(selection.rects().len(), 1);
+    assert_eq!(selection.geometry().rects().len(), 1);
     assert_rect(
-        selection.rects()[0].rect(),
+        selection.geometry().rects()[0].rect(),
         text::Rect::new(container_origin.x, 2.25 + shift.y, 12.5, 16.0),
     );
     let relative_selection = selection
+        .geometry()
         .rects()
         .iter()
         .map(|rect| relative(rect.rect()))

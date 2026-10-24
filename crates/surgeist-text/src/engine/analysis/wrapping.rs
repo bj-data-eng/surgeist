@@ -295,11 +295,14 @@ fn neighbor(
     }
 }
 
-fn events(
+pub(crate) fn events(
     processed: &ProcessedSource,
     paragraph: &ParagraphData,
     projection: &SourceProjection,
 ) -> Vec<LogicalEvent> {
+    if let Some(map) = &projection.transform {
+        return map.logical_events(paragraph, processed.source());
+    }
     use crate::processing::MappingKind;
     let source = processed.source();
     let mut events = Vec::new();

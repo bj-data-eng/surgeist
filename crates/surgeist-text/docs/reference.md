@@ -40,7 +40,7 @@ private implementation organization.
 | Prepared hyphenation | `PreparedWord`, `PreparedHyphenationCut`, borrowed views, `PreparedWordPortion`, `HyphenationResource`, `HyphenationProvenance` | [hyphenation.rs](../src/protocol/hyphenation.rs), [resource support](hyphenation-resources.md) |
 | Finalized logical prefixes | `TextSeam`, `FinalizedPrefixView`, `FinalizedSharedUnitView`, `FinalizedLine::prefix_at` | [prefix.rs](../src/protocol/prefix.rs), [composition guide](composed-lines.md) |
 | Placed original-source fragments | `SourceRangeFragments`, `SourceRangeUnit`, `SourceRangePiece`, `SourceRangeFragmentError`, `Layout::source_range_fragments` | [range_fragments.rs](../src/range_fragments.rs), [composition guide](composed-lines.md) |
-| Output and interaction | `Layout`, glyph runs, line/box facts, cursors, selections, movement | [layout.rs](../src/layout.rs) |
+| Output and interaction | `Layout`, glyph runs, line/box facts, `PlacedPosition`, `PlacedSelection`, `PlacedSelectionPiece`, source cursors/selections and movement | [layout.rs](../src/layout.rs) |
 | Ranges and edits | `Range`, `SourcePosition`, `SourceRange`, `Edit`, `TextEdit` | [range.rs](../src/range.rs), [edit.rs](../src/edit.rs) |
 | Cache identity | `Key`, `SourceKey`, `StyleKey`, `OptionsKey`, `FontGeneration`, `Stats` | [cache.rs](../src/cache.rs) |
 | Errors | `Error`, `ErrorCode`, `ErrorDetail`, `Result` | [error.rs](../src/error.rs) |
@@ -328,9 +328,15 @@ unchanged. `SourceRevision::checked_next` returns `None` at exhaustion.
 `AnalyzedSource::new(Source, Style)` captures the original source and effective
 style winners once, without fonts. The post-Phase-I transform phase executes
 before semantic Unicode analysis. `TextTransform::none()` is neutral;
+`.with_case(...)` selects `CaseTransform::{Uppercase, Lowercase, Capitalize}` for
+full contextual casing with each component's effective language and operation.
+Capitalize uses pre-casing native UAX29 words and the first effective
+Letter/Number unit, preserving the word tail. Connected styles and occurrences
+retain context. The [transformation contract](../../../docs/text-layout-contract.md#text-transformations-and-correspondence)
+defines mixed-component policy, language/script resolution and exact source custody.
 `.with_full_size_kana(true)` enables all 58 mappings in the pinned
 [CSS kana table](../../../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#small-kana).
-Full-size-kana alone retains halfwidth forms. Casing, full-width and math-auto are
+Full-size-kana alone retains halfwidth forms. Full-width and math-auto are
 not exposed. Real transformed code points drive analysis, shaping and wrapping;
 segmentation still uses a separately proven private projection for isolated units.
 Original/source AX and plaintext retain their own original/Phase-I projections.
@@ -341,7 +347,14 @@ presentation length is 3, with middle interval 1..2. `PreparedBoundary` and unit
 processed readbacks remain Phase I. Selected `mapping_views` retain both exact
 processed extents and line-local presentation extents. Source Range/carets keep
 the original supplementary association and actual transformed glyph geometry.
-This contraction capability does not claim expansion-interior editing or selection.
+For `ß → SS`, original and Phase-I lengths remain 1 while presentation length is 2.
+An exact `PlacedPosition` retains the interior output boundary; its source cursor
+is a lossy projection. `position_selection` returns `PlacedSelection`, with
+geometry, occurrence-qualified original pieces, exact UTF-16 `source_text()` and
+separate `plaintext()`. Selecting either S extracts its original ß; selecting both
+extracts that occurrence once. Removed components retain ordered source coverage
+without glyphs. Exact cuts determine collapse even when geometry coincides;
+they do not create fractional original editing rights.
 
 The glyph projection substitutes U+FFFD only for an original isolated unit;
 source associations remain exact and deletion cannot manufacture a new scalar.
@@ -405,9 +418,9 @@ style resolver.
 | Unsupported: color resolution | Symbolic text and decoration colors. |
 | Unsupported: broader vertical alignment policy | General text vertical alignment. |
 
-`TextStyleFeature::FullSizeKana` reports the executed transform operation as
-Supported for both standalone and processed-paragraph analysis; it does not
-certify the entire CSS text-transform property.
+`TextStyleFeature::{Uppercase, Lowercase, Capitalize, FullSizeKana}` report the
+executed operations as Supported for both standalone and processed-paragraph
+analysis. These entries do not certify the entire CSS text-transform property.
 
 `FontVariant::Normal`, `TextOverflow::Clip`, `TextAlignLast::Auto`, and
 `TextTransform::none()` are the exposed default values. Their acceptance does not

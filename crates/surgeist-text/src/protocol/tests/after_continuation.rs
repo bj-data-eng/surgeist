@@ -1,6 +1,8 @@
 //! Independent functional oracles for continuation custody and joint ownership.
 #[path = "both_sides.rs"]
 mod both_sides;
+#[path = "casing_indications.rs"]
+mod casing_indications;
 use super::*;
 use crate::TextSeam;
 use crate::{

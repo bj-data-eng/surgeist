@@ -89,6 +89,10 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    /// Executed pre-analysis transformation could not retain its operation.
+    TextTransform {
+        reason: TextTransformError,
+    },
     /// Exact native hyphenation input/resource refusal.
     Hyphenation {
         reason: crate::HyphenationError,
@@ -293,6 +297,15 @@ pub enum ErrorDetail {
         feature: &'static str,
         reason: &'static str,
     },
+}
+
+/// Exact source-transform admission or execution refusal.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextTransformError {
+    CasingDataUnavailable,
+    InvalidCasingData,
+    InvalidContentLocale,
+    Capacity,
 }
 
 /// Structural invalidity of one supplied document delimiter occurrence.

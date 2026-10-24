@@ -7,6 +7,56 @@ fn discard() -> Style {
         ..Style::default()
     }
 }
+
+#[test]
+fn exact_coverage_plaintext_reuses_executed_mapping_without_filling_holes() {
+    let processed = process_source_whitespace(
+        Source::new("A  B C"),
+        Style {
+            white_space: WhiteSpace::Collapse,
+            ..Style::default()
+        },
+        DocumentSegmentBreaks::LineFeedDefault,
+    )
+    .unwrap();
+    assert_eq!(
+        processed.processed_text().code_units(),
+        "A B C".encode_utf16().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        processed
+            .plaintext_for_coverage(&[Range::new(0, 1), Range::new(3, 4)])
+            .unwrap()
+            .code_units(),
+        [0x41, 0x42]
+    );
+    // Two selected original pieces from the same executed collapse contribute
+    // its one real processed SPACE once, rather than inventing another pass.
+    assert_eq!(
+        processed
+            .plaintext_for_coverage(&[Range::new(1, 2), Range::new(2, 3)])
+            .unwrap()
+            .code_units(),
+        [0x20]
+    );
+    assert!(processed.plaintext_for_coverage(&[]).unwrap().is_empty());
+    let processed = process_source_whitespace(
+        Source::new(Text::from_code_units(vec![0x41, 0xd800, 0x42])),
+        Style {
+            white_space: WhiteSpace::Preserve,
+            ..Style::default()
+        },
+        DocumentSegmentBreaks::LineFeedDefault,
+    )
+    .unwrap();
+    assert_eq!(
+        processed
+            .plaintext_for_coverage(&[Range::new(1, 2)])
+            .unwrap()
+            .code_units(),
+        [0xd800]
+    );
+}
 fn process(source: Source, breaks: DocumentSegmentBreaks) -> ProcessedSource {
     process_source_whitespace(source, discard(), breaks).unwrap()
 }

@@ -78,6 +78,37 @@ the complete pinned [Appendix G](../references/css-text-4--WD-css-text-4-2026081
 Expose only executed options and report their specific capabilities. A complete
 kana contribution does not establish casing, width, math or separator support.
 
+For capitalize, classify the immutable pre-casing input using the native UAX29
+word policy and effective typographic-unit properties. The first Letter/Number
+unit occupies the initial slot even when it is a number or caseless letter;
+do not skip it to find a later lowercase scalar. Connected origin, font, style
+and transparent out-of-flow seams do not restart words. The unchanged word tail
+is distinct from the full contextual title operation within an eligible initial
+unit. Preserve uniform-language canonical-equivalence behavior, including Greek
+subscript sequences, and applicable conditional effects on later marks.
+
+The [native component-casing determination](https://github.com/bj-data-eng/surgeist/issues/63#issuecomment-6376400472)
+retains each component's actual requested operation and applicable language.
+Evaluate its initial-unit membership and conditions against the same immutable
+input; another component cannot donate its transform or locale. For initial
+`ij`, Capitalize/nl plus None/nl produces `Ij`, None/nl plus Capitalize/nl
+produces `iJ`, Capitalize/root plus Capitalize/nl produces `IJ`, and
+Capitalize/nl plus Capitalize/root produces `Ij`. These mixed-unit results are
+Surgeist policy where CSS leaves split-unit rendering undefined. For capitalize,
+Lithuanian dot removal requires the dot component itself to request Capitalize
+with applicable Lithuanian, belong to the eligible unit, and satisfy the real
+original-input After_Soft_Dotted condition. Keep its zero-output ownership.
+
+Explicit script subtags take precedence. For a known language without an
+explicit script, the native casing policy uses the paired extended likely-subtag
+data from `icu_locale_data` 2.2.0 (CLDR 48.2.0), retaining an authored region.
+Do not turn an unknown language into a guessed one, infer language from script,
+or use a fallback font's locale. The full implied-script table is outside CSS's
+specified correspondence; this is a declared data choice. Apply appropriate
+language rules in their actual writing system rather than copy script-blind
+provider dispatch. For example, explicit `tr-Arab` does not request Latin
+Turkic casing; the paired data's bare `crh` and explicit `crh-Latn` differ.
+
 The [native expansion-interior determination](https://github.com/bj-data-eng/surgeist/issues/63#issuecomment-6375717099)
 preserves the actual presentation boundary in `ß → S|S`. Its immutable placed
 position retains correspondence and output subposition. Interior upstream/trailing
@@ -109,6 +140,36 @@ interoperability claim. Introduce their exact-selection API with an actual
 expansion-capable transform, through one selection owner and direct caller
 migration.
 
+The [native zero-output determination](https://github.com/bj-data-eng/surgeist/issues/63#issuecomment-6376502179)
+preserves removed input as ordered relation occurrences. Before a removed row
+projects to its source start with downstream affinity; after it projects to its
+source end with upstream affinity. The cuts remain distinct even when output
+offset and geometry coincide. Adjacent emission/row handles may alias one cut
+with different affinities. Consecutive removals require actual occurrence/cut
+identity, not a binary affinity flag.
+
+Exact selection includes the relation occurrences traversed. For original
+`I\u{0307}` lowered to `i`, selecting only the emission through its trailing
+cut extracts original `I`; extending across the removed-dot occurrence includes
+the dot. Likewise, selecting just `n` in Irish `n-uisce` uppercased to `nUISCE`
+extracts `n`, while traversing the retained removed hyphen includes `n-`.
+A removal-only selection is noncollapsed, has original source coverage, and has
+no independent emitted rectangle. Identical relation cuts are collapsed. The
+full source-bearing line extent includes its zero-output custody. These are
+owner-issued relation positions; they imply neither fabricated glyph units,
+new wrapping opportunities, false output progress nor mandatory extra visible
+keyboard stops.
+
+The [native wrap-seam determination](https://github.com/bj-data-eng/surgeist/issues/63#issuecomment-6376584001)
+binds a legal prepared boundary to the cut after consecutive removals within
+its authentic local mixed-participant/relation seam. The terminating line owns
+them; the receiving line starts at the same cut. Equal numeric output offsets
+do not authorize crossing genuine atomic, control or scope boundaries. Leading
+and trailing removals remain with their genuine scope's first and last
+source-bearing lines. A genuine output-empty extent retains custody through the
+real empty-line/finalization path. Neither prepared start=end nor finite removal
+traversal can invent a wrap line or establish presentation progress.
+
 Qualification includes all kana mappings and unmapped controls, supplementary
 contraction with distinct Phase-I/presentation readbacks, actual registered-font
 glyphs and metrics, source/plaintext custody and shared composed geometry.
@@ -118,6 +179,11 @@ extraction, both-piece extraction once, source Range over both lines, collapsed
 selection, distinct equal occurrences, mixed source pieces and real conditional
 and known-language length-changing mappings. These requirements do not claim
 implementation before their owning contribution is qualified.
+Also qualify legal wrapping beside removals, consecutive/leading/trailing
+removals and genuine mixed zero-width participants. Combine actual reordered
+Greek output, separated contributions of one input row and a real removal;
+check semantic event order, original-piece order, emission-only/removal-only
+and reversed selection, and whole-line custody independently.
 
 ### Font-independent analysis and accessibility
 

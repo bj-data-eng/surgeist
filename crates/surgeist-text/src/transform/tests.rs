@@ -1,5 +1,7 @@
 use crate::{AnalyzedSource, Source, Style, Text, TextTransform};
 
+mod casing;
+
 fn style() -> Style {
     Style {
         text_transform: TextTransform::none().with_full_size_kana(true),

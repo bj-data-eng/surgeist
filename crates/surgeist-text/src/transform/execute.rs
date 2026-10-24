@@ -1,0 +1,429 @@
+use std::{ops::Range as IndexRange, sync::Arc};
+
+use icu_normalizer::properties::CanonicalCombiningClassMap;
+use icu_properties::{
+    CodePointMapData,
+    props::{GeneralCategory, GeneralCategoryGroup, GraphemeClusterBreak, Script},
+    script::ScriptWithExtensions,
+};
+use icu_segmenter::{WordSegmenter, options::WordBreakInvariantOptions};
+
+use super::{
+    casing::{self, Locale, Mapper, MappingError, Operation},
+    irish,
+    relation::{Emission, RelationEvent, TransformMap},
+};
+use crate::{
+    CaseTransform, Error, ErrorCode, ErrorDetail, ProcessedSource, Range, Result,
+    TextTransformError,
+    engine::{OriginalAtom, analysis::wrapping::Event, resolve::AnalyzedStyleRun},
+    projection::SourceProjection,
+    protocol::paragraph::ParagraphData,
+};
+
+fn failed(reason: MappingError) -> Error {
+    let (code, reason) = match reason {
+        MappingError::DataUnavailable => (
+            ErrorCode::UnsupportedFeature,
+            TextTransformError::CasingDataUnavailable,
+        ),
+        MappingError::InvalidException | MappingError::InvalidScalar => (
+            ErrorCode::InvalidSourceProcessing,
+            TextTransformError::InvalidCasingData,
+        ),
+        MappingError::InvalidLocale => (
+            ErrorCode::InvalidStyle,
+            TextTransformError::InvalidContentLocale,
+        ),
+        MappingError::Storage => (
+            ErrorCode::SourceProcessingCapacity,
+            TextTransformError::Capacity,
+        ),
+    };
+    Error::new(
+        code,
+        "text transformation could not retain its actual mapping",
+    )
+    .with_detail(ErrorDetail::TextTransform { reason })
+}
+
+#[derive(Clone, Copy, Default)]
+struct Initial {
+    title: bool,
+    context: bool,
+}
+
+#[derive(Clone, Copy, Default)]
+struct PrefixEffect {
+    preserve_upper: bool,
+    remove_upper: bool,
+    insert_lower: bool,
+}
+
+fn base(input: &SourceProjection, unit: IndexRange<usize>) -> Option<usize> {
+    let categories = CodePointMapData::<GeneralCategory>::new();
+    let scripts = ScriptWithExtensions::new();
+    if input.atoms[unit.clone()].iter().any(|atom| {
+        categories.get32(atom.code_point) == GeneralCategory::EnclosingMark
+            && scripts.has_script32(atom.code_point, Script::Common)
+    }) {
+        return None;
+    }
+    let gcb = CodePointMapData::<GraphemeClusterBreak>::new();
+    let base = unit
+        .clone()
+        .find(|&row| gcb.get32(input.atoms[row].code_point) != GraphemeClusterBreak::Prepend)?;
+    let category = categories.get32(input.atoms[base].code_point);
+    if category == GeneralCategory::SpaceSeparator && unit.len() > 1 {
+        return None;
+    }
+    (GeneralCategoryGroup::Letter.contains(category)
+        || GeneralCategoryGroup::Number.contains(category))
+    .then_some(base)
+}
+
+fn classify(
+    input: &SourceProjection,
+    values: &[u32],
+    domain: IndexRange<usize>,
+    mapper: &Mapper,
+    initial: &mut [Initial],
+    prefixes: &mut [PrefixEffect],
+) -> Result<()> {
+    let point = |atom: usize| {
+        input
+            .atoms
+            .get(atom)
+            .map_or(input.presentation_end(), |atom| atom.presentation.start)
+    };
+    let byte = input.segmentation_byte(point(domain.start));
+    let end = input.segmentation_byte(point(domain.end));
+    let atom_at = |byte| -> Result<usize> {
+        let point = input.segmentation_unit(byte)?;
+        Ok(input
+            .atoms
+            .partition_point(|atom| atom.presentation.start < point))
+    };
+    let mut previous = domain.start;
+    for (offset, kind) in
+        WordSegmenter::new_for_non_complex_scripts(WordBreakInvariantOptions::default())
+            .segment_str(&input.segmentation[byte..end])
+            .iter_with_word_type()
+    {
+        let next = atom_at(byte + offset)?;
+        if previous < next && kind.is_word_like() {
+            let word = previous..next;
+            let prefix = irish::prefix(&values[word.start..domain.end]);
+            for effect in &mut prefixes[word.start..(word.start + prefix.preserve).min(domain.end)]
+            {
+                effect.preserve_upper = true;
+            }
+            if let Some(row) = prefix
+                .remove
+                .and_then(|row| word.start.checked_add(row))
+                .filter(|&row| row < domain.end)
+            {
+                prefixes[row].remove_upper = true;
+            }
+            if let Some(row) = prefix
+                .insert_before
+                .and_then(|row| word.start.checked_add(row))
+                .filter(|&row| row < domain.end)
+            {
+                prefixes[row].insert_lower = true;
+            }
+            // Seek the first EGC whose end is after this word start. Keep
+            // a unit beginning before the word: its base/context still owns
+            // the initial-unit decision when the ranges genuinely overlap.
+            let word_start = point(word.start);
+            let word_end = point(word.end);
+            let grapheme = input
+                .graphemes
+                .partition_point(|&edge| edge <= word_start)
+                .saturating_sub(1);
+            for pair in input.graphemes[grapheme..]
+                .windows(2)
+                .take_while(|pair| pair[0] < word_end)
+            {
+                let first = input
+                    .atoms
+                    .partition_point(|atom| atom.presentation.start < pair[0]);
+                let last = input
+                    .atoms
+                    .partition_point(|atom| atom.presentation.start < pair[1]);
+                if last <= word.start || first >= word.end {
+                    continue;
+                }
+                let Some(base) = base(input, first..last) else {
+                    continue;
+                };
+                // The first Letter/Number unit occupies this slot, even when
+                // it is a number, uppercase or caseless letter.
+                if mapper.case_type(values[base])
+                    == Some(icu_casemap::provider::data::CaseType::Lower)
+                {
+                    initial[base].title = true;
+                    for (row, unit) in initial.iter_mut().enumerate().take(last).skip(first) {
+                        if row != base {
+                            unit.context = true;
+                        }
+                    }
+                    for row in base + 1..word.end {
+                        if matches!(values[row], 0x6a | 0x4a)
+                            && mapper
+                                .dutch_j(&values[word.start..row], &values[row + 1..word.end])
+                                .map_err(failed)?
+                        {
+                            initial[row].context = true;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+        previous = next;
+    }
+    Ok(())
+}
+
+pub(super) fn apply(
+    input: SourceProjection,
+    styles: &[AnalyzedStyleRun],
+    processed: &ProcessedSource,
+    paragraph: &ParagraphData,
+) -> Result<(SourceProjection, Arc<TransformMap>)> {
+    let captured = crate::engine::analysis::wrapping::events(processed, paragraph, &input);
+    let mut map = TransformMap::identity(&input, styles, processed, paragraph, captured.clone());
+    let values: Vec<_> = map.rows.iter().map(|row| row.code_point).collect();
+    let casing = map
+        .rows
+        .iter()
+        .any(|row| styles[row.style].style.text_transform().case() != CaseTransform::None);
+    let mapper = casing.then(Mapper::new).transpose().map_err(failed)?;
+    let mut stops = input.barrier_atoms.clone();
+    stops.extend([0, input.atoms.len()]);
+    for (row, &cp) in values.iter().enumerate() {
+        if crate::engine::analysis::is_hard_separator(cp) {
+            stops.extend([row, row + 1]);
+        }
+    }
+    stops.sort_unstable();
+    stops.dedup();
+    let mut initial = vec![Initial::default(); values.len()];
+    let mut prefixes = vec![PrefixEffect::default(); values.len()];
+    if let Some(mapper) = &mapper {
+        for domain in stops.windows(2) {
+            classify(
+                &input,
+                &values,
+                domain[0]..domain[1],
+                mapper,
+                &mut initial,
+                &mut prefixes,
+            )?;
+        }
+    }
+    let mut locales = vec![None; styles.len()];
+    let mut operations = Vec::new();
+    let mut output = Vec::new();
+    let mut spans = Vec::new();
+    for domain in stops.windows(2) {
+        for row in domain[0]..domain[1] {
+            let style = &styles[map.rows[row].style].style;
+            let operation = match style.text_transform().case() {
+                CaseTransform::None => None,
+                CaseTransform::Uppercase => Some(Operation::Upper),
+                CaseTransform::Lowercase => Some(Operation::Lower),
+                CaseTransform::Capitalize if initial[row].title => Some(Operation::Title),
+                CaseTransform::Capitalize if initial[row].context => Some(Operation::TitleContext),
+                CaseTransform::Capitalize => None,
+            };
+            operations.push(operation);
+            let start = output.len();
+            let locale = if operation.is_some() {
+                let slot = &mut locales[map.rows[row].style];
+                if slot.is_none() {
+                    *slot = Some(Locale::from_tag(style.locale_tag()).map_err(failed)?);
+                }
+                slot.expect("resolved actual component locale")
+            } else {
+                Locale::Root
+            };
+            output
+                .try_reserve(1)
+                .map_err(|_| failed(MappingError::Storage))?;
+            if locale == Locale::Irish
+                && operation == Some(Operation::Upper)
+                && prefixes[row].remove_upper
+            {
+                // The genuine hyphen row has a zero-output correspondence.
+            } else if operation.is_none()
+                || locale == Locale::Irish
+                    && operation == Some(Operation::Upper)
+                    && prefixes[row].preserve_upper
+            {
+                output.push(values[row]);
+            } else {
+                if locale == Locale::Irish
+                    && operation == Some(Operation::Lower)
+                    && prefixes[row].insert_lower
+                {
+                    output.push(0x2d);
+                }
+                mapper
+                    .as_ref()
+                    .expect("actual casing operation")
+                    .map_into(
+                        &values[domain[0]..domain[1]],
+                        row - domain[0],
+                        operation.expect("casing operation"),
+                        locale,
+                        &mut output,
+                    )
+                    .map_err(failed)?;
+            }
+            if style.text_transform().full_size_kana() {
+                for cp in &mut output[start..] {
+                    if let Some(target) = super::full_size_kana(*cp) {
+                        *cp = u32::from(target);
+                    }
+                }
+            }
+            spans.push(start..output.len());
+        }
+    }
+    let changed = spans
+        .iter()
+        .enumerate()
+        .any(|(row, span)| span.len() != 1 || output[span.start] != values[row]);
+    map.emissions.clear();
+    map.atoms.clear();
+    map.events.clear();
+    for (row, span) in spans.iter().enumerate() {
+        let start = map.emissions.len();
+        for (subposition, &code_point) in output[span.clone()].iter().enumerate() {
+            map.emissions.push(Emission {
+                row,
+                subposition,
+                code_point,
+                atom: 0,
+                event: 0,
+            });
+        }
+        map.rows[row].outputs = start..map.emissions.len();
+    }
+    let mut atoms = Vec::new();
+    let mut pending = Vec::new();
+    let classes = CanonicalCombiningClassMap::new();
+    for event in captured {
+        if stops.binary_search(&event.atom).is_ok()
+            || values
+                .get(event.atom)
+                .is_none_or(|&cp| classes.get32_u8(cp) == 0)
+        {
+            flush(&mut pending, &mut atoms, &mut map)?;
+        }
+        match event.kind {
+            Event::Text(row) => {
+                let range = map.rows[row].outputs.clone();
+                if range.is_empty() {
+                    map.events.push(RelationEvent::Removal { row });
+                }
+                let postpone = casing::postpones_iota(
+                    values[row],
+                    operations[row],
+                    range.clone().last().map(|id| map.emissions[id].code_point),
+                );
+                for id in range.clone() {
+                    if postpone && id + 1 == range.end {
+                        pending.push(id);
+                    } else {
+                        emit(id, &mut atoms, &mut map)?;
+                    }
+                }
+            }
+            Event::Deleted(source, processed) => map
+                .events
+                .push(RelationEvent::PhaseIDeleted { source, processed }),
+            Event::Anchor(anchor) => map.events.push(RelationEvent::Anchor {
+                order: paragraph
+                    .anchor_order
+                    .iter()
+                    .position(|value| *value == anchor)
+                    .expect("captured actual anchor"),
+            }),
+        }
+    }
+    flush(&mut pending, &mut atoms, &mut map)?;
+    map.finish_cuts();
+    let mut end = 0usize;
+    for atom in &mut atoms {
+        let length = if (0xd800..=0xdfff).contains(&atom.code_point) {
+            1
+        } else {
+            atom.glyph.len_utf16()
+        };
+        let next = end
+            .checked_add(length)
+            .ok_or_else(crate::projection::length_overflow)?;
+        atom.presentation = Range::new(end, next);
+        end = next;
+    }
+    let barrier_atoms = input
+        .barriers
+        .iter()
+        .map(|&at| map.atom_at_original_edge(at, crate::Affinity::Before))
+        .collect();
+    let mut projection = if changed {
+        SourceProjection::from_atoms_at_barriers(atoms, end, input.barriers, barrier_atoms)?
+    } else {
+        input
+    };
+    projection.anchor_atoms = vec![None; paragraph.anchor_order.len()];
+    let mut at = 0;
+    for event in &map.events {
+        match *event {
+            RelationEvent::Text { .. } => at += 1,
+            RelationEvent::Anchor { order } => projection.anchor_atoms[order] = Some(at),
+            _ => (),
+        }
+    }
+    let map = Arc::new(map);
+    projection.transform = Some(Arc::clone(&map));
+    Ok((projection, map))
+}
+
+fn emit(id: usize, atoms: &mut Vec<OriginalAtom>, map: &mut TransformMap) -> Result<()> {
+    let emission = &mut map.emissions[id];
+    let row = &map.rows[emission.row];
+    let atom = OriginalAtom {
+        source: row.source,
+        processed: row.processed,
+        presentation: Range::new(0, 0),
+        glyph_bytes: 0..0,
+        code_point: emission.code_point,
+        glyph: if (0xd800..=0xdfff).contains(&emission.code_point) {
+            '\u{fffd}'
+        } else {
+            char::from_u32(emission.code_point)
+                .ok_or_else(|| failed(MappingError::InvalidScalar))?
+        },
+    };
+    emission.atom = atoms.len();
+    emission.event = map.events.len();
+    map.atoms.push(id);
+    map.events.push(RelationEvent::Text { atom: atoms.len() });
+    atoms.push(atom);
+    Ok(())
+}
+
+fn flush(
+    pending: &mut Vec<usize>,
+    atoms: &mut Vec<OriginalAtom>,
+    map: &mut TransformMap,
+) -> Result<()> {
+    for id in pending.drain(..) {
+        emit(id, atoms, map)?;
+    }
+    Ok(())
+}

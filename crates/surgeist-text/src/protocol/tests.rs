@@ -4,6 +4,7 @@ mod after_continuation;
 mod after_standalone;
 mod automatic_model;
 mod automatic_opportunities;
+mod casing;
 mod conditional;
 mod count_admission;
 mod hyphenation_limits;

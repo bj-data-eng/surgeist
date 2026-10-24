@@ -29,9 +29,10 @@ uses the same selected-line and placement machinery.
    controls, wrapping facts and any actual computed discretionary replacements.
    `AnalyzedSource::from_paragraph` validates this complete capture and retains the
    executed `ProcessedSource`; original code-unit ownership remains available
-   through the processed correspondence. The complete full-size-kana operation,
-   enabled by `TextTransform::none().with_full_size_kana(true)`, runs once after
-   Phase I and before semantic analysis. Original/Phase-I offsets remain distinct
+   through the processed correspondence. Contextual casing selected with
+   `TextTransform::none().with_case(...)` runs after Phase I, followed by the
+   complete full-size-kana operation when `.with_full_size_kana(true)` is enabled.
+   Both run before semantic analysis. Original/Phase-I offsets remain distinct
    from actual transformed presentation offsets; plaintext remains original.
    See [transformation and source custody](reference.md#defaults-and-validation).
 2. Call `System::prepare(&analysis, PreparationOptions)` with the actual scale and
@@ -241,16 +242,28 @@ placement-bound `PlacedPosition` values from actual interaction occurrences.
 `position_geometry`, `move_position` and `position_selection` validate that same
 placement. A physical `Hit::Text` retains its exact position. `source_cursor()` is an
 explicit original-source projection; it cannot distinguish every source-less line.
-Several exact positions can share that projection. A raw source query applies its
+Expansion interiors also retain output subpositions that a source cursor cannot
+recover. Several exact positions can share a projection. A raw source query applies its
 source-affinity eligibility rules and need not recover the same physical edge;
 retain the exact handle when continuing physical interaction.
 Raw source geometric queries refuse outside coverage or where their source endpoint
 is genuinely ambiguous. Original extraction and edits retain their separate source
-coordinate domain. Original cursor and selection endpoints use the original legal
-source stops; executed whitespace deletions do not turn returned endpoints into
+coordinate domain. Original cursor movement uses the original legal source
+stops; executed whitespace deletions do not turn returned endpoints into
 processed offsets. Word movement follows actual neighboring source-associated
 rows across deleted intervals. Source-only accessibility remains bound to analysis; placed
 accessibility enriches the same original semantics with exact placed geometry.
+
+`position_selection` returns `PlacedSelection`. Its `geometry()` covers the selected
+presentation units; `source_pieces()` retains normalized original intervals with
+their actual `PreparedOrigin` occurrence. `source_text()` extracts exact original
+UTF-16 once per covered interval, while `plaintext()` applies the processing owner's
+separate policy. With `ß → SS`, selecting only the receiving S has receiving-only
+geometry and extracts original ß. Selecting both S pieces does not duplicate it;
+equal text in distinct original occurrences remains distinct. Reversal preserves
+coverage, and `is_collapsed()` compares exact relation cuts. Removed components
+can have distinct cuts and source coverage at the same geometry, without creating
+glyphs or additional wrapping opportunities.
 
 The composed profile is horizontal. `TabContext::FontAdvance` executes the
 retained-font U+0009 glyph advance, which can be the actual `.notdef` advance; it is

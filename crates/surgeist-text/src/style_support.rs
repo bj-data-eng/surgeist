@@ -43,6 +43,9 @@ pub enum TextStyleFeature {
     ConcreteDecorationColor,
     SymbolicDecorationColor,
     FullSizeKana,
+    Uppercase,
+    Lowercase,
+    Capitalize,
     SelectionColor,
 }
 
@@ -97,6 +100,9 @@ impl TextStyleFeature {
         Self::ConcreteDecorationColor,
         Self::SymbolicDecorationColor,
         Self::FullSizeKana,
+        Self::Uppercase,
+        Self::Lowercase,
+        Self::Capitalize,
         Self::SelectionColor,
     ];
 
@@ -139,6 +145,9 @@ impl TextStyleFeature {
             | Self::DecorationThickness
             | Self::ConcreteDecorationColor
             | Self::FullSizeKana
+            | Self::Uppercase
+            | Self::Lowercase
+            | Self::Capitalize
             | Self::SelectionColor => TextStyleSupport::Supported,
             Self::ExplicitTextDirection => TextStyleSupport::Unsupported(
                 UnsupportedTextStyleReason::RequiresParagraphBaseDirection,

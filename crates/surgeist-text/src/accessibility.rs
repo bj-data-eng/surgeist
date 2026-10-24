@@ -363,6 +363,56 @@ fn access_stop(state: &Accessibility, unit: usize, affinity: Affinity) -> Option
     })
 }
 
+/// AX inventories actual authored custody, independently from the source
+/// cursor's host-EGC stops. A receiving-only delayed emission may own only one
+/// original component of a larger host grapheme.
+fn placed_source_ranges(layout: &Layout) -> Vec<Range> {
+    let analyzed = &layout.inner.prepared.analyzed;
+    let mut source = Vec::new();
+    for line in &layout.inner.lines {
+        for event in &line
+            .finalized
+            .selected
+            .presentation
+            .selected_relation
+            .events
+        {
+            if let crate::protocol::prepared::SelectedRelationEvent::Base { event } = *event {
+                let range = analyzed.transform.event_source(
+                    event,
+                    &analyzed.paragraph,
+                    analyzed.processed.source(),
+                );
+                if !range.is_empty() {
+                    source.push(range);
+                }
+            }
+        }
+    }
+    source.sort_unstable_by_key(|range| (range.start, range.end));
+    let mut coverage: Vec<Range> = Vec::new();
+    for range in source {
+        if let Some(last) = coverage.last_mut()
+            && range.start <= last.end
+        {
+            last.end = last.end.max(range.end);
+        } else {
+            coverage.push(range);
+        }
+    }
+    analyzed
+        .host_projection
+        .graphemes
+        .windows(2)
+        .flat_map(|pair| {
+            coverage.iter().filter_map(move |range| {
+                let part = Range::new(pair[0].max(range.start), pair[1].min(range.end));
+                (part.start < part.end).then_some(part)
+            })
+        })
+        .collect()
+}
+
 fn update(
     projection: Projection<'_>,
     state: &mut Accessibility,
@@ -437,10 +487,8 @@ fn update(
                 empty_line: None,
             })
             .collect(),
-        Projection::Placed(layout, _) => layout
-            .inner
-            .interaction
-            .selectable_ranges()
+        Projection::Placed(layout, _) => placed_source_ranges(layout)
+            .into_iter()
             .flat_map(|range| analyzed.paragraph.intersections(range))
             .map(|range| NodeDescriptor {
                 range,

@@ -9,41 +9,21 @@
 //! Atoms retain exact original and Phase-I associations. Only semantic code
 //! points and presentation coordinates change; plaintext never reads this output.
 
-use crate::{Range, Result, engine::resolve, projection::SourceProjection};
+use crate::{Result, engine::resolve, projection::SourceProjection};
+
+mod casing;
+mod execute;
+mod greek;
+mod irish;
+pub(crate) mod relation;
 
 pub(crate) fn apply(
-    mut input: SourceProjection,
+    input: SourceProjection,
     styles: &[resolve::AnalyzedStyleRun],
-) -> Result<SourceProjection> {
-    let mut changed = false;
-    for atom in &mut input.atoms {
-        let style = &styles[resolve::source_style(styles, atom.source.start)].style;
-        if style.text_transform().full_size_kana()
-            && let Some(target) = full_size_kana(atom.code_point)
-        {
-            atom.code_point = u32::from(target);
-            atom.glyph = target;
-            changed = true;
-        }
-    }
-    if !changed {
-        return Ok(input);
-    }
-    // This is a separate coordinate domain. In particular supplementary small
-    // kana contracts to BMP without changing either source or Phase-I extents.
-    let mut end: usize = 0;
-    for atom in &mut input.atoms {
-        let next = end
-            .checked_add(if (0xd800..=0xdfff).contains(&atom.code_point) {
-                1
-            } else {
-                atom.glyph.len_utf16()
-            })
-            .ok_or_else(crate::projection::length_overflow)?;
-        atom.presentation = Range::new(end, next);
-        end = next;
-    }
-    SourceProjection::from_atoms(input.atoms, end, input.barriers)
+    processed: &crate::ProcessedSource,
+    paragraph: &crate::protocol::paragraph::ParagraphData,
+) -> Result<(SourceProjection, std::sync::Arc<relation::TransformMap>)> {
+    execute::apply(input, styles, processed, paragraph)
 }
 
 /// Complete CSS Text 4 (14 August 2026), normative Appendix G, Small Kana

@@ -46,7 +46,7 @@ pub use error::{
     DocumentSegmentBreakError, Error, ErrorCode, ErrorDetail, FontMetricField,
     FontMetricNumericError, FontMetricPhase, FontMetricTable, FontMetricTableError,
     NumericRequirement, ProcessingCapacityError, Result, ShapingBoundary, ShapingRefusalReason,
-    TextNumericError, TextNumericPhase,
+    TextNumericError, TextNumericPhase, TextTransformError,
 };
 pub use font::{
     EffectiveFontInstance, FontData, FontFace, FontMetrics, FontOutlineCapability,
@@ -57,8 +57,9 @@ pub use id::Id;
 pub use layout::{
     Affinity, BaselineShiftFact, Cluster, Cursor, CursorGeometry, DecorationKind, DecorationRun,
     Glyph, Hit, InlineBoxMetricFact, InlineMetricFacts, Layout, Line, LineMetricFact, Metrics,
-    Movement, PaintedSelectionGeometry, PaintedSelectionRect, PlacedPosition, PositionedInlineBox,
-    Run, RunMetricFact, RunMetrics, Selection, SelectionGeometry, SelectionRect,
+    Movement, PaintedSelectionGeometry, PaintedSelectionRect, PlacedPosition, PlacedSelection,
+    PlacedSelectionPiece, PositionedInlineBox, Run, RunMetricFact, RunMetrics, Selection,
+    SelectionGeometry, SelectionRect,
 };
 pub use options::{Alignment, Indent, Options, TextAlignLast, TextOverflow, ValidatedOptions};
 pub use processing::{
@@ -105,7 +106,7 @@ pub use source_model::{
     ValidatedSource, VerticalAlign,
 };
 pub use style::{
-    Brush, Decoration, DecorationBrush, DecorationOffset, DecorationOffsetValue,
+    Brush, CaseTransform, Decoration, DecorationBrush, DecorationOffset, DecorationOffsetValue,
     DecorationThickness, DecorationThicknessValue, Direction, Font, FontVariant, FontWeightValue,
     FontWidthRatio, LineHeight, OverflowWrap, SelectionPaint, Slant, Style, TextTransform,
     ValidatedStyle, Weight, WhiteSpace, Width, WordBreak, Wrap,

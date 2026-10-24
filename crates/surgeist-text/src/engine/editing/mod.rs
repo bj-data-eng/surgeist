@@ -5,7 +5,7 @@ pub(crate) mod position;
 mod selection;
 
 use super::{PlacedLine, PreparedData};
-use crate::{Affinity, Error, ErrorCode, Range, Result};
+use crate::{Affinity, Range, Result};
 pub(crate) use cursor::{cursor, hit, move_cursor};
 pub(crate) use selection::selection;
 
@@ -33,12 +33,6 @@ impl InteractionData {
     pub(crate) fn is_stop(&self, index: usize) -> bool {
         self.stops.binary_search(&index).is_ok()
     }
-    #[cfg(feature = "text-accessibility")]
-    pub(crate) fn selectable_ranges(&self) -> impl Iterator<Item = Range> + '_ {
-        self.stops
-            .windows(2)
-            .map(|pair| Range::new(pair[0], pair[1]))
-    }
     pub(crate) fn selection_range(&self, range: Range) -> Range {
         Range::new(
             self.caret(range.start, Affinity::Before),
@@ -59,11 +53,7 @@ pub(crate) fn caret_at(stops: &[usize], index: usize, affinity: Affinity) -> usi
     }
 }
 
-pub(crate) fn prepare(
-    prepared: &PreparedData,
-    lines: &[PlacedLine],
-    coverage: &crate::protocol::placement::PlacedCoverage,
-) -> Result<InteractionData> {
+pub(crate) fn prepare(prepared: &PreparedData, lines: &[PlacedLine]) -> Result<InteractionData> {
     let mut intervals: Vec<_> = lines
         .iter()
         .flat_map(|line| {
@@ -76,17 +66,12 @@ pub(crate) fn prepare(
         .filter(|range| !range.is_empty())
         .collect();
     intervals.sort_unstable_by_key(|range| (range.start, range.end));
-    let stops: Vec<_> = legal_stops(&prepared.analyzed.host_projection.graphemes, &intervals)
-        .into_iter()
-        .filter(|&index| coverage.source.start <= index && index <= coverage.source.end)
-        .collect();
-    if stops.first() != Some(&coverage.source.start) || stops.last() != Some(&coverage.source.end) {
-        return Err(Error::new(
-            ErrorCode::LayoutFailed,
-            "committed source caret boundary coverage is incomplete",
-        ));
-    }
-    let positions = position::prepare(lines, &stops);
+    // Original editing still snaps to genuine host EGC edges. A placed output
+    // range can cover only one contribution of that EGC, so its source hull
+    // need not itself be an original caret boundary. Exact output positions
+    // are admitted independently by the selected presentation owner.
+    let stops = legal_stops(&prepared.analyzed.host_projection.graphemes, &intervals);
+    let positions = position::prepare(lines);
     Ok(InteractionData { stops, positions })
 }
 

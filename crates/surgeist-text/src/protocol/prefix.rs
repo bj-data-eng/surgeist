@@ -480,10 +480,17 @@ impl FinalizedLine {
                 }
                 let at = original.aggregate.start + (local.get() - original.local.start);
                 let rows = data.origins.get(&origin.index).ok_or_else(invalid)?;
-                let index = rows.partition_point(|row| row.source.end < at);
-                let row = rows
-                    .get(index)
-                    .filter(|row| row.source.start <= at && at <= row.source.end)
+                // Input rows can emit more than once and in a different
+                // semantic order. A source end includes every actual emission
+                // of its row; it cannot select the first equal-source output.
+                let candidates = || {
+                    rows.iter()
+                        .filter(|row| row.source.start <= at && at <= row.source.end)
+                };
+                let row = candidates()
+                    .filter(|row| row.actual_source.start < at)
+                    .max_by_key(|row| row.cuts.end)
+                    .or_else(|| candidates().min_by_key(|row| row.cuts.start))
                     .ok_or_else(invalid)?;
                 let interior = row.actual_source.start < at && at < row.actual_source.end;
                 let atom = (interior && !selected.presentation.units[row.unit].atoms.is_empty())

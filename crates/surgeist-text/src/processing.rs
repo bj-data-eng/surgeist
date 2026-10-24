@@ -415,6 +415,66 @@ impl ProcessedSource {
         }
     }
 
+    /// Projects already normalized exact original coverage through this
+    /// owner's executed Phase-I and plaintext decisions. Selection does not
+    /// repeat trimming/collapse or replace holes with an enclosing range.
+    pub(crate) fn plaintext_for_coverage(&self, coverage: &[Range]) -> Result<Text> {
+        if coverage
+            .iter()
+            .any(|range| range.start > range.end || range.end > self.source.text().len())
+            || coverage.windows(2).any(|pair| pair[0].end > pair[1].start)
+        {
+            return Err(Error::new(
+                ErrorCode::InvalidRange,
+                "invalid normalized plaintext coverage",
+            ));
+        }
+        let mut selected: Vec<Range> = Vec::new();
+        for piece in &self.map {
+            for range in coverage
+                .iter()
+                .filter(|range| range.start < piece.source.end && piece.source.start < range.end)
+            {
+                let start = piece.source.start.max(range.start);
+                let end = piece.source.end.min(range.end);
+                let mapped = match piece.kind {
+                    MappingKind::Copy => Range::new(
+                        piece.processed + start - piece.source.start,
+                        piece.processed + end - piece.source.start,
+                    ),
+                    MappingKind::Replace => Range::new(piece.processed, piece.processed + 1),
+                    MappingKind::Delete(_) => continue,
+                };
+                if let Some(previous) = selected
+                    .last_mut()
+                    .filter(|previous| previous.end >= mapped.start)
+                {
+                    previous.end = previous.end.max(mapped.end);
+                } else {
+                    reserve(&mut selected, 1)?;
+                    selected.push(mapped);
+                }
+            }
+        }
+        let mut units = Vec::new();
+        for item in self.plaintext_items(Affinity::Before) {
+            let PlaintextItem::Text(text) = item else {
+                continue;
+            };
+            let visible = Range::new(text.range.start.0, text.range.end.0);
+            for range in selected
+                .iter()
+                .filter(|range| range.start < visible.end && visible.start < range.end)
+            {
+                let start = visible.start.max(range.start);
+                let end = visible.end.min(range.end);
+                reserve(&mut units, end - start)?;
+                units.extend_from_slice(&self.processed.code_units()[start..end]);
+            }
+        }
+        Ok(Text::from_code_units(units))
+    }
+
     fn plaintext_deletions(&self) -> Vec<Range> {
         let mut leading = std::collections::BTreeMap::new();
         let mut deleted = Vec::new();

@@ -58,6 +58,7 @@ pub(crate) struct AnalyzedCore {
     pub(crate) paragraph: ParagraphData,
     pub(crate) host_projection: SourceProjection,
     pub(crate) projection: SourceProjection,
+    pub(crate) transform: Arc<crate::transform::relation::TransformMap>,
     pub(crate) styles: Vec<resolve::AnalyzedStyleRun>,
     pub(crate) analysis: analysis::Analysis,
     pub(crate) logical: analysis::wrapping::LogicalParagraph,
@@ -175,7 +176,8 @@ pub(crate) fn analyze_paragraph(
             });
         }
     }
-    let projection = crate::transform::apply(projection, &styles)?;
+    let (projection, transform) =
+        crate::transform::apply(projection, &styles, &processed, &paragraph)?;
     let (analysis, words) =
         analysis::analyze(&projection, &styles, processed.source().boxes(), &paragraph)?;
     let words = analysis::hyphenation::Words::new(&projection, &analysis.graphemes, words);
@@ -197,6 +199,7 @@ pub(crate) fn analyze_paragraph(
             paragraph,
             host_projection,
             projection,
+            transform,
             styles,
             analysis,
             logical,

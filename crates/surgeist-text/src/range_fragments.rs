@@ -2,7 +2,7 @@
 use crate::protocol::{
     ProtocolError, ProtocolHandleKind,
     paragraph::{FragmentOwner, OriginIntersection},
-    prepared::{AlternativeDefinition, PresentationUnitKind},
+    prepared::{AlternativeDefinition, PresentationUnitKind, SelectedRelationEvent},
     protocol_error,
     readback::PreparedOriginIntersectionView,
 };
@@ -11,7 +11,11 @@ use crate::{
     PreparedAlternative, PreparedOrigin, PresentationRange, Range, Rect, Result,
     SpacingSlotDisposition, TextNumericPhase,
 };
-use std::{collections::BTreeMap, fmt, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+    sync::Arc,
+};
 
 /// A valid source request cannot invent a placed unit or an actual font lender.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -462,19 +466,55 @@ impl Layout {
                 }
             }
         }
-        let mut custody: Vec<_> = self
-            .inner
-            .lines
-            .iter()
-            .flat_map(|line| line.finalized.selected.presentation.units.iter())
-            .filter(|unit| {
-                matches!(
-                    unit.kind,
-                    PresentationUnitKind::Text | PresentationUnitKind::Deleted
-                )
-            })
-            .filter_map(|unit| overlap(unit.source, aggregate))
-            .collect();
+        // One genuine input row can lend several expansion emissions, including
+        // emissions on different lines. Deduplicate only that authenticated row,
+        // not arbitrary coincident original intervals from different owners.
+        let map = &analyzed.transform;
+        let mut seen = BTreeSet::new();
+        let mut custody = Vec::new();
+        for line in &self.inner.lines {
+            for event in &line
+                .finalized
+                .selected
+                .presentation
+                .selected_relation
+                .events
+            {
+                let SelectedRelationEvent::Base { event } = *event else {
+                    continue;
+                };
+                let row = match map.events()[event] {
+                    crate::transform::relation::RelationEvent::Text { atom } => {
+                        Some(map.emission_for_atom(atom).row)
+                    }
+                    crate::transform::relation::RelationEvent::Removal { row } => Some(row),
+                    _ => None,
+                };
+                if let Some(row) = row {
+                    if seen.insert((0, row)) {
+                        custody.extend(
+                            map.original_pieces(row)
+                                .iter()
+                                .filter(|piece| piece.origin == origin.index)
+                                .filter_map(|piece| overlap(piece.aggregate, aggregate)),
+                        );
+                    }
+                } else if let crate::transform::relation::RelationEvent::PhaseIDeleted {
+                    source,
+                    ..
+                } = map.events()[event]
+                    && seen.insert((1, event))
+                {
+                    custody.extend(
+                        analyzed
+                            .paragraph
+                            .origin_intersections(&analyzed.processed, source)
+                            .filter(|piece| piece.origin == origin.index)
+                            .filter_map(|piece| overlap(piece.aggregate, aggregate)),
+                    );
+                }
+            }
+        }
         custody.sort_unstable_by_key(|range| (range.start, range.end));
         let mut at = aggregate.start;
         for range in custody {

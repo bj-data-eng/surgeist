@@ -208,15 +208,7 @@ pub(crate) fn analyze(
         .collect();
     let mut boundaries = vec![Boundary::None; projection.atoms.len() + 1];
     let mut word_ranges = Vec::new();
-    let mut component_stops: Vec<_> = projection
-        .barriers
-        .iter()
-        .map(|at| {
-            projection
-                .atoms
-                .partition_point(|atom| atom.source.end <= *at)
-        })
-        .collect();
+    let mut component_stops = projection.barrier_atoms.clone();
     component_stops.extend([0, projection.atoms.len()]);
     component_stops.sort_unstable();
     component_stops.dedup();

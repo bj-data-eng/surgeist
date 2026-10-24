@@ -465,10 +465,21 @@ pub(super) fn select(
         prefix.domains.extend(output.domains);
         output = prefix;
     }
-    let projection = SourceProjection::from_atoms(
+    let barrier_atoms = projection
+        .barrier_atoms
+        .iter()
+        .filter_map(|&boundary| {
+            output
+                .originals
+                .iter()
+                .position(|atom| atom.is_some_and(|atom| atom >= boundary))
+        })
+        .collect();
+    let projection = SourceProjection::from_atoms_at_barriers(
         output.output.atoms,
         output.output.position,
         projection.barriers.clone(),
+        barrier_atoms,
     )?;
     let graphemes = projection
         .graphemes
@@ -531,8 +542,38 @@ pub(super) fn select(
     } else {
         crate::engine::shape::assign_fonts(prepared, &projection, &selected_analysis, &scopes)?
     };
+    let relation_end = if end.participant == tables.participants.len()
+        && request.context.end == crate::LineEnd::Paragraph
+    {
+        prepared.analyzed.transform.events().len()
+    } else {
+        end.relation_cut
+    };
+    let relation = start.relation_cut..relation_end;
+    let selected_relation = selected_relation(
+        prepared,
+        &output.output.units,
+        &output.originals,
+        start.participant,
+        relation.clone(),
+    );
+    let map = &prepared.analyzed.transform;
+    let source = selected_relation
+        .events
+        .iter()
+        .filter_map(|event| match event {
+            SelectedRelationEvent::Base { event } => Some(map.event_source(
+                *event,
+                &prepared.analyzed.paragraph,
+                prepared.analyzed.processed.source(),
+            )),
+            SelectedRelationEvent::Indication { .. } => None,
+        })
+        .reduce(|a, b| Range::new(a.start.min(b.start), a.end.max(b.end)))
+        .unwrap_or(Range::new(start.source_after, end.source_before));
     Ok(SelectedPresentation {
-        source: Range::new(start.source_after, end.source_before),
+        source,
+        selected_relation,
         units: output.output.units,
         projection,
         analysis: selected_analysis,
@@ -543,6 +584,54 @@ pub(super) fn select(
             pieces: output.output.pieces,
         }),
     })
+}
+
+fn selected_relation(
+    prepared: &crate::engine::PreparedData,
+    units: &[PresentationUnit],
+    originals: &[Option<usize>],
+    start_participant: usize,
+    relation: IndexRange<usize>,
+) -> SelectedRelation {
+    let map = &prepared.analyzed.transform;
+    let mut output = SelectedRelation {
+        atom_events: vec![usize::MAX; originals.len()],
+        ..SelectedRelation::default()
+    };
+    let mut base_positions = vec![None; relation.len()];
+    let mut cursor = relation.start;
+    for (unit, row) in units.iter().enumerate() {
+        let first = output.events.len();
+        if let Some(participant) = row.participant {
+            let end = map.cut_for_participant(start_participant + participant + 1);
+            for event in cursor..end {
+                base_positions[event - relation.start] = Some(output.events.len());
+                output.events.push(SelectedRelationEvent::Base { event });
+            }
+            cursor = end;
+            for atom in row.atoms.clone() {
+                if let Some(original) = originals[atom] {
+                    output.atom_events[atom] = base_positions
+                        [map.emission_for_atom(original).event - relation.start]
+                        .expect("selected body atom has its actual base event");
+                }
+            }
+        } else {
+            for atom in row.atoms.clone() {
+                debug_assert!(originals[atom].is_none());
+                output.atom_events[atom] = output.events.len();
+                output
+                    .events
+                    .push(SelectedRelationEvent::Indication { unit, atom });
+            }
+        }
+        output.unit_events.push(first..output.events.len());
+    }
+    for event in cursor..relation.end {
+        output.events.push(SelectedRelationEvent::Base { event });
+    }
+    debug_assert!(output.atom_events.iter().all(|event| *event != usize::MAX));
+    output
 }
 
 fn reset_originals(

@@ -114,12 +114,7 @@ pub(crate) fn prepare_joining_domains(
     }
     let projection = &analyzed.projection;
     let mut boundaries = vec![0, projection.atoms.len()];
-    boundaries.extend(
-        projection
-            .barriers
-            .iter()
-            .map(|at| projection.atoms.partition_point(|a| a.source.end <= *at)),
-    );
+    boundaries.extend(projection.barrier_atoms.iter().copied());
     boundaries.sort_unstable();
     boundaries.dedup();
     let mut scripts = Vec::new();
@@ -259,9 +254,7 @@ pub(crate) fn assign_fonts(
                     &prepared.styles[style].style,
                     &prepared.styles[info.1].style,
                 )
-                || projection
-                    .barriers
-                    .contains(&projection.atoms[end].source.start)
+                || projection.barrier_atoms.contains(&end)
             {
                 break;
             }
@@ -306,9 +299,7 @@ pub(crate) fn assign_fonts(
             };
             if let Some(prior) = assignments.last_mut()
                 && prior.atoms.end == atoms.start
-                && !projection
-                    .barriers
-                    .contains(&projection.atoms[atoms.start].source.start)
+                && !projection.barrier_atoms.contains(&atoms.start)
                 && scopes[prior.atoms.start] == scopes[first]
                 && prior.run.font == run.font
                 && prior.run.coords == run.coords
@@ -388,17 +379,7 @@ fn shape_impl(
     let mut output = ShapedData::default();
     let mut queries = Vec::new();
     let sources = AnalysisDataSources;
-    let barriers: BTreeSet<_> = input
-        .projection
-        .barriers
-        .iter()
-        .map(|at| {
-            input
-                .projection
-                .atoms
-                .partition_point(|atom| atom.source.end <= *at)
-        })
-        .collect();
+    let barriers: BTreeSet<_> = input.projection.barrier_atoms.iter().copied().collect();
     let count = input.projection.atoms.len();
     // Empty/default-font metrics are an explicit preparation-profile operation.
     // Body shaping never infers that policy from source content or body style.
@@ -617,17 +598,7 @@ pub(crate) fn finalize(
     } else {
         let computed =
             selected.request.alternative.is_some() || selected.request.incoming.is_some();
-        let barriers: BTreeSet<_> = input
-            .projection
-            .barriers
-            .iter()
-            .map(|at| {
-                input
-                    .projection
-                    .atoms
-                    .partition_point(|a| a.source.end <= *at)
-            })
-            .collect();
+        let barriers: BTreeSet<_> = input.projection.barrier_atoms.iter().copied().collect();
         let mut selected_domains: Vec<JoiningDomain> = Vec::new();
         for assignment in &presentation.assignments {
             let run = &assignment.run;
@@ -724,15 +695,9 @@ pub(crate) fn finalize(
                     let original_barriers: BTreeSet<_> = prepared
                         .analyzed
                         .projection
-                        .barriers
+                        .barrier_atoms
                         .iter()
-                        .map(|at| {
-                            prepared
-                                .analyzed
-                                .projection
-                                .atoms
-                                .partition_point(|a| a.source.end <= *at)
-                        })
+                        .copied()
                         .collect();
                     context = RunContext::new(
                         &prepared.analyzed.projection,

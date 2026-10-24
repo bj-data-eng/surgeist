@@ -44,35 +44,14 @@ pub(super) fn between(
     start_line: usize,
     end_line: usize,
 ) -> Result<SelectionGeometry> {
-    let mut output = Vec::new();
-    for line_index in start_line.min(end_line)..=start_line.max(end_line) {
-        let line = &layout.lines[line_index];
-        let data = &line.finalized.data;
-        let metrics = data.metrics;
-        let height = metrics.block_max - metrics.block_min;
-        let source_break_selected = line
-            .finalized
-            .selected
-            .presentation
-            .projection
-            .atoms
-            .iter()
-            .any(|atom| matches!(atom.code_point, 0x0a | 0x0d) && overlaps(atom.source, range));
-        let newline = if line.finalized.selected.request.context.end == LineEnd::Forced
-            && source_break_selected
-        {
-            (metrics.ascent + metrics.descent) * 0.25
-        } else {
-            0.0
-        };
-        let mut group: Option<(f64, f64)> = None;
-        let mut selected_clusters = 0;
-        for item in &data.visual_order {
-            let FinalizedVisualItem::Cluster(index) = *item else {
-                continue;
-            };
-            let cluster = &data.clusters[index];
-            let selected = overlaps(cluster.source, range)
+    with_membership(
+        layout,
+        start_line,
+        end_line,
+        |line_index, cluster_index| {
+            let line = &layout.lines[line_index];
+            let cluster = &line.finalized.data.clusters[cluster_index];
+            overlaps(cluster.source, range)
                 || (cluster.source.is_empty()
                     && line.finalized.mapping.pieces.iter().any(|piece| {
                         let crate::protocol::prepared::SelectedMappingKind::Replacement {
@@ -99,8 +78,54 @@ pub(super) fn between(
                         };
                         overlaps(cluster.presentation, piece.presentation)
                             && (overlaps(defining, range) || range.contains(anchor))
-                    }));
-            if selected {
+                    }))
+        },
+        |line_index| {
+            layout.lines[line_index]
+                .finalized
+                .selected
+                .presentation
+                .projection
+                .atoms
+                .iter()
+                .any(|atom| matches!(atom.code_point, 0x0a | 0x0d) && overlaps(atom.source, range))
+        },
+        |_| None,
+    )
+}
+
+/// The shared visual rectangle pass. Membership comes from either admitted
+/// original-source selection or exact selected-presentation relation coverage.
+/// Slot fallback retains real source-less controls, never transform removals.
+pub(super) fn with_membership(
+    layout: &PlacedLayout,
+    start_line: usize,
+    end_line: usize,
+    mut selected: impl FnMut(usize, usize) -> bool,
+    mut source_break_selected: impl FnMut(usize) -> bool,
+    mut slot_fallback: impl FnMut(usize) -> Option<(f64, f64)>,
+) -> Result<SelectionGeometry> {
+    let mut output = Vec::new();
+    for line_index in start_line.min(end_line)..=start_line.max(end_line) {
+        let line = &layout.lines[line_index];
+        let data = &line.finalized.data;
+        let metrics = data.metrics;
+        let height = metrics.block_max - metrics.block_min;
+        let newline = if line.finalized.selected.request.context.end == LineEnd::Forced
+            && source_break_selected(line_index)
+        {
+            (metrics.ascent + metrics.descent) * 0.25
+        } else {
+            0.0
+        };
+        let mut group: Option<(f64, f64)> = None;
+        let mut selected_clusters = 0;
+        for item in &data.visual_order {
+            let FinalizedVisualItem::Cluster(index) = *item else {
+                continue;
+            };
+            let cluster = &data.clusters[index];
+            if selected(line_index, index) {
                 selected_clusters += 1;
                 let end = cluster.x + cluster.advance;
                 let left = cluster.x.min(end);
@@ -109,7 +134,7 @@ pub(super) fn between(
                     (start.min(left), finish.max(right))
                 }));
             } else if let Some((start, end)) = group.take() {
-                push_local(&mut output, line_index, line, start, end, height)?;
+                push_local(&mut output, line_index, line, start, end, height, false)?;
             }
         }
         let extra = if line_index != end_line || (selected_clusters != 0 && metrics.advance == 0.0)
@@ -119,7 +144,15 @@ pub(super) fn between(
             0.0
         };
         if let Some((start, end)) = group {
-            push_local(&mut output, line_index, line, start, end + extra, height)?;
+            push_local(
+                &mut output,
+                line_index,
+                line,
+                start,
+                end + extra,
+                height,
+                false,
+            )?;
         } else if extra != 0.0 {
             push_local(
                 &mut output,
@@ -128,6 +161,21 @@ pub(super) fn between(
                 metrics.offset,
                 metrics.offset + extra,
                 height,
+                false,
+            )?;
+        }
+        if selected_clusters == 0
+            && extra == 0.0
+            && let Some((start, end)) = slot_fallback(line_index)
+        {
+            push_local(
+                &mut output,
+                line_index,
+                line,
+                start.min(end),
+                start.max(end),
+                height,
+                true,
             )?;
         }
     }
@@ -145,6 +193,7 @@ fn push_local(
     start: f64,
     end: f64,
     height: f64,
+    include_zero: bool,
 ) -> Result<()> {
     if !start.is_finite() || !end.is_finite() {
         return Err(crate::error::text_numeric_error(
@@ -154,7 +203,7 @@ fn push_local(
             end,
         ));
     }
-    if end > start {
+    if end > start || (include_zero && end == start) {
         let metrics = line.finalized.data.metrics;
         let rect = crate::layout::line_rect(
             line,

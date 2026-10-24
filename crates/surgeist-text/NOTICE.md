@@ -65,6 +65,26 @@ copyright and notice-preserving permission, retained with this distribution.
 Text owns checked source correspondence and exception integration; this resource
 does not establish other English dialects or languages.
 
+### icu_casemap 2.2.0
+
+This product depends on ICU4X full casing data, distributed by Unicode, Inc.:
+
+* License: [Unicode License 3.0](licenses/icu4x/LICENSE)
+* Homepage: [ICU4X](https://icu4x.unicode.org/)
+
+Text reads the safe public baked trie and checked full-mapping exceptions. Its
+source-attributed contextual traversal is described below.
+
+### icu_locale 2.2.0
+
+This product depends on ICU4X locale identifiers and compiled likely subtags:
+
+* License: [Unicode License 3.0](licenses/icu4x/LICENSE)
+* Homepage: [ICU4X](https://icu4x.unicode.org/)
+
+The extended paired data supplies the native implied-script policy without
+overriding an authored explicit script or inventing an unknown language.
+
 ### icu_normalizer 2.2.0
 
 This product depends on ICU4X normalization, distributed by the ICU4X Project Developers:
@@ -83,6 +103,16 @@ This product depends on ICU4X properties, distributed by the ICU4X Project Devel
 
 Source-local whitespace processing uses compiled Unicode bidi-control,
 East Asian Width and Script properties.
+
+### icu_provider 2.2.0
+
+This product depends directly on the safe ICU4X data-provider interface:
+
+* License: [Unicode License 3.0](licenses/icu4x/LICENSE)
+* Homepage: [ICU4X](https://icu4x.unicode.org/)
+
+It loads the qualified baked casing payload; Text does not decode unsafe wire
+representations or accept a mutable provider during finalization.
 
 ### icu_segmenter 2.2.0
 
@@ -167,5 +197,25 @@ Copyright © 2026 World Wide Web Consortium.
 
 The table is transcribed into Rust scalar matching and literal expectations;
 Surgeist owns execution, original-source correspondence and composed consumers.
-The crate's own license remains unchanged. No casing or width-mapping data is
-included by this contribution.
+The crate's own license remains unchanged. This table does not supply casing or
+width-mapping data.
+
+## ICU4X contextual casing adaptation
+
+The Text-owned contextual casing traversal and Greek uppercase helper adapt
+`components/casemap/src/internals.rs` and `src/greek_to_me/{mod,data}.rs` from
+ICU4X 2.2.0, revision `c9fac4e625ccb2c6a7aa35079fff9709db4385ac`, distributed
+by Unicode, Inc. The exact Greek table remains in
+`src/transform/greek_data.rs`; the adapted helpers are in
+`src/transform/{casing,greek}.rs`.
+
+* License: [Unicode License 3.0](licenses/icu4x/LICENSE)
+* Homepage: [ICU4X](https://icu4x.unicode.org/)
+* Source: [ICU4X casing internals](https://github.com/unicode-org/icu4x/blob/c9fac4e625ccb2c6a7aa35079fff9709db4385ac/components/casemap/src/internals.rs)
+
+The adaptation reads the paired ICU4X public baked trie and checked exception
+decoder. Text traverses immutable original components and retains each actual
+emission or removal's correspondence. It does not copy the provider's unsafe
+wire representation or reconstruct provenance from a mapped string. ICU4X
+locale data supplies native implied-script resolution; the authored language
+tag remains unchanged. The crate's own license remains unchanged.

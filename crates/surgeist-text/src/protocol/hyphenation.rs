@@ -213,13 +213,29 @@ fn pieces(
     prepared: &Arc<PreparedData>,
     atoms: IndexRange<usize>,
 ) -> impl Iterator<Item = HyphenationSourcePieceView<'_>> {
-    atoms.flat_map(move |atom| {
+    pieces_for_rows(
+        prepared,
+        atoms
+            .map(|atom| prepared.analyzed.transform.emission_for_atom(atom).row)
+            .collect(),
+    )
+}
+
+fn pieces_for_rows(
+    prepared: &Arc<PreparedData>,
+    mut rows: Vec<usize>,
+) -> impl Iterator<Item = HyphenationSourcePieceView<'_>> {
+    // Source observation follows actual input occurrence order. Several emitted
+    // components can share one row, including components in different EGCs.
+    rows.sort_unstable();
+    rows.dedup();
+    rows.into_iter().flat_map(move |row| {
         prepared
             .analyzed
             .paragraph
             .origin_intersections(
                 &prepared.analyzed.processed,
-                prepared.analyzed.projection.atoms[atom].source,
+                prepared.analyzed.transform.rows[row].source,
             )
             .filter(|row| !row.aggregate.is_empty())
             .map(|row| HyphenationSourcePieceView { prepared, row })
@@ -255,12 +271,29 @@ impl PreparedWordView<'_> {
     }
     pub fn source_pieces(&self) -> impl Iterator<Item = HyphenationSourcePieceView<'_>> {
         let row = &self.prepared.tables.words[self.index];
-        pieces(
-            self.prepared,
-            self.prepared.analyzed.words.rows()[row.lexical]
-                .atoms
-                .clone(),
-        )
+        let atoms = &self.prepared.analyzed.words.rows()[row.lexical].atoms;
+        let map = &self.prepared.analyzed.transform;
+        let start = map.emission_for_atom(atoms.start).event;
+        let mut end = map.emission_for_atom(atoms.end - 1).event + 1;
+        // Only consecutive transform removals in this genuine terminal seam
+        // belong here; an independent anchor/participant stops the extent.
+        while matches!(
+            map.events().get(end),
+            Some(crate::transform::relation::RelationEvent::Removal { .. })
+        ) {
+            end += 1;
+        }
+        let rows = map.events()[start..end]
+            .iter()
+            .filter_map(|event| match *event {
+                crate::transform::relation::RelationEvent::Text { atom } => {
+                    Some(map.emission_for_atom(atom).row)
+                }
+                crate::transform::relation::RelationEvent::Removal { row } => Some(row),
+                _ => None,
+            })
+            .collect();
+        pieces_for_rows(self.prepared, rows)
     }
     pub fn cuts(&self) -> impl Iterator<Item = PreparedHyphenationCutView<'_>> {
         self.prepared

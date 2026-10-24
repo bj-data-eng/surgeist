@@ -118,25 +118,14 @@ pub(crate) fn place_request(
             participants: prepared.tables.participants.len(),
         }));
     }
-    let source = Range::new(
-        request.lines[0]
-            .line
-            .inner
-            .selected
-            .presentation
-            .source
-            .start,
-        request
-            .lines
-            .last()
-            .ok_or_else(|| protocol_error(ProtocolError::EmptyPlacement))?
-            .line
-            .inner
-            .selected
-            .presentation
-            .source
-            .end,
-    );
+    // Semantic line order need not be monotone in original source: a delayed
+    // casing emission can follow a line which already owns a later input row.
+    let source = request
+        .lines
+        .iter()
+        .map(|line| line.line.inner.selected.presentation.source)
+        .reduce(|a, b| Range::new(a.start.min(b.start), a.end.max(b.end)))
+        .ok_or_else(|| protocol_error(ProtocolError::EmptyPlacement))?;
     let coverage = PlacedCoverage {
         start: start.clone(),
         end: end.clone(),
@@ -306,7 +295,7 @@ pub(crate) fn place_request(
         }
         PlacementMetricPolicy::Explicit => (flow.size.width, flow.size.width, flow.size.height),
     };
-    let interaction = editing::prepare(&prepared, &lines, &coverage)?;
+    let interaction = editing::prepare(&prepared, &lines)?;
     let placed = PlacedLayout {
         prepared,
         lines,

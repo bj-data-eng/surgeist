@@ -339,11 +339,23 @@ pub enum OverflowWrap {
 
 /// Computed presentation transformations executed before Unicode analysis.
 ///
-/// Full-size-kana implements the complete pinned CSS small-kana mapping. Casing,
-/// width conversion and math-auto are not accepted by this native input.
+/// Casing and full-size-kana execute in that order. Width conversion and
+/// math-auto are not accepted by this native input.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct TextTransform {
+    case: CaseTransform,
     full_size_kana: bool,
+}
+
+/// Computed contextual casing operation. Language comes from each component's
+/// own style; context and capitalization words use immutable pre-casing input.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum CaseTransform {
+    #[default]
+    None,
+    Uppercase,
+    Lowercase,
+    Capitalize,
 }
 
 impl TextTransform {
@@ -351,8 +363,20 @@ impl TextTransform {
     #[must_use]
     pub const fn none() -> Self {
         Self {
+            case: CaseTransform::None,
             full_size_kana: false,
         }
+    }
+
+    #[must_use]
+    pub const fn with_case(mut self, case: CaseTransform) -> Self {
+        self.case = case;
+        self
+    }
+
+    #[must_use]
+    pub const fn case(self) -> CaseTransform {
+        self.case
     }
 
     /// Enables or disables the complete full-size-kana operation.
