@@ -328,14 +328,16 @@ unchanged. `SourceRevision::checked_next` returns `None` at exhaustion.
 `AnalyzedSource::new(Source, Style)` captures the original source and effective
 style winners once, without fonts. The post-Phase-I transform phase executes
 before semantic Unicode analysis. `Style::word_space_transform` independently
-selects `WordSpaceTransform::{None, Space, IdeographicSpace}`. Space and
-IdeographicSpace replace original U+200B with U+0020 and U+3000 before casing;
+selects `WordSpaceTransform::{None, Space, IdeographicSpace, SpaceAutoPhrase,
+IdeographicSpaceAutoPhrase}`. The Space and IdeographicSpace choices, including
+their automatic-phrase forms, replace original U+200B with U+0020 and U+3000 before casing;
 None is neutral. The separator keeps its exact original/Phase-I range and
 plaintext value. Replacement is suppressed next to actual post-Phase-I forced
 breaks, ignoring inline boundaries and out-of-flow boxes. A collapsed LF is
 not a forced break. Generic optional-break controls are not interpreted as wbr.
-Native wbr uses the [separate occurrence capture](#native-wbr-separators);
-automatic phrase insertion is not exposed.
+Native wbr uses the [separate occurrence capture](#native-wbr-separators).
+The automatic-phrase forms additionally request
+[contextual phrase insertion](#native-automatic-phrase-separators).
 
 `TextTransform::none()` is neutral for casing, width and kana.
 `TextTransform::Set` holds a `TextTransformSet`. Its `.with_case` builder selects
@@ -488,6 +490,75 @@ selection can traverse that geometry while source extraction and plaintext omit
 generated characters. Bind those control contributors when lowering Text units
 to Layout; origin-only ordering is insufficient for source-less contributions.
 
+### Native automatic phrase separators
+
+`SpaceAutoPhrase` and `IdeographicSpaceAutoPhrase` request detection before
+separator replacement, casing, width and kana transformation. Text analyzes the
+complete connected supported-language segment with the pinned BudouX 0.9.3
+Japanese model. Font, origin and ordinary inline splits do not shorten that
+context; actual disconnected, in-flow atomic and hard-break boundaries do.
+Out-of-flow child interiors do not become text in the parent domain.
+
+Initial language admission requires validated primary language `ja`, with script
+absent or `Jpan`. Regions do not change that admission. Unknown languages,
+`und-Jpan`, `en-JP` and other explicit scripts produce no automatic proposals;
+Text never infers Japanese from glyphs. The private provider follows decoded
+semantic positions, preserving supplementary scalars and isolated UTF-16 units.
+The [model guide](../tools/automatic-phrase/README.md) identifies its exact source,
+generated tables and qualification limits. This support is not a general
+Japanese linguistic-quality or browser-equivalence guarantee.
+
+Use `ContextualSourceInput` to capture the actual balanced scope stream. Domain
+roots declare `SourceProcessingTopology::{Unknown, Complete}` independently of
+the exterior-trimming envelope. Inline scopes capture their actual complete
+`style: Option<Style>`; absence means unknown, not computed None. If a surviving
+candidate needs missing topology or owner Style, Text returns
+`MissingPhraseTopology` or `MissingPhraseScopeStyle`. Genuine no-output paths do
+not demand unused metadata. Supplied Styles and structural facts still validate
+when the request is inactive. Flat paragraph/source capture cannot infer a tree.
+
+Detection and expansion ownership differ. Incident text requests detection; the
+entire intervening inline-boundary strip determines the outermost owner,
+including empty scopes. That scope's Space can expand a child-detected candidate
+without itself requesting automatic detection. Its None suppresses expansion
+without borrowing the child's Style. Text chooses the earliest actual seam at
+which the winning scope is active and preserves genuine mixed-event order.
+
+CSS eligibility excludes typographic-unit interiors, adjacent GL/WJ/ZWJ and
+existing separators. The native recognized separator repertoire includes all Zs,
+U+200B, the seven explicit CSS examples, U+103D0 and U+12470; it is not an exhaustive
+Unicode word-separator property. Conservative punctuation attachment withholds
+proposals beside unfamiliar punctuation and removes punctuation-only chunks.
+The native policy emits internal model cuts, not exterior-domain separators.
+True forced-break adjacency suppresses insertion before demanding owner facts.
+A genuine wbr remains a separate occurrence: WbrNone can coexist with an emitted
+virtual separator, and two independently expandable occurrences can emit two.
+Generated replacement characters do not retrospectively suppress proposals.
+
+`PreparedText::scopes()` issues only contributing scope handles.
+`PreparedScope::view()` retains the capture ordinal, role, complete Style and
+each available boundary-control handle. Inline `boundaries` name the actual
+scope's own start/end controls, immediately inside its enter/exit events;
+coincident positions never establish this relationship. Incomplete endpoints
+remain absent rather than acquiring fabricated continuation controls.
+
+`PreparedText::virtual_separators()` issues distinct occurrence handles with
+their scope and exact empty source/processed anchors. Unit and Range views expose
+`virtual_separators()` alongside origins and controls. Generated mapping readback
+uses `separator_virtual()`; finalized geometry has
+`FinalizedFragmentOwner::VirtualSeparator`. These contributors never acquire an
+authored interval. Source extraction, plaintext, accessibility and automatic
+hyphenation retain original text only, while placed selection can traverse the
+real generated geometry. Shared grapheme units preserve every real contributor.
+Selected-indication rebuilds retain the same scope Style and occurrence identity.
+
+Layout binds a contributing domain to its actual paragraph container or an
+inline scope to its actual distinct start/end nodes. Both inline endpoints must
+match the same issued scope's own controls. The complete association survives in
+`InlineFragmentOwner::Scope`; neither boundary alone becomes the semantic owner.
+Missing native endpoints refuse at capture. No generated text is donated to a
+neighboring original or duplicated onto both boundaries.
+
 ## Style support
 
 [TextStyleFeature::ALL and support(phase)](../src/style_support.rs) enumerate the
@@ -512,7 +583,9 @@ analysis. These entries do not certify the entire CSS text-transform property.
 Standalone reports `RequiresCompleteTextNodeContext`.
 `TextStyleFeature::ExplicitWordSeparators` reports source-backed U+200B replacement
 in both phases. `NativeWbr` reports processed-paragraph support; standalone layout
-requires processed-source layout. Neither capability claims phrase detection.
+requires processed-source layout. `NativeAutomaticPhrases` reports contextual
+Japanese phrase execution in ProcessedParagraph, with the capture and detection
+limits above; standalone layout requires processed-source layout.
 
 `FontVariant::Normal`, `TextOverflow::Clip`, `TextAlignLast::Auto`, and
 `TextTransform::none()` are the exposed default values. Their acceptance does not

@@ -8,8 +8,8 @@ use crate::protocol::{
 };
 use crate::{
     EffectiveFontInstance, Error, ErrorCode, ErrorDetail, FinalizedFragment, FinalizedLine, Layout,
-    PreparedAlternative, PreparedControl, PreparedOrigin, PresentationRange, Range, Rect, Result,
-    SpacingSlotDisposition, TextNumericPhase,
+    PreparedAlternative, PreparedControl, PreparedOrigin, PreparedVirtualSeparator,
+    PresentationRange, Range, Rect, Result, SpacingSlotDisposition, TextNumericPhase,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -83,6 +83,7 @@ struct Unit<'a> {
     pieces: Vec<Piece<'a>>,
     alternatives: Vec<usize>,
     controls: Vec<usize>,
+    virtuals: Vec<usize>,
     defining: Vec<OriginIntersection>,
     attributed_cuts: Vec<usize>,
     presentation: Range,
@@ -154,6 +155,18 @@ impl<'a> SourceRangeUnit<'a> {
             prepared: Arc::clone(&self.layout.inner.prepared),
             index,
         })
+    }
+    /// All actual virtual occurrences contributing to this selected grapheme.
+    pub fn virtual_separators(
+        &self,
+    ) -> impl ExactSizeIterator<Item = PreparedVirtualSeparator> + '_ {
+        self.unit
+            .virtuals
+            .iter()
+            .map(|&index| PreparedVirtualSeparator {
+                prepared: Arc::clone(&self.layout.inner.prepared),
+                index,
+            })
     }
     /// Complete Source definitions, distinct from source-empty associations.
     pub fn defining_sources(
@@ -556,6 +569,7 @@ impl Layout {
             let mut origin_fragments: BTreeMap<usize, Vec<(Range, usize)>> = BTreeMap::new();
             let mut alternatives: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
             let mut control_fragments: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+            let mut virtual_fragments: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
             for (index, fragment) in line.data.fragments.iter().enumerate() {
                 match fragment.association.owner {
                     FragmentOwner::Origin(origin) => {
@@ -573,6 +587,9 @@ impl Layout {
                     }
                     FragmentOwner::Control(control) => {
                         control_fragments.entry(control).or_default().push(index);
+                    }
+                    FragmentOwner::VirtualSeparator(owner) => {
+                        virtual_fragments.entry(owner).or_default().push(index);
                     }
                 }
             }
@@ -658,12 +675,21 @@ impl Layout {
                     }
                 }
                 let mut control_owners = Vec::new();
+                let mut virtual_owners = Vec::new();
                 for &unit in &group_units {
-                    if let PresentationUnitKind::GeneratedSeparator { control } =
-                        presentation.units[unit].kind
+                    if let PresentationUnitKind::GeneratedSeparator {
+                        owner: crate::transform::relation::GeneratedSeparatorOwner::Control(control),
+                    } = presentation.units[unit].kind
                         && !control_owners.contains(&control)
                     {
                         control_owners.push(control);
+                    }
+                    if let PresentationUnitKind::GeneratedSeparator {
+                        owner: crate::transform::relation::GeneratedSeparatorOwner::Virtual(index),
+                    } = presentation.units[unit].kind
+                        && !virtual_owners.contains(&index)
+                    {
+                        virtual_owners.push(index);
                     }
                 }
                 let mut alternative_owners = group_units
@@ -842,6 +868,11 @@ impl Layout {
                         fragments.extend(rows);
                     }
                 }
+                for owner in &virtual_owners {
+                    if let Some(rows) = virtual_fragments.get(owner) {
+                        fragments.extend(rows);
+                    }
+                }
                 fragments.sort_unstable();
                 fragments.dedup();
                 units.push(Unit {
@@ -855,6 +886,7 @@ impl Layout {
                         .into_iter()
                         .map(|occurrence| self.inner.prepared.tables.control_rows[occurrence])
                         .collect(),
+                    virtuals: virtual_owners,
                     alternatives: alternative_owners,
                     defining,
                     attributed_cuts,

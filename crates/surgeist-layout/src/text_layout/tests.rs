@@ -8,6 +8,8 @@ use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
 use crate::*;
 use surgeist_text::{ParagraphBaseDirection, ParagraphControlKind, Source, Wrap};
 
+#[path = "tests/automatic_phrase.rs"]
+mod automatic_phrase;
 #[path = "tests/automatic_priority.rs"]
 mod automatic_priority;
 #[path = "tests/before_indication_bidi.rs"]
@@ -416,7 +418,7 @@ fn assert_fractional_float_clearance<S: LayoutScalar>(explicit_clear: bool) {
         let finalized = batch
             .final_inline_fragments()
             .iter()
-            .find(|entry| entry.node() == node)
+            .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(node))
             .unwrap()
             .fragment()
             .finalized_fragment()
@@ -747,7 +749,7 @@ fn assert_three_logical_allocations_survive_line_anchor_translation<S: LayoutSca
         let entry = batch
             .final_inline_fragments()
             .iter()
-            .find(|entry| entry.node() == node)
+            .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(node))
             .unwrap();
         let fragment = entry.fragment().finalized_fragment();
         assert_eq!(
@@ -983,7 +985,7 @@ fn assert_discretionary_alternatives<S: LayoutScalar>() {
             )
         })
         .unwrap();
-    assert_eq!(replacement.node(), 2);
+    assert_eq!(replacement.owner(), &crate::InlineFragmentOwner::Node(2));
     let fragment = replacement.fragment().finalized_fragment();
     assert_eq!(
         fragment.view().owner(),
@@ -1202,7 +1204,7 @@ fn assert_rtl_atomic_control_slots<S: LayoutScalar>() {
     let finalized = batch
         .final_inline_fragments()
         .iter()
-        .find(|entry| entry.node() == 1)
+        .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(1))
         .unwrap()
         .fragment()
         .finalized_fragment()
@@ -1305,7 +1307,7 @@ fn assert_reused_preparation_runs<S: LayoutScalar>() {
         batch
             .final_inline_fragments()
             .iter()
-            .find(|entry| entry.node() == node)
+            .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(node))
             .unwrap()
             .fragment()
             .finalized_fragment()

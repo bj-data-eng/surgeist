@@ -188,16 +188,19 @@ fn classify(
 
 pub(super) fn apply(
     input: SourceProjection,
-    styles: &[AnalyzedStyleRun],
+    styles: &mut Vec<AnalyzedStyleRun>,
     processed: &ProcessedSource,
     paragraph: &ParagraphData,
 ) -> Result<(SourceProjection, Arc<TransformMap>)> {
     let captured =
         crate::engine::analysis::wrapping::transform_events(processed, paragraph, &input);
     let mut map = TransformMap::identity(&input, styles, processed, paragraph, captured.clone());
+    let proposals =
+        super::separators::automatic::proposals(&input, styles, processed, paragraph, &mut map)?;
     let input = super::separators::apply(input, &mut map, &captured, styles, processed, paragraph)?;
-    let (input, captured) =
-        super::separators::wbr(input, &mut map, captured, styles, processed, paragraph)?;
+    let (input, captured) = super::separators::wbr(
+        input, &mut map, captured, styles, processed, paragraph, proposals,
+    )?;
     let values: Vec<_> = input.atoms.iter().map(|atom| atom.code_point).collect();
     let casing = map
         .components
@@ -295,7 +298,7 @@ pub(super) fn apply(
             if transform == TextTransform::MathAuto {
                 let pieces = match map.components[row].owner {
                     ComponentOwner::Original(original) => map.original_pieces(original),
-                    ComponentOwner::Wbr(_) => &[],
+                    ComponentOwner::Wbr(_) | ComponentOwner::Virtual(_) => &[],
                 };
                 if !pieces.is_empty()
                     && pieces.iter().all(|piece| {
@@ -338,7 +341,7 @@ pub(super) fn apply(
                 ComponentOwner::Original(original) => {
                     output[span.start] != map.rows[original].code_point
                 }
-                ComponentOwner::Wbr(_) => true,
+                ComponentOwner::Wbr(_) | ComponentOwner::Virtual(_) => true,
             }
     });
     map.emissions.clear();

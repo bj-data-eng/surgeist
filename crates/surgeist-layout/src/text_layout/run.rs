@@ -81,7 +81,7 @@ pub(crate) struct Output<Node, S: LayoutScalar> {
     pub report: MixedInlineRunReportOf<S>,
     pub paragraph: PendingParagraph<Node>,
     pub line_bounds: Vec<LineBounds<S>>,
-    pub fragments: Vec<(Node, InlineFragmentOutputOf<S>)>,
+    pub fragments: Vec<(crate::InlineFragmentOwner<Node>, InlineFragmentOutputOf<S>)>,
     pub atomic_origins: Vec<(Node, Point<f64>)>,
     pub static_positions: Vec<(Node, Point<S>)>,
 }
@@ -641,7 +641,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             .push(PostLineClearIntent::None);
         for fragment in line.finalized.fragments() {
             let view = fragment.view();
-            let node = fragment_node(binding, view.owner());
+            let owner = fragment_owner(binding, view.owner());
             let rect = view
                 .bounds()
                 .map(|rect| {
@@ -656,7 +656,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 })
                 .transpose()?;
             fragments.push((
-                node,
+                owner,
                 InlineFragmentOutputOf::new(
                     fragment,
                     rect,
@@ -814,11 +814,11 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     })
 }
 
-fn fragment_node<Node: Copy + Eq>(
+fn fragment_owner<Node: Copy + Eq>(
     binding: &TextParagraphBinding<Node>,
     owner: surgeist_text::FinalizedFragmentOwner,
-) -> Node {
-    match owner {
+) -> crate::InlineFragmentOwner<Node> {
+    let node = match owner {
         surgeist_text::FinalizedFragmentOwner::Origin(origin) => {
             binding
                 .origins
@@ -869,7 +869,19 @@ fn fragment_node<Node: Copy + Eq>(
                 }
             }
         }
-    }
+        surgeist_text::FinalizedFragmentOwner::VirtualSeparator(occurrence) => {
+            let scope = occurrence.view().scope();
+            return crate::InlineFragmentOwner::Scope(
+                binding
+                    .scopes
+                    .iter()
+                    .find(|binding| binding.scope == scope)
+                    .expect("capture admitted the exact contributing scope")
+                    .clone(),
+            );
+        }
+    };
+    crate::InlineFragmentOwner::Node(node)
 }
 
 fn raw_box<Node, S: LayoutScalar>(

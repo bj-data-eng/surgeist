@@ -287,11 +287,13 @@ fn child_domain_hole_cannot_supply_or_remove_the_parent_words_counting_units() {
             }],
             scopes: vec![
                 SourceProcessingScope::Block {
+                    topology: crate::SourceProcessingTopology::Unknown,
                     used_direction: ParagraphBaseDirection::LeftToRight,
                     trim: WhiteSpaceTrim::default(),
                     base_style: style(),
                 },
                 SourceProcessingScope::OutOfFlowBlock {
+                    topology: crate::SourceProcessingTopology::Unknown,
                     used_direction: ParagraphBaseDirection::LeftToRight,
                     trim: WhiteSpaceTrim::default(),
                     base_style: style(),

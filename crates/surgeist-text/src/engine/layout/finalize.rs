@@ -499,15 +499,18 @@ pub(super) fn finalize(
             if unit.presentation.start >= cluster.presentation.end {
                 break;
             }
-            if let crate::protocol::prepared::PresentationUnitKind::GeneratedSeparator { control } =
+            if let crate::protocol::prepared::PresentationUnitKind::GeneratedSeparator { owner } =
                 unit.kind
             {
-                add_owned_fragment_bounds(
-                    &owned_fragments,
-                    &mut data.fragments,
-                    crate::protocol::paragraph::FragmentOwner::Control(control),
-                    rect,
-                );
+                let owner = match owner {
+                    crate::transform::relation::GeneratedSeparatorOwner::Control(index) => {
+                        crate::protocol::paragraph::FragmentOwner::Control(index)
+                    }
+                    crate::transform::relation::GeneratedSeparatorOwner::Virtual(index) => {
+                        crate::protocol::paragraph::FragmentOwner::VirtualSeparator(index)
+                    }
+                };
+                add_owned_fragment_bounds(&owned_fragments, &mut data.fragments, owner, rect);
             }
             if let crate::protocol::prepared::PresentationUnitKind::Replacement { alternative } =
                 unit.kind
@@ -623,6 +626,7 @@ fn fragment_key(owner: crate::protocol::paragraph::FragmentOwner) -> (u8, usize)
         FragmentOwner::Origin(index) => (0, index),
         FragmentOwner::Control(index) => (1, index),
         FragmentOwner::Alternative(index) => (2, index),
+        FragmentOwner::VirtualSeparator(index) => (3, index),
     }
 }
 

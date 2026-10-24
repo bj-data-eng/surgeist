@@ -45,12 +45,13 @@ pub(crate) struct AnalyzedStyleRun {
 pub(crate) enum AnalyzedStyleOwner {
     Source(Range),
     Control(usize),
+    Scope(usize),
 }
 impl AnalyzedStyleRun {
     pub(crate) fn source_range(&self) -> Option<Range> {
         match self.owner {
             AnalyzedStyleOwner::Source(range) => Some(range),
-            AnalyzedStyleOwner::Control(_) => None,
+            AnalyzedStyleOwner::Control(_) | AnalyzedStyleOwner::Scope(_) => None,
         }
     }
 }

@@ -207,6 +207,9 @@ pub enum surgeist_layout::InlineBreakOpportunity
 pub surgeist_layout::InlineBreakOpportunity::Allowed
 pub surgeist_layout::InlineBreakOpportunity::Mandatory
 pub surgeist_layout::InlineBreakOpportunity::Prohibited
+pub enum surgeist_layout::InlineFragmentOwner<Node>
+pub surgeist_layout::InlineFragmentOwner::Node(Node)
+pub surgeist_layout::InlineFragmentOwner::Scope(surgeist_layout::TextScopeBinding<Node>)
 pub enum surgeist_layout::InlineMetricsError<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::InlineMetricsError::BaselineExceedsLineExtent
 pub surgeist_layout::InlineMetricsError::BaselineExceedsLineExtent::baseline: S
@@ -734,11 +737,21 @@ pub surgeist_layout::TextBindingError::ParticipantOrder
 pub surgeist_layout::TextBindingError::ParticipantRole
 pub surgeist_layout::TextBindingError::RootMismatch
 pub surgeist_layout::TextBindingError::RunMembership
+pub surgeist_layout::TextBindingError::ScopeAssociation
+pub surgeist_layout::TextBindingError::ScopeBoundaryCapture
+pub surgeist_layout::TextBindingError::ScopeBoundaryOrder
+pub surgeist_layout::TextBindingError::ScopeCoverage
+pub surgeist_layout::TextBindingError::ScopeOccurrenceMembership
 pub surgeist_layout::TextBindingError::TabReferenceDirection
 pub surgeist_layout::TextBindingError::TerminalBlockEdge
 pub enum surgeist_layout::TextJustification
 pub surgeist_layout::TextJustification::None
 pub surgeist_layout::TextJustification::Spaces
+pub enum surgeist_layout::TextScopeAssociation<Node>
+pub surgeist_layout::TextScopeAssociation::Inline
+pub surgeist_layout::TextScopeAssociation::Inline::end: Node
+pub surgeist_layout::TextScopeAssociation::Inline::start: Node
+pub surgeist_layout::TextScopeAssociation::ParagraphContainer(Node)
 pub enum surgeist_layout::TrackComponentOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::TrackComponentOf::LineNames(alloc::vec::Vec<alloc::string::String>)
 pub surgeist_layout::TrackComponentOf::Repeat(surgeist_layout::TrackRepetitionOf<S>)
@@ -1054,7 +1067,7 @@ pub const fn surgeist_layout::InlineBoundaryInputOf<S>::writing_mode(self) -> su
 pub struct surgeist_layout::InlineFragmentOutputEntryOf<Node, S: surgeist_layout::LayoutScalar>
 impl<Node: core::marker::Copy, S: surgeist_layout::LayoutScalar> surgeist_layout::InlineFragmentOutputEntryOf<Node, S>
 pub fn surgeist_layout::InlineFragmentOutputEntryOf<Node, S>::fragment(&self) -> &surgeist_layout::InlineFragmentOutputOf<S>
-pub const fn surgeist_layout::InlineFragmentOutputEntryOf<Node, S>::node(&self) -> Node
+pub const fn surgeist_layout::InlineFragmentOutputEntryOf<Node, S>::owner(&self) -> &surgeist_layout::InlineFragmentOwner<Node>
 pub struct surgeist_layout::InlineFragmentOutputOf<S: surgeist_layout::LayoutScalar>
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::InlineFragmentOutputOf<S>
 pub const fn surgeist_layout::InlineFragmentOutputOf<S>::baseline(&self) -> surgeist_layout::Point<S>
@@ -1582,10 +1595,14 @@ pub surgeist_layout::TextParagraphBinding::line_strut: core::option::Option<surg
 pub surgeist_layout::TextParagraphBinding::nodes: alloc::vec::Vec<Node>
 pub surgeist_layout::TextParagraphBinding::origins: alloc::vec::Vec<surgeist_layout::TextOriginBinding<Node>>
 pub surgeist_layout::TextParagraphBinding::prepared: surgeist_text::protocol::PreparedText
+pub surgeist_layout::TextParagraphBinding::scopes: alloc::vec::Vec<surgeist_layout::TextScopeBinding<Node>>
 pub struct surgeist_layout::TextParticipation
 impl surgeist_layout::TextParticipation
 pub const fn surgeist_layout::TextParticipation::new(origin: surgeist_text::protocol::PreparedOrigin) -> Self
 pub const fn surgeist_layout::TextParticipation::origin(&self) -> &surgeist_text::protocol::PreparedOrigin
+pub struct surgeist_layout::TextScopeBinding<Node>
+pub surgeist_layout::TextScopeBinding::association: surgeist_layout::TextScopeAssociation<Node>
+pub surgeist_layout::TextScopeBinding::scope: surgeist_text::protocol::PreparedScope
 pub struct surgeist_layout::TrackComponentListOf<S: surgeist_layout::LayoutScalar>(_)
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::TrackComponentListOf<S>
 pub fn surgeist_layout::TrackComponentListOf<S>::as_slice(&self) -> &[surgeist_layout::TrackComponentOf<S>]

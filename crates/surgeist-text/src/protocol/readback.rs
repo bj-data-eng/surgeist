@@ -23,8 +23,8 @@ use crate::{
 use super::{
     FinalizedFragment, FinalizedLine, LineSelectionRequest, PreparedAlternative, PreparedAtomic,
     PreparedBoundary, PreparedControl, PreparedOpportunity, PreparedOrigin, PreparedParticipant,
-    PreparedText, PreparedUnit, PresentationRange, SelectedLine, SpacingSlot, SpacingSlotFeedback,
-    SpacingSlotOwner,
+    PreparedScope, PreparedScopeRole, PreparedText, PreparedUnit, PreparedVirtualSeparator,
+    PresentationRange, SelectedLine, SpacingSlot, SpacingSlotFeedback, SpacingSlotOwner,
     paragraph::{FragmentOwner, OriginIntersection, ParagraphControlKind, ParagraphOriginKind},
     prepared::{
         AlternativeData, AlternativeDefinition, AtomicData, BoundaryData, ControlData,
@@ -181,7 +181,177 @@ prepared_view!(
     AlternativeData
 );
 
+/// Borrowed observation of an actual contributing captured scope.
+pub struct PreparedScopeView<'a> {
+    prepared: &'a Arc<PreparedData>,
+    index: usize,
+}
+impl fmt::Debug for PreparedScopeView<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PreparedScopeView")
+            .field("ordinal", &self.index)
+            .finish_non_exhaustive()
+    }
+}
+impl PreparedScope {
+    #[must_use]
+    pub fn view(&self) -> PreparedScopeView<'_> {
+        PreparedScopeView {
+            prepared: &self.prepared,
+            index: self.index,
+        }
+    }
+}
+impl PreparedScopeView<'_> {
+    #[must_use]
+    pub fn handle(&self) -> PreparedScope {
+        PreparedScope {
+            prepared: Arc::clone(self.prepared),
+            index: self.index,
+        }
+    }
+    /// Ordinal in the authentic producer scope capture, never scope identity.
+    #[must_use]
+    pub fn capture_ordinal(&self) -> usize {
+        self.prepared.analyzed.transform.scopes[self.index].ordinal
+    }
+    #[must_use]
+    pub fn role(&self) -> PreparedScopeRole {
+        self.prepared.analyzed.transform.scopes[self.index].role
+    }
+    #[must_use]
+    pub fn style(&self) -> &crate::Style {
+        &self.prepared.analyzed.transform.scopes[self.index].style
+    }
+    /// Actual available entry occurrence; incomplete capture remains absent.
+    #[must_use]
+    pub fn entry_control(&self) -> Option<PreparedControl> {
+        self.prepared.analyzed.transform.scopes[self.index]
+            .entry_control
+            .map(|occurrence| PreparedControl {
+                prepared: Arc::clone(self.prepared),
+                index: control_index(self.prepared, occurrence),
+            })
+    }
+    /// Actual available exit occurrence; incomplete capture remains absent.
+    #[must_use]
+    pub fn exit_control(&self) -> Option<PreparedControl> {
+        self.prepared.analyzed.transform.scopes[self.index]
+            .exit_control
+            .map(|occurrence| PreparedControl {
+                prepared: Arc::clone(self.prepared),
+                index: control_index(self.prepared, occurrence),
+            })
+    }
+}
+
+/// Borrowed observation of one real emitted virtual separator occurrence.
+pub struct PreparedVirtualSeparatorView<'a> {
+    prepared: &'a Arc<PreparedData>,
+    index: usize,
+}
+impl fmt::Debug for PreparedVirtualSeparatorView<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PreparedVirtualSeparatorView")
+            .field("ordinal", &self.index)
+            .finish_non_exhaustive()
+    }
+}
+impl PreparedVirtualSeparator {
+    #[must_use]
+    pub fn view(&self) -> PreparedVirtualSeparatorView<'_> {
+        PreparedVirtualSeparatorView {
+            prepared: &self.prepared,
+            index: self.index,
+        }
+    }
+}
+impl PreparedVirtualSeparatorView<'_> {
+    #[must_use]
+    pub fn handle(&self) -> PreparedVirtualSeparator {
+        PreparedVirtualSeparator {
+            prepared: Arc::clone(self.prepared),
+            index: self.index,
+        }
+    }
+    #[must_use]
+    pub fn scope(&self) -> PreparedScope {
+        PreparedScope {
+            prepared: Arc::clone(self.prepared),
+            index: self.prepared.analyzed.transform.virtuals[self.index].scope,
+        }
+    }
+    /// Real emitted occurrence ordinal, independent of its numeric source seam.
+    #[must_use]
+    pub fn occurrence_ordinal(&self) -> usize {
+        self.index
+    }
+    #[must_use]
+    pub fn source_position(&self) -> SourcePosition {
+        SourcePosition::from_unchecked(self.prepared.analyzed.transform.virtuals[self.index].source)
+    }
+    #[must_use]
+    pub fn processed_position(&self) -> ProcessedPosition {
+        processed_position(
+            self.prepared,
+            self.prepared.analyzed.transform.virtuals[self.index].processed,
+        )
+    }
+    /// Actual controls before this event seam, in authentic mixed-event order.
+    pub fn preceding_controls(&self) -> impl Iterator<Item = PreparedControl> + '_ {
+        self.control_sequence()
+            .take(self.prepared.analyzed.transform.virtuals[self.index].control_cut)
+    }
+    /// Actual controls after this event seam, in authentic mixed-event order.
+    pub fn following_controls(&self) -> impl Iterator<Item = PreparedControl> + '_ {
+        self.control_sequence()
+            .skip(self.prepared.analyzed.transform.virtuals[self.index].control_cut)
+    }
+    fn control_sequence(&self) -> impl Iterator<Item = PreparedControl> + '_ {
+        self.prepared
+            .analyzed
+            .paragraph
+            .anchor_order
+            .iter()
+            .filter_map(|anchor| {
+                let super::paragraph::ParagraphAnchorItem::Control(occurrence) = anchor.item else {
+                    return None;
+                };
+                Some(PreparedControl {
+                    prepared: Arc::clone(self.prepared),
+                    index: control_index(self.prepared, occurrence),
+                })
+            })
+    }
+    /// Every actual logical unit containing an emission from this occurrence.
+    pub fn units(&self) -> impl Iterator<Item = PreparedUnit> + '_ {
+        self.prepared.tables.units.iter().enumerate()
+            .filter(|(_, unit)| unit.atoms.clone().any(|atom| {
+                matches!(self.prepared.analyzed.transform.component_for_atom(atom).owner,
+                    crate::transform::relation::ComponentOwner::Virtual(owner) if owner == self.index)
+            }))
+            .map(|(index, _)| PreparedUnit { prepared: Arc::clone(self.prepared), index })
+    }
+}
+
 impl PreparedText {
+    /// Actual distinct scopes which own emitted virtual occurrences.
+    pub fn scopes(&self) -> impl ExactSizeIterator<Item = PreparedScope> + '_ {
+        (0..self.inner.analyzed.transform.scopes.len()).map(|index| PreparedScope {
+            prepared: Arc::clone(&self.inner),
+            index,
+        })
+    }
+    /// Actual emitted virtual occurrences in semantic order.
+    pub fn virtual_separators(
+        &self,
+    ) -> impl ExactSizeIterator<Item = PreparedVirtualSeparator> + '_ {
+        (0..self.inner.analyzed.transform.virtuals.len()).map(|index| PreparedVirtualSeparator {
+            prepared: Arc::clone(&self.inner),
+            index,
+        })
+    }
+
     /// Borrows every original occurrence, including distinct empty occurrences.
     pub fn origin_views(&self) -> impl ExactSizeIterator<Item = PreparedOriginView<'_>> {
         (0..self.inner.analyzed.paragraph.origins.len()).map(|index| PreparedOriginView {
@@ -414,6 +584,21 @@ impl PreparedUnitView<'_> {
             .map(|occurrence| PreparedControl {
                 prepared: Arc::clone(self.prepared),
                 index: control_index(self.prepared, occurrence),
+            })
+    }
+
+    /// All actual virtual contributors, retaining distinct occurrences at equal seams.
+    pub fn virtual_separators(
+        &self,
+    ) -> impl ExactSizeIterator<Item = PreparedVirtualSeparator> + '_ {
+        self.prepared
+            .analyzed
+            .transform
+            .virtuals_for_atoms(self.data().atoms.clone())
+            .into_iter()
+            .map(|index| PreparedVirtualSeparator {
+                prepared: Arc::clone(self.prepared),
+                index,
             })
     }
 
@@ -834,6 +1019,7 @@ pub enum FinalizedFragmentOwner {
     Origin(PreparedOrigin),
     Control(PreparedControl),
     Alternative(PreparedAlternative),
+    VirtualSeparator(PreparedVirtualSeparator),
 }
 
 /// One actual selected occurrence and its optional original-source association.
@@ -864,6 +1050,12 @@ impl FinalizedFragmentView<'_> {
                 FinalizedFragmentOwner::Control(PreparedControl {
                     prepared: Arc::clone(self.prepared),
                     index: control_index(self.prepared, occurrence),
+                })
+            }
+            FragmentOwner::VirtualSeparator(index) => {
+                FinalizedFragmentOwner::VirtualSeparator(PreparedVirtualSeparator {
+                    prepared: Arc::clone(self.prepared),
+                    index,
                 })
             }
             FragmentOwner::Alternative(index) => {
@@ -1057,9 +1249,25 @@ impl SelectedMappingView<'_> {
     /// The genuine control which emitted this source-less separator.
     pub fn separator_control(&self) -> Option<PreparedControl> {
         match self.piece.kind {
-            SelectedMappingKind::GeneratedSeparator { control } => Some(PreparedControl {
+            SelectedMappingKind::GeneratedSeparator {
+                owner: crate::transform::relation::GeneratedSeparatorOwner::Control(control),
+            } => Some(PreparedControl {
                 prepared: Arc::clone(self.prepared),
                 index: control_index(self.prepared, control),
+            }),
+            _ => None,
+        }
+    }
+
+    /// The actual virtual occurrence which emitted this source-less separator.
+    #[must_use]
+    pub fn separator_virtual(&self) -> Option<PreparedVirtualSeparator> {
+        match self.piece.kind {
+            SelectedMappingKind::GeneratedSeparator {
+                owner: crate::transform::relation::GeneratedSeparatorOwner::Virtual(index),
+            } => Some(PreparedVirtualSeparator {
+                prepared: Arc::clone(self.prepared),
+                index,
             }),
             _ => None,
         }

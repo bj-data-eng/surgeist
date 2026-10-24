@@ -1432,13 +1432,13 @@ fn fri06_c02_block_text_containing_baselines_align_flex_items_both_scalars() {
         let first_fragment = batch
             .final_inline_fragments()
             .iter()
-            .find(|entry| entry.node() == 3)
+            .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(3))
             .unwrap()
             .fragment();
         let second_fragment = batch
             .final_inline_fragments()
             .iter()
-            .find(|entry| entry.node() == 4)
+            .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(4))
             .unwrap()
             .fragment();
         assert_eq!(

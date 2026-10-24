@@ -12,7 +12,7 @@ pub(super) fn assert_same<S: LayoutScalar>(
             .iter()
             .map(|row| {
                 let f = row.fragment();
-                (row.node(), f.rect(), f.baseline(), f.line_index())
+                (row.owner().clone(), f.rect(), f.baseline(), f.line_index())
             })
             .collect::<Vec<_>>()
     };

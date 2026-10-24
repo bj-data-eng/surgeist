@@ -1029,7 +1029,12 @@ where
             }
         }
         let mut groups: Vec<TextFragmentGroup<Tree::Node, S>> = Vec::new();
-        for (node, fragment) in output.fragments {
+        let mut scope_fragments = Vec::new();
+        for (owner, fragment) in output.fragments {
+            let crate::InlineFragmentOwner::Node(node) = owner else {
+                scope_fragments.push(crate::InlineFragmentOutputEntryOf::new(owner, fragment));
+                continue;
+            };
             let index = groups
                 .iter()
                 .position(|(subject, _, _, _)| *subject == node);
@@ -1100,6 +1105,11 @@ where
             let state = tree
                 .text_computation()
                 .expect("capture branch retains actual Text state");
+            state.record_scope_fragments(
+                output.paragraph.container,
+                output.paragraph.nodes.clone(),
+                scope_fragments,
+            );
             state.record_atomic_origins(output.atomic_origins);
             state.record(output.paragraph);
         }

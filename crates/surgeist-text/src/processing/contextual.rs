@@ -18,24 +18,43 @@ pub struct WhiteSpaceTrim {
     pub discard_inner: bool,
 }
 
+/// Whether every actual inline scope in this lexical domain was captured.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourceProcessingTopology {
+    Unknown,
+    Complete,
+}
+
+/// Genuine controls immediately inside this scope's own entry and exit.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SourceProcessingScopeBoundaries {
+    pub start: usize,
+    pub end: usize,
+}
+
 /// Actual box role. Block domains capture their entire effective base style.
 #[derive(Clone, Debug)]
 pub enum SourceProcessingScope {
     Inline {
         trim: WhiteSpaceTrim,
+        style: Option<Style>,
+        boundaries: Option<SourceProcessingScopeBoundaries>,
     },
     Block {
+        topology: SourceProcessingTopology,
         trim: WhiteSpaceTrim,
         base_style: Style,
         used_direction: ParagraphBaseDirection,
     },
     AtomicBlock {
+        topology: SourceProcessingTopology,
         trim: WhiteSpaceTrim,
         base_style: Style,
         used_direction: ParagraphBaseDirection,
         atomic: usize,
     },
     OutOfFlowBlock {
+        topology: SourceProcessingTopology,
         trim: WhiteSpaceTrim,
         base_style: Style,
         used_direction: ParagraphBaseDirection,
@@ -45,7 +64,7 @@ pub enum SourceProcessingScope {
 impl SourceProcessingScope {
     fn trim(&self) -> WhiteSpaceTrim {
         match self {
-            Self::Inline { trim }
+            Self::Inline { trim, .. }
             | Self::Block { trim, .. }
             | Self::AtomicBlock { trim, .. }
             | Self::OutOfFlowBlock { trim, .. } => *trim,
@@ -118,6 +137,7 @@ pub struct ContextualSourceInput {
 /// Typed atomic capture/view rejection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceProcessingError {
+    ScopeBoundaries,
     IncompleteExterior,
     Nesting,
     Occurrence,
@@ -130,6 +150,39 @@ pub enum SourceProcessingError {
     Replacement,
     OutsideParagraph,
     ForeignParagraph,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CapturedScope {
+    pub(crate) parent: Option<usize>,
+    pub(crate) domain: usize,
+    pub(crate) enter: usize,
+    pub(crate) exit: usize,
+    pub(crate) style: Option<Style>,
+    pub(crate) boundaries: Option<SourceProcessingScopeBoundaries>,
+    pub(crate) domain_root: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ScopedEvent {
+    pub(crate) event: SourceProcessingEvent,
+    pub(crate) at: usize,
+    pub(crate) before: Option<usize>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ScopeCapture {
+    pub(crate) scopes: Vec<CapturedScope>,
+    pub(crate) events: Vec<ScopedEvent>,
+    pub(crate) complete: Vec<bool>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ParagraphTopology {
+    pub(crate) capture: Arc<ScopeCapture>,
+    pub(crate) domain: usize,
+    pub(crate) origin_orders: Vec<usize>,
+    pub(crate) control_orders: Vec<usize>,
 }
 pub(crate) fn invalid(reason: SourceProcessingError) -> crate::Error {
     crate::Error::new(
@@ -249,6 +302,7 @@ struct Frame {
 #[derive(Default)]
 struct Capture {
     origins: Vec<usize>,
+    origin_orders: Vec<usize>,
     connections: Vec<usize>,
     anchors: Vec<ParagraphAnchor>,
     controls: Vec<usize>,
@@ -325,11 +379,42 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         barriers: Vec::new(),
     };
     let mut cursor = 0;
+    let mut topology = ScopeCapture {
+        scopes: input
+            .scopes
+            .iter()
+            .map(|scope| CapturedScope {
+                parent: None,
+                domain: 0,
+                enter: 0,
+                exit: 0,
+                style: match scope {
+                    SourceProcessingScope::Inline { style, .. } => style.clone(),
+                    _ => scope.style().cloned(),
+                },
+                boundaries: match scope {
+                    SourceProcessingScope::Inline { boundaries, .. } => *boundaries,
+                    _ => None,
+                },
+                domain_root: !matches!(scope, SourceProcessingScope::Inline { .. }),
+            })
+            .collect(),
+        events: Vec::new(),
+        complete: Vec::new(),
+    };
+    for scope in &topology.scopes {
+        if let Some(style) = &scope.style {
+            crate::ValidatedStyle::for_processed(style.clone())?;
+        }
+    }
+    let mut control_orders = vec![usize::MAX; input.controls.len()];
     let mut paragraph_order = Vec::new();
     let mut atomic_order = Vec::new();
     for (order, event) in input.events.iter().enumerate() {
         let domain = stack.last().map(|frame| frame.domain);
         let paragraph = domain.and_then(|domain| active_paragraphs[domain]);
+        let before = stack.last().map(|frame| frame.scope);
+        let at = cursor;
         match *event {
             SourceProcessingEvent::EnterScope(index) => {
                 take(&mut scopes, index)?;
@@ -380,6 +465,14 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                             SourceProcessingScope::Inline { .. } => unreachable!(),
                         },
                     });
+                    topology.complete.push(match scope {
+                        SourceProcessingScope::Block { topology, .. }
+                        | SourceProcessingScope::AtomicBlock { topology, .. }
+                        | SourceProcessingScope::OutOfFlowBlock { topology, .. } => {
+                            *topology == SourceProcessingTopology::Complete
+                        }
+                        SourceProcessingScope::Inline { .. } => unreachable!(),
+                    });
                     active_paragraphs.push(None);
                     own
                 } else {
@@ -404,6 +497,9 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                     scope: index,
                     domain: own,
                 });
+                topology.scopes[index].parent = before;
+                topology.scopes[index].domain = own;
+                topology.scopes[index].enter = order;
             }
             SourceProcessingEvent::ExitScope(index) => {
                 let Some(Frame {
@@ -416,6 +512,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 if actual != index {
                     return Err(invalid(SourceProcessingError::Nesting));
                 }
+                topology.scopes[index].exit = order;
                 let scope = &input.scopes[index];
                 if scope.style().is_some() && active_paragraphs[own].is_some() {
                     return Err(invalid(SourceProcessingError::Nesting));
@@ -495,6 +592,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 }
                 let local = captures[p].origins.len();
                 captures[p].origins.push(origin);
+                captures[p].origin_orders.push(order);
                 if row.aggregate.is_empty() {
                     captures[p].anchors.push(ParagraphAnchor {
                         item: ParagraphAnchorItem::EmptyOrigin(local),
@@ -549,6 +647,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             }
             SourceProcessingEvent::Control { control, affinity } => {
                 take(&mut controls, control)?;
+                control_orders[control] = order;
                 let p = paragraph.ok_or_else(|| invalid(SourceProcessingError::Domain))?;
                 if input.controls[control].at != cursor {
                     return Err(invalid(SourceProcessingError::Occurrence));
@@ -571,6 +670,11 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 }
             }
         }
+        topology.events.push(ScopedEvent {
+            event: *event,
+            at,
+            before,
+        });
     }
     if !stack.is_empty() || active_paragraphs.iter().any(Option::is_some) {
         return Err(invalid(SourceProcessingError::Nesting));
@@ -594,6 +698,22 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
     if context.domains.is_empty() {
         return Err(invalid(SourceProcessingError::Domain));
     }
+    let mut boundary_controls = vec![false; input.controls.len()];
+    for scope in &topology.scopes {
+        if let Some(boundaries) = scope.boundaries {
+            let valid = boundaries.start != boundaries.end
+                && matches!(input.controls.get(boundaries.start).map(|c| &c.kind), Some(ParagraphControlKind::InlineBoundaryStart))
+                && matches!(input.controls.get(boundaries.end).map(|c| &c.kind), Some(ParagraphControlKind::InlineBoundaryEnd))
+                && matches!(input.events.get(scope.enter + 1), Some(SourceProcessingEvent::Control { control, .. }) if *control == boundaries.start)
+                && scope.exit.checked_sub(1).and_then(|i| input.events.get(i)).is_some_and(|event| matches!(event, SourceProcessingEvent::Control { control, .. } if *control == boundaries.end));
+            if !valid || boundary_controls[boundaries.start] || boundary_controls[boundaries.end] {
+                return Err(invalid(SourceProcessingError::ScopeBoundaries));
+            }
+            boundary_controls[boundaries.start] = true;
+            boundary_controls[boundaries.end] = true;
+        }
+    }
+    let topology = Arc::new(topology);
     for barrier in &context.barriers {
         if super::delimiter_crosses(&input.segment_breaks, barrier.at) {
             return Err(invalid(SourceProcessingError::DelimiterCrossing));
@@ -788,6 +908,16 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 _ => false,
             });
         let data = ParagraphData {
+            scope_topology: Some(ParagraphTopology {
+                capture: Arc::clone(&topology),
+                domain: capture.domain,
+                origin_orders: capture.origin_orders.clone(),
+                control_orders: capture
+                    .controls
+                    .iter()
+                    .map(|&i| control_orders[i])
+                    .collect(),
+            }),
             terminal_edge: if terminal {
                 crate::ParagraphTerminalEdge::BlockEnd
             } else {

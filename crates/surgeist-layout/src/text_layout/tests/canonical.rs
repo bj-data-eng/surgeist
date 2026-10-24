@@ -89,6 +89,7 @@ pub(super) fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding
         origins,
         atomics: vec![],
         controls: vec![],
+        scopes: Vec::new(),
         line_strut: None,
     }
 }
@@ -361,10 +362,13 @@ fn assert_placement<S: LayoutScalar>(
     }
     let mut covered_ranges = Vec::new();
     for entry in batch.final_inline_fragments() {
+        let crate::InlineFragmentOwner::Node(node) = entry.owner() else {
+            panic!("source fragment owner")
+        };
         let origin = binding
             .origins
             .iter()
-            .find(|origin| origin.node == entry.node())
+            .find(|origin| origin.node == *node)
             .unwrap();
         let fragment = entry.fragment();
         let view = fragment.finalized_fragment().view();
@@ -388,7 +392,7 @@ fn assert_placement<S: LayoutScalar>(
                 aggregate.end - origin_range.start
             ))
         );
-        covered_ranges.push((entry.node(), aggregate));
+        covered_ranges.push((*node, aggregate));
         // Original-source bounds follow the real component intersections. They
         // do not duplicate a ligature's whole glyph advance into each origin.
         let x = 6.25 * aggregate.start as f64;

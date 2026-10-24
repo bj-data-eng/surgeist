@@ -329,8 +329,9 @@ fn assert_fragment_output_contract<S: LayoutScalar>() {
         Point::new(S::from_f64(1.25), S::from_f64(5.5))
     );
     assert_eq!(fragment.line_index(), 2);
-    let entry = InlineFragmentOutputEntryOf::new(7_u32, fragment.clone());
-    assert_eq!(entry.node(), 7);
+    let entry =
+        InlineFragmentOutputEntryOf::new(crate::InlineFragmentOwner::Node(7_u32), fragment.clone());
+    assert_eq!(entry.owner(), &crate::InlineFragmentOwner::Node(7));
     assert_eq!(entry.fragment(), &fragment);
 }
 
@@ -360,12 +361,24 @@ fn assert_fragment_batch_phases<S: LayoutScalar>() {
         Vec::new(),
         Vec::new(),
         vec![
-            InlineFragmentOutputEntryOf::new(10_u32, first_unrounded.clone()),
-            InlineFragmentOutputEntryOf::new(10_u32, second_unrounded),
+            InlineFragmentOutputEntryOf::new(
+                crate::InlineFragmentOwner::Node(10_u32),
+                first_unrounded.clone(),
+            ),
+            InlineFragmentOutputEntryOf::new(
+                crate::InlineFragmentOwner::Node(10_u32),
+                second_unrounded,
+            ),
         ],
         vec![
-            InlineFragmentOutputEntryOf::new(10_u32, first_final.clone()),
-            InlineFragmentOutputEntryOf::new(10_u32, second_final.clone()),
+            InlineFragmentOutputEntryOf::new(
+                crate::InlineFragmentOwner::Node(10_u32),
+                first_final.clone(),
+            ),
+            InlineFragmentOutputEntryOf::new(
+                crate::InlineFragmentOwner::Node(10_u32),
+                second_final.clone(),
+            ),
         ],
         Vec::new(),
         Vec::new(),
@@ -375,9 +388,15 @@ fn assert_fragment_batch_phases<S: LayoutScalar>() {
         batch
             .unrounded_inline_fragments()
             .iter()
-            .map(|entry| (entry.node(), entry.fragment().finalized_fragment().clone()))
+            .map(|entry| (
+                entry.owner().clone(),
+                entry.fragment().finalized_fragment().clone()
+            ))
             .collect::<Vec<_>>(),
-        vec![(10, first), (10, second)]
+        vec![
+            (crate::InlineFragmentOwner::Node(10), first),
+            (crate::InlineFragmentOwner::Node(10), second)
+        ]
     );
     assert_eq!(
         batch

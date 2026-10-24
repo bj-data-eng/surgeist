@@ -227,6 +227,7 @@ mod text_layout;
 pub use text_layout::{
     TextAtomicBinding, TextBindingError, TextControlBinding, TextControlParticipation,
     TextLayoutInput, TextOriginBinding, TextParagraphBinding, TextParticipation,
+    TextScopeAssociation, TextScopeBinding,
 };
 mod scalar;
 mod scroll;
@@ -310,11 +311,11 @@ pub use output::{
     CompletedLayoutBatchOf, ComputeInput, ComputeInputOf, ComputeOutput, ComputeOutputOf,
     ContainingLayoutContext, FlexItemRootContext, FlexItemRootContextOf, InlineFragmentOutput,
     InlineFragmentOutputEntry, InlineFragmentOutputEntryOf, InlineFragmentOutputOf,
-    LayoutCacheClearEntry, LayoutCacheStoreEntry, LayoutCacheStoreEntryOf, LayoutOutputEntry,
-    LayoutOutputEntryOf, LayoutRootContext, LayoutRootContextOf, LayoutRootRequest,
-    LayoutRootRequestOf, LayoutRoundingMode, NodeOutput, NodeOutputOf, ParentFormattingContext,
-    PhysicalBlockMarginCollapse, PhysicalBlockMarginCollapseOf, PlacedTextOutput,
-    RootAvailabilityError, RootAvailabilityErrorOf, SourceIndex,
+    InlineFragmentOwner, LayoutCacheClearEntry, LayoutCacheStoreEntry, LayoutCacheStoreEntryOf,
+    LayoutOutputEntry, LayoutOutputEntryOf, LayoutRootContext, LayoutRootContextOf,
+    LayoutRootRequest, LayoutRootRequestOf, LayoutRoundingMode, NodeOutput, NodeOutputOf,
+    ParentFormattingContext, PhysicalBlockMarginCollapse, PhysicalBlockMarginCollapseOf,
+    PlacedTextOutput, RootAvailabilityError, RootAvailabilityErrorOf, SourceIndex,
 };
 pub(crate) use output::{RequestedAxis, RunMode, SizingMode};
 /// Supported scalar contract for generic layout APIs.

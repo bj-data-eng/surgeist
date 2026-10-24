@@ -162,6 +162,8 @@ macro_rules! prepared_handle {
 }
 prepared_handle!(
     PreparedOrigin,
+    PreparedScope,
+    PreparedVirtualSeparator,
     PreparedUnit,
     PreparedAtomic,
     PreparedControl,
@@ -171,6 +173,13 @@ prepared_handle!(
     PreparedWord,
     PreparedHyphenationCut
 );
+
+/// Captured scope role; identity belongs to its issued handle.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum PreparedScopeRole {
+    Domain,
+    Inline,
+}
 
 /// The complete logical mixed sequence, using distinct issued occurrence roles.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

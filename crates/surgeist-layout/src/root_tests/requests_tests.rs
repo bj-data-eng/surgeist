@@ -166,7 +166,7 @@ fn fri06_c03_fragment<S: LayoutScalar>(
     batch
         .final_inline_fragments()
         .iter()
-        .find(|entry| entry.node() == node)
+        .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(node))
         .expect("the requested original occurrence publishes a fragment")
         .fragment()
 }
@@ -1510,7 +1510,7 @@ fn fri06_c04_line_band_ordinary_block_keeps_outer_edge_and_inherits_parent_float
             let fragments = batch
                 .final_inline_fragments()
                 .iter()
-                .filter(|entry| entry.node() == 3)
+                .filter(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(3))
                 .map(|entry| entry.fragment())
                 .collect::<Vec<_>>();
             let ranges = fragments
@@ -2787,7 +2787,7 @@ fn prepared_mixed_bidi_uses_original_directional_source_and_resets_each_line_bot
                 .final_inline_fragments()
                 .iter()
                 .find(|entry| {
-                    entry.node() == node
+                    entry.owner() == &crate::InlineFragmentOwner::Node(node)
                         && entry.fragment().finalized_fragment().view().local_range() == Some(local)
                 })
                 .unwrap()

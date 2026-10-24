@@ -563,6 +563,19 @@ fn text_style_support_matrix_reports_current_support() {
 }
 
 #[test]
+fn automatic_phrase_capability_names_its_contextual_executor() {
+    assert!(TextStyleFeature::ALL.contains(&TextStyleFeature::NativeAutomaticPhrases));
+    assert_eq!(
+        TextStyleFeature::NativeAutomaticPhrases.support(TextStylePhase::ProcessedParagraph),
+        TextStyleSupport::Supported,
+    );
+    assert_eq!(
+        TextStyleFeature::NativeAutomaticPhrases.support(TextStylePhase::Standalone),
+        TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresProcessedSourceLayout),
+    );
+}
+
+#[test]
 fn default_flow_policy_values_are_explicit_noops() {
     assert_eq!(Style::default().text_transform, TextTransform::none());
     assert_eq!(Options::default().text_overflow, TextOverflow::Clip);

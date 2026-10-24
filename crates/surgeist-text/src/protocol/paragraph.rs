@@ -397,6 +397,7 @@ impl OriginData {
 /// Validated occurrence/context facts retained by the actual analysis allocation.
 #[derive(Clone, Debug)]
 pub(crate) struct ParagraphData {
+    pub(crate) scope_topology: Option<crate::processing::contextual::ParagraphTopology>,
     pub(crate) terminal_edge: ParagraphTerminalEdge,
     pub(crate) origins: Vec<OriginData>,
     pub(crate) connections: Vec<ParagraphConnection>,
@@ -518,6 +519,7 @@ impl ParagraphData {
             );
         }
         Self {
+            scope_topology: None,
             terminal_edge: ParagraphTerminalEdge::Unknown,
             origins: vec![OriginData {
                 source: OriginSource::Canonical,
@@ -636,6 +638,7 @@ impl AnalyzedSource {
             anchor_order,
         } = input;
         let paragraph = ParagraphData {
+            scope_topology: None,
             terminal_edge,
             origins: origins
                 .into_iter()
@@ -975,6 +978,7 @@ pub(crate) enum FragmentOwner {
     Origin(usize),
     Control(usize),
     Alternative(usize),
+    VirtualSeparator(usize),
 }
 
 #[derive(Clone, Copy, Debug)]

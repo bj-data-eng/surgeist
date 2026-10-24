@@ -1,5 +1,6 @@
 //! Original U+200B expansion over the actual post-Phase-I mixed stream.
 use super::relation::TransformMap;
+pub(super) mod automatic;
 use crate::engine::{
     analysis::wrapping::{Event, LogicalEvent},
     resolve::AnalyzedStyleRun,
@@ -85,18 +86,16 @@ pub(super) fn apply(
         if atom.code_point != 0x200b || adjacent[row] {
             continue;
         }
-        let cp = match styles[map.rows[row].style]
+        let Some(cp) = styles[map.rows[row].style]
             .style
             .authored()
             .word_space_transform
-        {
-            WordSpaceTransform::None => continue,
-            WordSpaceTransform::Space => {
-                map.rows[row].separator_space = true;
-                ' '
-            }
-            WordSpaceTransform::IdeographicSpace => '\u{3000}',
+            .replacement()
+        else {
+            continue;
         };
+        map.rows[row].separator_space = cp == 0x20;
+        let cp = char::from_u32(cp).expect("separator replacement is a scalar");
         atom.code_point = u32::from(cp);
         atom.glyph = cp;
         changed = true;
@@ -233,16 +232,18 @@ pub(super) fn wbr(
     styles: &[AnalyzedStyleRun],
     processed: &crate::ProcessedSource,
     paragraph: &ParagraphData,
+    proposals: Vec<automatic::Proposal>,
 ) -> Result<(SourceProjection, Vec<LogicalEvent>)> {
     use super::relation::{Component, ComponentOwner};
     for (row, atom) in input.atoms.iter().enumerate() {
         map.components[row].code_point = atom.code_point;
         map.components[row].separator_space = map.rows[row].separator_space;
     }
-    if !paragraph
-        .controls
-        .iter()
-        .any(|control| matches!(control.kind, ParagraphControlKind::Wbr { .. }))
+    if proposals.is_empty()
+        && !paragraph
+            .controls
+            .iter()
+            .any(|control| matches!(control.kind, ParagraphControlKind::Wbr { .. }))
     {
         return Ok((input, events));
     }
@@ -291,22 +292,62 @@ pub(super) fn wbr(
         .atoms
         .len()
         .checked_add(paragraph.controls.len())
+        .and_then(|n| n.checked_add(proposals.len()))
         .ok_or_else(capacity)?;
     components
         .try_reserve_exact(limit)
         .map_err(|_| capacity())?;
     atoms.try_reserve_exact(limit).map_err(|_| capacity())?;
     captured
-        .try_reserve_exact(events.len())
+        .try_reserve_exact(
+            events
+                .len()
+                .checked_add(proposals.len())
+                .ok_or_else(capacity)?,
+        )
         .map_err(|_| capacity())?;
     let mut expanded = false;
     let mut semantic_connections = Vec::new();
     semantic_connections
         .try_reserve_exact(connection_cuts.len())
         .map_err(|_| capacity())?;
+    let mut proposals = proposals.into_iter().peekable();
     for (index, event) in events.into_iter().enumerate() {
         if connection_cuts.binary_search(&index).is_ok() {
             semantic_connections.push(atoms.len());
+        }
+        while proposals
+            .peek()
+            .is_some_and(|proposal| proposal.cut == index)
+        {
+            let proposal = proposals.next().expect("observed proposal");
+            let virtual_ = &map.virtuals[proposal.occurrence];
+            let cp = char::from_u32(proposal.code_point).expect("separator scalar");
+            let source = crate::Range::new(virtual_.source, virtual_.source);
+            let processed = crate::Range::new(virtual_.processed, virtual_.processed);
+            captured.push(LogicalEvent {
+                atom: atoms.len(),
+                source: source.start,
+                kind: Event::Text(components.len()),
+            });
+            components.push(Component {
+                owner: ComponentOwner::Virtual(proposal.occurrence),
+                source,
+                processed,
+                code_point: proposal.code_point,
+                separator_space: proposal.code_point == 0x20,
+                style: proposal.style,
+                outputs: 0..0,
+            });
+            atoms.push(crate::engine::OriginalAtom {
+                source,
+                processed,
+                presentation: crate::Range::new(0, 0),
+                glyph_bytes: 0..0,
+                code_point: proposal.code_point,
+                glyph: cp,
+            });
+            expanded = true;
         }
         let mut event = event;
         let mut component = None;
@@ -371,14 +412,12 @@ pub(super) fn wbr(
                         }));
                     }
                     let style = control_styles[control].expect("validated captured wbr style");
-                    let cp = match paragraph.controls[control].kind {
-                        ParagraphControlKind::Wbr { ref style }
-                            if style.word_space_transform == WordSpaceTransform::Space =>
-                        {
-                            0x20
-                        }
-                        _ => 0x3000,
-                    };
+                    let cp = styles[style]
+                        .style
+                        .authored()
+                        .word_space_transform
+                        .replacement()
+                        .expect("expanding wbr");
                     let p = processed.project(at, crate::Affinity::After);
                     let source = crate::Range::new(at, at);
                     let processed = crate::Range::new(p, p);
@@ -512,7 +551,7 @@ pub(super) fn wbr(
                     );
                     event.atom
                 }
-                ComponentOwner::Original(_) => continue,
+                ComponentOwner::Original(_) | ComponentOwner::Virtual(_) => continue,
             },
             Event::Deleted(..) => continue,
         };

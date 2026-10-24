@@ -107,7 +107,7 @@ fn assert_shared<S: LayoutScalar>(mark: bool, count: usize) {
                     binding.prepared
                 );
                 (
-                    entry.node(),
+                    entry.owner().clone(),
                     fragment.rect(),
                     fragment.baseline(),
                     fragment.line_index(),
@@ -709,6 +709,7 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
         }],
         atomics: vec![],
         controls: vec![],
+        scopes: Vec::new(),
         line_strut: None,
     };
     let whole =
@@ -955,7 +956,7 @@ fn assert_nested_float_text_packet<S: LayoutScalar>() {
             .prepared_text();
         assert_eq!(
             actual,
-            if row.node() == 40 {
+            if row.owner() == &crate::InlineFragmentOwner::Node(40) {
                 child.prepared.clone()
             } else {
                 parent.prepared.clone()

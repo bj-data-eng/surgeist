@@ -33,8 +33,11 @@ qualifies in every whitespace mode; actual line-edge rules still apply.
 Native paragraph capture accepts genuine styled `ParagraphControlKind::Wbr`
 occurrences. Expanded separators retain control identity and geometry without
 inventing source characters; [exact-seam admission](docs/reference.md#native-wbr-separators)
-defines their supported insertion positions. Automatic phrase insertion remains
-unavailable.
+defines their supported insertion positions. Contextual capture also supports
+Japanese automatic phrase insertion with `SpaceAutoPhrase` or
+`IdeographicSpaceAutoPhrase`. It uses the pinned BudouX Japanese model and the
+actual governing scope's Style; [phrase capture and ownership](docs/reference.md#native-automatic-phrase-separators)
+describe language admission, required topology and conservative detection limits.
 Original UTF-16 and plaintext remain unchanged through expansions and removals.
 The exclusive `TextTransform::MathAuto` requires complete original Text-node
 content captured on native paragraph origins. It maps eligible surviving text

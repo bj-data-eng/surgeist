@@ -109,6 +109,32 @@ unit containing an eligible authored contribution; exact placed positions can
 select generated-only geometry while extracting no invented source or plaintext.
 Accessibility retains authored-text descriptors independently of that geometry.
 
+Automatic phrase detection belongs to Text and runs on the connected post-Phase-I
+semantic input before any separator replacement. Its native Japanese provider
+uses the pinned BudouX model; CSS eligibility, actual declared language and scope
+custody remain Text-owned. Unknown language produces no proposal. Operational
+failure in supported analysis cannot masquerade as unsupported language or a
+successful empty result. Preserve actual input identity, coverage and model
+edition with the immutable analysis. The native detection limits and capture
+API are described in [Text's reference](../crates/surgeist-text/docs/reference.md#native-automatic-phrase-separators).
+
+Incident text requests detection; the entire incident inline-boundary strip
+determines the outermost expansion owner, including empty scopes. Its complete
+Style governs generated output, without requiring that owner itself to request
+detection. Preserve separate virtual and genuine wbr occurrences at a shared
+seam. Missing demanded topology or Style refuses precisely; true no-output paths
+do not consume unused context. Balanced capture remains the sole supplied tree.
+
+A virtual occurrence has no authored source interval or control identity. Retain
+its real issued scope, generated geometry and empty insertion anchor through
+selection and placement. Layout associates a domain with its paragraph container
+or an inline scope with its exact distinct normalized start/end pair, matched to
+that same scope's issued controls. Output preserves the whole scope association.
+Boundary nodes identify ownership, not geometric anchors: never interpolate from
+them, duplicate a fragment onto both, or donate it to neighboring text. Scope
+Style, preparation and both actual boundary inputs enter cache/invalidation
+dependencies. Missing endpoints remain a native capture limit.
+
 Full-size-kana uses
 the complete pinned [Appendix G](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#small-kana).
 Expose only executed options and report their specific capabilities. A complete

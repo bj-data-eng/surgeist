@@ -497,7 +497,7 @@ fn assert_fri08_c07_t01_inline_transition_roles<S: LayoutScalar>() {
         let text_fragment = batch
             .final_inline_fragments()
             .iter()
-            .find(|entry| entry.node() == 4)
+            .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(4))
             .unwrap()
             .fragment();
 

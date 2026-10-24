@@ -336,7 +336,19 @@ pub(super) fn select(
                     .first()
                     .copied()
                 {
-                    PresentationUnitKind::GeneratedSeparator { control }
+                    PresentationUnitKind::GeneratedSeparator {
+                        owner: GeneratedSeparatorOwner::Control(control),
+                    }
+                } else if let Some(index) = prepared
+                    .analyzed
+                    .transform
+                    .virtuals_for_atoms(row.atoms.clone())
+                    .first()
+                    .copied()
+                {
+                    PresentationUnitKind::GeneratedSeparator {
+                        owner: GeneratedSeparatorOwner::Virtual(index),
+                    }
                 } else {
                     PresentationUnitKind::Text
                 };

@@ -302,6 +302,14 @@ pub enum ErrorDetail {
 /// Exact source-transform admission or execution refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextTransformError {
+    InvalidPhraseData,
+    MissingPhraseTopology {
+        at: usize,
+    },
+    MissingPhraseScopeStyle {
+        scope: usize,
+        at: usize,
+    },
     MissingSeparatorBoundaryContext {
         control: usize,
         at: usize,

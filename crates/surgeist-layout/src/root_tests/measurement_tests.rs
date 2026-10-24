@@ -140,14 +140,14 @@ fn fri06_c05_provider_dirty_exact_closure_bypasses_stale_hits_and_recomputes_tra
             full.final_inline_fragments()
                 .iter()
                 .map(|entry| (
-                    entry.node(),
+                    entry.owner().clone(),
                     entry.fragment().finalized_fragment().view().owner()
                 ))
                 .collect::<Vec<_>>(),
             cold_fragments
                 .iter()
                 .map(|entry| (
-                    entry.node(),
+                    entry.owner().clone(),
                     entry.fragment().finalized_fragment().view().owner()
                 ))
                 .collect::<Vec<_>>(),

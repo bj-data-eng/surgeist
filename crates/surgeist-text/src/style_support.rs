@@ -44,6 +44,8 @@ pub enum TextStyleFeature {
     SymbolicDecorationColor,
     ExplicitWordSeparators,
     NativeWbr,
+    /// Japanese automatic phrase expansion with demanded authentic scope capture.
+    NativeAutomaticPhrases,
     MathAuto,
     FullSizeKana,
     FullWidth,
@@ -105,6 +107,7 @@ impl TextStyleFeature {
         Self::SymbolicDecorationColor,
         Self::ExplicitWordSeparators,
         Self::NativeWbr,
+        Self::NativeAutomaticPhrases,
         Self::MathAuto,
         Self::FullSizeKana,
         Self::FullWidth,
@@ -121,6 +124,7 @@ impl TextStyleFeature {
                 self,
                 Self::MathAuto
                     | Self::NativeWbr
+                    | Self::NativeAutomaticPhrases
                     | Self::WhiteSpaceCollapse
                     | Self::WhiteSpaceDiscard
                     | Self::WhiteSpacePreserveSpaces
@@ -129,7 +133,7 @@ impl TextStyleFeature {
             return TextStyleSupport::Supported;
         }
         match self {
-            Self::NativeWbr => TextStyleSupport::Unsupported(
+            Self::NativeWbr | Self::NativeAutomaticPhrases => TextStyleSupport::Unsupported(
                 UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
             ),
             Self::MathAuto => TextStyleSupport::Unsupported(

@@ -1,7 +1,7 @@
 //! The post-Phase-I, pre-analysis presentation transformation owner.
 //!
 //! Mapping facts transcribed from CSS Text Module Level 4, 14 August 2026,
-//! Appendix G: https://www.w3.org/TR/2026/WD-css-text-4-20260814/#small-kana
+//! Appendix G: <https://www.w3.org/TR/2026/WD-css-text-4-20260814/#small-kana>
 //! Copyright © 2026 World Wide Web Consortium. This adapts the table to Rust
 //! scalar matching; Text owns execution and source correspondence. Retained
 //! terms: licenses/w3c/software-license-2023.txt (relative to the crate root).
@@ -17,6 +17,8 @@ mod greek;
 mod irish;
 mod math;
 mod math_data;
+mod phrase;
+mod phrase_data;
 pub(crate) mod relation;
 mod separators;
 mod width;
@@ -24,7 +26,7 @@ mod width_data;
 
 pub(crate) fn apply(
     input: SourceProjection,
-    styles: &[resolve::AnalyzedStyleRun],
+    styles: &mut Vec<resolve::AnalyzedStyleRun>,
     processed: &crate::ProcessedSource,
     paragraph: &crate::protocol::paragraph::ParagraphData,
 ) -> Result<(SourceProjection, std::sync::Arc<relation::TransformMap>)> {
@@ -99,3 +101,7 @@ fn full_size_kana(cp: u32) -> Option<char> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/automatic_phrase.rs"]
+mod automatic_phrase_tests;

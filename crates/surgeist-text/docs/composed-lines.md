@@ -48,6 +48,13 @@ uses the same selected-line and placement machinery.
    from actual transformed presentation offsets; plaintext excludes generated
    separator characters. See [native wbr admission](reference.md#native-wbr-separators)
    for exact scalar seams and indivisible-input refusals.
+   For Japanese automatic phrases, use contextual capture with actual scope
+   topology and Styles, then `SpaceAutoPhrase` or `IdeographicSpaceAutoPhrase` on
+   the requesting text. The winning scope can differ from that requesting text.
+   Bind each issued contributing scope to the actual Layout container or complete
+   inline boundary pair, retaining source-less virtual identity in fragment output.
+   See [phrase capture](reference.md#native-automatic-phrase-separators) for native
+   language admission, missing-context refusals and conservative detection limits.
    For the exclusive `TextTransform::MathAuto`, supply each demanded origin's
    complete original Text-node content and node-relative contribution through
    `ParagraphOrigin::text_node`. Eligibility uses that original complete content;

@@ -1145,7 +1145,7 @@ impl<S: LayoutScalar> Default for NodeOutputOf<S> {
 /// Immutable geometry associated with one actual Text-issued fragment.
 ///
 /// The retained handle identifies the exact finalized line and origin, control,
-/// or alternative occurrence, including empty occurrences. The association table
+/// virtual separator or alternative occurrence, including empty occurrences. The association table
 /// does not supply a mixed visual-order ordinal. No glyph packet or caller-local
 /// segment ID is copied into this Layout output.
 #[derive(Clone, Debug, PartialEq)]
@@ -1193,22 +1193,32 @@ impl<S: LayoutScalar> InlineFragmentOutputOf<S> {
     }
 }
 
-/// Associates one retained finalized fragment with its actual tree node.
+/// The actual semantic owner of one retained finalized fragment.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum InlineFragmentOwner<Node> {
+    Node(Node),
+    Scope(crate::TextScopeBinding<Node>),
+}
+
+/// Associates one retained finalized fragment with its actual semantic owner.
 #[derive(Clone, Debug, PartialEq)]
 pub struct InlineFragmentOutputEntryOf<Node, S: LayoutScalar = DefaultScalar> {
-    node: Node,
+    owner: InlineFragmentOwner<Node>,
     fragment: InlineFragmentOutputOf<S>,
 }
 
 pub type InlineFragmentOutputEntry<Node> = InlineFragmentOutputEntryOf<Node, DefaultScalar>;
 
 impl<Node: Copy, S: LayoutScalar> InlineFragmentOutputEntryOf<Node, S> {
-    pub(crate) fn new(node: Node, fragment: InlineFragmentOutputOf<S>) -> Self {
-        Self { node, fragment }
+    pub(crate) fn new(
+        owner: InlineFragmentOwner<Node>,
+        fragment: InlineFragmentOutputOf<S>,
+    ) -> Self {
+        Self { owner, fragment }
     }
     #[must_use]
-    pub const fn node(&self) -> Node {
-        self.node
+    pub const fn owner(&self) -> &InlineFragmentOwner<Node> {
+        &self.owner
     }
     #[must_use]
     pub fn fragment(&self) -> &InlineFragmentOutputOf<S> {

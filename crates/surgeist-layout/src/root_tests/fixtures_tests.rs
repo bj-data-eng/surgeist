@@ -182,8 +182,11 @@ pub(super) fn origin_fragment_associations<S: LayoutScalar>(
             let surgeist_text::FinalizedFragmentOwner::Origin(origin) = original.owner() else {
                 return None;
             };
+            let crate::InlineFragmentOwner::Node(node) = entry.owner() else {
+                panic!("original fragment owns a node")
+            };
             Some((
-                entry.node(),
+                *node,
                 origin,
                 original
                     .local_range()
@@ -1465,16 +1468,22 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri06C02StatefulTextTree<S> {
             }
         }
         for entry in batch.unrounded_inline_fragments() {
+            let crate::InlineFragmentOwner::Node(node) = entry.owner() else {
+                panic!("fixture contains node fragments")
+            };
             prepared
                 .unrounded_fragments
-                .entry(entry.node())
+                .entry(*node)
                 .or_default()
                 .push(entry.fragment().clone());
         }
         for entry in batch.final_inline_fragments() {
+            let crate::InlineFragmentOwner::Node(node) = entry.owner() else {
+                panic!("fixture contains node fragments")
+            };
             prepared
                 .final_fragments
-                .entry(entry.node())
+                .entry(*node)
                 .or_default()
                 .push(entry.fragment().clone());
         }

@@ -227,7 +227,7 @@ fn prepared_text_fractional_rounding_preserves_issued_owner_and_selected_alterna
             FinalizedFragmentOwner::Alternative(_)
         )));
         for (before, after) in unrounded.iter().zip(rounded) {
-            assert_eq!(before.node(), after.node());
+            assert_eq!(before.owner(), after.owner());
             assert_eq!(
                 before.fragment().finalized_fragment(),
                 after.fragment().finalized_fragment()

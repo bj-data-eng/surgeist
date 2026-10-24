@@ -8,7 +8,8 @@ optional `text-accessibility` feature.
 It records source-level dependency attribution, not a resolved binary, release,
 or transitive dependency inventory. A dependency declaration does not establish
 that its code is redistributed in a particular artifact. Upstream example and
-test assets are not bundled except for the Ahem font identified below.
+test assets are not bundled except for the Ahem font and BudouX marked quality
+rows identified below.
 
 The project's own MIT license remains in [LICENSE](LICENSE). Keep this notice
 and its accompanying `licenses/` files together.
@@ -27,6 +28,25 @@ This product depends on accesskit, distributed by The AccessKit contributors:
 This optional dependency is enabled by `text-accessibility`. AccessKit contains
 code derived from Chromium and kurbo; the accompanying source notices retain
 those attributions and their applicable license terms.
+
+### BudouX 0.9.3 adapted source and Japanese model
+
+This product includes Japanese phrase inference adapted from Google BudouX,
+distributed by Google LLC, and its unchanged Japanese model and marked quality
+rows at commit `25946bbbb271dc8a53bb5b04082c6859abc5c847`.
+Copyright 2021 Google LLC.
+
+* License: [Apache License 2.0](licenses/budoux/LICENSE)
+* Homepage: [BudouX](https://github.com/google/budoux)
+* Exact source, data and modifications: [phrase-model guide](tools/automatic-phrase/README.md)
+
+The safe Rust adaptation uses decoded semantic positions, checked integer scoring
+and fallible cut storage. Text owns language admission, CSS eligibility, scope
+custody and source correspondence. The checked-in table is generated offline from
+the retained model. The quality rows are upstream-authored regression fixtures;
+they do not establish general linguistic quality. Training data and training
+software are not bundled, and the model license does not establish permission
+to redistribute that underlying corpus. The project license remains unchanged.
 
 ### fontique 0.9.0
 

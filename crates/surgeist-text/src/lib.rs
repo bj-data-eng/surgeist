@@ -67,7 +67,8 @@ pub use processing::{
     ProcessedInlineBox, ProcessedParagraph, ProcessedPosition, ProcessedRange, ProcessedSource,
     ProcessedSpan, ProcessedText, SourceProcessingConnection, SourceProcessingEnvelope,
     SourceProcessingError, SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
-    WhiteSpaceTrim, process_contextual_source, process_source_whitespace,
+    SourceProcessingScopeBoundaries, SourceProcessingTopology, WhiteSpaceTrim,
+    process_contextual_source, process_source_whitespace,
 };
 pub use protocol::paragraph::{
     CompleteTextNodeContribution, ParagraphAnchor, ParagraphAnchorItem,
@@ -80,8 +81,8 @@ pub use protocol::readback::{
     FinalizedControlView, FinalizedFragmentOwner, FinalizedFragmentView, FinalizedGlyphView,
     FinalizedRunView, LineOutlineInk, PreparedAlternativeDefinition, PreparedAlternativeView,
     PreparedAtomicView, PreparedBoundaryView, PreparedControlView, PreparedOpportunityView,
-    PreparedOriginIntersectionView, PreparedOriginView, PreparedUnitView, PresentationMappingKind,
-    SelectedMappingView,
+    PreparedOriginIntersectionView, PreparedOriginView, PreparedScopeView, PreparedUnitView,
+    PreparedVirtualSeparatorView, PresentationMappingKind, SelectedMappingView,
 };
 pub use protocol::{
     AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
@@ -95,10 +96,11 @@ pub use protocol::{
     PreparationOptions, PreparedAlternative, PreparedAtomic, PreparedBoundary, PreparedBreakKind,
     PreparedConditionalOpportunity, PreparedControl, PreparedHyphenationCut,
     PreparedHyphenationCutView, PreparedOpportunity, PreparedOrigin, PreparedParticipant,
-    PreparedTermination, PreparedText, PreparedUnit, PreparedWord, PreparedWordPortion,
-    PreparedWordView, PresentationRange, ProtocolContextField, ProtocolError, ProtocolHandleKind,
-    SelectedLine, SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlot,
-    SpacingSlotDisposition, SpacingSlotFeedback, SpacingSlotOwner, TabContext,
+    PreparedScope, PreparedScopeRole, PreparedTermination, PreparedText, PreparedUnit,
+    PreparedVirtualSeparator, PreparedWord, PreparedWordPortion, PreparedWordView,
+    PresentationRange, ProtocolContextField, ProtocolError, ProtocolHandleKind, SelectedLine,
+    SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlot, SpacingSlotDisposition,
+    SpacingSlotFeedback, SpacingSlotOwner, TabContext,
 };
 pub use range::{Range, SourcePosition, SourceRange};
 pub use source_model::{

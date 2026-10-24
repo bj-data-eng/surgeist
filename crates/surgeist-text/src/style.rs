@@ -339,14 +339,32 @@ pub enum OverflowWrap {
     BreakWord,
 }
 
-/// Presentation replacement of genuine original U+200B separators.
-/// This operation does not infer wbr identity or detect virtual phrase boundaries.
+/// Presentation replacement of genuine U+200B, native wbr and virtual separators.
+/// Automatic Japanese phrases require demanded authentic contextual scope facts.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum WordSpaceTransform {
     #[default]
     None,
     Space,
     IdeographicSpace,
+    SpaceAutoPhrase,
+    IdeographicSpaceAutoPhrase,
+}
+
+impl WordSpaceTransform {
+    pub(crate) const fn replacement(self) -> Option<u32> {
+        match self {
+            Self::None => None,
+            Self::Space | Self::SpaceAutoPhrase => Some(0x20),
+            Self::IdeographicSpace | Self::IdeographicSpaceAutoPhrase => Some(0x3000),
+        }
+    }
+    pub(crate) const fn detects_phrases(self) -> bool {
+        matches!(
+            self,
+            Self::SpaceAutoPhrase | Self::IdeographicSpaceAutoPhrase
+        )
+    }
 }
 
 /// Computed presentation operation, executed before Unicode analysis.

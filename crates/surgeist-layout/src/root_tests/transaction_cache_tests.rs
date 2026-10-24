@@ -362,7 +362,7 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
         let control_line = cold
             .unrounded_inline_fragments()
             .iter()
-            .find(|entry| entry.node() == 3)
+            .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(3))
             .unwrap()
             .fragment()
             .finalized_fragment()
@@ -460,7 +460,7 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
             tree.retained.unrounded_fragments[&1],
             cold_unrounded_fragments
                 .iter()
-                .filter(|entry| entry.node() == 1)
+                .filter(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(1))
                 .map(|entry| entry.fragment().clone())
                 .collect::<Vec<_>>()
         );
@@ -468,7 +468,7 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
             tree.retained.final_fragments[&1],
             cold_final_fragments
                 .iter()
-                .filter(|entry| entry.node() == 1)
+                .filter(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(1))
                 .map(|entry| entry.fragment().clone())
                 .collect::<Vec<_>>()
         );

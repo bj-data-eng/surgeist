@@ -89,7 +89,10 @@ fn assert_block<S: LayoutScalar>(
         let fragment = batch
             .final_inline_fragments()
             .iter()
-            .find(|entry| entry.node() == node && entry.fragment().line_index() == index)
+            .find(|entry| {
+                entry.owner() == &crate::InlineFragmentOwner::Node(node)
+                    && entry.fragment().line_index() == index
+            })
             .unwrap();
         let finalized = fragment.fragment().finalized_fragment().finalized_line();
         assert_eq!(finalized.prepared_text(), paragraph.prepared);

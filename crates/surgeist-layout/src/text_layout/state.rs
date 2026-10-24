@@ -49,6 +49,7 @@ pub(crate) struct PassBasis<Node, S: LayoutScalar> {
     pub frames: Vec<CanonicalFrame<Node, S>>,
     pub lines: Vec<LineBasis>,
     pub absolute_baselines: Vec<(Node, f64)>,
+    pub scopes: Vec<super::TextScopeBinding<Node>>,
     pub hyphenation: Vec<(
         Node,
         crate::hyphenation::LineHyphenationState,
@@ -62,6 +63,13 @@ pub(crate) struct PassBasis<Node, S: LayoutScalar> {
     )>,
 }
 
+#[derive(Clone)]
+pub(crate) struct ScopeFragmentGroup<Node, S: LayoutScalar> {
+    pub container: Node,
+    pub nodes: Vec<Node>,
+    pub fragments: Vec<crate::InlineFragmentOutputEntryOf<Node, S>>,
+}
+
 /// This invocation-local state is part of the ordinary unpublished session.
 /// An initial measurement pass supplies no canonical-frame proof. Later passes
 /// use actual preceding canonical outputs and must reproduce their full basis
@@ -73,6 +81,7 @@ pub(crate) struct TextComputation<'input, Node, S: LayoutScalar> {
     pub reusable: std::sync::Arc<[super::fit::ReusableLine]>,
     pub atomic_origins: Vec<(Node, Point<f64>)>,
     pub absolute_baselines: Vec<(Node, f64)>,
+    pub scope_fragments: Vec<ScopeFragmentGroup<Node, S>>,
 }
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> {
@@ -84,6 +93,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             reusable: std::sync::Arc::from([]),
             atomic_origins: Vec::new(),
             absolute_baselines: Vec::new(),
+            scope_fragments: Vec::new(),
         }
     }
 
@@ -120,6 +130,27 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             *old = paragraph;
         } else {
             self.pending.push(paragraph);
+        }
+    }
+
+    pub fn record_scope_fragments(
+        &mut self,
+        container: Node,
+        nodes: Vec<Node>,
+        fragments: Vec<crate::InlineFragmentOutputEntryOf<Node, S>>,
+    ) {
+        if let Some(old) = self
+            .scope_fragments
+            .iter_mut()
+            .find(|group| group.container == container && group.nodes == nodes)
+        {
+            old.fragments = fragments;
+        } else {
+            self.scope_fragments.push(ScopeFragmentGroup {
+                container,
+                nodes,
+                fragments,
+            });
         }
     }
 
@@ -185,6 +216,11 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 )
                 .collect(),
             absolute_baselines: self.absolute_baselines.clone(),
+            scopes: self
+                .paragraphs
+                .iter()
+                .flat_map(|paragraph| paragraph.scopes.iter().cloned())
+                .collect(),
             hyphenation: self
                 .pending
                 .iter()

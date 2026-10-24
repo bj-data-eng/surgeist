@@ -701,6 +701,7 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
                 ],
                 atomics: vec![],
                 controls: vec![],
+                scopes: Vec::new(),
                 line_strut: None,
             }],
         )
@@ -747,7 +748,10 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
         let fragments: Vec<_> = batch
             .unrounded_inline_fragments()
             .iter()
-            .filter(|entry| entry.node() == 3 || entry.node() == 4)
+            .filter(|entry| {
+                entry.owner() == &surgeist_layout::InlineFragmentOwner::Node(3)
+                    || entry.owner() == &surgeist_layout::InlineFragmentOwner::Node(4)
+            })
             .map(|entry| {
                 let fragment = entry.fragment();
                 let finalized = fragment.finalized_fragment();
@@ -756,7 +760,12 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
                     panic!("authored A/ZWSP units retain their original source owner")
                 };
                 (
-                    entry.node(),
+                    match entry.owner() {
+                        surgeist_layout::InlineFragmentOwner::Node(node) => *node,
+                        surgeist_layout::InlineFragmentOwner::Scope(_) => {
+                            panic!("source fixture requires node ownership")
+                        }
+                    },
                     origin,
                     view.local_range().unwrap(),
                     view.aggregate_range().unwrap(),

@@ -405,9 +405,10 @@ fn genuine_source_local_phase_i_receipts_allow_generated_width_in_all_modes() {
             crate::projection::SourceProjection::from_processed(&processed, &paragraph).unwrap();
         let validated =
             crate::ValidatedStyle::for_processed(processed.base_style().clone()).unwrap();
-        let styles = crate::engine::resolve::analyze_styles(&source, &[], &validated, &paragraph);
+        let mut styles =
+            crate::engine::resolve::analyze_styles(&source, &[], &validated, &paragraph);
         let (actual, map) =
-            super::super::apply(projection, &styles, &processed, &paragraph).unwrap();
+            super::super::apply(projection, &mut styles, &processed, &paragraph).unwrap();
         assert_eq!(actual.text, "Ａ\u{3000}Ａ", "{mode:?}");
         assert_eq!(processed.processed_text(), source.text());
         assert_eq!(map.rows[1].code_point, 0x200b);

@@ -23,6 +23,9 @@ mod separators_transform;
 #[path = "placed_text_render/wbr.rs"]
 mod wbr_transform;
 
+#[path = "placed_text_render/phrase.rs"]
+mod phrase_transform;
+
 struct Tree {
     inputs: [layout::LayoutInput; 2],
     non_box: layout::NodeInput,
@@ -180,6 +183,7 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
         &tree,
         0,
         vec![layout::TextParagraphBinding {
+            scopes: vec![],
             prepared,
             container: 0,
             nodes: vec![1],
@@ -296,11 +300,14 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
                 replacements: vec![],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        topology: text::SourceProcessingTopology::Unknown,
                         used_direction: text::ParagraphBaseDirection::LeftToRight,
                         trim: text::WhiteSpaceTrim::default(),
                         base_style: style,
                     },
                     text::SourceProcessingScope::Inline {
+                        style: None,
+                        boundaries: None,
                         trim: text::WhiteSpaceTrim {
                             discard_inner: true,
                             ..text::WhiteSpaceTrim::default()
@@ -398,6 +405,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
         &tree,
         0,
         vec![layout::TextParagraphBinding {
+            scopes: vec![],
             prepared,
             container: 0,
             nodes: vec![1],
@@ -709,6 +717,7 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
         &tree,
         0,
         vec![layout::TextParagraphBinding {
+            scopes: vec![],
             prepared,
             container: 0,
             nodes: vec![1],
@@ -1117,6 +1126,7 @@ mod kana_transform {
             &tree,
             0,
             vec![layout::TextParagraphBinding {
+                scopes: vec![],
                 prepared,
                 container: 0,
                 nodes: vec![1],

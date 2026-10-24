@@ -513,11 +513,13 @@ fn child_domain_hole_is_excluded_from_parent_joining_context() {
         }],
         scopes: vec![
             SourceProcessingScope::Block {
+                topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: breaking_style(),
             },
             SourceProcessingScope::OutOfFlowBlock {
+                topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(),

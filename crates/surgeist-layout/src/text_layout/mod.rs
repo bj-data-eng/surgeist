@@ -6,7 +6,7 @@ pub(crate) mod state;
 #[cfg(test)]
 mod tests;
 
-use surgeist_text::{PreparedAtomic, PreparedControl, PreparedOrigin, PreparedText};
+use surgeist_text::{PreparedAtomic, PreparedControl, PreparedOrigin, PreparedScope, PreparedText};
 
 /// One source occurrence participating through its actual Text preparation.
 ///
@@ -71,6 +71,20 @@ pub struct TextControlBinding<Node> {
     pub node: Node,
 }
 
+/// The normalized Layout association for one Text-issued contributing scope.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TextScopeAssociation<Node> {
+    ParagraphContainer(Node),
+    Inline { start: Node, end: Node },
+}
+
+/// One exact issued scope and its actual normalized container or boundary pair.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TextScopeBinding<Node> {
+    pub scope: PreparedScope,
+    pub association: TextScopeAssociation<Node>,
+}
+
 /// Supplied association facts, checked together against the immutable tree by
 /// `TextLayoutInput::try_new` before any layout computation can consume them.
 #[derive(Clone, Debug, PartialEq)]
@@ -81,6 +95,7 @@ pub struct TextParagraphBinding<Node> {
     pub origins: Vec<TextOriginBinding<Node>>,
     pub atomics: Vec<TextAtomicBinding<Node>>,
     pub controls: Vec<TextControlBinding<Node>>,
+    pub scopes: Vec<TextScopeBinding<Node>>,
     /// Genuine normalized line allocation, when the caller supplies one.
     /// Absence never guesses an empty/default font or a zero-size line.
     pub line_strut: Option<surgeist_text::LineStrut>,
@@ -98,6 +113,11 @@ pub enum TextBindingError {
     OriginCoverage,
     AtomicCoverage,
     ControlCoverage,
+    ScopeCoverage,
+    ScopeAssociation,
+    ScopeBoundaryCapture,
+    ScopeBoundaryOrder,
+    ScopeOccurrenceMembership,
     ParticipantRole,
     MissingParagraph,
     RootMismatch,
@@ -353,6 +373,13 @@ impl<'tree, Tree: crate::LayoutTree> TextLayoutInput<'tree, Tree> {
                         .node,
                 )
             };
+            validate_scopes(tree, paragraph).map_err(error)?;
+            for binding in &paragraph.scopes {
+                match binding.association {
+                    TextScopeAssociation::ParagraphContainer(node) => influencing.push(node),
+                    TextScopeAssociation::Inline { start, end } => influencing.extend([start, end]),
+                }
+            }
             let mut lower = 0;
             for participant in paragraph.prepared.participants() {
                 let positions = match participant {
@@ -520,4 +547,131 @@ fn binding_error<Node: Copy, S: crate::LayoutScalar, M>(
         crate::LayoutOperation::TextCapture,
         crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::TextBinding(reason)),
     )
+}
+
+/// Check Layout association facts against the scope's own issued custody.
+fn validate_scopes<Tree: crate::LayoutTree>(
+    tree: &Tree,
+    paragraph: &TextParagraphBinding<Tree::Node>,
+) -> Result<(), TextBindingError> {
+    let scopes: Vec<_> = paragraph.prepared.scopes().collect();
+    if scopes.len() != paragraph.scopes.len()
+        || scopes.iter().any(|scope| {
+            paragraph
+                .scopes
+                .iter()
+                .filter(|binding| &binding.scope == scope)
+                .count()
+                != 1
+        })
+    {
+        return Err(TextBindingError::ScopeCoverage);
+    }
+    let mut intervals = Vec::new();
+    for binding in &paragraph.scopes {
+        let view = binding.scope.view();
+        match (&binding.association, view.role()) {
+            (
+                TextScopeAssociation::ParagraphContainer(node),
+                surgeist_text::PreparedScopeRole::Domain,
+            ) if *node == paragraph.container => {}
+            (
+                TextScopeAssociation::Inline { start, end },
+                surgeist_text::PreparedScopeRole::Inline,
+            ) => {
+                let (Some(entry), Some(exit)) = (view.entry_control(), view.exit_control()) else {
+                    return Err(TextBindingError::ScopeBoundaryCapture);
+                };
+                let (Some(first), Some(last)) = (
+                    paragraph.nodes.iter().position(|node| node == start),
+                    paragraph.nodes.iter().position(|node| node == end),
+                ) else {
+                    return Err(TextBindingError::ScopeAssociation);
+                };
+                let exact_control = |node, occurrence: &PreparedControl, expected| {
+                    matches!(tree.layout_input(node), crate::LayoutInputViewOf::InlineBoundary(input)
+                        if input.kind() == expected)
+                        && paragraph
+                            .controls
+                            .iter()
+                            .filter(|row| row.node == node && &row.occurrence == occurrence)
+                            .count()
+                            == 1
+                };
+                if start == end
+                    || !exact_control(*start, &entry, crate::InlineBoundaryKind::Start)
+                    || !exact_control(*end, &exit, crate::InlineBoundaryKind::End)
+                {
+                    return Err(TextBindingError::ScopeAssociation);
+                }
+                if first >= last {
+                    return Err(TextBindingError::ScopeBoundaryOrder);
+                }
+                for &(previous_first, previous_last) in &intervals {
+                    if first == previous_first
+                        || last == previous_last
+                        || first == previous_last
+                        || last == previous_first
+                        || previous_first < first && first < previous_last && previous_last < last
+                        || first < previous_first && previous_first < last && last < previous_last
+                    {
+                        return Err(TextBindingError::ScopeBoundaryOrder);
+                    }
+                }
+                intervals.push((first, last));
+            }
+            _ => return Err(TextBindingError::ScopeAssociation),
+        }
+    }
+    // Virtual contributors carry their exact issued owner. Their immutable
+    // event custody is Text-owned; source or processed coordinates never choose
+    // a Layout boundary association.
+    for virtual_separator in paragraph.prepared.virtual_separators() {
+        let view = virtual_separator.view();
+        let scope = view.scope();
+        let Some(binding) = paragraph
+            .scopes
+            .iter()
+            .find(|binding| binding.scope == scope)
+        else {
+            return Err(TextBindingError::ScopeOccurrenceMembership);
+        };
+        let position = |control: &PreparedControl| {
+            paragraph
+                .controls
+                .iter()
+                .find(|binding| &binding.occurrence == control)
+                .and_then(|binding| {
+                    paragraph
+                        .nodes
+                        .iter()
+                        .position(|node| *node == binding.node)
+                })
+        };
+        let preceding: Vec<_> = view.preceding_controls().collect();
+        let following: Vec<_> = view.following_controls().collect();
+        let mut previous = None;
+        for control in preceding.iter().chain(&following) {
+            let Some(current) = position(control) else {
+                return Err(TextBindingError::ScopeOccurrenceMembership);
+            };
+            if previous.is_some_and(|previous| previous >= current) {
+                return Err(TextBindingError::ScopeOccurrenceMembership);
+            }
+            previous = Some(current);
+        }
+        if let TextScopeAssociation::Inline { .. } = binding.association {
+            let scope_view = scope.view();
+            if !scope_view
+                .entry_control()
+                .is_some_and(|entry| preceding.contains(&entry))
+                || !scope_view
+                    .exit_control()
+                    .is_some_and(|exit| following.contains(&exit))
+            {
+                return Err(TextBindingError::ScopeOccurrenceMembership);
+            }
+        }
+    }
+    Ok(())
 }

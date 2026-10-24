@@ -458,7 +458,9 @@ impl LayoutBatchSink<u32, Scalar> for TransactionSink {
         }
         self.unrounded_fragments.clear();
         for entry in prepared.unrounded_fragments {
-            let node = entry.node();
+            let crate::InlineFragmentOwner::Node(node) = *entry.owner() else {
+                panic!("transaction fixture uses node ownership")
+            };
             self.unrounded_fragments.push(entry);
             self.mutations
                 .borrow_mut()
@@ -466,7 +468,9 @@ impl LayoutBatchSink<u32, Scalar> for TransactionSink {
         }
         self.final_fragments.clear();
         for entry in prepared.final_fragments {
-            let node = entry.node();
+            let crate::InlineFragmentOwner::Node(node) = *entry.owner() else {
+                panic!("transaction fixture uses node ownership")
+            };
             self.final_fragments.push(entry);
             self.mutations
                 .borrow_mut()
@@ -506,8 +510,14 @@ fn transaction_batch() -> CompletedLayoutBatch<u32> {
     CompletedLayoutBatch::from_entries(
         vec![LayoutOutputEntry::new(1, NodeOutput::new())],
         vec![LayoutOutputEntry::new(1, NodeOutput::new())],
-        vec![InlineFragmentOutputEntry::new(1, fragment.clone())],
-        vec![InlineFragmentOutputEntry::new(1, fragment)],
+        vec![InlineFragmentOutputEntry::new(
+            crate::InlineFragmentOwner::Node(1),
+            fragment.clone(),
+        )],
+        vec![InlineFragmentOutputEntry::new(
+            crate::InlineFragmentOwner::Node(1),
+            fragment,
+        )],
         vec![
             LayoutCacheStoreEntry::new(
                 1,

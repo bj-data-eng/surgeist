@@ -138,6 +138,7 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
         &tree,
         0,
         vec![layout::TextParagraphBinding {
+            scopes: vec![],
             prepared,
             container: 0,
             nodes: vec![1, 3, 2],

@@ -128,7 +128,10 @@ fn check<S: LayoutScalar>(
         let finalized = batch
             .final_inline_fragments()
             .iter()
-            .find(|row| row.node() == 1 && row.fragment().line_index() == index)
+            .find(|row| {
+                row.owner() == &crate::InlineFragmentOwner::Node(1)
+                    && row.fragment().line_index() == index
+            })
             .unwrap()
             .fragment()
             .finalized_fragment()
@@ -337,7 +340,10 @@ fn check_choice_order<S: LayoutScalar>() {
             let finalized = batch
                 .final_inline_fragments()
                 .iter()
-                .find(|row| row.node() == 1 && row.fragment().line_index() == index)
+                .find(|row| {
+                    row.owner() == &crate::InlineFragmentOwner::Node(1)
+                        && row.fragment().line_index() == index
+                })
                 .unwrap()
                 .fragment()
                 .finalized_fragment()

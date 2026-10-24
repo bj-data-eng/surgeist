@@ -340,6 +340,7 @@ fn contextual_event_order_retains_the_same_genuine_wbr_cut() {
             }],
             replacements: vec![],
             scopes: vec![SourceProcessingScope::Block {
+                topology: SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(WordSpaceTransform::None, WhiteSpace::Preserve),
                 used_direction: ParagraphBaseDirection::LeftToRight,

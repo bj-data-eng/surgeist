@@ -444,7 +444,10 @@ fn genuine_forced_segment_and_ordinary_cross_run_results_need_no_missing_tail_pr
             let line = batch
                 .final_inline_fragments()
                 .iter()
-                .find(|row| row.node() == 1 && row.fragment().line_index() == 0)
+                .find(|row| {
+                    row.owner() == &crate::InlineFragmentOwner::Node(1)
+                        && row.fragment().line_index() == 0
+                })
                 .unwrap()
                 .fragment()
                 .finalized_fragment()

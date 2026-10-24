@@ -372,7 +372,7 @@ fn prefix_float_feedback<S: LayoutScalar>() {
         .final_inline_fragments()
         .iter()
         .find(|row| {
-            row.node() == 10
+            row.owner() == &crate::InlineFragmentOwner::Node(10)
                 && row.fragment().line_index() == 1
                 && matches!(
                     row.fragment().finalized_fragment().view().owner(),
@@ -387,7 +387,8 @@ fn prefix_float_feedback<S: LayoutScalar>() {
     assert!(
         cold.final_inline_fragments()
             .iter()
-            .any(|row| row.node() == 11 && row.fragment().line_index() == 1)
+            .any(|row| row.owner() == &crate::InlineFragmentOwner::Node(11)
+                && row.fragment().line_index() == 1)
     );
     // The actual40px receiver plus8px float cannot share width40. It reserves
     // its full30px height; measuring only original CDE would wrongly allow it.

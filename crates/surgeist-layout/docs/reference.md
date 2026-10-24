@@ -69,7 +69,7 @@ Source: [node input](../src/node_input/mod.rs) and its domain modules.
 - Grid input: `GridPlacement`, `GridAutoFlow`, and `GridFlowToleranceOf`.
 - Scroll input: `ComputedOverflow`, `OverflowClipMarginOf`, `ScrollPaddingOf`, `ScrollMarginOf`, and `ScrollSnapType`.
 
-Prepared Text participation carries actual issued origin, atomic, and control
+Prepared Text participation carries actual issued origin, atomic, control and scope
 handles. Capture validates complete inventories against the same borrowed tree;
 equal characters from another preparation cannot replace that basis. Layout
 selects actual issued break opportunities and alternatives, then consumes Text's
@@ -85,6 +85,16 @@ contributes the captured base font on each native line; `AllocatedContributions`
 uses real selected text, boxes, controls, and any explicitly supplied Layout
 `line_strut`. Missing metrics remain a typed refusal rather than a guessed font
 or zero-size line.
+
+For virtual phrase output, `TextParagraphBinding::scopes` supplies exactly the
+contributing Text-issued scopes. `TextScopeAssociation::ParagraphContainer`
+names this paragraph's actual container; `Inline { start, end }` retains distinct
+normalized boundary nodes matching that same scope's own entry/exit controls.
+Equal source offsets or another balanced pair cannot establish the association.
+Capture rejects missing, foreign, duplicate, crossed, reused or mismatched facts,
+including an inline scope whose needed endpoints lie outside native capture.
+Scope Style remains Text-owned; actual boundary metrics remain Layout-owned.
+The scope and both boundary inputs participate in cache and invalidation checks.
 
 The native profile supports horizontal LTR and RTL text, signed indentation,
 and the preparation's selected font-advance or CSS-stop tab operation.
@@ -253,6 +263,13 @@ Source: [output](../src/output.rs).
 - Inline output: `InlineFragmentOutputOf`, `InlineFragmentOutputEntryOf`, and
   `PlacedTextOutput`.
 - Root context: `LayoutRootContextOf`, `FlexItemRootContextOf`, and `ContainingLayoutContext`.
+
+`InlineFragmentOutputEntryOf::owner()` distinguishes `InlineFragmentOwner::Node`
+from `Scope(TextScopeBinding)`. Scope output preserves the complete issued scope
+and container or boundary-pair association at each fragment's actual placed
+geometry. It has no single donated node, extra strut or duplicated endpoint
+geometry. The endpoints identify ownership; their coordinates do not position
+the generated text.
 
 Grid and grid-lanes use canonical scroll-box reservations for intrinsic
 contributions and final layout. Subgrid edge contributions include the child's

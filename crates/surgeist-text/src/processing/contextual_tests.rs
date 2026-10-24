@@ -29,6 +29,8 @@ fn contextual_space_preservation_uses_emitted_token_facts_and_real_trim() {
     }
     let mut capture = input("  A  ", WhiteSpace::Preserve);
     capture.scopes.push(SourceProcessingScope::Inline {
+        style: None,
+        boundaries: None,
         trim: WhiteSpaceTrim {
             discard_inner: true,
             ..Default::default()
@@ -160,6 +162,7 @@ fn input(text: impl Into<Text>, mode: WhiteSpace) -> ContextualSourceInput {
         boundary_policies: vec![],
         replacements: vec![],
         scopes: vec![SourceProcessingScope::Block {
+            topology: SourceProcessingTopology::Unknown,
             used_direction: crate::ParagraphBaseDirection::LeftToRight,
             trim: WhiteSpaceTrim::default(),
             base_style: style(mode, 10.0),
@@ -335,6 +338,7 @@ fn block_inner_trim_keeps_indentation_while_inline_inner_trim_removes_it() {
         let mut capture = input("\n  X\n\n  ", WhiteSpace::Preserve);
         if block {
             capture.scopes[0] = SourceProcessingScope::Block {
+                topology: SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim {
                     discard_inner: true,
@@ -344,6 +348,8 @@ fn block_inner_trim_keeps_indentation_while_inline_inner_trim_removes_it() {
             };
         } else {
             capture.scopes.push(SourceProcessingScope::Inline {
+                style: None,
+                boundaries: None,
                 trim: WhiteSpaceTrim {
                     discard_inner: true,
                     ..Default::default()
@@ -394,6 +400,8 @@ fn exterior_inline_trim_removes_parent_origin_spaces_with_original_affinities() 
         .map(|i| policy(ParagraphBoundaryDefinition::Connection(i)))
         .collect();
     capture.scopes.push(SourceProcessingScope::Inline {
+        style: None,
+        boundaries: None,
         trim: WhiteSpaceTrim {
             discard_before: true,
             discard_after: true,
@@ -490,6 +498,7 @@ fn hole(kind: InlineBoxKind) -> ContextualSourceInput {
     }
     capture.scopes.push(if kind == InlineBoxKind::InFlow {
         SourceProcessingScope::AtomicBlock {
+            topology: SourceProcessingTopology::Unknown,
             used_direction: crate::ParagraphBaseDirection::LeftToRight,
             trim: WhiteSpaceTrim::default(),
             base_style: style(WhiteSpace::Preserve, 20.0),
@@ -497,6 +506,7 @@ fn hole(kind: InlineBoxKind) -> ContextualSourceInput {
         }
     } else {
         SourceProcessingScope::OutOfFlowBlock {
+            topology: SourceProcessingTopology::Unknown,
             used_direction: crate::ParagraphBaseDirection::LeftToRight,
             trim: WhiteSpaceTrim::default(),
             base_style: style(WhiteSpace::Preserve, 20.0),
@@ -666,6 +676,8 @@ fn trim_does_not_fuse_removed_original_surrogate_neighbors() {
         .map(|i| policy(ParagraphBoundaryDefinition::Connection(i)))
         .collect();
     capture.scopes.push(SourceProcessingScope::Inline {
+        style: None,
+        boundaries: None,
         trim: WhiteSpaceTrim {
             discard_inner: true,
             ..Default::default()
@@ -799,12 +811,16 @@ fn same_offset_nested_empty_scopes_and_consecutive_controls_retain_actual_order_
     capture.paragraphs[0] = facts(ParagraphBaseDirection::RightToLeft);
     capture.scopes.extend([
         SourceProcessingScope::Inline {
+            style: None,
+            boundaries: None,
             trim: WhiteSpaceTrim {
                 discard_inner: true,
                 ..Default::default()
             },
         },
         SourceProcessingScope::Inline {
+            style: None,
+            boundaries: None,
             trim: WhiteSpaceTrim {
                 discard_before: true,
                 discard_after: true,
@@ -904,6 +920,7 @@ fn empty_internal_domain_keeps_its_captured_font_and_direction() {
         .origins
         .push(origin(&capture.source, Range::new(0, 0)));
     capture.scopes.push(SourceProcessingScope::OutOfFlowBlock {
+        topology: SourceProcessingTopology::Unknown,
         used_direction: crate::ParagraphBaseDirection::LeftToRight,
         trim: WhiteSpaceTrim::default(),
         base_style: style(WhiteSpace::Preserve, 20.0),
@@ -1089,6 +1106,8 @@ fn delimiter_crossing_scope_or_domain_is_rejected_atomically() {
     }];
     capture.boundary_policies = vec![policy(ParagraphBoundaryDefinition::Connection(0))];
     capture.scopes.push(SourceProcessingScope::Inline {
+        style: None,
+        boundaries: None,
         trim: WhiteSpaceTrim::default(),
     });
     capture.events = vec![
@@ -1240,12 +1259,15 @@ fn actual_inline_trim_scope_survives_block_in_inline_paragraph_cuts_once() {
         ];
         capture.scopes.extend([
             SourceProcessingScope::Inline {
+                style: None,
+                boundaries: None,
                 trim: WhiteSpaceTrim {
                     discard_inner: true,
                     ..Default::default()
                 },
             },
             SourceProcessingScope::Block {
+                topology: SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(WhiteSpace::Preserve, 20.0),
@@ -1404,6 +1426,8 @@ fn sole_stream_orders_paragraphs_and_same_offset_atomics_independently_of_fact_t
 fn all_whitespace_inline_trim_keeps_original_endpoints_and_real_empty_line_strut() {
     let mut capture = input(" \t ", WhiteSpace::Preserve);
     capture.scopes.push(SourceProcessingScope::Inline {
+        style: None,
+        boundaries: None,
         trim: WhiteSpaceTrim {
             discard_inner: true,
             ..Default::default()
@@ -1490,6 +1514,7 @@ fn block_exterior_trim_crosses_its_own_boundary_and_stops_at_a_genuine_forced_co
             origin(&capture.source, Range::new(4, 7)),
         ];
         capture.scopes.push(SourceProcessingScope::Block {
+            topology: SourceProcessingTopology::Unknown,
             used_direction: crate::ParagraphBaseDirection::LeftToRight,
             trim: WhiteSpaceTrim {
                 discard_before: true,
@@ -1715,6 +1740,7 @@ fn empty_domain_at_nonzero_original_offset_has_source_and_placed_accessibility()
         .origins
         .push(origin(&capture.source, Range::new(1, 1)));
     capture.scopes.push(SourceProcessingScope::Block {
+        topology: SourceProcessingTopology::Unknown,
         used_direction: crate::ParagraphBaseDirection::LeftToRight,
         trim: WhiteSpaceTrim::default(),
         base_style: style(WhiteSpace::Preserve, 20.0),
@@ -2175,6 +2201,7 @@ fn consecutive_child_holes(empty: bool, control: bool) -> ContextualSourceInput 
         .collect();
     for atomic in [0, 1] {
         capture.scopes.push(SourceProcessingScope::OutOfFlowBlock {
+            topology: SourceProcessingTopology::Unknown,
             used_direction: crate::ParagraphBaseDirection::LeftToRight,
             trim: WhiteSpaceTrim::default(),
             base_style: style(WhiteSpace::Preserve, 20.0),

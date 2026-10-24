@@ -12,6 +12,8 @@ fn repeated_paragraphs_and_neutral_scope_closures_preserve_real_block_end() {
         .paragraphs
         .push(facts(ParagraphBaseDirection::LeftToRight));
     capture.scopes.push(SourceProcessingScope::Inline {
+        style: None,
+        boundaries: None,
         trim: WhiteSpaceTrim::default(),
     });
     use SourceProcessingEvent::*;
@@ -94,6 +96,7 @@ fn later_empty_control_and_out_of_flow_paragraph_are_not_erased_by_equal_offsets
                 Size::new(5.0, 10.0),
             ));
             capture.scopes.push(SourceProcessingScope::OutOfFlowBlock {
+                topology: SourceProcessingTopology::Unknown,
                 atomic: 0,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(WhiteSpace::Preserve, 10.0),
@@ -157,6 +160,7 @@ fn empty_control_and_child_domain_inside_final_paragraph_keep_its_terminal_custo
         kind: ParagraphControlKind::OptionalBreak { wrap: Wrap::Word },
     });
     capture.scopes.push(SourceProcessingScope::OutOfFlowBlock {
+        topology: SourceProcessingTopology::Unknown,
         atomic: 0,
         trim: WhiteSpaceTrim::default(),
         base_style: style(WhiteSpace::Preserve, 10.0),

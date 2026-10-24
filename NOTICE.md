@@ -75,6 +75,22 @@ records its font and notice hashes. These fonts are test assets.
 Layout's [TTF provenance](crates/surgeist-layout/tests/layout/browser_parity/fonts/PROVENANCE.md)
 identifies the exact shared bytes separately from its embedded WOFF2.
 
+### BudouX 0.9.3 adapted source and Japanese model
+
+`surgeist-text` includes a safe Rust adaptation of Google BudouX phrase inference,
+its unchanged Japanese model and marked quality rows, distributed by Google LLC
+at commit `25946bbbb271dc8a53bb5b04082c6859abc5c847`.
+Copyright 2021 Google LLC.
+
+* License: [Apache License 2.0](crates/surgeist-text/licenses/budoux/LICENSE)
+* Homepage: [BudouX](https://github.com/google/budoux)
+* Exact source and modifications: [phrase-model guide](crates/surgeist-text/tools/automatic-phrase/README.md)
+* Scope and retained attribution: [Text notice](crates/surgeist-text/NOTICE.md#budoux-093-adapted-source-and-japanese-model)
+
+The adaptation retains semantic character positions and checked scoring. Model
+proposals alone do not establish CSS eligibility or general Japanese linguistic
+quality. Training data and training software are not bundled.
+
 ### Chromium Blink implementation references
 
 The reference collection retains selected Blink source files as readable

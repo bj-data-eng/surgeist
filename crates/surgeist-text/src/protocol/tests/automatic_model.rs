@@ -707,11 +707,13 @@ fn transparent_child_holes_keep_automatic_source_anchor_separate_from_mixed_cut_
             .collect(),
         scopes: vec![
             SourceProcessingScope::Block {
+                topology: crate::SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),
                 base_style: automatic_style(10.0),
                 used_direction: ParagraphBaseDirection::LeftToRight,
             },
             SourceProcessingScope::OutOfFlowBlock {
+                topology: crate::SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),
                 base_style: automatic_style(10.0),
                 used_direction: ParagraphBaseDirection::LeftToRight,

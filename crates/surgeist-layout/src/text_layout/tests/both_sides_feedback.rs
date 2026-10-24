@@ -445,20 +445,18 @@ fn taller_prefix_float<S: LayoutScalar>() {
         );
     }
     assert_eq!(cold.placed_text()[0].layout().lines()[1].baseline(), 48.0);
+    assert!(cold.final_inline_fragments().iter().any(|row| row.owner()
+        == &crate::InlineFragmentOwner::Node(10)
+        && row.fragment().line_index() == 1
+        && matches!(
+            row.fragment().finalized_fragment().view().owner(),
+            text::FinalizedFragmentOwner::Alternative(_)
+        )));
     assert!(
         cold.final_inline_fragments()
             .iter()
-            .any(|row| row.node() == 10
-                && row.fragment().line_index() == 1
-                && matches!(
-                    row.fragment().finalized_fragment().view().owner(),
-                    text::FinalizedFragmentOwner::Alternative(_)
-                ))
-    );
-    assert!(
-        cold.final_inline_fragments()
-            .iter()
-            .any(|row| row.node() == 11 && row.fragment().line_index() == 1)
+            .any(|row| row.owner() == &crate::InlineFragmentOwner::Node(11)
+                && row.fragment().line_index() == 1)
     );
     // The trailing float is encountered only after CDE. Receiver A+CDE40 plus
     // float8 cannot share width40, so two30px lines reserve y60. Without the

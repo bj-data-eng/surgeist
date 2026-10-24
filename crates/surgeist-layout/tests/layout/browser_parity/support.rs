@@ -2594,13 +2594,19 @@ impl layout::LayoutBatchSink<usize, Scalar> for TestTree {
             }
         }
         for entry in batch.unrounded_inline_fragments() {
-            prepared[entry.node()]
+            let layout::InlineFragmentOwner::Node(node) = entry.owner() else {
+                panic!("fixture contains node fragments")
+            };
+            prepared[*node]
                 .unrounded_inline_fragments
                 .get_or_insert_with(Vec::new)
                 .push(entry.fragment().clone());
         }
         for entry in batch.final_inline_fragments() {
-            prepared[entry.node()]
+            let layout::InlineFragmentOwner::Node(node) = entry.owner() else {
+                panic!("fixture contains node fragments")
+            };
+            prepared[*node]
                 .final_inline_fragments
                 .get_or_insert_with(Vec::new)
                 .push(entry.fragment().clone());
@@ -2680,8 +2686,8 @@ fn compare_expectation_with_endpoint_accounting(
         .get(comparison_state.fragment_cursors.unrounded.next)
     {
         return Err(Error::new(format!(
-            "{path}: unexpected unrounded fragment source association at node {}",
-            entry.node()
+            "{path}: unexpected unrounded fragment source association at owner {:?}",
+            entry.owner()
         )));
     }
     if let Some(entry) = comparison_state
@@ -2691,8 +2697,8 @@ fn compare_expectation_with_endpoint_accounting(
         .get(comparison_state.fragment_cursors.final_output.next)
     {
         return Err(Error::new(format!(
-            "{path}: unexpected fragment source association at node {}",
-            entry.node()
+            "{path}: unexpected fragment source association at owner {:?}",
+            entry.owner()
         )));
     }
     let mut result = ComparisonResult::default();
@@ -2733,7 +2739,7 @@ impl<'a> FragmentCursor<'a> {
         while self
             .entries
             .get(self.next)
-            .is_some_and(|entry| entry.node() == node)
+            .is_some_and(|entry| entry.owner() == &layout::InlineFragmentOwner::Node(node))
         {
             self.next += 1;
         }
@@ -6021,7 +6027,7 @@ mod tests {
         for (node, control) in controls {
             assert!(
                 batch.unrounded_inline_fragments().iter().any(|entry| {
-                    entry.node() == node
+                    entry.owner() == &layout::InlineFragmentOwner::Node(node)
                         && matches!(entry.fragment().finalized_fragment().view().owner(),
                     surgeist_text::FinalizedFragmentOwner::Control(actual) if actual == *control)
                 }),
@@ -8037,7 +8043,7 @@ mod tests {
                 .final_inline_fragments()
                 .iter()
                 .filter(|entry| {
-                    entry.node() == node
+                    entry.owner() == &layout::InlineFragmentOwner::Node(node)
                         && entry
                             .fragment()
                             .finalized_fragment()
@@ -8113,7 +8119,7 @@ mod tests {
             let fragment = batch
                 .final_inline_fragments()
                 .iter()
-                .find(|entry| entry.node() == node)
+                .find(|entry| entry.owner() == &layout::InlineFragmentOwner::Node(node))
                 .unwrap()
                 .fragment();
             let issued = fragment.finalized_fragment();
@@ -10841,7 +10847,7 @@ mod tests {
                     .zip(warm.final_inline_fragments()),
             )
         {
-            assert_eq!(first.node(), second.node());
+            assert_eq!(first.owner().clone(), second.owner().clone());
             let first = first.fragment();
             let second = second.fragment();
             assert_eq!(first.rect(), second.rect());

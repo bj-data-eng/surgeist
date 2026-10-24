@@ -179,7 +179,7 @@ pub(crate) fn analyze_paragraph(
         }
     }
     let (projection, transform) =
-        crate::transform::apply(projection, &styles, &processed, &paragraph)?;
+        crate::transform::apply(projection, &mut styles, &processed, &paragraph)?;
     let (analysis, words) =
         analysis::analyze(&projection, &styles, processed.source().boxes(), &paragraph)?;
     let words = analysis::hyphenation::Words::new(&projection, &analysis.graphemes, words);

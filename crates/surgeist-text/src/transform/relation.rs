@@ -31,6 +31,31 @@ pub(crate) struct InputRow {
 pub(crate) enum ComponentOwner {
     Original(usize),
     Wbr(usize),
+    Virtual(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum GeneratedSeparatorOwner {
+    Control(usize),
+    Virtual(usize),
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ScopeData {
+    pub(crate) ordinal: usize,
+    pub(crate) role: crate::PreparedScopeRole,
+    pub(crate) style: crate::Style,
+    pub(crate) entry_control: Option<usize>,
+    pub(crate) exit_control: Option<usize>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct VirtualSeparatorData {
+    pub(crate) scope: usize,
+    pub(crate) source: usize,
+    pub(crate) processed: usize,
+    /// Number of actual paragraph controls before this semantic seam.
+    pub(crate) control_cut: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -63,6 +88,9 @@ pub(crate) enum RelationEvent {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct TransformMap {
+    pub(crate) phrases: Vec<super::separators::automatic::PhraseAnalysis>,
+    pub(crate) scopes: Vec<ScopeData>,
+    pub(crate) virtuals: Vec<VirtualSeparatorData>,
     pub(crate) rows: Vec<InputRow>,
     pub(crate) pieces: Vec<OriginalPiece>,
     pub(crate) components: Vec<Component>,
@@ -171,7 +199,7 @@ impl TransformMap {
     pub(crate) fn original_row_for_atom(&self, atom: usize) -> Option<usize> {
         match self.component_for_atom(atom).owner {
             ComponentOwner::Original(row) => Some(row),
-            ComponentOwner::Wbr(_) => None,
+            ComponentOwner::Wbr(_) | ComponentOwner::Virtual(_) => None,
         }
     }
     pub(crate) fn controls_for_atoms(&self, atoms: IndexRange<usize>) -> Vec<usize> {
@@ -184,6 +212,18 @@ impl TransformMap {
             }
         }
         controls
+    }
+
+    pub(crate) fn virtuals_for_atoms(&self, atoms: IndexRange<usize>) -> Vec<usize> {
+        let mut virtuals = Vec::new();
+        for atom in atoms {
+            if let ComponentOwner::Virtual(index) = self.component_for_atom(atom).owner
+                && !virtuals.contains(&index)
+            {
+                virtuals.push(index);
+            }
+        }
+        virtuals
     }
 
     pub(crate) fn emission_for_atom(&self, atom: usize) -> Emission {

@@ -217,6 +217,7 @@ fn registered(
         origins: vec![TextOriginBinding { origin, node: 1 }],
         atomics: vec![],
         controls: vec![],
+        scopes: Vec::new(),
         line_strut: None,
     }
 }
@@ -648,6 +649,7 @@ fn raw_minimum<S: LayoutScalar>(overflow: OverflowWrap) -> (f64, Vec<LineFact>) 
         }],
         atomics: vec![],
         controls: vec![],
+        scopes: Vec::new(),
         line_strut: None,
     };
     let tree = PublicLayoutTreeOf::<S>::new()

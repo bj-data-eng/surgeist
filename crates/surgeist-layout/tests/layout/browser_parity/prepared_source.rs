@@ -541,6 +541,7 @@ impl Capture {
                     occurrence: occurrence.clone(),
                 })
                 .collect(),
+            scopes: Vec::new(),
             line_strut: None,
         })
     }
@@ -688,7 +689,11 @@ mod tests {
                 };
                 assert_eq!(
                     control,
-                    expected[entry.node() - 1],
+                    expected[match entry.owner() {
+                        layout::InlineFragmentOwner::Node(node) => *node - 1,
+                        layout::InlineFragmentOwner::Scope(_) =>
+                            panic!("source fixture requires node ownership"),
+                    }],
                     "placed child must retain its actual event owner, including same-kind same-offset controls"
                 );
             }

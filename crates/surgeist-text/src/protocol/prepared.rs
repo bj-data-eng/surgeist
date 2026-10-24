@@ -12,7 +12,7 @@ use crate::engine::{
     layout::data::{ShapedData, ShapedItem},
     resolve::ResolvedStyleRun,
 };
-use crate::{Range, projection::SourceProjection};
+use crate::{Range, projection::SourceProjection, transform::relation::GeneratedSeparatorOwner};
 
 use super::paragraph::{ParagraphAnchor, ParagraphAnchorItem, ParagraphControlKind};
 
@@ -247,7 +247,7 @@ pub(crate) enum PresentationUnitKind {
     Atomic { occurrence: usize },
     Control { occurrence: usize },
     Replacement { alternative: usize },
-    GeneratedSeparator { control: usize },
+    GeneratedSeparator { owner: GeneratedSeparatorOwner },
 }
 
 /// Exact strong-font row already resolved in the original preparation or one
@@ -271,7 +271,7 @@ pub(crate) enum SelectedMappingKind {
     Source,
     Deleted,
     Replacement { alternative: usize, anchor: usize },
-    GeneratedSeparator { control: usize },
+    GeneratedSeparator { owner: GeneratedSeparatorOwner },
 }
 
 /// Issues canonical units from actual atoms, executed deletions and captured
@@ -1527,8 +1527,8 @@ fn push_presentation_unit(
         presentation,
         kind: match kind {
             PresentationUnitKind::Deleted => SelectedMappingKind::Deleted,
-            PresentationUnitKind::GeneratedSeparator { control } => {
-                SelectedMappingKind::GeneratedSeparator { control }
+            PresentationUnitKind::GeneratedSeparator { owner } => {
+                SelectedMappingKind::GeneratedSeparator { owner }
             }
             PresentationUnitKind::Replacement { alternative } => SelectedMappingKind::Replacement {
                 alternative,
@@ -1554,9 +1554,15 @@ pub(crate) fn selected_origin_intersections(
         match unit.kind {
             PresentationUnitKind::Control { occurrence }
             | PresentationUnitKind::GeneratedSeparator {
-                control: occurrence,
+                owner: GeneratedSeparatorOwner::Control(occurrence),
             } => fragments.push(FragmentAssociation {
                 owner: FragmentOwner::Control(occurrence),
+                source: None,
+            }),
+            PresentationUnitKind::GeneratedSeparator {
+                owner: GeneratedSeparatorOwner::Virtual(index),
+            } => fragments.push(FragmentAssociation {
+                owner: FragmentOwner::VirtualSeparator(index),
                 source: None,
             }),
             PresentationUnitKind::Replacement { alternative } => {

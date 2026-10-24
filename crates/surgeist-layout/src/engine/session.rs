@@ -78,6 +78,7 @@ pub(crate) struct FloatChildPacket<Node, S: LayoutScalar> {
     pending: Vec<crate::text_layout::state::PendingParagraph<Node>>,
     atomic_origins: Vec<(Node, crate::Point<f64>)>,
     absolute_baselines: Vec<(Node, f64)>,
+    scope_fragments: Vec<crate::text_layout::state::ScopeFragmentGroup<Node, S>>,
 }
 
 pub(crate) type FloatProbeResult<Tree, M> = LayoutResultOf<
@@ -280,6 +281,7 @@ where
             .collect::<Vec<_>>()
             .into();
         text.pending.clear();
+        text.scope_fragments.clear();
         text.atomic_origins.clear();
         text.absolute_baselines.clear();
         self.unrounded_entries.clear();
@@ -302,7 +304,7 @@ where
     }
 
     fn complete(self) -> CompletedLayoutBatchOf<Tree::Node, Tree::Scalar> {
-        let unrounded_inline_fragments = self
+        let mut unrounded_inline_fragments: Vec<_> = self
             .final_inline_fragment_groups
             .iter()
             .flat_map(|final_group| {
@@ -313,10 +315,15 @@ where
                     .unwrap_or(&[])
                     .iter()
                     .cloned()
-                    .map(|fragment| InlineFragmentOutputEntryOf::new(final_group.node, fragment))
+                    .map(|fragment| {
+                        InlineFragmentOutputEntryOf::new(
+                            crate::InlineFragmentOwner::Node(final_group.node),
+                            fragment,
+                        )
+                    })
             })
             .collect();
-        let final_inline_fragments = self
+        let mut final_inline_fragments: Vec<_> = self
             .final_inline_fragment_groups
             .iter()
             .flat_map(|group| {
@@ -326,9 +333,22 @@ where
                     .unwrap_or(&[])
                     .iter()
                     .cloned()
-                    .map(|fragment| InlineFragmentOutputEntryOf::new(group.node, fragment))
+                    .map(|fragment| {
+                        InlineFragmentOutputEntryOf::new(
+                            crate::InlineFragmentOwner::Node(group.node),
+                            fragment,
+                        )
+                    })
             })
             .collect();
+        // Text has already placed these fragments on the canonical line frame.
+        // A scope owns no synthetic node to round or receive duplicate geometry.
+        if let Some(text) = &self.text {
+            for group in &text.scope_fragments {
+                unrounded_inline_fragments.extend(group.fragments.iter().cloned());
+                final_inline_fragments.extend(group.fragments.iter().cloned());
+            }
+        }
         CompletedLayoutBatchOf::from_entries(
             self.unrounded_entries,
             self.final_entries,
@@ -678,10 +698,18 @@ where
             std::sync::Arc::from([])
         };
         let output = probe.compute_child(node, input)?;
-        let (pending, atomic_origins, absolute_baselines) = probe.text.map_or_else(
-            || (Vec::new(), Vec::new(), Vec::new()),
-            |text| (text.pending, text.atomic_origins, text.absolute_baselines),
-        );
+        let (pending, atomic_origins, absolute_baselines, scope_fragments) =
+            probe.text.map_or_else(
+                || (Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+                |text| {
+                    (
+                        text.pending,
+                        text.atomic_origins,
+                        text.absolute_baselines,
+                        text.scope_fragments,
+                    )
+                },
+            );
         Ok(std::sync::Arc::new(FloatChildPacket {
             node,
             input,
@@ -694,6 +722,7 @@ where
             pending,
             atomic_origins,
             absolute_baselines,
+            scope_fragments,
         }))
     }
 
@@ -723,6 +752,13 @@ where
             self.cache_clear(entry.node());
         }
         if let Some(text) = &mut self.text {
+            for group in &packet.scope_fragments {
+                text.record_scope_fragments(
+                    group.container,
+                    group.nodes.clone(),
+                    group.fragments.clone(),
+                );
+            }
             for paragraph in &packet.pending {
                 text.record(paragraph.clone());
             }
@@ -1374,7 +1410,7 @@ mod grid_overflow_observation_tests {
                 batch
                     .unrounded_inline_fragments()
                     .iter()
-                    .filter(|entry| entry.node() == 4)
+                    .filter(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(4))
                     .map(|entry| entry.fragment().clone())
                     .collect(),
             ))
@@ -1391,7 +1427,7 @@ mod grid_overflow_observation_tests {
                 .iter()
                 .map(|entry| {
                     (
-                        entry.node(),
+                        entry.owner().clone(),
                         entry.fragment().rect(),
                         entry.fragment().baseline(),
                         entry

@@ -24,6 +24,8 @@ fn contextual_math_demands_actual_domain_winners_before_discard_and_trim() {
         let mut i = input(" c ", mode);
         math(&mut i, 0);
         i.scopes.push(SourceProcessingScope::Inline {
+            style: None,
+            boundaries: None,
             trim: WhiteSpaceTrim {
                 discard_inner: true,
                 ..WhiteSpaceTrim::default()
