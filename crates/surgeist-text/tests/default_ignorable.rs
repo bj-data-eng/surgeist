@@ -507,3 +507,257 @@ fn skipped_residual_di_cannot_acquire_joint_output_advance_or_spacing() {
     assert_eq!(value.glyphs[0].range, text::Range::new(0, 3));
     assert!(value.glyphs[0].ink);
 }
+
+fn qualified_extension_font(bytes: &[u8]) {
+    // The independent literal oracle is also exercised on every extension's
+    // actual registered bytes; table qualification follows on real source.
+    for (literal, glyph, advance) in [
+        ("A", 35, 10.0),
+        ("B", 36, 20.0),
+        ("R", 58, 15.0),
+        ("Q", 277, 25.0),
+        (" ", 274, 10.0),
+    ] {
+        let value = observe(bytes, literal, 0.0, LTR);
+        assert_eq!(ids_and_advances(&value), [(glyph, advance)]);
+        assert!(value.glyphs[0].ink);
+        assert_eq!(value.advance, f64::from(advance));
+    }
+}
+
+#[test]
+fn actual_supported_variation_sequence_retains_its_variant_and_joint_source() {
+    let bytes = font::variation(true, false);
+    qualified_extension_font(&bytes);
+    assert_eq!(
+        native_glyphs(&bytes, "A\u{e0100}"),
+        [(58, 1500)],
+        "real cmap14 nondefault UVS"
+    );
+    for direction in [LTR, RTL] {
+        let value = observe(&bytes, "A\u{e0100}", 0.0, direction);
+        assert_eq!(ids_and_advances(&value), [(58, 15.0)]);
+        assert_eq!(value.advance, 15.0);
+        assert!(value.glyphs[0].ink);
+        assert_eq!(value.glyphs[0].range, text::Range::new(0, 3));
+    }
+}
+
+#[test]
+fn unsupported_variation_sequences_keep_the_base_without_selector_output() {
+    let mut failures = Vec::new();
+    for (supported, mapped_selector, base, id, advance) in [
+        (false, false, 'A', 35, 10.0),
+        (false, true, 'A', 35, 10.0),
+        (true, false, 'B', 36, 20.0),
+    ] {
+        let bytes = font::variation(supported, mapped_selector);
+        qualified_extension_font(&bytes);
+        for direction in [LTR, RTL] {
+            let source = format!("{base}\u{e0100}");
+            let value = observe(&bytes, &source, 3.0, direction);
+            let expected_units = [
+                (text::Range::new(0, 1), f64::from(advance) + 3.0),
+                (text::Range::new(1, 3), 0.0),
+            ];
+            if ids_and_advances(&value) != [(id, advance)]
+                || value.advance != f64::from(advance) + 3.0
+                || value.units != expected_units
+            {
+                failures.push(format!("unsupported UVS supported-table={supported} mapped-selector={mapped_selector} {source:?} {direction:?}: expected base{id}/{advance}, units {expected_units:?}; got {value:?}"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn nominal_selector_alone_is_residual_even_when_its_font_has_a_supported_uvs() {
+    let bytes = font::variation(true, true);
+    qualified_extension_font(&bytes);
+    assert_eq!(native_glyphs(&bytes, "A\u{e0100}"), [(58, 1500)]);
+    let mut failures = Vec::new();
+    for direction in [LTR, RTL] {
+        check_empty(
+            &observe(&bytes, "\u{e0100}", 3.0, direction),
+            &format!("nominal standalone selector {direction:?}"),
+            &mut failures,
+        );
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn actual_mongolian_ccmp_action_retains_the_consumed_fvs_result() {
+    let bytes = font::mongolian(true);
+    qualified_extension_font(&bytes);
+    assert_eq!(native_glyphs(&bytes, "\u{1820}"), [(35, 1000)]);
+    assert_eq!(native_glyphs(&bytes, "\u{1821}"), [(100, 700)]);
+    let without_action = font::mongolian(false);
+    assert_eq!(
+        native_glyphs(&without_action, "\u{1820}\u{180b}")
+            .iter()
+            .map(|glyph| glyph.0)
+            .collect::<Vec<_>>(),
+        [35, 100],
+        "same real sequence without ccmp has no joint result"
+    );
+    assert_eq!(
+        native_glyphs(&bytes, "\u{1820}\u{180b}"),
+        [(58, 1500)],
+        "actual FVS participates in real ligature"
+    );
+    for direction in [LTR, RTL] {
+        let value = observe(&bytes, "\u{1820}\u{180b}", 0.0, direction);
+        assert_eq!(ids_and_advances(&value), [(58, 15.0)]);
+        assert_eq!(value.advance, 15.0);
+        assert!(value.glyphs[0].ink);
+        assert_eq!(value.glyphs[0].range, text::Range::new(0, 2));
+    }
+}
+
+#[test]
+fn mongolian_selectors_without_an_actual_action_add_no_output_or_spacing() {
+    let mut failures = Vec::new();
+    for (supported, selector) in [(false, '\u{180b}'), (false, '\u{180f}'), (true, '\u{180f}')] {
+        let bytes = font::mongolian(supported);
+        qualified_extension_font(&bytes);
+        // The same actual face's ordinary base remains a positive raw control.
+        assert_eq!(native_glyphs(&bytes, "\u{1820}"), [(35, 1000)]);
+        for direction in [LTR, RTL] {
+            let source = format!("\u{1820}{selector}");
+            let value = observe(&bytes, &source, 3.0, direction);
+            let expected_units = [
+                (text::Range::new(0, 1), 13.0),
+                (text::Range::new(1, 2), 0.0),
+            ];
+            if ids_and_advances(&value) != [(35, 10.0)]
+                || value.advance != 13.0
+                || value.units != expected_units
+            {
+                failures.push(format!("unhandled Mongolian selector supported-table={supported} {source:?} {direction:?}: expected A10, final13, units {expected_units:?}; got {value:?}"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+fn qualified_blank_filler_font(mapped: bool) -> Vec<u8> {
+    let bytes = font::fillers(mapped);
+    qualified_extension_font(&bytes);
+    assert_eq!(native_glyphs(&bytes, "F"), [(3, 1800)]);
+    let value = observe(&bytes, "F", 0.0, LTR);
+    assert_eq!(ids_and_advances(&value), [(3, 18.0)]);
+    assert_eq!(value.advance, 18.0);
+    assert!(!value.glyphs[0].ink);
+    assert_eq!(value.ink, text::LineOutlineInk::Empty);
+    bytes
+}
+
+#[test]
+fn four_mapped_fillers_retain_their_actual_nonzero_blank_spacing_resource() {
+    let bytes = qualified_blank_filler_font(true);
+    for scalar in ['\u{115f}', '\u{1160}', '\u{3164}', '\u{ffa0}'] {
+        assert_eq!(
+            native_glyphs(&bytes, &scalar.to_string()),
+            [(3, 1800)],
+            "actual native spacing resource for {scalar:?}"
+        );
+        for direction in [LTR, RTL] {
+            let value = observe(&bytes, &scalar.to_string(), 3.0, direction);
+            assert_eq!(ids_and_advances(&value), [(3, 18.0)]);
+            assert_eq!(value.advance, 21.0);
+            assert_eq!(value.units, [(text::Range::new(0, 1), 21.0)]);
+            assert!(!value.glyphs[0].ink);
+            assert_eq!(value.ink, text::LineOutlineInk::Empty);
+        }
+    }
+}
+
+#[test]
+fn four_missing_fillers_do_not_acquire_glyph_zero_ink_or_spacing() {
+    let bytes = qualified_blank_filler_font(false);
+    let mut failures = Vec::new();
+    for scalar in ['\u{115f}', '\u{1160}', '\u{3164}', '\u{ffa0}'] {
+        for direction in [LTR, RTL] {
+            check_empty(
+                &observe(&bytes, &scalar.to_string(), 3.0, direction),
+                &format!("missing filler {scalar:?} {direction:?}"),
+                &mut failures,
+            );
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn context_only_di_changes_its_neighbor_but_retains_zero_independent_allocation() {
+    let bytes = font::context_only();
+    qualified_extension_font(&bytes);
+    assert_eq!(
+        native_glyphs(&bytes, "AB"),
+        [(35, 1000), (36, 2000)],
+        "nested lookup must not run without context"
+    );
+    assert_eq!(
+        native_glyphs(&bytes, "ACB"),
+        [(58, 1500), (100, 700), (36, 2000)],
+        "ordinary C qualifies the actual lookahead"
+    );
+    let source = format!("A{DI}B");
+    assert_eq!(
+        native_glyphs(&bytes, &source),
+        [(58, 1500), (100, 700), (36, 2000)],
+        "D is context, not a consumed component"
+    );
+    let mut failures = Vec::new();
+    for direction in [LTR, RTL] {
+        let value = observe(&bytes, &source, 3.0, direction);
+        let expected_units = [
+            (text::Range::new(0, 1), 18.0),
+            (text::Range::new(1, 2), 0.0),
+            (text::Range::new(2, 3), 23.0),
+        ];
+        if ids_and_advances(&value) != [(58, 15.0), (36, 20.0)]
+            || value.advance != 41.0
+            || value.units != expected_units
+        {
+            failures.push(format!("context-only DI {direction:?}: expected R15/B20, final41, units {expected_units:?}; got {value:?}"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn repeated_di_after_a_supplementary_residual_keeps_distinct_normal_and_deleted_sources() {
+    let bytes = font::repeated();
+    qualified_extension_font(&bytes);
+    assert_eq!(
+        native_glyphs(&bytes, "ACBC"),
+        [(35, 1000), (58, 1500), (36, 2000)],
+        "actual backtrack-selected replacement and deletion"
+    );
+    let source = format!("\u{1bca0}A{DI}B{DI}");
+    assert_eq!(
+        native_glyphs(&bytes, &source),
+        [(277, 2500), (35, 1000), (58, 1500), (36, 2000)]
+    );
+    let mut failures = Vec::new();
+    for direction in [LTR, RTL] {
+        let value = observe(&bytes, &source, 3.0, direction);
+        let expected_units = [
+            (text::Range::new(0, 2), 0.0),
+            (text::Range::new(2, 3), 13.0),
+            (text::Range::new(3, 4), 18.0),
+            (text::Range::new(4, 5), 23.0),
+            (text::Range::new(5, 6), 0.0),
+        ];
+        if ids_and_advances(&value) != [(35, 10.0), (58, 15.0), (36, 20.0)]
+            || value.advance != 54.0
+            || value.units != expected_units
+        {
+            failures.push(format!("distinct equal DI sources {direction:?}: expected A10/R15/B20, final54, units {expected_units:?}; got {value:?}"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

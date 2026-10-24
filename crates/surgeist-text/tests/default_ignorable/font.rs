@@ -61,11 +61,15 @@ fn checksum(bytes: &[u8]) -> u32 {
 
 // Narrow safe adaptation of the repository's src/test_fonts.rs SFNT writer.
 fn replace_tables(replacements: Vec<([u8; 4], Vec<u8>)>) -> Vec<u8> {
-    let mut tables: Vec<_> = (0..usize::from(u16_at(AHEM, 4)))
+    rewrite_tables(AHEM, replacements)
+}
+
+fn rewrite_tables(bytes: &[u8], replacements: Vec<([u8; 4], Vec<u8>)>) -> Vec<u8> {
+    let mut tables: Vec<_> = (0..usize::from(u16_at(bytes, 4)))
         .map(|index| {
             let at = 12 + index * 16;
-            let tag: [u8; 4] = AHEM[at..at + 4].try_into().unwrap();
-            (tag, table(AHEM, tag).to_vec())
+            let tag: [u8; 4] = bytes[at..at + 4].try_into().unwrap();
+            (tag, table(bytes, tag).to_vec())
         })
         .collect();
     for (tag, data) in replacements {
@@ -78,7 +82,7 @@ fn replace_tables(replacements: Vec<([u8; 4], Vec<u8>)>) -> Vec<u8> {
     tables.sort_by_key(|entry| entry.0);
     let count = tables.len();
     let mut output = vec![0; 12 + count * 16];
-    output[..4].copy_from_slice(&AHEM[..4]);
+    output[..4].copy_from_slice(&bytes[..4]);
     output[4..6].copy_from_slice(&short(count).to_be_bytes());
     let power = count.next_power_of_two() / if count.is_power_of_two() { 1 } else { 2 };
     output[6..8].copy_from_slice(&short(power * 16).to_be_bytes());
@@ -126,7 +130,13 @@ fn cmap(mapped_di: Option<char>) -> Vec<u8> {
     if let Some(value) = mapped_di {
         entries.push((u32::from(value), u32::from(D)));
     }
+    cmap_entries(&entries)
+}
+
+fn cmap_entries(entries: &[(u32, u32)]) -> Vec<u8> {
+    let mut entries = entries.to_vec();
     entries.sort_unstable();
+    assert!(entries.windows(2).all(|pair| pair[0].0 < pair[1].0));
     let mut output = words(&[0, 1, 3, 10]);
     output.extend(12_u32.to_be_bytes());
     output.extend(words(&[12, 0]));
@@ -158,20 +168,23 @@ fn ligature(first: u16, second: u16) -> Vec<u8> {
 }
 
 fn gsub(lookups: Vec<(u16, Vec<u8>)>) -> Vec<u8> {
+    let enabled = (0..lookups.len()).map(short).collect::<Vec<_>>();
+    gsub_selected(*b"DFLT", lookups, &enabled)
+}
+
+fn gsub_selected(script: [u8; 4], lookups: Vec<(u16, Vec<u8>)>, enabled: &[u16]) -> Vec<u8> {
     // DFLT/default LangSys selects ccmp with every lookup in source order.
     let scripts = {
         let mut data = words(&[1]);
-        data.extend(*b"DFLT");
+        data.extend(script);
         data.extend(words(&[8, 4, 0, 0, 0xffff, 1, 0]));
         data
     };
     let features = {
         let mut data = words(&[1]);
         data.extend(*b"ccmp");
-        data.extend(words(&[8, 0, short(lookups.len())]));
-        for index in 0..lookups.len() {
-            data.extend(words(&[short(index)]));
-        }
+        data.extend(words(&[8, 0, short(enabled.len())]));
+        data.extend(words(enabled));
         data
     };
     let mut lookup_list = words(&[short(lookups.len())]);
@@ -250,4 +263,148 @@ pub fn native_glyphs(bytes: &[u8], source: &str) -> Vec<(u32, i32)> {
         .zip(shaped.glyph_positions())
         .map(|(info, position)| (info.glyph_id, position.x_advance))
         .collect()
+}
+
+fn mappings() -> Vec<(u32, u32)> {
+    vec![
+        (0x20, u32::from(SPACE)),
+        (0x41, u32::from(A)),
+        (0x42, u32::from(B)),
+        (0x43, u32::from(D)),
+        (0x51, u32::from(Q)),
+        (0x52, u32::from(R)),
+    ]
+}
+
+/// cmap format14 explicitly supports only A + U+E0100 -> R58. The selector
+/// deliberately has no nominal mapping, so a successful real UVS is the witness.
+pub fn variation(supported: bool, mapped_selector: bool) -> Vec<u8> {
+    let bytes = fixture(None, Action::None);
+    let mut entries = mappings();
+    if mapped_selector {
+        entries.push((0xe0100, u32::from(D)));
+    }
+    let base = cmap_entries(&entries);
+    if !supported {
+        return rewrite_tables(&bytes, vec![(*b"cmap", base)]);
+    }
+    let mut format14 = words(&[14]);
+    format14.extend(30_u32.to_be_bytes());
+    format14.extend(1_u32.to_be_bytes());
+    format14.extend([0x0e, 0x01, 0x00]); // selector U+E0100, UInt24
+    format14.extend(0_u32.to_be_bytes()); // no default UVS table
+    format14.extend(21_u32.to_be_bytes()); // non-default mapping table
+    format14.extend(1_u32.to_be_bytes());
+    format14.extend([0, 0, 0x41]);
+    format14.extend(R.to_be_bytes());
+    assert_eq!(format14.len(), 30);
+    let mut cmap = words(&[0, 2, 0, 5]); // sorted platform0 variation encoding
+    cmap.extend(u32::try_from(base.len() + 8).unwrap().to_be_bytes());
+    cmap.extend(words(&[3, 10]));
+    cmap.extend(20_u32.to_be_bytes());
+    cmap.extend(&base[12..]);
+    cmap.extend(format14);
+    rewrite_tables(&bytes, vec![(*b"cmap", cmap)])
+}
+
+/// Genuine Mongolian ccmp: U1820(A35)+U180B(D100)->R58. The ordinary
+/// U1821 also maps to D100 as a positive same-script nominal control. U180F
+/// maps to a distinct visible Q277, so that unsupported selector cannot
+/// accidentally match the supported selector's component glyph.
+pub fn mongolian(supported: bool) -> Vec<u8> {
+    let bytes = fixture(None, Action::None);
+    let mut entries = mappings();
+    entries.extend([
+        (0x1820, u32::from(A)),
+        (0x1821, u32::from(D)),
+        (0x180b, u32::from(D)),
+        (0x180f, u32::from(Q)),
+    ]);
+    let mut tables = vec![(*b"cmap", cmap_entries(&entries))];
+    if supported {
+        tables.push((
+            *b"GSUB",
+            gsub_selected(*b"mong", vec![(4, ligature(A, D))], &[0]),
+        ));
+    }
+    rewrite_tables(&bytes, tables)
+}
+
+/// The four recognized fillers share a real nonzero blank glyph3/1800-unit
+/// spacing resource. Ordinary F qualifies its actual blank outline/metrics.
+pub fn fillers(mapped: bool) -> Vec<u8> {
+    let bytes = fixture(None, Action::None);
+    let mut entries = mappings();
+    entries.push((0x46, 3));
+    if mapped {
+        entries.extend([0x115f, 0x1160, 0x3164, 0xffa0].map(|scalar| (scalar, 3)));
+    }
+    let mut hmtx = table(&bytes, *b"hmtx").to_vec();
+    hmtx[12..14].copy_from_slice(&1800_u16.to_be_bytes());
+    rewrite_tables(
+        &bytes,
+        vec![(*b"cmap", cmap_entries(&entries)), (*b"hmtx", hmtx)],
+    )
+}
+
+fn single(input: u16, output: u16) -> Vec<u8> {
+    words(&[2, 8, 1, output, 1, 1, input])
+}
+
+fn context_lookahead(input: u16, lookahead: u16, nested: u16) -> Vec<u8> {
+    // ChainedContextSubst format3, one input and one lookahead coverage.
+    words(&[
+        3, 0, 1, 18, 1, 24, 1, 0, nested, 1, 1, input, 1, 1, lookahead,
+    ])
+}
+
+fn context_backtrack(backtrack: u16, input: u16, nested: u16) -> Vec<u8> {
+    // ChainedContextSubst format3, one backtrack and one input coverage.
+    words(&[
+        3, 1, 18, 1, 24, 0, 1, 0, nested, 1, 1, backtrack, 1, 1, input,
+    ])
+}
+
+/// DI acts only as lookahead to change A->R. Nested lookup1 is deliberately
+/// absent from the feature's direct lookup list, qualifying context-only input.
+pub fn context_only() -> Vec<u8> {
+    let bytes = fixture(Some('\u{2065}'), Action::None);
+    rewrite_tables(
+        &bytes,
+        vec![(
+            *b"GSUB",
+            gsub_selected(
+                *b"DFLT",
+                vec![(6, context_lookahead(A, D, 1)), (1, single(A, R))],
+                &[0],
+            ),
+        )],
+    )
+}
+
+/// Equal U2065 scalars take different actual paths: after A they become R;
+/// after B they disappear. Supplementary U1BCA0/Q remains unresolved before A.
+pub fn repeated() -> Vec<u8> {
+    let bytes = fixture(Some('\u{2065}'), Action::None);
+    let mut entries = mappings();
+    entries.extend([(0x2065, u32::from(D)), (0x1bca0, u32::from(Q))]);
+    rewrite_tables(
+        &bytes,
+        vec![
+            (*b"cmap", cmap_entries(&entries)),
+            (
+                *b"GSUB",
+                gsub_selected(
+                    *b"DFLT",
+                    vec![
+                        (6, context_backtrack(A, D, 1)),
+                        (1, single(D, R)),
+                        (6, context_backtrack(B, D, 3)),
+                        (2, multiple(D, &[])),
+                    ],
+                    &[0, 2],
+                ),
+            ),
+        ],
+    )
 }
