@@ -32,7 +32,11 @@ pub(crate) struct AnalysisDataSources;
 
 impl AnalysisDataSources {
     pub(crate) fn properties(&self, ch: char) -> Properties {
-        Properties::get(ch)
+        if crate::control::is_visible(ch as u32) {
+            crate::control::properties()
+        } else {
+            Properties::get(ch)
+        }
     }
 
     fn original_properties(&self, cp: u32) -> Properties {
@@ -79,6 +83,9 @@ pub(crate) enum Boundary {
 /// Native callers pass the executed processed atom, so a collapsed document
 /// LF that became SPACE is not mistaken for an untouched hard separator.
 pub(crate) fn is_hard_separator(code_point: u32) -> bool {
+    if crate::control::is_visible(code_point) {
+        return false;
+    }
     matches!(
         CodePointMapData::<LineBreak>::new().get32(code_point),
         LineBreak::MandatoryBreak
@@ -280,9 +287,10 @@ pub(crate) fn analyze(
             },
             script,
             grapheme_cluster_break: gcb,
-            // One pinned ICU authority reads the original code point for both
-            // scalars and isolated units, independently of either projection.
-            bidi_class: CodePointMapData::<BidiClass>::new().get32(atom.code_point),
+            // The native presentation profile overrides eligible Cc. Every
+            // other scalar and isolated unit retains its original ICU class,
+            // independently of the glyph and segmentation projections.
+            bidi_class: props.bidi_class(),
             bracket: sources.brackets().get32(atom.code_point),
             control: props.general_category() == GeneralCategory::Control,
             emoji: props.is_emoji_or_pictograph(),

@@ -11,6 +11,7 @@ mod analyzed;
 mod cache;
 mod catalogue;
 mod composer;
+mod control;
 mod edit;
 mod engine;
 mod error;

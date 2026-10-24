@@ -703,6 +703,7 @@ pub surgeist_text::ShapingRefusalReason::JoiningCorrespondence
 pub surgeist_text::ShapingRefusalReason::JoiningInput
 pub surgeist_text::ShapingRefusalReason::JoiningProfile
 pub surgeist_text::ShapingRefusalReason::LookupNestingLimit
+pub surgeist_text::ShapingRefusalReason::OrdinarySymbolInput
 pub surgeist_text::ShapingRefusalReason::WorkLimit
 pub enum surgeist_text::Slant
 pub surgeist_text::Slant::Italic

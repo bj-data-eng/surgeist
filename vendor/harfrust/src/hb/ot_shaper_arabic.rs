@@ -341,10 +341,14 @@ fn joining_actions(buffer: &mut hb_buffer_t, emit_flags: bool) {
     }
 
     for i in 0..buffer.len {
-        let this_type = get_joining_type(
-            buffer.info[i].as_codepoint(),
-            buffer.info[i].general_category(),
-        );
+        let this_type = if buffer.info[i].is_ordinary_symbol() {
+            hb_arabic_joining_type_t::U
+        } else {
+            get_joining_type(
+                buffer.info[i].as_codepoint(),
+                buffer.info[i].general_category(),
+            )
+        };
         if this_type == hb_arabic_joining_type_t::T {
             buffer.info[i].set_arabic_shaping_action(arabic_action_t::NONE);
             continue;

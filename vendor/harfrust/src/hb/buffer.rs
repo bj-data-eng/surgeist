@@ -6,7 +6,7 @@ use read_fonts::types::{GlyphId, GlyphId16};
 
 use super::buffer::glyph_flag::{SAFE_TO_INSERT_TATWEEL, UNSAFE_TO_BREAK, UNSAFE_TO_CONCAT};
 use super::face::hb_glyph_extents_t;
-use super::unicode::CharExt;
+use super::unicode::{CharExt, GeneralCategory};
 use super::{hb_font_t, hb_mask_t};
 use crate::hb::set_digest::hb_set_digest_t;
 use crate::hb::unicode::Codepoint;
@@ -179,7 +179,9 @@ pub struct GlyphInfo {
     /// [Read more on clusters](https://harfbuzz.github.io/clusters.html).
     pub cluster: u32,
     pub(crate) vars: [u32; 2],
-    // Independent scalar lineage while normalization is active; never a cluster.
+    // Low 31 bits: independent scalar lineage while normalization is active.
+    // High bit: closed ordinary-symbol presentation of the actual scalar.
+    // Neither field is derived from caller cluster numbers.
     pub(crate) joining_lineage: u32,
 }
 
@@ -338,6 +340,10 @@ impl GlyphInfo {
     }
 
     pub(crate) fn init_unicode_props(&mut self, scratch_flags: &mut hb_buffer_scratch_flags_t) {
+        if self.is_ordinary_symbol() {
+            self.set_unicode_props(GeneralCategory::OTHER_SYMBOL.0 as u16);
+            return;
+        }
         let u = self.as_codepoint();
         let gc = u.general_category();
         let mut props = gc.0 as u16;
@@ -439,10 +445,13 @@ pub enum ShapingRefusal {
     JoiningCorrespondence,
     /// The selected shaping profile cannot consume the requested source actions.
     JoiningProfile,
+    /// Bound ordinary-symbol metadata no longer matches the Unicode input.
+    OrdinarySymbolInput,
 }
 
 pub struct hb_buffer_t {
     pub(crate) joining: super::original_joining::JoiningState,
+    pub(crate) ordinary_symbol_input_len: Option<usize>,
     // Information about how the text in the buffer should be treated.
     pub flags: BufferFlags,
     pub cluster_level: hb_buffer_cluster_level_t,
@@ -505,6 +514,7 @@ impl hb_buffer_t {
     pub fn new() -> Self {
         hb_buffer_t {
             joining: super::original_joining::JoiningState::default(),
+            ordinary_symbol_input_len: None,
             flags: BufferFlags::empty(),
             cluster_level: HB_BUFFER_CLUSTER_LEVEL_DEFAULT,
             invisible: None,
@@ -655,6 +665,7 @@ impl hb_buffer_t {
 
     fn clear(&mut self) {
         self.joining = super::original_joining::JoiningState::default();
+        self.ordinary_symbol_input_len = None;
         self.direction = Direction::Invalid;
         self.script = None;
         self.language = None;
@@ -880,11 +891,12 @@ impl hb_buffer_t {
 
         let mut orig_info = self.info[self.idx];
         for i in 1..num_in {
-            orig_info.joining_lineage = super::original_joining::union(
+            let lineage = super::original_joining::union(
                 self,
-                orig_info.joining_lineage,
-                self.info[self.idx + i].joining_lineage,
+                orig_info.joining_lineage(),
+                self.info[self.idx + i].joining_lineage(),
             );
+            orig_info.set_joining_lineage(lineage);
         }
         for i in 0..num_out {
             let ii = self.out_len + i;
@@ -1873,13 +1885,36 @@ pub const HB_BUFFER_SCRATCH_FLAG_SHAPER0: u32 = 0x0100_0000;
 pub struct UnicodeBuffer(pub(crate) hb_buffer_t);
 
 impl UnicodeBuffer {
+    /// Present selected nonexempt Cc scalars as ordinary nonjoining symbols.
+    ///
+    /// Positions are strictly increasing scalar indices in this complete input,
+    /// independent of caller cluster values. Actual code points remain unchanged
+    /// for nominal font lookup. The closed profile has category So, combining
+    /// class zero and no control, default-ignorable, mark or whitespace roles.
+    /// Text-level bidi, script and segmentation remain the caller's authority.
+    /// Admission is atomic; failure preserves the prior binding. An empty slice
+    /// removes the binding. Appending after a nonempty binding refuses shaping
+    /// as `OrdinarySymbolInput`; rebinding the final input is permitted. Both
+    /// Unicode and glyph-buffer clear dispose this metadata.
+    ///
+    /// # Errors
+    /// Returns the exact invalid scalar index/order/character or logical input
+    /// bound, before mutating any existing semantic metadata.
+    pub fn set_ordinary_symbol_positions(
+        &mut self,
+        positions: &[u32],
+    ) -> Result<(), crate::OrdinarySymbolInputError> {
+        super::ordinary_symbol::install(&mut self.0, positions)
+    }
+
     /// Bind both genuine Unicode joining domains to this emitted Unicode body.
     ///
     /// `original_map` contains strictly increasing original-domain scalar
     /// indices, or `None` for computed presentation. `presentation_map` contains
     /// strictly increasing scalar indices in the full actual selected-line
     /// presentation domain. Both domains have the actual script and direction;
-    /// all mapped code points must match the emitted body exactly.
+    /// all mapped code points and ordinary-symbol presentation roles must match
+    /// the emitted body exactly.
     /// Admission is atomic. Shaping revalidates the final input and profile, so
     /// appending after binding cannot silently retain stale correspondence.
     /// Clearing the buffer clears this request; cluster changes do not identify

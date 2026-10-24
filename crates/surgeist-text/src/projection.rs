@@ -150,7 +150,17 @@ impl SourceProjection {
                 &mut atoms,
             )?;
         }
-        let projection = Self::from_atoms(atoms, paragraph.extent_in(source).end, barriers)?;
+        let barrier_atoms = barriers
+            .iter()
+            .map(|at| atoms.partition_point(|atom| atom.source.end <= *at))
+            .collect();
+        let projection = Self::from_atoms_inner(
+            atoms,
+            paragraph.extent_in(source).end,
+            barriers,
+            barrier_atoms,
+            false,
+        )?;
         #[cfg(any(test, feature = "text-accessibility"))]
         let projection = {
             let mut projection = projection;
@@ -248,10 +258,20 @@ impl SourceProjection {
     }
 
     pub(crate) fn from_atoms_at_barriers(
+        atoms: Vec<OriginalAtom>,
+        semantic_len: usize,
+        barriers: Vec<usize>,
+        barrier_atoms: Vec<usize>,
+    ) -> Result<Self> {
+        Self::from_atoms_inner(atoms, semantic_len, barriers, barrier_atoms, true)
+    }
+
+    fn from_atoms_inner(
         mut atoms: Vec<OriginalAtom>,
         semantic_len: usize,
         barriers: Vec<usize>,
         barrier_atoms: Vec<usize>,
+        control_presentation: bool,
     ) -> Result<Self> {
         let mut text = String::new();
         let mut segmentation = String::new();
@@ -266,6 +286,8 @@ impl SourceProjection {
             atom.glyph_bytes = start..text.len();
             let representative = if (0xd800..=0xdfff).contains(&atom.code_point) {
                 '\u{a6}'
+            } else if control_presentation && crate::control::is_visible(atom.code_point) {
+                crate::control::SEGMENTATION_SYMBOL
             } else {
                 atom.glyph
             };

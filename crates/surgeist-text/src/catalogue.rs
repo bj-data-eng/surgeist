@@ -97,6 +97,8 @@ pub(crate) struct Catalogue {
     collection: Collection,
     source_cache: SourceCache,
     registered: Vec<RegisteredFont>,
+    /// Intrinsic UA presentation, never a user matching/discovery candidate.
+    control_font: Option<Blob<u8>>,
 }
 
 impl Catalogue {
@@ -107,6 +109,7 @@ impl Catalogue {
             collection: new_collection(mode),
             source_cache: SourceCache::default(),
             registered: Vec::new(),
+            control_font: None,
         }
     }
 
@@ -121,6 +124,21 @@ impl Catalogue {
     pub(crate) fn query(&mut self) -> fontique::Query<'_> {
         self.source_cache.prune(128, false);
         self.collection.query(&mut self.source_cache)
+    }
+
+    pub(crate) fn control_font(&mut self) -> Result<crate::FontData> {
+        if let Some(blob) = &self.control_font {
+            return Ok(crate::FontData::from_blob(
+                blob.clone(),
+                0,
+                self.identity.clone(),
+            ));
+        }
+        let blob = crate::control::font::make()?;
+        let font = crate::FontData::from_blob(blob.clone(), 0, self.identity.clone());
+        crate::control::font::validate(&font)?;
+        self.control_font = Some(blob);
+        Ok(font)
     }
 
     pub(crate) fn registered_faces(&self) -> impl Iterator<Item = FontFace<'_>> {
@@ -162,6 +180,7 @@ impl Catalogue {
             collection,
             source_cache: SourceCache::default(),
             registered: self.registered.clone(),
+            control_font: self.control_font.clone(),
         })
     }
 

@@ -166,6 +166,14 @@ fn decompose_current_character(ctx: &mut hb_ot_shape_normalize_context_t, shorte
     let u = ctx.buffer.cur(0).as_codepoint();
     let glyph = ctx.face.get_nominal_glyph(u);
 
+    // The selected symbol is this genuine scalar, never a script-specific
+    // decomposition or a fallback representative. Its category/ccc travel in
+    // the row even when neighboring ordinary Unicode scalars normalize.
+    if ctx.buffer.cur(0).is_ordinary_symbol() {
+        next_char(ctx.buffer, glyph.map_or(0, u32::from));
+        return;
+    }
+
     if let Some(glyph) = glyph {
         if shortest {
             next_char(ctx.buffer, u32::from(glyph));
@@ -464,7 +472,9 @@ pub fn _hb_ot_shape_normalize(
             {
                 let a = ctx.buffer.out_info()[starter].as_codepoint();
                 let b = cur.as_codepoint();
-                if let Some(composed) = (ctx.compose)(&ctx, a, b) {
+                let symbol = ctx.buffer.out_info()[starter].is_ordinary_symbol()
+                    || ctx.buffer.cur(0).is_ordinary_symbol();
+                if let Some(composed) = (!symbol).then(|| (ctx.compose)(&ctx, a, b)).flatten() {
                     if let Some(glyph_id) = face.get_nominal_glyph(composed) {
                         // Copy to out-ctx.buffer.
                         ctx.buffer.next_glyph();
@@ -475,8 +485,8 @@ pub fn _hb_ot_shape_normalize(
                         // Merge and remove the second composable.
                         let lineage = super::original_joining::union(
                             ctx.buffer,
-                            ctx.buffer.out_info()[starter].joining_lineage,
-                            ctx.buffer.out_info()[ctx.buffer.out_len - 1].joining_lineage,
+                            ctx.buffer.out_info()[starter].joining_lineage(),
+                            ctx.buffer.out_info()[ctx.buffer.out_len - 1].joining_lineage(),
                         );
                         ctx.buffer.merge_out_clusters(starter, ctx.buffer.out_len);
                         ctx.buffer.out_len -= 1;
@@ -484,7 +494,7 @@ pub fn _hb_ot_shape_normalize(
                         // Modify starter and carry on.
                         let mut flags = ctx.buffer.scratch_flags;
                         let info = &mut ctx.buffer.out_info_mut()[starter];
-                        info.joining_lineage = lineage;
+                        info.set_joining_lineage(lineage);
                         info.glyph_id = composed;
                         info.set_normalizer_glyph_index(u32::from(glyph_id));
                         info.init_unicode_props(&mut flags);

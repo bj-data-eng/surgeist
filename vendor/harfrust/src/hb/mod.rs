@@ -32,6 +32,7 @@ mod glyph_metrics;
 mod glyph_names;
 mod kerning;
 mod machine_cursor;
+pub(crate) mod ordinary_symbol;
 pub(crate) mod original_joining;
 mod ot;
 mod ot_layout;

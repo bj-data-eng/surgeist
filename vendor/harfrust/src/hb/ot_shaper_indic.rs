@@ -74,7 +74,11 @@ impl GlyphInfo {
 
     fn set_indic_properties(&mut self) {
         let u = self.glyph_id;
-        let (cat, pos) = crate::hb::ot_shaper_indic_table::get_categories(u);
+        let (cat, pos) = if self.is_ordinary_symbol() {
+            (ot_category_t::OT_X, ot_position_t::POS_END)
+        } else {
+            crate::hb::ot_shaper_indic_table::get_categories(u)
+        };
 
         self.set_indic_category(cat);
         self.set_indic_position(pos);

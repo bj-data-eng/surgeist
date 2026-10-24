@@ -65,8 +65,14 @@ impl Default for ShapeContext {
 
 #[derive(Clone)]
 struct SelectedFont {
-    font: QueryFont,
+    font: SelectedResource,
     attrs: Attributes,
+}
+
+#[derive(Clone)]
+enum SelectedResource {
+    Matched(QueryFont),
+    Control(FontData),
 }
 
 /// Exact pre-mapping font-query input and its genuinely realized resource.
@@ -137,6 +143,7 @@ pub(crate) fn prepare_joining_domains(
                     &projection.text[bytes],
                     provider_script(script),
                     provider_direction(level),
+                    &symbol_positions(projection, atoms.clone())?,
                 )
                 .map_err(joining_source_error)?;
                 domains.push(JoiningDomain {
@@ -260,12 +267,12 @@ pub(crate) fn assign_fonts(
             }
             end += 1;
         }
-        for egc in analysis
+        for atoms in analysis
             .graphemes
             .iter()
             .filter(|g| g.end > first && g.start < end)
+            .flat_map(|g| font_spans(projection, g.start.max(first)..g.end.min(end)))
         {
-            let atoms = egc.start.max(first)..egc.end.min(end);
             fill_cluster(&input, atoms.clone(), &mut cluster);
             let witness = prepared
                 .shaped
@@ -321,6 +328,44 @@ pub(crate) fn assign_fonts(
     Ok(assignments)
 }
 
+/// Real fallback spans may divide a presentation grapheme without changing it.
+fn font_spans(
+    projection: &crate::projection::SourceProjection,
+    range: IndexRange<usize>,
+) -> impl Iterator<Item = IndexRange<usize>> + '_ {
+    let mut first = range.start;
+    std::iter::from_fn(move || {
+        if first == range.end {
+            return None;
+        }
+        let control = crate::control::is_visible(projection.atoms[first].code_point);
+        let mut end = first + 1;
+        while end < range.end
+            && crate::control::is_visible(projection.atoms[end].code_point) == control
+        {
+            end += 1;
+        }
+        let span = first..end;
+        first = end;
+        Some(span)
+    })
+}
+
+fn symbol_positions(
+    projection: &crate::projection::SourceProjection,
+    atoms: IndexRange<usize>,
+) -> Result<Vec<u32>> {
+    projection.atoms[atoms]
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| crate::control::is_visible(a.code_point))
+        .map(|(i, _)| {
+            u32::try_from(i)
+                .map_err(|_| super::shaping_refused(harfrust::ShapingRefusal::GrowthLimit))
+        })
+        .collect()
+}
+
 fn provider_script(script: Script) -> harfrust::Script {
     convert::script_to_harfrust(convert::script_to_fontique(script, &AnalysisDataSources))
 }
@@ -339,43 +384,70 @@ fn joining_source_error(error: harfrust::JoiningSourceError) -> Error {
         harfrust::JoiningSourceError::UnsupportedDirection => {
             harfrust::ShapingRefusal::JoiningProfile
         }
+        harfrust::JoiningSourceError::OrdinarySymbol(error) => match error {
+            harfrust::OrdinarySymbolInputError::GrowthLimit => {
+                harfrust::ShapingRefusal::GrowthLimit
+            }
+            harfrust::OrdinarySymbolInputError::WorkLimit => harfrust::ShapingRefusal::WorkLimit,
+            _ => harfrust::ShapingRefusal::OrdinarySymbolInput,
+        },
     })
 }
 
 impl PartialEq for SelectedFont {
     fn eq(&self, other: &Self) -> bool {
-        let (left, _) = self.font.blob.clone().into_raw_parts();
-        let (right, _) = other.font.blob.clone().into_raw_parts();
-        std::sync::Arc::ptr_eq(&left, &right)
-            && self.font.index == other.font.index
-            && self.font.synthesis == other.font.synthesis
-            && self.attrs == other.attrs
+        self.attrs == other.attrs
+            && match (&self.font, &other.font) {
+                (SelectedResource::Matched(left), SelectedResource::Matched(right)) => {
+                    let (left_blob, _) = left.blob.clone().into_raw_parts();
+                    let (right_blob, _) = right.blob.clone().into_raw_parts();
+                    std::sync::Arc::ptr_eq(&left_blob, &right_blob)
+                        && left.index == right.index
+                        && left.synthesis == right.synthesis
+                }
+                (SelectedResource::Control(left), SelectedResource::Control(right)) => {
+                    left.face().is_same_face(&right.face())
+                        && left.catalogue_identity() == right.catalogue_identity()
+                }
+                _ => false,
+            }
     }
 }
 
 pub(crate) fn shape(
-    query: Query<'_>,
+    catalogue: &mut crate::catalogue::Catalogue,
     input: ShapingInput<'_>,
     scratch: &mut ShapeContext,
 ) -> Result<ShapedData> {
-    shape_impl(query, input, scratch, false)
+    shape_impl(catalogue, input, scratch, false)
 }
 
 /// Actual matching/instance capture without a redundant glyph-shaping operation.
 pub(crate) fn capture_fonts(
-    query: Query<'_>,
+    catalogue: &mut crate::catalogue::Catalogue,
     input: ShapingInput<'_>,
     scratch: &mut ShapeContext,
 ) -> Result<Vec<FontQueryWitness>> {
-    shape_impl(query, input, scratch, true).map(|output| output.font_queries)
+    shape_impl(catalogue, input, scratch, true).map(|output| output.font_queries)
 }
 
 fn shape_impl(
-    mut query: Query<'_>,
+    catalogue: &mut crate::catalogue::Catalogue,
     input: ShapingInput<'_>,
     scratch: &mut ShapeContext,
     capture_only: bool,
 ) -> Result<ShapedData> {
+    let intrinsic = if input
+        .projection
+        .atoms
+        .iter()
+        .any(|a| crate::control::is_visible(a.code_point))
+    {
+        Some(catalogue.control_font()?)
+    } else {
+        None
+    };
+    let mut query = catalogue.query();
     let mut output = ShapedData::default();
     let mut queries = Vec::new();
     let sources = AnalysisDataSources;
@@ -433,8 +505,15 @@ fn shape_impl(
                 .graphemes
                 .partition_point(|range| range.start < item_end);
             let context = bounded_context(item_start..item_end, 0..count, &barriers);
-            for grapheme in &input.analysis.graphemes[grapheme_start..grapheme_end] {
-                let range = grapheme.start.max(item_start)..grapheme.end.min(item_end);
+            for range in input.analysis.graphemes[grapheme_start..grapheme_end]
+                .iter()
+                .flat_map(|grapheme| {
+                    font_spans(
+                        input.projection,
+                        grapheme.start.max(item_start)..grapheme.end.min(item_end),
+                    )
+                })
+            {
                 fill_cluster(&input, range.clone(), &mut scratch.cluster);
                 queries.push((
                     range.clone(),
@@ -444,8 +523,20 @@ fn shape_impl(
                     scratch.cluster.force_normalize,
                 ));
                 let selected =
-                    select_font(&mut query, style, script, &mut scratch.cluster, &sources)
-                        .ok_or_else(no_font)?;
+                    if crate::control::is_visible(input.projection.atoms[range.start].code_point) {
+                        SelectedFont {
+                            font: SelectedResource::Control(
+                                intrinsic
+                                    .as_ref()
+                                    .expect("eligible controls admitted their font")
+                                    .clone(),
+                            ),
+                            attrs: Attributes::default(),
+                        }
+                    } else {
+                        select_font(&mut query, style, script, &mut scratch.cluster, &sources)
+                            .ok_or_else(no_font)?
+                    };
                 if current.as_ref().is_some_and(|font| font != &selected) {
                     let old = current.take().expect("the selected segment owns a font");
                     append_selected(
@@ -529,7 +620,7 @@ pub(crate) fn default_metrics(
     let mut selected = None;
     query.matches_with(|font| {
         selected = Some(SelectedFont {
-            font: font.clone(),
+            font: SelectedResource::Matched(font.clone()),
             attrs: attributes(style),
         });
         QueryStatus::Stop
@@ -647,6 +738,7 @@ pub(crate) fn finalize(
                         &input.projection.text[bytes],
                         provider_script(run.script),
                         provider_direction(run.level),
+                        &symbol_positions(input.projection, extent.clone())?,
                     )
                     .map_err(joining_source_error)?;
                     selected_domains.push(JoiningDomain {
@@ -834,7 +926,7 @@ fn select_font(
         );
         if status != Status::Discard || selected.is_none() {
             selected = Some(SelectedFont {
-                font: font.clone(),
+                font: SelectedResource::Matched(font.clone()),
                 attrs: attributes(style),
             });
         }
@@ -1033,16 +1125,22 @@ fn append_selected(
     capture_only: bool,
 ) -> Result<()> {
     let selected = segment.font;
-    let font = FontData::from_blob(
-        selected.font.blob,
-        selected.font.index,
-        input.font_catalogue.clone(),
-    );
-    let synthesis = FontSynthesis::resolve(
-        input.styles[segment.style].style.font_size,
-        selected.font.synthesis.skew(),
-        selected.font.synthesis.embolden(),
-    )?;
+    let (font, synthesis, suggested_variations) = match selected.font {
+        SelectedResource::Matched(selected) => {
+            let synthesis = FontSynthesis::resolve(
+                input.styles[segment.style].style.font_size,
+                selected.synthesis.skew(),
+                selected.synthesis.embolden(),
+            )?;
+            let variations = selected.synthesis.variation_settings().to_vec();
+            (
+                FontData::from_blob(selected.blob, selected.index, input.font_catalogue.clone()),
+                synthesis,
+                variations,
+            )
+        }
+        SelectedResource::Control(font) => (font, FontSynthesis::default(), Vec::new()),
+    };
     append_request(
         RunRequest {
             input,
@@ -1053,7 +1151,7 @@ fn append_selected(
             font: &font,
             attrs: selected.attrs,
             synthesis,
-            suggested_variations: selected.font.synthesis.variation_settings().to_vec(),
+            suggested_variations,
             retained_coords: None,
             context: RunContext::new(input.projection, segment.atoms.clone(), segment.context),
         },
@@ -1211,6 +1309,8 @@ fn append_request(
             )
         },
     );
+    let ordinary_symbol_positions =
+        symbol_positions(request.input.projection, request.atoms.clone())?;
     let mut buffer = scratch
         .buffer
         .take()
@@ -1237,6 +1337,27 @@ fn append_request(
             u32::try_from(local).expect("local provider index was admitted"),
         );
     }
+    if let Err(error) = buffer.set_ordinary_symbol_positions(&ordinary_symbol_positions) {
+        scratch.buffer = Some(buffer);
+        return Err(super::shaping_refused(match error {
+            harfrust::OrdinarySymbolInputError::GrowthLimit => {
+                harfrust::ShapingRefusal::GrowthLimit
+            }
+            harfrust::OrdinarySymbolInputError::WorkLimit => harfrust::ShapingRefusal::WorkLimit,
+            _ => harfrust::ShapingRefusal::OrdinarySymbolInput,
+        }));
+    }
+    let continuation_mark = request
+        .input
+        .analysis
+        .graphemes
+        .iter()
+        .any(|g| g.start < request.atoms.start && request.atoms.start < g.end);
+    buffer.set_flags(if continuation_mark {
+        harfrust::BufferFlags::DO_NOT_INSERT_DOTTED_CIRCLE
+    } else {
+        harfrust::BufferFlags::empty()
+    });
     buffer.set_pre_context(request.context.before);
     buffer.set_post_context(request.context.after);
     buffer.set_direction(direction);
@@ -1653,7 +1774,7 @@ pub(crate) fn measure_character(
             .is_some_and(|id| id != 0)
         {
             selected = Some(SelectedFont {
-                font: font.clone(),
+                font: SelectedResource::Matched(font.clone()),
                 attrs: attributes(style),
             });
             QueryStatus::Stop

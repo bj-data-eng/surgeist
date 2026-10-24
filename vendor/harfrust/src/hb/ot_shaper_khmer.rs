@@ -68,7 +68,11 @@ mod khmer_feature {
 impl GlyphInfo {
     fn set_khmer_properties(&mut self) {
         let u = self.glyph_id;
-        let (cat, _) = crate::hb::ot_shaper_indic_table::get_categories(u);
+        let (cat, _) = if self.is_ordinary_symbol() {
+            (ot_category_t::OT_X, 0)
+        } else {
+            crate::hb::ot_shaper_indic_table::get_categories(u)
+        };
 
         self.set_khmer_category(cat);
     }

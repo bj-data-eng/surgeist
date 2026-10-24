@@ -254,7 +254,7 @@ pub(crate) fn prepare(
     };
     let font_catalogue = catalogue.identity().clone();
     let mut shaped = shape::shape(
-        catalogue.query(),
+        catalogue,
         ShapingInput {
             projection: &analyzed.projection,
             analysis: &analyzed.analysis,

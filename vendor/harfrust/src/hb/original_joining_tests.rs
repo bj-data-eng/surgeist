@@ -3,7 +3,7 @@ use crate::hb::completion_fixture::{with_font, with_tables};
 use crate::{script, BufferFlags, ShapingStatus};
 
 fn source(text: &str, script: Script) -> JoiningSource {
-    JoiningSource::analyze(text, script, Direction::LeftToRight).unwrap()
+    JoiningSource::analyze(text, script, Direction::LeftToRight, &[]).unwrap()
 }
 fn input(text: &str, script: Script) -> UnicodeBuffer {
     let mut input = UnicodeBuffer::new();
@@ -33,6 +33,7 @@ fn full_bodies_keep_literal_joining_actions_and_transparent_body_has_no_external
         "\u{628}\u{628}\u{628}",
         script::ARABIC,
         Direction::RightToLeft,
+        &[],
     )
     .unwrap();
     assert_eq!(
@@ -51,11 +52,69 @@ fn full_bodies_keep_literal_joining_actions_and_transparent_body_has_no_external
         .iter()
         .all(|scalar| scalar.action == 7));
 }
+
+#[test]
+fn ordinary_symbols_interrupt_arabic_joining_in_the_full_source_domain() {
+    // BEH on either side of a nonjoining symbol has an isolated action. The
+    // action values are the provider's existing OpenType-feature contract:
+    // isol=0, init=6, fina=1, and no feature=7.
+    for direction in [Direction::LeftToRight, Direction::RightToLeft] {
+        let connected =
+            JoiningSource::analyze("\u{628}\u{628}", script::ARABIC, direction, &[]).unwrap();
+        assert_eq!(
+            connected
+                .0
+                .scalars
+                .iter()
+                .map(|s| s.action)
+                .collect::<Vec<_>>(),
+            // Arabic runs execute in their native RTL order; an explicit LTR
+            // input reverses the scalar order before assigning these actions.
+            if direction == Direction::RightToLeft {
+                [6, 1]
+            } else {
+                [1, 6]
+            }
+        );
+        for point in (0..=31)
+            .chain(127..=159)
+            .filter(|cp| !matches!(cp, 9 | 10 | 13))
+        {
+            let text = alloc::format!("\u{628}{}\u{628}", char::from_u32(point).unwrap());
+            let separated = JoiningSource::analyze(&text, script::ARABIC, direction, &[1]).unwrap();
+            assert_eq!(
+                separated
+                    .0
+                    .scalars
+                    .iter()
+                    .map(|s| s.action)
+                    .collect::<Vec<_>>(),
+                [0, 7, 0]
+            );
+            assert_eq!(separated.0.scalars[1].class, Class::U);
+
+            // The only raw external-context consumer is the joining scan.
+            // Every eligible Cc is already nonjoining there, so its raw context
+            // spelling must terminate joining just like the selected symbol.
+            let context = alloc::format!("\u{628}{}", char::from_u32(point).unwrap());
+            let post_context = alloc::format!("{}\u{628}", char::from_u32(point).unwrap());
+            let mut external = input("\u{628}", script::ARABIC);
+            external.set_direction(direction);
+            external.set_pre_context(&context);
+            external.set_post_context(&post_context);
+            super::super::ot_shape::prepare_joining_source(&mut external.0);
+            ot_shaper_arabic::source_joining_actions(script::ARABIC, &mut external.0);
+            assert_eq!(external.0.info[0].arabic_shaping_action(), 0);
+            assert_eq!(external.0.shaping_status(), ShapingStatus::Complete);
+        }
+    }
+}
 fn source_with_transparent_body(count: usize) -> JoiningSource {
     JoiningSource::analyze(
         &alloc::format!("\u{628}{}\u{628}", "\u{61c}".repeat(count)),
         script::ARABIC,
         Direction::RightToLeft,
+        &[],
     )
     .unwrap()
 }
@@ -299,7 +358,7 @@ fn tiny_emitted_body_cannot_hide_a_retained_full_domain_from_aggregate_admission
     );
     assert!(value.0.joining.request.is_none());
     assert!(matches!(
-        JoiningSource::analyze("A", script::LATIN, Direction::TopToBottom),
+        JoiningSource::analyze("A", script::LATIN, Direction::TopToBottom, &[]),
         Err(JoiningSourceError::UnsupportedDirection)
     ));
 }

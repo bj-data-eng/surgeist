@@ -1052,6 +1052,112 @@ fn source_less_control_retains_its_actual_size_and_empty_after_has_no_pending_em
 }
 
 #[test]
+fn native_control_mark_range_keeps_both_fonts_and_only_outer_placed_carets() {
+    let bytes = crate::shaping_test_fonts::mark_ahem();
+    let p = capture(
+        Source::new("\u{1}\u{301}"),
+        own_style("-", HyphenationPlacement::LogicalAfter),
+        &bytes,
+    );
+    assert_eq!(
+        p.boundary_views()
+            .map(|b| b.source_before().get())
+            .collect::<Vec<_>>(),
+        [0, 2]
+    );
+    let line = finish(&p, request(&p)).unwrap();
+    assert_eq!(line.run_views().count(), 2);
+    let mut control = false;
+    let mut mark = false;
+    for run in line.run_views() {
+        if run.face().bytes() == bytes {
+            assert_eq!(run.glyphs().map(|g| g.id()).collect::<Vec<_>>(), [100]);
+            mark = true;
+        } else {
+            assert!(run.glyphs().all(|g| g.id() != 0));
+            control = true;
+        }
+    }
+    assert!(control && mark);
+    let placed = place_lines(&p, PlacementCoverage::WholeParagraph, vec![line]).unwrap();
+    let positions: Vec<_> = placed.positions().collect();
+    assert_eq!(
+        positions
+            .iter()
+            .map(|p| p.source_cursor().index())
+            .collect::<Vec<_>>(),
+        [0, 2]
+    );
+    let selection = placed
+        .position_selection(&positions[0], &positions[1])
+        .unwrap();
+    assert_eq!(selection.source_text().code_units(), [1, 0x301]);
+    assert_eq!(selection.plaintext().code_units(), [1, 0x301]);
+    assert!(!selection.geometry().rects().is_empty());
+}
+
+#[test]
+fn native_control_indications_use_retained_actual_symbol_fonts_on_both_placements() {
+    for cp in ['\0', '\u{b}', '\u{c}', '\u{85}'] {
+        for placement in [
+            HyphenationPlacement::LogicalBefore,
+            HyphenationPlacement::LogicalAfter,
+        ] {
+            let p = capture(
+                Source::new("AB\u{ad}CDE"),
+                own_style(&cp.to_string(), placement),
+                AHEM,
+            );
+            let offer = cut(&p, 3, counts(2, 3));
+            let first = finish(
+                &p,
+                selected_request(&p, start(&p), offer.clone(), None, true),
+            )
+            .unwrap();
+            let second = finish(
+                &p,
+                selected_request(
+                    &p,
+                    offer.view().boundary(),
+                    end(&p),
+                    first.hyphenation_continuation(),
+                    false,
+                ),
+            )
+            .unwrap();
+            let mut symbols = 0;
+            for line in [&first, &second] {
+                for run in line.run_views().filter(|run| run.face().bytes() != AHEM) {
+                    let instance = run.effective_instance().unwrap();
+                    assert_eq!(run.face().catalogue_identity(), p.font_catalogue_identity());
+                    for glyph in run.glyphs() {
+                        let bounds = instance
+                            .glyph_outline(glyph.id(), p.font_catalogue_identity())
+                            .unwrap()
+                            .bounds()
+                            .unwrap();
+                        assert!(bounds.size.width > 0.0 && bounds.size.height > 0.0);
+                        assert!(glyph.advance() > 0.0);
+                        symbols += 1;
+                    }
+                }
+            }
+            assert_eq!(symbols, 1);
+            assert_eq!(
+                p.analyzed_source().source().text().code_units(),
+                [65, 66, 173, 67, 68, 69]
+            );
+            let placed =
+                place_lines(&p, PlacementCoverage::WholeParagraph, vec![first, second]).unwrap();
+            assert_eq!(
+                placed.source().text().code_units(),
+                [65, 66, 173, 67, 68, 69]
+            );
+        }
+    }
+}
+
+#[test]
 fn indication_hard_separators_refuse_while_actual_tabs_keep_the_chosen_operation() {
     use icu_properties::{CodePointMapData, props::BidiClass};
     // LINE SEPARATOR is WS in bidi data, yet an actual hard line separator.
@@ -1060,7 +1166,7 @@ fn indication_hard_separators_refuse_while_actual_tabs_keep_the_chosen_operation
         BidiClass::WhiteSpace
     );
     assert!(crate::engine::analysis::is_hard_separator(0x2028));
-    for cp in ['\n', '\r', '\u{85}', '\u{2028}', '\u{2029}'] {
+    for cp in ['\n', '\r', '\u{2028}', '\u{2029}'] {
         for placement in [
             HyphenationPlacement::LogicalBefore,
             HyphenationPlacement::LogicalAfter,

@@ -552,6 +552,8 @@ pub enum ShapingRefusalReason {
     JoiningInput,
     JoiningCorrespondence,
     JoiningProfile,
+    /// The actual native symbol-presentation input could not be admitted.
+    OrdinarySymbolInput,
 }
 
 /// Operation at which geometry was rejected.
@@ -590,6 +592,7 @@ pub(crate) fn shaping_refused(reason: harfrust::ShapingRefusal) -> Error {
         Provider::JoiningInput => ShapingRefusalReason::JoiningInput,
         Provider::JoiningCorrespondence => ShapingRefusalReason::JoiningCorrespondence,
         Provider::JoiningProfile => ShapingRefusalReason::JoiningProfile,
+        Provider::OrdinarySymbolInput => ShapingRefusalReason::OrdinarySymbolInput,
     };
     Error::new(ErrorCode::ShapingRefused, "shaping did not complete")
         .with_detail(ErrorDetail::ShapingRefused { reason })

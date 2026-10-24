@@ -143,3 +143,52 @@ caller-owned capacity and allocator overhead are outside this provider-owned
 storage guarantee. The independent lineage field grows both `GlyphInfo` and `GlyphPosition`
 from 20 to 24 bytes, including ordinary buffers; their equal layouts preserve
 the existing safe buffer casts.
+
+## Closed ordinary-symbol presentation
+
+The repository-authored `src/hb/ordinary_symbol.rs` owns an explicit native
+presentation for Cc other than TAB, LF and CR. Its public
+`UnicodeBuffer::set_ordinary_symbol_positions` accepts strictly increasing
+scalar indices in the complete actual Unicode input, independently of cluster
+values. Admission is atomic and returns typed index/order/character or work/growth
+failure without replacing the previous metadata. An empty list removes it.
+Appending after a nonempty binding refuses the actual shaping invocation as
+`OrdinarySymbolInput`; rebinding the final input is permitted. Both buffer-clear
+front doors dispose the binding. Text retains document-defined delimiter
+eligibility and its bidi/script/segmentation policy.
+
+The closed provider presentation is category So, zero combining class and
+nonjoining, without control, mark, whitespace or default-ignorable treatment.
+Actual Cc code points remain the nominal cmap input. Unicode initialization,
+normalization, Arabic joining and Indic/Khmer/Myanmar/USE property setup consume
+the selected presentation. Other Text-level profile properties remain Text's
+analysis responsibility. This does not introduce a Unicode-database override,
+font substitution or default-ignorable suppression operation.
+
+The high bit of the existing independent scalar-lineage word carries the
+presentation through real scalar normalization; low 31 bits carry lineage-node
+identity. Accessors mask and preserve the independent fields. Node issuance
+refuses `GrowthLimit` before a lineage ID exceeds its representable low-bit
+range. Row sizes remain 24 bytes for both GlyphInfo and GlyphPosition, preserving
+the existing interchangeable safe buffer layouts and row-based work/storage
+allowances. Cc does not decompose or compose into another scalar under the closed
+profile; ordinary neighboring Unicode normalization and its lineage proof remain
+active. The normalized correspondence proof checks presentation as well as
+joining class and code point.
+
+`JoiningSource::analyze` now accepts the same scalar-indexed presentation input;
+it validates it before publishing a source. Source/body mismatches refuse typed
+`SourcePresentation` admission, and final-input revalidation preserves the
+existing `JoiningInput` shaping fence. No compatibility wrapper is retained.
+`ordinary_symbol_tests.rs` qualifies all 62 eligible Cc nominal mappings, atomic
+failure, stale input and clear/reuse, normalization with aliased clusters,
+source/profile mismatch, exact admission-work and growth refusal, final-input
+rebinding/removal, and all 62 controls followed by a real combining mark under
+Arabic, Devanagari, Khmer, Myanmar, Balinese and Hangul plans in both directions.
+The joining tests also prove that each control interrupts full-domain Arabic
+joining. The only raw external-context property consumer is the Arabic joining
+scan; all 62 controls already have its nonjoining class, and actual pre/post
+scans with neighboring BEH are qualified in both directions. No separate
+external-context presentation representation is needed for this closed inventory.
+Existing completion and joining tests remain in force. No generated Unicode or
+machine table, dependency version, downloaded source or font fixture was changed.

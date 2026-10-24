@@ -324,6 +324,9 @@ pub struct hb_ot_shape_context_t<'a> {
 // Pull it all together!
 pub fn shape_internal(ctx: &mut hb_ot_shape_context_t) {
     let initial_vars = ctx.buffer.allocated_var_bits;
+    if !ordinary_symbol::begin(ctx.buffer) {
+        return;
+    }
     original_joining::begin(ctx.buffer);
     if !ctx.buffer.successful && ctx.buffer.joining.request.is_some() {
         return;
@@ -724,7 +727,7 @@ fn insert_dotted_circle(buffer: &mut hb_buffer_t, face: &hb_font_t) {
             cluster: buffer.cur(0).cluster,
             ..GlyphInfo::default()
         };
-        info.joining_lineage = original_joining::synthetic(buffer, 0x25cc);
+        info.set_joining_lineage(original_joining::synthetic(buffer, 0x25cc));
 
         info.init_unicode_props(&mut buffer.scratch_flags);
         buffer.clear_output();

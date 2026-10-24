@@ -14,6 +14,8 @@ use crate::{Direction, Script, ShapingRefusal, UnicodeBuffer};
 /// A failure to analyze a complete source or selected-presentation domain.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum JoiningSourceError {
+    /// The scalar-indexed ordinary-symbol metadata is invalid.
+    OrdinarySymbol(crate::OrdinarySymbolInputError),
     /// The operation currently admits horizontal directions only.
     UnsupportedDirection,
     /// The provider's logical resource budget prevented complete analysis.
@@ -33,6 +35,8 @@ pub enum JoiningInputError {
     SourceOrder,
     /// A mapped contribution must retain its domain's actual code point.
     SourceCharacter,
+    /// A mapped scalar has different semantic presentation from the body.
+    SourcePresentation,
     /// Checked logical allocation accounting rejected the request.
     GrowthLimit,
 }
@@ -40,6 +44,7 @@ pub enum JoiningInputError {
 #[derive(Debug)]
 pub(crate) struct SourceScalar {
     pub(crate) codepoint: u32,
+    ordinary_symbol: bool,
     class: Class,
     action: u8,
 }
@@ -68,14 +73,19 @@ pub struct JoiningSource(Arc<SourceData>);
 impl JoiningSource {
     /// Analyze one complete Unicode domain for an explicit shaping profile.
     /// The resulting allocation may be shared across fonts and selections.
+    /// `ordinary_symbol_positions` contains strictly increasing scalar indices
+    /// of genuine nonexempt Cc with the same closed presentation as the emitted
+    /// buffer. Cluster values and UTF-16 offsets do not identify these scalars.
     ///
     /// # Errors
-    /// Returns `UnsupportedDirection` for a nonhorizontal profile, or the
-    /// provider's actual logical growth/work refusal before publishing a source.
+    /// Returns `UnsupportedDirection` for a nonhorizontal profile,
+    /// `OrdinarySymbol` for invalid presentation input, or the provider's actual
+    /// logical growth/work refusal before publishing a source.
     pub fn analyze(
         source: &str,
         script: Script,
         direction: Direction,
+        ordinary_symbol_positions: &[u32],
     ) -> Result<Self, JoiningSourceError> {
         if !direction.is_horizontal() {
             return Err(JoiningSourceError::UnsupportedDirection);
@@ -119,6 +129,9 @@ impl JoiningSource {
                     .map_err(|_| JoiningSourceError::Refused(ShapingRefusal::GrowthLimit))?,
             );
         }
+        input
+            .set_ordinary_symbol_positions(ordinary_symbol_positions)
+            .map_err(JoiningSourceError::OrdinarySymbol)?;
         input.set_script(script);
         input.set_direction(direction);
         let mut buffer = input.0;
@@ -127,8 +140,10 @@ impl JoiningSource {
             return Err(JoiningSourceError::Refused(ShapingRefusal::WorkLimit));
         }
         for (i, info) in buffer.info[..buffer.len].iter_mut().enumerate() {
-            info.joining_lineage = u32::try_from(i + 1)
-                .map_err(|_| JoiningSourceError::Refused(ShapingRefusal::GrowthLimit))?;
+            info.set_joining_lineage(
+                u32::try_from(i + 1)
+                    .map_err(|_| JoiningSourceError::Refused(ShapingRefusal::GrowthLimit))?,
+            );
         }
         super::ot_shape::prepare_joining_source(&mut buffer);
         ot_shaper_arabic::source_joining_actions(script, &mut buffer);
@@ -136,10 +151,20 @@ impl JoiningSource {
             return Err(JoiningSourceError::Refused(reason));
         }
         let mut scalars = Vec::with_capacity(count);
-        for c in source.chars() {
+        let mut symbols = ordinary_symbol_positions.iter().copied().peekable();
+        for (index, c) in source.chars().enumerate() {
+            let ordinary_symbol = symbols.peek() == Some(&(index as u32));
+            if ordinary_symbol {
+                symbols.next();
+            }
             scalars.push(SourceScalar {
                 codepoint: c as u32,
-                class: class(c as u32),
+                ordinary_symbol,
+                class: if ordinary_symbol {
+                    Class::U
+                } else {
+                    class(c as u32)
+                },
                 action: ot_shaper_arabic::no_joining_action(),
             });
         }
@@ -154,7 +179,7 @@ impl JoiningSource {
             return Err(JoiningSourceError::Refused(ShapingRefusal::GrowthLimit));
         }
         for info in &buffer.info[..buffer.len] {
-            let index = info.joining_lineage as usize - 1;
+            let index = info.joining_lineage() as usize - 1;
             scalars[index].action = info.arabic_shaping_action();
         }
         Ok(Self(Arc::new(SourceData {
@@ -264,6 +289,7 @@ impl JoiningRequest {
                 presentation,
                 presentation_index,
                 buffer.info[i].glyph_id,
+                buffer.info[i].is_ordinary_symbol(),
                 &mut previous_presentation,
             )?;
             if let Some(index) = original_index {
@@ -271,6 +297,7 @@ impl JoiningRequest {
                     original,
                     index,
                     buffer.info[i].glyph_id,
+                    buffer.info[i].is_ordinary_symbol(),
                     &mut previous_original,
                 )?;
             }
@@ -312,6 +339,15 @@ impl JoiningRequest {
             {
                 return Err(JoiningInputError::SourceCharacter);
             }
+            let symbol = buffer.info[i].is_ordinary_symbol();
+            if self.presentation.0.scalars[entry.presentation.get() as usize - 1].ordinary_symbol
+                != symbol
+                || entry.original.is_some_and(|index| {
+                    self.original.0.scalars[index.get() as usize - 1].ordinary_symbol != symbol
+                })
+            {
+                return Err(JoiningInputError::SourcePresentation);
+            }
         }
         Ok(())
     }
@@ -328,6 +364,7 @@ fn validate_index(
     source: &JoiningSource,
     index: usize,
     cp: u32,
+    ordinary_symbol: bool,
     previous: &mut Option<usize>,
 ) -> Result<(), JoiningInputError> {
     let scalar = source
@@ -343,6 +380,9 @@ fn validate_index(
     }
     if scalar.codepoint != cp {
         return Err(JoiningInputError::SourceCharacter);
+    }
+    if scalar.ordinary_symbol != ordinary_symbol {
+        return Err(JoiningInputError::SourcePresentation);
     }
     *previous = Some(index);
     Ok(())
@@ -494,7 +534,7 @@ pub(crate) fn begin(buffer: &mut hb_buffer_t) {
     buffer.joining.nodes.reserve_exact(buffer.len);
     for i in 0..buffer.len {
         buffer.joining.nodes.push(Lineage::Input(i));
-        buffer.info[i].joining_lineage = (i + 1) as u32;
+        buffer.info[i].set_joining_lineage((i + 1) as u32);
     }
     buffer.joining.tracking = true;
 }
@@ -511,6 +551,11 @@ fn add_node(buffer: &mut hb_buffer_t, node: Lineage) -> u32 {
         buffer.successful = false;
         return 0;
     };
+    if id > 0x7fff_ffff {
+        buffer.refuse(ShapingRefusal::GrowthLimit);
+        buffer.successful = false;
+        return 0;
+    }
     if buffer.joining.nodes.len() == buffer.joining.nodes.capacity() {
         let old = buffer.joining.nodes.capacity();
         let target = old.max(2).checked_mul(2);
@@ -584,12 +629,16 @@ fn resolve(buffer: &mut hb_buffer_t, write_actions: bool) {
     let mut actions = Vec::with_capacity(buffer.len);
     for i in 0..buffer.len {
         let cp = buffer.info[i].as_codepoint();
-        let actual_class = class(cp);
+        let actual_class = if buffer.info[i].is_ordinary_symbol() {
+            Class::U
+        } else {
+            class(cp)
+        };
         let mut desired = None;
         let mut original_bearing = false;
         let mut computed_bearing = false;
         let mut synthetic_bearing = false;
-        stack.push(buffer.info[i].joining_lineage);
+        stack.push(buffer.info[i].joining_lineage());
         while let Some(id) = stack.pop() {
             if !work(buffer, 1) {
                 return;
@@ -630,6 +679,11 @@ fn resolve(buffer: &mut hb_buffer_t, write_actions: bool) {
                     let request = buffer.joining.request.as_ref().unwrap();
                     let entry = request.map[input];
                     let scalar = request.scalar(entry);
+                    if scalar.ordinary_symbol != buffer.info[i].is_ordinary_symbol() {
+                        buffer.refuse(ShapingRefusal::JoiningCorrespondence);
+                        buffer.successful = false;
+                        return;
+                    }
                     if special_selector(scalar.codepoint) {
                         if cp != scalar.codepoint {
                             buffer.refuse(ShapingRefusal::JoiningCorrespondence);

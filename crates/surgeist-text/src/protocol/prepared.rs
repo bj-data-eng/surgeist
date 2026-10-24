@@ -1290,7 +1290,7 @@ pub(crate) fn prepare_indication_fonts(
             let inserted_atoms = inserted_atoms.start - offset..inserted_atoms.end - offset;
             let catalogue_identity = catalogue.identity().clone();
             let mut font_queries = crate::engine::shape::capture_fonts(
-                catalogue.query(),
+                catalogue,
                 crate::engine::ShapingInput {
                     projection: &projection,
                     analysis: &analysis,
@@ -1310,7 +1310,7 @@ pub(crate) fn prepare_indication_fonts(
                     (base & 1) ^ 1,
                 )?;
                 font_queries.extend(crate::engine::shape::capture_fonts(
-                    catalogue.query(),
+                    catalogue,
                     crate::engine::ShapingInput {
                         projection: &projection,
                         analysis: &analysis,
