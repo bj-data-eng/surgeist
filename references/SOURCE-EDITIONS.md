@@ -1297,7 +1297,7 @@ covered `FontCascadeInlines.h`, `TabSize.h`, `WidthIterator.cpp` and `TextRun.h`
 Their tab helper and line-relative position do not establish a clamp for a
 negative spacing-derived interval. `IntrinsicWidthHandler.cpp` (lines 284–350)
 and `InlineLineBuilder.cpp` (lines 1050–1103) show intrinsic measurement modes,
-not a specified solver for an unknown opposite block edge. No implementation
+without establishing the indefinite opposite-edge phase. No WebKit implementation
 excerpts are retained or browser equivalence claimed.
 
 Source-only WPT inspection at `69f2bba61ce7e9469ccbce53de4644a89f6b7dff`
@@ -1311,7 +1311,20 @@ adopts the same stop set with the magnitude of a finite nonzero interval,
 traversed strictly forward in paragraph progression. Retain the signed metric
 and provenance; apply exactly one half-ch bump. This completes a source gap as
 native policy, without a browser-equivalence or CSSWG-resolution claim.
-Unresolved opposite-edge intrinsic phases remain a separate capability limit.
+
+The [intrinsic-phase determination](https://github.com/bj-data-eng/surgeist/issues/64#issuecomment-6389474658)
+supersedes the earlier unresolved opposite-edge convention. The
+[pinned Blink capture](blink-intrinsic-tab-phase--daf70f9ddee4.md) traces real
+min/max line measurement through indent-based position initialization, TAB
+dispatch, tabulation shaping and the forward tab resolver. Its static two-TAB/X
+test supports accumulation, not opposite-edge parity; no browser or upstream test
+was executed. For unconstrained min-/max-content measurement, the native contract
+selects a logical grid at the unindented paragraph line-start with applicable
+indent, independently of the opposite block edge. Used layout retains the real
+block content-start origin.
+This is an adopted measurement policy, not a located CSSWG resolution. Surgeist's
+half-ch and signed-derived-period policies remain unchanged; Blink's half-SPACE
+threshold is not adopted. Implementation qualification remains with #64.
 
 ## Visible control-character presentation
 

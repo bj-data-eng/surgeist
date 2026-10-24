@@ -642,7 +642,7 @@ are distinct numeric failures, never semantic zero. A negative specified tab siz
 remains invalid; a negative interval derived from valid sizing and actual spacing
 is a separate state.
 
-Use physical +x coordinates temporarily, with unaligned paragraph progression
+For used layout, use physical +x coordinates temporarily, with unaligned paragraph progression
 start defined as zero. The initial pen is +indent for LTR and -indent for RTL.
 Layout supplies the actual block content-start minus actual paragraph-start
 displacement in this frame, recomputed for each float band and retry. Direction
@@ -682,12 +682,37 @@ require their own precise missing-metric result.
 Changed spacing allocations require tab recomputation: expansion before a tab
 may be absorbed by a shorter tab advance. Layout uses actual finalized feedback
 for fit, floats, intrinsic sizing and justification, retaining request identity
-and cycle detection. Unknown block extent remains unknown. A nonzero preserved
-tab whose intrinsic phase depends on an unknown opposite edge requires a precise
-unresolved-intrinsic-tab-phase capability; zero or removed tabs do not demand that
-edge. A known placement frame does not redefine an unconstrained intrinsic query.
-No zero-origin substitution or self-consistency solver is selected. This case
-also remains required work for full acceptance. Qualification must cover actual
+and cycle detection.
+
+For unconstrained min-/max-content measurement, select a logical measurement
+grid from the unindented paragraph line-start, advancing in paragraph direction.
+Initialize its pen with the applicable resolved indent and accumulate actual
+canonical advances. The nearest block still owns the period metrics and the
+tab's style owns half-ch. Reset this grid for each measured line under the
+existing first-line, each-line and hanging-indent rules; intrinsic percentage
+indent retains its existing zero treatment. Inline edges contribute advances
+without resetting the grid. The signed logical position q uses the same
+forward-stop formula and exactly one half-ch bump defined above.
+
+This is the [adopted intrinsic convention](https://github.com/bj-data-eng/surgeist/issues/64#issuecomment-6389474658),
+supported by the [complete pinned Blink path](../references/blink-intrinsic-tab-phase--daf70f9ddee4.md).
+It does not assign a physical value to an unknown block edge or infer it from an
+incidental placement frame. Request/context and cache identity distinguish this
+operation from used layout. Finite placement recomputes tabs from the real
+block content-start edge with actual float/indent displacement; intrinsic
+geometry cannot be reused as placed geometry. No width self-consistency solver
+is selected. These origin choices do not change opportunities, bidi, hanging,
+spacing or source custody. The convention is native policy completing a source
+gap, without a CSSWG-resolution or executed browser-parity claim.
+
+For Ahem10, period40 and half-ch5, Preserve plus Word wrapping, zero-indent
+`A TAB B` has max-content advance50. Min-content has raw line advances40 and10,
+issued contributions10 and10, and aggregate inline extent10: the first line's
+preserved trailing TAB hangs at its Soft ending. Its30px remains in raw/source
+geometry. These intrinsic results hold across all four paragraph/block
+direction pairs, independently of incidental placement widths. Used LTR layout
+with real RTL block edge100 has raw advance30 instead. Assert the raw,
+purpose-specific and placed observations separately. Qualification must cover actual
 Text and Layout operations, source/interaction geometry, original and replacement
 tabs, metric resources, numeric failures and retry purity before support is claimed.
 
