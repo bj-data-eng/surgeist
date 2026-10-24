@@ -732,3 +732,148 @@ fn conditional_space_allocation_to_zero_preserves_source_and_alignment() {
     let next = continuation(&p, forced.view().boundary(), 15.0);
     custody(&p, vec![line, next], &[88, 32, 10, 89]);
 }
+
+fn prepared_discard_separator(
+    terminal_edge: crate::ParagraphTerminalEdge,
+) -> (Vec<u8>, PreparedText) {
+    let bytes = crate::shaping_test_fonts::width_ahem();
+    let font = skrifa::FontRef::new(&bytes).unwrap();
+    assert_eq!(font.charmap().map(0x41_u32).unwrap().to_u32(), 35);
+    assert_eq!(font.charmap().map(0x3000_u32).unwrap().to_u32(), 1);
+    assert_eq!(
+        crate::test_fonts::u16_at(crate::test_fonts::table(&bytes, *b"head"), 18),
+        1000
+    );
+    let hmtx = crate::test_fonts::table(&bytes, *b"hmtx");
+    assert_eq!(crate::test_fonts::u16_at(hmtx, 35 * 4), 1000);
+    assert_eq!(crate::test_fonts::u16_at(hmtx, 4), 2000);
+    let mut system = System::new(SystemOptions {
+        font_catalogue: FontCatalogueMode::RegisteredOnly,
+    })
+    .unwrap();
+    system.register_fonts(bytes.clone()).unwrap();
+    let source = Source::identified("A\u{3000}", crate::Id::from_u64(7401), 7);
+    let input = ParagraphInput {
+        terminal_edge,
+        source: source.clone(),
+        base_style: Style {
+            size: 10.0,
+            white_space: WhiteSpace::Discard,
+            ..style()
+        },
+        tab_reference: None,
+        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        base_direction: ParagraphBaseDirection::LeftToRight,
+        paragraph_strut: ParagraphStrut::DefaultFont,
+        origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
+            source,
+            local: Range::new(0, 2),
+            aggregate: Range::new(0, 2),
+            kind: paragraph::ParagraphOriginKind::Authored,
+        }],
+        connections: vec![],
+        controls: vec![],
+        boundary_policies: vec![],
+        replacements: vec![],
+        anchor_order: vec![],
+    };
+    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    assert_eq!(analyzed.source().text().code_units(), [0x41, 0x3000]);
+    assert_eq!(analyzed.source().id(), Some(crate::Id::from_u64(7401)));
+    assert_eq!(analyzed.source().revision(), 7);
+    assert_eq!(
+        analyzed.processed_source().processed_text().code_units(),
+        [0x41, 0x3000]
+    );
+    let prepared = system
+        .prepare(
+            &crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word),
+            PreparationOptions::default(),
+        )
+        .unwrap();
+    (bytes, prepared)
+}
+
+fn discard_separator_custody(p: &PreparedText, line: &FinalizedLine, bytes: &[u8]) {
+    let actual: Vec<_> = line
+        .run_views()
+        .flat_map(|run| {
+            assert_eq!(run.face().bytes(), bytes);
+            assert_eq!(run.effective_instance().unwrap().font_size(), 10.0);
+            let origin = run.origin().x;
+            run.glyphs()
+                .map(move |glyph| {
+                    (
+                        glyph.range(),
+                        glyph.id(),
+                        glyph.advance(),
+                        origin + glyph.pen(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    assert_eq!(
+        actual,
+        [
+            (Range::new(0, 1), 35, 10.0, 0.0),
+            (Range::new(1, 2), 1, 20.0, 10.0),
+        ]
+    );
+    assert_eq!(line.feedback().advance, 30.0);
+    let layout = custody(p, vec![line.clone()], &[0x41, 0x3000]);
+    assert_eq!(layout.source().id(), Some(crate::Id::from_u64(7401)));
+    assert_eq!(layout.source().revision(), 7);
+}
+
+#[test]
+fn discard_surviving_separator_keeps_ordinary_advance_at_block_end() {
+    // Adopted #74 policy: Discard gives surviving characters ordinary advance,
+    // without whitespace-rule hanging. Actual A10 + U3000(20) therefore occupies
+    // 0..30 even when the available width is only10.
+    let (bytes, p) = prepared_discard_separator(crate::ParagraphTerminalEdge::BlockEnd);
+    let line = select(
+        &p,
+        first(&p),
+        ending(&p, PreparedBreakKind::ParagraphEnd),
+        10.0,
+        crate::Alignment::Left,
+    );
+    discard_separator_custody(&p, &line, &bytes);
+    let fit = line.measurements().fit();
+    assert_eq!(
+        (
+            line.feedback().hanging_start,
+            line.feedback().hanging_end,
+            fit.advance(),
+            fit.occupied_start(),
+            fit.occupied_end()
+        ),
+        (0.0, 0.0, 30.0, 0.0, 30.0)
+    );
+}
+
+#[test]
+fn discard_surviving_separator_needs_no_hanging_terminal_or_available_edge() {
+    let (bytes, p) = prepared_discard_separator(crate::ParagraphTerminalEdge::Unknown);
+    let mut r = request(&p);
+    r.context.available_inline = None;
+    let line = p
+        .select(r)
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .expect("ordinary Discard advance needs neither terminal-block nor available-edge hanging context");
+    discard_separator_custody(&p, &line, &bytes);
+    let fit = line.measurements().fit();
+    assert_eq!(
+        (
+            line.feedback().hanging_start,
+            line.feedback().hanging_end,
+            fit.advance(),
+            fit.occupied_start(),
+            fit.occupied_end()
+        ),
+        (0.0, 0.0, 30.0, 0.0, 30.0)
+    );
+}
