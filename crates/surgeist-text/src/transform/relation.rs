@@ -5,7 +5,7 @@ use std::ops::Range as IndexRange;
 
 use crate::engine::analysis::wrapping::{Event, LogicalEvent};
 use crate::protocol::paragraph::{ParagraphAnchorItem, ParagraphData};
-use crate::{Affinity, ProcessedSource, Range, Source};
+use crate::{ProcessedSource, Range, Source};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct OriginalPiece {
@@ -28,8 +28,25 @@ pub(crate) struct InputRow {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ComponentOwner {
+    Original(usize),
+    Wbr(usize),
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct Component {
+    pub(crate) owner: ComponentOwner,
+    pub(crate) source: Range,
+    pub(crate) processed: Range,
+    pub(crate) code_point: u32,
+    pub(crate) separator_space: bool,
+    pub(crate) style: usize,
+    pub(crate) outputs: IndexRange<usize>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct Emission {
-    pub(crate) row: usize,
+    pub(crate) component: usize,
     pub(crate) subposition: usize,
     pub(crate) code_point: u32,
     pub(crate) atom: usize,
@@ -48,6 +65,7 @@ pub(crate) enum RelationEvent {
 pub(crate) struct TransformMap {
     pub(crate) rows: Vec<InputRow>,
     pub(crate) pieces: Vec<OriginalPiece>,
+    pub(crate) components: Vec<Component>,
     pub(crate) emissions: Vec<Emission>,
     pub(crate) events: Vec<RelationEvent>,
     /// Base semantic atom -> emission ID; never an original-source search.
@@ -87,8 +105,17 @@ impl TransformMap {
                 pieces: first..map.pieces.len(),
                 outputs: row..row + 1,
             });
+            map.components.push(Component {
+                owner: ComponentOwner::Original(row),
+                source: atom.source,
+                processed: map.rows[row].processed,
+                code_point: atom.code_point,
+                separator_space: false,
+                style: map.rows[row].style,
+                outputs: row..row + 1,
+            });
             map.emissions.push(Emission {
-                row,
+                component: row,
                 subposition: 0,
                 code_point: atom.code_point,
                 atom: row,
@@ -138,8 +165,25 @@ impl TransformMap {
         }
     }
 
-    pub(crate) fn row_for_atom(&self, atom: usize) -> &InputRow {
-        &self.rows[self.emissions[self.atoms[atom]].row]
+    pub(crate) fn component_for_atom(&self, atom: usize) -> &Component {
+        &self.components[self.emissions[self.atoms[atom]].component]
+    }
+    pub(crate) fn original_row_for_atom(&self, atom: usize) -> Option<usize> {
+        match self.component_for_atom(atom).owner {
+            ComponentOwner::Original(row) => Some(row),
+            ComponentOwner::Wbr(_) => None,
+        }
+    }
+    pub(crate) fn controls_for_atoms(&self, atoms: IndexRange<usize>) -> Vec<usize> {
+        let mut controls = Vec::new();
+        for atom in atoms {
+            if let ComponentOwner::Wbr(control) = self.component_for_atom(atom).owner
+                && !controls.contains(&control)
+            {
+                controls.push(control);
+            }
+        }
+        controls
     }
 
     pub(crate) fn emission_for_atom(&self, atom: usize) -> Emission {
@@ -164,7 +208,7 @@ impl TransformMap {
         source: &Source,
     ) -> Range {
         match self.events[event] {
-            RelationEvent::Text { atom } => self.row_for_atom(atom).source,
+            RelationEvent::Text { atom } => self.component_for_atom(atom).source,
             RelationEvent::Removal { row } => self.rows[row].source,
             RelationEvent::PhaseIDeleted { source, .. } => source,
             RelationEvent::Anchor { order } => {
@@ -182,28 +226,6 @@ impl TransformMap {
 
     pub(crate) fn cut_for_participant(&self, boundary: usize) -> usize {
         self.participant_cuts[boundary]
-    }
-
-    /// A source edge is looked up in genuine input order, never over reordered
-    /// semantic atoms. Actual mixed anchors lend their explicit event position.
-    pub(crate) fn atom_at_original_edge(&self, source: usize, affinity: Affinity) -> usize {
-        let row = self.rows.partition_point(|row| row.source.end <= source);
-        let included = if self
-            .rows
-            .get(row)
-            .is_some_and(|row| row.source.start < source)
-            && affinity == Affinity::After
-        {
-            row + 1
-        } else {
-            row
-        };
-        self.emissions
-            .iter()
-            .filter(|emission| emission.row < included)
-            .map(|emission| emission.atom + 1)
-            .max()
-            .unwrap_or(0)
     }
 
     pub(crate) fn logical_events(
@@ -227,7 +249,7 @@ impl TransformMap {
                     RelationEvent::Anchor { order } => Event::Anchor(paragraph.anchor_order[order]),
                 };
                 let source = match kind {
-                    Event::Text(index) => self.row_for_atom(index).source.start,
+                    Event::Text(index) => self.component_for_atom(index).source.start,
                     Event::Deleted(source, _) => source.start,
                     Event::Anchor(anchor) => match anchor.item {
                         ParagraphAnchorItem::EmptyOrigin(index) => {

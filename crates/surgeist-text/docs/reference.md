@@ -333,8 +333,9 @@ IdeographicSpace replace original U+200B with U+0020 and U+3000 before casing;
 None is neutral. The separator keeps its exact original/Phase-I range and
 plaintext value. Replacement is suppressed next to actual post-Phase-I forced
 breaks, ignoring inline boundaries and out-of-flow boxes. A collapsed LF is
-not a forced break. Generic optional-break controls are not interpreted as wbr;
-genuine wbr and automatic phrase insertion are not yet exposed.
+not a forced break. Generic optional-break controls are not interpreted as wbr.
+Native wbr uses the [separate occurrence capture](#native-wbr-separators);
+automatic phrase insertion is not exposed.
 
 `TextTransform::none()` is neutral for casing, width and kana.
 `TextTransform::Set` holds a `TextTransformSet`. Its `.with_case` builder selects
@@ -446,6 +447,47 @@ Queries require the exact analyzed or placed binding that produced the state; a
 foreign identity or wrong phase returns `AccessibilityBindingMismatch`. Original
 ill-formed UTF-16 cannot form a host string and refuses before state publication.
 
+### Native wbr separators
+
+Capture each genuine occurrence as `ParagraphControlKind::Wbr { style: Box<Style> }`
+in direct or contextual paragraph controls, retaining its actual anchor order.
+The complete computed Style owns replacement, subsequent transforms and metrics.
+`WordSpaceTransform::None` and forced-break suppression leave the unexpanded
+control; positive Space/IdeographicSpace produces a text contribution with its
+actual control identity. It requires no duplicate control allocation.
+
+Insertion uses the exact post-Phase-I scalar cut, before rebuilding graphemes.
+It can therefore separate a base from a following combining mark without moving
+to an old grapheme boundary. Deletions retain their actual mixed-event seam;
+same-anchor occurrences retain distinct order and identities. Ordinary anchors
+retain their documented affinity on the rebuilt units; equal projected positions
+do not merge or reorder captured occurrences. A positive request
+inside a retained supplementary scalar or multi-unit document-delimiter
+replacement returns `TextTransformError::UnrepresentableSeparatorSeam`, identifying
+the control, anchor and indivisible original interval. None and demonstrably
+forced-suppressed requests do not demand that insertion capability. These native
+refusals remain support limits.
+
+Contextual capture also retains the actual event side of disconnected text joins.
+A positive direct request coincident with such a join requires that execution
+context: `MissingSeparatorBoundaryContext` identifies the control, source anchor
+and connection when the flat capture cannot establish its side. Typography
+affinity does not supply that fact. A numerically nearby forced break cannot
+prove suppression across an unknown connected side. None and requests that do
+not consume the missing fact keep their existing admission.
+
+`PreparedUnitView::controls()` and `SourceRangeUnit::controls()` expose actual
+contributors alongside original-source associations. A generated-only unit has
+no invented original pieces. A generated separator and authored mark sharing one
+actual Range unit retain both contributors and their real fragments: querying
+the mark selects that indivisible unit, with original intersections restricted
+to the mark. An empty original interval does not select a generated-only unit.
+`PresentationMappingKind::GeneratedSeparator` and `separator_control()` distinguish
+its empty source/processed anchor from its presentation extent. Exact placed
+selection can traverse that geometry while source extraction and plaintext omit
+generated characters. Bind those control contributors when lowering Text units
+to Layout; origin-only ordering is insufficient for source-less contributions.
+
 ## Style support
 
 [TextStyleFeature::ALL and support(phase)](../src/style_support.rs) enumerate the
@@ -469,7 +511,8 @@ analysis. These entries do not certify the entire CSS text-transform property.
 `TextStyleFeature::MathAuto` reports support for ProcessedParagraph only;
 Standalone reports `RequiresCompleteTextNodeContext`.
 `TextStyleFeature::ExplicitWordSeparators` reports source-backed U+200B replacement
-in both phases, without claiming wbr or phrase detection.
+in both phases. `NativeWbr` reports processed-paragraph support; standalone layout
+requires processed-source layout. Neither capability claims phrase detection.
 
 `FontVariant::Normal`, `TextOverflow::Clip`, `TextAlignLast::Auto`, and
 `TextTransform::none()` are the exposed default values. Their acceptance does not

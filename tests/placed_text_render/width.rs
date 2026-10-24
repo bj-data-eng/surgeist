@@ -5,7 +5,8 @@ use super::*;
 // Minimal consumer-owned adaptation of test_fonts/shaping.rs::width_ahem.
 // Only cmap/hmtx and required SFNT checksums change; licensed Ahem outlines stay
 // untouched. UPEM1000: A35=1000, FF21→36=2000, S53=1000, FF33→58=1500,
-// sharp-s134=1000, SPACE3=500, IDEOGRAPHIC SPACE1=2000 (both blank).
+// sharp-s134=1000, SPACE3=500, IDEOGRAPHIC SPACE1=2000 (both blank),
+// combining3099→100=0, matching the qualified Text-owned width fixture.
 pub(super) fn width_ahem() -> Vec<u8> {
     fn u16_at(bytes: &[u8], at: usize) -> u16 {
         u16::from_be_bytes(bytes[at..at + 2].try_into().unwrap())
@@ -34,6 +35,7 @@ pub(super) fn width_ahem() -> Vec<u8> {
         (0x53, 53),
         (0xdf, 134),
         (0x3000, 1),
+        (0x3099, 100),
         (0xff21, 36),
         (0xff33, 58),
     ];
@@ -65,7 +67,7 @@ pub(super) fn width_ahem() -> Vec<u8> {
     let entry = record(&bytes, b"hmtx");
     let at = usize::try_from(u32_at(&bytes, entry + 8)).unwrap();
     let length = usize::try_from(u32_at(&bytes, entry + 12)).unwrap();
-    for (glyph, advance) in [(1, 2000_u16), (3, 500), (36, 2000), (58, 1500)] {
+    for (glyph, advance) in [(1, 2000_u16), (3, 500), (36, 2000), (58, 1500), (100, 0)] {
         bytes[at + glyph * 4..at + glyph * 4 + 2].copy_from_slice(&advance.to_be_bytes());
     }
     let sum = checksum(&bytes[at..at + length]);

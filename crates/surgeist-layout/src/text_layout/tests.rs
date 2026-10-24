@@ -36,6 +36,8 @@ mod manual_css_minima;
 mod negative_tabs;
 #[path = "tests/tab_stops.rs"]
 mod tab_stops;
+#[path = "tests/wbr.rs"]
+mod wbr;
 #[path = "tests/whitespace_edges.rs"]
 mod whitespace_edges;
 #[path = "tests/zone_composition.rs"]

@@ -27,6 +27,11 @@ uses the same selected-line and placement machinery.
    contribution, including a terminal empty line. Explicit zero differs from absence.
    Supply connections, ordered anchor occurrences with original endpoint affinity,
    controls, wrapping facts and any actual computed discretionary replacements.
+   Capture genuine wbr as `ParagraphControlKind::Wbr { style: Box<Style> }` with
+   its complete computed Style and actual ordered control occurrence. An expanded
+   wbr contributes text and retains its control handle; it needs no additional
+   control participant or allocation. Bind its contributing control node when
+   lowering to Layout, including units with no original text pieces.
    `AnalyzedSource::from_paragraph` validates this complete capture and retains the
    executed `ProcessedSource`; original code-unit ownership remains available
    through the processed correspondence. Contextual casing selected with
@@ -40,7 +45,9 @@ uses the same selected-line and placement machinery.
    over generated output. Later line-edge rules retain their actual style and
    character semantics. These operations run before semantic
    analysis. Original/Phase-I offsets remain distinct
-   from actual transformed presentation offsets; plaintext remains original.
+   from actual transformed presentation offsets; plaintext excludes generated
+   separator characters. See [native wbr admission](reference.md#native-wbr-separators)
+   for exact scalar seams and indivisible-input refusals.
    For the exclusive `TextTransform::MathAuto`, supply each demanded origin's
    complete original Text-node content and node-relative contribution through
    `ParagraphOrigin::text_node`. Eligibility uses that original complete content;

@@ -80,6 +80,35 @@ including Collapse and Discard, under the
 Its generation is separate from original-space preservation and later Phase-II
 collapsibility. Never replay Phase I or coalesce adjacent generated spaces;
 later removal/hanging uses the actual character and governing style.
+
+Genuine native wbr capture retains its complete computed Style and occurrence
+identity independently of generic optional-break controls. Expand at its actual
+post-Phase-I scalar seam before rebuilding graphemes. Preserve exact mixed-event
+order, including distinct equal-anchor occurrences. An expanded wbr contributes
+text with its own control authority and no original pieces; it does not add a
+second control participant or allocation. Generated-only Text units retain their
+control bindings in Layout's occurrence-order validation.
+
+If positive expansion requires an interior cut in a retained supplementary scalar
+or indivisible document-delimiter replacement, return the precise native seam
+refusal before publication. None and demonstrably forced-suppressed occurrences
+retain their unexpanded behavior. Do not move the anchor using grapheme affinity
+or split Phase-I output. Such refused inputs remain outstanding support.
+
+Retain contextual connection-event order through lowering. Use actual in-flow
+atomic/forced occurrences and connection receipts for semantic barriers; numeric
+source endpoints alone cannot place barriers around newly generated text.
+Coincident direct captures without the connection side needed by positive wbr
+expansion return precise missing-context refusal. Typography affinity and nearby
+forced characters do not establish that side or prove same-component suppression.
+
+Original and control contributions may share one actual grapheme Range unit.
+Retain both contributors and their real fragments without lending the generated
+separator a defining source interval. Source-range closure selects the actual
+unit containing an eligible authored contribution; exact placed positions can
+select generated-only geometry while extracting no invented source or plaintext.
+Accessibility retains authored-text descriptors independently of that geometry.
+
 Full-size-kana uses
 the complete pinned [Appendix G](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#small-kana).
 Expose only executed options and report their specific capabilities. A complete

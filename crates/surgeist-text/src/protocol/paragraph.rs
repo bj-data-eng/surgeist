@@ -131,6 +131,10 @@ pub enum ParagraphControlKind {
     InlineBoundaryEnd,
     /// An explicit paragraph separator; source BK/NL retain their own classes.
     ForcedBreak,
+    /// Genuine wbr occurrence with its complete computed style.
+    Wbr {
+        style: Box<Style>,
+    },
     OptionalBreak {
         wrap: Wrap,
     },
@@ -163,6 +167,7 @@ impl ParagraphControlKind {
             Self::PopDirectionalIsolate => Some(0x2069),
             Self::ForcedBreak
             | Self::OptionalBreak { .. }
+            | Self::Wbr { .. }
             | Self::DiscretionaryBreak { .. }
             | Self::InlineBoundaryStart
             | Self::InlineBoundaryEnd => None,
@@ -397,6 +402,8 @@ pub(crate) struct ParagraphData {
     pub(crate) connections: Vec<ParagraphConnection>,
     /// Real preceding/following original endpoints for contextual connections.
     pub(crate) connection_ends: Option<Vec<(usize, usize)>>,
+    /// Actual contextual Connection event rank among this paragraph’s anchors.
+    pub(crate) connection_anchor_cuts: Option<Vec<usize>>,
     pub(crate) controls: Vec<ParagraphControl>,
     pub(crate) boundary_policies: Vec<ParagraphBoundaryPolicy>,
     pub(crate) replacements: Vec<ParagraphReplacement>,
@@ -521,6 +528,7 @@ impl ParagraphData {
             }],
             connections: Vec::new(),
             connection_ends: None,
+            connection_anchor_cuts: None,
             controls: Vec::new(),
             boundary_policies: Vec::new(),
             replacements: Vec::new(),
@@ -641,6 +649,7 @@ impl AnalyzedSource {
                 .collect(),
             connections,
             connection_ends: None,
+            connection_anchor_cuts: None,
             controls,
             boundary_policies,
             replacements,

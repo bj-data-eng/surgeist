@@ -169,7 +169,9 @@ pub(crate) fn analyze_paragraph(
     let mut styles =
         resolve::analyze_styles(processed.source(), &span_styles, &default_style, &paragraph);
     for (index, control) in paragraph.controls.iter().enumerate() {
-        if let crate::ParagraphControlKind::DiscretionaryBreak { style } = &control.kind {
+        if let crate::ParagraphControlKind::DiscretionaryBreak { style }
+        | crate::ParagraphControlKind::Wbr { style } = &control.kind
+        {
             styles.push(resolve::AnalyzedStyleRun {
                 owner: resolve::AnalyzedStyleOwner::Control(index),
                 style: crate::ValidatedStyle::for_processed((**style).clone())?,

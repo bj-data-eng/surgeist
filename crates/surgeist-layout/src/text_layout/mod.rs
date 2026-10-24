@@ -343,6 +343,16 @@ impl<'tree, Tree: crate::LayoutTree> TextLayoutInput<'tree, Tree> {
                 }
                 last_origin = Some(current);
             }
+            let control_position = |control: &PreparedControl| {
+                position(
+                    paragraph
+                        .controls
+                        .iter()
+                        .find(|row| &row.occurrence == control)
+                        .expect("complete actual control inventory")
+                        .node,
+                )
+            };
             let mut lower = 0;
             for participant in paragraph.prepared.participants() {
                 let positions = match participant {
@@ -360,6 +370,11 @@ impl<'tree, Tree: crate::LayoutTree> TextLayoutInput<'tree, Tree> {
                                     .node,
                             )
                         })
+                        .chain(
+                            unit.view()
+                                .controls()
+                                .map(|control| control_position(&control)),
+                        )
                         .collect::<Vec<_>>(),
                     surgeist_text::PreparedParticipant::Atomic(atomic) => vec![position(
                         paragraph

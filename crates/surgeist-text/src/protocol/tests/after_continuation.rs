@@ -3,6 +3,8 @@
 mod both_sides;
 #[path = "casing_indications.rs"]
 mod casing_indications;
+#[path = "wbr_evidence.rs"]
+mod wbr_evidence;
 #[path = "width_indications.rs"]
 mod width_indications;
 use super::*;

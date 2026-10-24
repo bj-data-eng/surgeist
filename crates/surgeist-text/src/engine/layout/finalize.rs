@@ -499,6 +499,16 @@ pub(super) fn finalize(
             if unit.presentation.start >= cluster.presentation.end {
                 break;
             }
+            if let crate::protocol::prepared::PresentationUnitKind::GeneratedSeparator { control } =
+                unit.kind
+            {
+                add_owned_fragment_bounds(
+                    &owned_fragments,
+                    &mut data.fragments,
+                    crate::protocol::paragraph::FragmentOwner::Control(control),
+                    rect,
+                );
+            }
             if let crate::protocol::prepared::PresentationUnitKind::Replacement { alternative } =
                 unit.kind
             {

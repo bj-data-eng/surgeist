@@ -428,11 +428,24 @@ pub(crate) fn anchor_atom(
     if let Some(Some(atom)) = projection.anchor_atoms.get(occurrence) {
         return *atom;
     }
-    let anchor = paragraph.anchor_order[occurrence];
-    let source = anchor_position(anchor.item, paragraph, boxes);
-    let mut index = projection
+    let source = anchor_position(paragraph.anchor_order[occurrence].item, paragraph, boxes);
+    let index = projection
         .atoms
         .partition_point(|atom| atom.source.end <= source);
+    project_anchor_atom(occurrence, paragraph, boxes, projection, index)
+}
+
+/// Projects an authentic semantic component cut against the actual rebuilt
+/// typographic units. It does not reorder capture events or semantic barriers.
+pub(crate) fn project_anchor_atom(
+    occurrence: usize,
+    paragraph: &ParagraphData,
+    boxes: &[InlineBox],
+    projection: &SourceProjection,
+    mut index: usize,
+) -> usize {
+    let anchor = paragraph.anchor_order[occurrence];
+    let source = anchor_position(anchor.item, paragraph, boxes);
     if projection
         .atoms
         .get(index)

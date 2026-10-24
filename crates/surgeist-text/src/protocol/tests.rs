@@ -21,6 +21,7 @@ mod phase_two;
 mod raw_automatic_hyphenation;
 mod separators;
 mod tab_stops;
+mod wbr;
 mod whitespace_edges;
 mod width;
 

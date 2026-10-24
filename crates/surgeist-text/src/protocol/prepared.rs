@@ -247,6 +247,7 @@ pub(crate) enum PresentationUnitKind {
     Atomic { occurrence: usize },
     Control { occurrence: usize },
     Replacement { alternative: usize },
+    GeneratedSeparator { control: usize },
 }
 
 /// Exact strong-font row already resolved in the original preparation or one
@@ -270,6 +271,7 @@ pub(crate) enum SelectedMappingKind {
     Source,
     Deleted,
     Replacement { alternative: usize, anchor: usize },
+    GeneratedSeparator { control: usize },
 }
 
 /// Issues canonical units from actual atoms, executed deletions and captured
@@ -314,6 +316,23 @@ pub(crate) fn prepare_tables(
         alternatives: Vec::new(),
         soft_preliminary_items: std::collections::BTreeSet::new(),
     };
+    // Every genuine control retains an observation, including a Wbr consumed
+    // by one text-bearing participant. Inventory order remains anchor order.
+    tables.control_rows = vec![usize::MAX; paragraph.controls.len()];
+    for anchor in &paragraph.anchor_order {
+        if let ParagraphAnchorItem::Control(occurrence) = anchor.item {
+            tables.control_rows[occurrence] = tables.controls.len();
+            let control = &paragraph.controls[occurrence];
+            tables.controls.push(ControlData {
+                occurrence,
+                source: control.at,
+                processed: analyzed
+                    .processed
+                    .project(control.at, crate::Affinity::After),
+                level: analyzed.analysis.control_levels[occurrence],
+            });
+        }
+    }
     let mut seen_items = vec![false; shaped.items.len()];
     let mut item_prefix = 0;
     let mut item_count = 0;
@@ -449,14 +468,14 @@ pub(crate) fn prepare_tables(
                 item: ParagraphAnchorItem::Control(occurrence),
                 ..
             }) => {
-                let row = tables.controls.len();
+                let row = tables.control_rows[occurrence];
                 let control = &paragraph.controls[occurrence];
-                tables.controls.push(ControlData {
+                tables.controls[row] = ControlData {
                     occurrence,
                     source: control.at,
                     processed: processed_at,
                     level: analyzed.analysis.control_levels[occurrence],
-                });
+                };
                 tables.participants.push(ParticipantData::Control(row));
             }
         }
@@ -510,10 +529,6 @@ pub(crate) fn prepare_tables(
                     .then_some(item_prefix),
             });
         }
-    }
-    tables.control_rows = vec![0; paragraph.controls.len()];
-    for (row, control) in tables.controls.iter().enumerate() {
-        tables.control_rows[control.occurrence] = row;
     }
     issue_opportunities(catalogue, analyzed, styles, &mut tables)?;
     if paragraph.base_direction.is_none() {
@@ -723,12 +738,14 @@ fn issue_opportunities(
             Some(ParagraphControlKind::OptionalBreak {
                 wrap: crate::Wrap::Word
             })
+        ) || matches!(control, Some(ParagraphControlKind::Wbr {style}) if style.wrap==crate::Wrap::Word
         ) {
             Some(PreparedBreakKind::Allowed)
         } else if matches!(
             control,
             Some(
                 ParagraphControlKind::OptionalBreak { .. }
+                    | ParagraphControlKind::Wbr { .. }
                     | ParagraphControlKind::DiscretionaryBreak { .. }
             )
         ) {
@@ -839,6 +856,9 @@ fn automatic_cut(
     let atom = preceding.end - 1;
     let style = analyzed.analysis.infos[atom].1;
     let source = analyzed.projection.atoms[atom].source;
+    if analyzed.transform.original_row_for_atom(atom).is_none() {
+        return Ok(None);
+    }
     let origin = analyzed
         .paragraph
         .origin_intersections(&analyzed.processed, source)
@@ -1370,8 +1390,17 @@ fn replacement_projection(
         barrier_atoms,
     )?;
     projection.style_rows = vec![None; projection.atoms.len()];
-    for atom in inserted.clone() {
-        projection.style_rows[atom] = Some(replacement.style);
+    for (atom, slot) in projection.style_rows.iter_mut().enumerate() {
+        if inserted.contains(&atom) {
+            *slot = Some(replacement.style);
+        } else {
+            let original_atom = if atom < inserted.start {
+                atom
+            } else {
+                end + atom - inserted.end
+            };
+            *slot = original.style_rows.get(original_atom).copied().flatten();
+        }
     }
     projection.anchor_atoms = original
         .anchor_atoms
@@ -1498,6 +1527,9 @@ fn push_presentation_unit(
         presentation,
         kind: match kind {
             PresentationUnitKind::Deleted => SelectedMappingKind::Deleted,
+            PresentationUnitKind::GeneratedSeparator { control } => {
+                SelectedMappingKind::GeneratedSeparator { control }
+            }
             PresentationUnitKind::Replacement { alternative } => SelectedMappingKind::Replacement {
                 alternative,
                 anchor: source.start,
@@ -1520,7 +1552,10 @@ pub(crate) fn selected_origin_intersections(
     let mut fragments = Vec::new();
     for unit in &selected.presentation.units {
         match unit.kind {
-            PresentationUnitKind::Control { occurrence } => fragments.push(FragmentAssociation {
+            PresentationUnitKind::Control { occurrence }
+            | PresentationUnitKind::GeneratedSeparator {
+                control: occurrence,
+            } => fragments.push(FragmentAssociation {
                 owner: FragmentOwner::Control(occurrence),
                 source: None,
             }),

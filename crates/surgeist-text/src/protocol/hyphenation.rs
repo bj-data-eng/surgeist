@@ -216,7 +216,7 @@ fn pieces(
     pieces_for_rows(
         prepared,
         atoms
-            .map(|atom| prepared.analyzed.transform.emission_for_atom(atom).row)
+            .filter_map(|atom| prepared.analyzed.transform.original_row_for_atom(atom))
             .collect(),
     )
 }
@@ -287,7 +287,7 @@ impl PreparedWordView<'_> {
             .iter()
             .filter_map(|event| match *event {
                 crate::transform::relation::RelationEvent::Text { atom } => {
-                    Some(map.emission_for_atom(atom).row)
+                    map.original_row_for_atom(atom)
                 }
                 crate::transform::relation::RelationEvent::Removal { row } => Some(row),
                 _ => None,

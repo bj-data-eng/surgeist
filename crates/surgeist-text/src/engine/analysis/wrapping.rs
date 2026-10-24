@@ -303,6 +303,34 @@ pub(crate) fn events(
     if let Some(map) = &projection.transform {
         return map.logical_events(paragraph, processed.source());
     }
+    transform_events(processed, paragraph, projection)
+}
+
+/// Wbr expansion needs its real scalar seam before typography reconstruction.
+pub(crate) fn transform_events(
+    processed: &ProcessedSource,
+    paragraph: &ParagraphData,
+    projection: &SourceProjection,
+) -> Vec<LogicalEvent> {
+    capture_events(processed, paragraph, projection, false)
+}
+
+/// Original scalar seams and actual anchor order used only for separator
+/// admission/insertion, before typography is rebuilt. No source atoms split.
+pub(crate) fn separator_events(
+    processed: &ProcessedSource,
+    paragraph: &ParagraphData,
+    projection: &SourceProjection,
+) -> Vec<LogicalEvent> {
+    capture_events(processed, paragraph, projection, true)
+}
+
+fn capture_events(
+    processed: &ProcessedSource,
+    paragraph: &ParagraphData,
+    projection: &SourceProjection,
+    scalar_seams: bool,
+) -> Vec<LogicalEvent> {
     use crate::processing::MappingKind;
     let source = processed.source();
     let mut events = Vec::new();
@@ -351,7 +379,14 @@ pub(crate) fn events(
     }
     for (order, &anchor) in paragraph.anchor_order.iter().enumerate() {
         events.push((
-            anchor_atom(order, paragraph, source.boxes(), projection),
+            if scalar_seams {
+                let at = anchor_position(anchor.item, paragraph, source.boxes());
+                projection
+                    .atoms
+                    .partition_point(|atom| atom.source.end <= at)
+            } else {
+                anchor_atom(order, paragraph, source.boxes(), projection)
+            },
             0,
             anchor_position(anchor.item, paragraph, source.boxes()),
             order,

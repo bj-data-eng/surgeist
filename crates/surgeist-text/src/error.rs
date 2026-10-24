@@ -302,6 +302,16 @@ pub enum ErrorDetail {
 /// Exact source-transform admission or execution refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextTransformError {
+    MissingSeparatorBoundaryContext {
+        control: usize,
+        at: usize,
+        connection: usize,
+    },
+    UnrepresentableSeparatorSeam {
+        control: usize,
+        at: usize,
+        retained: crate::Range,
+    },
     InvalidTextNodeRange {
         range: crate::Range,
         text_len: usize,

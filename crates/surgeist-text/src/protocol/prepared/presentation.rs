@@ -329,6 +329,14 @@ pub(super) fn select(
                     PresentationUnitKind::EmptyOrigin { origin }
                 } else if row.deleted {
                     PresentationUnitKind::Deleted
+                } else if let Some(control) = prepared
+                    .analyzed
+                    .transform
+                    .controls_for_atoms(row.atoms.clone())
+                    .first()
+                    .copied()
+                {
+                    PresentationUnitKind::GeneratedSeparator { control }
                 } else {
                     PresentationUnitKind::Text
                 };

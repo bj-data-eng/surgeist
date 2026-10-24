@@ -253,6 +253,7 @@ struct Capture {
     anchors: Vec<ParagraphAnchor>,
     controls: Vec<usize>,
     connection_orders: Vec<usize>,
+    connection_anchor_cuts: Vec<usize>,
     start: usize,
     domain: usize,
     end_order: usize,
@@ -520,6 +521,8 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 }
                 captures[p].connections.push(index);
                 captures[p].connection_orders.push(order);
+                let cut = captures[p].anchors.len();
+                captures[p].connection_anchor_cuts.push(cut);
             }
             SourceProcessingEvent::Atomic { atomic, affinity } => {
                 take(&mut atomics, atomic)?;
@@ -806,6 +809,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 .collect(),
             connections: native_connections,
             connection_ends: Some(ends),
+            connection_anchor_cuts: Some(capture.connection_anchor_cuts),
             controls: capture
                 .controls
                 .iter()

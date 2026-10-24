@@ -30,7 +30,11 @@ analysis, shaping and wrapping. `TextTransform::Set` combines operations built w
 Full-width uses the raw Unicode wide/narrow relation and
 maps authored SPACE only when processing preserved it. Separator-generated SPACE
 qualifies in every whitespace mode; actual line-edge rules still apply.
-Genuine wbr and automatic phrase insertion remain separate, unavailable inputs.
+Native paragraph capture accepts genuine styled `ParagraphControlKind::Wbr`
+occurrences. Expanded separators retain control identity and geometry without
+inventing source characters; [exact-seam admission](docs/reference.md#native-wbr-separators)
+defines their supported insertion positions. Automatic phrase insertion remains
+unavailable.
 Original UTF-16 and plaintext remain unchanged through expansions and removals.
 The exclusive `TextTransform::MathAuto` requires complete original Text-node
 content captured on native paragraph origins. It maps eligible surviving text

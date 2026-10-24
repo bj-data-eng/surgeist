@@ -425,8 +425,9 @@ pub(crate) fn selection(
             match *event {
                 SelectedRelationEvent::Base { event } => match transform.events()[event] {
                     RelationEvent::Text { atom } => {
-                        let row = transform.emission_for_atom(atom).row;
-                        pieces.extend_from_slice(transform.original_pieces(row));
+                        if let Some(row) = transform.original_row_for_atom(atom) {
+                            pieces.extend_from_slice(transform.original_pieces(row));
+                        }
                     }
                     RelationEvent::Removal { row } => {
                         pieces.extend_from_slice(transform.original_pieces(row));

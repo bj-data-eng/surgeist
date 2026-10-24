@@ -505,7 +505,22 @@ fn update(
         });
     }
     for line in &lines {
-        if line.range().is_empty() {
+        let generated = match projection {
+            Projection::Placed(layout, _) => layout.inner.lines[line.index()]
+                .finalized
+                .selected
+                .presentation
+                .units
+                .iter()
+                .any(|unit| {
+                    matches!(
+                        unit.kind,
+                        crate::protocol::prepared::PresentationUnitKind::GeneratedSeparator { .. }
+                    )
+                }),
+            Projection::Analyzed(_) => false,
+        };
+        if line.range().is_empty() && !generated {
             descriptors.push(NodeDescriptor {
                 range: line.range(),
                 empty_line: Some(line.index()),

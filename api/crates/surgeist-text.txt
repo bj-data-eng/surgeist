@@ -454,6 +454,8 @@ pub surgeist_text::ParagraphControlKind::PopDirectionalIsolate
 pub surgeist_text::ParagraphControlKind::RightToLeftEmbedding
 pub surgeist_text::ParagraphControlKind::RightToLeftIsolate
 pub surgeist_text::ParagraphControlKind::RightToLeftOverride
+pub surgeist_text::ParagraphControlKind::Wbr
+pub surgeist_text::ParagraphControlKind::Wbr::style: alloc::boxed::Box<surgeist_text::Style>
 pub enum surgeist_text::ParagraphOriginKind
 pub surgeist_text::ParagraphOriginKind::Authored
 pub surgeist_text::ParagraphOriginKind::Generated
@@ -505,6 +507,7 @@ pub surgeist_text::PreparedTermination::Measurement(surgeist_text::PreparedWordP
 pub surgeist_text::PreparedTermination::Ordinary(surgeist_text::PreparedOpportunity)
 pub enum surgeist_text::PresentationMappingKind
 pub surgeist_text::PresentationMappingKind::Deleted
+pub surgeist_text::PresentationMappingKind::GeneratedSeparator
 pub surgeist_text::PresentationMappingKind::Replacement
 pub surgeist_text::PresentationMappingKind::Source
 pub enum surgeist_text::ProcessingCapacityError
@@ -838,6 +841,7 @@ pub surgeist_text::TextStyleFeature::Locale
 pub surgeist_text::TextStyleFeature::Lowercase
 pub surgeist_text::TextStyleFeature::MathAuto
 pub surgeist_text::TextStyleFeature::NamedFontWeight
+pub surgeist_text::TextStyleFeature::NativeWbr
 pub surgeist_text::TextStyleFeature::NumericFontWeight
 pub surgeist_text::TextStyleFeature::ObliqueSlant
 pub surgeist_text::TextStyleFeature::OverflowWrap
@@ -884,10 +888,18 @@ pub surgeist_text::TextTransformError::InvalidContentLocale
 pub surgeist_text::TextTransformError::InvalidTextNodeRange
 pub surgeist_text::TextTransformError::InvalidTextNodeRange::range: surgeist_text::Range
 pub surgeist_text::TextTransformError::InvalidTextNodeRange::text_len: usize
+pub surgeist_text::TextTransformError::MissingSeparatorBoundaryContext
+pub surgeist_text::TextTransformError::MissingSeparatorBoundaryContext::at: usize
+pub surgeist_text::TextTransformError::MissingSeparatorBoundaryContext::connection: usize
+pub surgeist_text::TextTransformError::MissingSeparatorBoundaryContext::control: usize
 pub surgeist_text::TextTransformError::MissingTextNodeContext
 pub surgeist_text::TextTransformError::MissingTextNodeContext::origin: usize
 pub surgeist_text::TextTransformError::TextNodeMismatch
 pub surgeist_text::TextTransformError::TextNodeMismatch::origin: usize
+pub surgeist_text::TextTransformError::UnrepresentableSeparatorSeam
+pub surgeist_text::TextTransformError::UnrepresentableSeparatorSeam::at: usize
+pub surgeist_text::TextTransformError::UnrepresentableSeparatorSeam::control: usize
+pub surgeist_text::TextTransformError::UnrepresentableSeparatorSeam::retained: surgeist_text::Range
 pub enum surgeist_text::UnsupportedTextStyleReason
 pub surgeist_text::UnsupportedTextStyleReason::RequiresBroadVerticalAlignPolicy
 pub surgeist_text::UnsupportedTextStyleReason::RequiresColorResolution
@@ -1878,6 +1890,7 @@ pub struct surgeist_text::PreparedUnitView<'a>
 impl surgeist_text::PreparedUnitView<'_>
 pub fn surgeist_text::PreparedUnitView<'_>::advance(&self) -> f64
 pub fn surgeist_text::PreparedUnitView<'_>::ascent(&self) -> f64
+pub fn surgeist_text::PreparedUnitView<'_>::controls(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedControl> + '_
 pub fn surgeist_text::PreparedUnitView<'_>::descent(&self) -> f64
 pub fn surgeist_text::PreparedUnitView<'_>::empty_origin(&self) -> core::option::Option<surgeist_text::PreparedOrigin>
 pub fn surgeist_text::PreparedUnitView<'_>::font_instances(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::Result<surgeist_text::EffectiveFontInstance<'_>>>
@@ -2057,6 +2070,7 @@ pub fn surgeist_text::SelectedMappingView<'_>::insertion_anchor(&self) -> core::
 pub const fn surgeist_text::SelectedMappingView<'_>::kind(&self) -> surgeist_text::PresentationMappingKind
 pub const fn surgeist_text::SelectedMappingView<'_>::presentation_range(&self) -> surgeist_text::PresentationRange
 pub fn surgeist_text::SelectedMappingView<'_>::processed_range(&self) -> surgeist_text::ProcessedRange
+pub fn surgeist_text::SelectedMappingView<'_>::separator_control(&self) -> core::option::Option<surgeist_text::PreparedControl>
 pub const fn surgeist_text::SelectedMappingView<'_>::source_range(&self) -> surgeist_text::Range
 impl core::fmt::Debug for surgeist_text::SelectedMappingView<'_>
 pub fn surgeist_text::SelectedMappingView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -2149,6 +2163,7 @@ pub fn surgeist_text::SourceRangePiece<'a>::rect(&self) -> surgeist_text::Rect
 pub struct surgeist_text::SourceRangeUnit<'a>
 impl<'a> surgeist_text::SourceRangeUnit<'a>
 pub fn surgeist_text::SourceRangeUnit<'a>::alternatives(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedAlternative> + '_
+pub fn surgeist_text::SourceRangeUnit<'a>::controls(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedControl> + '_
 pub fn surgeist_text::SourceRangeUnit<'a>::defining_sources(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedOriginIntersectionView<'a>> + '_
 pub fn surgeist_text::SourceRangeUnit<'a>::expanded_intersections(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedOriginIntersectionView<'_>>
 pub fn surgeist_text::SourceRangeUnit<'a>::finalized_line(&self) -> surgeist_text::FinalizedLine

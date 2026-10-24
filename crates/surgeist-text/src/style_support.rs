@@ -43,6 +43,7 @@ pub enum TextStyleFeature {
     ConcreteDecorationColor,
     SymbolicDecorationColor,
     ExplicitWordSeparators,
+    NativeWbr,
     MathAuto,
     FullSizeKana,
     FullWidth,
@@ -103,6 +104,7 @@ impl TextStyleFeature {
         Self::ConcreteDecorationColor,
         Self::SymbolicDecorationColor,
         Self::ExplicitWordSeparators,
+        Self::NativeWbr,
         Self::MathAuto,
         Self::FullSizeKana,
         Self::FullWidth,
@@ -118,6 +120,7 @@ impl TextStyleFeature {
             && matches!(
                 self,
                 Self::MathAuto
+                    | Self::NativeWbr
                     | Self::WhiteSpaceCollapse
                     | Self::WhiteSpaceDiscard
                     | Self::WhiteSpacePreserveSpaces
@@ -126,6 +129,9 @@ impl TextStyleFeature {
             return TextStyleSupport::Supported;
         }
         match self {
+            Self::NativeWbr => TextStyleSupport::Unsupported(
+                UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
+            ),
             Self::MathAuto => TextStyleSupport::Unsupported(
                 UnsupportedTextStyleReason::RequiresCompleteTextNodeContext,
             ),

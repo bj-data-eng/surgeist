@@ -3,6 +3,7 @@ use crate::{AnalyzedSource, Source, Style, Text, TextTransform};
 mod casing;
 mod math;
 mod separators;
+mod wbr;
 mod width;
 
 fn style() -> Style {
@@ -142,3 +143,5 @@ fn native_whitespace_plaintext_and_style_winners_precede_semantic_transform() {
         crate::TextStyleSupport::Supported
     );
 }
+
+mod wbr_scopes;

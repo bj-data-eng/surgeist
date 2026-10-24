@@ -178,7 +178,11 @@ fn actual_relation_keeps_reordered_noncontiguous_emissions_and_a_real_removal() 
     assert_eq!(
         map.atoms
             .iter()
-            .map(|&id| (map.emissions[id].row, map.emissions[id].subposition))
+            .map(|&id| (
+                map.original_row_for_atom(map.emissions[id].atom)
+                    .expect("original casing contribution"),
+                map.emissions[id].subposition
+            ))
             .collect::<Vec<_>>(),
         [(0, 0), (1, 0), (0, 1)]
     );
@@ -392,7 +396,9 @@ fn split_origin_dot_and_acute_use_actual_context_through_neutral_oof() {
             assert_eq!(
                 map.atoms
                     .iter()
-                    .map(|&id| map.emissions[id].row)
+                    .map(|&id| map
+                        .original_row_for_atom(map.emissions[id].atom)
+                        .expect("original casing contribution"))
                     .collect::<Vec<_>>(),
                 rows
             );

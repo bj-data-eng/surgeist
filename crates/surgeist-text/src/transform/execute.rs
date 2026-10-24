@@ -11,7 +11,7 @@ use icu_segmenter::{WordSegmenter, options::WordBreakInvariantOptions};
 use super::{
     casing::{self, Locale, Mapper, MappingError, Operation},
     irish,
-    relation::{Emission, RelationEvent, TransformMap},
+    relation::{ComponentOwner, Emission, RelationEvent, TransformMap},
 };
 use crate::{
     CaseTransform, Error, ErrorCode, ErrorDetail, ProcessedSource, Range, Result, TextTransform,
@@ -192,12 +192,15 @@ pub(super) fn apply(
     processed: &ProcessedSource,
     paragraph: &ParagraphData,
 ) -> Result<(SourceProjection, Arc<TransformMap>)> {
-    let captured = crate::engine::analysis::wrapping::events(processed, paragraph, &input);
+    let captured =
+        crate::engine::analysis::wrapping::transform_events(processed, paragraph, &input);
     let mut map = TransformMap::identity(&input, styles, processed, paragraph, captured.clone());
     let input = super::separators::apply(input, &mut map, &captured, styles, processed, paragraph)?;
+    let (input, captured) =
+        super::separators::wbr(input, &mut map, captured, styles, processed, paragraph)?;
     let values: Vec<_> = input.atoms.iter().map(|atom| atom.code_point).collect();
     let casing = map
-        .rows
+        .components
         .iter()
         .any(|row| matches!(styles[row.style].style.text_transform(), TextTransform::Set(set) if set.case() != CaseTransform::None));
     let mapper = casing.then(Mapper::new).transpose().map_err(failed)?;
@@ -230,7 +233,7 @@ pub(super) fn apply(
     let mut spans = Vec::new();
     for domain in stops.windows(2) {
         for row in domain[0]..domain[1] {
-            let style = &styles[map.rows[row].style].style;
+            let style = &styles[map.components[row].style].style;
             let transform = style.text_transform();
             let operation = match transform {
                 TextTransform::MathAuto => None,
@@ -248,7 +251,7 @@ pub(super) fn apply(
             operations.push(operation);
             let start = output.len();
             let locale = if operation.is_some() {
-                let slot = &mut locales[map.rows[row].style];
+                let slot = &mut locales[map.components[row].style];
                 if slot.is_none() {
                     *slot = Some(Locale::from_tag(style.locale_tag()).map_err(failed)?);
                 }
@@ -290,7 +293,10 @@ pub(super) fn apply(
                     .map_err(failed)?;
             }
             if transform == TextTransform::MathAuto {
-                let pieces = &map.pieces[map.rows[row].pieces.clone()];
+                let pieces = match map.components[row].owner {
+                    ComponentOwner::Original(original) => map.original_pieces(original),
+                    ComponentOwner::Wbr(_) => &[],
+                };
                 if !pieces.is_empty()
                     && pieces.iter().all(|piece| {
                         paragraph.origins[piece.origin]
@@ -307,8 +313,8 @@ pub(super) fn apply(
                 if set.full_width() {
                     for cp in &mut output[start..] {
                         if (*cp != 0x20
-                            || map.rows[row].separator_space
-                            || processed.preserves_space_at(map.rows[row].processed.start))
+                            || map.components[row].separator_space
+                            || processed.preserves_space_at(map.components[row].processed.start))
                             && let Some(target) = super::width::map(*cp)
                         {
                             *cp = target;
@@ -326,10 +332,15 @@ pub(super) fn apply(
             spans.push(start..output.len());
         }
     }
-    let changed = spans
-        .iter()
-        .enumerate()
-        .any(|(row, span)| span.len() != 1 || output[span.start] != map.rows[row].code_point);
+    let changed = spans.iter().enumerate().any(|(row, span)| {
+        span.len() != 1
+            || match map.components[row].owner {
+                ComponentOwner::Original(original) => {
+                    output[span.start] != map.rows[original].code_point
+                }
+                ComponentOwner::Wbr(_) => true,
+            }
+    });
     map.emissions.clear();
     map.atoms.clear();
     map.events.clear();
@@ -337,14 +348,17 @@ pub(super) fn apply(
         let start = map.emissions.len();
         for (subposition, &code_point) in output[span.clone()].iter().enumerate() {
             map.emissions.push(Emission {
-                row,
+                component: row,
                 subposition,
                 code_point,
                 atom: 0,
                 event: 0,
             });
         }
-        map.rows[row].outputs = start..map.emissions.len();
+        map.components[row].outputs = start..map.emissions.len();
+        if let ComponentOwner::Original(original) = map.components[row].owner {
+            map.rows[original].outputs = start..map.emissions.len();
+        }
     }
     let mut atoms = Vec::new();
     let mut pending = Vec::new();
@@ -359,9 +373,12 @@ pub(super) fn apply(
         }
         match event.kind {
             Event::Text(row) => {
-                let range = map.rows[row].outputs.clone();
+                let range = map.components[row].outputs.clone();
                 if range.is_empty() {
-                    map.events.push(RelationEvent::Removal { row });
+                    let ComponentOwner::Original(original) = map.components[row].owner else {
+                        unreachable!("separator literals are not case removals")
+                    };
+                    map.events.push(RelationEvent::Removal { row: original });
                 }
                 let postpone = casing::postpones_iota(
                     values[row],
@@ -403,23 +420,66 @@ pub(super) fn apply(
         atom.presentation = Range::new(end, next);
         end = next;
     }
+    // Semantic barriers are component-prefix cuts, even when a casing row
+    // emits delayed pieces. Preserve the furthest actual emitted endpoint.
+    let mut component_ends = Vec::new();
+    let edge_count = map
+        .components
+        .len()
+        .checked_add(1)
+        .ok_or_else(|| failed(MappingError::Storage))?;
+    component_ends
+        .try_reserve_exact(edge_count)
+        .map_err(|_| failed(MappingError::Storage))?;
+    component_ends.resize(edge_count, 0);
+    for emission in &map.emissions {
+        component_ends[emission.component + 1] =
+            component_ends[emission.component + 1].max(emission.atom + 1);
+    }
+    for index in 1..component_ends.len() {
+        component_ends[index] = component_ends[index].max(component_ends[index - 1]);
+    }
     let barrier_atoms = input
-        .barriers
+        .barrier_atoms
         .iter()
-        .map(|&at| map.atom_at_original_edge(at, crate::Affinity::Before))
+        .map(|&edge| component_ends[edge])
         .collect();
+    let projected_anchors = input.anchor_atoms.clone();
     let mut projection = if changed {
         SourceProjection::from_atoms_at_barriers(atoms, end, input.barriers, barrier_atoms)?
     } else {
         input
     };
+    projection.style_rows = (0..projection.atoms.len())
+        .map(|atom| Some(map.component_for_atom(atom).style))
+        .collect();
     projection.anchor_atoms = vec![None; paragraph.anchor_order.len()];
     let mut at = 0;
     for event in &map.events {
         match *event {
-            RelationEvent::Text { .. } => at += 1,
+            RelationEvent::Text { atom } => {
+                if let ComponentOwner::Wbr(control) = map.component_for_atom(atom).owner {
+                    let order = paragraph
+                        .anchor_order
+                        .iter()
+                        .position(|anchor| {
+                            anchor.item == crate::ParagraphAnchorItem::Control(control)
+                        })
+                        .expect("actual wbr anchor");
+                    projection.anchor_atoms[order] = Some(at);
+                }
+                at += 1;
+            }
             RelationEvent::Anchor { order } => projection.anchor_atoms[order] = Some(at),
             _ => (),
+        }
+    }
+    // Wbr staging retains ordinary typographic projections separately from
+    // authentic semantic relation events. Carry their real component cuts
+    // through later casing/width/kana emissions without sorting the events.
+    for (order, cut) in projected_anchors.into_iter().enumerate() {
+        if let Some(cut) = cut {
+            projection.anchor_atoms[order] = Some(component_ends[cut]);
         }
     }
     let map = Arc::new(map);
@@ -429,7 +489,7 @@ pub(super) fn apply(
 
 fn emit(id: usize, atoms: &mut Vec<OriginalAtom>, map: &mut TransformMap) -> Result<()> {
     let emission = &mut map.emissions[id];
-    let row = &map.rows[emission.row];
+    let row = &map.components[emission.component];
     let atom = OriginalAtom {
         source: row.source,
         processed: row.processed,

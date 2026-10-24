@@ -403,6 +403,20 @@ impl PreparedUnitView<'_> {
             })
     }
 
+    /// Actual generated-control contributors in semantic order. Equal anchors
+    /// do not merge different captured occurrences.
+    pub fn controls(&self) -> impl ExactSizeIterator<Item = PreparedControl> + '_ {
+        self.prepared
+            .analyzed
+            .transform
+            .controls_for_atoms(self.data().atoms.clone())
+            .into_iter()
+            .map(|occurrence| PreparedControl {
+                prepared: Arc::clone(self.prepared),
+                index: control_index(self.prepared, occurrence),
+            })
+    }
+
     /// Borrows the actual canonical instances overlapping this preliminary unit.
     /// Empty origin-only units do not acquire a fabricated default face.
     pub fn font_instances(&self) -> impl Iterator<Item = Result<EffectiveFontInstance<'_>>> {
@@ -974,6 +988,7 @@ pub enum PresentationMappingKind {
     Source,
     Deleted,
     Replacement,
+    GeneratedSeparator,
 }
 
 /// Borrowed exact correspondence owned by this finalized line.
@@ -1021,6 +1036,9 @@ impl SelectedMappingView<'_> {
             SelectedMappingKind::Source => PresentationMappingKind::Source,
             SelectedMappingKind::Deleted => PresentationMappingKind::Deleted,
             SelectedMappingKind::Replacement { .. } => PresentationMappingKind::Replacement,
+            SelectedMappingKind::GeneratedSeparator { .. } => {
+                PresentationMappingKind::GeneratedSeparator
+            }
         }
     }
 
@@ -1031,6 +1049,17 @@ impl SelectedMappingView<'_> {
             SelectedMappingKind::Replacement { alternative, .. } => Some(PreparedAlternative {
                 prepared: Arc::clone(self.prepared),
                 index: alternative,
+            }),
+            _ => None,
+        }
+    }
+
+    /// The genuine control which emitted this source-less separator.
+    pub fn separator_control(&self) -> Option<PreparedControl> {
+        match self.piece.kind {
+            SelectedMappingKind::GeneratedSeparator { control } => Some(PreparedControl {
+                prepared: Arc::clone(self.prepared),
+                index: control_index(self.prepared, control),
             }),
             _ => None,
         }

@@ -20,6 +20,9 @@ mod math_transform;
 #[path = "placed_text_render/separators.rs"]
 mod separators_transform;
 
+#[path = "placed_text_render/wbr.rs"]
+mod wbr_transform;
+
 struct Tree {
     inputs: [layout::LayoutInput; 2],
     non_box: layout::NodeInput,
