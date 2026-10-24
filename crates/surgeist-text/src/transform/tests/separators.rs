@@ -415,3 +415,246 @@ fn genuine_source_local_phase_i_receipts_allow_generated_width_in_all_modes() {
         assert!(map.rows[1].separator_space);
     }
 }
+
+fn original_separator_at_disconnected_join(
+    operation: WordSpaceTransform,
+    separator_before_join: bool,
+    forced_on_same_side: bool,
+) -> AnalyzedSource {
+    use crate::*;
+    let source = Source::new("A\u{200b}B");
+    let at = if separator_before_join { 2 } else { 1 };
+    let control = SourceProcessingEvent::Control {
+        control: 0,
+        affinity: Affinity::After,
+    };
+    let connection = SourceProcessingEvent::Connection(0);
+    let control_before_connection = separator_before_join == forced_on_same_side;
+    let mut events = vec![
+        SourceProcessingEvent::EnterScope(0),
+        SourceProcessingEvent::EnterParagraph(0),
+        SourceProcessingEvent::Origin {
+            origin: 0,
+            affinity: Affinity::After,
+        },
+    ];
+    events.extend(if control_before_connection {
+        [control, connection]
+    } else {
+        [connection, control]
+    });
+    events.extend([
+        SourceProcessingEvent::Origin {
+            origin: 1,
+            affinity: Affinity::After,
+        },
+        SourceProcessingEvent::ExitParagraph(0),
+        SourceProcessingEvent::ExitScope(0),
+    ]);
+    let input = ContextualSourceInput {
+        source: source.clone(),
+        segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+        envelope: SourceProcessingEnvelope::Complete,
+        origins: [Range::new(0, at), Range::new(at, 3)]
+            .into_iter()
+            .map(|range| ParagraphOrigin {
+                source: source.clone(),
+                local: range,
+                aggregate: range,
+                kind: ParagraphOriginKind::Authored,
+                text_node: None,
+            })
+            .collect(),
+        connections: vec![SourceProcessingConnection {
+            before_origin: 0,
+            after_origin: 1,
+            kind: ParagraphConnectionKind::Disconnected,
+        }],
+        controls: vec![ParagraphControl {
+            at,
+            kind: ParagraphControlKind::ForcedBreak,
+        }],
+        boundary_policies: vec![],
+        replacements: vec![],
+        scopes: vec![SourceProcessingScope::Block {
+            topology: SourceProcessingTopology::Unknown,
+            trim: WhiteSpaceTrim::default(),
+            base_style: style(operation),
+            used_direction: ParagraphBaseDirection::LeftToRight,
+        }],
+        paragraphs: vec![SourceProcessingParagraph {
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+        }],
+        events,
+    };
+    let processed = std::sync::Arc::new(process_contextual_source(input).unwrap());
+    let analyzed =
+        AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap()).unwrap();
+    assert_eq!(analyzed.source(), &source);
+    assert_eq!(analyzed.processed_source().processed_text(), source.text());
+    assert_eq!(
+        analyzed.inner.paragraph.controls[0].kind,
+        ParagraphControlKind::ForcedBreak
+    );
+    analyzed
+}
+
+#[test]
+fn original_separator_disconnected_before_join_space_ignores_other_side_forced_break() {
+    let analyzed = original_separator_at_disconnected_join(WordSpaceTransform::Space, true, false);
+    assert_eq!(analyzed.inner.projection.text, "A B");
+}
+
+#[test]
+fn original_separator_disconnected_before_join_ideographic_space_ignores_other_side_forced_break() {
+    let analyzed =
+        original_separator_at_disconnected_join(WordSpaceTransform::IdeographicSpace, true, false);
+    assert_eq!(analyzed.inner.projection.text, "A\u{3000}B");
+}
+
+#[test]
+fn original_separator_disconnected_after_join_space_ignores_other_side_forced_break() {
+    let analyzed = original_separator_at_disconnected_join(WordSpaceTransform::Space, false, false);
+    assert_eq!(analyzed.inner.projection.text, "A B");
+}
+
+#[test]
+fn original_separator_disconnected_after_join_ideographic_space_ignores_other_side_forced_break() {
+    let analyzed =
+        original_separator_at_disconnected_join(WordSpaceTransform::IdeographicSpace, false, false);
+    assert_eq!(analyzed.inner.projection.text, "A\u{3000}B");
+}
+
+#[test]
+fn original_separator_disconnected_same_side_forced_break_suppresses_both_replacements() {
+    for operation in [
+        WordSpaceTransform::Space,
+        WordSpaceTransform::IdeographicSpace,
+    ] {
+        for before in [true, false] {
+            let analyzed = original_separator_at_disconnected_join(operation, before, true);
+            assert_eq!(analyzed.inner.projection.text, "A\u{200b}B");
+        }
+    }
+}
+
+fn original_separator_flat_disconnected(
+    text: &str,
+    at: usize,
+    operation: WordSpaceTransform,
+) -> crate::ParagraphInput {
+    use crate::*;
+    let source = Source::new(text);
+    let mut captured = input(source.clone(), style(operation));
+    captured.origins = [Range::new(0, at), Range::new(at, source.text().len())]
+        .into_iter()
+        .map(|range| ParagraphOrigin {
+            source: source.clone(),
+            local: range,
+            aggregate: range,
+            kind: ParagraphOriginKind::Authored,
+            text_node: None,
+        })
+        .collect();
+    captured.connections = vec![ParagraphConnection {
+        at,
+        kind: ParagraphConnectionKind::Disconnected,
+    }];
+    captured.controls = vec![ParagraphControl {
+        at,
+        kind: ParagraphControlKind::ForcedBreak,
+    }];
+    captured.anchor_order = vec![ParagraphAnchor {
+        item: ParagraphAnchorItem::Control(0),
+        affinity: Affinity::After,
+    }];
+    captured
+}
+
+fn assert_original_separator_flat_side_missing(at: usize, operation: WordSpaceTransform) {
+    let error = AnalyzedSource::from_paragraph(original_separator_flat_disconnected(
+        "A\u{200b}B",
+        at,
+        operation,
+    ))
+    .unwrap_err();
+    assert_eq!(error.code, crate::ErrorCode::UnsupportedFeature);
+    assert!(matches!(
+        error.detail(),
+        Some(crate::ErrorDetail::TextTransform { .. })
+    ));
+}
+
+#[test]
+fn original_separator_disconnected_flat_before_join_space_requires_control_side() {
+    assert_original_separator_flat_side_missing(2, WordSpaceTransform::Space);
+}
+
+#[test]
+fn original_separator_disconnected_flat_before_join_ideographic_space_requires_control_side() {
+    assert_original_separator_flat_side_missing(2, WordSpaceTransform::IdeographicSpace);
+}
+
+#[test]
+fn original_separator_disconnected_flat_after_join_space_requires_control_side() {
+    assert_original_separator_flat_side_missing(1, WordSpaceTransform::Space);
+}
+
+#[test]
+fn original_separator_disconnected_flat_after_join_ideographic_space_requires_control_side() {
+    assert_original_separator_flat_side_missing(1, WordSpaceTransform::IdeographicSpace);
+}
+
+#[test]
+fn original_separator_disconnected_flat_none_does_not_demand_control_side() {
+    for at in [1, 2] {
+        let analyzed = AnalyzedSource::from_paragraph(original_separator_flat_disconnected(
+            "A\u{200b}B",
+            at,
+            WordSpaceTransform::None,
+        ))
+        .unwrap();
+        assert_eq!(analyzed.inner.projection.text, "A\u{200b}B");
+        assert_eq!(analyzed.source().text(), &Text::from("A\u{200b}B"));
+    }
+}
+
+#[test]
+fn original_separator_disconnected_flat_known_source_hard_break_suppression_needs_no_control_side()
+{
+    for operation in [
+        WordSpaceTransform::Space,
+        WordSpaceTransform::IdeographicSpace,
+    ] {
+        for (text, at) in [("A\u{200b}\nB", 3), ("A\n\u{200b}B", 1)] {
+            let analyzed = AnalyzedSource::from_paragraph(original_separator_flat_disconnected(
+                text, at, operation,
+            ))
+            .unwrap();
+            assert_eq!(analyzed.inner.projection.text, text);
+            assert_eq!(analyzed.source().text(), &Text::from(text));
+        }
+    }
+}
+
+#[test]
+fn original_separator_disconnected_flat_intervening_original_blocks_unknown_forced_influence() {
+    for (operation, before, after) in [
+        (WordSpaceTransform::Space, "A XB", "AX B"),
+        (
+            WordSpaceTransform::IdeographicSpace,
+            "A\u{3000}XB",
+            "AX\u{3000}B",
+        ),
+    ] {
+        for (text, at, expected) in [("A\u{200b}XB", 3, before), ("AX\u{200b}B", 1, after)] {
+            let analyzed = AnalyzedSource::from_paragraph(original_separator_flat_disconnected(
+                text, at, operation,
+            ))
+            .unwrap();
+            assert_eq!(analyzed.inner.projection.text, expected);
+            assert_eq!(analyzed.source().text(), &Text::from(text));
+        }
+    }
+}
