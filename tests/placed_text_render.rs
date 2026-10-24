@@ -11,6 +11,9 @@ use surgeist::{layout, render, text};
 #[path = "placed_text_render/casing.rs"]
 mod casing_transform;
 
+#[path = "placed_text_render/width.rs"]
+mod width_transform;
+
 struct Tree {
     inputs: [layout::LayoutInput; 2],
     non_box: layout::NodeInput,

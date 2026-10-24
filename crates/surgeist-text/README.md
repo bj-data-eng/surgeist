@@ -20,12 +20,15 @@ See [contextual processing](docs/reference.md#contextual-source-processing).
 
 `Text` retains exact UTF-16 code units, and public source positions and ranges
 count those units. Edits can split or join surrogate pairs. `AnalyzedSource`
-retains original source and pre-font semantic analysis. Contextual casing and the
-complete pinned full-size-kana transform execute after Phase I and before
-analysis, shaping and wrapping. Use `TextTransform::none().with_case(CaseTransform::Uppercase)`
-or `.with_full_size_kana(true)`; lowercase and capitalize are also supported.
+retains original source and pre-font semantic analysis. Contextual casing,
+full-width mapping and the complete pinned full-size-kana transform execute in
+that order after Phase I and before analysis, shaping and wrapping. Use
+`TextTransform::none().with_case(CaseTransform::Uppercase)`,
+`.with_full_width(true)` or `.with_full_size_kana(true)`; lowercase and capitalize
+are also supported. Full-width uses the raw Unicode wide/narrow relation and
+maps SPACE only when the executed processing preserved it.
 Original UTF-16 and plaintext remain unchanged through expansions and removals.
-Full-width and math-auto are not exposed. Layout uses a separate glyph projection
+Math-auto is not exposed. Layout uses a separate glyph projection
 for isolated units. Source-only accessibility needs no placement and
 omits unsupported geometry. Positioned accessibility, interaction and paint
 readback share the committed layout. Shaping boundaries inside an original pair

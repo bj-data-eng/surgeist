@@ -1,6 +1,7 @@
 use crate::{AnalyzedSource, Source, Style, Text, TextTransform};
 
 mod casing;
+mod width;
 
 fn style() -> Style {
     Style {

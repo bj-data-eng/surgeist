@@ -334,11 +334,13 @@ This entry covers the rule-data companion. The full normative UAX 29 revision 47
 report is excluded from public distribution; its catalog entry is metadata only
 and normative citations remain upstream.
 
-### Unicode 18 bidirectional character data
+### Unicode 18 character data
 
 `surgeist-html-semantics` includes the complete Unicode 18.0.0 DerivedBidiClass data and
 an offline-generated private first-strong classification table, distributed by
 Unicode, Inc. The checked-in reference retains the complete data text.
+`surgeist-text` includes the raw wide/narrow records from UnicodeData 18.0.0
+and an offline-generated private full-width mapping table from those records.
 
 * License: [Unicode License v3](licenses/unicode/18.0.0/LICENSE)
 * Homepage: [Unicode Character Database](https://www.unicode.org/Public/18.0.0/ucd/)

@@ -830,6 +830,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             breaks: &input.segment_breaks,
             context: &context,
         })?;
+    let preserved_spaces = super::preserved_spaces(&units, &plaintext_tokens)?;
     Ok(ProcessedSource {
         source: input.source,
         base_style: context.domains[0].style.clone(),
@@ -839,6 +840,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         box_order,
         paragraphs: records,
         plaintext_tokens,
+        preserved_spaces,
     })
 }
 

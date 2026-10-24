@@ -334,10 +334,18 @@ Capitalize uses pre-casing native UAX29 words and the first effective
 Letter/Number unit, preserving the word tail. Connected styles and occurrences
 retain context. The [transformation contract](../../../docs/text-layout-contract.md#text-transformations-and-correspondence)
 defines mixed-component policy, language/script resolution and exact source custody.
-`.with_full_size_kana(true)` enables all 58 mappings in the pinned
+`.with_full_width(true)` applies the 226 raw wide/narrow mappings from
+[UnicodeData 18.0.0](../../../references/SOURCE-EDITIONS.md#text-full-width-mapping-data)
+after casing. It maps U+0020 only when actual Phase-I processing preserved that
+space: a surviving collapsed space remains U+0020, while PreserveSpaces' converted
+TAB or document-break spaces become U+3000. Raw standalone layout preserves its
+actual spaces. Preserved TAB and line-break controls remain controls. Unrelated
+compatibility characters remain unchanged; this is not NFKC or NFKD.
+`.with_full_size_kana(true)` then enables all 58 mappings in the pinned
 [CSS kana table](../../../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#small-kana).
-Full-size-kana alone retains halfwidth forms. Full-width and math-auto are
-not exposed. Real transformed code points drive analysis, shaping and wrapping;
+Full-size-kana alone retains halfwidth forms; width plus kana maps halfwidth small
+kana through its full-width small form to the full-size form. Math-auto is not
+exposed. Real transformed code points drive analysis, shaping and wrapping;
 segmentation still uses a separately proven private projection for isolated units.
 Original/source AX and plaintext retain their own original/Phase-I projections.
 
@@ -418,7 +426,7 @@ style resolver.
 | Unsupported: color resolution | Symbolic text and decoration colors. |
 | Unsupported: broader vertical alignment policy | General text vertical alignment. |
 
-`TextStyleFeature::{Uppercase, Lowercase, Capitalize, FullSizeKana}` report the
+`TextStyleFeature::{Uppercase, Lowercase, Capitalize, FullWidth, FullSizeKana}` report the
 executed operations as Supported for both standalone and processed-paragraph
 analysis. These entries do not certify the entire CSS text-transform property.
 

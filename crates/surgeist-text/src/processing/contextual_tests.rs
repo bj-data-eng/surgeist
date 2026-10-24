@@ -4,6 +4,121 @@ use std::sync::Arc;
 
 mod phase_two;
 
+#[test]
+fn contextual_space_preservation_uses_emitted_token_facts_and_real_trim() {
+    for (mode, expected, preserved) in [
+        (WhiteSpace::Collapse, " A B ", vec![]),
+        (
+            WhiteSpace::Preserve,
+            " A\tB\n ",
+            vec![Range::new(0, 1), Range::new(5, 6)],
+        ),
+        (
+            WhiteSpace::PreserveSpaces,
+            " A B  ",
+            vec![Range::new(0, 1), Range::new(2, 3), Range::new(4, 6)],
+        ),
+        (WhiteSpace::Discard, "AB", vec![]),
+    ] {
+        let processed = process_contextual_source(input(" A\tB\n ", mode)).unwrap();
+        assert_eq!(processed.processed_text(), &Text::from(expected));
+        assert_eq!(processed.preserved_spaces, preserved);
+        assert!(!processed.preserves_space_at(processed.processed_text().len()));
+    }
+    let mut capture = input("  A  ", WhiteSpace::Preserve);
+    capture.scopes.push(SourceProcessingScope::Inline {
+        trim: WhiteSpaceTrim {
+            discard_inner: true,
+            ..Default::default()
+        },
+    });
+    capture
+        .events
+        .insert(2, SourceProcessingEvent::EnterScope(1));
+    capture.events.insert(
+        capture.events.len() - 2,
+        SourceProcessingEvent::ExitScope(1),
+    );
+    let trimmed = process_contextual_source(capture).unwrap();
+    assert_eq!(trimmed.processed_text(), &Text::from("A"));
+    assert!(trimmed.preserved_spaces.is_empty());
+}
+
+#[test]
+fn full_width_parent_projection_keeps_real_child_holes_and_each_domain_style() {
+    for kind in [InlineBoxKind::OutOfFlow, InlineBoxKind::InFlow] {
+        let mut capture = hole(kind);
+        let SourceProcessingScope::Block { base_style, .. } = &mut capture.scopes[0] else {
+            unreachable!()
+        };
+        base_style.text_transform = TextTransform::none().with_full_width(true);
+        let result = Arc::new(process_contextual_source(capture).unwrap());
+        let views: Vec<_> = result.paragraphs().collect();
+        assert_eq!(
+            views[0].source_pieces().collect::<Vec<_>>(),
+            [Range::new(0, 3), Range::new(6, 9)]
+        );
+        assert_eq!(
+            views[1].source_pieces().collect::<Vec<_>>(),
+            [Range::new(3, 6)]
+        );
+        let parent = AnalyzedSource::from_processed_paragraph(views[0].clone()).unwrap();
+        let child = AnalyzedSource::from_processed_paragraph(views[1].clone()).unwrap();
+        assert_eq!(
+            parent.inner.projection.text,
+            if kind == InlineBoxKind::OutOfFlow {
+                "Ａ Ｂ"
+            } else {
+                "Ａ  Ｂ"
+            }
+        );
+        assert_eq!(child.inner.projection.text, " I ");
+        let pieces = |analyzed: &AnalyzedSource| {
+            (0..analyzed.inner.transform.rows.len())
+                .flat_map(|row| {
+                    analyzed
+                        .inner
+                        .transform
+                        .original_pieces(row)
+                        .iter()
+                        .map(|piece| (piece.origin, piece.aggregate, piece.local))
+                })
+                .collect::<Vec<_>>()
+        };
+        let mut expected = vec![
+            (0, Range::new(0, 1), Range::new(0, 1)),
+            (0, Range::new(1, 2), Range::new(1, 2)),
+        ];
+        if kind == InlineBoxKind::InFlow {
+            expected.push((1, Range::new(6, 7), Range::new(6, 7)));
+        }
+        expected.push((1, Range::new(8, 9), Range::new(8, 9)));
+        assert_eq!(pieces(&parent), expected);
+        assert_eq!(
+            pieces(&child),
+            [
+                (0, Range::new(3, 4), Range::new(3, 4)),
+                (0, Range::new(4, 5), Range::new(4, 5)),
+                (0, Range::new(5, 6), Range::new(5, 6))
+            ]
+        );
+        assert_eq!(
+            text(views[0].plaintext_items(Affinity::Before)),
+            if kind == InlineBoxKind::OutOfFlow {
+                "A B"
+            } else {
+                "A  B"
+            }
+            .encode_utf16()
+            .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            text(views[1].plaintext_items(Affinity::Before)),
+            " I ".encode_utf16().collect::<Vec<_>>()
+        );
+    }
+}
+
 fn style(mode: WhiteSpace, size: f32) -> Style {
     Style {
         white_space: mode,

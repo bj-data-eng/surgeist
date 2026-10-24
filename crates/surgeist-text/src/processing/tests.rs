@@ -1,6 +1,91 @@
 use super::*;
 use crate::{Id, Size};
 
+#[test]
+fn actual_space_preservation_survives_coalescence_without_source_local_plaintext_tokens() {
+    for (mode, expected, preserved) in [
+        (WhiteSpace::Collapse, "A B C D", vec![]),
+        (WhiteSpace::Preserve, "A  B\tC\nD", vec![Range::new(1, 3)]),
+        (
+            WhiteSpace::PreserveSpaces,
+            "A  B C D",
+            vec![Range::new(1, 3), Range::new(4, 5), Range::new(6, 7)],
+        ),
+        (WhiteSpace::Discard, "ABCD", vec![]),
+    ] {
+        let source = Source::new("A  B\tC\nD");
+        let result = process_source_whitespace(
+            source.clone(),
+            Style {
+                white_space: mode,
+                ..Style::default()
+            },
+            DocumentSegmentBreaks::LineFeedDefault,
+        )
+        .unwrap();
+        assert_eq!(result.processed_text(), &Text::from(expected));
+        assert_eq!(result.preserved_spaces, preserved);
+        assert_eq!(
+            plaintext(&result),
+            expected.encode_utf16().collect::<Vec<_>>()
+        );
+        assert!(result.plaintext_tokens.is_empty());
+        assert_eq!(result.source(), &source);
+        for (index, &unit) in result.processed_text().code_units().iter().enumerate() {
+            if result.preserves_space_at(index) {
+                assert_eq!(unit, 0x20);
+            }
+        }
+        assert!(!result.preserves_space_at(result.processed_text().len()));
+    }
+    let mut source = Source::new(" A B C ");
+    source.span(
+        Range::new(2, 5),
+        Style {
+            white_space: WhiteSpace::Preserve,
+            ..Style::default()
+        },
+    );
+    let result = process_source_whitespace(
+        source.clone(),
+        Style {
+            white_space: WhiteSpace::Collapse,
+            ..Style::default()
+        },
+        DocumentSegmentBreaks::LineFeedDefault,
+    )
+    .unwrap();
+    assert_eq!(result.processed_text(), source.text());
+    assert_eq!(
+        result.operations().len(),
+        1,
+        "actual Copy coalescence does not erase token eligibility"
+    );
+    assert_eq!(
+        result.preserved_spaces,
+        [Range::new(2, 3), Range::new(4, 5)]
+    );
+    let raw = identity(
+        source.clone(),
+        Style {
+            white_space: WhiteSpace::Discard,
+            ..Style::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(raw.processed_text(), source.text());
+    assert_eq!(
+        raw.preserved_spaces,
+        [
+            Range::new(0, 1),
+            Range::new(2, 3),
+            Range::new(4, 5),
+            Range::new(6, 7)
+        ]
+    );
+    assert!(raw.plaintext_tokens.is_empty());
+}
+
 fn discard() -> Style {
     Style {
         white_space: WhiteSpace::Discard,

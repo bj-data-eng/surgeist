@@ -20,6 +20,7 @@ mod phase_two;
 mod raw_automatic_hyphenation;
 mod tab_stops;
 mod whitespace_edges;
+mod width;
 
 use super::*;
 use crate::{

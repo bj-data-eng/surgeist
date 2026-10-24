@@ -126,6 +126,8 @@ pub struct ProcessedSource {
     box_order: Vec<usize>,
     pub(crate) paragraphs: Vec<contextual::ParagraphRecord>,
     plaintext_tokens: Vec<PlaintextToken>,
+    /// Actual preserved U+0020 output, in Phase-I coordinates.
+    preserved_spaces: Vec<Range>,
 }
 
 /// Executes source-local Collapse, Discard, Preserve or PreserveSpaces.
@@ -222,13 +224,15 @@ fn process_with_boundaries(
     let modes = effective_modes(&source, &base_style)?;
     validate_modes(&modes, &segment_breaks)?;
 
-    let (units, map, _) = lexical::execute(lexical::ValidatedProcessingRequest::SourceLocal {
-        source: &source,
-        breaks: &segment_breaks,
-        modes: &modes,
-        box_order: &box_order,
-        barriers,
-    })?;
+    let (units, map, tokens) =
+        lexical::execute(lexical::ValidatedProcessingRequest::SourceLocal {
+            source: &source,
+            breaks: &segment_breaks,
+            modes: &modes,
+            box_order: &box_order,
+            barriers,
+        })?;
+    let preserved_spaces = preserved_spaces(&units, &tokens)?;
     Ok(ProcessedSource {
         source,
         base_style,
@@ -238,6 +242,7 @@ fn process_with_boundaries(
         box_order,
         paragraphs: Vec::new(),
         plaintext_tokens: Vec::new(),
+        preserved_spaces,
     })
 }
 
@@ -257,6 +262,12 @@ pub(crate) fn identity(source: Source, base_style: Style) -> Result<ProcessedSou
             kind: MappingKind::Copy,
         }]
     };
+    let mut preserved_spaces = Vec::new();
+    for (index, &unit) in source.text().code_units().iter().enumerate() {
+        if unit == 0x20 {
+            preserve_space(&mut preserved_spaces, index)?;
+        }
+    }
     Ok(ProcessedSource {
         processed: source.text().clone(),
         source,
@@ -266,10 +277,17 @@ pub(crate) fn identity(source: Source, base_style: Style) -> Result<ProcessedSou
         box_order,
         paragraphs: Vec::new(),
         plaintext_tokens: Vec::new(),
+        preserved_spaces,
     })
 }
 
 impl ProcessedSource {
+    pub(crate) fn preserves_space_at(&self, processed: usize) -> bool {
+        let end = self
+            .preserved_spaces
+            .partition_point(|range| range.start <= processed);
+        end != 0 && self.preserved_spaces[end - 1].contains(processed)
+    }
     pub(crate) fn operations(&self) -> &[MappingPiece] {
         &self.map
     }
@@ -519,6 +537,36 @@ impl ProcessedSource {
             source: self,
         }
     }
+}
+
+fn preserved_spaces(units: &[u16], tokens: &[PlaintextToken]) -> Result<Vec<Range>> {
+    let mut ranges = Vec::new();
+    for token in tokens
+        .iter()
+        .filter(|token| !token.collapsible && !token.transparent)
+    {
+        for (offset, &unit) in units[token.processed.start..token.processed.end]
+            .iter()
+            .enumerate()
+        {
+            if unit == 0x20 {
+                preserve_space(&mut ranges, token.processed.start + offset)?;
+            }
+        }
+    }
+    Ok(ranges)
+}
+
+fn preserve_space(ranges: &mut Vec<Range>, index: usize) -> Result<()> {
+    // The index belongs to an actual emitted UTF-16 unit, hence index + 1
+    // is bounded by the admitted backing length.
+    if let Some(last) = ranges.last_mut().filter(|range| range.end == index) {
+        last.end = index + 1;
+    } else {
+        reserve(ranges, 1)?;
+        ranges.push(Range::new(index, index + 1));
+    }
+    Ok(())
 }
 
 /// Borrowed original span and its projected range.

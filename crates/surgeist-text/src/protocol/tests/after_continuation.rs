@@ -3,6 +3,8 @@
 mod both_sides;
 #[path = "casing_indications.rs"]
 mod casing_indications;
+#[path = "width_indications.rs"]
+mod width_indications;
 use super::*;
 use crate::TextSeam;
 use crate::{

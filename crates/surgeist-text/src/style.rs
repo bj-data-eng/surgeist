@@ -339,11 +339,12 @@ pub enum OverflowWrap {
 
 /// Computed presentation transformations executed before Unicode analysis.
 ///
-/// Casing and full-size-kana execute in that order. Width conversion and
-/// math-auto are not accepted by this native input.
+/// Casing, full-width and full-size-kana execute in that order. Math-auto is
+/// not accepted by this native input.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct TextTransform {
     case: CaseTransform,
+    full_width: bool,
     full_size_kana: bool,
 }
 
@@ -364,6 +365,7 @@ impl TextTransform {
     pub const fn none() -> Self {
         Self {
             case: CaseTransform::None,
+            full_width: false,
             full_size_kana: false,
         }
     }
@@ -377,6 +379,18 @@ impl TextTransform {
     #[must_use]
     pub const fn case(self) -> CaseTransform {
         self.case
+    }
+
+    /// Enables or disables the complete raw Unicode full-width operation.
+    #[must_use]
+    pub const fn with_full_width(mut self, enabled: bool) -> Self {
+        self.full_width = enabled;
+        self
+    }
+
+    #[must_use]
+    pub const fn full_width(self) -> bool {
+        self.full_width
     }
 
     /// Enables or disables the complete full-size-kana operation.

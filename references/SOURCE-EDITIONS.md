@@ -1343,3 +1343,19 @@ not a CSS-mandated fraction. Native fallback choices remain distinct from full
 web Range membership, shadow-tree, nested Text, selected-element and aggregation
 requirements. The surrogate test supports partial-unit expansion; the inspected
 collapsed RTL-ligature test does not establish exact nonempty advance fractions.
+
+## Text full-width mapping data
+
+The pinned [CSS Text 4 full-width rule](css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#valdef-text-transform-full-width)
+uses the raw Unicode wide/narrow decomposition relation and names no separate
+width-data edition. Text selects UnicodeData 18.0.0 for this bounded mapping:
+[complete upstream source](https://www.unicode.org/Public/18.0.0/ucd/UnicodeData.txt),
+SHA-256 `0736451de439ae7baf1425136617da495e09ee5afbe6e394374db7009ea08950`.
+The [unchanged source excerpt](../crates/surgeist-text/data/UnicodeData-width-18.0.0.txt)
+contains 104 `<wide>` and 122 `<narrow>` records. Reversing wide records and
+applying narrow records forward gives 226 single-scalar mappings; this is not
+recursive compatibility normalization. The
+[offline generator](../crates/surgeist-text/tools/full-width/README.md) owns the
+private table and its reproducibility check. This selection does not change the
+Unicode editions used by ICU casing, segmentation or other property providers.
+The [Unicode 18 notice](../licenses/unicode/18.0.0/NOTICE.md) applies.

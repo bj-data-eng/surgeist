@@ -829,6 +829,7 @@ pub surgeist_text::TextStyleFeature::FontStyle
 pub surgeist_text::TextStyleFeature::FontVariant
 pub surgeist_text::TextStyleFeature::FontVariationSettings
 pub surgeist_text::TextStyleFeature::FullSizeKana
+pub surgeist_text::TextStyleFeature::FullWidth
 pub surgeist_text::TextStyleFeature::InlineBoxVerticalAlign
 pub surgeist_text::TextStyleFeature::LetterSpacing
 pub surgeist_text::TextStyleFeature::LineHeight
@@ -2265,9 +2266,11 @@ pub struct surgeist_text::TextTransform
 impl surgeist_text::TextTransform
 pub const fn surgeist_text::TextTransform::case(self) -> surgeist_text::CaseTransform
 pub const fn surgeist_text::TextTransform::full_size_kana(self) -> bool
+pub const fn surgeist_text::TextTransform::full_width(self) -> bool
 pub const fn surgeist_text::TextTransform::none() -> Self
 pub const fn surgeist_text::TextTransform::with_case(self, case: surgeist_text::CaseTransform) -> Self
 pub const fn surgeist_text::TextTransform::with_full_size_kana(self, enabled: bool) -> Self
+pub const fn surgeist_text::TextTransform::with_full_width(self, enabled: bool) -> Self
 pub struct surgeist_text::ValidatedOptions
 impl surgeist_text::ValidatedOptions
 pub const fn surgeist_text::ValidatedOptions::authored(self) -> surgeist_text::Options

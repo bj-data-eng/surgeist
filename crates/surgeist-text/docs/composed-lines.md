@@ -30,9 +30,11 @@ uses the same selected-line and placement machinery.
    `AnalyzedSource::from_paragraph` validates this complete capture and retains the
    executed `ProcessedSource`; original code-unit ownership remains available
    through the processed correspondence. Contextual casing selected with
-   `TextTransform::none().with_case(...)` runs after Phase I, followed by the
-   complete full-size-kana operation when `.with_full_size_kana(true)` is enabled.
-   Both run before semantic analysis. Original/Phase-I offsets remain distinct
+   `TextTransform::none().with_case(...)` runs after Phase I, followed by
+   `.with_full_width(true)` and then the complete full-size-kana operation when
+   `.with_full_size_kana(true)` is enabled. Width maps SPACE only when the actual
+   Phase-I processing preserved it. These operations run before semantic
+   analysis. Original/Phase-I offsets remain distinct
    from actual transformed presentation offsets; plaintext remains original.
    See [transformation and source custody](reference.md#defaults-and-validation).
 2. Call `System::prepare(&analysis, PreparationOptions)` with the actual scale and

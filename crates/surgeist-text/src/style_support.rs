@@ -43,6 +43,7 @@ pub enum TextStyleFeature {
     ConcreteDecorationColor,
     SymbolicDecorationColor,
     FullSizeKana,
+    FullWidth,
     Uppercase,
     Lowercase,
     Capitalize,
@@ -100,6 +101,7 @@ impl TextStyleFeature {
         Self::ConcreteDecorationColor,
         Self::SymbolicDecorationColor,
         Self::FullSizeKana,
+        Self::FullWidth,
         Self::Uppercase,
         Self::Lowercase,
         Self::Capitalize,
@@ -145,6 +147,7 @@ impl TextStyleFeature {
             | Self::DecorationThickness
             | Self::ConcreteDecorationColor
             | Self::FullSizeKana
+            | Self::FullWidth
             | Self::Uppercase
             | Self::Lowercase
             | Self::Capitalize

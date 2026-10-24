@@ -282,6 +282,15 @@ pub(super) fn apply(
                     )
                     .map_err(failed)?;
             }
+            if style.text_transform().full_width() {
+                for cp in &mut output[start..] {
+                    if (*cp != 0x20 || processed.preserves_space_at(map.rows[row].processed.start))
+                        && let Some(target) = super::width::map(*cp)
+                    {
+                        *cp = target;
+                    }
+                }
+            }
             if style.text_transform().full_size_kana() {
                 for cp in &mut output[start..] {
                     if let Some(target) = super::full_size_kana(*cp) {
