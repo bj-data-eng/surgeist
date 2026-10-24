@@ -903,6 +903,10 @@ pub surgeist_text::TextTransformError::InvalidPhraseData
 pub surgeist_text::TextTransformError::InvalidTextNodeRange
 pub surgeist_text::TextTransformError::InvalidTextNodeRange::range: surgeist_text::Range
 pub surgeist_text::TextTransformError::InvalidTextNodeRange::text_len: usize
+pub surgeist_text::TextTransformError::MissingOriginalSeparatorBoundaryContext
+pub surgeist_text::TextTransformError::MissingOriginalSeparatorBoundaryContext::at: usize
+pub surgeist_text::TextTransformError::MissingOriginalSeparatorBoundaryContext::connection: usize
+pub surgeist_text::TextTransformError::MissingOriginalSeparatorBoundaryContext::source: surgeist_text::Range
 pub surgeist_text::TextTransformError::MissingPhraseScopeStyle
 pub surgeist_text::TextTransformError::MissingPhraseScopeStyle::at: usize
 pub surgeist_text::TextTransformError::MissingPhraseScopeStyle::scope: usize

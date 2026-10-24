@@ -41,7 +41,6 @@ fn forced(
 pub(super) fn apply(
     mut input: SourceProjection,
     map: &mut TransformMap,
-    events: &[LogicalEvent],
     styles: &[AnalyzedStyleRun],
     processed: &crate::ProcessedSource,
     paragraph: &ParagraphData,
@@ -52,38 +51,22 @@ pub(super) fn apply(
     }) {
         return Ok(input);
     }
+    let events = crate::engine::analysis::wrapping::separator_events(processed, paragraph, &input);
+    let seams = connection_seams(&input, &events, paragraph)?;
+    let adjacency = forced_adjacency(&input, &events, processed.source(), paragraph, &seams)?;
     let mut adjacent = Vec::new();
-    adjacent.try_reserve_exact(input.atoms.len()).map_err(|_| {
-        Error::new(
-            ErrorCode::SourceProcessingCapacity,
-            "separator adjacency storage unavailable",
-        )
-        .with_detail(ErrorDetail::TextTransform {
-            reason: TextTransformError::Capacity,
-        })
-    })?;
-    adjacent.resize(input.atoms.len(), false);
-    let mut before = false;
-    for event in events {
+    adjacent
+        .try_reserve_exact(input.atoms.len())
+        .map_err(|_| capacity())?;
+    adjacent.resize(input.atoms.len(), Adjacency::default());
+    for (event, proof) in events.iter().zip(adjacency) {
         if let Event::Text(atom) = event.kind {
-            adjacent[atom] |= before;
-        }
-        if let Some(is_forced) = forced(event, &input, processed.source(), paragraph) {
-            before = is_forced;
-        }
-    }
-    let mut after = false;
-    for event in events.iter().rev() {
-        if let Event::Text(atom) = event.kind {
-            adjacent[atom] |= after;
-        }
-        if let Some(is_forced) = forced(event, &input, processed.source(), paragraph) {
-            after = is_forced;
+            adjacent[atom] = proof;
         }
     }
     let mut changed = false;
     for (row, atom) in input.atoms.iter_mut().enumerate() {
-        if atom.code_point != 0x200b || adjacent[row] {
+        if atom.code_point != 0x200b || adjacent[row].certain {
             continue;
         }
         let Some(cp) = styles[map.rows[row].style]
@@ -94,6 +77,19 @@ pub(super) fn apply(
         else {
             continue;
         };
+        if let Some(connection) = adjacent[row].uncertain {
+            return Err(Error::new(
+                ErrorCode::UnsupportedFeature,
+                "original separator expansion lacks disconnected-boundary event order",
+            )
+            .with_detail(ErrorDetail::TextTransform {
+                reason: TextTransformError::MissingOriginalSeparatorBoundaryContext {
+                    source: atom.source,
+                    at: paragraph.connections[connection].at,
+                    connection,
+                },
+            }));
+        }
         map.rows[row].separator_space = cp == 0x20;
         let cp = char::from_u32(cp).expect("separator replacement is a scalar");
         atom.code_point = u32::from(cp);
@@ -127,13 +123,20 @@ fn capacity() -> Error {
     })
 }
 
-/// Retain actual contextual connection order independently from numeric decode
-/// barriers. Direct input has no same-cut anchor-side authority.
-fn connection_cuts(
+/// A receipt is exact, or it retains every possible event seam between the two
+/// genuine origin occurrences. A flat capture never chooses a control's side.
+struct ConnectionSeam {
+    connection: usize,
+    lower: usize,
+    upper: usize,
+    atom: usize,
+}
+
+fn connection_seams(
     input: &SourceProjection,
     events: &[LogicalEvent],
     paragraph: &ParagraphData,
-) -> Result<Vec<usize>> {
+) -> Result<Vec<ConnectionSeam>> {
     use crate::ParagraphConnectionKind;
     let mut control_events = Vec::new();
     control_events
@@ -170,15 +173,20 @@ fn connection_cuts(
                 ParagraphAnchorItem::Atomic(i) => atomic_events[i] = index + 1,
                 ParagraphAnchorItem::EmptyOrigin(i) => empty_events[i] = index + 1,
             },
-            Event::Text(i) => text_edges.push((input.atoms[i].source.end, index + 1)),
-            Event::Deleted(range, _) => text_edges.push((range.end, index + 1)),
+            Event::Text(i) => text_edges.push((input.atoms[i].source.end, index + 1, index)),
+            Event::Deleted(range, _) => text_edges.push((range.end, index + 1, index)),
         }
     }
     text_edges.sort_unstable();
     let mut max = 0;
-    for (_, event) in &mut text_edges {
+    for (_, event, _) in &mut text_edges {
         max = max.max(*event);
         *event = max;
+    }
+    let mut min = events.len();
+    for (_, _, event) in text_edges.iter_mut().rev() {
+        min = min.min(*event);
+        *event = min;
     }
     let mut anchor_cuts = Vec::new();
     anchor_cuts
@@ -199,8 +207,9 @@ fn connection_cuts(
         };
         anchor_cuts.push(anchor_cuts.last().copied().unwrap().max(event));
     }
-    let mut cuts = Vec::new();
-    cuts.try_reserve_exact(paragraph.connections.len())
+    let mut seams = Vec::new();
+    seams
+        .try_reserve_exact(paragraph.connections.len())
         .map_err(|_| capacity())?;
     for (index, connection) in paragraph.connections.iter().enumerate() {
         if connection.kind != ParagraphConnectionKind::Disconnected {
@@ -210,17 +219,179 @@ fn connection_cuts(
             .connection_ends
             .as_ref()
             .map_or(connection.at, |ends| ends[index].0);
-        let text = text_edges.partition_point(|(end, _)| *end <= before);
+        let text = text_edges.partition_point(|(end, _, _)| *end <= before);
         let text_cut = text.checked_sub(1).map_or(0, |i| text_edges[i].1);
-        let anchor_cut = paragraph
-            .connection_anchor_cuts
-            .as_ref()
-            .map_or(0, |ranks| anchor_cuts[ranks[index]]);
-        cuts.push(text_cut.max(anchor_cut));
+        let (lower, upper) = if let Some(ranks) = &paragraph.connection_anchor_cuts {
+            let cut = text_cut.max(anchor_cuts[ranks[index]]);
+            (cut, cut)
+        } else {
+            let before_origin = &paragraph.origins[index];
+            let after_origin = &paragraph.origins[index + 1];
+            let lower = if before_origin.aggregate.is_empty() {
+                empty_events[index]
+            } else {
+                text_cut
+            };
+            let upper = if after_origin.aggregate.is_empty() {
+                empty_events[index + 1] - 1
+            } else {
+                let following =
+                    text_edges.partition_point(|(end, _, _)| *end <= after_origin.aggregate.start);
+                text_edges
+                    .get(following)
+                    .map_or(events.len(), |edge| edge.2)
+            };
+            if lower > upper {
+                return Err(crate::protocol::protocol_error(
+                    crate::ProtocolError::InvalidConnection {
+                        connection: index,
+                        at: connection.at,
+                    },
+                ));
+            }
+            (lower, upper)
+        };
+        seams.push(ConnectionSeam {
+            connection: index,
+            lower,
+            upper,
+            atom: events
+                .get(lower)
+                .map_or(input.atoms.len(), |event| event.atom),
+        });
     }
-    cuts.sort_unstable();
-    cuts.dedup();
-    Ok(cuts)
+    Ok(seams)
+}
+
+#[derive(Clone, Copy, Default)]
+struct Adjacency {
+    certain: bool,
+    uncertain: Option<usize>,
+}
+
+struct ForcedNeighbors {
+    before: Vec<Option<usize>>,
+    after: Vec<Option<usize>>,
+}
+
+fn forced_neighbors(
+    input: &SourceProjection,
+    events: &[LogicalEvent],
+    source: &crate::Source,
+    paragraph: &ParagraphData,
+    cuts: &[usize],
+) -> Result<ForcedNeighbors> {
+    let mut before = Vec::new();
+    let mut after = Vec::new();
+    before
+        .try_reserve_exact(events.len())
+        .map_err(|_| capacity())?;
+    after
+        .try_reserve_exact(events.len())
+        .map_err(|_| capacity())?;
+    before.resize(events.len(), None);
+    after.resize(events.len(), None);
+    let mut neighbor = None;
+    for (index, event) in events.iter().enumerate() {
+        if cuts.binary_search(&index).is_ok() {
+            neighbor = None;
+        }
+        before[index] = neighbor;
+        if let Some(value) = forced(event, input, source, paragraph) {
+            neighbor = value.then_some(index);
+        }
+    }
+    neighbor = None;
+    for (index, event) in events.iter().enumerate().rev() {
+        if cuts.binary_search(&(index + 1)).is_ok() {
+            neighbor = None;
+        }
+        after[index] = neighbor;
+        if let Some(value) = forced(event, input, source, paragraph) {
+            neighbor = value.then_some(index);
+        }
+    }
+    Ok(ForcedNeighbors { before, after })
+}
+
+/// A flat interval contains no retained Text event: atoms ending at/before the
+/// join precede lower, and upper precedes every atom ending after the join.
+/// Empty-origin anchors occupy that same raw scalar cut; disconnected source
+/// barriers already split crossing scalars. Contradictory occurrence bounds reject.
+/// Thus moving the cut through anchors/deleted events can only remove a nearest
+/// neighbor of an original Text target outside the interval. Keep directions
+/// separate: uncertain neighbors on both sides do not prove either connected.
+fn forced_adjacency(
+    input: &SourceProjection,
+    events: &[LogicalEvent],
+    source: &crate::Source,
+    paragraph: &ParagraphData,
+    seams: &[ConnectionSeam],
+) -> Result<Vec<Adjacency>> {
+    let mut lower: Vec<_> = seams.iter().map(|seam| seam.lower).collect();
+    let mut upper: Vec<_> = seams.iter().map(|seam| seam.upper).collect();
+    lower.sort_unstable();
+    lower.dedup();
+    upper.sort_unstable();
+    upper.dedup();
+    let lower = forced_neighbors(input, events, source, paragraph, &lower)?;
+    let upper = forced_neighbors(input, events, source, paragraph, &upper)?;
+    // Resolve interval membership once in event order rather than scanning all
+    // connections for every event. The heap retains the first actual connection
+    // whose unresolved interval contains the candidate forced neighbor.
+    let mut intervals = Vec::new();
+    intervals
+        .try_reserve_exact(seams.len())
+        .map_err(|_| capacity())?;
+    intervals.extend(
+        seams
+            .iter()
+            .filter(|seam| seam.lower < seam.upper)
+            .map(|seam| (seam.lower, seam.upper, seam.connection)),
+    );
+    intervals.sort_unstable();
+    let mut intervals = intervals.into_iter().peekable();
+    let mut active = std::collections::BinaryHeap::new();
+    active.try_reserve(seams.len()).map_err(|_| capacity())?;
+    let mut uncertain_connections = Vec::new();
+    uncertain_connections
+        .try_reserve_exact(events.len())
+        .map_err(|_| capacity())?;
+    for index in 0..events.len() {
+        while intervals.peek().is_some_and(|interval| interval.0 <= index) {
+            let (_, end, connection) = intervals.next().expect("observed interval");
+            active.push(std::cmp::Reverse((connection, end)));
+        }
+        while active.peek().is_some_and(|entry| entry.0.1 <= index) {
+            active.pop();
+        }
+        uncertain_connections.push(active.peek().map(|entry| entry.0.0));
+    }
+    let mut adjacency = Vec::new();
+    adjacency
+        .try_reserve_exact(events.len())
+        .map_err(|_| capacity())?;
+    for index in 0..events.len() {
+        let certain = lower.before[index].is_some() && upper.before[index].is_some()
+            || lower.after[index].is_some() && upper.after[index].is_some();
+        let possible = [
+            lower.before[index],
+            upper.before[index],
+            lower.after[index],
+            upper.after[index],
+        ];
+        let uncertain = if certain {
+            None
+        } else {
+            possible
+                .iter()
+                .flatten()
+                .filter_map(|&neighbor| uncertain_connections[neighbor])
+                .min()
+        };
+        adjacency.push(Adjacency { certain, uncertain });
+    }
+    Ok(adjacency)
 }
 
 /// A real source-less wbr emission joins the same semantic input as original
@@ -248,32 +419,8 @@ pub(super) fn wbr(
         return Ok((input, events));
     }
     let events = crate::engine::analysis::wrapping::separator_events(processed, paragraph, &input);
-    let mut adjacent = Vec::new();
-    adjacent
-        .try_reserve_exact(events.len())
-        .map_err(|_| capacity())?;
-    adjacent.resize(events.len(), false);
-    let connection_cuts = connection_cuts(&input, &events, paragraph)?;
-    let mut neighbor = false;
-    for (index, event) in events.iter().enumerate() {
-        if connection_cuts.binary_search(&index).is_ok() {
-            neighbor = false;
-        }
-        adjacent[index] |= neighbor;
-        if let Some(value) = forced(event, &input, processed.source(), paragraph) {
-            neighbor = value;
-        }
-    }
-    neighbor = false;
-    for (index, event) in events.iter().enumerate().rev() {
-        if connection_cuts.binary_search(&(index + 1)).is_ok() {
-            neighbor = false;
-        }
-        adjacent[index] |= neighbor;
-        if let Some(value) = forced(event, &input, processed.source(), paragraph) {
-            neighbor = value;
-        }
-    }
+    let seams = connection_seams(&input, &events, paragraph)?;
+    let adjacent = forced_adjacency(&input, &events, processed.source(), paragraph, &seams)?;
     let mut control_styles = Vec::new();
     control_styles
         .try_reserve_exact(paragraph.controls.len())
@@ -307,15 +454,13 @@ pub(super) fn wbr(
         )
         .map_err(|_| capacity())?;
     let mut expanded = false;
-    let mut semantic_connections = Vec::new();
-    semantic_connections
-        .try_reserve_exact(connection_cuts.len())
+    let mut event_atoms = Vec::new();
+    event_atoms
+        .try_reserve_exact(events.len().checked_add(1).ok_or_else(capacity)?)
         .map_err(|_| capacity())?;
     let mut proposals = proposals.into_iter().peekable();
     for (index, event) in events.into_iter().enumerate() {
-        if connection_cuts.binary_search(&index).is_ok() {
-            semantic_connections.push(atoms.len());
-        }
+        event_atoms.push(atoms.len());
         while proposals
             .peek()
             .is_some_and(|proposal| proposal.cut == index)
@@ -386,12 +531,25 @@ pub(super) fn wbr(
                             }
                         }
                     }
-                    if adjacent[index] {
+                    if adjacent[index].certain {
                         captured.push(LogicalEvent {
                             atom: atoms.len(),
                             ..event
                         });
                         continue;
+                    }
+                    if let Some(connection) = adjacent[index].uncertain {
+                        return Err(Error::new(
+                            ErrorCode::UnsupportedFeature,
+                            "wbr expansion lacks disconnected-boundary event order",
+                        )
+                        .with_detail(ErrorDetail::TextTransform {
+                            reason: TextTransformError::MissingSeparatorBoundaryContext {
+                                control,
+                                at,
+                                connection,
+                            },
+                        }));
                     }
 
                     if let Some(atom) = input
@@ -453,9 +611,17 @@ pub(super) fn wbr(
         }
         captured.push(event);
     }
-    if connection_cuts.binary_search(&captured.len()).is_ok() {
-        semantic_connections.push(atoms.len());
-    }
+    event_atoms.push(atoms.len());
+    let semantic_connections: Vec<_> = seams
+        .iter()
+        .map(|seam| {
+            // An unresolved flat seam contains no admitted source-less emission:
+            // positive Wbr already requires its exact side; virtuals require the
+            // contextual topology. Every possible seam therefore has one atom cut.
+            debug_assert_eq!(event_atoms[seam.lower], event_atoms[seam.upper]);
+            event_atoms[seam.lower]
+        })
+        .collect();
     map.components = components;
     if !expanded {
         // None/suppressed still retain genuine capture order. Their ordinary

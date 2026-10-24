@@ -658,3 +658,170 @@ fn original_separator_disconnected_flat_intervening_original_blocks_unknown_forc
         }
     }
 }
+
+#[test]
+fn original_separator_disconnected_flat_refusal_identifies_original_range_and_connection() {
+    for operation in [
+        WordSpaceTransform::Space,
+        WordSpaceTransform::IdeographicSpace,
+    ] {
+        for at in [1, 2] {
+            let error = AnalyzedSource::from_paragraph(original_separator_flat_disconnected(
+                "A\u{200b}B",
+                at,
+                operation,
+            ))
+            .unwrap_err();
+            assert_eq!(
+                error.detail(),
+                Some(&crate::ErrorDetail::TextTransform {
+                    reason: crate::TextTransformError::MissingOriginalSeparatorBoundaryContext {
+                        source: Range::new(1, 2),
+                        at,
+                        connection: 0,
+                    },
+                })
+            );
+        }
+    }
+}
+
+#[test]
+fn original_separator_disconnected_flat_split_surrogate_barrier_blocks_control_influence() {
+    for (operation, expected) in [
+        (WordSpaceTransform::Space, "\u{fffd}\u{fffd} B"),
+        (
+            WordSpaceTransform::IdeographicSpace,
+            "\u{fffd}\u{fffd}\u{3000}B",
+        ),
+    ] {
+        let analyzed = AnalyzedSource::from_paragraph(original_separator_flat_disconnected(
+            "😀\u{200b}B",
+            1,
+            operation,
+        ))
+        .unwrap();
+        assert_eq!(analyzed.inner.projection.text, expected);
+        assert_eq!(analyzed.source().text(), &Text::from("😀\u{200b}B"));
+    }
+}
+
+#[test]
+fn original_separator_disconnected_flat_uncertain_forcing_on_both_sides_is_not_proven_suppression()
+{
+    use crate::*;
+    let mut captured =
+        original_separator_flat_disconnected("A\u{200b}B", 1, WordSpaceTransform::Space);
+    captured.origins = [Range::new(0, 1), Range::new(1, 2), Range::new(2, 3)]
+        .into_iter()
+        .map(|range| ParagraphOrigin {
+            source: captured.source.clone(),
+            local: range,
+            aggregate: range,
+            kind: ParagraphOriginKind::Authored,
+            text_node: None,
+        })
+        .collect();
+    captured.connections.push(ParagraphConnection {
+        at: 2,
+        kind: ParagraphConnectionKind::Disconnected,
+    });
+    captured.controls.push(ParagraphControl {
+        at: 2,
+        kind: ParagraphControlKind::ForcedBreak,
+    });
+    captured.anchor_order.push(ParagraphAnchor {
+        item: ParagraphAnchorItem::Control(1),
+        affinity: Affinity::After,
+    });
+    let error = AnalyzedSource::from_paragraph(captured).unwrap_err();
+    assert_eq!(error.code, ErrorCode::UnsupportedFeature);
+    assert!(matches!(error.detail(), Some(ErrorDetail::TextTransform {
+        reason: TextTransformError::MissingOriginalSeparatorBoundaryContext { source, .. }
+    }) if *source == Range::new(1, 2)));
+}
+
+#[test]
+fn original_separator_disconnected_flat_reversed_empty_occurrences_refuse_contradictory_connection_order()
+ {
+    use crate::*;
+    let mut captured =
+        original_separator_flat_disconnected("A\u{200b}B", 1, WordSpaceTransform::Space);
+    captured.origins = [
+        Range::new(0, 1),
+        Range::new(1, 1),
+        Range::new(1, 1),
+        Range::new(1, 3),
+    ]
+    .into_iter()
+    .map(|range| ParagraphOrigin {
+        source: captured.source.clone(),
+        local: range,
+        aggregate: range,
+        kind: ParagraphOriginKind::Authored,
+        text_node: None,
+    })
+    .collect();
+    captured.connections = (0..3)
+        .map(|_| ParagraphConnection {
+            at: 1,
+            kind: ParagraphConnectionKind::Disconnected,
+        })
+        .collect();
+    captured.anchor_order = [
+        ParagraphAnchorItem::EmptyOrigin(2),
+        ParagraphAnchorItem::EmptyOrigin(1),
+        ParagraphAnchorItem::Control(0),
+    ]
+    .into_iter()
+    .map(|item| ParagraphAnchor {
+        item,
+        affinity: Affinity::After,
+    })
+    .collect();
+    let error = AnalyzedSource::from_paragraph(captured).unwrap_err();
+    assert_eq!(error.code, ErrorCode::InvalidTextProtocol);
+    assert_eq!(
+        error.detail(),
+        Some(&ErrorDetail::InvalidTextProtocol {
+            reason: ProtocolError::InvalidConnection {
+                connection: 1,
+                at: 1
+            },
+        })
+    );
+}
+
+#[test]
+fn original_separator_disconnected_flat_nearer_nonforced_control_blocks_uncertain_forced_influence()
+{
+    use crate::{
+        Affinity, ParagraphAnchor, ParagraphAnchorItem, ParagraphControl,
+        ParagraphControlKind as Kind, Wrap,
+    };
+    for (operation, expected) in [
+        (WordSpaceTransform::Space, "A B"),
+        (WordSpaceTransform::IdeographicSpace, "A\u{3000}B"),
+    ] {
+        for at in [1, 2] {
+            let mut captured = original_separator_flat_disconnected("A\u{200b}B", at, operation);
+            let kinds = if at == 1 {
+                [Kind::ForcedBreak, Kind::OptionalBreak { wrap: Wrap::Word }]
+            } else {
+                [Kind::OptionalBreak { wrap: Wrap::Word }, Kind::ForcedBreak]
+            };
+            captured.controls = kinds
+                .into_iter()
+                .map(|kind| ParagraphControl { at, kind })
+                .collect();
+            captured.anchor_order = (0..2)
+                .map(|control| ParagraphAnchor {
+                    item: ParagraphAnchorItem::Control(control),
+                    affinity: Affinity::After,
+                })
+                .collect();
+            let analyzed = AnalyzedSource::from_paragraph(captured).unwrap();
+            assert_eq!(analyzed.inner.projection.text, expected);
+        }
+    }
+}

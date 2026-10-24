@@ -315,6 +315,13 @@ pub enum TextTransformError {
         at: usize,
         connection: usize,
     },
+    /// A genuine original separator's forced adjacency depends on an uncaptured
+    /// connection side. The range identifies original text, never a control.
+    MissingOriginalSeparatorBoundaryContext {
+        source: crate::Range,
+        at: usize,
+        connection: usize,
+    },
     UnrepresentableSeparatorSeam {
         control: usize,
         at: usize,

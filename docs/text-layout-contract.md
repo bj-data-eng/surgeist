@@ -102,6 +102,12 @@ Coincident direct captures without the connection side needed by positive wbr
 expansion return precise missing-context refusal. Typography affinity and nearby
 forced characters do not establish that side or prove same-component suppression.
 
+Original U+200B replacement uses the same genuine connection-side boundaries for
+forced adjacency. If a flat capture's unknown coincident control side can change
+that replacement, refuse with the original separator's range and connection;
+never invent an emitting control. Preserve known no-op, source-hard-break
+suppression and intervening-character outcomes without demanding unused context.
+
 Original and control contributions may share one actual grapheme Range unit.
 Retain both contributors and their real fragments without lending the generated
 separator a defining source interval. Source-range closure selects the actual

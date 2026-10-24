@@ -335,6 +335,15 @@ None is neutral. The separator keeps its exact original/Phase-I range and
 plaintext value. Replacement is suppressed next to actual post-Phase-I forced
 breaks, ignoring inline boundaries and out-of-flow boxes. A collapsed LF is
 not a forced break. Generic optional-break controls are not interpreted as wbr.
+Actual disconnected joins bound forced adjacency. Contextual capture retains
+the control's genuine connection side. If a flat paragraph leaves that side
+ambiguous and it could change a requested original-separator replacement,
+`MissingOriginalSeparatorBoundaryContext` identifies the original range, anchor
+and connection. None, proven source-hard-break suppression and an intervening
+actual character do not demand unused side facts. No generating control is
+invented for an original character.
+Separator analysis rejects contradictory empty-origin connection order with
+`ProtocolError::InvalidConnection`, preserving the supplied occurrence identities.
 Native wbr uses the [separate occurrence capture](#native-wbr-separators).
 The automatic-phrase forms additionally request
 [contextual phrase insertion](#native-automatic-phrase-separators).

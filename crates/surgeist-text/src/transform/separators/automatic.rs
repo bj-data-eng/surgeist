@@ -306,13 +306,9 @@ pub(crate) fn proposals(
             }
         }
     }
-    let connection_cuts = super::connection_cuts(input, &events, paragraph)?;
-    for &cut in &connection_cuts {
-        stops.push(
-            events
-                .get(cut)
-                .map_or(input.atoms.len(), |event| event.atom),
-        );
+    let connection_seams = super::connection_seams(input, &events, paragraph)?;
+    for seam in &connection_seams {
+        stops.push(seam.atom);
     }
     stops.sort_unstable();
     stops.dedup();

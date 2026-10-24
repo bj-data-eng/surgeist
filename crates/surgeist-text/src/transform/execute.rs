@@ -197,7 +197,7 @@ pub(super) fn apply(
     let mut map = TransformMap::identity(&input, styles, processed, paragraph, captured.clone());
     let proposals =
         super::separators::automatic::proposals(&input, styles, processed, paragraph, &mut map)?;
-    let input = super::separators::apply(input, &mut map, &captured, styles, processed, paragraph)?;
+    let input = super::separators::apply(input, &mut map, styles, processed, paragraph)?;
     let (input, captured) = super::separators::wbr(
         input, &mut map, captured, styles, processed, paragraph, proposals,
     )?;
