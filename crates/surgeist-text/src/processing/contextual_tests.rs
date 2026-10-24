@@ -5,6 +5,7 @@ use std::sync::Arc;
 mod math;
 mod phase_two;
 mod wbr_connections;
+mod wbr_decoding;
 
 #[test]
 fn contextual_space_preservation_uses_emitted_token_facts_and_real_trim() {

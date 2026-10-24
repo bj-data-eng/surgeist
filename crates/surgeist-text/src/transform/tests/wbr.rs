@@ -176,64 +176,53 @@ fn wbr_inside_deleted_source_inserts_without_resurrecting_authored_spaces() {
 }
 
 #[test]
-fn positive_wbr_refuses_interior_supplementary_and_actual_phase_i_replacement_seams() {
-    for (text, at, retained, breaks) in [
-        (
-            "A\u{1f600}A",
-            2,
-            Range::new(1, 3),
-            DocumentSegmentBreaks::LineFeedDefault,
-        ),
-        (
-            "A\r\nA",
-            2,
-            Range::new(1, 3),
-            DocumentSegmentBreaks::Defined(vec![Range::new(1, 3)]),
-        ),
+fn positive_wbr_refuses_actual_phase_i_replacement_seams() {
+    let text = "A\r\nA";
+    let at = 2;
+    let retained = Range::new(1, 3);
+    let breaks = DocumentSegmentBreaks::Defined(vec![Range::new(1, 3)]);
+    let mut none = input(
+        text,
+        WhiteSpace::PreserveSpaces,
+        vec![wbr(at, WordSpaceTransform::None)],
+    );
+    none.segment_breaks = breaks.clone();
+    let original = none.source.clone();
+    let baseline = AnalyzedSource::from_paragraph(none).unwrap();
+    assert_eq!(baseline.source(), &original);
+    assert_eq!(
+        baseline
+            .inner
+            .projection
+            .atoms
+            .iter()
+            .filter(|a| a.source == retained)
+            .count(),
+        1
+    );
+    for operation in [
+        WordSpaceTransform::Space,
+        WordSpaceTransform::IdeographicSpace,
     ] {
-        let mut none = input(
-            text,
-            WhiteSpace::PreserveSpaces,
-            vec![wbr(at, WordSpaceTransform::None)],
-        );
-        none.segment_breaks = breaks.clone();
-        let original = none.source.clone();
-        let baseline = AnalyzedSource::from_paragraph(none).unwrap();
-        assert_eq!(baseline.source(), &original);
+        let mut positive = input(text, WhiteSpace::PreserveSpaces, vec![wbr(at, operation)]);
+        positive.segment_breaks = breaks.clone();
+        let error = AnalyzedSource::from_paragraph(positive).unwrap_err();
+        assert_eq!(error.code, ErrorCode::UnsupportedFeature);
         assert_eq!(
-            baseline
-                .inner
-                .projection
-                .atoms
-                .iter()
-                .filter(|a| a.source == retained)
-                .count(),
-            1
-        );
-        for operation in [
-            WordSpaceTransform::Space,
-            WordSpaceTransform::IdeographicSpace,
-        ] {
-            let mut positive = input(text, WhiteSpace::PreserveSpaces, vec![wbr(at, operation)]);
-            positive.segment_breaks = breaks.clone();
-            let error = AnalyzedSource::from_paragraph(positive).unwrap_err();
-            assert_eq!(error.code, ErrorCode::UnsupportedFeature);
-            assert_eq!(
-                error.detail(),
-                Some(&ErrorDetail::TextTransform {
-                    reason: TextTransformError::UnrepresentableSeparatorSeam {
-                        control: 0,
-                        at,
-                        retained
-                    }
-                })
-            );
-        }
-        assert_eq!(
-            original.text().code_units(),
-            text.encode_utf16().collect::<Vec<_>>()
+            error.detail(),
+            Some(&ErrorDetail::TextTransform {
+                reason: TextTransformError::UnrepresentableSeparatorSeam {
+                    control: 0,
+                    at,
+                    retained
+                }
+            })
         );
     }
+    assert_eq!(
+        original.text().code_units(),
+        text.encode_utf16().collect::<Vec<_>>()
+    );
 }
 
 #[test]
