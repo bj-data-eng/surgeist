@@ -213,6 +213,23 @@ fn intrinsic(
     prepared: &PreparedParagraph,
     block_rtl: bool,
     available: AvailableOf<f64>,
+    width: f64,
+) -> Result<super::super::run::Output<u32, f64>, super::super::fit::FitError> {
+    intrinsic_with_indent(
+        prepared,
+        block_rtl,
+        available,
+        width,
+        crate::text_indent::ResolvedTextIndent::ZERO,
+    )
+}
+
+fn intrinsic_with_indent(
+    prepared: &PreparedParagraph,
+    block_rtl: bool,
+    available: AvailableOf<f64>,
+    width: f64,
+    indent: crate::text_indent::ResolvedTextIndent<f64>,
 ) -> Result<super::super::run::Output<u32, f64>, super::super::fit::FitError> {
     let binding = prepared.binding(0);
     super::super::run::layout(
@@ -223,9 +240,9 @@ fn intrinsic(
         super::super::run::Context {
             frame: super::super::run::Frame::Canonical {
                 origin: Point::ZERO,
-                size: Size::new(100.0, 10.0),
+                size: Size::new(width, 10.0),
             },
-            containing_size: Size::new(100.0, 10.0),
+            containing_size: Size::new(width, 10.0),
             inset: Point::ZERO,
             right_inset: 0.0,
             cursor_block: 0.0,
@@ -241,7 +258,7 @@ fn intrinsic(
             alignment: TextAlign::Start,
             last_alignment: TextAlignLast::Auto,
             justification: TextJustification::None,
-            indent: crate::text_indent::ResolvedTextIndent::ZERO,
+            indent,
             indent_state: crate::text_indent::IndentLineState::default(),
             hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
             hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
@@ -253,7 +270,7 @@ fn intrinsic(
             band: |_, _| {
                 Ok(super::super::fit::Band {
                     start: 0.0,
-                    end: 100.0,
+                    end: width,
                     intrinsic_end_occupation: None,
                     next_transition: None,
                 })
@@ -267,13 +284,19 @@ fn intrinsic(
 
 #[test]
 fn intrinsic_css_tabs_use_the_logical_grid_across_block_directions() {
+    for width in [100.0, 120.0] {
+        check_intrinsic_block_directions(width);
+    }
+}
+
+fn check_intrinsic_block_directions(width: f64) {
     for available in [AvailableOf::MAX_CONTENT, AvailableOf::MIN_CONTENT] {
         for rtl in [false, true] {
             let prepared = paragraph("A\tB", rtl, rtl, false);
-            let output = intrinsic(&prepared, rtl, available)
+            let output = intrinsic(&prepared, rtl, available, width)
                 .unwrap_or_else(|_| panic!("shared block/paragraph edge establishes tab phase"));
             let zero = paragraph("A\tB", rtl, !rtl, true);
-            let zero_output = intrinsic(&zero, !rtl, available)
+            let zero_output = intrinsic(&zero, !rtl, available, width)
                 .unwrap_or_else(|_| panic!("zero tab consumes no unresolved phase"));
             // Preserve permits a break after TAB: min-content measures A+TAB
             // and B separately (40 and10); max-content measures the whole50.
@@ -308,13 +331,14 @@ fn intrinsic_css_tabs_use_the_logical_grid_across_block_directions() {
             );
             assert_eq!(
                 line.selected_line().request().context.tabs,
-                TabContext::CssStops { origin: Some(0.0) }
+                TabContext::IntrinsicCssStops
             );
 
             let opposite = paragraph("A\tB", rtl, !rtl, false);
-            let opposite_output = intrinsic(&opposite, !rtl, available).unwrap_or_else(|_| {
-                panic!("opposite-start intrinsic logical grid must be available")
-            });
+            let opposite_output =
+                intrinsic(&opposite, !rtl, available, width).unwrap_or_else(|_| {
+                    panic!("opposite-start intrinsic logical grid must be available")
+                });
             assert_eq!(
                 opposite_output
                     .paragraph
@@ -358,9 +382,166 @@ fn intrinsic_css_tabs_use_the_logical_grid_across_block_directions() {
                     .request()
                     .context
                     .tabs,
-                TabContext::CssStops { origin: None }
+                TabContext::IntrinsicCssStops
             );
         }
+    }
+}
+
+#[test]
+fn auto_root_intrinsic_sizing_refinalizes_tabs_against_the_real_used_width() {
+    for rtl in [false, true] {
+        let p = paragraph("A\tB", rtl, !rtl, false);
+        let tree = PublicLayoutTreeOf::<f64>::new()
+            .children(0, [1])
+            .children(1, [])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Block,
+                    direction: if rtl { Direction::Ltr } else { Direction::Rtl },
+                    ..NodeInputOf::default()
+                },
+            )
+            .input(1, p.text_input(1));
+        let capture = TextLayoutInput::try_new(&tree, 0, vec![p.binding(0)]).unwrap();
+        for (available, expected_width) in [
+            (AvailableOf::MAX_CONTENT, 50.0),
+            (AvailableOf::MIN_CONTENT, 10.0),
+        ] {
+            let actual = compute_layout_with_text(
+                &capture,
+                0,
+                LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT))
+                    .unwrap(),
+            )
+            .unwrap();
+            let root = actual
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == 0)
+                .unwrap()
+                .output();
+            assert_eq!(root.size.width, expected_width);
+            let final_lines = lines(&actual);
+            // The intrinsic whole line is50. At the actual opposite edge50
+            // (or10), the whole used candidate is60, so wrapping keeps the
+            // hanging first TAB in raw50 and moves B to its own line.
+            assert_eq!(
+                final_lines
+                    .iter()
+                    .map(|line| line.feedback().advance)
+                    .collect::<Vec<_>>(),
+                [50.0, 10.0]
+            );
+            for line in final_lines {
+                assert_eq!(
+                    line.selected_line().request().context.tabs,
+                    TabContext::CssStops {
+                        origin: Some(if rtl { -expected_width } else { expected_width })
+                    }
+                );
+                assert_eq!(
+                    line.selected_line().request().context.available_inline,
+                    Some(expected_width)
+                );
+            }
+            assert_eq!(
+                actual.placed_text()[0]
+                    .layout()
+                    .source()
+                    .text()
+                    .code_units(),
+                [65, 9, 66]
+            );
+        }
+        // A fresh finite operation after both intrinsic modes must use the
+        // real100px opposite edge: A10/TAB10/B10, regardless of prior results.
+        let finite = compute_layout_with_text(&capture, 0, request(100.0)).unwrap();
+        assert_eq!(
+            lines(&finite)
+                .iter()
+                .map(|line| line.feedback().advance)
+                .collect::<Vec<_>>(),
+            [30.0]
+        );
+        let cold = batch::<f64>(&p, block(!rtl, 0.0, TextAlign::Start), false);
+        assert_eq!(glyphs(&finite), glyphs(&cold));
+    }
+}
+
+#[test]
+fn intrinsic_lines_reset_the_tab_pen_with_the_applicable_indent() {
+    for rtl in [false, true] {
+        let p = paragraph("A\tB\nA\tB", rtl, !rtl, false);
+        for (each_line, hanging, expected_indents, expected_raw) in [
+            (false, false, [10.0, 0.0], [40.0, 50.0]),
+            (true, false, [10.0, 10.0], [40.0, 40.0]),
+            (false, true, [0.0, 10.0], [50.0, 40.0]),
+            (true, true, [0.0, 0.0], [50.0, 50.0]),
+        ] {
+            let output = intrinsic_with_indent(
+                &p,
+                !rtl,
+                AvailableOf::MAX_CONTENT,
+                120.0,
+                crate::text_indent::ResolvedTextIndent {
+                    amount: 10.0,
+                    each_line,
+                    hanging,
+                },
+            )
+            .unwrap_or_else(|_| panic!("forced intrinsic lines must resolve their logical grid"));
+            assert_eq!(
+                output
+                    .paragraph
+                    .lines
+                    .iter()
+                    .map(|line| line.line.feedback().advance)
+                    .collect::<Vec<_>>(),
+                expected_raw
+            );
+            assert_eq!(
+                output
+                    .paragraph
+                    .lines
+                    .iter()
+                    .map(|line| line.line.selected_line().request().context.indent)
+                    .collect::<Vec<_>>(),
+                expected_indents
+            );
+        }
+        let p = paragraph("A\tB", rtl, !rtl, false);
+        let output = intrinsic_with_indent(
+            &p,
+            !rtl,
+            AvailableOf::MIN_CONTENT,
+            120.0,
+            crate::text_indent::ResolvedTextIndent {
+                amount: 10.0,
+                each_line: true,
+                hanging: false,
+            },
+        )
+        .unwrap_or_else(|_| panic!("soft intrinsic lines must resolve their logical grid"));
+        assert_eq!(
+            output
+                .paragraph
+                .lines
+                .iter()
+                .map(|line| line.line.feedback().advance)
+                .collect::<Vec<_>>(),
+            [30.0, 10.0]
+        );
+        assert_eq!(
+            output
+                .paragraph
+                .lines
+                .iter()
+                .map(|line| line.line.selected_line().request().context.indent)
+                .collect::<Vec<_>>(),
+            [10.0, 0.0]
+        );
     }
 }
 

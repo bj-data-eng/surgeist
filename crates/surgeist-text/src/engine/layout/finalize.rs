@@ -1658,8 +1658,11 @@ fn resolve_tabs(
     if selected.prepared.options.tabs() != crate::TabPreparation::CssStops {
         return Ok(());
     }
-    let crate::TabContext::CssStops { origin } = selected.request.context.tabs else {
-        return Ok(());
+    let intrinsic = selected.request.context.tabs == crate::TabContext::IntrinsicCssStops;
+    let origin = match selected.request.context.tabs {
+        crate::TabContext::CssStops { origin } => origin,
+        crate::TabContext::IntrinsicCssStops => Some(0.0),
+        _ => return Ok(()),
     };
     // The signed grid frame is a consumed capability, not another general
     // line-geometry pass. Absent and zero tabs cannot require its arithmetic.
@@ -1680,7 +1683,8 @@ fn resolve_tabs(
     } else {
         -1.0
     };
-    let mut pen = sign * selected.request.context.indent;
+    let grid_sign = if intrinsic { 1.0 } else { sign };
+    let mut pen = grid_sign * selected.request.context.indent;
     let mut ordinals: Vec<_> = order.iter().map(|(ordinal, _)| ordinal).collect();
     if sign < 0.0 {
         ordinals.reverse();
@@ -1701,14 +1705,14 @@ fn resolve_tabs(
                         0.0
                     } else {
                         let origin = origin.ok_or_else(|| {
-                            protocol_error(ProtocolError::UnsupportedContext {
-                                field: crate::ProtocolContextField::IntrinsicTabPhase,
-                            })
+                            protocol_error(ProtocolError::MissingPhaseTwoContext(
+                                crate::PhaseTwoContext::TabOrigin,
+                            ))
                         })?;
                         // Retain the actual signed interval in preparation. Both
                         // signs execute this one forward grid by its magnitude.
                         let period = metric.period.abs();
-                        let mut distance = tab_grid_distance(origin, pen, sign, period)?;
+                        let mut distance = tab_grid_distance(origin, pen, grid_sign, period)?;
                         if distance < metric.threshold {
                             distance = tab_grid_add("tab threshold bump", distance, period)?;
                         }
@@ -1732,7 +1736,7 @@ fn resolve_tabs(
                 }
             }
         };
-        pen = tab_grid_add("tab traversal pen", pen, sign * advance)?;
+        pen = tab_grid_add("tab traversal pen", pen, grid_sign * advance)?;
     }
     Ok(())
 }

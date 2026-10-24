@@ -117,6 +117,243 @@ fn finish(p: &PreparedText, origin: Option<f64>, indent: f64) -> crate::Result<F
     p.select(r)?.finalize(SpacingAllocations::None)
 }
 
+fn intrinsic_request(p: &PreparedText, indent: f64) -> LineSelectionRequest {
+    let mut r = request(p);
+    r.context.tabs = TabContext::IntrinsicCssStops;
+    r.context.available_inline = None;
+    r.context.indent = indent;
+    r.context.base_direction = match p.analyzed_source().direction() {
+        crate::Direction::RightToLeft => ParagraphBaseDirection::RightToLeft,
+        _ => ParagraphBaseDirection::LeftToRight,
+    };
+    r
+}
+
+#[test]
+fn intrinsic_logical_grid_uses_exact_signed_pen_thresholds_in_both_directions() {
+    let mut system = system();
+    for direction in [
+        ParagraphBaseDirection::LeftToRight,
+        ParagraphBaseDirection::RightToLeft,
+    ] {
+        let own = Style {
+            size: 10.0,
+            white_space: WhiteSpace::Preserve,
+            tab_size: crate::TabSize::length(40.0).unwrap(),
+            ..style()
+        };
+        let p = css_capture(
+            &mut system,
+            captured("\t", own.clone(), Some(own), direction),
+            1.0,
+        )
+        .unwrap();
+        for (pen, expected) in [
+            (10.0, 30.0),
+            (35.0, 5.0),
+            (36.0, 44.0),
+            (40.0, 40.0),
+            (-10.0, 10.0),
+        ] {
+            let line = p
+                .select(intrinsic_request(&p, pen))
+                .unwrap()
+                .finalize(SpacingAllocations::None)
+                .unwrap();
+            assert_eq!(line.feedback().advance, expected, "{direction:?}/{pen}");
+            assert_eq!(
+                line.selected_line().request().context.tabs,
+                TabContext::IntrinsicCssStops
+            );
+            assert_eq!(
+                line.run_views().map(|r| r.glyphs().count()).sum::<usize>(),
+                0
+            );
+        }
+    }
+}
+
+#[test]
+fn intrinsic_grid_is_distinct_from_used_grid_and_refinalizes_real_source_geometry() {
+    let mut system = system();
+    for direction in [
+        ParagraphBaseDirection::LeftToRight,
+        ParagraphBaseDirection::RightToLeft,
+    ] {
+        let own = Style {
+            size: 10.0,
+            white_space: WhiteSpace::Preserve,
+            tab_size: crate::TabSize::length(40.0).unwrap(),
+            ..style()
+        };
+        for (text, expected) in [("A\tB", 50.0), ("\tA", 50.0), ("A\tB\tA", 90.0)] {
+            let p = css_capture(
+                &mut system,
+                captured(text, own.clone(), Some(own.clone()), direction),
+                1.0,
+            )
+            .unwrap();
+            let intrinsic = p
+                .select(intrinsic_request(&p, 0.0))
+                .unwrap()
+                .finalize(SpacingAllocations::None)
+                .unwrap();
+            assert_eq!(intrinsic.feedback().advance, expected);
+        }
+        let p = css_capture(
+            &mut system,
+            captured("A\tB", own.clone(), Some(own), direction),
+            1.0,
+        )
+        .unwrap();
+        let intrinsic = p
+            .select(intrinsic_request(&p, 0.0))
+            .unwrap()
+            .finalize(SpacingAllocations::None)
+            .unwrap();
+        for (indent, expected) in [(10.0, 40.0), (-10.0, 60.0)] {
+            let line = p
+                .select(intrinsic_request(&p, indent))
+                .unwrap()
+                .finalize(SpacingAllocations::None)
+                .unwrap();
+            assert_eq!(line.feedback().advance, expected);
+            assert_eq!(indent + line.feedback().advance, 50.0);
+        }
+        let mut used = intrinsic_request(&p, 0.0);
+        used.context.available_inline = Some(100.0);
+        used.context.tabs = TabContext::CssStops {
+            origin: Some(if direction == ParagraphBaseDirection::LeftToRight {
+                100.0
+            } else {
+                -100.0
+            }),
+        };
+        let used = p
+            .select(used)
+            .unwrap()
+            .finalize(SpacingAllocations::None)
+            .unwrap();
+        assert_eq!(used.feedback().advance, 30.0);
+        assert_ne!(
+            used.selected_line().request().context.tabs,
+            intrinsic.selected_line().request().context.tabs
+        );
+        let tab = p.participants().nth(1).unwrap();
+        assert_eq!(
+            used.prefix_at(&crate::TextSeam::AfterParticipant(tab.clone()))
+                .unwrap()
+                .advance(),
+            20.0
+        );
+        assert_eq!(
+            intrinsic
+                .prefix_at(&crate::TextSeam::AfterParticipant(tab))
+                .unwrap()
+                .advance(),
+            40.0
+        );
+        let origin = p.origin_views().next().unwrap().handle();
+        let placed = place(p.clone(), used, 0.0, 10.0).unwrap();
+        let tab_fragments = placed
+            .source_range_fragments(&origin, crate::Range::new(1, 2))
+            .unwrap();
+        let pieces = tab_fragments
+            .units()
+            .flat_map(|unit| unit.pieces().collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+        assert_eq!(pieces.len(), 1);
+        assert_eq!(pieces[0].rect().size.width, 10.0);
+        assert_eq!(placed.source().text().code_units(), [65, 9, 66]);
+        if direction == ParagraphBaseDirection::LeftToRight {
+            assert_eq!(
+                placed
+                    .cursor(crate::Cursor::new(1, crate::Affinity::After))
+                    .unwrap()
+                    .rect()
+                    .origin
+                    .x,
+                10.0
+            );
+            assert_eq!(
+                placed
+                    .cursor(crate::Cursor::new(2, crate::Affinity::Before))
+                    .unwrap()
+                    .rect()
+                    .origin
+                    .x,
+                20.0
+            );
+            let paint: Vec<_> = placed
+                .run_views()
+                .flat_map(|run| {
+                    run.glyphs()
+                        .map(|glyph| (glyph.id(), run.origin().x + glyph.pen()))
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            assert_eq!(paint, [(35, 0.0), (36, 20.0)]);
+        }
+        // A later intrinsic operation is unchanged by the used operation.
+        assert_eq!(
+            p.select(intrinsic_request(&p, 0.0))
+                .unwrap()
+                .finalize(SpacingAllocations::None)
+                .unwrap()
+                .feedback()
+                .advance,
+            50.0
+        );
+    }
+}
+
+#[test]
+fn intrinsic_grid_requires_css_preparation_and_an_unbounded_request() {
+    let mut system = system();
+    let p = css(
+        &mut system,
+        "A\tB",
+        crate::TabSize::length(80.0).unwrap(),
+        ParagraphBaseDirection::LeftToRight,
+    );
+    let mut r = intrinsic_request(&p, 0.0);
+    r.context.available_inline = Some(200.0);
+    assert!(matches!(
+        reason(&p.select(r).unwrap_err()),
+        ProtocolError::MismatchedContext {
+            field: ProtocolContextField::TabStops
+        }
+    ));
+    let ordinary = prepared(&mut system, "A\tB", WhiteSpace::Preserve);
+    assert!(matches!(
+        reason(
+            &ordinary
+                .select(intrinsic_request(&ordinary, 0.0))
+                .unwrap_err()
+        ),
+        ProtocolError::MismatchedContext {
+            field: ProtocolContextField::TabPreparation
+        }
+    ));
+    let intrinsic = p
+        .select(intrinsic_request(&p, 0.0))
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    let mut used_zero = intrinsic_request(&p, 0.0);
+    used_zero.context.tabs = TabContext::CssStops { origin: Some(0.0) };
+    let used_zero = p
+        .select(used_zero)
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    assert_eq!(intrinsic.feedback().advance, used_zero.feedback().advance);
+    assert_ne!(
+        intrinsic.selected_line().request().context.tabs,
+        used_zero.selected_line().request().context.tabs
+    );
+}
+
 #[test]
 fn css_tab_uses_one_threshold_bump_and_strictly_next_stop() {
     let mut system = system();
@@ -195,6 +432,15 @@ fn indent_changes_pen_while_alignment_does_not_restart_grid() {
 
 #[test]
 fn spacing_before_tab_is_absorbed_and_recomputed_from_selected_rows() {
+    for tabs in [
+        TabContext::CssStops { origin: Some(0.0) },
+        TabContext::IntrinsicCssStops,
+    ] {
+        check_spacing_before_tab(tabs);
+    }
+}
+
+fn check_spacing_before_tab(tabs: TabContext) {
     let mut system = system();
     let p = css(
         &mut system,
@@ -203,7 +449,8 @@ fn spacing_before_tab_is_absorbed_and_recomputed_from_selected_rows() {
         ParagraphBaseDirection::LeftToRight,
     );
     let mut r = request(&p);
-    r.context.tabs = TabContext::CssStops { origin: Some(0.0) };
+    r.context.tabs = tabs;
+    r.context.available_inline = None;
     r.context.spacing = SpacingPolicy::Spaces;
     let selected = p.select(r).unwrap();
     let slots: Vec<_> = selected.spacing_slots().collect();
@@ -240,9 +487,7 @@ fn zero_tabs_bypass_unknown_phase_while_positive_tabs_consume_it() {
     );
     assert!(matches!(
         reason(&finish(&positive, None, 0.0).unwrap_err()),
-        ProtocolError::UnsupportedContext {
-            field: ProtocolContextField::IntrinsicTabPhase
-        }
+        ProtocolError::MissingPhaseTwoContext(crate::PhaseTwoContext::TabOrigin)
     ));
     assert_eq!(
         finish(&positive, Some(0.0), 0.0)
@@ -997,6 +1242,15 @@ fn absent_zero_metric_uses_quarter_em_half_ch_threshold() {
 }
 #[test]
 fn actual_atomic_advance_participates_in_the_same_tab_traversal() {
+    for tabs in [
+        TabContext::CssStops { origin: Some(0.0) },
+        TabContext::IntrinsicCssStops,
+    ] {
+        check_atomic_tab_traversal(tabs);
+    }
+}
+
+fn check_atomic_tab_traversal(tabs: TabContext) {
     let mut system = system();
     for kind in [
         crate::InlineBoxKind::InFlow,
@@ -1040,7 +1294,8 @@ fn actual_atomic_advance_participates_in_the_same_tab_traversal() {
         }
         let p = css_capture(&mut system, input, 1.0).unwrap();
         let mut r = request(&p);
-        r.context.tabs = TabContext::CssStops { origin: Some(0.0) };
+        r.context.tabs = tabs.clone();
+        r.context.available_inline = None;
         r.atomics = p
             .atomic_views()
             .map(|a| AtomicAllocation {
@@ -1139,6 +1394,7 @@ fn huge_atomic_after_first_unit(
 fn finish_with_huge_atomic(p: &PreparedText, tabs: TabContext) -> crate::Result<FinalizedLine> {
     let mut r = request(p);
     r.context.tabs = tabs;
+    r.context.available_inline = None;
     let advance = 2.0_f64.powi(60);
     r.atomics = p
         .atomic_views()
@@ -1179,6 +1435,11 @@ fn trailing_atomic_does_not_consume_the_completed_tab_frame() {
             crate::TabPreparation::CssStops,
             TabContext::CssStops { origin: Some(0.0) },
         ),
+        (
+            "\t",
+            crate::TabPreparation::CssStops,
+            TabContext::IntrinsicCssStops,
+        ),
     ] {
         let p = huge_atomic_after_first_unit(&mut system, text, demand);
         let line = finish_with_huge_atomic(&p, tabs).unwrap();
@@ -1204,16 +1465,20 @@ fn trailing_atomic_does_not_consume_the_completed_tab_frame() {
 fn a_later_positive_tab_still_consumes_the_atomic_pen() {
     let mut system = system();
     let p = huge_atomic_after_first_unit(&mut system, "\t\t", crate::TabPreparation::CssStops);
-    let error =
-        finish_with_huge_atomic(&p, TabContext::CssStops { origin: Some(0.0) }).unwrap_err();
-    assert!(matches!(
-        error.detail(),
-        Some(crate::ErrorDetail::InvalidTextNumeric {
-            field: "tab traversal pen",
-            category: crate::TextNumericError::NonZeroLost,
-            ..
-        })
-    ));
+    for tabs in [
+        TabContext::CssStops { origin: Some(0.0) },
+        TabContext::IntrinsicCssStops,
+    ] {
+        let error = finish_with_huge_atomic(&p, tabs).unwrap_err();
+        assert!(matches!(
+            error.detail(),
+            Some(crate::ErrorDetail::InvalidTextNumeric {
+                field: "tab traversal pen",
+                category: crate::TextNumericError::NonZeroLost,
+                ..
+            })
+        ));
+    }
 }
 
 #[test]

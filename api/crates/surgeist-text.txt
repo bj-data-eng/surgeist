@@ -493,6 +493,7 @@ pub surgeist_text::ParagraphTerminalEdge::BlockEnd
 pub surgeist_text::ParagraphTerminalEdge::NonBlockBoundary
 pub surgeist_text::ParagraphTerminalEdge::Unknown
 pub enum surgeist_text::PhaseTwoContext
+pub surgeist_text::PhaseTwoContext::TabOrigin
 pub surgeist_text::PhaseTwoContext::TerminalBlockEdge
 pub enum surgeist_text::PlacementCoverage
 pub surgeist_text::PlacementCoverage::Range
@@ -535,7 +536,6 @@ pub surgeist_text::ProcessingCapacityError::Overflow
 pub enum surgeist_text::ProtocolContextField
 pub surgeist_text::ProtocolContextField::BaseDirection
 pub surgeist_text::ProtocolContextField::CssParagraphBoundary
-pub surgeist_text::ProtocolContextField::IntrinsicTabPhase
 pub surgeist_text::ProtocolContextField::LineEnd
 pub surgeist_text::ProtocolContextField::LineStart
 pub surgeist_text::ProtocolContextField::Orientation
@@ -818,6 +818,7 @@ pub enum surgeist_text::TabContext
 pub surgeist_text::TabContext::CssStops
 pub surgeist_text::TabContext::CssStops::origin: core::option::Option<f64>
 pub surgeist_text::TabContext::FontAdvance
+pub surgeist_text::TabContext::IntrinsicCssStops
 pub surgeist_text::TabContext::NoTabs
 pub enum surgeist_text::TabPreparation
 pub surgeist_text::TabPreparation::CssStops

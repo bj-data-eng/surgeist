@@ -208,10 +208,13 @@ pub enum TabContext {
     /// Actual retained-font shaping advance, without a tab-stop algorithm.
     FontAdvance,
     /// Physical nearest-block start relative to unaligned paragraph start.
-    /// None preserves an unknown intrinsic phase; only nonzero tabs consume it.
+    /// None means the actual used origin is unavailable; only nonzero tabs consume it.
     CssStops {
         origin: Option<f64>,
     },
+    /// Logical grid at the unindented paragraph line-start for unconstrained
+    /// intrinsic measurement, advancing in paragraph progression.
+    IntrinsicCssStops,
 }
 /// The selected profile exposes only actual supported inter-space allocation.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -517,7 +520,6 @@ pub enum ProtocolContextField {
     TabPreparation,
     TabReference,
     TabMetrics,
-    IntrinsicTabPhase,
     CssParagraphBoundary,
     Spacing,
 }
@@ -711,6 +713,7 @@ pub enum ProtocolError {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PhaseTwoContext {
     TerminalBlockEdge,
+    TabOrigin,
 }
 
 pub(crate) fn protocol_error(reason: ProtocolError) -> crate::Error {

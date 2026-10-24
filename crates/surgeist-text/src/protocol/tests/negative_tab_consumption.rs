@@ -13,6 +13,15 @@ fn glyphs(line: &FinalizedLine) -> Vec<(u32, f32, f64)> {
 
 #[test]
 fn multiple_negative_tabs_recompute_spacing_and_publish_the_same_source_rows() {
+    for tabs in [
+        TabContext::CssStops { origin: Some(0.0) },
+        TabContext::IntrinsicCssStops,
+    ] {
+        check_negative_spacing_source_rows(tabs);
+    }
+}
+
+fn check_negative_spacing_source_rows(tabs: TabContext) {
     let mut system = system();
     let own = Style {
         white_space: WhiteSpace::Preserve,
@@ -36,7 +45,8 @@ fn multiple_negative_tabs_recompute_spacing_and_publish_the_same_source_rows() {
     let metric = p.inner.tab_metrics.iter().flatten().next().unwrap();
     assert_eq!((metric.period, metric.threshold), (-4.0, 10.0));
     let mut r = request(&p);
-    r.context.tabs = TabContext::CssStops { origin: Some(0.0) };
+    r.context.tabs = tabs;
+    r.context.available_inline = None;
     r.context.spacing = SpacingPolicy::Spaces;
     let selected = p.select(r).unwrap();
     let slots: Vec<_> = selected.spacing_slots().collect();
@@ -117,6 +127,15 @@ fn multiple_negative_tabs_recompute_spacing_and_publish_the_same_source_rows() {
 
 #[test]
 fn selected_negative_replacement_tabs_keep_each_real_before_after_emission() {
+    for tabs in [
+        TabContext::CssStops { origin: Some(0.0) },
+        TabContext::IntrinsicCssStops,
+    ] {
+        check_negative_replacement_tabs(tabs);
+    }
+}
+
+fn check_negative_replacement_tabs(tabs: TabContext) {
     for placement in [
         crate::HyphenationPlacement::LogicalBefore,
         crate::HyphenationPlacement::LogicalAfter,
@@ -168,7 +187,8 @@ fn selected_negative_replacement_tabs_keep_each_real_before_after_emission() {
         r.termination = PreparedTermination::Ordinary(offer.handle());
         r.alternative = Some(alternative.clone());
         r.context.end = LineEnd::Soft;
-        r.context.tabs = TabContext::CssStops { origin: Some(0.0) };
+        r.context.tabs = tabs.clone();
+        r.context.available_inline = None;
         let first = p
             .select(r)
             .unwrap()
@@ -179,7 +199,8 @@ fn selected_negative_replacement_tabs_keep_each_real_before_after_emission() {
         r.participants = p.participants().skip(offset).collect();
         r.incoming = first.hyphenation_continuation();
         r.context.start = LineStart::Continuation;
-        r.context.tabs = TabContext::CssStops { origin: Some(0.0) };
+        r.context.tabs = tabs.clone();
+        r.context.available_inline = None;
         let second = p
             .select(r)
             .unwrap()

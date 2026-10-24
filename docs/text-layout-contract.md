@@ -705,6 +705,14 @@ is selected. These origin choices do not change opportunities, bidi, hanging,
 spacing or source custody. The convention is native policy completing a source
 gap, without a CSSWG-resolution or executed browser-parity claim.
 
+`TabContext::IntrinsicCssStops` explicitly requests this unbounded measurement.
+It requires CSS-stop preparation and no finite available width. Used layout
+instead supplies `CssStops { origin: Some(actual_origin) }`; an unavailable used
+origin remains `None` and a selected nonzero tab reports missing `TabOrigin`.
+Absent or zero tabs do not consume that origin. Width absence alone never
+selects the intrinsic operation. Retained requests and cache fingerprints keep
+the modes distinct even when their numeric advances coincide.
+
 For Ahem10, period40 and half-ch5, Preserve plus Word wrapping, zero-indent
 `A TAB B` has max-content advance50. Min-content has raw line advances40 and10,
 issued contributions10 and10, and aggregate inline extent10: the first line's

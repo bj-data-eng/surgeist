@@ -358,7 +358,7 @@ pub(crate) fn select(
         (&request.context.tabs, prepared.inner.options.tabs()),
         (TabContext::FontAdvance, crate::TabPreparation::CssStops)
             | (
-                TabContext::CssStops { .. },
+                TabContext::CssStops { .. } | TabContext::IntrinsicCssStops,
                 crate::TabPreparation::FontAdvance
             )
     ) {
@@ -444,6 +444,11 @@ fn validate_context(context: &LineContext, base_level: u8) -> Result<()> {
     } = context.tabs
     {
         finite("tab origin", origin)?;
+    }
+    if context.tabs == TabContext::IntrinsicCssStops && context.available_inline.is_some() {
+        return Err(protocol_error(ProtocolError::MismatchedContext {
+            field: ProtocolContextField::TabStops,
+        }));
     }
     if let Some(value) = context.available_inline {
         finite("available inline span", value)?;

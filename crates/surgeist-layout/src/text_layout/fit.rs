@@ -613,9 +613,8 @@ fn selection_width(available: Available, band: Band) -> Result<Option<f64>, FitE
     }
 }
 
-/// Resolve the captured block edge relative to this actual allocation's
-/// paragraph progression start. Shared starts cancel without a block width.
-/// An intrinsic opposite start depends on the candidate's still-unknown width.
+/// Intrinsic measurement selects its logical grid. Used layout resolves the
+/// captured block edge relative to this actual allocation's paragraph start.
 fn tab_context(
     input: &FitInput<'_>,
     band: Band,
@@ -623,6 +622,9 @@ fn tab_context(
 ) -> Result<TabContext, FitError> {
     if input.prepared.preparation_options().tabs() == TabPreparation::FontAdvance {
         return Ok(TabContext::FontAdvance);
+    }
+    if matches!(input.available, Available::Minimum | Available::Maximum) {
+        return Ok(TabContext::IntrinsicCssStops);
     }
     let displacement = if input.base_direction == input.block_direction {
         Some(band.start)

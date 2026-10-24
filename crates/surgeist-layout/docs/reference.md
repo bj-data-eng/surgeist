@@ -122,21 +122,22 @@ The native profile supports horizontal LTR and RTL text, signed indentation,
 and the preparation's selected font-advance or CSS-stop tab operation.
 For `TabPreparation::CssStops`, Text retains the actual nearest-block metric
 reference; capture checks its used direction against the normalized container.
-Each candidate supplies `CssStops` with that block edge relative to its current
-unaligned paragraph start. Floats and retries change this displacement;
-indentation changes the pen without restarting the grid. Later alignment moves
-the completed line. Spacing allocations can be absorbed by shorter tab shifts,
-so fit and placement consume actual finalized advances.
+Finite used-layout candidates supply `CssStops` with that block edge relative
+to the current unaligned paragraph start. Floats and retries change this
+displacement; indentation changes the pen without restarting the grid. A
+selected nonzero tab needs the actual used origin; zero or absent tabs do not.
+Later alignment moves the completed line. Spacing allocations can be absorbed
+by shorter tab shifts, so fit and placement consume actual finalized advances.
 
-Matching block/paragraph starts establish intrinsic phase through their shared
-edge. Opposite starts in an unconstrained intrinsic query remain a precise
-`IntrinsicTabPhase` capability refusal when a nonzero tab consumes that phase;
-neither a provisional width nor the final canonical block width supplies the
-candidate's missing line allocation. Zero tabs do not need it. A finite negative
-spacing-derived interval retains its signed metric and uses the same forward
-grid with the interval's magnitude as period. This is an explicit native policy;
-the [tab contract](../../../docs/text-layout-contract.md#preserved-css-tab-stops)
-records the operation, source boundary and remaining intrinsic limitation.
+Unconstrained min-/max-content candidates select `IntrinsicCssStops`, using a
+logical grid from the unindented paragraph start and the applicable line indent.
+This operation is independent of block direction and incidental placement width.
+Each measured line resets its logical pen; subsequent finite layout recomputes
+tabs from the real block edge. Request and cache identity distinguish both
+operations even when their numbers agree. A finite negative spacing-derived
+interval retains its signed metric and uses the same forward grid with the
+interval's magnitude as period. The [tab contract](../../../docs/text-layout-contract.md#preserved-css-tab-stops)
+records these native policies, metric ownership and source boundaries.
 
 `text_align` supplies normal line alignment;
 `text_align_last` supplies paragraph-ending and forced-line alignment. Logical

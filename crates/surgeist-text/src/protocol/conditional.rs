@@ -561,6 +561,7 @@ fn policy_context(line: &FinalizedLine) -> Vec<u64> {
     match context.tabs {
         super::TabContext::NoTabs => values.push(0),
         super::TabContext::FontAdvance => values.push(1),
+        super::TabContext::IntrinsicCssStops => values.push(4),
         super::TabContext::CssStops { origin } => {
             values.push(if origin.is_some() { 3 } else { 2 });
             if let Some(origin) = origin {

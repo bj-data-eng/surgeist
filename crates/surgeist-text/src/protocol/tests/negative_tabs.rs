@@ -353,9 +353,7 @@ fn negative_nonzero_period_needs_real_phase_and_refusal_leaves_retained_output_u
     assert_eq!(retained.feedback().advance, 8.0);
     assert!(matches!(
         reason(&finish(&p, None, 0.0).unwrap_err()),
-        ProtocolError::UnsupportedContext {
-            field: ProtocolContextField::IntrinsicTabPhase
-        }
+        ProtocolError::MissingPhaseTwoContext(crate::PhaseTwoContext::TabOrigin)
     ));
     let error = finish(&p, Some(f64::NAN), 0.0).unwrap_err();
     assert!(matches!(
