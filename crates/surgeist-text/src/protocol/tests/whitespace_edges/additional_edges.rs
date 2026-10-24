@@ -877,3 +877,333 @@ fn discard_surviving_separator_needs_no_hanging_terminal_or_available_edge() {
         (0.0, 0.0, 30.0, 0.0, 30.0)
     );
 }
+
+fn discard_edge_capture(
+    source: Source,
+    base_style: Style,
+    direction: ParagraphBaseDirection,
+    terminal_edge: crate::ParagraphTerminalEdge,
+    forced_at: Option<usize>,
+) -> PreparedText {
+    let end = source.text().len();
+    let input = ParagraphInput {
+        source: source.clone(),
+        base_style,
+        base_direction: direction,
+        terminal_edge,
+        tab_reference: None,
+        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        paragraph_strut: ParagraphStrut::DefaultFont,
+        origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
+            source,
+            local: Range::new(0, end),
+            aggregate: Range::new(0, end),
+            kind: paragraph::ParagraphOriginKind::Authored,
+        }],
+        controls: forced_at
+            .into_iter()
+            .map(|at| paragraph::ParagraphControl {
+                at,
+                kind: paragraph::ParagraphControlKind::ForcedBreak,
+            })
+            .collect(),
+        anchor_order: forced_at
+            .into_iter()
+            .map(|_| paragraph::ParagraphAnchor {
+                item: paragraph::ParagraphAnchorItem::Control(0),
+                affinity: crate::Affinity::After,
+            })
+            .collect(),
+        connections: vec![],
+        replacements: vec![],
+        boundary_policies: vec![],
+    };
+    let mut system = System::new(SystemOptions {
+        font_catalogue: FontCatalogueMode::RegisteredOnly,
+    })
+    .unwrap();
+    system
+        .register_fonts(crate::shaping_test_fonts::width_ahem())
+        .unwrap();
+    system
+        .prepare(
+            &crate::test_wrapping::bind_missing(
+                &AnalyzedSource::from_paragraph(input).unwrap(),
+                crate::Wrap::Word,
+            ),
+            PreparationOptions::default(),
+        )
+        .unwrap()
+}
+
+fn ordinary_discard_measurements(line: &FinalizedLine, advance: f64) {
+    assert_eq!(line.feedback().advance, advance);
+    assert_eq!(
+        (line.feedback().hanging_start, line.feedback().hanging_end),
+        (0.0, 0.0)
+    );
+    for measure in [
+        line.measurements().fit(),
+        line.measurements().alignment(),
+        line.measurements().min_content_contribution(),
+        line.measurements().max_content_contribution(),
+    ] {
+        assert_eq!(
+            (
+                measure.advance(),
+                measure.occupied_start(),
+                measure.occupied_end()
+            ),
+            (advance, 0.0, advance)
+        );
+    }
+    assert!(
+        line.edge_units()
+            .all(|unit| unit.disposition() == crate::LineEdgeDisposition::Ordinary)
+    );
+}
+
+#[test]
+fn discard_surviving_separator_stays_ordinary_at_soft_forced_and_block_ends_in_both_directions() {
+    for direction in [
+        ParagraphBaseDirection::LeftToRight,
+        ParagraphBaseDirection::RightToLeft,
+    ] {
+        for wrap in [crate::Wrap::Word, crate::Wrap::None] {
+            for (kind, text, forced) in [
+                (PreparedBreakKind::Allowed, "A\u{3000}A", None),
+                (PreparedBreakKind::Forced, "A\u{3000}A", Some(2)),
+                (PreparedBreakKind::ParagraphEnd, "A\u{3000}", None),
+            ] {
+                if kind == PreparedBreakKind::Allowed && wrap == crate::Wrap::None {
+                    continue; // No soft endpoint is issued for genuine nowrap.
+                }
+                let source = Source::new(text);
+                let p = discard_edge_capture(
+                    source.clone(),
+                    Style {
+                        size: 10.0,
+                        white_space: WhiteSpace::Discard,
+                        wrap,
+                        ..style()
+                    },
+                    direction,
+                    crate::ParagraphTerminalEdge::BlockEnd,
+                    forced,
+                );
+                let stop = ending(&p, kind);
+                assert_eq!(stop.view().boundary().view().source_after().get(), 2);
+                let mut r = request(&p);
+                r.end = stop.view().boundary();
+                r.participants = p
+                    .participants()
+                    .take(r.end.view().participant_offset())
+                    .collect();
+                r.controls = r
+                    .participants
+                    .iter()
+                    .filter_map(|participant| match participant {
+                        PreparedParticipant::Control(control) => Some(ControlAllocation {
+                            occurrence: control.clone(),
+                            strut: None,
+                        }),
+                        _ => None,
+                    })
+                    .collect();
+                r.termination = crate::PreparedTermination::Ordinary(stop.clone());
+                r.context.base_direction = direction;
+                r.context.end = match kind {
+                    PreparedBreakKind::Allowed => LineEnd::Soft,
+                    PreparedBreakKind::Forced => LineEnd::Forced,
+                    PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
+                    _ => unreachable!(),
+                };
+                r.context.available_inline = Some(10.0);
+                let line = p
+                    .select(r)
+                    .unwrap()
+                    .finalize(SpacingAllocations::None)
+                    .unwrap();
+                ordinary_discard_measurements(&line, 30.0);
+                let bytes = crate::shaping_test_fonts::width_ahem();
+                let mut actual: Vec<_> = line
+                    .run_views()
+                    .flat_map(|run| {
+                        assert_eq!(run.face().bytes(), bytes);
+                        assert_eq!(run.effective_instance().unwrap().font_size(), 10.0);
+                        run.glyphs()
+                            .map(|glyph| (glyph.range(), glyph.id(), glyph.advance()))
+                            .collect::<Vec<_>>()
+                    })
+                    .collect();
+                actual.sort_by_key(|glyph| glyph.0.start);
+                assert_eq!(
+                    actual,
+                    [(Range::new(0, 1), 35, 10.0), (Range::new(1, 2), 1, 20.0)]
+                );
+                let mut lines = vec![line];
+                if kind != PreparedBreakKind::ParagraphEnd {
+                    lines.push(select(
+                        &p,
+                        stop.view().boundary(),
+                        ending(&p, PreparedBreakKind::ParagraphEnd),
+                        10.0,
+                        crate::Alignment::Left,
+                    ));
+                }
+                let placed = crate::Layout::from_finalized_lines(PlacementRequest {
+                    prepared: p,
+                    coverage: PlacementCoverage::WholeParagraph,
+                    lines: lines
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, line)| LinePlacement {
+                            line,
+                            anchor: LineAnchor {
+                                inline_origin: 0.0,
+                                baseline: 8.0 + index as f64 * 20.0,
+                            },
+                            orientation: LineOrientation::Horizontal,
+                            atomics: vec![],
+                        })
+                        .collect(),
+                })
+                .unwrap();
+                assert_eq!(placed.source(), &source);
+            }
+        }
+    }
+}
+
+#[test]
+fn discard_surviving_separator_consumes_no_terminal_or_available_context_in_both_directions() {
+    for direction in [
+        ParagraphBaseDirection::LeftToRight,
+        ParagraphBaseDirection::RightToLeft,
+    ] {
+        for wrap in [crate::Wrap::Word, crate::Wrap::None] {
+            for terminal in [
+                crate::ParagraphTerminalEdge::Unknown,
+                crate::ParagraphTerminalEdge::NonBlockBoundary,
+                crate::ParagraphTerminalEdge::BlockEnd,
+            ] {
+                let p = discard_edge_capture(
+                    Source::new("A\u{3000}"),
+                    Style {
+                        size: 10.0,
+                        white_space: WhiteSpace::Discard,
+                        wrap,
+                        ..style()
+                    },
+                    direction,
+                    terminal,
+                    None,
+                );
+                for width in [None, Some(10.0)] {
+                    let mut r = request(&p);
+                    r.context.base_direction = direction;
+                    r.context.available_inline = width;
+                    let line = p
+                        .select(r)
+                        .unwrap()
+                        .finalize(SpacingAllocations::None)
+                        .unwrap();
+                    ordinary_discard_measurements(&line, 30.0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn discard_ordinary_edge_blocks_hanging_from_preceding_mixed_whitespace_modes() {
+    for direction in [
+        ParagraphBaseDirection::LeftToRight,
+        ParagraphBaseDirection::RightToLeft,
+    ] {
+        for preceding in [
+            WhiteSpace::Collapse,
+            WhiteSpace::Preserve,
+            WhiteSpace::PreserveSpaces,
+        ] {
+            let base = Style {
+                size: 10.0,
+                white_space: WhiteSpace::Discard,
+                ..style()
+            };
+            let mut source = Source::new("A\u{3000}\u{3000}");
+            source.span(
+                Range::new(1, 2),
+                Style {
+                    white_space: preceding,
+                    ..base.clone()
+                },
+            );
+            let p = discard_edge_capture(
+                source,
+                base,
+                direction,
+                crate::ParagraphTerminalEdge::BlockEnd,
+                None,
+            );
+            let line = select(
+                &p,
+                first(&p),
+                ending(&p, PreparedBreakKind::ParagraphEnd),
+                10.0,
+                crate::Alignment::Left,
+            );
+            ordinary_discard_measurements(&line, 50.0);
+        }
+        // The actual trailing Preserve unit still hangs its own20px, but its
+        // predecessor is a retained ordinary Discard unit and must retain20px.
+        let base = Style {
+            size: 10.0,
+            white_space: WhiteSpace::Preserve,
+            ..style()
+        };
+        let mut source = Source::new("A\u{3000}\u{3000}");
+        source.span(
+            Range::new(1, 2),
+            Style {
+                white_space: WhiteSpace::Discard,
+                ..base.clone()
+            },
+        );
+        let p = discard_edge_capture(
+            source,
+            base,
+            direction,
+            crate::ParagraphTerminalEdge::BlockEnd,
+            None,
+        );
+        let line = select(
+            &p,
+            first(&p),
+            ending(&p, PreparedBreakKind::ParagraphEnd),
+            10.0,
+            crate::Alignment::Left,
+        );
+        assert_eq!(line.feedback().advance, 50.0);
+        let expected_hanging = if direction == ParagraphBaseDirection::RightToLeft {
+            (20.0, 0.0)
+        } else {
+            (0.0, 20.0)
+        };
+        assert_eq!(
+            (line.feedback().hanging_start, line.feedback().hanging_end),
+            expected_hanging
+        );
+        assert_eq!(line.measurements().fit().advance(), 30.0);
+        assert_eq!(line.measurements().alignment().advance(), 30.0);
+        assert_eq!(
+            line.measurements().min_content_contribution().advance(),
+            30.0
+        );
+        assert_eq!(
+            line.measurements().max_content_contribution().advance(),
+            50.0
+        );
+    }
+}

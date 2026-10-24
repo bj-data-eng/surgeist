@@ -2,6 +2,7 @@ use crate::{AnalyzedSource, Source, Style, Text, TextTransform};
 
 mod casing;
 mod math;
+mod separators;
 mod width;
 
 fn style() -> Style {

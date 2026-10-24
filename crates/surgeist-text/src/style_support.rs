@@ -42,6 +42,7 @@ pub enum TextStyleFeature {
     DecorationStyle,
     ConcreteDecorationColor,
     SymbolicDecorationColor,
+    ExplicitWordSeparators,
     MathAuto,
     FullSizeKana,
     FullWidth,
@@ -101,6 +102,7 @@ impl TextStyleFeature {
         Self::DecorationStyle,
         Self::ConcreteDecorationColor,
         Self::SymbolicDecorationColor,
+        Self::ExplicitWordSeparators,
         Self::MathAuto,
         Self::FullSizeKana,
         Self::FullWidth,
@@ -154,6 +156,7 @@ impl TextStyleFeature {
             | Self::DecorationOffset
             | Self::DecorationThickness
             | Self::ConcreteDecorationColor
+            | Self::ExplicitWordSeparators
             | Self::FullSizeKana
             | Self::FullWidth
             | Self::Uppercase

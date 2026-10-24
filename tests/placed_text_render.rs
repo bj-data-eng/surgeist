@@ -17,6 +17,9 @@ mod width_transform;
 #[path = "placed_text_render/math.rs"]
 mod math_transform;
 
+#[path = "placed_text_render/separators.rs"]
+mod separators_transform;
+
 struct Tree {
     inputs: [layout::LayoutInput; 2],
     non_box: layout::NodeInput,

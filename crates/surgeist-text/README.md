@@ -20,14 +20,17 @@ See [contextual processing](docs/reference.md#contextual-source-processing).
 
 `Text` retains exact UTF-16 code units, and public source positions and ranges
 count those units. Edits can split or join surrogate pairs. `AnalyzedSource`
-retains original source and pre-font semantic analysis. Contextual casing,
-full-width mapping and the complete pinned full-size-kana transform execute in
-that order after Phase I and before analysis, shaping and wrapping. Use
-`TextTransform::Set` combines operations built with `TextTransformSet`:
+retains original source and pre-font semantic analysis. `Style::word_space_transform`
+replaces eligible original U+200B with SPACE or IDEOGRAPHIC SPACE using
+`WordSpaceTransform::{Space, IdeographicSpace}`; None is neutral. This runs after
+Phase I, followed by contextual casing, full-width and full-size-kana, before
+analysis, shaping and wrapping. `TextTransform::Set` combines operations built with `TextTransformSet`:
 `.with_case(CaseTransform::Uppercase)`, `.with_full_width(true)` and
 `.with_full_size_kana(true)`; lowercase and capitalize are also supported.
 Full-width uses the raw Unicode wide/narrow relation and
-maps SPACE only when the executed processing preserved it.
+maps authored SPACE only when processing preserved it. Separator-generated SPACE
+qualifies in every whitespace mode; actual line-edge rules still apply.
+Genuine wbr and automatic phrase insertion remain separate, unavailable inputs.
 Original UTF-16 and plaintext remain unchanged through expansions and removals.
 The exclusive `TextTransform::MathAuto` requires complete original Text-node
 content captured on native paragraph origins. It maps eligible surviving text

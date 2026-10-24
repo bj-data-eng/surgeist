@@ -19,6 +19,7 @@ mod metric_heights;
 mod negative_tabs;
 mod phase_two;
 mod raw_automatic_hyphenation;
+mod separators;
 mod tab_stops;
 mod whitespace_edges;
 mod width;

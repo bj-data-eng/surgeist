@@ -254,6 +254,7 @@ pub struct Style {
     pub wrap: Wrap,
     pub overflow_wrap: OverflowWrap,
     pub text_transform: TextTransform,
+    pub word_space_transform: WordSpaceTransform,
     /// Defaults to Manual; Auto also permits Text's qualified en-US resource.
     pub hyphens: crate::Hyphens,
     /// Computed per-cut native minima, retaining symbolic Auto components.
@@ -290,6 +291,7 @@ impl Default for Style {
             wrap: Wrap::Word,
             overflow_wrap: OverflowWrap::Normal,
             text_transform: TextTransform::none(),
+            word_space_transform: WordSpaceTransform::None,
             tab_size: crate::TabSize::default(),
             hyphens: crate::Hyphens::Manual,
             hyphenate_limit_chars: crate::HyphenateLimitChars::default(),
@@ -335,6 +337,16 @@ pub enum OverflowWrap {
     Normal,
     Anywhere,
     BreakWord,
+}
+
+/// Presentation replacement of genuine original U+200B separators.
+/// This operation does not infer wbr identity or detect virtual phrase boundaries.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum WordSpaceTransform {
+    #[default]
+    None,
+    Space,
+    IdeographicSpace,
 }
 
 /// Computed presentation operation, executed before Unicode analysis.

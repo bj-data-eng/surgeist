@@ -31,10 +31,14 @@ uses the same selected-line and placement machinery.
    executed `ProcessedSource`; original code-unit ownership remains available
    through the processed correspondence. Contextual casing selected with
    `TextTransform::Set` accepts a `TextTransformSet` built with `.with_case`.
-   Casing runs after Phase I, followed by width when `.with_full_width(true)` is
+   `Style::word_space_transform` replaces eligible original U+200B before casing
+   with `WordSpaceTransform::Space` or `IdeographicSpace`. Forced-break adjacency
+   suppresses replacement in actual post-Phase-I order. Casing follows, then width when `.with_full_width(true)` is
    enabled on that set, then full-size-kana with `.with_full_size_kana(true)`.
-   Width maps SPACE only when the actual
-   Phase-I processing preserved it. These operations run before semantic
+   Width maps original SPACE only when actual Phase-I processing preserved it;
+   separator-generated SPACE qualifies in every mode. No extra collapse pass runs
+   over generated output. Later line-edge rules retain their actual style and
+   character semantics. These operations run before semantic
    analysis. Original/Phase-I offsets remain distinct
    from actual transformed presentation offsets; plaintext remains original.
    For the exclusive `TextTransform::MathAuto`, supply each demanded origin's

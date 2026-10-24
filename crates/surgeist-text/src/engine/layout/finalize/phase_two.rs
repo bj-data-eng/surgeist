@@ -207,6 +207,13 @@ pub(super) fn natural(
         let style = selected.prepared.analyzed.styles[cluster.style]
             .style
             .authored();
+        // Discard's surviving characters are ordinary flow, including actual
+        // generated separators. They end the trailing whitespace group just
+        // like other nonhangable content; preceding modes cannot hang through
+        // this retained ordinary edge.
+        if style.white_space == crate::WhiteSpace::Discard {
+            break;
+        }
         if style.white_space == crate::WhiteSpace::Collapse {
             if let Some(cause) = deferred {
                 if cluster.advance != 0.0 {

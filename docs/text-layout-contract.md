@@ -73,7 +73,14 @@ All downstream analysis, opportunities, preparation, finalization and consumers
 use this result. Retain the prescribed full conditional and known-language
 casing requirements; per-scalar contextless casing is insufficient. Full-width
 uses the raw Unicode wide/narrow relation, not compatibility normalization, and
-maps U+0020 only when its Phase-I whitespace is preserved. Full-size-kana uses
+maps original U+0020 only when its Phase-I whitespace is preserved. Eligible
+separator-generated U+0020 qualifies for full-width in every whitespace mode,
+including Collapse and Discard, under the
+[native generation determination](../references/SOURCE-EDITIONS.md#separator-generated-space-and-full-width).
+Its generation is separate from original-space preservation and later Phase-II
+collapsibility. Never replay Phase I or coalesce adjacent generated spaces;
+later removal/hanging uses the actual character and governing style.
+Full-size-kana uses
 the complete pinned [Appendix G](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#small-kana).
 Expose only executed options and report their specific capabilities. A complete
 kana contribution does not establish casing, width, math or separator support.
@@ -337,7 +344,14 @@ It selects the required operation, without claiming unqualified feature support.
 Classify actual processed code points, governing styles and canonical line order.
 Other space separators are Unicode Zs excluding U+0020 and U+00A0. NBSP cannot
 inherit their removal or hanging rules. Collapse removes its applicable leading
-and trailing U+0020 and trailing U+1680, retaining source custody. Under Preserve
+and trailing U+0020 and trailing U+1680, retaining source custody. Surviving
+Discard characters retain ordinary advance, including original U+3000 and
+separator-generated U+0020/U+3000. Discard supplies no conditional or
+unconditional whitespace-rule hanging at soft, forced or block ends, including
+nowrap, and no hanging-only terminal/available-edge requirement. Independent
+applicable rules remain separate. This is the
+[native Discard determination](../references/text-word-space-generation--native-determination.md#surviving-discard-characters-in-phase-ii).
+Under Preserve
 with wrapping enabled, eligible trailing sequences hang unconditionally at a real
 Soft ending and conditionally before an actual forced break or block end.
 PreserveSpaces applies that same Phase II rule after its own Phase I conversion;

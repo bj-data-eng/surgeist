@@ -822,6 +822,7 @@ pub surgeist_text::TextStyleFeature::DecorationStyle
 pub surgeist_text::TextStyleFeature::DecorationThickness
 pub surgeist_text::TextStyleFeature::ExpandedFontStretch
 pub surgeist_text::TextStyleFeature::ExplicitTextDirection
+pub surgeist_text::TextStyleFeature::ExplicitWordSeparators
 pub surgeist_text::TextStyleFeature::FontFamilyList
 pub surgeist_text::TextStyleFeature::FontFeatureSettings
 pub surgeist_text::TextStyleFeature::FontSize
@@ -944,6 +945,10 @@ pub enum surgeist_text::WordBreak
 pub surgeist_text::WordBreak::BreakAll
 pub surgeist_text::WordBreak::KeepAll
 pub surgeist_text::WordBreak::Normal
+pub enum surgeist_text::WordSpaceTransform
+pub surgeist_text::WordSpaceTransform::IdeographicSpace
+pub surgeist_text::WordSpaceTransform::None
+pub surgeist_text::WordSpaceTransform::Space
 pub enum surgeist_text::Wrap
 pub surgeist_text::Wrap::None
 pub surgeist_text::Wrap::Word
@@ -2215,6 +2220,7 @@ pub surgeist_text::Style::text_transform: surgeist_text::TextTransform
 pub surgeist_text::Style::underline: surgeist_text::Decoration
 pub surgeist_text::Style::white_space: surgeist_text::WhiteSpace
 pub surgeist_text::Style::word_break: surgeist_text::WordBreak
+pub surgeist_text::Style::word_space_transform: surgeist_text::WordSpaceTransform
 pub surgeist_text::Style::word_spacing: f64
 pub surgeist_text::Style::wrap: surgeist_text::Wrap
 impl surgeist_text::Style

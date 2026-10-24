@@ -19,6 +19,8 @@ pub(crate) struct InputRow {
     pub(crate) source: Range,
     pub(crate) processed: Range,
     pub(crate) code_point: u32,
+    /// Actual separator-produced SPACE, eligible for width independently of Phase I.
+    pub(crate) separator_space: bool,
     pub(crate) style: usize,
     pub(crate) pieces: IndexRange<usize>,
     /// Actual output IDs in flat input-row storage, independent of event order.
@@ -80,6 +82,7 @@ impl TransformMap {
                 source: atom.source,
                 processed: atom.processed,
                 code_point: atom.code_point,
+                separator_space: false,
                 style: crate::engine::resolve::source_style(styles, atom.source.start),
                 pieces: first..map.pieces.len(),
                 outputs: row..row + 1,

@@ -194,7 +194,8 @@ pub(super) fn apply(
 ) -> Result<(SourceProjection, Arc<TransformMap>)> {
     let captured = crate::engine::analysis::wrapping::events(processed, paragraph, &input);
     let mut map = TransformMap::identity(&input, styles, processed, paragraph, captured.clone());
-    let values: Vec<_> = map.rows.iter().map(|row| row.code_point).collect();
+    let input = super::separators::apply(input, &mut map, &captured, styles, processed, paragraph)?;
+    let values: Vec<_> = input.atoms.iter().map(|atom| atom.code_point).collect();
     let casing = map
         .rows
         .iter()
@@ -306,6 +307,7 @@ pub(super) fn apply(
                 if set.full_width() {
                     for cp in &mut output[start..] {
                         if (*cp != 0x20
+                            || map.rows[row].separator_space
                             || processed.preserves_space_at(map.rows[row].processed.start))
                             && let Some(target) = super::width::map(*cp)
                         {
@@ -327,7 +329,7 @@ pub(super) fn apply(
     let changed = spans
         .iter()
         .enumerate()
-        .any(|(row, span)| span.len() != 1 || output[span.start] != values[row]);
+        .any(|(row, span)| span.len() != 1 || output[span.start] != map.rows[row].code_point);
     map.emissions.clear();
     map.atoms.clear();
     map.events.clear();

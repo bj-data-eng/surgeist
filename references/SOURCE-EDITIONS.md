@@ -153,7 +153,7 @@ Each question below selects the named current capture for its operative clause e
 
 | Owning source issue | Operative clauses and implementation evidence | Selected result and category | Open implementation consumers |
 | --- | --- | --- | --- |
-| [#74 whitespace gaps](https://github.com/bj-data-eng/surgeist/issues/74) | [Text 4 §§4.1/4.3](css-text-4-whitespace-alignment-hyphenation--editor-capture-20261010--2b0d3e0d5174.md#white-space-collapsing), including [Phase II](css-text-4-whitespace-alignment-hyphenation--editor-capture-20261010--2b0d3e0d5174.md#white-space-phase-2); [WebKit](webkit-text-source-gaps-hyphenation--73aa6c89e2cb.md) and [Blink](blink-text-source-gaps--7984f9d11800.md) bounded value absence | **Authorized product policy:** discard removes its own opportunities; preserve-spaces uses preserve-equivalent hanging with wrapping, conditional forced/end hanging and nowrap bypass, retaining advances. | #64/#65/#71 |
+| [#74 whitespace gaps](https://github.com/bj-data-eng/surgeist/issues/74) | [Text 4 §§4.1/4.3](css-text-4-whitespace-alignment-hyphenation--editor-capture-20261010--2b0d3e0d5174.md#white-space-collapsing), including [Phase II](css-text-4-whitespace-alignment-hyphenation--editor-capture-20261010--2b0d3e0d5174.md#white-space-phase-2); [WebKit](webkit-text-source-gaps-hyphenation--73aa6c89e2cb.md) and [Blink](blink-text-source-gaps--7984f9d11800.md) bounded value absence | **Authorized product policy:** discard removes its own opportunities; [surviving Discard characters retain ordinary advance without whitespace-rule hanging](text-word-space-generation--native-determination.md#surviving-discard-characters-in-phase-ii). Preserve-spaces uses preserve-equivalent hanging with wrapping, conditional forced/end hanging and nowrap bypass, retaining advances. | #64/#65/#71 |
 | [#76 character-alignment gaps](https://github.com/bj-data-eng/surgeist/issues/76) | [Text 4 §7.2](css-text-4-whitespace-alignment-hyphenation--editor-capture-20261010--2b0d3e0d5174.md#character-alignment); pinned [WebKit](webkit-text-source-gaps-hyphenation--73aa6c89e2cb.md) and [Blink](blink-text-source-gaps--7984f9d11800.md) string-alignment absence | **Authorized product policy:** shaped advance midpoint; first logical match in eligible in-flow text whose containing block is the cell; measurement-only virtual character uses the cell font context. Defined fallbacks and #48’s separate questions remain. | #68 |
 | [#77 emergency-hyphenation interaction](https://github.com/bj-data-eng/surgeist/issues/77) | [Text 4 §6.3.5](css-text-4-whitespace-alignment-hyphenation--editor-capture-20261010--2b0d3e0d5174.md#hyphenate-line-limits); [WebKit committed-line state](webkit-text-source-gaps-hyphenation--73aa6c89e2cb.md#inlinelayoutstateh) and complete breaker chain | **Pinned browser compatibility precedent**, completed by **authorized product policy** for uncovered exceptional endings: committed hyphenation endings increment the successive counter, other endings reset; arbitrary unhyphenated emergency wraps re-enable automatic opportunities; trial candidates are pure. | #66 |
 | [#415 decoration ambiguity](https://github.com/bj-data-eng/surgeist/issues/415) | [Text Decoration 4 §2.5](css-text-decor-4-position-controls--editor-capture-20261010--8820547faa34.md#line-position), [§2.4 thickness](css-text-decor-4-position-controls--editor-capture-20261010--8820547faa34.md#text-decoration-thickness-property) and [§2.8 offset](css-text-decor-4-position-controls--editor-capture-20261010--8820547faa34.md#underline-offset); [browser decorating metrics](browser-font-width-decoration--pinned-20261010.md); [Skrifa metric excerpt](parley-0.9-text-contract-witness.md#supporting-provider-skrifa-0421-metricsrs) | **Normative interpretation:** compute base position/adjustments, then local offset; originating controls select thickness. **Authorized product policy:** an empty considered-text fragment uses its decorating box’s resolved strikeout center; provider normalization/fallback follows the named metric contract. | #407/#408 and text-metric provider work |
@@ -1359,6 +1359,16 @@ recursive compatibility normalization. The
 private table and its reproducibility check. This selection does not change the
 Unicode editions used by ICU casing, segmentation or other property providers.
 The [Unicode 18 notice](../licenses/unicode/18.0.0/NOTICE.md) applies.
+
+## Separator-generated SPACE and full-width
+
+For #63/#72, the [native source determination](text-word-space-generation--native-determination.md)
+selects full-width eligibility for eligible separator-generated U+0020 in every
+whitespace mode. This completes the pinned Text 4 generation/preservation
+classification ambiguity without changing original SPACE preservation or
+later Phase-II style/character rules. Pinned WPT supports the operation order;
+its identified reference defects are not imported as exact-output oracles.
+This determination does not establish wbr/phrase execution or browser parity.
 
 ## Text math-auto mapping data
 

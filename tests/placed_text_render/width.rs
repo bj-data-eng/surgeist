@@ -6,7 +6,7 @@ use super::*;
 // Only cmap/hmtx and required SFNT checksums change; licensed Ahem outlines stay
 // untouched. UPEM1000: A35=1000, FF21→36=2000, S53=1000, FF33→58=1500,
 // sharp-s134=1000, SPACE3=500, IDEOGRAPHIC SPACE1=2000 (both blank).
-fn width_ahem() -> Vec<u8> {
+pub(super) fn width_ahem() -> Vec<u8> {
     fn u16_at(bytes: &[u8], at: usize) -> u16 {
         u16::from_be_bytes(bytes[at..at + 2].try_into().unwrap())
     }

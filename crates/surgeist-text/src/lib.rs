@@ -109,7 +109,8 @@ pub use style::{
     Brush, CaseTransform, Decoration, DecorationBrush, DecorationOffset, DecorationOffsetValue,
     DecorationThickness, DecorationThicknessValue, Direction, Font, FontVariant, FontWeightValue,
     FontWidthRatio, LineHeight, OverflowWrap, SelectionPaint, Slant, Style, TextTransform,
-    TextTransformSet, ValidatedStyle, Weight, WhiteSpace, Width, WordBreak, Wrap,
+    TextTransformSet, ValidatedStyle, Weight, WhiteSpace, Width, WordBreak, WordSpaceTransform,
+    Wrap,
 };
 pub use style_support::{
     TextStyleFeature, TextStylePhase, TextStyleSupport, UnsupportedTextStyleReason,
