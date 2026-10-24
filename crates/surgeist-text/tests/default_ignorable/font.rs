@@ -4,6 +4,10 @@
 
 const AHEM: &[u8] = include_bytes!("../fixtures/fonts/ahem/Ahem.ttf");
 
+#[path = "morx.rs"]
+mod morx;
+pub use morx::{MorxAction, morx_fixture};
+
 pub const A: u16 = 35;
 pub const B: u16 = 36;
 pub const D: u16 = 100;

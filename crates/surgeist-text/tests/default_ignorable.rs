@@ -761,3 +761,271 @@ fn repeated_di_after_a_supplementary_residual_keeps_distinct_normal_and_deleted_
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+fn qualified_morx(action: font::MorxAction, with_gpos: bool) -> Vec<u8> {
+    use font::MorxAction as M;
+    qualify_literals();
+    let bytes = font::morx_fixture(action, with_gpos);
+    // Some chains intentionally delete R after creating it; unaffected literal
+    // A/B/Q/SPACE still qualify this actual font's retained face and real ink.
+    for (source, glyph, advance) in [
+        ("A", 35, 10.0),
+        ("B", 36, 20.0),
+        ("Q", 277, 25.0),
+        (" ", 274, 10.0),
+    ] {
+        let value = observe(&bytes, source, 0.0, LTR);
+        assert_eq!(ids_and_advances(&value), [(glyph, advance)]);
+        assert_eq!(value.advance, f64::from(advance));
+        assert!(value.glyphs[0].ink);
+    }
+    let (source, expected): (&str, &[(u32, i32)]) = match action {
+        M::Delete | M::NoncontextualDelete | M::ReplaceThenDelete => {
+            ("ACB", &[(35, 1000), (36, 2000)])
+        }
+        M::Insert {
+            delete_inserted: false,
+            ..
+        } => ("C", &[(58, 1500), (100, 700)]),
+        M::Insert {
+            delete_inserted: true,
+            ..
+        } => ("C", &[(100, 700)]),
+        M::Consume {
+            delete_joint: false,
+        } => ("AC", &[(58, 1500)]),
+        M::Consume { delete_joint: true } => ("AC", &[]),
+        M::Skip => ("ACB", &[(58, 1500), (100, 700)]),
+    };
+    assert_eq!(
+        native_glyphs(&bytes, source),
+        expected,
+        "real complete morx literal control {action:?}"
+    );
+    let value = observe(&bytes, source, 0.0, LTR);
+    let expected_public: Vec<_> = expected
+        .iter()
+        .map(|&(glyph, advance)| (glyph, advance as f32 / 100.0))
+        .collect();
+    assert_eq!(ids_and_advances(&value), expected_public);
+    assert_eq!(
+        value.advance,
+        expected_public
+            .iter()
+            .map(|glyph| f64::from(glyph.1))
+            .sum::<f64>()
+    );
+    assert!(value.glyphs.iter().all(|glyph| glyph.ink));
+    if with_gpos {
+        // This real adjustment proves GPOS runs, selecting the provider's
+        // pre-GPOS morx deletion compaction path. No-GPOS fonts use post-subst.
+        assert_eq!(native_glyphs(&bytes, "AQ"), [(35, 500), (277, 2500)]);
+        let positioned = observe(&bytes, "AQ", 0.0, LTR);
+        assert_eq!(ids_and_advances(&positioned), [(35, 5.0), (277, 25.0)]);
+        assert_eq!(positioned.advance, 30.0);
+    } else {
+        assert_eq!(native_glyphs(&bytes, "AQ"), [(35, 1000), (277, 2500)]);
+    }
+    bytes
+}
+
+#[test]
+fn morx_native_and_later_deletion_preserve_zero_di_allocation_in_both_positioning_plans() {
+    use font::MorxAction as M;
+    let mut failures = Vec::new();
+    for action in [M::Delete, M::NoncontextualDelete, M::ReplaceThenDelete] {
+        for with_gpos in [false, true] {
+            let bytes = qualified_morx(action, with_gpos);
+            assert!(native_glyphs(&bytes, &DI.to_string()).is_empty());
+            for direction in [LTR, RTL] {
+                let label = format!("{action:?} GPOS={with_gpos} {direction:?}");
+                check_empty(
+                    &observe(&bytes, &DI.to_string(), 3.0, direction),
+                    &label,
+                    &mut failures,
+                );
+                for (source, units) in [
+                    (
+                        format!("A{DI}B"),
+                        vec![
+                            (text::Range::new(0, 1), 13.0),
+                            (text::Range::new(1, 2), 0.0),
+                            (text::Range::new(2, 3), 23.0),
+                        ],
+                    ),
+                    (
+                        format!("{DI}AB"),
+                        vec![
+                            (text::Range::new(0, 1), 0.0),
+                            (text::Range::new(1, 2), 13.0),
+                            (text::Range::new(2, 3), 23.0),
+                        ],
+                    ),
+                    (
+                        format!("AB{DI}"),
+                        vec![
+                            (text::Range::new(0, 1), 13.0),
+                            (text::Range::new(1, 2), 23.0),
+                            (text::Range::new(2, 3), 0.0),
+                        ],
+                    ),
+                ] {
+                    check_ab(
+                        &observe(&bytes, &source, 3.0, direction),
+                        &units,
+                        &format!("{source:?} {label}"),
+                        &mut failures,
+                    );
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn morx_current_and_marked_insertion_keep_normal_descendant_without_residual_anchor_paint() {
+    let mut failures = Vec::new();
+    for marked in [false, true] {
+        for with_gpos in [false, true] {
+            let bytes = qualified_morx(
+                font::MorxAction::Insert {
+                    marked,
+                    delete_inserted: false,
+                },
+                with_gpos,
+            );
+            assert_eq!(
+                native_glyphs(&bytes, &DI.to_string()),
+                [(58, 1500), (100, 700)],
+                "actual normal insertion plus unchanged unresolved nominal anchor"
+            );
+            for direction in [LTR, RTL] {
+                let value = observe(&bytes, &DI.to_string(), 3.0, direction);
+                if ids_and_advances(&value) != [(58, 15.0)]
+                    || value.advance != 18.0
+                    || value.units != [(text::Range::new(0, 1), 18.0)]
+                    || !value
+                        .glyphs
+                        .iter()
+                        .all(|glyph| glyph.ink && glyph.range == text::Range::new(0, 1))
+                {
+                    failures.push(format!("insertion marked={marked} GPOS={with_gpos} {direction:?}: expected only normal R15, final18, source0..1/18; got {value:?}"));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn morx_deleting_inserted_descendant_leaves_only_invisible_zero_allocation_anchor() {
+    let mut failures = Vec::new();
+    for marked in [false, true] {
+        for with_gpos in [false, true] {
+            let bytes = qualified_morx(
+                font::MorxAction::Insert {
+                    marked,
+                    delete_inserted: true,
+                },
+                with_gpos,
+            );
+            assert_eq!(
+                native_glyphs(&bytes, &DI.to_string()),
+                [(100, 700)],
+                "original unresolved anchor survives the inserted R's real deletion"
+            );
+            for direction in [LTR, RTL] {
+                check_empty(
+                    &observe(&bytes, &DI.to_string(), 3.0, direction),
+                    &format!("insert then delete marked={marked} GPOS={with_gpos} {direction:?}"),
+                    &mut failures,
+                );
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn morx_actual_di_component_consumption_preserves_real_joint_glyph_and_source() {
+    for with_gpos in [false, true] {
+        let bytes = qualified_morx(
+            font::MorxAction::Consume {
+                delete_joint: false,
+            },
+            with_gpos,
+        );
+        let source = format!("A{DI}B");
+        assert_eq!(native_glyphs(&bytes, &source), [(58, 1500), (36, 2000)]);
+        for direction in [LTR, RTL] {
+            let value = observe(&bytes, &source, 0.0, direction);
+            assert_eq!(ids_and_advances(&value), [(58, 15.0), (36, 20.0)]);
+            assert_eq!(value.advance, 35.0);
+            assert_eq!(value.glyphs[0].range, text::Range::new(0, 2));
+            assert!(value.glyphs.iter().all(|glyph| glyph.ink));
+        }
+    }
+}
+
+#[test]
+fn morx_later_joint_deletion_zeroes_di_without_erasing_surviving_ordinary_output() {
+    let mut failures = Vec::new();
+    for with_gpos in [false, true] {
+        let bytes = qualified_morx(font::MorxAction::Consume { delete_joint: true }, with_gpos);
+        let source = format!("A{DI}B");
+        assert_eq!(native_glyphs(&bytes, &source), [(36, 2000)]);
+        for direction in [LTR, RTL] {
+            let value = observe(&bytes, &source, 3.0, direction);
+            // Only DI has a deletion receipt. Ordinary A/B keep their existing
+            // normal allocation policy within authentic merged provider groups;
+            // the two ordinary inputs still own two independent spacing terms.
+            let di_advance = value
+                .units
+                .iter()
+                .find(|unit| unit.0 == text::Range::new(1, 2))
+                .map(|unit| unit.1);
+            if ids_and_advances(&value) != [(36, 20.0)]
+                || value.advance != 26.0
+                || di_advance != Some(0.0)
+                || !value.glyphs.iter().all(|glyph| glyph.ink)
+            {
+                failures.push(format!("joint later deleted GPOS={with_gpos} {direction:?}: expected real B20, final26 and DI0; got {value:?}"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn morx_skipped_di_retains_zero_allocation_while_ordinary_ligature_survives() {
+    let mut failures = Vec::new();
+    for with_gpos in [false, true] {
+        let bytes = qualified_morx(font::MorxAction::Skip, with_gpos);
+        let source = format!("A{DI}B");
+        assert_eq!(
+            native_glyphs(&bytes, &source),
+            [(58, 1500), (100, 700)],
+            "actual component stack excludes skipped D"
+        );
+        for direction in [LTR, RTL] {
+            let value = observe(&bytes, &source, 3.0, direction);
+            let di_advance = value
+                .units
+                .iter()
+                .find(|unit| unit.0 == text::Range::new(1, 2))
+                .map(|unit| unit.1);
+            if ids_and_advances(&value) != [(58, 15.0)]
+                || value.advance != 21.0
+                || di_advance != Some(0.0)
+                || !value
+                    .glyphs
+                    .iter()
+                    .all(|glyph| glyph.ink && glyph.range == text::Range::new(0, 3))
+            {
+                failures.push(format!("skipped D GPOS={with_gpos} {direction:?}: expected only real R15, final21, DI0 and genuine joint source0..3; got {value:?}"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
