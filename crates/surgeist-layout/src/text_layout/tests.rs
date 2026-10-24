@@ -40,6 +40,7 @@ mod negative_tabs;
 mod scope_continuation;
 #[path = "tests/scope_domain_binding.rs"]
 mod scope_domain_binding;
+mod scope_regions;
 #[path = "tests/tab_stops.rs"]
 mod tab_stops;
 #[path = "tests/wbr.rs"]
@@ -223,6 +224,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
     let size = Size::new(S::from_f64(20.0), S::from_f64(10.0));
     let output = super::run::layout(
         &binding,
+        &Default::default(),
         &[],
         &[],
         super::run::Context {

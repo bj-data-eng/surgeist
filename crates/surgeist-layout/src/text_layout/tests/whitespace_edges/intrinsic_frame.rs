@@ -17,6 +17,7 @@ fn observed<S: LayoutScalar>(
     let size = Size::new(S::from_f64(100.0), S::from_f64(10.0));
     let output = super::super::super::run::layout(
         &binding,
+        &Default::default(),
         &[],
         &[],
         super::super::super::run::Context {

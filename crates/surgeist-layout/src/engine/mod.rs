@@ -112,12 +112,7 @@ where
     }
     let mut invalidation_seeds = changed_nodes.to_vec();
     invalidation_seeds.extend(capture.invalidated.iter().copied());
-    let invalidated = validation::validate_layout_request_with_text(
-        capture.tree,
-        root,
-        &invalidation_seeds,
-        &capture.paragraphs,
-    )?;
+    let invalidated = capture.graph.invalidation(&invalidation_seeds)?;
     let mut session = session::ComputeSession::with_text(capture, invalidated);
     let mut rejected_bases = Vec::new();
     loop {

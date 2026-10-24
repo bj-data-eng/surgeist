@@ -89,7 +89,6 @@ pub(super) fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding
         origins,
         atomics: vec![],
         controls: vec![],
-        scopes: Vec::new(),
         line_strut: None,
     }
 }

@@ -316,10 +316,7 @@ fn published_phrase_cut_survives_origin_font_and_request_splits() {
         assert_eq!(virtuals[0].view().source_position().get(), 3);
         assert_eq!(virtuals[0].view().processed_position().get(), 3);
         assert_eq!(virtuals[0].view().scope().view().capture_ordinal(), 0);
-        assert_eq!(
-            virtuals[0].view().scope().view().role(),
-            PreparedScopeRole::Domain
-        );
+        assert_eq!(virtuals[0].view().scope().view().role(), ScopeRole::Domain);
     }
 }
 
@@ -446,7 +443,7 @@ fn detected_cut_uses_the_actual_inline_owner_without_redetecting_its_locale() {
             assert_eq!(virtuals.len(), 1);
             let owner = virtuals[0].view().scope();
             assert_eq!(owner.view().capture_ordinal(), 1);
-            assert_eq!(owner.view().role(), PreparedScopeRole::Inline);
+            assert_eq!(owner.view().role(), ScopeRole::Inline);
             assert_eq!(owner.view().style(), &owner_style);
             assert_eq!(
                 owner.view().entry_control().unwrap().view().kind(),

@@ -541,7 +541,6 @@ impl Capture {
                     occurrence: occurrence.clone(),
                 })
                 .collect(),
-            scopes: Vec::new(),
             line_strut: None,
         })
     }

@@ -246,3 +246,64 @@ fn one_actual_nominee_cannot_supply_two_distinct_content_domains() {
         rejects(input, text::SourceProcessingError::Occurrence);
     }
 }
+
+#[test]
+fn a_later_paragraph_in_the_same_domain_does_not_replace_nominee_parentage() {
+    use text::SourceProcessingEvent as E;
+    for kind in [text::InlineBoxKind::InFlow, text::InlineBoxKind::OutOfFlow] {
+        let mut input = capture(kind, false, false);
+        input.paragraphs.push(input.paragraphs[0]);
+        let child = input
+            .events
+            .iter()
+            .position(|event| matches!(event, E::EnterScope(1)))
+            .unwrap();
+        input
+            .events
+            .splice(child..child, [E::ExitParagraph(0), E::EnterParagraph(2)]);
+        let end = input
+            .events
+            .iter()
+            .rposition(|event| matches!(event, E::ExitParagraph(0)))
+            .unwrap();
+        input.events[end] = E::ExitParagraph(2);
+        let processed = Arc::new(text::process_contextual_source(input).unwrap());
+        let paragraphs: Vec<_> = processed.paragraphs().collect();
+        assert_eq!(paragraphs.len(), 3);
+        assert!(paragraphs[0].source_pieces().next().is_none());
+        assert!(paragraphs[1].source_pieces().next().is_none());
+        assert_eq!(
+            paragraphs[2].source_pieces().collect::<Vec<_>>(),
+            [text::Range::new(0, 1)]
+        );
+        assert_eq!(processed.source().boxes()[0].id(), text::Id::from_u64(6312));
+    }
+}
+
+#[test]
+fn a_same_anchor_nominee_from_another_processing_domain_cannot_be_borrowed() {
+    use text::SourceProcessingEvent as E;
+    for kind in [text::InlineBoxKind::InFlow, text::InlineBoxKind::OutOfFlow] {
+        let mut input = capture(kind, false, false);
+        input.scopes.push(input.scopes[0].clone());
+        input.paragraphs.push(input.paragraphs[0]);
+        let child = input
+            .events
+            .iter()
+            .position(|event| matches!(event, E::EnterScope(1)))
+            .unwrap();
+        input.events.splice(
+            child..child,
+            [E::ExitParagraph(0), E::EnterScope(2), E::EnterParagraph(2)],
+        );
+        let end = input
+            .events
+            .iter()
+            .rposition(|event| matches!(event, E::ExitParagraph(0)))
+            .unwrap();
+        input
+            .events
+            .splice(end..=end, [E::ExitParagraph(2), E::ExitScope(2)]);
+        rejects(input, text::SourceProcessingError::Domain);
+    }
+}

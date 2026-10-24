@@ -98,6 +98,7 @@ pub(crate) struct LineEnvironment<Band, Clear, Replay, Accept, Reset> {
 
 pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
     binding: &TextParagraphBinding<Node>,
+    associations: &super::capture::ScopeAssociations<Node>,
     atomics: &[Atomic<Node, S>],
     controls: &[Control<Node>],
     context: Context<S>,
@@ -233,7 +234,15 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             reset: reset_candidate,
         },
     )?;
-    output(binding, atomics, controls, &context, origin, lines)
+    output(
+        binding,
+        associations,
+        atomics,
+        controls,
+        &context,
+        origin,
+        lines,
+    )
 }
 
 fn initial_allocation<Node: Copy + Eq, S: LayoutScalar>(
@@ -511,6 +520,7 @@ fn line_anchor<S: LayoutScalar>(
 
 fn output<Node: Copy + Eq, S: LayoutScalar>(
     binding: &TextParagraphBinding<Node>,
+    associations: &super::capture::ScopeAssociations<Node>,
     atomics: &[Atomic<Node, S>],
     controls: &[Control<Node>],
     context: &Context<S>,
@@ -641,7 +651,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             .push(PostLineClearIntent::None);
         for fragment in line.finalized.fragments() {
             let view = fragment.view();
-            let owner = fragment_owner(binding, view.owner());
+            let owner = fragment_owner(binding, associations, view.owner());
             let rect = view
                 .bounds()
                 .map(|rect| {
@@ -816,6 +826,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
 
 fn fragment_owner<Node: Copy + Eq>(
     binding: &TextParagraphBinding<Node>,
+    associations: &super::capture::ScopeAssociations<Node>,
     owner: surgeist_text::FinalizedFragmentOwner,
 ) -> crate::InlineFragmentOwner<Node> {
     let node = match owner {
@@ -872,12 +883,9 @@ fn fragment_owner<Node: Copy + Eq>(
         surgeist_text::FinalizedFragmentOwner::VirtualSeparator(occurrence) => {
             let scope = occurrence.view().scope();
             return crate::InlineFragmentOwner::Scope(
-                binding
-                    .scopes
-                    .iter()
-                    .find(|binding| binding.scope == scope)
-                    .expect("capture admitted the exact contributing scope")
-                    .clone(),
+                associations
+                    .binding(&scope)
+                    .expect("capture resolved the exact contributing scope"),
             );
         }
     };

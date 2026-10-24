@@ -1179,10 +1179,12 @@ impl<S: LayoutScalar> InlineFragmentOutputOf<S> {
         &self.fragment
     }
 
+    /// Physical bounds in the paragraph container's coordinate system.
     #[must_use]
     pub const fn rect(&self) -> Option<ScrollRectOf<S>> {
         self.rect
     }
+    /// Physical baseline anchor in the same paragraph-container-local coordinates.
     #[must_use]
     pub const fn baseline(&self) -> Point<S> {
         self.baseline

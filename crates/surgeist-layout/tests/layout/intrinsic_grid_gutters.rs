@@ -701,7 +701,6 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
                 ],
                 atomics: vec![],
                 controls: vec![],
-                scopes: Vec::new(),
                 line_strut: None,
             }],
         )

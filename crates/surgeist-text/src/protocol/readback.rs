@@ -15,16 +15,17 @@ use crate::engine::{
     layout::data::{FinalizedFragmentData, FinalizedGlyph, FinalizedRun, PreparedRun},
 };
 use crate::{
-    BidiLevel, Brush, EffectiveFontInstance, FontFace, InlineBox, Point, ProcessedPosition,
-    ProcessedRange, Range, Rect, Result, Source, SourcePosition, Text, TextNumericError,
+    BidiLevel, Brush, CapturedControl, CapturedEventPosition, CapturedParagraph, CapturedScope,
+    EffectiveFontInstance, FontFace, InlineBox, Point, ProcessedPosition, ProcessedRange, Range,
+    Rect, Result, ScopeRole, Source, SourcePosition, SourceProcessingEvent, Text, TextNumericError,
     TextNumericPhase,
 };
 
 use super::{
     FinalizedFragment, FinalizedLine, LineSelectionRequest, PreparedAlternative, PreparedAtomic,
     PreparedBoundary, PreparedControl, PreparedOpportunity, PreparedOrigin, PreparedParticipant,
-    PreparedScope, PreparedScopeRole, PreparedText, PreparedUnit, PreparedVirtualSeparator,
-    PresentationRange, SelectedLine, SpacingSlot, SpacingSlotFeedback, SpacingSlotOwner,
+    PreparedScope, PreparedText, PreparedUnit, PreparedVirtualSeparator, PresentationRange,
+    SelectedLine, SpacingSlot, SpacingSlotFeedback, SpacingSlotOwner,
     paragraph::{FragmentOwner, OriginIntersection, ParagraphControlKind, ParagraphOriginKind},
     prepared::{
         AlternativeData, AlternativeDefinition, AtomicData, BoundaryData, ControlData,
@@ -194,6 +195,22 @@ impl fmt::Debug for PreparedScopeView<'_> {
     }
 }
 impl PreparedScope {
+    /// Canonical captured owner, independent of this preparation's identity.
+    #[must_use]
+    pub fn captured_scope(&self) -> CapturedScope {
+        let topology = self
+            .prepared
+            .analyzed
+            .paragraph
+            .scope_topology
+            .as_ref()
+            .expect("issuing a contributing scope proves contextual topology");
+        CapturedScope {
+            capture: Arc::clone(&topology.capture),
+            index: self.prepared.analyzed.transform.scopes[self.index].ordinal,
+        }
+    }
+
     #[must_use]
     pub fn view(&self) -> PreparedScopeView<'_> {
         PreparedScopeView {
@@ -216,28 +233,56 @@ impl PreparedScopeView<'_> {
         self.prepared.analyzed.transform.scopes[self.index].ordinal
     }
     #[must_use]
-    pub fn role(&self) -> PreparedScopeRole {
-        self.prepared.analyzed.transform.scopes[self.index].role
+    pub fn role(&self) -> ScopeRole {
+        self.handle().captured_scope().role()
     }
     #[must_use]
     pub fn style(&self) -> &crate::Style {
-        &self.prepared.analyzed.transform.scopes[self.index].style
+        self.capture_fact()
+            .style
+            .as_ref()
+            .expect("issuing an emitted contributor proves its captured Style")
     }
-    /// Actual available entry occurrence; incomplete capture remains absent.
+    /// Genuine entry occurrence only when local to this preparation's paragraph.
+    /// Use the canonical captured scope to observe a remote global endpoint.
     #[must_use]
     pub fn entry_control(&self) -> Option<PreparedControl> {
-        self.prepared.analyzed.transform.scopes[self.index]
-            .entry_control
-            .map(|occurrence| PreparedControl {
-                prepared: Arc::clone(self.prepared),
-                index: control_index(self.prepared, occurrence),
-            })
+        self.capture_fact()
+            .boundaries
+            .and_then(|pair| self.local_control(pair.start))
     }
-    /// Actual available exit occurrence; incomplete capture remains absent.
+    /// Genuine exit occurrence only when local to this preparation's paragraph.
     #[must_use]
     pub fn exit_control(&self) -> Option<PreparedControl> {
-        self.prepared.analyzed.transform.scopes[self.index]
-            .exit_control
+        self.capture_fact()
+            .boundaries
+            .and_then(|pair| self.local_control(pair.end))
+    }
+
+    fn capture_fact(&self) -> &crate::processing::contextual::CapturedScopeData {
+        let topology = self
+            .prepared
+            .analyzed
+            .paragraph
+            .scope_topology
+            .as_ref()
+            .expect("issuing a contributing scope proves contextual topology");
+        &topology.capture.scopes[self.capture_ordinal()]
+    }
+
+    fn local_control(&self, global: usize) -> Option<PreparedControl> {
+        let topology = self
+            .prepared
+            .analyzed
+            .paragraph
+            .scope_topology
+            .as_ref()
+            .expect("issuing a contributing scope proves contextual topology");
+        let order = topology.capture.controls[global].order;
+        topology
+            .control_orders
+            .iter()
+            .position(|&candidate| candidate == order)
             .map(|occurrence| PreparedControl {
                 prepared: Arc::clone(self.prepared),
                 index: control_index(self.prepared, occurrence),
@@ -335,6 +380,21 @@ impl PreparedVirtualSeparatorView<'_> {
 }
 
 impl PreparedText {
+    /// Canonical contextual paragraph, including when no virtual output exists.
+    /// Flat and standalone preparation have no contextual capture authority.
+    #[must_use]
+    pub fn captured_paragraph(&self) -> Option<CapturedParagraph> {
+        self.inner
+            .analyzed
+            .paragraph
+            .scope_topology
+            .as_ref()
+            .map(|topology| CapturedParagraph {
+                capture: Arc::clone(&topology.capture),
+                index: topology.paragraph,
+            })
+    }
+
     /// Actual distinct scopes which own emitted virtual occurrences.
     pub fn scopes(&self) -> impl ExactSizeIterator<Item = PreparedScope> + '_ {
         (0..self.inner.analyzed.transform.scopes.len()).map(|index| PreparedScope {
@@ -457,6 +517,20 @@ impl PreparedOrigin {
 }
 
 impl PreparedOriginView<'_> {
+    /// Genuine original occurrence in global mixed-event order, when captured.
+    #[must_use]
+    pub fn capture_position(&self) -> Option<CapturedEventPosition> {
+        self.prepared
+            .analyzed
+            .paragraph
+            .scope_topology
+            .as_ref()
+            .map(|topology| CapturedEventPosition {
+                capture: Arc::clone(&topology.capture),
+                index: topology.origin_orders[self.index],
+            })
+    }
+
     /// Retains the actual occurrence capability; equal Source values do not alias it.
     #[must_use]
     pub fn handle(&self) -> PreparedOrigin {
@@ -665,6 +739,20 @@ impl PreparedOriginIntersectionView<'_> {
 }
 
 impl PreparedAtomicView<'_> {
+    /// Genuine atomic occurrence in global mixed-event order, when captured.
+    #[must_use]
+    pub fn capture_position(&self) -> Option<CapturedEventPosition> {
+        self.prepared
+            .analyzed
+            .paragraph
+            .scope_topology
+            .as_ref()
+            .map(|topology| CapturedEventPosition {
+                capture: Arc::clone(&topology.capture),
+                index: topology.capture.atomic_orders[self.data().occurrence],
+            })
+    }
+
     /// The exact original box occurrence, including its actual role and ID.
     #[must_use]
     pub fn original_box(&self) -> &InlineBox {
@@ -691,6 +779,20 @@ impl PreparedAtomicView<'_> {
 }
 
 impl PreparedControlView<'_> {
+    /// Genuine control occurrence in global mixed-event order, when captured.
+    #[must_use]
+    pub fn capture_position(&self) -> Option<CapturedEventPosition> {
+        self.prepared
+            .analyzed
+            .paragraph
+            .scope_topology
+            .as_ref()
+            .map(|topology| CapturedEventPosition {
+                capture: Arc::clone(&topology.capture),
+                index: topology.control_orders[self.data().occurrence],
+            })
+    }
+
     /// Actual captured semantic control, rather than fabricated authored text.
     #[must_use]
     pub fn kind(&self) -> &ParagraphControlKind {
@@ -713,6 +815,23 @@ impl PreparedControlView<'_> {
     #[must_use]
     pub fn level(&self) -> BidiLevel {
         resolved_level(self.data().level)
+    }
+}
+
+impl PreparedControl {
+    /// Canonical semantic control, while this handle retains preparation identity.
+    #[must_use]
+    pub fn captured_control(&self) -> Option<CapturedControl> {
+        let topology = self.prepared.analyzed.paragraph.scope_topology.as_ref()?;
+        let order = topology.control_orders[self.view().data().occurrence];
+        let SourceProcessingEvent::Control { control, .. } = topology.capture.events[order].event
+        else {
+            unreachable!("contextual admission indexes genuine control events")
+        };
+        Some(CapturedControl {
+            capture: Arc::clone(&topology.capture),
+            index: control,
+        })
     }
 }
 

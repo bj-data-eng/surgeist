@@ -256,7 +256,6 @@ fn capture(
         &tree,
         0,
         vec![layout::TextParagraphBinding {
-            scopes: vec![],
             prepared,
             container: 0,
             nodes: (1..=origins.len()).collect(),

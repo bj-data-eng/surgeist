@@ -417,7 +417,6 @@ impl PreparedParagraph {
             origins: self.origins.clone(),
             atomics: self.atomics.clone(),
             controls: self.controls.clone(),
-            scopes: Vec::new(),
             line_strut: None,
         }
     }

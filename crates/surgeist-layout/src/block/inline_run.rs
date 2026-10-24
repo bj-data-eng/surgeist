@@ -675,7 +675,7 @@ where
     let provider_error = std::cell::RefCell::new(None);
     let mut text_output = None;
     let mut report = if let Some(binding) = text_binding {
-        let (frame, frames, reusable) = {
+        let (frame, frames, reusable, associations) = {
             let state = tree
                 .text_computation()
                 .expect("capture-backed branch retains its session state");
@@ -683,6 +683,7 @@ where
                 state.frame(container),
                 state.frames.clone(),
                 state.reusable.clone(),
+                state.associations.clone(),
             )
         };
         let canonical_exclusions = float_exclusions
@@ -804,6 +805,7 @@ where
         ));
         let result = crate::text_layout::run::layout(
             binding,
+            &associations,
             &text_atomics,
             &text_controls,
             context,

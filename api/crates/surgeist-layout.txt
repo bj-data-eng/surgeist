@@ -742,6 +742,7 @@ pub surgeist_layout::TextBindingError::ScopeBoundaryCapture
 pub surgeist_layout::TextBindingError::ScopeBoundaryOrder
 pub surgeist_layout::TextBindingError::ScopeCoverage
 pub surgeist_layout::TextBindingError::ScopeOccurrenceMembership
+pub surgeist_layout::TextBindingError::ScopeTreeAmbiguity
 pub surgeist_layout::TextBindingError::TabReferenceDirection
 pub surgeist_layout::TextBindingError::TerminalBlockEdge
 pub enum surgeist_layout::TextJustification
@@ -1595,7 +1596,6 @@ pub surgeist_layout::TextParagraphBinding::line_strut: core::option::Option<surg
 pub surgeist_layout::TextParagraphBinding::nodes: alloc::vec::Vec<Node>
 pub surgeist_layout::TextParagraphBinding::origins: alloc::vec::Vec<surgeist_layout::TextOriginBinding<Node>>
 pub surgeist_layout::TextParagraphBinding::prepared: surgeist_text::protocol::PreparedText
-pub surgeist_layout::TextParagraphBinding::scopes: alloc::vec::Vec<surgeist_layout::TextScopeBinding<Node>>
 pub struct surgeist_layout::TextParticipation
 impl surgeist_layout::TextParticipation
 pub const fn surgeist_layout::TextParticipation::new(origin: surgeist_text::protocol::PreparedOrigin) -> Self

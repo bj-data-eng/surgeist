@@ -217,13 +217,6 @@ fn fixture() -> (
                         node: control_node,
                     })
                     .collect(),
-                scopes: prepared
-                    .scopes()
-                    .map(|scope| layout::TextScopeBinding {
-                        scope,
-                        association: layout::TextScopeAssociation::Inline { start: 1, end: 5 },
-                    })
-                    .collect(),
                 prepared,
                 container: 0,
                 nodes,
@@ -239,7 +232,6 @@ fn fixture() -> (
         origins: vec![],
         atomics: vec![],
         controls: vec![],
-        scopes: vec![],
         line_strut: None,
     };
     (tree, bindings, empty)
@@ -335,7 +327,6 @@ fn source_bearing_paragraph_with_empty_nodes_is_not_association_only() {
     parents[0].origins.clear();
     parents[0].controls.clear();
     parents[0].atomics.clear();
-    parents[0].scopes.clear();
     let Err(error) = layout::TextLayoutInput::try_new(&tree, 0, parents) else {
         panic!("a source-bearing paragraph with no run nodes must refuse")
     };
@@ -427,7 +418,6 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
         origins: vec![],
         atomics: vec![],
         controls: vec![],
-        scopes: vec![],
         line_strut: None,
     };
     let tree = Tree {

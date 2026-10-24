@@ -71,6 +71,7 @@ pub(crate) struct FloatChildPacket<Node, S: LayoutScalar> {
     pub(crate) input: ComputeInputOf<S>,
     pub(crate) output: ComputeOutputOf<S>,
     frames: std::sync::Arc<[crate::text_layout::state::CanonicalFrame<Node, S>]>,
+    associations: Option<std::sync::Arc<crate::text_layout::capture::ScopeAssociations<Node>>>,
     entries: Vec<LayoutOutputEntryOf<Node, S>>,
     fragments: Vec<StagedInlineFragmentGroup<Node, S>>,
     stores: Vec<LayoutCacheStoreEntryOf<Node, S>>,
@@ -166,6 +167,7 @@ where
         let mut session = Self::new(capture.tree, invalidated_nodes);
         session.text = Some(crate::text_layout::state::TextComputation::new(
             &capture.paragraphs,
+            capture.associations.clone(),
         ));
         session
     }
@@ -652,7 +654,10 @@ where
     > {
         let mut observation = Self::new(self.tree, self.invalidated_nodes.clone());
         if let Some(text) = &self.text {
-            let mut state = crate::text_layout::state::TextComputation::new(text.paragraphs);
+            let mut state = crate::text_layout::state::TextComputation::new(
+                text.paragraphs,
+                text.associations.clone(),
+            );
             state.frames = text.frames.clone();
             observation.text = Some(state);
         }
@@ -688,7 +693,10 @@ where
             .collect();
         let mut probe = Self::new(self.tree, dirty);
         let frames = if let Some(text) = &self.text {
-            let mut state = crate::text_layout::state::TextComputation::new(text.paragraphs);
+            let mut state = crate::text_layout::state::TextComputation::new(
+                text.paragraphs,
+                text.associations.clone(),
+            );
             state.frames = std::sync::Arc::clone(&text.frames);
             state.reusable = std::sync::Arc::clone(&text.reusable);
             let frames = std::sync::Arc::clone(&state.frames);
@@ -710,11 +718,13 @@ where
                     )
                 },
             );
+        let associations = self.text.as_ref().map(|text| text.associations.clone());
         Ok(std::sync::Arc::new(FloatChildPacket {
             node,
             input,
             output,
             frames,
+            associations,
             entries: probe.unrounded_entries,
             fragments: probe.unrounded_inline_fragment_groups,
             stores: probe.cache_store_entries,
@@ -731,7 +741,11 @@ where
         packet: &FloatChildPacket<Self::Node, Self::Scalar>,
     ) -> LayoutResultOf<Self::Node, (), Self::Scalar, Tree::MeasureError> {
         if let Some(text) = &self.text
-            && !std::sync::Arc::ptr_eq(&text.frames, &packet.frames)
+            && (!std::sync::Arc::ptr_eq(&text.frames, &packet.frames)
+                || !packet
+                    .associations
+                    .as_ref()
+                    .is_some_and(|basis| std::sync::Arc::ptr_eq(&text.associations, basis)))
         {
             return Err(LayoutErrorOf::new(
                 LayoutErrorSiteOf::Node(packet.node),

@@ -27,6 +27,7 @@ fn run_in_band<S: LayoutScalar>(
     );
     super::super::run::layout(
         &binding,
+        &Default::default(),
         &[],
         &[],
         super::super::run::Context {

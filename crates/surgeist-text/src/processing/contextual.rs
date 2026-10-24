@@ -10,6 +10,9 @@ use crate::{
 };
 use std::sync::Arc;
 
+mod capture;
+pub use capture::*;
+
 /// Computed non-inherited trim facts for one actual inline or block box.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct WhiteSpaceTrim {
@@ -153,14 +156,35 @@ pub enum SourceProcessingError {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct CapturedScope {
+pub(crate) struct CapturedScopeData {
     pub(crate) parent: Option<usize>,
     pub(crate) domain: usize,
     pub(crate) enter: usize,
     pub(crate) exit: usize,
     pub(crate) style: Option<Style>,
     pub(crate) boundaries: Option<SourceProcessingScopeBoundaries>,
-    pub(crate) domain_root: bool,
+    pub(crate) definition: Option<CapturedDomainData>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum CapturedDomainData {
+    Block,
+    AtomicBlock(usize),
+    OutOfFlowBlock(usize),
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct CapturedParagraphData {
+    pub(crate) domain: usize,
+    pub(crate) enter: usize,
+    pub(crate) exit: usize,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CapturedControlData {
+    pub(crate) fact: ParagraphControl,
+    pub(crate) paragraph: usize,
+    pub(crate) order: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -168,18 +192,26 @@ pub(crate) struct ScopedEvent {
     pub(crate) event: SourceProcessingEvent,
     pub(crate) at: usize,
     pub(crate) before: Option<usize>,
+    pub(crate) paragraph: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct ScopeCapture {
-    pub(crate) scopes: Vec<CapturedScope>,
+    pub(crate) scopes: Vec<CapturedScopeData>,
     pub(crate) events: Vec<ScopedEvent>,
     pub(crate) complete: Vec<bool>,
+    pub(crate) domain_scopes: Vec<usize>,
+    pub(crate) paragraphs: Vec<CapturedParagraphData>,
+    pub(crate) controls: Vec<CapturedControlData>,
+    pub(crate) atomic_orders: Vec<usize>,
+    /// Stable projection indices into the sole original event stream.
+    pub(crate) flow_orders: Vec<Vec<usize>>,
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct ParagraphTopology {
     pub(crate) capture: Arc<ScopeCapture>,
+    pub(crate) paragraph: usize,
     pub(crate) domain: usize,
     pub(crate) origin_orders: Vec<usize>,
     pub(crate) control_orders: Vec<usize>,
@@ -386,7 +418,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         scopes: input
             .scopes
             .iter()
-            .map(|scope| CapturedScope {
+            .map(|scope| CapturedScopeData {
                 parent: None,
                 domain: 0,
                 enter: 0,
@@ -399,11 +431,33 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                     SourceProcessingScope::Inline { boundaries, .. } => *boundaries,
                     _ => None,
                 },
-                domain_root: !matches!(scope, SourceProcessingScope::Inline { .. }),
+                definition: match scope {
+                    SourceProcessingScope::Inline { .. } => None,
+                    SourceProcessingScope::Block { .. } => Some(CapturedDomainData::Block),
+                    SourceProcessingScope::AtomicBlock { atomic, .. } => {
+                        Some(CapturedDomainData::AtomicBlock(*atomic))
+                    }
+                    SourceProcessingScope::OutOfFlowBlock { atomic, .. } => {
+                        Some(CapturedDomainData::OutOfFlowBlock(*atomic))
+                    }
+                },
             })
             .collect(),
         events: Vec::new(),
         complete: Vec::new(),
+        domain_scopes: Vec::new(),
+        paragraphs: vec![CapturedParagraphData::default(); input.paragraphs.len()],
+        controls: input
+            .controls
+            .iter()
+            .map(|fact| CapturedControlData {
+                fact: fact.clone(),
+                paragraph: 0,
+                order: 0,
+            })
+            .collect(),
+        atomic_orders: vec![0; input.source.boxes().len()],
+        flow_orders: Vec::new(),
     };
     for scope in &topology.scopes {
         if let Some(style) = &scope.style {
@@ -436,11 +490,20 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                         } else {
                             InlineBoxKind::OutOfFlow
                         };
-                        if paragraph.is_none()
-                            || !atomics.get(*atomic).copied().unwrap_or(false)
+                        if !atomics.get(*atomic).copied().unwrap_or(false)
                             || input.source.boxes()[*atomic].index() != cursor
                             || input.source.boxes()[*atomic].kind() != expected
                         {
+                            return Err(invalid(SourceProcessingError::Domain));
+                        }
+                        // Content capture may be deferred past the nominee's
+                        // paragraph exit. Its genuine occurrence still owns
+                        // the parent domain; the current live paragraph does
+                        // not replace that association or lend foreign custody.
+                        let nominee_paragraph = topology.events[topology.atomic_orders[*atomic]]
+                            .paragraph
+                            .expect("an admitted atomic has its actual paragraph");
+                        if Some(topology.paragraphs[nominee_paragraph].domain) != domain {
                             return Err(invalid(SourceProcessingError::Domain));
                         }
                     }
@@ -457,6 +520,8 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                         });
                     }
                     let own = context.domains.len();
+                    topology.domain_scopes.push(index);
+                    topology.flow_orders.push(Vec::new());
                     context.domains.push(Domain {
                         style: style.clone(),
                         direction: match scope {
@@ -557,6 +622,11 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 }
                 captures[index].start = cursor;
                 captures[index].domain = own;
+                topology.paragraphs[index] = CapturedParagraphData {
+                    domain: own,
+                    enter: order,
+                    exit: 0,
+                };
                 active_paragraphs[own] = Some(index);
             }
             SourceProcessingEvent::ExitParagraph(index) => {
@@ -566,6 +636,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 }
                 active_paragraphs[own] = None;
                 captures[index].end_order = order;
+                topology.paragraphs[index].exit = order;
             }
             SourceProcessingEvent::Origin { origin, affinity } => {
                 take(&mut origins, origin)?;
@@ -627,6 +698,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             }
             SourceProcessingEvent::Atomic { atomic, affinity } => {
                 take(&mut atomics, atomic)?;
+                topology.atomic_orders[atomic] = order;
                 atomic_order.push(atomic);
                 let p = paragraph.ok_or_else(|| invalid(SourceProcessingError::Domain))?;
                 let box_ = input.source.boxes()[atomic];
@@ -655,6 +727,8 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 if input.controls[control].at != cursor {
                     return Err(invalid(SourceProcessingError::Occurrence));
                 }
+                topology.controls[control].paragraph = p;
+                topology.controls[control].order = order;
                 let local = captures[p].controls.len();
                 captures[p].controls.push(control);
                 captures[p].anchors.push(ParagraphAnchor {
@@ -686,7 +760,34 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             event: *event,
             at,
             before,
+            paragraph,
         });
+        // Each projected event retains its genuine original position and one
+        // owning flow. Atomic content is independent of when the producer
+        // captures it; plain Block boundaries remain in their parent flow.
+        let flow_domain = match *event {
+            SourceProcessingEvent::EnterParagraph(index)
+            | SourceProcessingEvent::ExitParagraph(index) => {
+                Some(topology.paragraphs[index].domain)
+            }
+            SourceProcessingEvent::Origin { .. }
+            | SourceProcessingEvent::Atomic { .. }
+            | SourceProcessingEvent::Control { .. } => domain,
+            SourceProcessingEvent::EnterScope(index) | SourceProcessingEvent::ExitScope(index)
+                if matches!(
+                    topology.scopes[index].definition,
+                    Some(CapturedDomainData::Block)
+                ) =>
+            {
+                topology.scopes[index]
+                    .parent
+                    .map(|parent| topology.scopes[parent].domain)
+            }
+            _ => None,
+        };
+        if let Some(domain) = flow_domain {
+            topology.flow_orders[domain].push(order);
+        }
     }
     if !stack.is_empty() || active_paragraphs.iter().any(Option::is_some) {
         return Err(invalid(SourceProcessingError::Nesting));
@@ -922,6 +1023,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         let data = ParagraphData {
             scope_topology: Some(ParagraphTopology {
                 capture: Arc::clone(&topology),
+                paragraph: index,
                 domain: capture.domain,
                 origin_orders: capture.origin_orders.clone(),
                 control_orders: capture

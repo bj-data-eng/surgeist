@@ -217,6 +217,7 @@ fn intrinsic(
     let binding = prepared.binding(0);
     super::super::run::layout(
         &binding,
+        &Default::default(),
         &[],
         &[],
         super::super::run::Context {

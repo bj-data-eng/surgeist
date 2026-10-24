@@ -7,7 +7,7 @@ const JAPANESE: &str = "今日は天気です。";
 // Consumer-owned Ahem adaptation. The eight Japanese characters use the real
 // A glyph's 1000-unit cell. SPACE retains the width fixture's blank 500-unit
 // cell, making the distinct owner font size observable without new outlines.
-fn phrase_ahem() -> Vec<u8> {
+pub(super) fn phrase_ahem() -> Vec<u8> {
     fn u16_at(bytes: &[u8], at: usize) -> u16 {
         u16::from_be_bytes(bytes[at..at + 2].try_into().unwrap())
     }
@@ -271,11 +271,6 @@ fn capture(
             layout::TextParticipation::new(origin.clone()),
         ));
     }
-    let association = if inline {
-        layout::TextScopeAssociation::Inline { start: 1, end: 3 }
-    } else {
-        layout::TextScopeAssociation::ParagraphContainer(0)
-    };
     let tree = PhraseTree {
         inputs,
         non_box: layout::NodeInput::non_box(),
@@ -291,10 +286,6 @@ fn capture(
             }],
             controls: bindings,
             atomics: vec![],
-            scopes: vec![layout::TextScopeBinding {
-                scope: scope.clone(),
-                association,
-            }],
             prepared,
             container: 0,
             line_strut: None,

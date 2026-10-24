@@ -49,7 +49,7 @@ pub(crate) struct PassBasis<Node, S: LayoutScalar> {
     pub frames: Vec<CanonicalFrame<Node, S>>,
     pub lines: Vec<LineBasis>,
     pub absolute_baselines: Vec<(Node, f64)>,
-    pub scopes: Vec<super::TextScopeBinding<Node>>,
+    pub associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
     pub hyphenation: Vec<(
         Node,
         crate::hyphenation::LineHyphenationState,
@@ -76,6 +76,7 @@ pub(crate) struct ScopeFragmentGroup<Node, S: LayoutScalar> {
 /// before any placed Text or completed batch can escape.
 pub(crate) struct TextComputation<'input, Node, S: LayoutScalar> {
     pub paragraphs: &'input [TextParagraphBinding<Node>],
+    pub associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
     pub frames: std::sync::Arc<[CanonicalFrame<Node, S>]>,
     pub pending: Vec<PendingParagraph<Node>>,
     pub reusable: std::sync::Arc<[super::fit::ReusableLine]>,
@@ -85,9 +86,13 @@ pub(crate) struct TextComputation<'input, Node, S: LayoutScalar> {
 }
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> {
-    pub fn new(paragraphs: &'input [TextParagraphBinding<Node>]) -> Self {
+    pub fn new(
+        paragraphs: &'input [TextParagraphBinding<Node>],
+        associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
+    ) -> Self {
         Self {
             paragraphs,
+            associations,
             frames: std::sync::Arc::from([]),
             pending: Vec::new(),
             reusable: std::sync::Arc::from([]),
@@ -104,7 +109,13 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     ) -> Option<&'input TextParagraphBinding<Node>> {
         self.paragraphs
             .iter()
-            .find(|binding| binding.container == container && binding.nodes == nodes)
+            .enumerate()
+            .find_map(|(index, binding)| {
+                (self.associations.paragraph_is_flow(index)
+                    && binding.container == container
+                    && binding.nodes == nodes)
+                    .then_some(binding)
+            })
     }
 
     pub fn paragraph_starting(
@@ -114,7 +125,13 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     ) -> Option<&'input TextParagraphBinding<Node>> {
         self.paragraphs
             .iter()
-            .find(|binding| binding.container == container && nodes.starts_with(&binding.nodes))
+            .enumerate()
+            .find_map(|(index, binding)| {
+                (self.associations.paragraph_is_flow(index)
+                    && binding.container == container
+                    && nodes.starts_with(&binding.nodes))
+                .then_some(binding)
+            })
     }
 
     pub fn frame(&self, node: Node) -> Option<CanonicalFrame<Node, S>> {
@@ -216,11 +233,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 )
                 .collect(),
             absolute_baselines: self.absolute_baselines.clone(),
-            scopes: self
-                .paragraphs
-                .iter()
-                .flat_map(|paragraph| paragraph.scopes.iter().cloned())
-                .collect(),
+            associations: self.associations.clone(),
             hyphenation: self
                 .pending
                 .iter()

@@ -182,7 +182,6 @@ fn capture(
         &tree,
         0,
         vec![layout::TextParagraphBinding {
-            scopes: vec![],
             prepared,
             container: 0,
             nodes: vec![1],

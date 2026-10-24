@@ -140,13 +140,47 @@ do not consume unused context. Balanced capture remains the sole supplied tree.
 
 A virtual occurrence has no authored source interval or control identity. Retain
 its real issued scope, generated geometry and empty insertion anchor through
-selection and placement. Layout associates a domain with its paragraph container
-or an inline scope with its exact distinct normalized start/end pair, matched to
-that same scope's issued controls. Output preserves the whole scope association.
-Boundary nodes identify ownership, not geometric anchors: never interpolate from
-them, duplicate a fragment onto both, or donate it to neighboring text. Scope
-Style, preparation and both actual boundary inputs enter cache/invalidation
-dependencies. Missing endpoints remain a native capture limit.
+selection and placement. Text's shared capture owns canonical scope, control,
+paragraph and event identities. Prepared handles retain their own phase identity
+and project to those facts. A scope's global pair remains complete across actual
+paragraph cuts; local endpoint absence is separate from missing capture facts.
+
+Layout derives one global inline association registry from canonical endpoints
+and validated actual control-node bindings. A domain keeps its actual paragraph
+container; an atomic content domain must match its exact nominated atomic node.
+Authenticate intersections and tree order through captured events, including
+endpoint-only and nonemitting paragraphs. A paragraph vector or numeric source
+ordering cannot establish scope traversal authority.
+
+Order is domain-local. Text projects authenticated source events; Layout derives
+actual observations independently from validated child/run order. A parent's
+atomic occurrence is ordered in that parent, while the atomic's independently
+captured content is validated inside its exact nominated box. Plain child blocks
+instead retain genuine interruption boundaries in parent flow. Deferred child
+capture cannot reorder parent siblings or transfer content to another atomic.
+
+Generated scope contributors determine the required proof regions: an inline
+owner requires its complete own-domain extent; a domain owner requires its full
+own-domain flow. Preserve disjoint regions. Resolving known ancestor endpoints
+or a nominee's parent binding proves association and containment without requiring
+unrelated interiors. Every genuine Block interruption inside a demanded region
+still requires its actual child-domain association. Ordinary local binding checks
+remain mandatory even when there is no generated contributor.
+
+A genuine zero-participation captured paragraph can supply an empty domain's
+actual container association without requesting a Text run. Both actual prepared
+and supplied occurrence inventories must be empty, with no line strut request.
+It retains capture/cache/invalidation identity but produces no additional line,
+glyph, fragment or placed Text result; the box keeps its ordinary layout behavior.
+Missing source bindings or removed-only source cannot masquerade as emptiness.
+
+Output preserves the whole scope association and each fragment's own local
+prepared/placed occurrence. Boundary nodes identify ownership, not geometric
+anchors: never interpolate from them, duplicate a fragment onto both, or donate
+it to neighboring text. Scope/capture/preparation, actual endpoints, participating
+containers and relevant tree dependencies enter cache/invalidation ownership.
+Complete spanning captures execute; truly absent or foreign facts remain precise
+errors without invented continuation controls or geometry.
 
 Full-size-kana uses
 the complete pinned [Appendix G](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#small-kana).

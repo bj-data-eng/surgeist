@@ -12,6 +12,7 @@ const PHRASE: &str = "今日はとても良い天気です。";
 struct Fixture {
     binding: TextParagraphBinding<u32>,
     tree: PublicLayoutTreeOf<f64>,
+    scope: TextScopeBinding<u32>,
 }
 
 fn fixture(owner_size: f32, complete: bool, boundaries: [u32; 4]) -> Fixture {
@@ -144,14 +145,14 @@ fn fixture_in_direction(
         boundaries[3],
     ];
     let scope = prepared.scopes().next().unwrap();
+    let expected_scope = TextScopeBinding {
+        scope,
+        association: TextScopeAssociation::Inline {
+            start: boundaries[1],
+            end: boundaries[2],
+        },
+    };
     let binding = TextParagraphBinding {
-        scopes: vec![TextScopeBinding {
-            scope,
-            association: TextScopeAssociation::Inline {
-                start: boundaries[1],
-                end: boundaries[2],
-            },
-        }],
         prepared,
         container: 0,
         nodes: nodes.clone(),
@@ -200,7 +201,11 @@ fn fixture_in_direction(
             ),
         );
     }
-    Fixture { binding, tree }
+    Fixture {
+        binding,
+        tree,
+        scope: expected_scope,
+    }
 }
 
 fn rejects(
@@ -222,30 +227,15 @@ fn automatic_phrase_scope_inventory_requires_the_exact_issued_scope_and_own_pair
     let f = fixture(20.0, true, [10, 11, 12, 13]);
     TextLayoutInput::try_new(&f.tree, 0, vec![f.binding.clone()]).unwrap();
     let mut missing = f.binding.clone();
-    missing.scopes.clear();
-    rejects(&f.tree, missing, TextBindingError::ScopeCoverage);
+    missing.controls.pop();
+    rejects(&f.tree, missing, TextBindingError::ControlCoverage);
     let mut duplicate = f.binding.clone();
-    duplicate.scopes.push(duplicate.scopes[0].clone());
-    rejects(&f.tree, duplicate, TextBindingError::ScopeCoverage);
+    duplicate.controls.push(duplicate.controls[0].clone());
+    rejects(&f.tree, duplicate, TextBindingError::ControlCoverage);
     let foreign = fixture(20.0, true, [10, 11, 12, 13]);
     let mut wrong = f.binding.clone();
-    wrong.scopes[0].scope = foreign.binding.scopes[0].scope.clone();
-    rejects(&f.tree, wrong, TextBindingError::ScopeCoverage);
-    for association in [
-        TextScopeAssociation::ParagraphContainer(0),
-        TextScopeAssociation::ParagraphContainer(1),
-        TextScopeAssociation::Inline { start: 10, end: 13 },
-        TextScopeAssociation::Inline { start: 11, end: 13 },
-        TextScopeAssociation::Inline { start: 11, end: 11 },
-        TextScopeAssociation::Inline {
-            start: 11,
-            end: 999,
-        },
-    ] {
-        let mut wrong = f.binding.clone();
-        wrong.scopes[0].association = association;
-        rejects(&f.tree, wrong, TextBindingError::ScopeAssociation);
-    }
+    wrong.controls[1] = foreign.binding.controls[1].clone();
+    rejects(&f.tree, wrong, TextBindingError::ControlCoverage);
     let incomplete = fixture(20.0, false, [10, 11, 12, 13]);
     rejects(
         &incomplete.tree,
@@ -261,11 +251,11 @@ fn automatic_phrase_equal_anchor_boundaries_cannot_swap_or_cross_the_issued_scop
         let tree = f.tree.clone().children(0, order);
         let mut wrong = f.binding.clone();
         wrong.nodes = order.to_vec();
-        rejects(&tree, wrong, TextBindingError::ScopeOccurrenceMembership);
+        rejects(&tree, wrong, TextBindingError::ParticipantOrder);
     }
     let mut reused = f.binding.clone();
-    reused.scopes.push(reused.scopes[0].clone());
-    rejects(&f.tree, reused, TextBindingError::ScopeCoverage);
+    reused.controls[1] = reused.controls[0].clone();
+    rejects(&f.tree, reused, TextBindingError::ControlCoverage);
     let tree = f.tree.clone().input(
         11,
         LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
@@ -306,11 +296,7 @@ fn automatic_phrase_multiple_occurrences_publish_one_scope_owner_at_each_placed_
     let batch = compute_layout_with_text(&capture, 0, request(500.0)).unwrap();
     let facts = scope_facts(&batch);
     assert_eq!(facts.len(), 3);
-    assert!(
-        facts
-            .iter()
-            .all(|fact| fact.0 == f.binding.scopes[0] && fact.3 == 0)
-    );
+    assert!(facts.iter().all(|fact| fact.0 == f.scope && fact.3 == 0));
     assert_eq!(
         facts
             .iter()
@@ -485,10 +471,7 @@ fn automatic_phrase_changed_scope_style_pair_and_preparation_replace_warm_output
     let cold = compute(&cold_tree, &changed.binding);
     assert_eq!(warm.final_entries(), cold.final_entries());
     assert_eq!(scope_facts(&warm), scope_facts(&cold));
-    assert_ne!(
-        original.binding.scopes[0].scope,
-        changed.binding.scopes[0].scope
-    );
+    assert_ne!(original.scope.scope, changed.scope.scope);
     let facts = scope_facts(&warm);
     assert_eq!(
         facts
@@ -497,7 +480,11 @@ fn automatic_phrase_changed_scope_style_pair_and_preparation_replace_warm_output
             .collect::<Vec<_>>(),
         [30.0, 90.0, 140.0]
     );
-    assert!(facts.iter().all(|fact| fact.0 == changed.binding.scopes[0] && fact.1.unwrap().size().width == 30.0));
+    assert!(
+        facts
+            .iter()
+            .all(|fact| fact.0 == changed.scope && fact.1.unwrap().size().width == 30.0)
+    );
     assert_eq!(warm.invalidated_nodes(), &[100, 0, 20, 21, 1, 22, 23]);
     assert!(tree.cache_hits.get() > 0);
     assert_eq!(cold_tree.cache_hits.get(), 0);
@@ -514,12 +501,11 @@ fn automatic_phrase_changed_scope_style_pair_and_preparation_replace_warm_output
                 InlineFragmentOwner::Scope(owner) => Some(owner),
                 InlineFragmentOwner::Node(_) => None,
             })
-            .all(|owner| owner == &changed.binding.scopes[0])
+            .all(|owner| owner == &changed.scope)
     );
-    let old_handle = original.binding.scopes[0].scope.clone();
     let mut wrong = changed.binding;
-    wrong.scopes[0].scope = old_handle;
-    rejects(&tree.tree, wrong, TextBindingError::ScopeCoverage);
+    wrong.controls[1] = original.binding.controls[1].clone();
+    rejects(&tree.tree, wrong, TextBindingError::ControlCoverage);
 }
 
 #[test]
@@ -555,7 +541,7 @@ fn automatic_phrase_scope_fragments_follow_real_split_lines_and_rtl_line_anchors
         let InlineFragmentOwner::Scope(owner) = entry.owner() else {
             continue;
         };
-        assert_eq!(owner, &f.binding.scopes[0]);
+        assert_eq!(owner, &f.scope);
         let fragment = entry.fragment();
         let view = fragment.finalized_fragment().view();
         let text::FinalizedFragmentOwner::VirtualSeparator(virtual_separator) = view.owner() else {
@@ -575,4 +561,80 @@ fn automatic_phrase_scope_fragments_follow_real_split_lines_and_rtl_line_anchors
         );
         assert_eq!(rect.size(), Size::new(local.size.width, local.size.height));
     }
+}
+
+#[test]
+fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_output() {
+    let (first_tree, first) = super::scope_continuation::empty_block_capture();
+    let mut tree = CachedTree {
+        tree: with_cached_sibling(first_tree),
+        retained: Retained::default(),
+        reject_publication: false,
+        cache_hits: Cell::new(0),
+    };
+    let compute_all = |tree: &CachedTree, paragraphs: &[TextParagraphBinding<u32>]| {
+        let capture = TextLayoutInput::try_new(tree, 100, paragraphs.to_vec()).unwrap();
+        compute_layout_with_text_invalidated(&capture, 100, request(500.0), &[102]).unwrap()
+    };
+    let initial = compute_all(&tree, &first);
+    initial.apply_to(&mut tree).unwrap();
+    let before = tree.retained.clone();
+    let (next_tree, next) = super::scope_continuation::empty_block_capture();
+    assert_ne!(
+        first[1].prepared.captured_paragraph(),
+        next[1].prepared.captured_paragraph()
+    );
+    assert!(next[1].nodes.is_empty());
+    assert_eq!(next[1].prepared.participants().count(), 0);
+    tree.tree = with_cached_sibling(next_tree.clone());
+    let warm = compute_all(&tree, &next);
+    let cold_tree = CachedTree {
+        tree: with_cached_sibling(next_tree),
+        retained: Retained::default(),
+        reject_publication: false,
+        cache_hits: Cell::new(0),
+    };
+    let cold = compute_all(&cold_tree, &next);
+    assert_eq!(warm.final_entries(), cold.final_entries());
+    assert_eq!(scope_facts(&warm), scope_facts(&cold));
+    assert_eq!(warm.placed_text().len(), 2);
+    assert_eq!(
+        warm.placed_text()
+            .iter()
+            .map(|p| p.layout().lines().len())
+            .sum::<usize>(),
+        2
+    );
+    let facts = scope_facts(&warm);
+    assert_eq!(facts.len(), 2);
+    assert_eq!(
+        facts
+            .iter()
+            .map(|fact| fact.1.unwrap().origin())
+            .collect::<Vec<_>>(),
+        [Point::new(30.0, 0.0), Point::new(30.0, 10.0)]
+    );
+    assert!(
+        facts
+            .iter()
+            .all(|fact| fact.1.unwrap().size().width == 10.0)
+    );
+    for node in [100, 0, 101, 102, 200, 300, 301] {
+        assert!(warm.invalidated_nodes().contains(&node));
+    }
+    assert!(tree.cache_hits.get() > 0);
+    assert_eq!(cold_tree.cache_hits.get(), 0);
+    tree.reject_publication = true;
+    assert_eq!(warm.apply_to(&mut tree), Err("scope publication refused"));
+    assert_eq!(tree.retained, before);
+    tree.reject_publication = false;
+    warm.apply_to(&mut tree).unwrap();
+    assert_eq!(
+        tree.retained
+            .fragments
+            .iter()
+            .filter(|entry| matches!(entry.owner(), InlineFragmentOwner::Scope(_)))
+            .count(),
+        2
+    );
 }

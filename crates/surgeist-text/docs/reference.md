@@ -553,12 +553,31 @@ A genuine wbr remains a separate occurrence: WbrNone can coexist with an emitted
 virtual separator, and two independently expandable occurrences can emit two.
 Generated replacement characters do not retrospectively suppress proposals.
 
-`PreparedText::scopes()` issues only contributing scope handles.
-`PreparedScope::view()` retains the capture ordinal, role, complete Style and
-each available boundary-control handle. Inline `boundaries` name the actual
-scope's own start/end controls, immediately inside its enter/exit events;
-coincident positions never establish this relationship. Incomplete endpoints
-remain absent rather than acquiring fabricated continuation controls.
+`PreparedText::scopes()` issues only contributing, preparation-specific handles.
+`PreparedScope::captured_scope()` identifies the canonical scope in the shared
+immutable capture. `CapturedScope` and `CapturedControl` equality requires that
+same capture and actual occurrence; equal ordinals or source offsets from a
+different capture cannot substitute. Independently prepared projections of one
+capture share canonical identity while retaining distinct prepared identities.
+
+`PreparedText::captured_paragraph()` exposes authentic scope intersections and
+mixed-event positions independently of generated output. Canonical Style and
+endpoint facts remain optional when genuinely uncaptured; unused metadata is
+not replaced by defaults. `ScopeRole` distinguishes inline and domain ownership.
+`CapturedDomainDefinition` retains each domain's actual Block, AtomicBlock or
+OutOfFlowBlock association, including the exact nominated atomic occurrence.
+`CapturedScope::flow_events()` projects a domain's actual paragraph boundaries,
+originals, atomics, controls and plain child-Block boundaries in capture order.
+It exposes the original domain flow even when no generated output is selected.
+Atomic child contents have their own projection; their capture schedule does not
+interleave with parent flow. Unknown inline topology does not erase supplied
+domain events.
+
+An inline scope's global controls remain its genuine Start/End pair immediately
+inside its enter/exit events, even across block-in-inline paragraph cuts.
+`PreparedScope::view()` observes only controls local to that preparation; local
+absence does not make the global pair incomplete. No paragraph cut manufactures
+a continuation control or transfers Style, source membership or geometry.
 
 `PreparedText::virtual_separators()` issues distinct occurrence handles with
 their scope and exact empty source/processed anchors. Unit and Range views expose
@@ -570,12 +589,31 @@ hyphenation retain original text only, while placed selection can traverse the
 real generated geometry. Shared grapheme units preserve every real contributor.
 Selected-indication rebuilds retain the same scope Style and occurrence identity.
 
-Layout binds a contributing domain to its actual paragraph container or an
-inline scope to its actual distinct start/end nodes. Both inline endpoints must
-match the same issued scope's own controls. The complete association survives in
-`InlineFragmentOwner::Scope`; neither boundary alone becomes the semantic owner.
-Missing native endpoints refuse at capture. No generated text is donated to a
-neighboring original or duplicated onto both boundaries.
+Layout binds each contributing domain to its actual paragraph container. It
+derives one inline association registry from canonical endpoints and the real
+control-to-node bindings across all supplied paragraphs. Paragraph bindings do
+not author another scope-pair list. Remote endpoints and middle intersections
+are validated against genuine capture order and actual tree structure; paragraph
+vector order and source-offset sorting do not supply that authority. Atomic
+content domains must use their exact nominated atomic's node.
+Scope proof covers each contributing inline owner's complete authentic extent,
+or a contributing domain's complete own-domain flow. Known ancestor endpoints
+and nominee parent bindings establish structural dependencies without activating
+unrelated content. Disjoint owner extents stay separate; no active extent may
+discard an interruption merely because its association was omitted.
+
+A genuine captured paragraph with no actual or supplied source/control/atomic
+participation, generated contributors or run nodes can associate an empty domain
+with its real Layout box. It requests no line strut and generates no Text result,
+line or fragment. Ordinary box layout remains intact. Empty rendered output alone
+does not prove this condition: removed-only originals still participate.
+
+The complete association survives in `InlineFragmentOwner::Scope`, alongside the
+fragment's own prepared/placed occurrence. A spanning scope emits only each
+paragraph's real local geometry. Neither boundary becomes a proxy geometry node.
+Truly missing endpoint facts/bindings, foreign capture identities, inconsistent
+tree order and ambiguous required tree occurrences refuse precisely. No generated
+text is donated to an original or duplicated onto both boundaries.
 
 ## Style support
 

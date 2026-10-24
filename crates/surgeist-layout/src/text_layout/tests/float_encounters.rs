@@ -709,7 +709,6 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
         }],
         atomics: vec![],
         controls: vec![],
-        scopes: Vec::new(),
         line_strut: None,
     };
     let whole =

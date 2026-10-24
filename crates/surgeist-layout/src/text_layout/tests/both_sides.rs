@@ -265,7 +265,6 @@ fn compute<S: LayoutScalar>(
         origins,
         atomics: Vec::new(),
         controls,
-        scopes: Vec::new(),
         line_strut: None,
     };
     let captured = TextLayoutInput::try_new(&tree, 0, vec![binding]).unwrap();

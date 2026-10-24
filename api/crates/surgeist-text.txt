@@ -24,6 +24,24 @@ pub surgeist_text::BaselineShiftFact::Requested(surgeist_text::BaselineShift)
 pub enum surgeist_text::BidiLevelError
 pub surgeist_text::BidiLevelError::OutOfRange
 pub surgeist_text::BidiLevelError::OutOfRange::level: u8
+pub enum surgeist_text::CapturedDomainDefinition
+pub surgeist_text::CapturedDomainDefinition::AtomicBlock
+pub surgeist_text::CapturedDomainDefinition::AtomicBlock::atomic: surgeist_text::CapturedEventPosition
+pub surgeist_text::CapturedDomainDefinition::Block
+pub surgeist_text::CapturedDomainDefinition::OutOfFlowBlock
+pub surgeist_text::CapturedDomainDefinition::OutOfFlowBlock::atomic: surgeist_text::CapturedEventPosition
+pub enum surgeist_text::CapturedFlowEvent
+pub surgeist_text::CapturedFlowEvent::Atomic
+pub surgeist_text::CapturedFlowEvent::Atomic::paragraph: surgeist_text::CapturedParagraph
+pub surgeist_text::CapturedFlowEvent::Atomic::position: surgeist_text::CapturedEventPosition
+pub surgeist_text::CapturedFlowEvent::BlockEnd(surgeist_text::CapturedScope)
+pub surgeist_text::CapturedFlowEvent::BlockStart(surgeist_text::CapturedScope)
+pub surgeist_text::CapturedFlowEvent::Control(surgeist_text::CapturedControl)
+pub surgeist_text::CapturedFlowEvent::Origin
+pub surgeist_text::CapturedFlowEvent::Origin::paragraph: surgeist_text::CapturedParagraph
+pub surgeist_text::CapturedFlowEvent::Origin::position: surgeist_text::CapturedEventPosition
+pub surgeist_text::CapturedFlowEvent::ParagraphEnd(surgeist_text::CapturedParagraph)
+pub surgeist_text::CapturedFlowEvent::ParagraphStart(surgeist_text::CapturedParagraph)
 pub enum surgeist_text::CaseTransform
 pub surgeist_text::CaseTransform::Capitalize
 pub surgeist_text::CaseTransform::Lowercase
@@ -502,9 +520,6 @@ pub enum surgeist_text::PreparedParticipant
 pub surgeist_text::PreparedParticipant::Atomic(surgeist_text::PreparedAtomic)
 pub surgeist_text::PreparedParticipant::Control(surgeist_text::PreparedControl)
 pub surgeist_text::PreparedParticipant::Text(surgeist_text::PreparedUnit)
-pub enum surgeist_text::PreparedScopeRole
-pub surgeist_text::PreparedScopeRole::Domain
-pub surgeist_text::PreparedScopeRole::Inline
 pub enum surgeist_text::PreparedTermination
 pub surgeist_text::PreparedTermination::Conditional(surgeist_text::PreparedConditionalOpportunity)
 pub surgeist_text::PreparedTermination::Measurement(surgeist_text::PreparedWordPortion)
@@ -671,6 +686,9 @@ pub surgeist_text::ProtocolHandleKind::Opportunity
 pub surgeist_text::ProtocolHandleKind::Origin
 pub surgeist_text::ProtocolHandleKind::Unit
 pub surgeist_text::ProtocolHandleKind::WordPortion
+pub enum surgeist_text::ScopeRole
+pub surgeist_text::ScopeRole::Domain
+pub surgeist_text::ScopeRole::Inline
 pub enum surgeist_text::ShapingBoundary
 pub surgeist_text::ShapingBoundary::InlineBox
 pub surgeist_text::ShapingBoundary::SpanEnd
@@ -1085,6 +1103,70 @@ pub fn surgeist_text::Builder<'_>::identity(&mut self, id: surgeist_text::Id, re
 pub fn surgeist_text::Builder<'_>::inline_box(&mut self, box_: surgeist_text::InlineBox) -> &mut Self
 pub fn surgeist_text::Builder<'_>::options(&mut self, options: surgeist_text::Options) -> &mut Self
 pub fn surgeist_text::Builder<'_>::span(&mut self, range: surgeist_text::Range, style: surgeist_text::Style) -> &mut Self
+pub struct surgeist_text::CapturedControl
+impl surgeist_text::CapturedControl
+pub fn surgeist_text::CapturedControl::event_position(&self) -> surgeist_text::CapturedEventPosition
+pub fn surgeist_text::CapturedControl::kind(&self) -> &surgeist_text::ParagraphControlKind
+pub fn surgeist_text::CapturedControl::paragraph(&self) -> surgeist_text::CapturedParagraph
+pub fn surgeist_text::CapturedControl::source_position(&self) -> surgeist_text::SourcePosition
+impl core::cmp::Eq for surgeist_text::CapturedControl
+impl core::cmp::PartialEq for surgeist_text::CapturedControl
+pub fn surgeist_text::CapturedControl::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_text::CapturedControl
+pub fn surgeist_text::CapturedControl::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for surgeist_text::CapturedControl
+pub fn surgeist_text::CapturedControl::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_text::CapturedEventPosition
+impl surgeist_text::CapturedEventPosition
+pub fn surgeist_text::CapturedEventPosition::same_capture(&self, other: &Self) -> bool
+impl core::cmp::Eq for surgeist_text::CapturedEventPosition
+impl core::cmp::PartialEq for surgeist_text::CapturedEventPosition
+pub fn surgeist_text::CapturedEventPosition::eq(&self, other: &Self) -> bool
+impl core::cmp::PartialOrd for surgeist_text::CapturedEventPosition
+pub fn surgeist_text::CapturedEventPosition::partial_cmp(&self, other: &Self) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for surgeist_text::CapturedEventPosition
+pub fn surgeist_text::CapturedEventPosition::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for surgeist_text::CapturedEventPosition
+pub fn surgeist_text::CapturedEventPosition::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_text::CapturedParagraph
+impl surgeist_text::CapturedParagraph
+pub fn surgeist_text::CapturedParagraph::domain(&self) -> surgeist_text::CapturedScope
+pub fn surgeist_text::CapturedParagraph::enter_position(&self) -> surgeist_text::CapturedEventPosition
+pub fn surgeist_text::CapturedParagraph::exit_position(&self) -> surgeist_text::CapturedEventPosition
+pub fn surgeist_text::CapturedParagraph::scope_intersections(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::CapturedScopeIntersection> + '_
+impl core::cmp::Eq for surgeist_text::CapturedParagraph
+impl core::cmp::PartialEq for surgeist_text::CapturedParagraph
+pub fn surgeist_text::CapturedParagraph::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_text::CapturedParagraph
+pub fn surgeist_text::CapturedParagraph::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for surgeist_text::CapturedParagraph
+pub fn surgeist_text::CapturedParagraph::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_text::CapturedScope
+impl surgeist_text::CapturedScope
+pub fn surgeist_text::CapturedScope::domain(&self) -> Self
+pub fn surgeist_text::CapturedScope::domain_definition(&self) -> core::option::Option<surgeist_text::CapturedDomainDefinition>
+pub fn surgeist_text::CapturedScope::domain_topology(&self) -> surgeist_text::SourceProcessingTopology
+pub fn surgeist_text::CapturedScope::enter_position(&self) -> surgeist_text::CapturedEventPosition
+pub fn surgeist_text::CapturedScope::entry_control(&self) -> core::option::Option<surgeist_text::CapturedControl>
+pub fn surgeist_text::CapturedScope::exit_control(&self) -> core::option::Option<surgeist_text::CapturedControl>
+pub fn surgeist_text::CapturedScope::exit_position(&self) -> surgeist_text::CapturedEventPosition
+pub fn surgeist_text::CapturedScope::flow_events(&self) -> core::option::Option<impl core::iter::traits::iterator::Iterator<Item = surgeist_text::CapturedFlowEvent> + '_>
+pub fn surgeist_text::CapturedScope::parent(&self) -> core::option::Option<Self>
+pub fn surgeist_text::CapturedScope::role(&self) -> surgeist_text::ScopeRole
+pub fn surgeist_text::CapturedScope::style(&self) -> core::option::Option<&surgeist_text::Style>
+impl core::cmp::Eq for surgeist_text::CapturedScope
+impl core::cmp::PartialEq for surgeist_text::CapturedScope
+pub fn surgeist_text::CapturedScope::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_text::CapturedScope
+pub fn surgeist_text::CapturedScope::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for surgeist_text::CapturedScope
+pub fn surgeist_text::CapturedScope::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_text::CapturedScopeIntersection
+impl surgeist_text::CapturedScopeIntersection
+pub fn surgeist_text::CapturedScopeIntersection::enter_position(&self) -> surgeist_text::CapturedEventPosition
+pub fn surgeist_text::CapturedScopeIntersection::exit_position(&self) -> surgeist_text::CapturedEventPosition
+pub fn surgeist_text::CapturedScopeIntersection::paragraph(&self) -> surgeist_text::CapturedParagraph
+pub fn surgeist_text::CapturedScopeIntersection::scope(&self) -> surgeist_text::CapturedScope
 pub struct surgeist_text::Cluster
 impl surgeist_text::Cluster
 pub const fn surgeist_text::Cluster::bounds(self) -> surgeist_text::Rect
@@ -1732,12 +1814,13 @@ impl core::hash::Hash for surgeist_text::PreparedAtomic
 pub fn surgeist_text::PreparedAtomic::hash<H: core::hash::Hasher>(&self, state: &mut H)
 pub struct surgeist_text::PreparedAtomicView<'a>
 impl surgeist_text::PreparedAtomicView<'_>
-pub fn surgeist_text::PreparedAtomicView<'_>::handle(&self) -> surgeist_text::PreparedAtomic
-impl surgeist_text::PreparedAtomicView<'_>
+pub fn surgeist_text::PreparedAtomicView<'_>::capture_position(&self) -> core::option::Option<surgeist_text::CapturedEventPosition>
 pub fn surgeist_text::PreparedAtomicView<'_>::level(&self) -> surgeist_text::BidiLevel
 pub fn surgeist_text::PreparedAtomicView<'_>::original_box(&self) -> &surgeist_text::InlineBox
 pub fn surgeist_text::PreparedAtomicView<'_>::processed_position(&self) -> surgeist_text::ProcessedPosition
 pub fn surgeist_text::PreparedAtomicView<'_>::source_position(&self) -> surgeist_text::SourcePosition
+impl surgeist_text::PreparedAtomicView<'_>
+pub fn surgeist_text::PreparedAtomicView<'_>::handle(&self) -> surgeist_text::PreparedAtomic
 impl core::fmt::Debug for surgeist_text::PreparedAtomicView<'_>
 pub fn surgeist_text::PreparedAtomicView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::PreparedBoundary
@@ -1776,6 +1859,8 @@ impl core::hash::Hash for surgeist_text::PreparedConditionalOpportunity
 pub fn surgeist_text::PreparedConditionalOpportunity::hash<H: core::hash::Hasher>(&self, state: &mut H)
 pub struct surgeist_text::PreparedControl
 impl surgeist_text::PreparedControl
+pub fn surgeist_text::PreparedControl::captured_control(&self) -> core::option::Option<surgeist_text::CapturedControl>
+impl surgeist_text::PreparedControl
 pub fn surgeist_text::PreparedControl::prepared_text(&self) -> surgeist_text::PreparedText
 impl surgeist_text::PreparedControl
 pub fn surgeist_text::PreparedControl::view(&self) -> surgeist_text::PreparedControlView<'_>
@@ -1788,12 +1873,13 @@ impl core::hash::Hash for surgeist_text::PreparedControl
 pub fn surgeist_text::PreparedControl::hash<H: core::hash::Hasher>(&self, state: &mut H)
 pub struct surgeist_text::PreparedControlView<'a>
 impl surgeist_text::PreparedControlView<'_>
-pub fn surgeist_text::PreparedControlView<'_>::handle(&self) -> surgeist_text::PreparedControl
-impl surgeist_text::PreparedControlView<'_>
+pub fn surgeist_text::PreparedControlView<'_>::capture_position(&self) -> core::option::Option<surgeist_text::CapturedEventPosition>
 pub fn surgeist_text::PreparedControlView<'_>::kind(&self) -> &surgeist_text::ParagraphControlKind
 pub fn surgeist_text::PreparedControlView<'_>::level(&self) -> surgeist_text::BidiLevel
 pub fn surgeist_text::PreparedControlView<'_>::processed_position(&self) -> surgeist_text::ProcessedPosition
 pub fn surgeist_text::PreparedControlView<'_>::source_position(&self) -> surgeist_text::SourcePosition
+impl surgeist_text::PreparedControlView<'_>
+pub fn surgeist_text::PreparedControlView<'_>::handle(&self) -> surgeist_text::PreparedControl
 impl core::fmt::Debug for surgeist_text::PreparedControlView<'_>
 pub fn surgeist_text::PreparedControlView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::PreparedHyphenationCut
@@ -1864,6 +1950,7 @@ pub fn surgeist_text::PreparedOriginIntersectionView<'_>::fmt(&self, f: &mut cor
 pub struct surgeist_text::PreparedOriginView<'a>
 impl surgeist_text::PreparedOriginView<'_>
 pub fn surgeist_text::PreparedOriginView<'_>::aggregate_range(&self) -> surgeist_text::Range
+pub fn surgeist_text::PreparedOriginView<'_>::capture_position(&self) -> core::option::Option<surgeist_text::CapturedEventPosition>
 pub fn surgeist_text::PreparedOriginView<'_>::handle(&self) -> surgeist_text::PreparedOrigin
 pub fn surgeist_text::PreparedOriginView<'_>::kind(&self) -> surgeist_text::ParagraphOriginKind
 pub fn surgeist_text::PreparedOriginView<'_>::local_range(&self) -> surgeist_text::Range
@@ -1872,9 +1959,10 @@ impl core::fmt::Debug for surgeist_text::PreparedOriginView<'_>
 pub fn surgeist_text::PreparedOriginView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::PreparedScope
 impl surgeist_text::PreparedScope
-pub fn surgeist_text::PreparedScope::prepared_text(&self) -> surgeist_text::PreparedText
-impl surgeist_text::PreparedScope
+pub fn surgeist_text::PreparedScope::captured_scope(&self) -> surgeist_text::CapturedScope
 pub fn surgeist_text::PreparedScope::view(&self) -> surgeist_text::PreparedScopeView<'_>
+impl surgeist_text::PreparedScope
+pub fn surgeist_text::PreparedScope::prepared_text(&self) -> surgeist_text::PreparedText
 impl core::cmp::Eq for surgeist_text::PreparedScope
 impl core::cmp::PartialEq for surgeist_text::PreparedScope
 pub fn surgeist_text::PreparedScope::eq(&self, other: &Self) -> bool
@@ -1888,7 +1976,7 @@ pub fn surgeist_text::PreparedScopeView<'_>::capture_ordinal(&self) -> usize
 pub fn surgeist_text::PreparedScopeView<'_>::entry_control(&self) -> core::option::Option<surgeist_text::PreparedControl>
 pub fn surgeist_text::PreparedScopeView<'_>::exit_control(&self) -> core::option::Option<surgeist_text::PreparedControl>
 pub fn surgeist_text::PreparedScopeView<'_>::handle(&self) -> surgeist_text::PreparedScope
-pub fn surgeist_text::PreparedScopeView<'_>::role(&self) -> surgeist_text::PreparedScopeRole
+pub fn surgeist_text::PreparedScopeView<'_>::role(&self) -> surgeist_text::ScopeRole
 pub fn surgeist_text::PreparedScopeView<'_>::style(&self) -> &surgeist_text::Style
 impl core::fmt::Debug for surgeist_text::PreparedScopeView<'_>
 pub fn surgeist_text::PreparedScopeView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -1897,6 +1985,7 @@ impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::alternative_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedAlternativeView<'_>>
 pub fn surgeist_text::PreparedText::atomic_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedAtomicView<'_>>
 pub fn surgeist_text::PreparedText::boundary_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedBoundaryView<'_>>
+pub fn surgeist_text::PreparedText::captured_paragraph(&self) -> core::option::Option<surgeist_text::CapturedParagraph>
 pub fn surgeist_text::PreparedText::control_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedControlView<'_>>
 pub fn surgeist_text::PreparedText::opportunity_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedOpportunityView<'_>>
 pub fn surgeist_text::PreparedText::origin_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedOriginView<'_>>

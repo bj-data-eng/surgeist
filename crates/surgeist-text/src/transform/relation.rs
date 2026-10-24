@@ -43,10 +43,6 @@ pub(crate) enum GeneratedSeparatorOwner {
 #[derive(Clone, Debug)]
 pub(crate) struct ScopeData {
     pub(crate) ordinal: usize,
-    pub(crate) role: crate::PreparedScopeRole,
-    pub(crate) style: crate::Style,
-    pub(crate) entry_control: Option<usize>,
-    pub(crate) exit_control: Option<usize>,
 }
 
 #[derive(Clone, Debug)]

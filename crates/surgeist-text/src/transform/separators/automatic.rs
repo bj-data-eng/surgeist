@@ -6,8 +6,7 @@ use crate::processing::contextual::ParagraphTopology;
 use crate::projection::SourceProjection;
 use crate::protocol::paragraph::{ParagraphAnchorItem, ParagraphControlKind, ParagraphData};
 use crate::{
-    Error, ErrorCode, ErrorDetail, InlineBoxKind, PreparedScopeRole, Result, SourceProcessingEvent,
-    TextTransformError,
+    Error, ErrorCode, ErrorDetail, InlineBoxKind, Result, SourceProcessingEvent, TextTransformError,
 };
 use icu_properties::{
     CodePointMapData,
@@ -225,7 +224,7 @@ fn custody(
                 _ => continue,
             };
             let fact = &topology.capture.scopes[scope];
-            if fact.domain == topology.domain && !fact.domain_root {
+            if fact.domain == topology.domain && fact.definition.is_none() {
                 let parent = fact.parent.expect("inline scope has parent");
                 if depth(topology, parent) < depth(topology, owner) {
                     owner = parent;
@@ -447,31 +446,15 @@ pub(crate) fn proposals(
                 });
                 index
             };
-            let issued_scope = if let Some(index) =
-                map.scopes.iter().position(|row| row.ordinal == scope)
-            {
-                index
-            } else {
-                let local = |global| {
-                    topology.control_orders.iter().position(|&order| matches!(topology.capture.events[order].event, SourceProcessingEvent::Control { control, .. } if control == global))
+            let issued_scope =
+                if let Some(index) = map.scopes.iter().position(|row| row.ordinal == scope) {
+                    index
+                } else {
+                    let index = map.scopes.len();
+                    map.scopes.try_reserve(1).map_err(|_| super::capacity())?;
+                    map.scopes.push(ScopeData { ordinal: scope });
+                    index
                 };
-                let index = map.scopes.len();
-                map.scopes.try_reserve(1).map_err(|_| super::capacity())?;
-                map.scopes.push(ScopeData {
-                    ordinal: scope,
-                    role: if fact.domain_root {
-                        PreparedScopeRole::Domain
-                    } else {
-                        PreparedScopeRole::Inline
-                    },
-                    style: own_style.clone(),
-                    entry_control: fact
-                        .boundaries
-                        .and_then(|boundaries| local(boundaries.start)),
-                    exit_control: fact.boundaries.and_then(|boundaries| local(boundaries.end)),
-                });
-                index
-            };
             let occurrence = map.virtuals.len();
             map.virtuals.try_reserve(1).map_err(|_| super::capacity())?;
             let control_cut = events[..event_cut].iter().filter(|event| matches!(event.kind, Event::Anchor(anchor) if matches!(anchor.item, ParagraphAnchorItem::Control(_)))).count();

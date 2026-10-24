@@ -174,13 +174,6 @@ prepared_handle!(
     PreparedHyphenationCut
 );
 
-/// Captured scope role; identity belongs to its issued handle.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum PreparedScopeRole {
-    Domain,
-    Inline,
-}
-
 /// The complete logical mixed sequence, using distinct issued occurrence roles.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PreparedParticipant {

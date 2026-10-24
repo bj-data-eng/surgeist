@@ -63,10 +63,12 @@ pub use layout::{
 };
 pub use options::{Alignment, Indent, Options, TextAlignLast, TextOverflow, ValidatedOptions};
 pub use processing::{
-    ContextualSourceInput, DocumentSegmentBreaks, PlaintextItem, PlaintextItems,
-    ProcessedInlineBox, ProcessedParagraph, ProcessedPosition, ProcessedRange, ProcessedSource,
-    ProcessedSpan, ProcessedText, SourceProcessingConnection, SourceProcessingEnvelope,
-    SourceProcessingError, SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
+    CapturedControl, CapturedDomainDefinition, CapturedEventPosition, CapturedFlowEvent,
+    CapturedParagraph, CapturedScope, CapturedScopeIntersection, ContextualSourceInput,
+    DocumentSegmentBreaks, PlaintextItem, PlaintextItems, ProcessedInlineBox, ProcessedParagraph,
+    ProcessedPosition, ProcessedRange, ProcessedSource, ProcessedSpan, ProcessedText, ScopeRole,
+    SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingError,
+    SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
     SourceProcessingScopeBoundaries, SourceProcessingTopology, WhiteSpaceTrim,
     process_contextual_source, process_source_whitespace,
 };
@@ -96,11 +98,11 @@ pub use protocol::{
     PreparationOptions, PreparedAlternative, PreparedAtomic, PreparedBoundary, PreparedBreakKind,
     PreparedConditionalOpportunity, PreparedControl, PreparedHyphenationCut,
     PreparedHyphenationCutView, PreparedOpportunity, PreparedOrigin, PreparedParticipant,
-    PreparedScope, PreparedScopeRole, PreparedTermination, PreparedText, PreparedUnit,
-    PreparedVirtualSeparator, PreparedWord, PreparedWordPortion, PreparedWordView,
-    PresentationRange, ProtocolContextField, ProtocolError, ProtocolHandleKind, SelectedLine,
-    SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlot, SpacingSlotDisposition,
-    SpacingSlotFeedback, SpacingSlotOwner, TabContext,
+    PreparedScope, PreparedTermination, PreparedText, PreparedUnit, PreparedVirtualSeparator,
+    PreparedWord, PreparedWordPortion, PreparedWordView, PresentationRange, ProtocolContextField,
+    ProtocolError, ProtocolHandleKind, SelectedLine, SpacingAllocation, SpacingAllocations,
+    SpacingPolicy, SpacingSlot, SpacingSlotDisposition, SpacingSlotFeedback, SpacingSlotOwner,
+    TabContext,
 };
 pub use range::{Range, SourcePosition, SourceRange};
 pub use source_model::{

@@ -86,15 +86,37 @@ uses real selected text, boxes, controls, and any explicitly supplied Layout
 `line_strut`. Missing metrics remain a typed refusal rather than a guessed font
 or zero-size line.
 
-For virtual phrase output, `TextParagraphBinding::scopes` supplies exactly the
-contributing Text-issued scopes. `TextScopeAssociation::ParagraphContainer`
-names this paragraph's actual container; `Inline { start, end }` retains distinct
-normalized boundary nodes matching that same scope's own entry/exit controls.
-Equal source offsets or another balanced pair cannot establish the association.
-Capture rejects missing, foreign, duplicate, crossed, reused or mismatched facts,
-including an inline scope whose needed endpoints lie outside native capture.
-Scope Style remains Text-owned; actual boundary metrics remain Layout-owned.
-The scope and both boundary inputs participate in cache and invalidation checks.
+For virtual phrase output, capture derives one association for each needed
+canonical Text scope from its genuine captured endpoint controls and the actual
+validated control-node bindings. Inline scopes retain their distinct normalized
+Start/End node pair across paragraph cuts; domain scopes associate with each
+paragraph's actual container. `TextScopeBinding` and `TextScopeAssociation` expose
+these derived associations on retained fragments. Callers supply no separate
+scope-pair inventory. Equal source offsets or another balanced pair cannot
+establish identity. Scope Style stays Text-owned, boundary metrics stay
+Layout-owned, and generated geometry remains local to its own prepared paragraph.
+
+Flow proof covers each contributing inline owner's authentic extent in its own
+domain, or the full domain for a contributing domain owner. Disjoint extents keep
+their gap. Known ancestor endpoints establish ancestry without demanding unrelated
+interiors. Capture compares Text's owner-issued flow projection with actual tree
+and run order inside those extents. Atomic contents validate independently through
+their exact nominated atomic node, so deferred capture after a later sibling does
+not change ownership. Plain child Blocks inside a required extent need their real
+container association. Missing, foreign, reused, crossed or mismatched facts
+remain typed refusals. Needed scope, endpoint, container and tree dependencies
+participate in cache and invalidation checks.
+
+A genuine captured paragraph with no original, control, atomic, participant or
+generated-contributor inventory can associate an empty domain through the existing
+paragraph binding. Its supplied node and binding inventories must also be empty,
+and `line_strut` must be absent. This association adds no Text run, line, strut,
+fragment or placed Text output; ordinary Box geometry is unchanged. Removed-only
+source and omitted real bindings do not qualify. Empty incidence must be authentic
+and unambiguous, and an empty paragraph does not certify that its whole domain is
+empty. Unknown inline topology does not erase genuine canonical paragraph/domain
+facts; missing facts needed by an active proof still refuse. See the [Text/Layout contract](../../../docs/text-layout-contract.md) for
+the shared ownership and placement boundary.
 
 The native profile supports horizontal LTR and RTL text, signed indentation,
 and the preparation's selected font-advance or CSS-stop tab operation.
