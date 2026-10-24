@@ -434,6 +434,51 @@ The standalone `System::layout` convenience path retains the currently supported
 
 The explicit native `TabContext::FontAdvance` policy uses the selected font's actual U+0009 glyph advance, preserving the standalone policy through the same finalizer. It does not approximate a tab with a space or implement CSS tab stops. `NoTabs` validates actual absence. The [CSS tab contract](#preserved-css-tab-stops) below defines the independently prepared CSS-stop operation and its required block capture. A taken discretionary opportunity requires its actual issued alternative, including an explicitly computed empty replacement; a natural paragraph end does not select a hyphen merely because the preceding source contains SHY. A source-defined replacement validates its real defining source occurrence. A control-defined replacement retains its exact control/opportunity/alternative owner and may have no text origin; incidental source-anchor provenance must be supplied and validated, never guessed from the numeric offset.
 
+### Native control-character presentation
+
+This is the selected #64 contract; implementation qualification remains with
+that open issue. Host-defined segment-break interpretation precedes this
+operation. Eligible characters are Cc excluding TAB, LF, CR and actual
+document-defined segment-break occurrences. A supplied NUL is eligible;
+undeclared VT, FF and NEL are visible symbols rather than breaks or whitespace.
+The [source determination](../references/text-control-presentation--native-determination.md)
+distinguishes normative visibility from the native property choices below.
+
+Text supplies an always-selected deterministic code-point box using a private
+real font resource. Its FontData, EffectiveFontInstance, glyph geometry, scale,
+metrics and Render paint must describe the actual resource. It is a bundled UA
+presentation resource usable under RegisteredOnly, outside caller registration
+and system-font discovery. It cannot serve unrelated missing characters or
+default-font struts. Retained snapshots keep their real resource lifetime.
+Font-provided control visibility is not the selection criterion. Zero font
+size, clipping and transparent styling do not constitute synthesis failures.
+
+The native ordinary-symbol presentation profile is:
+
+| Property | Selected value |
+| --- | --- |
+| General category and script | So and Common |
+| Bidi class | ON |
+| Grapheme, word and sentence break | Other |
+| Line break | AL |
+| East Asian width | N |
+| Joining type and canonical combining class | Non_Joining and 0 |
+| Whitespace, default-ignorable, case, letter, number and emoji properties | Absent |
+
+Apply that same per-occurrence profile throughout presentation, including
+shaping. This is neither a Unicode database mutation nor U+FFFD substitution.
+Retain exact original UTF-16, scalar identity, source ranges, copy and plaintext.
+Controls are bidi neutrals and interrupt cursive joining. Following combining
+marks retain ordinary symbol-plus-mark grapheme behavior; font fallback cannot
+create a segmentation boundary or replace usable marks with missing glyphs.
+AL participates in normal line-breaking and word-breaking rules without
+introducing unconditional opportunities or an indivisible whole-word rule.
+
+Unsupported default-ignorables use a separate rendering suppression operation.
+Keep source ownership and meaningful shaping context, including joining,
+variation selectors and explicit separator semantics. A zero advance alone does
+not prove invisibility; final glyphs and paint must not expose unsupported ink.
+
 ### Native whitespace edges and hanging
 
 Text owns selected-line Phase II classification under #64/#72; Layout consumes

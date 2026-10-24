@@ -1313,6 +1313,15 @@ and provenance; apply exactly one half-ch bump. This completes a source gap as
 native policy, without a browser-equivalence or CSSWG-resolution claim.
 Unresolved opposite-edge intrinsic phases remain a separate capability limit.
 
+## Visible control-character presentation
+
+The [control source determination](text-control-presentation--native-determination.md)
+records pinned Text3/Text4 visibility, CSSWG's retained NUL requirement and a
+static WPT witness. The [native contract](../docs/text-layout-contract.md#native-control-character-presentation)
+owns the selected real-font presentation and explicit ordinary-symbol property
+profile; the latter completes an underspecified detail rather than claiming a
+CSSWG-selected tuple. Implementation qualification remains in #64.
+
 ## Nonempty formatting-unit Range geometry
 
 The [Blink Range witness](blink-formatting-unit-range--daf70f9ddee4.md) identifies
