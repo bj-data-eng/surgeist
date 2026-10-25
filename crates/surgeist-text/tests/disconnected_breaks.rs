@@ -318,3 +318,90 @@ fn actual_preserved_space_keeps_its_offer_at_a_disconnected_seam() {
         );
     }
 }
+
+#[test]
+fn source_zero_width_space_keeps_its_lb8_offer_at_a_disconnected_seam() {
+    // UAX #14 revision55 LB8 supplies ZW SP* opportunities before the later
+    // LB11 word-joiner and LB13 closing-punctuation prohibitions are considered.
+    // https://www.unicode.org/reports/tr14/tr14-55.html#LB8
+    let mut failures = Vec::new();
+    for direction in DIRECTIONS {
+        for mode in MODES {
+            for spaces in ["", " ", "  "] {
+                for following in ["b", "\u{2060}b", ")b"] {
+                    let value = format!("a\u{200b}{spaces}{following}");
+                    let at = 2 + spaces.len();
+                    let prepared = prepare(paragraph(
+                        &value,
+                        at,
+                        t::ParagraphConnectionKind::Disconnected,
+                        mode,
+                        direction,
+                    ));
+                    let allowed = cuts(&prepared, t::PreparedBreakKind::Allowed);
+                    if !allowed.contains(&at) {
+                        failures.push((direction, mode, value, at, allowed));
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "actual source ZW SP* retains its independent LB8 permission: {failures:?}"
+    );
+}
+
+#[test]
+fn source_zero_width_space_does_not_override_earlier_lb6_hard_break_protection() {
+    // LB6 precedes LB8: ZW SP* cannot permit a soft break before LF or BK.
+    // The actual hard separator still owns its following mandatory break.
+    // https://www.unicode.org/reports/tr14/tr14-55.html#LB6
+    for direction in DIRECTIONS {
+        for mode in MODES {
+            for spaces in ["", "  "] {
+                for hard in ["\n", "\u{2028}"] {
+                    let value = format!("a\u{200b}{spaces}{hard}b");
+                    let at = 2 + spaces.len();
+                    let prepared = prepare(paragraph(
+                        &value,
+                        at,
+                        t::ParagraphConnectionKind::Disconnected,
+                        mode,
+                        direction,
+                    ));
+                    assert!(
+                        !cuts(&prepared, t::PreparedBreakKind::Allowed).contains(&at),
+                        "LB6 before hard: {direction:?} {mode:?} {value:?}"
+                    );
+                    assert!(
+                        cuts(&prepared, t::PreparedBreakKind::Forced).contains(&(at + 1)),
+                        "mandatory after hard: {direction:?} {mode:?} {value:?}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn older_disconnected_zero_width_space_does_not_lend_permission_to_a_later_cut() {
+    // The component beginning with SPACE has no ZW of its own. Its interior
+    // cut before WJ is protected by LB11; an older component cannot donate LB8.
+    // https://www.unicode.org/reports/tr14/tr14-55.html#LB11
+    for direction in DIRECTIONS {
+        for mode in MODES {
+            let prepared = prepare(paragraph(
+                "a\u{200b} \u{2060}b",
+                2,
+                t::ParagraphConnectionKind::Disconnected,
+                mode,
+                direction,
+            ));
+            assert!(
+                !cuts(&prepared, t::PreparedBreakKind::Allowed).contains(&3),
+                "no LB8 donor across disconnection: {direction:?} {mode:?}"
+            );
+        }
+    }
+}
