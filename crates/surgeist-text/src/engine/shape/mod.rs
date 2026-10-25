@@ -110,54 +110,6 @@ pub(crate) struct JoiningDomain {
     source: harfrust::JoiningSource,
 }
 
-pub(crate) fn prepare_joining_domains(
-    analyzed: &super::AnalyzedData,
-    shaped: &ShapedData,
-    alternatives: &[crate::protocol::prepared::PreparedIndicationFonts],
-) -> Result<Vec<JoiningDomain>> {
-    if alternatives.is_empty() {
-        return Ok(Vec::new());
-    }
-    let projection = &analyzed.projection;
-    let mut boundaries = vec![0, projection.atoms.len()];
-    boundaries.extend(projection.barrier_atoms.iter().copied());
-    boundaries.sort_unstable();
-    boundaries.dedup();
-    let mut scripts = Vec::new();
-    for run in shaped.runs.iter().chain(
-        alternatives
-            .iter()
-            .flat_map(|a| a.font_queries.iter().map(|w| &w.run)),
-    ) {
-        if !scripts.contains(&run.script) {
-            scripts.push(run.script);
-        }
-    }
-    let mut domains = Vec::new();
-    for pair in boundaries.windows(2) {
-        for &script in &scripts {
-            for level in [0, 1] {
-                let atoms = pair[0]..pair[1];
-                let bytes = atom_bytes(projection, atoms.clone());
-                let source = harfrust::JoiningSource::analyze(
-                    &projection.text[bytes],
-                    provider_script(script),
-                    provider_direction(level),
-                    &symbol_positions(projection, atoms.clone())?,
-                )
-                .map_err(joining_source_error)?;
-                domains.push(JoiningDomain {
-                    atoms,
-                    script,
-                    level,
-                    source,
-                });
-            }
-        }
-    }
-    Ok(domains)
-}
-
 /// The original-only operation retains its actual captured scalar assignments;
 /// a selected substring does not invent another catalogue query prerequisite.
 pub(crate) fn retain_original_fonts(
@@ -689,45 +641,48 @@ pub(crate) fn finalize(
     } else {
         let computed =
             selected.request.alternative.is_some() || selected.request.incoming.is_some();
-        let barriers: BTreeSet<_> = input.projection.barrier_atoms.iter().copied().collect();
+        let barriers = &selected.boundaries.presentation;
         let mut selected_domains: Vec<JoiningDomain> = Vec::new();
+        let mut original_domains: Vec<JoiningDomain> = Vec::new();
         for assignment in &presentation.assignments {
             let run = &assignment.run;
             let extent = bounded_context(
                 assignment.atoms.clone(),
                 0..input.projection.atoms.len(),
-                &barriers,
+                barriers,
             );
             let mut context =
                 RunContext::new(input.projection, assignment.atoms.clone(), extent.clone());
             if computed {
-                let original_anchor = presentation.originals[assignment.atoms.clone()]
-                    .iter()
-                    .flatten()
-                    .next()
-                    .copied()
-                    .unwrap_or_else(|| {
-                        prepared
-                            .analyzed
-                            .projection
-                            .atoms
-                            .partition_point(|a| {
-                                a.source.end
-                                    <= input.projection.atoms[assignment.atoms.start].source.start
-                            })
-                            .min(prepared.analyzed.projection.atoms.len().saturating_sub(1))
+                let seed =
+                    crate::protocol::boundary::original_seed(prepared, presentation, assignment)?;
+                let original_extent = selected.boundaries.original_extent(prepared, &seed);
+                let original_index = if let Some(index) =
+                    original_domains.iter().position(|domain| {
+                        domain.atoms == original_extent
+                            && domain.script == run.script
+                            && domain.level == run.level & 1
+                    }) {
+                    index
+                } else {
+                    let projection = &prepared.analyzed.projection;
+                    let bytes = atom_bytes(projection, original_extent.clone());
+                    let source = harfrust::JoiningSource::analyze(
+                        &projection.text[bytes],
+                        provider_script(run.script),
+                        provider_direction(run.level),
+                        &symbol_positions(projection, original_extent.clone())?,
+                    )
+                    .map_err(joining_source_error)?;
+                    original_domains.push(JoiningDomain {
+                        atoms: original_extent,
+                        script: run.script,
+                        level: run.level & 1,
+                        source,
                     });
-                let original = prepared
-                    .joining_domains
-                    .iter()
-                    .find(|d| {
-                        d.atoms.contains(&original_anchor)
-                            && d.script == run.script
-                            && d.level == (run.level & 1)
-                    })
-                    .ok_or_else(|| {
-                        super::shaping_refused(harfrust::ShapingRefusal::JoiningProfile)
-                    })?;
+                    original_domains.len() - 1
+                };
+                let original = &original_domains[original_index];
                 let index = if let Some(i) = selected_domains.iter().position(|d| {
                     d.atoms == extent && d.script == run.script && d.level == (run.level & 1)
                 }) {
@@ -784,20 +739,13 @@ pub(crate) fn finalize(
                     .copied()
                     .collect::<Vec<_>>();
                 if let (Some(&first), Some(&last)) = (captured.first(), captured.last()) {
-                    let original_barriers: BTreeSet<_> = prepared
-                        .analyzed
-                        .projection
-                        .barrier_atoms
-                        .iter()
-                        .copied()
-                        .collect();
                     context = RunContext::new(
                         &prepared.analyzed.projection,
                         first..last + 1,
                         bounded_context(
                             first..last + 1,
                             0..prepared.analyzed.projection.atoms.len(),
-                            &original_barriers,
+                            &selected.boundaries.original,
                         ),
                     );
                 }

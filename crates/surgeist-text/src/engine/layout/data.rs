@@ -241,6 +241,7 @@ pub(crate) struct FinalizedAnchor {
     pub(crate) unit: usize,
     pub(crate) slot: crate::Point,
     pub(crate) level: u8,
+    pub(crate) inline_end: f64,
 }
 
 /// The actual allocation target joined by finalization, in selected-slot order.

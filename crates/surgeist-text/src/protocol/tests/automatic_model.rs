@@ -931,9 +931,18 @@ fn automatic_mixed_directional_occurrences_retain_actual_insertion_side() {
             .iter()
             .filter_map(|participant| {
                 if let PreparedParticipant::Control(control) = participant {
-                    Some(ControlAllocation {
-                        occurrence: control.clone(),
-                        strut: None,
+                    Some({
+                        let occurrence = control.clone();
+                        ControlAllocation {
+                            boundary: matches!(
+                                occurrence.view().kind(),
+                                crate::ParagraphControlKind::InlineBoundaryStart
+                                    | crate::ParagraphControlKind::InlineBoundaryEnd
+                            )
+                            .then_some(crate::InlineBoundaryAllocation::ZERO),
+                            occurrence,
+                            strut: None,
+                        }
                     })
                 } else {
                     None
@@ -1547,9 +1556,18 @@ fn ordinary_word_fallbacks_preserve_transparent_mixed_cut_family() {
             .iter()
             .filter_map(|p| {
                 if let PreparedParticipant::Control(control) = p {
-                    Some(ControlAllocation {
-                        occurrence: control.clone(),
-                        strut: None,
+                    Some({
+                        let occurrence = control.clone();
+                        ControlAllocation {
+                            boundary: matches!(
+                                occurrence.view().kind(),
+                                crate::ParagraphControlKind::InlineBoundaryStart
+                                    | crate::ParagraphControlKind::InlineBoundaryEnd
+                            )
+                            .then_some(crate::InlineBoundaryAllocation::ZERO),
+                            occurrence,
+                            strut: None,
+                        }
                     })
                 } else {
                     None
@@ -1633,9 +1651,18 @@ fn before_auto_uses_the_actual_lri_occurrence_in_an_rtl_paragraph() {
             .iter()
             .filter_map(|v| {
                 if let PreparedParticipant::Control(c) = v {
-                    Some(ControlAllocation {
-                        occurrence: c.clone(),
-                        strut: None,
+                    Some({
+                        let occurrence = c.clone();
+                        ControlAllocation {
+                            boundary: matches!(
+                                occurrence.view().kind(),
+                                crate::ParagraphControlKind::InlineBoundaryStart
+                                    | crate::ParagraphControlKind::InlineBoundaryEnd
+                            )
+                            .then_some(crate::InlineBoundaryAllocation::ZERO),
+                            occurrence,
+                            strut: None,
+                        }
                     })
                 } else {
                     None

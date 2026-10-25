@@ -1941,11 +1941,25 @@ impl TestTree {
         let resolved_line_height = line_height.resolve(font_size);
         let mut layout_input = if let Some(origin) = &node.prepared_origin {
             layout::LayoutInput::inline_text(layout::TextParticipation::new(origin.clone()))
-        } else if let Some(control) = &node.prepared_control {
-            if node.inline_boundary.is_some() {
-                layout::LayoutInput::text_control(layout::TextControlParticipation::new(
-                    control.clone(),
-                ))
+        } else if node.prepared_control.is_some() {
+            if let Some(kind) = node.inline_boundary {
+                let flow = inherited.containing_flow.ok_or_else(|| {
+                    Error::new("captured neutral boundary requires a containing flow")
+                })?;
+                // Native fixture validation forbids an authored strut here,
+                // and the boundary schema admits no decoration properties.
+                // These are genuine zero contributions, not absent Style facts.
+                let metrics = layout::InlineMetrics::try_new(0.0, 0.0)
+                    .map_err(|error| Error::new(format!("invalid neutral metrics: {error:?}")))?;
+                layout::LayoutInput::inline_boundary(
+                    layout::InlineBoundaryInput::new(
+                        kind,
+                        metrics,
+                        layout::InlineBoundaryEdge::ZERO,
+                    )
+                    .with_direction(flow.direction())
+                    .with_writing_mode(flow.writing_mode()),
+                )
             } else {
                 to_layout_input_in_flow(&node.style, inherited.containing_flow)?
             }
@@ -1959,9 +1973,13 @@ impl TestTree {
                         fixture_inline_metrics(font_size, resolved_line_height)
                     })?;
                     layout::LayoutInput::inline_boundary(
-                        layout::InlineBoundaryInput::new(kind, metrics)
-                            .with_direction(flow.direction())
-                            .with_writing_mode(flow.writing_mode()),
+                        layout::InlineBoundaryInput::new(
+                            kind,
+                            metrics,
+                            layout::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .with_direction(flow.direction())
+                        .with_writing_mode(flow.writing_mode()),
                     )
                 }
                 (None, Some(_)) => {
@@ -2927,11 +2945,16 @@ fn consume_unobserved_boundary(
 ) -> Result<(), Error> {
     let unrounded = comparison.fragment_cursors.unrounded.take_for_node(node);
     let final_output = comparison.fragment_cursors.final_output.take_for_node(node);
-    if let Some(control) = tree.nodes[node].layout_input.as_text_control() {
+    if let Some(control) = tree
+        .paragraphs
+        .iter()
+        .flat_map(|paragraph| &paragraph.controls)
+        .find(|row| row.node == node)
+    {
         let actual_control = |entry: &layout::InlineFragmentOutputEntry<usize>| {
             matches!(entry.fragment().finalized_fragment().view().owner(),
                 surgeist_text::FinalizedFragmentOwner::Control(owner)
-                    if owner == *control.occurrence())
+                    if owner == control.occurrence)
         };
         if unrounded.is_empty()
             || !unrounded.iter().all(actual_control)
@@ -5970,6 +5993,16 @@ mod tests {
         let batch = native_tree_compute(&tree, fri06_c06_inline_request());
         assert_eq!(batch.unrounded_inline_fragments().len(), 2);
         for entry in batch.unrounded_inline_fragments() {
+            let line = entry.fragment().finalized_fragment().finalized_line();
+            assert!(!line.has_in_flow_content());
+            for row in &line.selected_line().request().controls {
+                assert_eq!(
+                    row.boundary,
+                    Some(surgeist_text::InlineBoundaryAllocation::ZERO)
+                );
+                let strut = row.strut.unwrap();
+                assert_eq!((strut.baseline, strut.line_extent), (0.0, 0.0));
+            }
             assert!(matches!(
                 entry.fragment().finalized_fragment().view().owner(),
                 surgeist_text::FinalizedFragmentOwner::Control(_)
@@ -6005,13 +6038,13 @@ mod tests {
         let golden = generated_native_golden("prepared_text_continuity_bidi__border_box_ltr");
         let (tree, batch) = generated_native_batch(&golden);
         let controls = tree
-            .nodes
+            .paragraphs
             .iter()
-            .enumerate()
-            .filter_map(|(node, row)| {
-                row.layout_input
-                    .as_text_control()
-                    .map(|control| (node, control.occurrence()))
+            .flat_map(|paragraph| {
+                paragraph
+                    .controls
+                    .iter()
+                    .map(|row| (row.node, &row.occurrence))
             })
             .collect::<Vec<_>>();
         assert_eq!(
@@ -6025,6 +6058,10 @@ mod tests {
             ]
         );
         for (node, control) in controls {
+            let input = tree.nodes[node].layout_input.as_inline_boundary().unwrap();
+            assert_eq!(input.edge(), layout::InlineBoundaryEdge::ZERO);
+            assert_eq!(input.metrics().baseline(), 0.0);
+            assert_eq!(input.metrics().line_extent(), 0.0);
             assert!(
                 batch.unrounded_inline_fragments().iter().any(|entry| {
                     entry.owner() == &layout::InlineFragmentOwner::Node(node)
@@ -6398,16 +6435,13 @@ mod tests {
                         .collect::<Vec<_>>()
                 })
                 .collect::<Vec<_>>();
-            // Readback retains the provider's default-ignorable glyphs: the
-            // actual Ahem space glyph (3), with zero advance for PDI and RLI.
-            // These source-associated controls accompany the three visible Xs;
-            // glyph iteration is not a visible-glyph-only projection.
+            // Residual PDI/RLI glyph rows are suppressed at Text's provider
+            // boundary. Their original zero Range/source custody remains;
+            // the three real Ahem X glyphs retain these canonical positions.
             assert_eq!(
                 glyphs,
                 vec![
-                    (surgeist_text::Range::new(4, 5), 3, 24.0, 0.0),
                     (surgeist_text::Range::new(0, 1), 58, 24.0, 16.0),
-                    (surgeist_text::Range::new(1, 2), 3, 40.0, 0.0),
                     (surgeist_text::Range::new(2, 3), 58, 40.0, 16.0),
                     (surgeist_text::Range::new(3, 4), 58, 56.0, 16.0)
                 ]

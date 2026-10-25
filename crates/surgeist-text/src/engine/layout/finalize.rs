@@ -98,7 +98,7 @@ pub(super) fn finalize(
         Some(natural) => {
             phase_two::allocated(&selected, &shaped, &atomics, &order, natural, &mut metrics)?
         }
-        None => phase_two::standalone(&metrics, &shaped, &atomics, &order)?,
+        None => phase_two::standalone(&selected, &metrics, &shaped, &atomics, &order)?,
     };
     let width = selection.available_inline.unwrap_or_else(|| {
         (measurements.alignment().advance() + selection.indent.max(0.0)).max(0.0)
@@ -162,10 +162,36 @@ pub(super) fn finalize(
     };
     let mut pen = metrics.offset;
     let mut last_run = None;
+    let groups = crate::protocol::boundary::groups(&selected, &shaped);
+    let mut atom_groups = vec![0; selected.presentation.projection.atoms.len()];
+    for (index, group) in groups.iter().enumerate() {
+        atom_groups[group.clone()].fill(index);
+    }
+    let mut internal_edges = vec![0.0; groups.len()];
     for (ordinal, _) in order.iter() {
         let level = levels[ordinal];
         match shaped.items[ordinal] {
             ShapedItem::Anchor { unit, .. } => {
+                let advance = crate::protocol::boundary::advance(&selected, unit);
+                let inline_end = add(
+                    "inline boundary end",
+                    TextNumericPhase::Finalization,
+                    pen,
+                    advance,
+                )?;
+                let cut = selected.presentation.units[unit].atoms.start;
+                let group = groups.partition_point(|group| group.end <= cut);
+                if groups
+                    .get(group)
+                    .is_some_and(|group| group.start < cut && cut < group.end)
+                {
+                    internal_edges[group] = add(
+                        "shared unit boundary advance",
+                        TextNumericPhase::Finalization,
+                        internal_edges[group],
+                        advance,
+                    )?;
+                }
                 data.visual_order
                     .push(FinalizedVisualItem::Anchor(data.anchors.len()));
                 data.anchors.push(FinalizedAnchor {
@@ -185,7 +211,9 @@ pub(super) fn finalize(
                         },
                     ),
                     level,
+                    inline_end,
                 });
+                pen = inline_end;
             }
             ShapedItem::InlineBox { occurrence, .. } => {
                 let allocation = atomics
@@ -239,7 +267,12 @@ pub(super) fn finalize(
                 data.visual_order
                     .push(FinalizedVisualItem::Cluster(cluster_index));
                 let cluster = &shaped.clusters[cluster_index];
-                let cluster_x = pen;
+                let cluster_x = add(
+                    "shared unit glyph origin",
+                    TextNumericPhase::Finalization,
+                    pen,
+                    -internal_edges[atom_groups[cluster.atoms.start]],
+                )?;
                 let discarded =
                     dispositions[cluster_index] == SpacingSlotDisposition::DiscardedAtLineEdge;
                 // RTL ligature/component shares are visited before their logical
@@ -529,7 +562,7 @@ pub(super) fn finalize(
         let rect = Rect::new(
             anchor.slot.x,
             metrics.block_min,
-            0.0,
+            crate::protocol::boundary::advance(&selected, anchor.unit),
             metrics.block_max - metrics.block_min,
         );
         use crate::protocol::{paragraph::FragmentOwner, prepared::PresentationUnitKind};
@@ -585,7 +618,7 @@ pub(super) fn finalize(
             }
             FinalizedVisualItem::Anchor(index) => {
                 let item = &data.anchors[index];
-                (item.slot.x, item.slot.x)
+                (item.slot.x, item.inline_end)
             }
             FinalizedVisualItem::InlineBox(index) => {
                 let item = &data.boxes[index];
@@ -767,7 +800,11 @@ fn install_out_of_flow(selected: &SelectedData, data: &mut FinalizedLineData) ->
         }
     }
     for anchor in &data.anchors {
-        slots[anchor.unit] = Some((anchor.slot.x, anchor.slot.x));
+        slots[anchor.unit] = Some(if anchor.level & 1 == 0 {
+            (anchor.slot.x, anchor.inline_end)
+        } else {
+            (anchor.inline_end, anchor.slot.x)
+        });
     }
     for item in &data.boxes {
         let unit = units.iter().position(|unit| matches!(unit.kind,PresentationUnitKind::Atomic {occurrence} if occurrence == item.occurrence)).ok_or_else(|| invalid("final atomic has no actual selected unit"))?;
@@ -1033,7 +1070,14 @@ fn line_metrics(
     prefix_receipts.push(0.0);
     for item in &shaped.items {
         match *item {
-            ShapedItem::Anchor { .. } => {}
+            ShapedItem::Anchor { unit } => {
+                result.advance = add(
+                    "line boundary advance",
+                    TextNumericPhase::Finalization,
+                    result.advance,
+                    crate::protocol::boundary::advance(selected, unit),
+                )?;
+            }
             ShapedItem::TextCluster(index) => {
                 let cluster = &shaped.clusters[index];
                 if cluster.content.font_run().is_some() {
@@ -1072,7 +1116,7 @@ fn line_metrics(
         }
         prefix_receipts.push(result.advance);
     }
-    result.trailing_whitespace = classify_trailing(shaped, dispositions)?;
+    result.trailing_whitespace = classify_trailing(selected, shaped, dispositions)?;
     if selected.metric_policy == LineMetricPolicy::Native {
         return native_metrics(selected, shaped, atomics, controls, result);
     }
@@ -1414,13 +1458,19 @@ fn collapse_edges(
 /// per-slot readback. Real selected anchors are transparent; in-flow items stop
 /// the scan. Out-of-flow occurrences are absent from this shaped flow sequence.
 fn classify_trailing(
+    selected: &SelectedData,
     shaped: &ShapedData,
     dispositions: &mut [SpacingSlotDisposition],
 ) -> Result<f64> {
     let mut advance = 0.0;
     for item in shaped.items.iter().rev() {
         match *item {
-            ShapedItem::Anchor { .. } => continue,
+            ShapedItem::Anchor { unit } => {
+                if crate::protocol::boundary::advance(selected, unit) != 0.0 {
+                    break;
+                }
+                continue;
+            }
             ShapedItem::TextCluster(index) if shaped.clusters[index].is_whitespace => {
                 if let SpacingSlotDisposition::Retained { trailing } = &mut dispositions[index] {
                     *trailing = true;
@@ -1689,7 +1739,7 @@ fn resolve_tabs(
     }
     for ordinal in ordinals {
         let advance = match shaped.items[ordinal] {
-            ShapedItem::Anchor { .. } => 0.0,
+            ShapedItem::Anchor { unit } => crate::protocol::boundary::advance(selected, unit),
             ShapedItem::InlineBox { occurrence, .. } => {
                 inflow_allocation(atomics[&occurrence])?.0.advance
             }
@@ -1984,13 +2034,23 @@ mod tests {
             .collect();
         let controls = prepared
             .control_views()
-            .map(|view| ControlAllocation {
-                occurrence: view.handle(),
-                strut: None,
+            .map(|view| {
+                let occurrence = view.handle();
+                ControlAllocation {
+                    boundary: matches!(
+                        occurrence.view().kind(),
+                        crate::ParagraphControlKind::InlineBoundaryStart
+                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                    )
+                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    occurrence,
+                    strut: None,
+                }
             })
             .collect();
         prepared
             .select(LineSelectionRequest {
+                boundary_context: Vec::new(),
                 incoming: None,
                 start: boundaries[0].clone(),
                 end: boundaries.last().unwrap().clone(),
@@ -2369,6 +2429,7 @@ mod tests {
             .handle();
         let line = prepared
             .select(LineSelectionRequest {
+                boundary_context: Vec::new(),
                 incoming: None,
                 start: prepared.boundary_views().next().unwrap().handle(),
                 end: prepared.boundary_views().last().unwrap().handle(),
@@ -2824,15 +2885,26 @@ mod tests {
             let controls = participants
                 .iter()
                 .filter_map(|participant| match participant {
-                    PreparedParticipant::Control(control) => Some(ControlAllocation {
-                        occurrence: control.clone(),
-                        strut: None,
+                    PreparedParticipant::Control(control) => Some({
+                        let occurrence = control.clone();
+                        ControlAllocation {
+                            boundary: matches!(
+                                occurrence.view().kind(),
+                                crate::ParagraphControlKind::InlineBoundaryStart
+                                    | crate::ParagraphControlKind::InlineBoundaryEnd
+                            )
+                            .then_some(crate::InlineBoundaryAllocation::ZERO),
+                            occurrence,
+                            strut: None,
+                        }
                     }),
                     _ => None,
                 })
                 .collect();
-            prepared
-                .select(LineSelectionRequest {
+            crate::test_wrapping::select_neutral(
+                &prepared,
+                LineSelectionRequest {
+                    boundary_context: Vec::new(),
                     incoming: None,
                     start,
                     end: termination.view().boundary(),
@@ -2862,8 +2934,9 @@ mod tests {
                     atomics: vec![],
                     controls,
                     line_strut: None,
-                })
-                .unwrap()
+                },
+            )
+            .unwrap()
         };
         let first_selected = select(
             prepared.boundary_views().next().unwrap().handle(),

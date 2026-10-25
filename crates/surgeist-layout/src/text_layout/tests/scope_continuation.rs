@@ -153,6 +153,7 @@ fn continuation(
             LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                 kind,
                 InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+                crate::InlineBoundaryEdgeOf::ZERO,
             )),
         );
     }
@@ -570,6 +571,7 @@ fn segmented_fixture(
                     InlineBoundaryKind::End
                 },
                 InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+                crate::InlineBoundaryEdgeOf::ZERO,
             )),
         );
     }
@@ -779,4 +781,105 @@ fn real_nested_block_order_must_agree_with_the_global_capture() {
             TextBindingError::ParticipantOrder
         ))
     ));
+}
+
+#[test]
+fn positive_global_endpoints_remain_local_to_their_actual_paragraphs() {
+    let (mut tree, bindings) = continuation(true, true);
+    let compute = |tree: &PublicLayoutTreeOf<f64>| {
+        let capture = TextLayoutInput::try_new(tree, 0, bindings.clone()).unwrap();
+        compute_layout_with_text(&capture, 0, request(500.0)).unwrap()
+    };
+    let zero = compute(&tree);
+    for (node, kind, border, padding) in [
+        (1, InlineBoundaryKind::Start, 3.0, 5.0),
+        (5, InlineBoundaryKind::End, 2.0, 3.0),
+    ] {
+        tree.insert_input(
+            node,
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                kind,
+                InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+                InlineBoundaryEdgeOf::try_new(border, padding).unwrap(),
+            )),
+        );
+    }
+    let positive = compute(&tree);
+    assert_eq!(positive.placed_text().len(), 3);
+    let node = |batch: &CompletedLayoutBatchOf<u32, f64>, node| {
+        batch
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == node)
+            .unwrap()
+            .output()
+    };
+    assert_eq!(node(&positive, 1).size, Size::new(8.0, 0.0));
+    assert_eq!(node(&positive, 5).size, Size::new(5.0, 0.0));
+    assert_eq!(node(&positive, 3), node(&zero, 3));
+    assert_eq!(node(&positive, 6), node(&zero, 6));
+    let separators = |batch: &CompletedLayoutBatchOf<u32, f64>| {
+        batch
+            .unrounded_inline_fragments()
+            .iter()
+            .filter_map(|entry| {
+                let InlineFragmentOwner::Scope(binding) = entry.owner() else {
+                    return None;
+                };
+                assert_eq!(
+                    binding.association,
+                    TextScopeAssociation::Inline { start: 1, end: 5 }
+                );
+                let text::FinalizedFragmentOwner::VirtualSeparator(separator) =
+                    entry.fragment().finalized_fragment().view().owner()
+                else {
+                    panic!("Scope geometry must remain a real separator")
+                };
+                Some((separator, entry.fragment().rect().unwrap()))
+            })
+            .collect::<Vec<_>>()
+    };
+    let before = separators(&zero);
+    let after = separators(&positive);
+    assert_eq!(before.len(), 2);
+    assert_eq!(after.len(), 2);
+    for ((first, old), (second, new)) in before.iter().zip(&after) {
+        assert_eq!(first, second);
+        assert_eq!(new.size(), Size::new(10.0, 10.0));
+        assert_eq!(
+            new.origin(),
+            Point::new(
+                old.origin().x
+                    + if first.view().source_position().get() == 3 {
+                        8.0
+                    } else {
+                        0.0
+                    },
+                old.origin().y
+            )
+        );
+    }
+    let mut actual = Vec::new();
+    for entry in positive.unrounded_inline_fragments() {
+        if let text::FinalizedFragmentOwner::Control(control) =
+            entry.fragment().finalized_fragment().view().owner()
+        {
+            let InlineFragmentOwner::Node(node) = entry.owner() else {
+                panic!("an endpoint must remain node-owned")
+            };
+            actual.push((*node, control));
+        }
+    }
+    assert_eq!(actual.len(), 2);
+    assert!(
+        actual
+            .iter()
+            .any(|(node, control)| *node == 1 && *control == bindings[0].controls[0].occurrence)
+    );
+    assert!(
+        actual
+            .iter()
+            .any(|(node, control)| *node == 5 && *control == bindings[2].controls[0].occurrence)
+    );
+    assert!(bindings[1].controls.is_empty());
 }

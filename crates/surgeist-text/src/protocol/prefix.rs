@@ -295,6 +295,7 @@ impl PrefixData {
                 ShapedItem::Anchor { .. } => match units[unit].kind {
                     PresentationUnitKind::Control { occurrence } => {
                         controls[&occurrence].strut.is_some()
+                            || super::boundary::advance(selected, unit) > 0.0
                     }
                     _ => false,
                 },
@@ -304,7 +305,7 @@ impl PrefixData {
                     retained && shaped.clusters[index].whitespace != Whitespace::Newline
                 }
                 ShapedItem::InlineBox { .. } => retained,
-                ShapedItem::Anchor { .. } => false,
+                ShapedItem::Anchor { unit } => super::boundary::advance(selected, unit) > 0.0,
             };
             result
                 .retained_prefix
@@ -320,6 +321,7 @@ impl PrefixData {
                     super::AtomicLineAllocation::InFlow { flow, .. } => flow.advance,
                     super::AtomicLineAllocation::OutOfFlow => 0.0,
                 },
+                ShapedItem::Anchor { unit } => super::boundary::advance(selected, unit),
                 _ => 0.0,
             });
         }
@@ -386,18 +388,6 @@ impl PrefixData {
             }
         }
         let count = selected.presentation.projection.atoms.len();
-        let mut ends: Vec<_> = (1..=count).collect();
-        for range in selected
-            .presentation
-            .analysis
-            .graphemes
-            .iter()
-            .chain(shaped.clusters.iter().map(|c| &c.provider_group))
-        {
-            if !range.is_empty() {
-                ends[range.start] = ends[range.start].max(range.end);
-            }
-        }
         let mut atom_items = vec![0; count];
         for (item, value) in shaped.items.iter().enumerate() {
             if let ShapedItem::TextCluster(i) = *value {
@@ -406,14 +396,9 @@ impl PrefixData {
                 }
             }
         }
-        let mut atom = 0;
-        while atom < count {
-            let start = atom;
-            let mut end = ends[atom];
-            while atom < end {
-                end = end.max(ends[atom]);
-                atom += 1;
-            }
+        for group in super::boundary::groups(selected, shaped) {
+            let start = group.start;
+            let end = group.end;
             let first = atom_items[start];
             let last = atom_items[end - 1] + 1;
             let atoms = &selected.presentation.projection.atoms[start..end];

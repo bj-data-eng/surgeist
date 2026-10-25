@@ -10,6 +10,7 @@ use crate::engine::PreparedData;
 use crate::{Alignment, FontCatalogueIdentity, Point, Range, Rect, Result};
 use selection::SelectedData;
 
+pub(crate) mod boundary;
 mod conditional;
 mod continuation;
 pub(crate) mod finalized;
@@ -291,6 +292,49 @@ pub struct ControlStrut {
 pub struct ControlAllocation {
     pub occurrence: PreparedControl,
     pub strut: Option<ControlStrut>,
+    pub boundary: Option<InlineBoundaryAllocation>,
+}
+
+/// One endpoint's actual used inline advance, already resolved by its consumer.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct InlineBoundaryAllocation {
+    advance: f64,
+}
+impl InlineBoundaryAllocation {
+    pub const ZERO: Self = Self { advance: 0.0 };
+
+    pub fn try_new(advance: f64) -> Result<Self> {
+        let category = if !advance.is_finite() {
+            Some(crate::TextNumericError::NonFinite)
+        } else if advance < 0.0 {
+            Some(crate::TextNumericError::OutOfRange)
+        } else {
+            None
+        };
+        if let Some(category) = category {
+            return Err(crate::error::text_numeric_error(
+                "inline boundary advance",
+                crate::TextNumericPhase::Selection,
+                category,
+                advance,
+            ));
+        }
+        Ok(Self {
+            advance: if advance == 0.0 { 0.0 } else { advance },
+        })
+    }
+
+    #[must_use]
+    pub const fn advance(&self) -> f64 {
+        self.advance
+    }
+}
+
+/// A demanded off-selection endpoint fact; it allocates no flow or output.
+#[derive(Clone, Debug, PartialEq)]
+pub struct InlineBoundaryContextAllocation {
+    pub occurrence: PreparedControl,
+    pub boundary: InlineBoundaryAllocation,
 }
 
 /// Actual per-line allocated geometry, combined with body and paragraph struts.
@@ -323,6 +367,7 @@ pub struct LineSelectionRequest {
     pub context: LineContext,
     pub atomics: Vec<AtomicAllocation>,
     pub controls: Vec<ControlAllocation>,
+    pub boundary_context: Vec<InlineBoundaryContextAllocation>,
     pub line_strut: Option<LineStrut>,
 }
 
@@ -665,6 +710,18 @@ pub enum ProtocolError {
         occurrence: usize,
     },
     MissingControl {
+        occurrence: usize,
+    },
+    MissingControlBoundaryGeometry {
+        occurrence: usize,
+    },
+    MissingBoundaryContext {
+        occurrence: usize,
+    },
+    DuplicateBoundaryContext {
+        occurrence: usize,
+    },
+    UnexpectedBoundaryContext {
         occurrence: usize,
     },
     DuplicateControl {

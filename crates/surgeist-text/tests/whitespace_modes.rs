@@ -159,15 +159,25 @@ fn finish(
     let controls = participants
         .iter()
         .filter_map(|part| match part {
-            t::PreparedParticipant::Control(occurrence) => Some(t::ControlAllocation {
-                occurrence: occurrence.clone(),
-                strut: None,
+            t::PreparedParticipant::Control(occurrence) => Some({
+                let occurrence = occurrence.clone();
+                t::ControlAllocation {
+                    boundary: matches!(
+                        occurrence.view().kind(),
+                        surgeist_text::ParagraphControlKind::InlineBoundaryStart
+                            | surgeist_text::ParagraphControlKind::InlineBoundaryEnd
+                    )
+                    .then_some(surgeist_text::InlineBoundaryAllocation::ZERO),
+                    occurrence,
+                    strut: None,
+                }
             }),
             _ => None,
         })
         .collect();
     prepared
         .select(t::LineSelectionRequest {
+            boundary_context: Vec::new(),
             start,
             end: boundary,
             termination: t::PreparedTermination::Ordinary(end.clone()),

@@ -239,8 +239,42 @@ fn natural_line(
         .finalize(SpacingAllocations::None)?)
 }
 
+/// Rebuild the reached facts for this actual request. Context rows allocate no
+/// flow; only Text chooses their authenticated encounter order and stopping edge.
+fn resolve_boundary_context(
+    prepared: &PreparedText,
+    controls: &[ControlAllocation],
+    request: &mut LineSelectionRequest,
+) -> Result<(), FitError> {
+    request.boundary_context.clear();
+    while let Some(occurrence) = prepared.boundary_context_demand(request)? {
+        let boundary = controls
+            .iter()
+            .find(|row| row.occurrence == occurrence)
+            .and_then(|row| row.boundary)
+            .ok_or(FitError::Dependency)?;
+        // An issued demand must add a new fact. Preserve bounded progress if
+        // an inconsistent preparation ever repeats an already supplied handle.
+        if request
+            .boundary_context
+            .iter()
+            .any(|row| row.occurrence == occurrence)
+        {
+            return Err(FitError::Dependency);
+        }
+        request
+            .boundary_context
+            .push(surgeist_text::InlineBoundaryContextAllocation {
+                occurrence,
+                boundary,
+            });
+    }
+    Ok(())
+}
+
 fn finalize_candidate(
     prepared: &PreparedText,
+    controls: &[ControlAllocation],
     reusable: &[ReusableLine],
     mut request: LineSelectionRequest,
     normal: TextAlign,
@@ -249,6 +283,7 @@ fn finalize_candidate(
 ) -> Result<FinalizedCandidate, FitError> {
     let effective = normal.for_line(last, request.context.end != LineEnd::Soft);
     request.context.alignment = text_alignment(effective);
+    resolve_boundary_context(prepared, controls, &mut request)?;
     let natural = natural_line(prepared, reusable, &request)?;
     let selected = natural.selected_line();
     let mut amounts = vec![0.0; selected.spacing_slots().len()];
@@ -306,6 +341,7 @@ fn finalize_candidate(
             // Pinned CSS Text3 §6.4.3; a new alignment is a new actual request,
             // so no slot capabilities are transferred from the zero pass.
             request.context.alignment = text_alignment(normal.unexpandable(last));
+            resolve_boundary_context(prepared, controls, &mut request)?;
             let finalized = natural_line(prepared, reusable, &request)?;
             amounts = vec![0.0; finalized.selected_line().spacing_slots().len()];
             return Ok(FinalizedCandidate {
@@ -443,6 +479,7 @@ where
             let mut allocation_bases = Vec::new();
             let (finalized, amounts) = loop {
                 let candidate = if natural_only {
+                    resolve_boundary_context(input.prepared, input.controls, &mut request)?;
                     let finalized = natural_line(input.prepared, input.reusable, &request)?;
                     FinalizedCandidate {
                         amounts: vec![0.0; finalized.selected_line().spacing_slots().len()],
@@ -452,6 +489,7 @@ where
                 } else {
                     finalize_candidate(
                         input.prepared,
+                        input.controls,
                         input.reusable,
                         request,
                         input.alignment,
@@ -720,6 +758,7 @@ fn selection_request(
         },
         atomics,
         controls,
+        boundary_context: Vec::new(),
         line_strut: input.line_strut,
     }
 }

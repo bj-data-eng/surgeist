@@ -175,10 +175,12 @@ glyph, fragment or placed Text result; the box keeps its ordinary layout behavio
 Missing source bindings or removed-only source cannot masquerade as emptiness.
 
 Output preserves the whole scope association and each fragment's own local
-prepared/placed occurrence. Boundary nodes identify ownership, not geometric
-anchors: never interpolate from them, duplicate a fragment onto both, or donate
-it to neighboring text. Scope/capture/preparation, actual endpoints, participating
-containers and relevant tree dependencies enter cache/invalidation ownership.
+prepared/placed occurrence. For a virtual-separator Scope fragment, boundary
+nodes prove association rather than substitute geometric anchors: never
+interpolate from them, duplicate its geometry onto both, or donate it to
+neighboring text. Actual endpoint nodes retain their separate
+[control footprints](#native-inline-endpoint-geometry). Scope/capture/preparation,
+actual endpoints, participating containers and relevant tree dependencies enter cache/invalidation ownership.
 Complete spanning captures execute; truly absent or foreign facts remain precise
 errors without invented continuation controls or geometry.
 
@@ -422,7 +424,7 @@ Layout also filters phantom conditional trials before committing a line.
 
 Finalization is deterministic for a preparation and complete selection context. Layout's feedback algorithm visits its finite candidate/context states until it selects a valid state or returns its existing no-fit outcome; revisiting a complete already-rejected candidate/context state is a typed feedback-cycle error (or the formatter’s explicit no-fit failure), even when feedback is identical and even for a cycle through multiple states. A stable fitting state commits; rejected states cannot be retried without a changed input. Do not introduce a magic maximum pass count. Layout must ensure progress in its own float/box algorithm. A no-fit line allowed by applicable overflow semantics remains a deliberate layout outcome, not a text finalizer fallback.
 
-Layout supplies each eligible control's actual allocated strut geometry, qualified by its prepared control identity: finite baseline, line extent and alignment from the captured line-break or inline-boundary input. These are Layout contributions, not fabricated font metrics or atomic glyphs. Text combines them with its actual font strut during finalization; changed canonical contributions reenter height/float feedback. Pure formatting controls may have no allocated strut. Neutral inline start/end boundaries preserve actual adjacency and do not create break opportunities merely by existing. Layout retains clear and box/float decisions.
+Layout supplies each eligible control's actual allocated strut geometry, qualified by its prepared control identity: finite baseline, line extent and alignment from the captured line-break or inline-boundary input. These are Layout contributions, not fabricated font metrics or atomic glyphs. Text combines them with its actual font strut during finalization; changed canonical contributions reenter height/float feedback. Pure formatting controls may have no allocated strut. Inline start/end boundaries do not create break opportunities merely by existing; zero edges preserve joining, while positive inter-unit edges bound selected shaping as specified below. Layout retains clear and box/float decisions.
 
 Native preparation explicitly captures its paragraph strut policy. A default-font strut resolves and retains the actual base-style face during preparation and contributes on every selected line, even when body spans use other fonts; a missing requested face is an error. Each body font contributes its own line-height strut, including its own half-leading, before Text combines baseline-, top- and bottom-aligned allocations. The allocation-only policy omits the base strut; it may prepare without a font when no other input requires one. Finalization requires actual contributions for every otherwise metric-less line, including a terminal empty line after a forced break. An explicit zero allocation is distinct from a missing allocation. Control presence and catalogue availability cannot silently choose this policy. These native strut roles follow the pinned [CSS Inline layout-bounds rules](../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#inline-height). Raw standalone layout retains its characterized source-adjacent metric policy; genuinely empty standalone text retains its admitted-font strut.
 
@@ -433,6 +435,122 @@ A native empty origin retains a zero-width, zero-height source-fragment anchor a
 The standalone `System::layout` convenience path retains the currently supported wrapping/alignment behavior by choosing lines through the same preparation/finalization machinery. Its simple paragraph chooser is private to text; layout’s composed CSS formatter does not use it as a second formatter. Unsupported style combinations remain explicit errors until the owning standards issue implements them.
 
 The explicit native `TabContext::FontAdvance` policy uses the selected font's actual U+0009 glyph advance, preserving the standalone policy through the same finalizer. It does not approximate a tab with a space or implement CSS tab stops. `NoTabs` validates actual absence. The [CSS tab contract](#preserved-css-tab-stops) below defines the independently prepared CSS-stop operation and its required block capture. A taken discretionary opportunity requires its actual issued alternative, including an explicitly computed empty replacement; a natural paragraph end does not select a hyphen merely because the preceding source contains SHY. A source-defined replacement validates its real defining source occurrence. A control-defined replacement retains its exact control/opportunity/alternative owner and may have no text origin; incidental source-anchor provenance must be supplied and validated, never guessed from the numeric offset.
+
+### Native inline endpoint geometry
+
+Layout owns used border/padding on each endpoint's own inline side. Its
+[InlineBoundaryEdgeOf<S>](../crates/surgeist-layout/src/node_input/inline.rs)
+constructor checks each component and their sum in scalar `S`, with explicit
+`ZERO` for a genuine used zero. `InlineBoundaryInputOf::new(kind, metrics, edge)`
+requires that value. Lower the one checked `edge.advance()` result once to Text's
+`f64` total; do not widen the components separately and recompute the sum. Layout
+retains the components, Start/End role and own writing-mode/direction for output.
+Text's [InlineBoundaryAllocation](../crates/surgeist-text/src/protocol/mod.rs)
+checks the finite nonnegative total and normalizes negative zero. Unknown Style
+geometry is not zero; no compatibility constructor, Boolean barrier, padded
+atomic substitute or new font/style supplies a missing endpoint fact.
+
+#### Selected and context-only admission
+
+Every selected InlineBoundaryStart/End has a `ControlAllocation` with
+`boundary: Some(...)`, including affirmative zero; non-boundary controls have
+`None`. The existing optional strut remains an independent vertical allocation.
+Omitted controls yield `MissingControl`, missing endpoint geometry yields
+`MissingControlBoundaryGeometry`, and wrong-role geometry yields
+`InvalidControlGeometry`. Foreign, duplicate and unexpected controls retain their
+existing errors.
+
+An endpoint outside selected flow can still affect original joining context.
+`LineSelectionRequest::boundary_context` supplies these genuine local
+`InlineBoundaryContextAllocation` rows separately: they allocate no flow, strut,
+placement or fragment, and cannot duplicate selected controls or clone a remote
+paragraph's global endpoint. [PreparedText::boundary_context_demand](../crates/surgeist-text/src/protocol/selection.rs)
+validates the complete candidate and returns the next missing `PreparedControl`,
+or `None` when its consumed context is covered. It performs no shaping, fitting,
+font-catalogue lookup or preparation mutation. Layout resolves each demand from
+the authenticated control-node binding and explicit normalized used edge.
+
+Supply rows in deterministic first-demand encounter order. A partial query admits
+only an initial prefix; a direct `select` request may supply the whole list in
+that same order without querying first. A proved positive barrier stops the
+outward context walk; zero continues to the next influential endpoint. Unrelated
+or unreachable endpoints are not demanded. `select` returns
+`MissingBoundaryContext` for an unanswered demand, `DuplicateBoundaryContext` for
+duplicates/selected overlap, and `UnexpectedBoundaryContext` for wrong-role,
+out-of-order or surplus rows. Validate handles, roles, numbers and canonical
+coverage before publishing a selection; never invent zero for a missing fact.
+
+#### Joining, cuts and ordered contributions
+
+Text derives endpoint incidence from actual captured events and typography-safe
+cuts. At an authentic Soft opportunity, closing events attach to the outgoing
+line and opening events to the incoming line, using genuine event/scope incidence.
+Retain opportunity ownership, positive-source deleted occurrences and distinct
+disappearing-SPACE cuts. Do not invent a cut, strand a closing endpoint at an
+artificial earlier Soft end, or rewrite Forced/domain/atomic chronology.
+
+Positive inter-unit endpoints bound the selected original and presentation
+joining domains, including consumed off-selection original context and computed
+Before/After attachments. Incoming indications retain their
+[receiver-side mixed-event custody](#hyphenation-indication-bidi) on either zero
+or positive edges. Zero preserves permitted whole-word context across an
+unforced Soft cut. Rebuild only selection-local boundaries/assignments using the
+retained font instances; do not requery a catalogue or mutate preparation.
+An endpoint inside an indivisible typographic unit remains a numeric contribution
+with its own interval, while the unit retains shared glyph associations and
+provider positions. Count the edge once before positioning the next unit;
+never move an attached mark independently or introduce an interior break.
+
+One canonical visual-order contribution supplies raw/occupied flow, fit,
+alignment, MinContent/MaxContent, tabs, prefixes, placement and overflow. Positive
+selected edges count as retained flow; context-only rows contribute nothing.
+`FinalizedPrefixView` retains the same provider-closed grouping and exact source
+chronology. CSS tab resolution includes preceding endpoint advances in the real
+pen and recomputes after spacing. Layout's numeric box/control-only path consumes
+the same used advance through Text-owned ordering without inventing text rows.
+Every ordinary/conditional/measurement trial and float/justification retry uses
+the complete resolved request and actual finalization; preliminary glyph widths
+cannot replace edge-aware receipts. Layout never adds the width again afterward.
+
+Collapse/PreserveBreaks edge removal remains transparent to inline controls.
+For remaining-separator hanging, zero endpoints are transparent and a positive
+endpoint stops the scan locally; a later eligible sequence on its edge side may
+still hang. The endpoint's own advance is ordinary flow, never whitespace
+exclusion. In the Preserve/PreserveSpaces case with wrapping enabled, Start0 and
+a real Forced ending, X10 plus SPACE10 with End0 at width15 has raw20, fit10,
+alignment15, MinContent10, MaxContent20 and actual hanging5. End(border2,padding3) gives raw/fit/alignment/MinContent/MaxContent25,
+with no hanging through that edge. Natural eligibility remains frozen through
+allocated-spacing replay; this is no global scope-wide disable-hanging flag.
+
+#### Output, identity and failure
+
+| Observation | Endpoint custody |
+| --- | --- |
+| `FinalizedControlView` | `inline_bounds()` is the checked physical left/right interval; `slot().x` is left, with the actual control baseline. Alignment translates both ends. |
+| `FinalizedFragmentOwner::Control` | The same source-free occurrence gets the interval at actual line-metric height. Original/local/aggregate/processed source ranges remain absent; no glyph ink is invented. |
+| Layout endpoint node | Publish a width×0 footprint and its own-side border/padding, using actual endpoint writing-mode/direction and Start/End role. Preserve the Control fragment without replacing this footprint with a text-fragment envelope. Numeric-only flow publishes the same footprint without Text fragments. |
+| Virtual-separator Scope fragment | Retain only that separator's actual local geometry, empty authored association and canonical global scope identity. Several separators keep separate occurrences; no separator means no Scope fragment. No endpoint strip is donated to them. |
+| Original source and exact placed positions | Endpoints add no UTF-16, source Range membership, glyph or plaintext. Exact relation-event Before/After positions distinguish the two interval sides: even level maps to left/right, odd to right/left. Exact selected-event ranges include the endpoint's actual line-height interval even with glyphs selected; source-offset queries do not invent that membership. |
+
+The node footprint and Control fragment observe one contribution, not two widths.
+Source/caret/Range, Render and accessibility consume the same displaced genuine
+geometry and retain source-free endpoint custody. Global scope pairing remains
+capture-owned; paragraph cuts manufacture no continuation endpoint or envelope.
+
+Selected allocations and the exact reached context list enter request equality,
+candidate reuse, spacing replay and cycle checks. Layout retains dependencies on
+each demanded endpoint, including off-selection nodes. A changed edge or
+candidate/alternative/incoming/purpose request reruns demand: zero↔positive can
+reveal or hide farther context. Geometry-only changes reuse the same preparation
+but rebuild affected joining, glyph, prefix, fit, tab, fragment and float results;
+unreached endpoints enter no Text request identity. Rigid translation can reuse
+an unchanged complete receipt. Missing facts, numeric/shaping failures and late
+feedback refusal publish nothing and leave earlier completed results immutable.
+
+This operation consumes native used geometry. It does not resolve live Style or
+authored percentages, add vertical Text, or construct full inline-element
+decoration envelopes/background/border painting. It does not change raw
+standalone whitespace, the six modes, #74 or control/default-ignorable rules.
 
 ### Native control-character presentation
 
@@ -586,8 +704,9 @@ deleted-source affinity and partial plaintext retain their existing custody.
 Copied plaintext preserves actual LF/SPACE/TAB outcomes without serializing Soft
 wraps, transformations or tab placement. PreserveSpaces retains #74's separate
 TAB/delimiter-to-SPACE conversion and Preserve-equivalent hanging; its converted
-LF is not Forced. Collapse, Discard and Preserve retain their own rules. Inline
-border/padding edge capabilities remain a separate contribution.
+LF is not Forced. Collapse, Discard and Preserve retain their own rules.
+[Native endpoint geometry](#native-inline-endpoint-geometry) supplies the separate
+used border/padding contribution without changing these mode meanings.
 
 ### Native whitespace edges and hanging
 
@@ -654,7 +773,8 @@ whitespace. Unconditional hanging excludes its contribution from those measures;
 conditional hanging excludes the full eligible contribution from fit/MinContent,
 retains it for MaxContent, and excludes only actual overflow for alignment and
 justification. Thus X10 plus SPACE10 in width15 retains raw20, fit10 and actual
-hanging5; in width40 it hangs0 and centers as a 20px sequence. Preserve signed flow
+hanging5, alignment15, MinContent10 and MaxContent20; in width40 it hangs0
+and centers as a 20px sequence. Preserve signed flow
 separately from physical outward overlap, without taking absolute values or
 clamping signed contributions. A hanging glyph retains its advance, source,
 caret, Range and paint geometry.
@@ -702,10 +822,9 @@ or terminal groups. Alignment translates the result without reevaluating this
 receipt. Changed breaks or ownership rebuild natural classification through replay.
 The separate fit/MinContent/MaxContent inclusion rules remain unchanged.
 
-Actual nonzero inline border/padding hanging barriers require their own captured
-boundary facts. Neutral native controls do not prove arbitrary styled boundaries
-have zero edges. Add that concrete producer/consumer operation without waiting
-for a complete Style engine; no-barrier cases remain independently implementable.
+[Native endpoint allocations](#native-inline-endpoint-geometry) supply actual
+border/padding advances and local hanging barriers. Zero controls do not prove
+uncaptured styled boundaries have zero edges.
 This profile does not silently replace raw standalone wrapping/alignment policy.
 Keep that existing operation explicit while sharing mechanics and truthful
 receipts; no compatibility alias or second whitespace formatter is selected.
@@ -1002,12 +1121,37 @@ At a mixed-direction After boundary, use the following side. Retain the original
 occurrence, cut side and selected-line association, not an unqualified integer
 level. Transparent empty and out-of-flow events supply no level; do not skip a
 genuine formatting character merely to find visible content. Receiving direction
-does not transfer the indication's established style, font or convention
-ownership. A nonempty After indication without authenticated receiving
-continuation authority returns a precise missing-receiving-bidi-authority result;
-paragraph direction, adjacent fallback fonts and equal-offset anchors cannot
-substitute. Empty indications retain their selected-ending identity without a
-visible placement operation.
+and geometric attachment do not transfer the indication's established style,
+font, language convention or DOM ownership. A nonempty After indication without
+authenticated receiving continuation authority returns
+`HyphenationError::MissingReceivingBidiAuthority`; an atomic receiver retains
+`UnsupportedReceivingRole`. Paragraph direction, adjacent fallback fonts and
+equal-offset anchors cannot substitute. Empty indications retain their
+continuation/selected-ending obligation identity without visible insertion.
+
+For incoming LogicalAfter, including the After side of BothSides, insert the
+whole indication immediately before its authenticated receiver in the selected
+logical mixed-event sequence. Preserve every genuine prefix control in captured
+order: Start, indication, receiver in that case, at both zero and positive Start
+widths. Nested starts/ends and empty metadata retain that order; edge magnitude
+changes the barrier, not attachment identity. Authenticate the actual participant
+and scalar, including a genuine formatting control or deleted original with
+directional authority, rather than searching for the first visible glyph.
+
+Insert the local indication domain at the receiver's full authenticated outer
+level; its internal base still uses that level's parity, and each control retains
+its own level. Reorder the actual mixed sequence with original
+L1 processing independent of the generated string. Endpoint parity alone cannot
+determine general mixed-level placement, and post-shaping coordinate moves cannot
+repair the sequence. This is the explicit [incoming-edge determination](../references/text-incoming-indication-edge--determination-20261024.md),
+not a browser-interoperability claim.
+
+Use this same attachment for original-context seeds, transported presentation
+cuts, shaping and placement. An eligible positive Start precedes the whole
+indication-plus-receiver side: it bounds genuine original context across itself
+without dividing their computed joining. Whole-indication custody creates no
+atomic box or mandatory shaping barrier; retain local bidi, shared graphemes and
+compatible joint GSUB/GPOS. Outgoing Before custody is unchanged.
 
 Resolve the exact indication string internally with the existing UBA owner and
 the supplied local base direction. Strong characters, brackets, embeddings,

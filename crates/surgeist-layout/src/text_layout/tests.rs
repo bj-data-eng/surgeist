@@ -24,6 +24,8 @@ mod conditional_overflow;
 mod float_fit;
 #[path = "tests/indent.rs"]
 mod indent;
+#[path = "tests/inline_boundary_edges.rs"]
+mod inline_boundary_edges;
 #[path = "tests/line_limit_composition.rs"]
 mod line_limit_composition;
 #[path = "tests/line_limits.rs"]

@@ -604,12 +604,21 @@ fn policy_context(line: &FinalizedLine) -> Vec<u64> {
     values.push(request.controls.len() as u64);
     for allocation in &request.controls {
         values.push(allocation.occurrence.index as u64);
+        values.push(u64::from(allocation.boundary.is_some()));
+        if let Some(boundary) = allocation.boundary {
+            number(&mut values, boundary.advance());
+        }
         values.push(u64::from(allocation.strut.is_some()));
         if let Some(strut) = allocation.strut {
             values.push(strut.alignment as u64);
             number(&mut values, strut.baseline);
             number(&mut values, strut.line_extent);
         }
+    }
+    values.push(request.boundary_context.len() as u64);
+    for allocation in &request.boundary_context {
+        values.push(allocation.occurrence.index as u64);
+        number(&mut values, allocation.boundary.advance());
     }
     values.push(u64::from(request.line_strut.is_some()));
     if let Some(strut) = request.line_strut {

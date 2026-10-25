@@ -450,6 +450,7 @@ fn atomic_domain_shape(
             LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                 kind,
                 InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+                crate::InlineBoundaryEdgeOf::ZERO,
             )),
         );
     }
@@ -463,6 +464,7 @@ fn atomic_domain_shape(
                 LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                     kind,
                     InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+                    crate::InlineBoundaryEdgeOf::ZERO,
                 )),
             );
         }
@@ -497,6 +499,7 @@ fn atomic_domain_shape(
                 LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                     kind,
                     InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+                    crate::InlineBoundaryEdgeOf::ZERO,
                 )),
             );
         }

@@ -1077,8 +1077,11 @@ fn fri06_c12_t08_float_dominated_terminal_extent_stops_at_the_float_edge() {
         };
         let atomics = [
             atomic(34.0, InlineBreakOpportunity::Prohibited),
-            atomic(38.0, InlineBreakOpportunity::Prohibited),
-            atomic(42.0, InlineBreakOpportunity::Allowed),
+            // Both real groups must fit the136px shape band: the first is
+            // 48.1640625+34+38, the second42+46. An indivisible162.1640625
+            // group would instead wait below the60px float.
+            atomic(38.0, InlineBreakOpportunity::Allowed),
+            atomic(42.0, InlineBreakOpportunity::Prohibited),
             atomic(46.0, InlineBreakOpportunity::Prohibited),
         ];
         let mut tree = PublicBlockTree::default()
@@ -1105,6 +1108,7 @@ fn fri06_c12_t08_float_dominated_terminal_extent_stops_at_the_float_edge() {
                         S::from_f64(14.8),
                     )
                     .unwrap(),
+                    crate::InlineBoundaryEdgeOf::ZERO,
                 )),
             )
             .with_style(0, root)
@@ -1201,6 +1205,7 @@ fn fri06_c12_t08_float_shape_slots_follow_visual_order_before_physical_projectio
                         S::from_f64(14.0),
                     )
                     .unwrap(),
+                    crate::InlineBoundaryEdgeOf::ZERO,
                 )),
             )
             .with_layout_input(
@@ -1212,6 +1217,7 @@ fn fri06_c12_t08_float_shape_slots_follow_visual_order_before_physical_projectio
                         S::from_f64(14.0),
                     )
                     .unwrap(),
+                    crate::InlineBoundaryEdgeOf::ZERO,
                 )),
             )
             .with_style(0, root)

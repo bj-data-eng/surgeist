@@ -257,9 +257,18 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
         .collect();
     let controls = prepared
         .control_views()
-        .map(|row| ControlAllocation {
-            occurrence: row.handle(),
-            strut: None,
+        .map(|row| {
+            let occurrence = row.handle();
+            ControlAllocation {
+                boundary: matches!(
+                    occurrence.view().kind(),
+                    crate::ParagraphControlKind::InlineBoundaryStart
+                        | crate::ParagraphControlKind::InlineBoundaryEnd
+                )
+                .then_some(crate::InlineBoundaryAllocation::ZERO),
+                occurrence,
+                strut: None,
+            }
         })
         .collect();
     let direction = match prepared.analyzed_source().direction() {
@@ -269,6 +278,7 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
     };
     let selected = prepared
         .select(LineSelectionRequest {
+            boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
@@ -1073,6 +1083,7 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
     let termination = alternative.view().opportunity();
     let selected = prepared
         .select(LineSelectionRequest {
+            boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
@@ -1494,6 +1505,7 @@ fn selected_soft_wrap_does_not_reset_plaintext_context_or_copy_line_edge_deletio
     let count = boundary.view().participant_offset();
     let selected = prepared
         .select(LineSelectionRequest {
+            boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: boundary,
@@ -1855,6 +1867,7 @@ fn right_line(prepared: &PreparedText) -> FinalizedLine {
     };
     let selected = prepared
         .select(LineSelectionRequest {
+            boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().nth(2).unwrap().handle(),
             end: termination.view().boundary(),

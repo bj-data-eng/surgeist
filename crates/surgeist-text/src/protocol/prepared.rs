@@ -804,9 +804,26 @@ fn issue_opportunities(
         let kind =
             kind.or_else(|| (!alternatives.is_empty()).then_some(PreparedBreakKind::Discretionary));
         if let Some(kind) = kind {
+            let attached = if matches!(
+                kind,
+                PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary
+            ) {
+                soft_boundary(tables, analyzed, index)?
+            } else {
+                index
+            };
+            if kind == PreparedBreakKind::Allowed
+                && tables
+                    .opportunities
+                    .iter()
+                    .any(|row| row.kind == kind && row.boundary == attached)
+            {
+                continue;
+            }
             let opportunity = tables.opportunities.len();
             if let Some(cut) = cut {
                 tables.hyphenation_cuts[cut].opportunity = Some(opportunity);
+                tables.hyphenation_cuts[cut].boundary = attached;
             }
             let alternatives = alternatives
                 .into_iter()
@@ -818,7 +835,7 @@ fn issue_opportunities(
                 })
                 .collect();
             tables.opportunities.push(OpportunityData {
-                boundary: index,
+                boundary: attached,
                 kind,
                 alternatives,
             });
@@ -831,6 +848,105 @@ fn issue_opportunities(
         alternatives: Vec::new(),
     });
     Ok(())
+}
+
+/// Attach authentic endpoint sequences through source-free neutral anchors.
+/// Another influencing owner, original occurrence, domain seam, explicit break
+/// or atomic stops the walk; neutral anchors alone never move an opportunity.
+fn soft_boundary(
+    tables: &PreparedTables,
+    analyzed: &AnalyzedData,
+    index: usize,
+) -> crate::Result<usize> {
+    if analyzed.paragraph.scope_topology.is_none() {
+        return Ok(index);
+    }
+    let mut participant = tables.boundaries[index].participant;
+    let owner = analyzed.logical.cuts[participant];
+    let seams = if analyzed
+        .paragraph
+        .connections
+        .iter()
+        .any(|row| row.kind == crate::ParagraphConnectionKind::Disconnected)
+    {
+        crate::transform::separators::connection_seams(
+            &analyzed.projection,
+            &analyzed.logical.events,
+            &analyzed.paragraph,
+        )?
+    } else {
+        Vec::new()
+    };
+    let mut lower = 0;
+    let mut upper = tables.participants.len();
+    for seam in seams {
+        if seam.upper <= participant {
+            lower = lower.max(seam.upper);
+        }
+        if seam.lower >= participant {
+            upper = upper.min(seam.lower);
+        }
+        if seam.lower < participant && participant < seam.upper {
+            lower = participant;
+            upper = participant;
+        }
+    }
+    let endpoint = |at: usize, kind: ParagraphControlKind| {
+        let ParticipantData::Control(control) = tables.participants[at] else {
+            return false;
+        };
+        let occurrence = tables.controls[control].occurrence;
+        analyzed.paragraph.controls[occurrence].kind == kind
+            && captured_endpoint(analyzed, occurrence)
+    };
+    let neutral = |at: usize| match tables.participants[at] {
+        ParticipantData::Control(control) => analyzed.paragraph.controls
+            [tables.controls[control].occurrence]
+            .kind
+            .code_point()
+            .is_some(),
+        ParticipantData::Text(unit) => tables.units[unit].empty_origin.is_some(),
+        ParticipantData::Atomic(_) => false,
+    };
+    let mut scan = participant;
+    while scan > lower && analyzed.logical.cuts[scan - 1] == owner {
+        scan -= 1;
+        if endpoint(scan, ParagraphControlKind::InlineBoundaryStart) {
+            participant = scan;
+        } else if !neutral(scan) {
+            break;
+        }
+    }
+    scan = participant;
+    while scan < upper && analyzed.logical.cuts[scan + 1] == owner {
+        if endpoint(scan, ParagraphControlKind::InlineBoundaryEnd) {
+            participant = scan + 1;
+        } else if !neutral(scan) {
+            break;
+        }
+        scan += 1;
+    }
+    Ok(tables
+        .boundaries
+        .iter()
+        .position(|row| row.participant == participant)
+        .unwrap_or(index))
+}
+
+fn captured_endpoint(analyzed: &AnalyzedData, occurrence: usize) -> bool {
+    let Some(topology) = &analyzed.paragraph.scope_topology else {
+        return false;
+    };
+    let crate::SourceProcessingEvent::Control { control, .. } =
+        topology.capture.events[topology.control_orders[occurrence]].event
+    else {
+        return false;
+    };
+    topology.capture.scopes.iter().any(|scope| {
+        scope
+            .boundaries
+            .is_some_and(|boundaries| boundaries.start == control || boundaries.end == control)
+    })
 }
 
 /// BreakSpaces adds an offer immediately after an actual separator only at an
@@ -1094,6 +1210,9 @@ pub(crate) fn conditional_boundaries(
     }
     let mut result = Vec::new();
     for index in start + 1..ceiling {
+        if soft_boundary(tables, analyzed, index)? != index {
+            continue;
+        }
         let boundary = &tables.boundaries[index];
         let relation = &analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]];
         let (

@@ -16,7 +16,7 @@ use std::sync::Arc;
 #[derive(Clone, Copy)]
 pub(super) enum Target {
     Cluster { cluster: usize, right: bool },
-    Anchor { anchor: usize },
+    Anchor { anchor: usize, right: bool },
     Strut,
 }
 #[derive(Clone, Copy)]
@@ -122,20 +122,17 @@ pub(super) fn prepare(lines: &[PlacedLine]) -> Vec<Position> {
                         || extent.clone(),
                         |first| first..owned.next_back().unwrap_or(first) + 1,
                     );
-                    local.push(Position {
-                        line: line_index,
-                        source: Cursor::new(unit.source.start, Affinity::After),
-                        target: Target::Anchor { anchor },
-                        slot: matches!(unit.kind, crate::protocol::prepared::PresentationUnitKind::Control { .. } | crate::protocol::prepared::PresentationUnitKind::EmptyOrigin { .. }),
-                        cut: offset + events.start,
-                    });
-                    if !unit.source.is_empty() {
+                    for right in [false, true] {
+                        let before = right == (row.level & 1 != 0);
+                        if !before && unit.source.is_empty() && row.inline_end == row.slot.x {
+                            continue;
+                        }
                         local.push(Position {
                             line: line_index,
-                            source: Cursor::new(unit.source.end, Affinity::Before),
-                            target: Target::Anchor { anchor },
+                            source: if before { Cursor::new(unit.source.start, Affinity::After) } else { Cursor::new(unit.source.end, Affinity::Before) },
+                            target: Target::Anchor { anchor, right },
                             slot: matches!(unit.kind, crate::protocol::prepared::PresentationUnitKind::Control { .. } | crate::protocol::prepared::PresentationUnitKind::EmptyOrigin { .. }),
-                            cut: offset + events.end,
+                            cut: offset + if before { events.start } else { events.end },
                         });
                     }
                 }
@@ -206,7 +203,7 @@ pub(super) fn prepare(lines: &[PlacedLine]) -> Vec<Position> {
             a.cmp(b).then_with(|| {
                 let level = match left.target {
                     Target::Cluster { cluster, .. } => line.finalized.data.clusters[cluster].level,
-                    Target::Anchor { anchor } => line.finalized.data.anchors[anchor].level,
+                    Target::Anchor { anchor, .. } => line.finalized.data.anchors[anchor].level,
                     Target::Strut => presentation.analysis.base_level,
                 };
                 if level & 1 == 0 {
@@ -235,7 +232,14 @@ fn local_x(line: &PlacedLine, target: Target) -> f64 {
             let cluster = &line.finalized.data.clusters[cluster];
             cluster.x + if right { cluster.advance } else { 0.0 }
         }
-        Target::Anchor { anchor } => line.finalized.data.anchors[anchor].slot.x,
+        Target::Anchor { anchor, right } => {
+            let anchor = &line.finalized.data.anchors[anchor];
+            if right {
+                anchor.inline_end
+            } else {
+                anchor.slot.x
+            }
+        }
         Target::Strut => line.finalized.data.metrics.offset,
     }
 }
@@ -264,7 +268,7 @@ pub(super) fn deleted_position(layout: &PlacedLayout, value: Cursor) -> Option<u
         .iter()
         .enumerate()
         .find_map(|(index, position)| {
-            let Target::Anchor { anchor } = position.target else {
+            let Target::Anchor { anchor, .. } = position.target else {
                 return None;
             };
             let line = &layout.lines[position.line];
@@ -373,7 +377,7 @@ pub(crate) fn movement(layout: &PlacedLayout, index: usize, movement: Movement) 
                         right != (level & 1 != 0),
                     )
                 }
-                Target::Anchor { anchor } => super::cursor::logical_word_from_anchor(
+                Target::Anchor { anchor, .. } => super::cursor::logical_word_from_anchor(
                     layout,
                     current.source,
                     forward,
@@ -514,6 +518,19 @@ pub(crate) fn selection(
                                 &(offsets[line] + selected.selected_relation.atom_events[atom]),
                             )
                     })
+            },
+            |index, anchor| {
+                let line = &layout.lines[index];
+                let anchor = &line.finalized.data.anchors[anchor];
+                let presentation = &line.finalized.selected.presentation;
+                anchor.inline_end != anchor.slot.x
+                    && presentation.selected_relation.unit_events[anchor.unit]
+                        .clone()
+                        .any(|event| {
+                            (start..end).contains(&(offsets[index] + event))
+                                && matches!(presentation.selected_relation.events[event], SelectedRelationEvent::Base { event }
+                                    if matches!(line.finalized.selected.prepared.analyzed.transform.events()[event], RelationEvent::Anchor { .. }))
+                        })
             },
             |index| {
                 let line = &layout.lines[index];
@@ -685,7 +702,7 @@ pub(crate) fn validate_source(layout: &PlacedLayout, value: Cursor) -> Result<()
             continue;
         }
         let identity = match position.target {
-            Target::Anchor { anchor } => {
+            Target::Anchor { anchor, .. } => {
                 let line = &layout.lines[position.line];
                 let unit = &line.finalized.selected.presentation.units
                     [line.finalized.data.anchors[anchor].unit];
@@ -989,6 +1006,7 @@ mod tests {
         let end = termination.view().boundary();
         let line = prepared
             .select(LineSelectionRequest {
+                boundary_context: Vec::new(),
                 incoming: None,
                 start,
                 end,
@@ -1010,9 +1028,17 @@ mod tests {
                 controls: prepared
                     .participants()
                     .filter_map(|participant| match participant {
-                        PreparedParticipant::Control(occurrence) => Some(ControlAllocation {
-                            occurrence,
-                            strut: None,
+                        PreparedParticipant::Control(occurrence) => Some({
+                            ControlAllocation {
+                                boundary: matches!(
+                                    occurrence.view().kind(),
+                                    crate::ParagraphControlKind::InlineBoundaryStart
+                                        | crate::ParagraphControlKind::InlineBoundaryEnd
+                                )
+                                .then_some(crate::InlineBoundaryAllocation::ZERO),
+                                occurrence,
+                                strut: None,
+                            }
                         }),
                         _ => None,
                     })
@@ -1551,6 +1577,7 @@ mod tests {
             let to = end.view().participant_offset();
             let selected = prepared
                 .select(LineSelectionRequest {
+                    boundary_context: Vec::new(),
                     incoming: None,
                     start: start.clone(),
                     end: end.clone(),
@@ -1583,9 +1610,18 @@ mod tests {
                         .iter()
                         .filter_map(|participant| {
                             if let PreparedParticipant::Control(control) = participant {
-                                Some(ControlAllocation {
-                                    occurrence: control.clone(),
-                                    strut: None,
+                                Some({
+                                    let occurrence = control.clone();
+                                    ControlAllocation {
+                                        boundary: matches!(
+                                            occurrence.view().kind(),
+                                            crate::ParagraphControlKind::InlineBoundaryStart
+                                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                                        )
+                                        .then_some(crate::InlineBoundaryAllocation::ZERO),
+                                        occurrence,
+                                        strut: None,
+                                    }
                                 })
                             } else {
                                 None
@@ -1762,9 +1798,18 @@ mod tests {
             .iter()
             .filter_map(|participant| {
                 if let PreparedParticipant::Control(control) = participant {
-                    Some(ControlAllocation {
-                        occurrence: control.clone(),
-                        strut: None,
+                    Some({
+                        let occurrence = control.clone();
+                        ControlAllocation {
+                            boundary: matches!(
+                                occurrence.view().kind(),
+                                crate::ParagraphControlKind::InlineBoundaryStart
+                                    | crate::ParagraphControlKind::InlineBoundaryEnd
+                            )
+                            .then_some(crate::InlineBoundaryAllocation::ZERO),
+                            occurrence,
+                            strut: None,
+                        }
                     })
                 } else {
                     None
@@ -1773,6 +1818,7 @@ mod tests {
             .collect();
         let selected = prepared
             .select(LineSelectionRequest {
+                boundary_context: Vec::new(),
                 incoming: None,
                 start: start.clone(),
                 end: end.clone(),
@@ -2009,6 +2055,7 @@ mod tests {
             .handle();
         let selected = prepared
             .select(LineSelectionRequest {
+                boundary_context: Vec::new(),
                 incoming: None,
                 start: prepared.boundary_views().next().unwrap().handle(),
                 end: termination.view().boundary(),
@@ -2385,6 +2432,7 @@ mod tests {
                 .collect();
             let selected = prepared
                 .select(LineSelectionRequest {
+                    boundary_context: Vec::new(),
                     incoming: None,
                     start: start.clone(),
                     end: end.clone(),

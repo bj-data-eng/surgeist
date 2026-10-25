@@ -95,9 +95,18 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
         .collect();
     let controls = prepared
         .control_views()
-        .map(|row| ControlAllocation {
-            occurrence: row.handle(),
-            strut: None,
+        .map(|row| {
+            let occurrence = row.handle();
+            ControlAllocation {
+                boundary: matches!(
+                    occurrence.view().kind(),
+                    crate::ParagraphControlKind::InlineBoundaryStart
+                        | crate::ParagraphControlKind::InlineBoundaryEnd
+                )
+                .then_some(crate::InlineBoundaryAllocation::ZERO),
+                occurrence,
+                strut: None,
+            }
         })
         .collect();
     let tabs = if prepared
@@ -113,6 +122,7 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
     };
     prepared
         .select(LineSelectionRequest {
+            boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),

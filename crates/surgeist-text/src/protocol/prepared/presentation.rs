@@ -431,12 +431,13 @@ pub(super) fn select(
         analysis.base_level,
     );
     if let Some(incoming) = &request.incoming {
-        let receiver = output.output.units.iter().find(|unit| {
+        let receiver_index = output.output.units.iter().position(|unit| {
             ((!unit.atoms.is_empty() && unit.kind == PresentationUnitKind::Text)
                     || (unit.kind == PresentationUnitKind::Deleted && unit.bidi_class.is_some()))
                 || matches!(unit.kind, PresentationUnitKind::Atomic { occurrence } if prepared.analyzed.processed.source().boxes()[occurrence].kind() == crate::InlineBoxKind::InFlow)
                 || matches!(unit.kind, PresentationUnitKind::Control { .. }) && unit.bidi_class.is_some()
         }).ok_or_else(|| crate::hyphenation::error(crate::HyphenationError::MissingReceivingBidiAuthority))?;
+        let receiver = &output.output.units[receiver_index];
         if matches!(receiver.kind, PresentationUnitKind::Atomic { .. }) {
             return Err(crate::hyphenation::error(
                 crate::HyphenationError::UnsupportedReceivingRole,
@@ -452,38 +453,88 @@ pub(super) fn select(
             _ => None,
         };
         let attachment = Attachment::After { participant, atom };
-        let mut prefix = Output::default();
-        prefix.indication(prepared, incoming.alternative.index, outer, attachment)?;
-        let atom_shift = prefix.output.atoms.len();
-        let unit_shift = prefix.output.units.len();
-        let position_shift = prefix.output.position;
-        for atom in &mut output.output.atoms {
+        // After uses the actual receiver's event side as well as its full L1
+        // level. Genuine prefix controls keep their captured logical order.
+        let atom_cut = receiver.atoms.start;
+        let position_cut = receiver.presentation.start;
+        let mut indication = Output::default();
+        indication.indication(prepared, incoming.alternative.index, outer, attachment)?;
+        let atom_shift = indication.output.atoms.len();
+        let unit_shift = indication.output.units.len();
+        let position_shift = indication.output.position;
+        let final_position = output
+            .output
+            .position
+            .checked_add(position_shift)
+            .ok_or_else(crate::projection::length_overflow)?;
+        for atom in &mut output.output.atoms[atom_cut..] {
             atom.presentation.start += position_shift;
             atom.presentation.end += position_shift;
         }
-        for unit in &mut output.output.units {
+        for unit in &mut output.output.units[receiver_index..] {
             unit.atoms.start += atom_shift;
             unit.atoms.end += atom_shift;
             unit.presentation.start += position_shift;
             unit.presentation.end += position_shift;
         }
-        for piece in &mut output.output.pieces {
+        for piece in &mut output.output.pieces[receiver_index..] {
             piece.presentation.start += position_shift;
             piece.presentation.end += position_shift;
         }
         for domain in &mut output.domains {
-            domain.units.start += unit_shift;
-            domain.units.end += unit_shift;
+            if domain.units.start >= receiver_index {
+                domain.units.start += unit_shift;
+                domain.units.end += unit_shift;
+            } else {
+                debug_assert!(domain.units.end <= receiver_index);
+            }
         }
-        prefix.output.atoms.extend(output.output.atoms);
-        prefix.output.units.extend(output.output.units);
-        prefix.output.pieces.extend(output.output.pieces);
-        prefix.output.position += output.output.position;
-        prefix.infos.extend(output.infos);
-        prefix.levels.extend(output.levels);
-        prefix.originals.extend(output.originals);
-        prefix.domains.extend(output.domains);
-        output = prefix;
+        for atom in &mut indication.output.atoms {
+            atom.presentation.start += position_cut;
+            atom.presentation.end += position_cut;
+        }
+        for unit in &mut indication.output.units {
+            unit.atoms.start += atom_cut;
+            unit.atoms.end += atom_cut;
+            unit.presentation.start += position_cut;
+            unit.presentation.end += position_cut;
+        }
+        for piece in &mut indication.output.pieces {
+            piece.presentation.start += position_cut;
+            piece.presentation.end += position_cut;
+        }
+        for domain in &mut indication.domains {
+            domain.units.start += receiver_index;
+            domain.units.end += receiver_index;
+        }
+        let domain_cut = output
+            .domains
+            .partition_point(|domain| domain.units.start < receiver_index);
+        output
+            .output
+            .atoms
+            .splice(atom_cut..atom_cut, indication.output.atoms);
+        output
+            .output
+            .indices
+            .splice(atom_cut..atom_cut, indication.output.indices);
+        output
+            .output
+            .units
+            .splice(receiver_index..receiver_index, indication.output.units);
+        output
+            .output
+            .pieces
+            .splice(receiver_index..receiver_index, indication.output.pieces);
+        output.output.position = final_position;
+        output.infos.splice(atom_cut..atom_cut, indication.infos);
+        output.levels.splice(atom_cut..atom_cut, indication.levels);
+        output
+            .originals
+            .splice(atom_cut..atom_cut, indication.originals);
+        output
+            .domains
+            .splice(domain_cut..domain_cut, indication.domains);
     }
     let barrier_atoms = projection
         .barrier_atoms

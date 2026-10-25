@@ -63,8 +63,9 @@ impl FinalizedLine {
     /// Whether this exact selected line retains actual in-flow content.
     ///
     /// Retained original or computed text counts even at zero or signed advance,
-    /// as do genuine in-flow atomics with zero geometry. Hard separators,
-    /// boundary/control struts, discarded text, empty anchors and out-of-flow
+    /// as do genuine in-flow atomics with zero geometry and positive inline
+    /// boundary advances. Hard separators, control struts, discarded text,
+    /// empty anchors and out-of-flow
     /// roles do not independently count. This is neither visibility nor the
     /// prefix API's broader retained-flow participation observation.
     #[must_use]
@@ -1239,6 +1240,7 @@ pub struct FinalizedControlView<'a> {
     occurrence: usize,
     slot: Point,
     level: u8,
+    inline_end: f64,
 }
 impl fmt::Debug for FinalizedControlView<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1261,6 +1263,10 @@ impl FinalizedControlView<'_> {
         self.slot
     }
     #[must_use]
+    pub const fn inline_bounds(&self) -> (f64, f64) {
+        (self.slot.x, self.inline_end)
+    }
+    #[must_use]
     pub fn level(&self) -> BidiLevel {
         resolved_level(self.level)
     }
@@ -1279,6 +1285,7 @@ impl FinalizedLine {
                 occurrence,
                 slot: anchor.slot,
                 level: anchor.level,
+                inline_end: anchor.inline_end,
             })
         })
     }
@@ -1701,6 +1708,7 @@ mod tests {
             .handle();
         let selected = prepared
             .select(LineSelectionRequest {
+                boundary_context: Vec::new(),
                 incoming: None,
                 start: prepared.boundary_views().next().unwrap().handle(),
                 end: termination.view().boundary(),

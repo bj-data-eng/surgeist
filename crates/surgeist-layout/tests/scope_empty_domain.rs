@@ -182,6 +182,7 @@ fn fixture() -> (
             layout::LayoutInput::InlineBoundary(layout::InlineBoundaryInput::new(
                 layout::InlineBoundaryKind::Start,
                 layout::InlineMetrics::try_new(8.0, 10.0).unwrap(),
+                layout::InlineBoundaryEdgeOf::ZERO,
             )),
             layout::LayoutInput::InlineText(layout::TextParticipation::new(
                 all[0].origin_views().next().unwrap().handle(),
@@ -196,6 +197,7 @@ fn fixture() -> (
             layout::LayoutInput::InlineBoundary(layout::InlineBoundaryInput::new(
                 layout::InlineBoundaryKind::End,
                 layout::InlineMetrics::try_new(8.0, 10.0).unwrap(),
+                layout::InlineBoundaryEdgeOf::ZERO,
             )),
         ],
         non_box: layout::NodeInput::non_box(),

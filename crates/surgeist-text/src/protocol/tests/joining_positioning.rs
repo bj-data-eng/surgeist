@@ -65,9 +65,18 @@ fn line(
         .participants
         .iter()
         .filter_map(|part| match part {
-            PreparedParticipant::Control(control) => Some(ControlAllocation {
-                occurrence: control.clone(),
-                strut: None,
+            PreparedParticipant::Control(control) => Some({
+                let occurrence = control.clone();
+                ControlAllocation {
+                    boundary: matches!(
+                        occurrence.view().kind(),
+                        crate::ParagraphControlKind::InlineBoundaryStart
+                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                    )
+                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    occurrence,
+                    strut: None,
+                }
             }),
             _ => None,
         })

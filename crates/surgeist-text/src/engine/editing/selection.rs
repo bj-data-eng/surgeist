@@ -90,6 +90,7 @@ pub(super) fn between(
                 .iter()
                 .any(|atom| matches!(atom.code_point, 0x0a | 0x0d) && overlaps(atom.source, range))
         },
+        |_, _| false,
         |_| None,
     )
 }
@@ -103,6 +104,7 @@ pub(super) fn with_membership(
     end_line: usize,
     mut selected: impl FnMut(usize, usize) -> bool,
     mut source_break_selected: impl FnMut(usize) -> bool,
+    mut selected_anchor: impl FnMut(usize, usize) -> bool,
     mut slot_fallback: impl FnMut(usize) -> Option<(f64, f64)>,
 ) -> Result<SelectionGeometry> {
     let mut output = Vec::new();
@@ -120,16 +122,31 @@ pub(super) fn with_membership(
         };
         let mut group: Option<(f64, f64)> = None;
         let mut selected_clusters = 0;
+        let mut selected_contributions = 0;
         for item in &data.visual_order {
-            let FinalizedVisualItem::Cluster(index) = *item else {
-                continue;
+            let (selected, left, right) = match *item {
+                FinalizedVisualItem::Cluster(index) => {
+                    let cluster = &data.clusters[index];
+                    let end = cluster.x + cluster.advance;
+                    let selected = selected(line_index, index);
+                    selected_clusters += usize::from(selected);
+                    (selected, cluster.x.min(end), cluster.x.max(end))
+                }
+                FinalizedVisualItem::Anchor(index) => {
+                    let anchor = &data.anchors[index];
+                    if anchor.inline_end == anchor.slot.x {
+                        continue;
+                    }
+                    (
+                        selected_anchor(line_index, index),
+                        anchor.slot.x,
+                        anchor.inline_end,
+                    )
+                }
+                FinalizedVisualItem::InlineBox(_) => continue,
             };
-            let cluster = &data.clusters[index];
-            if selected(line_index, index) {
-                selected_clusters += 1;
-                let end = cluster.x + cluster.advance;
-                let left = cluster.x.min(end);
-                let right = cluster.x.max(end);
+            if selected {
+                selected_contributions += 1;
                 group = Some(group.map_or((left, right), |(start, finish)| {
                     (start.min(left), finish.max(right))
                 }));
@@ -164,7 +181,7 @@ pub(super) fn with_membership(
                 false,
             )?;
         }
-        if selected_clusters == 0
+        if selected_contributions == 0
             && extra == 0.0
             && let Some((start, end)) = slot_fallback(line_index)
         {

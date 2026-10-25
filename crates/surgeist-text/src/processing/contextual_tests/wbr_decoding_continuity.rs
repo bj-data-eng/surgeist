@@ -106,14 +106,24 @@ fn whole(p: &PreparedText) -> FinalizedLine {
     let controls = participants
         .iter()
         .filter_map(|participant| match participant {
-            PreparedParticipant::Control(control) => Some(ControlAllocation {
-                occurrence: control.clone(),
-                strut: None,
+            PreparedParticipant::Control(control) => Some({
+                let occurrence = control.clone();
+                ControlAllocation {
+                    boundary: matches!(
+                        occurrence.view().kind(),
+                        crate::ParagraphControlKind::InlineBoundaryStart
+                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                    )
+                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    occurrence,
+                    strut: None,
+                }
             }),
             _ => None,
         })
         .collect();
     p.select(LineSelectionRequest {
+        boundary_context: Vec::new(),
         incoming: None,
         start: p.boundary_views().next().unwrap().handle(),
         end: termination.view().boundary(),

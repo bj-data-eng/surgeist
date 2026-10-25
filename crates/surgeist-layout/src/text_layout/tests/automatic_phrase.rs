@@ -192,12 +192,18 @@ fn fixture_in_direction(
         tree = tree.children(node, []).input(
             node,
             LayoutInputOf::inline_boundary(
-                InlineBoundaryInputOf::new(kind, InlineMetricsOf::try_new(8.0, 10.0).unwrap())
-                    .with_direction(if direction == ParagraphBaseDirection::RightToLeft {
+                InlineBoundaryInputOf::new(
+                    kind,
+                    InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+                    crate::InlineBoundaryEdgeOf::ZERO,
+                )
+                .with_direction(
+                    if direction == ParagraphBaseDirection::RightToLeft {
                         Direction::Rtl
                     } else {
                         Direction::Ltr
-                    }),
+                    },
+                ),
             ),
         );
     }
@@ -261,6 +267,7 @@ fn automatic_phrase_equal_anchor_boundaries_cannot_swap_or_cross_the_issued_scop
         LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
             InlineBoundaryKind::End,
             InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+            crate::InlineBoundaryEdgeOf::ZERO,
         )),
     );
     rejects(&tree, f.binding, TextBindingError::ParticipantRole);

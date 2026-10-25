@@ -20,7 +20,7 @@ mod math_data;
 mod phrase;
 mod phrase_data;
 pub(crate) mod relation;
-mod separators;
+pub(crate) mod separators;
 mod width;
 mod width_data;
 

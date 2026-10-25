@@ -80,7 +80,6 @@ pub(crate) struct PreparedData {
     pub(crate) shaped: layout::data::ShapedData,
     pub(crate) tables: PreparedTables,
     pub(crate) indication_fonts: Vec<PreparedIndicationFonts>,
-    pub(crate) joining_domains: Vec<shape::JoiningDomain>,
 }
 
 /// Inputs coupled to one shaping operation, without a mutable System escape.
@@ -298,7 +297,6 @@ pub(crate) fn prepare(
         scratch,
         options.tabs() == crate::TabPreparation::CssStops,
     )?;
-    let joining_domains = shape::prepare_joining_domains(&analyzed, &shaped, &indication_fonts)?;
     let tab_metrics = crate::tabs::prepare(
         catalogue,
         &analyzed,
@@ -317,6 +315,5 @@ pub(crate) fn prepare(
         shaped,
         tables,
         indication_fonts,
-        joining_domains,
     }))
 }

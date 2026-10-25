@@ -334,6 +334,7 @@ fn inline_boundary_control<S: LayoutScalar>(
         ),
         input.metrics(),
         InlineControlAlignment::from(input.vertical_align()),
+        input.edge(),
     )
 }
 
@@ -744,10 +745,11 @@ where
                         .iter()
                         .position(|child| *child == node)
                         .expect("capture admitted the actual control node");
-                let (kind, strut) = match tree.layout_input(node) {
+                let (kind, strut, endpoint) = match tree.layout_input(node) {
                     crate::LayoutInputViewOf::LineBreak(control) => (
                         crate::inline::InlineParticipantLayoutKind::ForcedLineBreak,
                         Some((control.metrics(), control.vertical_align())),
+                        None,
                     ),
                     crate::LayoutInputViewOf::InlineBoundary(boundary) => (
                         match boundary.kind() {
@@ -759,19 +761,31 @@ where
                             }
                         },
                         Some((boundary.metrics(), boundary.vertical_align())),
+                        Some(crate::inline::InlineEndpointOf::from_input(boundary)),
                     ),
                     crate::LayoutInputViewOf::TextControl(_) => (
                         crate::inline::InlineParticipantLayoutKind::SemanticControl,
                         None,
+                        None,
                     ),
                     _ => unreachable!("validated actual control retains its normalized role"),
                 };
-                crate::text_layout::run::Control {
+                let boundary = endpoint
+                    .map(|endpoint| {
+                        surgeist_text::InlineBoundaryAllocation::try_new(
+                            endpoint.edge.advance().to_f64(),
+                        )
+                        .map_err(|error| text_run_error(container, error.into()))
+                    })
+                    .transpose()?;
+                Ok(crate::text_layout::run::Control {
                     node,
                     source_index,
                     kind,
+                    endpoint,
                     allocation: surgeist_text::ControlAllocation {
                         occurrence: binding.occurrence.clone(),
+                        boundary,
                         strut: strut.map(|(metrics, alignment)| surgeist_text::ControlStrut {
                             baseline: metrics.baseline().to_f64(),
                             line_extent: metrics.line_extent().to_f64(),
@@ -786,9 +800,9 @@ where
                             },
                         }),
                     },
-                }
+                })
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, LayoutErrorOf<Tree::Node, S, M>>>()?;
         let intrinsic_max =
             !float_events.is_empty() && matches!(available, AvailableOf::MaxContent);
         let encounters = std::cell::RefCell::new(super::float_text::Encounters::new(
@@ -1211,15 +1225,21 @@ where
             let Some(source) = control_sources.get(&source_index) else {
                 continue;
             };
+            let logical_size = LogicalSizeOf::new(source.inline_extent, S::ZERO);
+            let size = constants.flow_axes.physical_size(logical_size);
+            let (border, padding) = source
+                .endpoint
+                .map_or((Edges::ZERO, Edges::ZERO), |endpoint| {
+                    endpoint.physical_components()
+                });
             tree.set_unrounded(
                 child,
                 NodeOutputOf::<S> {
                     source_index: crate::SourceIndex::new(source_index),
-                    location: project_point(
-                        source.inline_start,
-                        source.block_start,
-                        LogicalSizeOf::new(S::ZERO, S::ZERO),
-                    ),
+                    location: project_point(source.inline_start, source.block_start, logical_size),
+                    size,
+                    border,
+                    padding,
                     ..NodeOutputOf::new()
                 },
             );

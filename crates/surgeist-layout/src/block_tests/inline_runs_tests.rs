@@ -266,6 +266,7 @@ fn fri06_c03_fixed_metric_boundary_retains_requested_baseline_both_scalars() {
             LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                 InlineBoundaryKind::Start,
                 InlineMetricsOf::from_ascent_descent(S::from_f64(6.0), S::from_f64(4.0)).unwrap(),
+                crate::InlineBoundaryEdgeOf::ZERO,
             )),
             S::from_f64(6.0),
             S::from_f64(6.0),
@@ -282,6 +283,7 @@ fn fri06_c03_fixed_size_only_control_keeps_early_return_call_accounting_both_sca
             LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                 InlineBoundaryKind::Start,
                 InlineMetricsOf::from_ascent_descent(S::ZERO, S::ZERO).unwrap(),
+                crate::InlineBoundaryEdgeOf::ZERO,
             )),
         );
         assert_eq!(
@@ -442,6 +444,7 @@ fn fri08_c07_t01_inline_transition_tree<S: LayoutScalar>(
                 LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                     InlineBoundaryKind::Start,
                     InlineMetricsOf::from_ascent_descent(S::ZERO, S::ZERO).unwrap(),
+                    crate::InlineBoundaryEdgeOf::ZERO,
                 )),
             ),
         Fri08C07T01InlineRunStart::ExplicitLineBreak => {
@@ -1293,7 +1296,11 @@ fn block_inline_boundaries_are_reported_as_zero_size_inline_controls() {
         )
         .inline_boundary(
             1,
-            InlineBoundaryInput::new(InlineBoundaryKind::Start, boundary_metrics),
+            InlineBoundaryInput::new(
+                InlineBoundaryKind::Start,
+                boundary_metrics,
+                crate::InlineBoundaryEdgeOf::ZERO,
+            ),
         )
         .style(
             2,
@@ -1306,7 +1313,11 @@ fn block_inline_boundaries_are_reported_as_zero_size_inline_controls() {
         )
         .inline_boundary(
             3,
-            InlineBoundaryInput::new(InlineBoundaryKind::End, boundary_metrics),
+            InlineBoundaryInput::new(
+                InlineBoundaryKind::End,
+                boundary_metrics,
+                crate::InlineBoundaryEdgeOf::ZERO,
+            ),
         )
         .style(
             4,
@@ -1361,7 +1372,11 @@ fn block_inline_boundaries_before_overwide_first_inline_block_do_not_create_lead
         )
         .inline_boundary(
             1,
-            InlineBoundaryInput::new(InlineBoundaryKind::Start, boundary_metrics),
+            InlineBoundaryInput::new(
+                InlineBoundaryKind::Start,
+                boundary_metrics,
+                crate::InlineBoundaryEdgeOf::ZERO,
+            ),
         )
         .style(
             2,
@@ -1409,8 +1424,12 @@ fn vertical_block_inline_boundaries_use_parent_flow() {
         )
         .inline_boundary(
             1,
-            InlineBoundaryInput::new(InlineBoundaryKind::Start, boundary_metrics)
-                .with_writing_mode(WritingMode::VerticalRl),
+            InlineBoundaryInput::new(
+                InlineBoundaryKind::Start,
+                boundary_metrics,
+                crate::InlineBoundaryEdgeOf::ZERO,
+            )
+            .with_writing_mode(WritingMode::VerticalRl),
         )
         .style(
             2,
@@ -1424,8 +1443,12 @@ fn vertical_block_inline_boundaries_use_parent_flow() {
         )
         .inline_boundary(
             3,
-            InlineBoundaryInput::new(InlineBoundaryKind::End, boundary_metrics)
-                .with_writing_mode(WritingMode::VerticalRl),
+            InlineBoundaryInput::new(
+                InlineBoundaryKind::End,
+                boundary_metrics,
+                crate::InlineBoundaryEdgeOf::ZERO,
+            )
+            .with_writing_mode(WritingMode::VerticalRl),
         );
 
     compute_root(
@@ -1468,8 +1491,12 @@ fn vertical_lr_block_inline_boundaries_use_parent_flow() {
         )
         .inline_boundary(
             1,
-            InlineBoundaryInput::new(InlineBoundaryKind::Start, boundary_metrics)
-                .with_writing_mode(WritingMode::VerticalLr),
+            InlineBoundaryInput::new(
+                InlineBoundaryKind::Start,
+                boundary_metrics,
+                crate::InlineBoundaryEdgeOf::ZERO,
+            )
+            .with_writing_mode(WritingMode::VerticalLr),
         )
         .style(
             2,
@@ -1483,8 +1510,12 @@ fn vertical_lr_block_inline_boundaries_use_parent_flow() {
         )
         .inline_boundary(
             3,
-            InlineBoundaryInput::new(InlineBoundaryKind::End, boundary_metrics)
-                .with_writing_mode(WritingMode::VerticalLr),
+            InlineBoundaryInput::new(
+                InlineBoundaryKind::End,
+                boundary_metrics,
+                crate::InlineBoundaryEdgeOf::ZERO,
+            )
+            .with_writing_mode(WritingMode::VerticalLr),
         );
 
     compute_root(
@@ -1831,6 +1862,7 @@ fn visible_controls<S: LayoutScalar>(flow: FlowAxes) -> [LayoutInputOf<S>; 3] {
             InlineBoundaryInputOf::new(
                 kind,
                 InlineMetricsOf::from_ascent_descent(S::ZERO, S::ZERO).unwrap(),
+                crate::InlineBoundaryEdgeOf::ZERO,
             )
             .with_writing_mode(flow.writing_mode())
             .with_direction(flow.direction()),
@@ -1938,7 +1970,11 @@ fn vertical_parent_rejects_default_inline_boundary_flow_until_input_is_layout_re
         )
         .inline_boundary(
             1,
-            InlineBoundaryInput::new(InlineBoundaryKind::Start, boundary_metrics),
+            InlineBoundaryInput::new(
+                InlineBoundaryKind::Start,
+                boundary_metrics,
+                crate::InlineBoundaryEdgeOf::ZERO,
+            ),
         );
 
     let error = compute_root(
@@ -3843,4 +3879,284 @@ fn block_definite_compute_size_keeps_non_empty_flex_child_baselines() {
     assert_eq!(output.size, Size::new(100.0, 50.0));
     assert_eq!(output.first_baselines.y, Some(9.0));
     assert_eq!(output.last_baselines.y, Some(19.0));
+}
+
+#[test]
+fn numeric_inline_endpoint_uses_one_real_strip_and_moves_the_next_box_all_flows_both_scalars() {
+    fn lane<S: LayoutScalar>() {
+        for writing_mode in [
+            WritingMode::HorizontalTb,
+            WritingMode::VerticalRl,
+            WritingMode::VerticalLr,
+            WritingMode::SidewaysRl,
+            WritingMode::SidewaysLr,
+        ] {
+            for direction in [Direction::Ltr, Direction::Rtl] {
+                for kind in [InlineBoundaryKind::Start, InlineBoundaryKind::End] {
+                    let edge =
+                        crate::InlineBoundaryEdgeOf::try_new(S::from_f64(3.0), S::from_f64(5.0))
+                            .unwrap();
+                    let metrics =
+                        InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap();
+                    let atomic = NodeInputOf {
+                        display: Display::InlineBlock,
+                        atomic_inline_participation: Some(AtomicInlineParticipation::new(
+                            surgeist_text::BidiLevel::try_new(0).unwrap(),
+                            InlineBreakOpportunity::Prohibited,
+                        )),
+                        size: Size::new(
+                            PreferredSizeOf::px(S::from_f64(10.0)),
+                            PreferredSizeOf::px(S::from_f64(10.0)),
+                        ),
+                        ..NodeInputOf::default()
+                    };
+                    let tree = PublicBlockTree::default()
+                        .with_children(0, vec![1, 2, 3])
+                        .with_style(
+                            0,
+                            NodeInputOf {
+                                display: Display::Block,
+                                direction,
+                                writing_mode,
+                                ..NodeInputOf::default()
+                            },
+                        )
+                        .with_style(1, atomic.clone())
+                        .with_style(2, NodeInputOf::non_box())
+                        .with_layout_input(
+                            2,
+                            LayoutInputOf::inline_boundary(
+                                InlineBoundaryInputOf::new(kind, metrics, edge)
+                                    .with_direction(direction)
+                                    .with_writing_mode(writing_mode),
+                            ),
+                        )
+                        .with_style(3, atomic);
+                    let request =
+                        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
+                            .unwrap();
+                    let batch = compute_layout(&tree, 0, request).unwrap();
+                    let vertical = writing_mode != WritingMode::HorizontalTb;
+                    let root = public_final_output(&batch, 0);
+                    assert_eq!(
+                        if vertical {
+                            root.size.height
+                        } else {
+                            root.size.width
+                        },
+                        S::from_f64(28.0)
+                    );
+                    let strip = public_final_output(&batch, 2);
+                    assert_eq!(
+                        strip.size,
+                        if vertical {
+                            Size::new(S::ZERO, S::from_f64(8.0))
+                        } else {
+                            Size::new(S::from_f64(8.0), S::ZERO)
+                        }
+                    );
+                    assert_eq!(
+                        if vertical {
+                            strip.location.y
+                        } else {
+                            strip.location.x
+                        },
+                        S::from_f64(10.0)
+                    );
+                    let reverse =
+                        (direction == Direction::Rtl) != (writing_mode == WritingMode::SidewaysLr);
+                    let second = public_final_output(&batch, 3);
+                    assert_eq!(
+                        if vertical {
+                            second.location.y
+                        } else {
+                            second.location.x
+                        },
+                        S::from_f64(if reverse { 0.0 } else { 18.0 })
+                    );
+                    // Physical top/right/bottom/left sides are literal oracles,
+                    // independent of the production FlowAxes mapping helper.
+                    let start_side = match writing_mode {
+                        WritingMode::HorizontalTb => {
+                            if direction == Direction::Ltr {
+                                3
+                            } else {
+                                1
+                            }
+                        }
+                        WritingMode::VerticalRl
+                        | WritingMode::VerticalLr
+                        | WritingMode::SidewaysRl => {
+                            if direction == Direction::Ltr {
+                                0
+                            } else {
+                                2
+                            }
+                        }
+                        WritingMode::SidewaysLr => {
+                            if direction == Direction::Ltr {
+                                2
+                            } else {
+                                0
+                            }
+                        }
+                    };
+                    let side = if kind == InlineBoundaryKind::Start {
+                        start_side
+                    } else {
+                        (start_side + 2) % 4
+                    };
+                    let components = |value| {
+                        let mut edges = [S::ZERO; 4];
+                        edges[side] = S::from_f64(value);
+                        Edges::new(edges[0], edges[1], edges[2], edges[3])
+                    };
+                    assert_eq!(strip.border, components(3.0));
+                    assert_eq!(strip.padding, components(5.0));
+                }
+            }
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn finite_endpoint_components_that_overflow_the_numeric_run_refuse_the_batch() {
+    fn lane<S: LayoutScalar>() {
+        let largest = if S::from_f64(f64::MAX).is_finite() {
+            f64::MAX
+        } else {
+            f64::from(f32::MAX)
+        };
+        let edge = InlineBoundaryEdgeOf::try_new(S::from_f64(largest), S::ZERO).unwrap();
+        let mut tree = PublicBlockTree::default()
+            .with_children(0, vec![1, 2])
+            .with_style(
+                0,
+                NodeInputOf {
+                    display: Display::Block,
+                    ..NodeInputOf::default()
+                },
+            );
+        for (node, kind) in [(1, InlineBoundaryKind::Start), (2, InlineBoundaryKind::End)] {
+            tree = tree
+                .with_style(node, NodeInputOf::non_box())
+                .with_layout_input(
+                    node,
+                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                        kind,
+                        InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                        edge,
+                    )),
+                );
+        }
+        let error = compute_layout(
+            &tree,
+            0,
+            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(error.operation(), LayoutOperation::RootLayout);
+        assert!(
+            matches!(
+                error.kind(),
+                LayoutErrorKindOf::InternalInvariant(
+                    LayoutInternalInvariant::InvalidRootScrollGeometry
+                )
+            ),
+            "run overflow must retain the existing root finite-geometry refusal: {error:?}"
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn numeric_endpoint_uses_the_actual_float_band_in_both_scalar_lanes() {
+    fn lane<S: LayoutScalar>() {
+        for (edge, x, y, second_x) in [
+            (InlineBoundaryEdgeOf::ZERO, 20.0, 0.0, 30.0),
+            (
+                InlineBoundaryEdgeOf::try_new(S::from_f64(3.0), S::from_f64(5.0)).unwrap(),
+                0.0,
+                20.0,
+                18.0,
+            ),
+        ] {
+            let atomic = NodeInputOf {
+                display: Display::InlineBlock,
+                atomic_inline_participation: Some(AtomicInlineParticipation::new(
+                    surgeist_text::BidiLevel::try_new(0).unwrap(),
+                    InlineBreakOpportunity::Prohibited,
+                )),
+                size: Size::new(
+                    PreferredSizeOf::px(S::from_f64(10.0)),
+                    PreferredSizeOf::px(S::from_f64(10.0)),
+                ),
+                ..NodeInputOf::default()
+            };
+            let tree = PublicBlockTree::default()
+                .with_children(0, vec![4, 1, 2, 3])
+                .with_style(
+                    0,
+                    NodeInputOf {
+                        display: Display::Block,
+                        size: Size::new(
+                            PreferredSizeOf::px(S::from_f64(40.0)),
+                            PreferredSizeOf::AUTO,
+                        ),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .with_style(
+                    4,
+                    NodeInputOf {
+                        display: Display::Block,
+                        float: Float::Left,
+                        size: Size::new(
+                            PreferredSizeOf::px(S::from_f64(20.0)),
+                            PreferredSizeOf::px(S::from_f64(20.0)),
+                        ),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .with_style(1, atomic.clone())
+                .with_style(2, NodeInputOf::non_box())
+                .with_layout_input(
+                    2,
+                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                        InlineBoundaryKind::Start,
+                        InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                        edge,
+                    )),
+                )
+                .with_style(3, atomic);
+            let batch = compute_layout(
+                &tree,
+                0,
+                LayoutRootRequestOf::viewport(Size::new(
+                    AvailableOf::definite(S::from_f64(40.0)),
+                    AvailableOf::MAX_CONTENT,
+                ))
+                .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(public_final_output(&batch, 4).location, Point::ZERO);
+            assert_eq!(
+                public_final_output(&batch, 1).location,
+                Point::new(S::from_f64(x), S::from_f64(y))
+            );
+            assert_eq!(
+                public_final_output(&batch, 3).location,
+                Point::new(S::from_f64(second_x), S::from_f64(y))
+            );
+            assert_eq!(
+                public_final_output(&batch, 2).size,
+                Size::new(edge.advance(), S::ZERO)
+            );
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
 }

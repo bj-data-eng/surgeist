@@ -27,11 +27,12 @@ pub(crate) struct Atomic<Node, S: LayoutScalar> {
     pub relative_offset: Point<S>,
 }
 
-pub(crate) struct Control<Node> {
+pub(crate) struct Control<Node, S: LayoutScalar> {
     pub node: Node,
     pub source_index: usize,
     pub kind: InlineParticipantLayoutKind,
     pub allocation: surgeist_text::ControlAllocation,
+    pub endpoint: Option<crate::inline::InlineEndpointOf<S>>,
 }
 
 #[derive(Clone, Copy)]
@@ -100,7 +101,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
     binding: &TextParagraphBinding<Node>,
     associations: &super::capture::ScopeAssociations<Node>,
     atomics: &[Atomic<Node, S>],
-    controls: &[Control<Node>],
+    controls: &[Control<Node, S>],
     context: Context<S>,
     reusable: &[fit::ReusableLine],
     environment: LineEnvironment<
@@ -397,7 +398,7 @@ fn canonical_allocations<Node: Copy + Eq, S: LayoutScalar>(
 }
 
 fn canonical_controls<Node: Copy + Eq, S: LayoutScalar>(
-    controls: &[Control<Node>],
+    controls: &[Control<Node, S>],
     context: &Context<S>,
     origin: Point<f64>,
     line: &FinalizedLine,
@@ -449,6 +450,7 @@ fn canonical_controls<Node: Copy + Eq, S: LayoutScalar>(
             Ok(surgeist_text::ControlAllocation {
                 occurrence: allocation.occurrence.clone(),
                 strut,
+                boundary: original.allocation.boundary,
             })
         })
         .collect()
@@ -522,7 +524,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     binding: &TextParagraphBinding<Node>,
     associations: &super::capture::ScopeAssociations<Node>,
     atomics: &[Atomic<Node, S>],
-    controls: &[Control<Node>],
+    controls: &[Control<Node, S>],
     context: &Context<S>,
     origin: Point<f64>,
     lines: Vec<FittedLine>,
@@ -688,17 +690,23 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 .iter()
                 .find(|row| row.node == binding.node)
                 .expect("capture admitted every actual control node");
+            let (left, right) = slot.inline_bounds();
+            let inline_extent = number(finite(right - left)?)?;
             let physical = Point::new(
-                number(add(anchor.inline_origin, slot.slot().x)? - origin.x)?,
+                number(add(anchor.inline_origin, left)? - origin.x)?,
                 number(add(anchor.baseline, slot.slot().y - feedback.baseline)? - origin.y)?,
             );
-            let logical = context
-                .axes
-                .logical_point(physical, Size::ZERO, context.containing_size);
+            let logical = context.axes.logical_point(
+                physical,
+                Size::new(inline_extent, S::ZERO),
+                context.containing_size,
+            );
             report.controls.push(InlineControlSourceOf {
                 kind: control.kind,
                 source_index: control.source_index,
                 inline_start: logical.inline - context.inline_start_inset(),
+                inline_extent,
+                endpoint: control.endpoint,
                 block_start: logical.block - context.cursor_block,
                 line_index,
                 visual_index: None,

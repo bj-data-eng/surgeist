@@ -365,6 +365,7 @@ fn finish(
     };
     prepared
         .select(text::LineSelectionRequest {
+            boundary_context: Vec::new(),
             start,
             end,
             termination: text::PreparedTermination::Ordinary(termination),

@@ -32,10 +32,11 @@ pub use grid::{
     RawGridPlacement,
 };
 pub use inline::{
-    AtomicInlineParticipation, BlockGeneration, InlineBoundaryInput, InlineBoundaryInputOf,
-    InlineBoundaryKind, InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf,
-    LineBreakDisplay, LineBreakInput, LineBreakInputOf, TextAlign, TextAlignLast, TextIndent,
-    TextIndentOf, TextJustification, VerticalAlign, WritingMode,
+    AtomicInlineParticipation, BlockGeneration, InlineBoundaryEdge, InlineBoundaryEdgeOf,
+    InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind, InlineBreakOpportunity,
+    InlineMetrics, InlineMetricsError, InlineMetricsOf, LineBreakDisplay, LineBreakInput,
+    LineBreakInputOf, TextAlign, TextAlignLast, TextIndent, TextIndentOf, TextJustification,
+    VerticalAlign, WritingMode,
 };
 pub use scroll::{
     ComputedOverflow, ComputedOverflowError, Overflow, OverflowClipBox, OverflowClipMargin,

@@ -67,9 +67,18 @@ fn whole(p: &PreparedText) -> FinalizedLine {
     let mut value = request(p);
     value.controls = p
         .control_views()
-        .map(|row| ControlAllocation {
-            occurrence: row.handle(),
-            strut: None,
+        .map(|row| {
+            let occurrence = row.handle();
+            ControlAllocation {
+                boundary: matches!(
+                    occurrence.view().kind(),
+                    crate::ParagraphControlKind::InlineBoundaryStart
+                        | crate::ParagraphControlKind::InlineBoundaryEnd
+                )
+                .then_some(crate::InlineBoundaryAllocation::ZERO),
+                occurrence,
+                strut: None,
+            }
         })
         .collect();
     p.select(value)
@@ -94,9 +103,18 @@ fn selected(p: &PreparedText, offer: PreparedOpportunity) -> FinalizedLine {
                 .participants
                 .contains(&PreparedParticipant::Control(row.handle()))
         })
-        .map(|row| ControlAllocation {
-            occurrence: row.handle(),
-            strut: None,
+        .map(|row| {
+            let occurrence = row.handle();
+            ControlAllocation {
+                boundary: matches!(
+                    occurrence.view().kind(),
+                    crate::ParagraphControlKind::InlineBoundaryStart
+                        | crate::ParagraphControlKind::InlineBoundaryEnd
+                )
+                .then_some(crate::InlineBoundaryAllocation::ZERO),
+                occurrence,
+                strut: None,
+            }
         })
         .collect();
     p.select(value)

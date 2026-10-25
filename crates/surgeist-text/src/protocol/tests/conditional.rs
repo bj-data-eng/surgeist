@@ -89,9 +89,18 @@ fn selection(
         .participants
         .iter()
         .filter_map(|participant| match participant {
-            PreparedParticipant::Control(occurrence) => Some(ControlAllocation {
-                occurrence: occurrence.clone(),
-                strut: None,
+            PreparedParticipant::Control(occurrence) => Some({
+                let occurrence = occurrence.clone();
+                ControlAllocation {
+                    boundary: matches!(
+                        occurrence.view().kind(),
+                        crate::ParagraphControlKind::InlineBoundaryStart
+                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                    )
+                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    occurrence,
+                    strut: None,
+                }
             }),
             _ => None,
         })
@@ -649,9 +658,18 @@ fn ordinary_receipt(
         .participants
         .iter()
         .filter_map(|participant| match participant {
-            PreparedParticipant::Control(occurrence) => Some(ControlAllocation {
-                occurrence: occurrence.clone(),
-                strut: None,
+            PreparedParticipant::Control(occurrence) => Some({
+                let occurrence = occurrence.clone();
+                ControlAllocation {
+                    boundary: matches!(
+                        occurrence.view().kind(),
+                        crate::ParagraphControlKind::InlineBoundaryStart
+                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                    )
+                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    occurrence,
+                    strut: None,
+                }
             }),
             _ => None,
         })
@@ -1162,7 +1180,8 @@ fn true_outer_permission_does_not_vote_immediate_empty_chain_facts_or_collapse_c
         }
         for (index, cut) in cuts.iter().enumerate() {
             assert_eq!(cut.boundary().view().source_before().get(), 1);
-            let selected = prepared.select(selection(&prepared, cut)).unwrap();
+            let selected =
+                crate::test_wrapping::select_neutral(&prepared, selection(&prepared, cut)).unwrap();
             assert_eq!(selected.request().participants.len(), index + 1);
             assert_eq!(
                 selected

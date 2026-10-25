@@ -1,11 +1,18 @@
 #![forbid(unsafe_code)]
 
-//! Existing-callable endpoint custody, independently of future edge geometry.
+//! Endpoint custody and independently authored native edge geometry.
 //! Genuine contextual scope/control capture and registered Ahem exercise the
-//! public prepare/select/finalize path. No endpoint width is invented here.
+//! public prepare/select/finalize path. The original custody fixtures supply
+//! affirmative zero edges; geometry fixtures supply their declared used widths.
 
 use std::sync::Arc;
 use surgeist_text as t;
+
+#[path = "inline_boundary_edges/font.rs"]
+mod font;
+
+#[path = "inline_boundary_edges/geometry.rs"]
+mod geometry;
 
 use t::{ParagraphControlKind as K, SourceProcessingEvent as E};
 
@@ -36,22 +43,24 @@ fn origin(origin: usize) -> E {
     }
 }
 
-fn capture(
-    value: &str,
-    mode: t::WhiteSpace,
+fn prepare_capture(
+    source: t::Source,
+    block: t::SourceProcessingScope,
     ranges: &[(usize, usize)],
     controls: &[(K, usize)],
     pairs: &[(usize, usize)],
     body: Vec<E>,
+    fixture: &[u8],
 ) -> t::PreparedText {
-    let source = t::Source::identified(t::Text::from(value), t::Id::from_u64(64072), 1);
-    let base = style(mode);
-    let mut scopes = vec![t::SourceProcessingScope::Block {
-        topology: t::SourceProcessingTopology::Complete,
-        trim: t::WhiteSpaceTrim::default(),
-        base_style: base.clone(),
-        used_direction: t::ParagraphBaseDirection::LeftToRight,
-    }];
+    let (base, direction) = match &block {
+        t::SourceProcessingScope::Block {
+            base_style,
+            used_direction,
+            ..
+        } => (base_style.clone(), *used_direction),
+        _ => panic!("fixture supplies a real containing block"),
+    };
+    let mut scopes = vec![block];
     scopes.extend(
         pairs
             .iter()
@@ -104,14 +113,14 @@ fn capture(
             replacements: vec![],
             scopes,
             paragraphs: vec![t::SourceProcessingParagraph {
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
+                base_direction: direction,
                 paragraph_strut: t::ParagraphStrut::DefaultFont,
             }],
             events,
         })
         .unwrap(),
     );
-    assert_eq!(processed.source().text(), &t::Text::from(value));
+    assert_eq!(processed.source().text(), source.text());
     let paragraph = processed.paragraphs().next().unwrap();
     let analyzed = t::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
     // Every relation here has the same genuinely captured enclosing block's
@@ -129,7 +138,7 @@ fn capture(
         font_catalogue: t::FontCatalogueMode::RegisteredOnly,
     })
     .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    system.register_fonts(fixture.to_vec()).unwrap();
     let prepared = system
         .prepare(&analyzed, t::PreparationOptions::default())
         .unwrap();
@@ -143,6 +152,31 @@ fn capture(
         })
         .collect::<Vec<_>>();
     assert_eq!(handles.len(), controls.len());
+    prepared
+}
+
+fn capture(
+    value: &str,
+    mode: t::WhiteSpace,
+    ranges: &[(usize, usize)],
+    controls: &[(K, usize)],
+    pairs: &[(usize, usize)],
+    body: Vec<E>,
+) -> t::PreparedText {
+    let prepared = prepare_capture(
+        t::Source::identified(t::Text::from(value), t::Id::from_u64(64072), 1),
+        t::SourceProcessingScope::Block {
+            topology: t::SourceProcessingTopology::Complete,
+            trim: t::WhiteSpaceTrim::default(),
+            base_style: style(mode),
+            used_direction: t::ParagraphBaseDirection::LeftToRight,
+        },
+        ranges,
+        controls,
+        pairs,
+        body,
+        AHEM,
+    );
     // Qualify the real registered resource through complete final shaping
     // before testing an attachment cut. Both X and Y have genuine Ahem ink.
     let mut ink_ranges = Vec::new();
@@ -219,41 +253,58 @@ fn finish(
             t::PreparedParticipant::Control(occurrence) => Some(t::ControlAllocation {
                 occurrence: occurrence.clone(),
                 strut: None,
+                // These original custody fixtures author neutral endpoints;
+                // their geometry is affirmatively zero, not unavailable.
+                boundary: matches!(
+                    occurrence.view().kind(),
+                    K::InlineBoundaryStart | K::InlineBoundaryEnd
+                )
+                .then_some(t::InlineBoundaryAllocation::ZERO),
             }),
             _ => None,
         })
         .collect();
-    prepared
-        .select(t::LineSelectionRequest {
-            start,
-            end: boundary,
-            termination: t::PreparedTermination::Ordinary(end.clone()),
-            participants,
-            incoming: None,
-            alternative: None,
-            atomics: vec![],
-            controls,
-            line_strut: None,
-            context: t::LineContext {
-                base_direction: t::ParagraphBaseDirection::LeftToRight,
-                orientation: t::LineOrientation::Horizontal,
-                start: if from == 0 {
-                    t::LineStart::Paragraph
-                } else {
-                    t::LineStart::Continuation
-                },
-                end: match end.view().kind() {
-                    t::PreparedBreakKind::Forced => t::LineEnd::Forced,
-                    t::PreparedBreakKind::ParagraphEnd => t::LineEnd::Paragraph,
-                    _ => t::LineEnd::Soft,
-                },
-                available_inline: Some(100.0),
-                indent: 0.0,
-                alignment: t::Alignment::Start,
-                tabs: t::TabContext::NoTabs,
-                spacing: t::SpacingPolicy::Spaces,
+    let mut request = t::LineSelectionRequest {
+        start,
+        end: boundary,
+        termination: t::PreparedTermination::Ordinary(end.clone()),
+        participants,
+        incoming: None,
+        alternative: None,
+        atomics: vec![],
+        controls,
+        boundary_context: vec![],
+        line_strut: None,
+        context: t::LineContext {
+            base_direction: t::ParagraphBaseDirection::LeftToRight,
+            orientation: t::LineOrientation::Horizontal,
+            start: if from == 0 {
+                t::LineStart::Paragraph
+            } else {
+                t::LineStart::Continuation
             },
-        })
+            end: match end.view().kind() {
+                t::PreparedBreakKind::Forced => t::LineEnd::Forced,
+                t::PreparedBreakKind::ParagraphEnd => t::LineEnd::Paragraph,
+                _ => t::LineEnd::Soft,
+            },
+            available_inline: Some(100.0),
+            indent: 0.0,
+            alignment: t::Alignment::Start,
+            tabs: t::TabContext::NoTabs,
+            spacing: t::SpacingPolicy::Spaces,
+        },
+    };
+    while let Some(occurrence) = prepared.boundary_context_demand(&request).unwrap() {
+        request
+            .boundary_context
+            .push(t::InlineBoundaryContextAllocation {
+                occurrence,
+                boundary: t::InlineBoundaryAllocation::ZERO,
+            });
+    }
+    prepared
+        .select(request)
         .unwrap()
         .finalize(t::SpacingAllocations::None)
         .unwrap()
@@ -570,6 +621,72 @@ fn forced_break_chronology_does_not_relocate_a_later_closing_endpoint() {
             receiving_fragments: vec![2],
         }
     );
+}
+
+#[test]
+fn real_font_tables_qualify_joining_and_ligature_oracles() {
+    for (bytes, value, expected) in [
+        (
+            font::arabic(),
+            "\u{628}\u{628}\u{628}",
+            vec![
+                (t::Range::new(0, 1), 100),
+                (t::Range::new(1, 2), 277),
+                (t::Range::new(2, 3), 82),
+            ],
+        ),
+        (font::ligature(), "AA", vec![(t::Range::new(0, 2), 58)]),
+        (
+            font::ligature(),
+            "A\u{301}",
+            vec![(t::Range::new(0, 2), 58)],
+        ),
+    ] {
+        let head = font::table(&bytes, *b"head");
+        assert_eq!(u16::from_be_bytes(head[18..20].try_into().unwrap()), 1000);
+        let metrics = font::table(&bytes, *b"hmtx");
+        for glyph in [35_usize, 36, 58, 82, 100, 277] {
+            assert_eq!(
+                u16::from_be_bytes(metrics[glyph * 4..glyph * 4 + 2].try_into().unwrap()),
+                1000
+            );
+        }
+        let mut system = t::System::new(t::SystemOptions {
+            font_catalogue: t::FontCatalogueMode::RegisteredOnly,
+        })
+        .unwrap();
+        system.register_fonts(bytes.clone()).unwrap();
+        let layout = system
+            .layout(
+                t::Source::new(value),
+                style(t::WhiteSpace::Preserve),
+                t::Options::default(),
+            )
+            .unwrap();
+        for run in layout.run_views() {
+            assert_eq!(run.face().bytes(), bytes);
+            assert_eq!(run.face().index(), 0);
+            assert_eq!(run.font_size(), 10.0);
+            let instance = run.effective_instance().unwrap();
+            for glyph in run.glyphs() {
+                assert_eq!(glyph.advance(), 10.0);
+                let bounds = instance
+                    .glyph_outline(glyph.id(), run.face().catalogue_identity())
+                    .unwrap()
+                    .bounds()
+                    .unwrap();
+                assert!(bounds.size.width > 0.0 && bounds.size.height > 0.0);
+            }
+        }
+        let mut observed = layout
+            .glyph_runs()
+            .iter()
+            .flat_map(|run| run.glyphs().iter().map(|glyph| (glyph.range(), glyph.id())))
+            .collect::<Vec<_>>();
+        observed.sort_by_key(|entry| (entry.0.start, entry.0.end));
+        assert_eq!(observed, expected, "literal font oracle for {value:?}");
+        assert_eq!(layout.source().text(), &t::Text::from(value));
+    }
 }
 
 #[test]

@@ -278,6 +278,7 @@ fn selected_placed(system: &mut text::System, value: &str) -> text::Layout {
             participants: prepared.participants().collect(),
             atomics: vec![],
             controls: vec![],
+            boundary_context: vec![],
             line_strut: None,
             context: text::LineContext {
                 base_direction: text::ParagraphBaseDirection::LeftToRight,

@@ -31,15 +31,25 @@ fn selected_end(
     let controls = participants
         .iter()
         .filter_map(|p| match p {
-            PreparedParticipant::Control(control) => Some(ControlAllocation {
-                occurrence: control.clone(),
-                strut: None,
+            PreparedParticipant::Control(control) => Some({
+                let occurrence = control.clone();
+                ControlAllocation {
+                    boundary: matches!(
+                        occurrence.view().kind(),
+                        crate::ParagraphControlKind::InlineBoundaryStart
+                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                    )
+                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    occurrence,
+                    strut: None,
+                }
             }),
             _ => None,
         })
         .collect();
     prepared
         .select(LineSelectionRequest {
+            boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end,

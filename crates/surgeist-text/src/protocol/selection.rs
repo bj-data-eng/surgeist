@@ -13,6 +13,7 @@ pub(crate) struct SelectedData {
     pub(crate) presentation: super::prepared::SelectedPresentation,
     pub(crate) spacing_slots: Vec<SpacingSlotData>,
     pub(crate) metric_policy: LineMetricPolicy,
+    pub(crate) boundaries: super::boundary::Resolved,
 }
 
 /// A supported logical space contribution, before any provider-independent delta.
@@ -49,6 +50,16 @@ impl PreparedText {
     pub fn select(&self, request: LineSelectionRequest) -> Result<SelectedLine> {
         select(self, request, LineMetricPolicy::Native)
     }
+
+    /// Return the first actual off-selection endpoint still needed by retained
+    /// shaping context. No shaping or font catalogue query is performed.
+    pub fn boundary_context_demand(
+        &self,
+        request: &LineSelectionRequest,
+    ) -> Result<Option<super::PreparedControl>> {
+        let mut presentation = admit(self, request)?;
+        super::boundary::resolve(self, request, &mut presentation).map(|(_, missing)| missing)
+    }
 }
 
 pub(crate) fn select(
@@ -56,6 +67,48 @@ pub(crate) fn select(
     request: LineSelectionRequest,
     metric_policy: LineMetricPolicy,
 ) -> Result<SelectedLine> {
+    let mut presentation = admit(prepared, &request)?;
+    let (boundaries, missing) = super::boundary::resolve(prepared, &request, &mut presentation)?;
+    if let Some(missing) = missing {
+        return Err(protocol_error(ProtocolError::MissingBoundaryContext {
+            occurrence: missing.index,
+        }));
+    }
+    let spacing_slots = if request.context.spacing == SpacingPolicy::Spaces {
+        presentation
+            .units
+            .iter()
+            .enumerate()
+            .filter(|(_, unit)| unit.eligible_space)
+            .map(|(index, unit)| SpacingSlotData {
+                unit: index,
+                participant: unit.participant,
+                presentation: PresentationRange {
+                    start: unit.presentation.start,
+                    end: unit.presentation.end,
+                },
+                source: unit.source,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    Ok(SelectedLine {
+        inner: Arc::new(SelectedData {
+            prepared: Arc::clone(&prepared.inner),
+            request,
+            presentation,
+            spacing_slots,
+            metric_policy,
+            boundaries,
+        }),
+    })
+}
+
+fn admit(
+    prepared: &PreparedText,
+    request: &LineSelectionRequest,
+) -> Result<super::prepared::SelectedPresentation> {
     super::continuation::validate(prepared, &request.start, request.incoming.as_ref())?;
     let tables = &prepared.inner.tables;
     require_prepared(
@@ -150,11 +203,11 @@ pub(crate) fn select(
             Some((termination.index, opportunity))
         }
         super::PreparedTermination::Conditional(termination) => {
-            termination.validate(prepared, &request)?;
+            termination.validate(prepared, request)?;
             None
         }
         super::PreparedTermination::Measurement(portion) => {
-            portion.validate(prepared, &request)?;
+            portion.validate(prepared, request)?;
             None
         }
     };
@@ -319,6 +372,22 @@ pub(crate) fn select(
                 occurrence: control.index,
             }));
         }
+        let kind = &prepared.inner.analyzed.paragraph.controls
+            [tables.controls[control.index].occurrence]
+            .kind;
+        if super::boundary::is_endpoint(kind) {
+            if allocation.boundary.is_none() {
+                return Err(protocol_error(
+                    ProtocolError::MissingControlBoundaryGeometry {
+                        occurrence: control.index,
+                    },
+                ));
+            }
+        } else if allocation.boundary.is_some() {
+            return Err(protocol_error(ProtocolError::InvalidControlGeometry {
+                occurrence: control.index,
+            }));
+        }
         if let Some(strut) = allocation.strut {
             finite("control baseline", strut.baseline)?;
             finite("control line extent", strut.line_extent)?;
@@ -366,7 +435,7 @@ pub(crate) fn select(
             field: ProtocolContextField::TabPreparation,
         }));
     }
-    let presentation = super::prepared::select_presentation(&prepared.inner, &request)?;
+    let presentation = super::prepared::select_presentation(&prepared.inner, request)?;
     if request.context.tabs == TabContext::NoTabs
         && presentation
             .units
@@ -377,37 +446,10 @@ pub(crate) fn select(
             field: ProtocolContextField::TabStops,
         }));
     }
-    let spacing_slots = if request.context.spacing == SpacingPolicy::Spaces {
-        presentation
-            .units
-            .iter()
-            .enumerate()
-            .filter(|(_, unit)| unit.eligible_space)
-            .map(|(index, unit)| SpacingSlotData {
-                unit: index,
-                participant: unit.participant,
-                presentation: PresentationRange {
-                    start: unit.presentation.start,
-                    end: unit.presentation.end,
-                },
-                source: unit.source,
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
-    Ok(SelectedLine {
-        inner: Arc::new(SelectedData {
-            prepared: Arc::clone(&prepared.inner),
-            request,
-            presentation,
-            spacing_slots,
-            metric_policy,
-        }),
-    })
+    Ok(presentation)
 }
 
-fn require_prepared(
+pub(super) fn require_prepared(
     expected: &PreparedText,
     actual: &Arc<PreparedData>,
     kind: ProtocolHandleKind,
@@ -601,6 +643,7 @@ pub(crate) fn standalone_request(
         })
         .collect();
     let request = LineSelectionRequest {
+        boundary_context: Vec::new(),
         incoming: None,
         start: PreparedBoundary {
             prepared: Arc::clone(&prepared),

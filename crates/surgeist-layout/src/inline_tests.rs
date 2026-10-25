@@ -534,6 +534,7 @@ fn inline_boundary_control(
         crate::inline::InlineFlowOf::new(writing_mode, direction, Available::MAX_CONTENT),
         metrics,
         alignment,
+        crate::InlineBoundaryEdgeOf::ZERO,
     )
 }
 
@@ -630,6 +631,7 @@ fn mixed_boundary<S: LayoutScalar>(
         ),
         metrics,
         crate::inline::InlineControlAlignment::Baseline,
+        crate::InlineBoundaryEdgeOf::ZERO,
     ))
 }
 
@@ -2148,4 +2150,61 @@ fn last_tail_observations_keep_actual_numeric_endings_and_zero_atomic_content() 
     }
     check::<f32>();
     check::<f64>();
+}
+
+#[test]
+fn positive_numeric_endpoint_contributes_once_to_intrinsics_and_retries_a_real_float_band() {
+    fn lane<S: LayoutScalar>() {
+        let participants = |edge| {
+            vec![
+                mr02_atomic(0, 10.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
+                MixedInlineParticipantOf::Boundary(crate::inline::InlineBoundaryControlOf::new(
+                    1,
+                    InlineBoundaryKind::Start,
+                    crate::inline::InlineFlowOf::new(
+                        WritingMode::HorizontalTb,
+                        Direction::Ltr,
+                        AvailableOf::MAX_CONTENT,
+                    ),
+                    InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                    InlineControlAlignment::Baseline,
+                    edge,
+                )),
+                mr02_atomic(2, 10.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
+            ]
+        };
+        let edge = InlineBoundaryEdgeOf::try_new(S::from_f64(3.0), S::from_f64(5.0)).unwrap();
+        for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
+            let report = layout_mixed_inline_run(mr02_input(available, participants(edge)));
+            assert_eq!(report.inline_extent, S::from_f64(28.0));
+            assert_eq!(report.atomics[1].inline_start, S::from_f64(18.0));
+            assert_eq!(report.controls[0].inline_extent, S::from_f64(8.0));
+        }
+        for (edge, width, expected_y) in
+            [(InlineBoundaryEdgeOf::ZERO, 20.0, 0.0), (edge, 28.0, 20.0)]
+        {
+            let report = layout_mixed_inline_run_with_band_source(
+                mr02_input(AvailableOf::definite(S::from_f64(40.0)), participants(edge)),
+                |start, _| LogicalLineBandQueryResultOf {
+                    inline_start: S::ZERO,
+                    inline_end: S::from_f64(if start < S::from_f64(20.0) {
+                        20.0
+                    } else {
+                        40.0
+                    }),
+                    next_transition: (start < S::from_f64(20.0)).then_some(S::from_f64(20.0)),
+                },
+                |block, _| block,
+            );
+            assert_eq!(report.inline_extent, S::from_f64(width));
+            assert_eq!(report.line_bands.len(), 1);
+            assert_eq!(report.line_bands[0].block_start, S::from_f64(expected_y));
+            assert_eq!(
+                report.atomics[1].inline_start,
+                S::from_f64(10.0) + edge.advance()
+            );
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
 }

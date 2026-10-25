@@ -238,6 +238,7 @@ fn whole(prepared: &PreparedText) -> FinalizedLine {
         .handle();
     prepared
         .select(LineSelectionRequest {
+            boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
@@ -247,9 +248,18 @@ fn whole(prepared: &PreparedText) -> FinalizedLine {
             atomics: vec![],
             controls: prepared
                 .control_views()
-                .map(|view| ControlAllocation {
-                    occurrence: view.handle(),
-                    strut: None,
+                .map(|view| {
+                    let occurrence = view.handle();
+                    ControlAllocation {
+                        boundary: matches!(
+                            occurrence.view().kind(),
+                            crate::ParagraphControlKind::InlineBoundaryStart
+                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                        )
+                        .then_some(crate::InlineBoundaryAllocation::ZERO),
+                        occurrence,
+                        strut: None,
+                    }
                 })
                 .collect(),
             line_strut: None,
@@ -612,8 +622,7 @@ fn selecting_a_real_shy_indication_keeps_virtual_owner_font_and_mapping() {
             .contains(&PreparedParticipant::Control(allocation.occurrence.clone()))
     });
     request.context.end = LineEnd::Soft;
-    let selected = prepared
-        .select(request)
+    let selected = crate::test_wrapping::select_neutral(&prepared, request)
         .unwrap()
         .finalize(SpacingAllocations::None)
         .unwrap();

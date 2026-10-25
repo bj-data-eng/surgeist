@@ -462,6 +462,7 @@ fn assert_outgoing_counter_once(p: &text::PreparedText) {
         .map(|row| text::ControlAllocation {
             occurrence: row.handle(),
             strut: None,
+            boundary: None,
         })
         .collect::<Vec<_>>();
     let fitted = fit::fit(

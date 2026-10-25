@@ -332,6 +332,7 @@ fn rendered(bytes: &[u8], value: &str) -> Rendered {
         .handle();
     let line = prepared
         .select(text::LineSelectionRequest {
+            boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),

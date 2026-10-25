@@ -681,16 +681,24 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                 (
                     6,
                     LayoutInputOf::inline_boundary(
-                        InlineBoundaryInputOf::new(InlineBoundaryKind::Start, top_metrics)
-                            .with_vertical_align(VerticalAlign::Top),
+                        InlineBoundaryInputOf::new(
+                            InlineBoundaryKind::Start,
+                            top_metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .with_vertical_align(VerticalAlign::Top),
                     ),
                     NodeInputOf::non_box(),
                 ),
                 (
                     7,
                     LayoutInputOf::inline_boundary(
-                        InlineBoundaryInputOf::new(InlineBoundaryKind::End, bottom_metrics)
-                            .with_vertical_align(VerticalAlign::Bottom),
+                        InlineBoundaryInputOf::new(
+                            InlineBoundaryKind::End,
+                            bottom_metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .with_vertical_align(VerticalAlign::Bottom),
                     ),
                     NodeInputOf::non_box(),
                 ),
@@ -821,6 +829,7 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                     LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                         InlineBoundaryKind::Start,
                         boundary_metrics,
+                        crate::InlineBoundaryEdgeOf::ZERO,
                     )),
                     NodeInputOf::non_box(),
                 ),
@@ -1059,6 +1068,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                 LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                     InlineBoundaryKind::Start,
                     metrics,
+                    crate::InlineBoundaryEdgeOf::ZERO,
                 )),
                 NodeInputOf::non_box(),
             )],
@@ -1080,6 +1090,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                     LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                         InlineBoundaryKind::Start,
                         metrics,
+                        crate::InlineBoundaryEdgeOf::ZERO,
                     )),
                     NodeInputOf::non_box(),
                 ),
@@ -1088,6 +1099,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                     LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                         InlineBoundaryKind::End,
                         metrics,
+                        crate::InlineBoundaryEdgeOf::ZERO,
                     )),
                     NodeInputOf::non_box(),
                 ),
@@ -1110,6 +1122,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                     LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                         InlineBoundaryKind::Start,
                         metrics,
+                        crate::InlineBoundaryEdgeOf::ZERO,
                     )),
                     NodeInputOf::non_box(),
                 ),
@@ -1119,6 +1132,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
                     LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                         InlineBoundaryKind::End,
                         metrics,
+                        crate::InlineBoundaryEdgeOf::ZERO,
                     )),
                     NodeInputOf::non_box(),
                 ),
@@ -1249,6 +1263,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                     LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                         InlineBoundaryKind::End,
                         metrics,
+                        crate::InlineBoundaryEdgeOf::ZERO,
                     )),
                     NodeInputOf::non_box(),
                 ),
@@ -1296,6 +1311,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                     LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                         InlineBoundaryKind::End,
                         metrics,
+                        crate::InlineBoundaryEdgeOf::ZERO,
                     )),
                     NodeInputOf::non_box(),
                 ),
@@ -1335,6 +1351,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                     LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                         InlineBoundaryKind::End,
                         metrics,
+                        crate::InlineBoundaryEdgeOf::ZERO,
                     )),
                     NodeInputOf::non_box(),
                 ),
@@ -3103,6 +3120,7 @@ fn fri06_c08_float_line_continuation_batch<S: LayoutScalar>(
         InlineBoundaryKind::Start,
         InlineMetricsOf::from_line_height_and_baseline(S::from_f64(line_height), S::from_f64(12.0))
             .unwrap(),
+        crate::InlineBoundaryEdgeOf::ZERO,
     );
     let mut children = vec![
         (3, paragraph.text_input(3), NodeInputOf::non_box()),
@@ -4114,8 +4132,8 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
                 ));
             }
         }
-        // The retained default-ignorable SHY record is not an inserted hyphen.
-        // Seven actual Ahem X outlines carry the 35px advance; SHY has no outline ink.
+        // The unselected residual SHY produces no paint glyph. Seven actual
+        // Ahem X outlines carry35px; original SHY source custody remains below.
         let shy_range = surgeist_text::Range::new(3, 4);
         let visible = glyphs
             .iter()
@@ -4135,11 +4153,7 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
             .iter()
             .filter(|glyph| glyph.0 == shy_range)
             .collect::<Vec<_>>();
-        assert_eq!(shy.len(), 1);
-        assert_eq!(
-            (shy[0].1, shy[0].2, shy[0].3, shy[0].4),
-            (3, 0.0, 15.0, None)
-        );
+        assert!(shy.is_empty());
         assert_eq!(
             glyphs.iter().map(|glyph| f64::from(glyph.2)).sum::<f64>(),
             35.0
@@ -5413,7 +5427,11 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
         .insert(2, LayoutInput::box_input(NodeInput::default()));
     tree.inputs.insert(
         3,
-        LayoutInput::inline_boundary(InlineBoundaryInput::new(InlineBoundaryKind::Start, metrics)),
+        LayoutInput::inline_boundary(InlineBoundaryInput::new(
+            InlineBoundaryKind::Start,
+            metrics,
+            crate::InlineBoundaryEdgeOf::ZERO,
+        )),
     );
     tree.caches.insert(1, Cache::new());
     tree.caches.insert(2, Cache::new());

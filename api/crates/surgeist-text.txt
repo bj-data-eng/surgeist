@@ -555,6 +555,8 @@ pub surgeist_text::ProtocolError::ConflictingWrappingPolicy
 pub surgeist_text::ProtocolError::ConflictingWrappingPolicy::relation: usize
 pub surgeist_text::ProtocolError::DuplicateAtomic
 pub surgeist_text::ProtocolError::DuplicateAtomic::occurrence: usize
+pub surgeist_text::ProtocolError::DuplicateBoundaryContext
+pub surgeist_text::ProtocolError::DuplicateBoundaryContext::occurrence: usize
 pub surgeist_text::ProtocolError::DuplicateControl
 pub surgeist_text::ProtocolError::DuplicateControl::occurrence: usize
 pub surgeist_text::ProtocolError::DuplicateLine
@@ -643,11 +645,15 @@ pub surgeist_text::ProtocolError::MissingAlternative
 pub surgeist_text::ProtocolError::MissingAlternative::opportunity: usize
 pub surgeist_text::ProtocolError::MissingAtomic
 pub surgeist_text::ProtocolError::MissingAtomic::occurrence: usize
+pub surgeist_text::ProtocolError::MissingBoundaryContext
+pub surgeist_text::ProtocolError::MissingBoundaryContext::occurrence: usize
 pub surgeist_text::ProtocolError::MissingConnection
 pub surgeist_text::ProtocolError::MissingConnection::after: usize
 pub surgeist_text::ProtocolError::MissingConnection::before: usize
 pub surgeist_text::ProtocolError::MissingControl
 pub surgeist_text::ProtocolError::MissingControl::occurrence: usize
+pub surgeist_text::ProtocolError::MissingControlBoundaryGeometry
+pub surgeist_text::ProtocolError::MissingControlBoundaryGeometry::occurrence: usize
 pub surgeist_text::ProtocolError::MissingLineMetrics
 pub surgeist_text::ProtocolError::MissingPhaseTwoContext(surgeist_text::PhaseTwoContext)
 pub surgeist_text::ProtocolError::MissingSpacingSlot
@@ -669,6 +675,8 @@ pub surgeist_text::ProtocolError::RetainedConditionalPrefix::alternative: core::
 pub surgeist_text::ProtocolError::RetainedConditionalPrefix::opportunity: usize
 pub surgeist_text::ProtocolError::UnexpectedAtomic
 pub surgeist_text::ProtocolError::UnexpectedAtomic::occurrence: usize
+pub surgeist_text::ProtocolError::UnexpectedBoundaryContext
+pub surgeist_text::ProtocolError::UnexpectedBoundaryContext::occurrence: usize
 pub surgeist_text::ProtocolError::UnexpectedControl
 pub surgeist_text::ProtocolError::UnexpectedControl::occurrence: usize
 pub surgeist_text::ProtocolError::UnsupportedContext
@@ -1210,6 +1218,7 @@ pub surgeist_text::ContextualSourceInput::scopes: alloc::vec::Vec<surgeist_text:
 pub surgeist_text::ContextualSourceInput::segment_breaks: surgeist_text::DocumentSegmentBreaks
 pub surgeist_text::ContextualSourceInput::source: surgeist_text::Source
 pub struct surgeist_text::ControlAllocation
+pub surgeist_text::ControlAllocation::boundary: core::option::Option<surgeist_text::InlineBoundaryAllocation>
 pub surgeist_text::ControlAllocation::occurrence: surgeist_text::PreparedControl
 pub surgeist_text::ControlAllocation::strut: core::option::Option<surgeist_text::ControlStrut>
 pub struct surgeist_text::ControlStrut
@@ -1278,6 +1287,7 @@ pub fn surgeist_text::Error::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> cor
 pub struct surgeist_text::FinalizedControlView<'a>
 impl surgeist_text::FinalizedControlView<'_>
 pub fn surgeist_text::FinalizedControlView<'_>::control(&self) -> surgeist_text::PreparedControl
+pub const fn surgeist_text::FinalizedControlView<'_>::inline_bounds(&self) -> (f64, f64)
 pub fn surgeist_text::FinalizedControlView<'_>::level(&self) -> surgeist_text::BidiLevel
 pub const fn surgeist_text::FinalizedControlView<'_>::slot(&self) -> surgeist_text::Point
 impl core::fmt::Debug for surgeist_text::FinalizedControlView<'_>
@@ -1491,6 +1501,14 @@ pub surgeist_text::Indent::first_line: bool
 pub surgeist_text::Indent::hanging: bool
 impl core::default::Default for surgeist_text::Indent
 pub fn surgeist_text::Indent::default() -> Self
+pub struct surgeist_text::InlineBoundaryAllocation
+impl surgeist_text::InlineBoundaryAllocation
+pub const surgeist_text::InlineBoundaryAllocation::ZERO: Self
+pub const fn surgeist_text::InlineBoundaryAllocation::advance(&self) -> f64
+pub fn surgeist_text::InlineBoundaryAllocation::try_new(advance: f64) -> surgeist_text::Result<Self>
+pub struct surgeist_text::InlineBoundaryContextAllocation
+pub surgeist_text::InlineBoundaryContextAllocation::boundary: surgeist_text::InlineBoundaryAllocation
+pub surgeist_text::InlineBoundaryContextAllocation::occurrence: surgeist_text::PreparedControl
 pub struct surgeist_text::InlineBox
 impl surgeist_text::InlineBox
 pub const fn surgeist_text::InlineBox::id(self) -> surgeist_text::Id
@@ -1624,6 +1642,7 @@ pub surgeist_text::LinePlacement::orientation: surgeist_text::LineOrientation
 pub struct surgeist_text::LineSelectionRequest
 pub surgeist_text::LineSelectionRequest::alternative: core::option::Option<surgeist_text::PreparedAlternative>
 pub surgeist_text::LineSelectionRequest::atomics: alloc::vec::Vec<surgeist_text::AtomicAllocation>
+pub surgeist_text::LineSelectionRequest::boundary_context: alloc::vec::Vec<surgeist_text::InlineBoundaryContextAllocation>
 pub surgeist_text::LineSelectionRequest::context: surgeist_text::LineContext
 pub surgeist_text::LineSelectionRequest::controls: alloc::vec::Vec<surgeist_text::ControlAllocation>
 pub surgeist_text::LineSelectionRequest::end: surgeist_text::PreparedBoundary
@@ -2006,12 +2025,13 @@ pub fn surgeist_text::PreparedText::preparation_options(&self) -> surgeist_text:
 pub fn surgeist_text::PreparedText::tab_reference(&self) -> core::option::Option<&surgeist_text::ParagraphTabReference>
 pub fn surgeist_text::PreparedText::terminal_edge(&self) -> surgeist_text::ParagraphTerminalEdge
 impl surgeist_text::PreparedText
+pub fn surgeist_text::PreparedText::boundary_context_demand(&self, request: &surgeist_text::LineSelectionRequest) -> surgeist_text::Result<core::option::Option<surgeist_text::PreparedControl>>
+pub fn surgeist_text::PreparedText::select(&self, request: surgeist_text::LineSelectionRequest) -> surgeist_text::Result<surgeist_text::SelectedLine>
+impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::conditional_opportunities(&self, start: &surgeist_text::PreparedBoundary, incoming: core::option::Option<&surgeist_text::HyphenationContinuation>, ceiling: &surgeist_text::PreparedOpportunity, purpose: surgeist_text::ConditionalPurpose, skipped_ordinary: &[surgeist_text::ConditionalDisposition]) -> surgeist_text::Result<alloc::vec::Vec<surgeist_text::PreparedConditionalOpportunity>>
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::hyphenation_cut_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedHyphenationCutView<'_>>
 pub fn surgeist_text::PreparedText::word_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedWordView<'_>>
-impl surgeist_text::PreparedText
-pub fn surgeist_text::PreparedText::select(&self, request: surgeist_text::LineSelectionRequest) -> surgeist_text::Result<surgeist_text::SelectedLine>
 impl core::cmp::Eq for surgeist_text::PreparedText
 impl core::cmp::PartialEq for surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::eq(&self, other: &Self) -> bool

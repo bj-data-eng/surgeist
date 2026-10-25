@@ -87,9 +87,18 @@ fn select(
         .iter()
         .filter_map(|p| {
             if let PreparedParticipant::Control(c) = p {
-                Some(ControlAllocation {
-                    occurrence: c.clone(),
-                    strut: None,
+                Some({
+                    let occurrence = c.clone();
+                    ControlAllocation {
+                        boundary: matches!(
+                            occurrence.view().kind(),
+                            crate::ParagraphControlKind::InlineBoundaryStart
+                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                        )
+                        .then_some(crate::InlineBoundaryAllocation::ZERO),
+                        occurrence,
+                        strut: None,
+                    }
                 })
             } else {
                 None
@@ -98,6 +107,7 @@ fn select(
         .collect();
     prepared
         .select(LineSelectionRequest {
+            boundary_context: Vec::new(),
             incoming: None,
             start,
             end,

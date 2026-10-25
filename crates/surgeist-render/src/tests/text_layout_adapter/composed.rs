@@ -27,6 +27,7 @@ fn finalized(source: text::Source) -> (text::PreparedText, text::FinalizedLine) 
             participants: prepared.participants().collect(),
             atomics: vec![],
             controls: vec![],
+            boundary_context: vec![],
             line_strut: None,
             context: text::LineContext {
                 base_direction: text::ParagraphBaseDirection::LeftToRight,
@@ -213,6 +214,7 @@ fn actual_gpos_mark_placement_reaches_admitted_outline_ink_without_advance_subst
             participants: prepared.participants().collect(),
             atomics: vec![],
             controls: vec![],
+            boundary_context: vec![],
             line_strut: None,
             context: text::LineContext {
                 base_direction: text::ParagraphBaseDirection::LeftToRight,

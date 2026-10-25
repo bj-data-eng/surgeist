@@ -31,6 +31,7 @@ private implementation organization.
 | Composition | `source`, `compose`, `Composer`, `Mark` | [composer.rs](../src/composer.rs) |
 | Pre-font source processing | `process_source_whitespace`, `process_contextual_source`, `ProcessedSource`, issued `ProcessedParagraph` views and partial plaintext | [processing.rs](../src/processing.rs), [contextual capture](../src/processing/contextual.rs) |
 | Style and fonts | `Style`, `Font`, `Brush`, decorations, flow settings | [style.rs](../src/style.rs) |
+| Native inline endpoints | `InlineBoundaryAllocation`, `InlineBoundaryContextAllocation`, `ControlAllocation::boundary`, `LineSelectionRequest::boundary_context`, `PreparedText::boundary_context_demand`, `FinalizedControlView::inline_bounds` | [protocol types](../src/protocol/mod.rs), [selection](../src/protocol/selection.rs), [readback](../src/protocol/readback.rs) |
 | Supplied mixed lines | `BidiLevel`, `InlineWhitespaceEdge`, `SuppliedLine`, edge decisions and borrowed visual order | [supplied_line.rs](../src/supplied_line.rs) |
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
 | Original analysis and layout | `AnalyzedSource`, `AnalysisIdentity`, `System`, `Builder`, `SystemOptions` | [analyzed.rs](../src/analyzed.rs), [system.rs](../src/system.rs) |
@@ -253,8 +254,61 @@ removal, hanging or intrinsic omission at Soft, Forced or BlockEnd, including
 nowrap. An ordinary BreakSpaces row stops preceding hanging groups even at zero
 advance. Text's real opportunities and measurements feed Layout selection;
 [the whitespace contract](../../../docs/text-layout-contract.md#native-whitespace-edges-and-hanging)
-defines fit, alignment and intrinsic contribution custody. Inline border/padding
-edge capabilities remain separate from these modes.
+defines fit, alignment and intrinsic contribution custody. Native inline endpoints
+supply their own used geometry through the selection contract below.
+
+## Native inline endpoint geometry
+
+Layout owns each Start/End endpoint's actual used border and padding on its own
+inline side. [InlineBoundaryEdgeOf](../../surgeist-layout/src/node_input/inline.rs)
+checks the nonnegative finite components and their sum in Layout scalar `S`;
+`InlineBoundaryInputOf::new(kind, metrics, edge)` requires that explicit edge.
+Its `ZERO` is affirmative used zero, not unavailable Style geometry. Lower
+`edge.advance()` once to Text's `f64`; separately widening and adding `f32`
+components would change the used sum and potentially a tab threshold.
+
+| Text input | Admission and custody |
+| --- | --- |
+| `InlineBoundaryAllocation::try_new(advance)` / `ZERO` | Checked nonnegative finite total; negative zero normalizes to zero. No authored lengths or duplicated components. |
+| `ControlAllocation::boundary` | Every selected InlineBoundaryStart/End requires `Some`, including zero; all other controls require `None`. Struts remain independent vertical metrics. |
+| `LineSelectionRequest::boundary_context` | Only demanded off-selection endpoint facts; no selected flow, strut, fragment or placement. Selected endpoints belong only in `controls`. |
+
+For each complete candidate request, `PreparedText::boundary_context_demand`
+returns the next genuine off-selection `PreparedControl` needed by consumed
+shaping context, or `None`. Append its actual `InlineBoundaryContextAllocation`
+and repeat. The list must be the canonical first-demand prefix; a proved positive
+barrier stops the outward walk, while zero can reveal a farther endpoint.
+The query validates the request without shaping, fitting or querying fonts.
+`select` also accepts a directly supplied complete list in the same order.
+
+Missing selected rows retain `MissingControl`; a selected endpoint without a
+boundary yields `MissingControlBoundaryGeometry`, and a boundary on another
+control yields `InvalidControlGeometry`. Missing demanded context yields
+`MissingBoundaryContext`; duplicates/selected overlap yield
+`DuplicateBoundaryContext`, and wrong-role, out-of-order or surplus rows yield
+`UnexpectedBoundaryContext`. Foreign preparation and numeric failures remain
+typed. Missing geometry cannot be replaced with zero.
+
+Positive inter-unit edges bound selection-local original and presentation joining
+context. An edge inside one indivisible typographic unit keeps its own numeric
+contribution without splitting the unit's shared provider positions. Selected
+edges count once in actual flow, tabs, prefixes and all purpose measurements;
+zero edges remain transparent to hanging, and positive edges stop it locally.
+
+`FinalizedControlView::inline_bounds()` returns the checked physical left/right
+interval; `slot().x` is its left end. The source-free
+`FinalizedFragmentOwner::Control` retains that interval at actual line-metric
+height. Layout separately publishes the endpoint node's width×0 footprint and
+own-side border/padding. Virtual-separator Scope fragments retain only their
+actual local separator geometry. These are distinct observations of genuine
+occurrences; endpoint width is never added to every incident source Range.
+
+The [endpoint contract](../../../docs/text-layout-contract.md#native-inline-endpoint-geometry)
+defines soft-cut attachment, exact event-side positions, reuse and rollback.
+This bounded native operation consumes explicit used facts; it does not provide
+a live Style producer, authored percentage resolution, vertical Text or complete
+inline-decoration envelopes/painting. Raw standalone whitespace, six-mode
+processing and the separate #74/Cc/default-ignorable contracts retain their rules.
 
 ## Font catalogue publications
 
@@ -650,7 +704,9 @@ does not prove this condition: removed-only originals still participate.
 
 The complete association survives in `InlineFragmentOwner::Scope`, alongside the
 fragment's own prepared/placed occurrence. A spanning scope emits only each
-paragraph's real local geometry. Neither boundary becomes a proxy geometry node.
+paragraph's real local separator geometry; boundary nodes never substitute for
+that geometry. Each actual endpoint retains its separate
+[control footprint](#native-inline-endpoint-geometry).
 Truly missing endpoint facts/bindings, foreign capture identities, inconsistent
 tree order and ambiguous required tree occurrences refuse precisely. No generated
 text is donated to an original or duplicated onto both boundaries.

@@ -87,9 +87,18 @@ fn whole(p: &PreparedText) -> FinalizedLine {
         .participants
         .iter()
         .filter_map(|part| match part {
-            PreparedParticipant::Control(c) => Some(ControlAllocation {
-                occurrence: c.clone(),
-                strut: None,
+            PreparedParticipant::Control(c) => Some({
+                let occurrence = c.clone();
+                ControlAllocation {
+                    boundary: matches!(
+                        occurrence.view().kind(),
+                        crate::ParagraphControlKind::InlineBoundaryStart
+                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                    )
+                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    occurrence,
+                    strut: None,
+                }
             }),
             _ => None,
         })

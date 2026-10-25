@@ -1054,12 +1054,20 @@ pub surgeist_layout::IndefiniteLaneContributionGroupOf::max_max_content: S
 pub surgeist_layout::IndefiniteLaneContributionGroupOf::max_min_content: S
 pub surgeist_layout::IndefiniteLaneContributionGroupOf::max_min_size: S
 pub surgeist_layout::IndefiniteLaneContributionGroupOf::span: usize
+pub struct surgeist_layout::InlineBoundaryEdgeOf<S: surgeist_layout::LayoutScalar>
+impl<S: surgeist_layout::LayoutScalar> surgeist_layout::InlineBoundaryEdgeOf<S>
+pub const surgeist_layout::InlineBoundaryEdgeOf<S>::ZERO: Self
+pub fn surgeist_layout::InlineBoundaryEdgeOf<S>::advance(self) -> S
+pub const fn surgeist_layout::InlineBoundaryEdgeOf<S>::border(self) -> S
+pub const fn surgeist_layout::InlineBoundaryEdgeOf<S>::padding(self) -> S
+pub fn surgeist_layout::InlineBoundaryEdgeOf<S>::try_new(border: S, padding: S) -> core::result::Result<Self, surgeist_layout::NonNegativeFiniteScalarErrorOf<S>>
 pub struct surgeist_layout::InlineBoundaryInputOf<S: surgeist_layout::LayoutScalar>
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::InlineBoundaryInputOf<S>
 pub const fn surgeist_layout::InlineBoundaryInputOf<S>::direction(self) -> surgeist_layout::Direction
+pub const fn surgeist_layout::InlineBoundaryInputOf<S>::edge(self) -> surgeist_layout::InlineBoundaryEdgeOf<S>
 pub const fn surgeist_layout::InlineBoundaryInputOf<S>::kind(self) -> surgeist_layout::InlineBoundaryKind
 pub const fn surgeist_layout::InlineBoundaryInputOf<S>::metrics(self) -> surgeist_layout::InlineMetricsOf<S>
-pub const fn surgeist_layout::InlineBoundaryInputOf<S>::new(kind: surgeist_layout::InlineBoundaryKind, metrics: surgeist_layout::InlineMetricsOf<S>) -> Self
+pub const fn surgeist_layout::InlineBoundaryInputOf<S>::new(kind: surgeist_layout::InlineBoundaryKind, metrics: surgeist_layout::InlineMetricsOf<S>, edge: surgeist_layout::InlineBoundaryEdgeOf<S>) -> Self
 pub const fn surgeist_layout::InlineBoundaryInputOf<S>::vertical_align(self) -> surgeist_layout::VerticalAlign
 pub const fn surgeist_layout::InlineBoundaryInputOf<S>::with_direction(self, direction: surgeist_layout::Direction) -> Self
 pub const fn surgeist_layout::InlineBoundaryInputOf<S>::with_vertical_align(self, vertical_align: surgeist_layout::VerticalAlign) -> Self
@@ -1769,6 +1777,7 @@ pub type surgeist_layout::FlowRelativeScrollRange = surgeist_layout::FlowRelativ
 pub type surgeist_layout::GridComputation = surgeist_layout::GridComputationOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::GridFlowTolerance = surgeist_layout::GridFlowToleranceOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::IndefiniteLaneContributionGroup = surgeist_layout::IndefiniteLaneContributionGroupOf<surgeist_layout::DefaultScalar>
+pub type surgeist_layout::InlineBoundaryEdge = surgeist_layout::InlineBoundaryEdgeOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::InlineBoundaryInput = surgeist_layout::InlineBoundaryInputOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::InlineFragmentOutput = surgeist_layout::InlineFragmentOutputOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::InlineFragmentOutputEntry<Node> = surgeist_layout::InlineFragmentOutputEntryOf<Node, surgeist_layout::DefaultScalar>

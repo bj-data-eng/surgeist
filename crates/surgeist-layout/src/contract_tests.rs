@@ -605,7 +605,11 @@ fn fri06_mr01_non_box_line_break_precedence_is_exact_in_both_scalar_lanes() {
 fn fri06_mr01_non_box_inline_boundary_precedence_is_exact_in_both_scalar_lanes() {
     fn assert_lane<S: LayoutScalar>() {
         assert_fri06_mr01_non_box_precedence(LayoutInputOf::inline_boundary(
-            InlineBoundaryInputOf::<S>::new(InlineBoundaryKind::Start, InlineMetricsOf::default()),
+            InlineBoundaryInputOf::<S>::new(
+                InlineBoundaryKind::Start,
+                InlineMetricsOf::default(),
+                InlineBoundaryEdgeOf::ZERO,
+            ),
         ));
     }
 
@@ -1354,10 +1358,14 @@ fn line_break_input_supports_f64_metrics() {
 #[test]
 fn inline_boundary_input_requires_explicit_metrics() {
     let metrics = InlineMetrics::from_line_height_and_baseline(28.0, 20.0).unwrap();
-    let input = InlineBoundaryInput::new(InlineBoundaryKind::Start, metrics)
-        .with_writing_mode(WritingMode::VerticalRl)
-        .with_direction(Direction::Rtl)
-        .with_vertical_align(VerticalAlign::Top);
+    let input = InlineBoundaryInput::new(
+        InlineBoundaryKind::Start,
+        metrics,
+        crate::InlineBoundaryEdgeOf::ZERO,
+    )
+    .with_writing_mode(WritingMode::VerticalRl)
+    .with_direction(Direction::Rtl)
+    .with_vertical_align(VerticalAlign::Top);
 
     assert_eq!(input.kind(), InlineBoundaryKind::Start);
     assert_eq!(input.metrics(), metrics);
@@ -1369,7 +1377,11 @@ fn inline_boundary_input_requires_explicit_metrics() {
 #[test]
 fn inline_boundary_input_supports_f64_metrics() {
     let metrics = InlineMetricsOf::<f64>::from_line_height_and_baseline(40.0, 30.0).unwrap();
-    let input = InlineBoundaryInputOf::<f64>::new(InlineBoundaryKind::End, metrics);
+    let input = InlineBoundaryInputOf::<f64>::new(
+        InlineBoundaryKind::End,
+        metrics,
+        InlineBoundaryEdgeOf::ZERO,
+    );
 
     assert_eq!(input.kind(), InlineBoundaryKind::End);
     assert_eq!(input.metrics().line_extent(), 40.0);
@@ -1440,7 +1452,11 @@ fn layout_input_distinguishes_box_from_line_break() {
 #[test]
 fn layout_input_distinguishes_inline_boundary_from_boxes_and_breaks() {
     let metrics = InlineMetrics::from_line_height_and_baseline(18.0, 14.0).unwrap();
-    let boundary = InlineBoundaryInput::new(InlineBoundaryKind::Start, metrics);
+    let boundary = InlineBoundaryInput::new(
+        InlineBoundaryKind::Start,
+        metrics,
+        crate::InlineBoundaryEdgeOf::ZERO,
+    );
     let layout_input = LayoutInput::inline_boundary(boundary);
 
     assert!(layout_input.as_box().is_none());
@@ -1711,7 +1727,11 @@ fn borrowed_input_views_reuse_validated_backing_in_both_scalar_lanes() {
             .clone();
         let origin = text.origin().clone();
         let line_break = LineBreakInputOf::new().with_metrics(metrics);
-        let boundary = InlineBoundaryInputOf::new(InlineBoundaryKind::Start, metrics);
+        let boundary = InlineBoundaryInputOf::new(
+            InlineBoundaryKind::Start,
+            metrics,
+            crate::InlineBoundaryEdgeOf::ZERO,
+        );
         let tree = crate::test_support::layout_tree::PublicLayoutTreeOf::new()
             .style(
                 0,
@@ -1808,4 +1828,66 @@ fn borrowed_input_completed_geometry_and_caches_outlive_source_in_both_scalar_la
 
     assert_lane::<f32>();
     assert_lane::<f64>();
+}
+
+#[test]
+fn inline_boundary_edge_validates_components_and_sum_in_both_scalar_lanes() {
+    fn lane<S: LayoutScalar>() {
+        let edge = InlineBoundaryEdgeOf::<S>::try_new(S::from_f64(3.0), S::from_f64(5.0)).unwrap();
+        assert_eq!(edge.border(), S::from_f64(3.0));
+        assert_eq!(edge.padding(), S::from_f64(5.0));
+        assert_eq!(edge.advance(), S::from_f64(8.0));
+        assert_eq!(InlineBoundaryEdgeOf::<S>::ZERO.advance(), S::ZERO);
+        let zero = InlineBoundaryEdgeOf::try_new(-S::ZERO, -S::ZERO).unwrap();
+        assert_eq!(zero.border().to_f64().to_bits(), 0.0f64.to_bits());
+        assert_eq!(zero.padding().to_f64().to_bits(), 0.0f64.to_bits());
+        for (border, padding) in [(S::from_f64(-1.0), S::ZERO), (S::ZERO, S::from_f64(-1.0))] {
+            assert!(matches!(
+                InlineBoundaryEdgeOf::try_new(border, padding),
+                Err(NonNegativeFiniteScalarErrorOf::Negative { .. })
+            ));
+        }
+        for (border, padding) in [
+            (S::INFINITY, S::ZERO),
+            (S::ZERO, S::INFINITY),
+            (S::NAN, S::ZERO),
+            (S::ZERO, S::NAN),
+        ] {
+            assert!(matches!(
+                InlineBoundaryEdgeOf::try_new(border, padding),
+                Err(NonNegativeFiniteScalarErrorOf::NonFinite { .. })
+            ));
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+    assert!(
+        matches!(InlineBoundaryEdgeOf::try_new(f32::MAX,f32::MAX),Err(NonNegativeFiniteScalarErrorOf::NonFinite{value}) if value==f32::INFINITY)
+    );
+    assert!(
+        matches!(InlineBoundaryEdgeOf::try_new(f64::MAX,f64::MAX),Err(NonNegativeFiniteScalarErrorOf::NonFinite{value}) if value==f64::INFINITY)
+    );
+}
+
+#[test]
+fn inline_boundary_edge_exposes_the_used_scalar_sum_without_widened_resummation() {
+    let edge = InlineBoundaryEdgeOf::<f32>::try_new(0.1, 0.2).unwrap();
+    assert_eq!(edge.advance(), 0.3f32);
+    assert_ne!(
+        f64::from(edge.advance()),
+        f64::from(edge.border()) + f64::from(edge.padding())
+    );
+    let input = InlineBoundaryInputOf::new(
+        InlineBoundaryKind::End,
+        InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+        edge,
+    );
+    assert_eq!(input.edge(), edge);
+    assert_eq!(input.kind(), InlineBoundaryKind::End);
+    let threshold = InlineBoundaryEdgeOf::<f32>::try_new(4.8, 0.2).unwrap();
+    assert_eq!(threshold.advance(), 5.0);
+    assert_eq!(
+        f64::from(threshold.border()) + f64::from(threshold.padding()),
+        5.000_000_193_715_095_5
+    );
 }

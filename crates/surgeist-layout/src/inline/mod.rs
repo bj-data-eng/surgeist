@@ -1,7 +1,7 @@
 use super::{
     AtomicInlineParticipation, AvailableOf, Clear, DefaultScalar, Direction, Edges,
-    InlineBoundaryKind, InlineBreakOpportunity, InlineMetricsOf, LayoutScalar, Size, TextAlign,
-    VerticalAlign, WritingMode,
+    InlineBoundaryEdgeOf, InlineBoundaryKind, InlineBreakOpportunity, InlineMetricsOf,
+    LayoutScalar, Size, TextAlign, VerticalAlign, WritingMode,
 };
 #[cfg(test)]
 use crate::Point;
@@ -108,9 +108,45 @@ pub(super) struct InlineControlSourceOf<S: LayoutScalar = DefaultScalar> {
     pub kind: InlineParticipantLayoutKind,
     pub source_index: usize,
     pub inline_start: S,
+    pub inline_extent: S,
+    pub endpoint: Option<InlineEndpointOf<S>>,
     pub block_start: S,
     pub line_index: usize,
     pub visual_index: Option<usize>,
+}
+
+/// Actual endpoint components and their own physical-side basis. Its strip
+/// occupies one contribution; a Text interaction fragment is a separate view.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct InlineEndpointOf<S: LayoutScalar> {
+    pub kind: InlineBoundaryKind,
+    pub axes: FlowAxes,
+    pub edge: InlineBoundaryEdgeOf<S>,
+}
+
+impl<S: LayoutScalar> InlineEndpointOf<S> {
+    pub(super) fn from_input(input: crate::InlineBoundaryInputOf<S>) -> Self {
+        Self {
+            kind: input.kind(),
+            axes: FlowAxes::new(input.writing_mode(), input.direction()),
+            edge: input.edge(),
+        }
+    }
+
+    pub(super) fn physical_components(self) -> (Edges<S>, Edges<S>) {
+        let logical = |value| match self.kind {
+            InlineBoundaryKind::Start => {
+                crate::geometry::LogicalEdgesOf::new(value, S::ZERO, S::ZERO, S::ZERO)
+            }
+            InlineBoundaryKind::End => {
+                crate::geometry::LogicalEdgesOf::new(S::ZERO, value, S::ZERO, S::ZERO)
+            }
+        };
+        (
+            self.axes.physical_edges(logical(self.edge.border())),
+            self.axes.physical_edges(logical(self.edge.padding())),
+        )
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -377,7 +413,8 @@ impl<S: LayoutScalar> MixedInlineParticipantOf<S> {
                 let margin = flow_axes.logical_edges(item.margin);
                 flow_axes.logical_size(item.size).inline + margin.inline_sum()
             }
-            Self::ForcedLineBreak(_) | Self::Boundary(_) => S::ZERO,
+            Self::ForcedLineBreak(_) => S::ZERO,
+            Self::Boundary(control) => control.edge().advance(),
         }
     }
 
@@ -1087,6 +1124,17 @@ where
             .expect("a provisional line remains selectable against its queried band");
             (queried_band.inline_start, band_inline_end, selected)
         };
+        if selected.line.used_inline_extent > band_inline_end - band_inline_start - line_indent
+            && let Some(next_transition) = queried_band
+                .next_transition
+                .filter(|transition| transition.is_finite() && *transition > block_cursor)
+        {
+            // An indivisible first group cannot fit this genuine float band.
+            // Re-select at its next real transition; an ordinary fitting break
+            // above already remains selected and does not enter this retry.
+            block_cursor = next_transition;
+            continue;
+        }
         let next_float_strut = if float_strut.is_some()
             || (has_float_transition && starts_inline_strut_phase(&selected.line))
         {
@@ -1254,6 +1302,12 @@ where
                         kind: inline_boundary_layout_kind(control.kind()),
                         source_index: control.source_index(),
                         inline_start,
+                        inline_extent: control.edge().advance(),
+                        endpoint: Some(InlineEndpointOf {
+                            kind: control.kind(),
+                            axes: control.flow().flow_axes,
+                            edge: control.edge(),
+                        }),
                         block_start: control_block,
                         line_index,
                         visual_index: Some(visual_indices[source_index]),
@@ -1276,6 +1330,8 @@ where
                 kind: InlineParticipantLayoutKind::ForcedLineBreak,
                 source_index: control.source_index(),
                 inline_start: line_inline_start + line.used_inline_extent,
+                inline_extent: S::ZERO,
+                endpoint: None,
                 block_start: control_block,
                 line_index,
                 visual_index: None,
@@ -1485,6 +1541,7 @@ pub(super) struct InlineBoundaryControlOf<S: LayoutScalar = DefaultScalar> {
     flow: InlineFlowOf<S>,
     metrics: InlineMetricsOf<S>,
     alignment: InlineControlAlignment,
+    edge: InlineBoundaryEdgeOf<S>,
 }
 
 impl<S: LayoutScalar> InlineBoundaryControlOf<S> {
@@ -1495,6 +1552,7 @@ impl<S: LayoutScalar> InlineBoundaryControlOf<S> {
         flow: InlineFlowOf<S>,
         metrics: InlineMetricsOf<S>,
         alignment: InlineControlAlignment,
+        edge: InlineBoundaryEdgeOf<S>,
     ) -> Self {
         Self {
             source_index,
@@ -1502,6 +1560,7 @@ impl<S: LayoutScalar> InlineBoundaryControlOf<S> {
             flow,
             metrics,
             alignment,
+            edge,
         }
     }
 
@@ -1513,6 +1572,11 @@ impl<S: LayoutScalar> InlineBoundaryControlOf<S> {
     #[must_use]
     pub(super) const fn kind(self) -> InlineBoundaryKind {
         self.kind
+    }
+
+    #[must_use]
+    pub(super) const fn edge(self) -> InlineBoundaryEdgeOf<S> {
+        self.edge
     }
 
     #[must_use]
@@ -1666,26 +1730,27 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
                 scrollbar_size: source.item.scrollbar_size,
             }
         })
-        .chain(
-            report
-                .controls
-                .into_iter()
-                .map(|source| InlineParticipantLayoutItem {
-                    kind: source.kind,
-                    source_index: source.source_index,
-                    location: flow_axes.physical_point(
-                        LogicalPointOf::new(source.inline_start, source.block_start),
-                        LogicalSizeOf::new(S::ZERO, S::ZERO),
-                        report_size,
-                    ),
-                    size: Size::ZERO,
-                    content_size: Size::ZERO,
-                    margin: Edges::ZERO,
-                    padding: Edges::ZERO,
-                    border: Edges::ZERO,
-                    scrollbar_size: Size::ZERO,
-                }),
-        )
+        .chain(report.controls.into_iter().map(|source| {
+            InlineParticipantLayoutItem {
+                kind: source.kind,
+                source_index: source.source_index,
+                location: flow_axes.physical_point(
+                    LogicalPointOf::new(source.inline_start, source.block_start),
+                    LogicalSizeOf::new(source.inline_extent, S::ZERO),
+                    report_size,
+                ),
+                size: flow_axes.physical_size(LogicalSizeOf::new(source.inline_extent, S::ZERO)),
+                content_size: Size::ZERO,
+                margin: Edges::ZERO,
+                padding: source
+                    .endpoint
+                    .map_or(Edges::ZERO, |endpoint| endpoint.physical_components().1),
+                border: source
+                    .endpoint
+                    .map_or(Edges::ZERO, |endpoint| endpoint.physical_components().0),
+                scrollbar_size: Size::ZERO,
+            }
+        }))
         .collect::<Vec<_>>();
     items.sort_by_key(|item| item.source_index);
 

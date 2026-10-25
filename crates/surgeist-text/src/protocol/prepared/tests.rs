@@ -918,6 +918,7 @@ fn select_whole(prepared: &PreparedText) -> SelectedLine {
         .handle();
     prepared
         .select(LineSelectionRequest {
+            boundary_context: Vec::new(),
             incoming: None,
             start,
             end: termination.view().boundary(),
@@ -929,9 +930,18 @@ fn select_whole(prepared: &PreparedText) -> SelectedLine {
             line_strut: None,
             controls: prepared
                 .control_views()
-                .map(|control| ControlAllocation {
-                    occurrence: control.handle(),
-                    strut: None,
+                .map(|control| {
+                    let occurrence = control.handle();
+                    ControlAllocation {
+                        boundary: matches!(
+                            occurrence.view().kind(),
+                            crate::ParagraphControlKind::InlineBoundaryStart
+                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                        )
+                        .then_some(crate::InlineBoundaryAllocation::ZERO),
+                        occurrence,
+                        strut: None,
+                    }
                 })
                 .collect(),
         })
@@ -1140,6 +1150,7 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
     let count = end.view().participant_offset();
     let selected = prepared
         .select(LineSelectionRequest {
+            boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end,
@@ -1151,9 +1162,18 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
             line_strut: None,
             controls: prepared
                 .control_views()
-                .map(|control| ControlAllocation {
-                    occurrence: control.handle(),
-                    strut: None,
+                .map(|control| {
+                    let occurrence = control.handle();
+                    ControlAllocation {
+                        boundary: matches!(
+                            occurrence.view().kind(),
+                            crate::ParagraphControlKind::InlineBoundaryStart
+                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                        )
+                        .then_some(crate::InlineBoundaryAllocation::ZERO),
+                        occurrence,
+                        strut: None,
+                    }
                 })
                 .collect(),
         })
@@ -1235,6 +1255,7 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
     let termination = alternative.view().opportunity();
     let selected = prepared
         .select(LineSelectionRequest {
+            boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
@@ -1249,9 +1270,18 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
             line_strut: None,
             controls: prepared
                 .control_views()
-                .map(|control| ControlAllocation {
-                    occurrence: control.handle(),
-                    strut: None,
+                .map(|control| {
+                    let occurrence = control.handle();
+                    ControlAllocation {
+                        boundary: matches!(
+                            occurrence.view().kind(),
+                            crate::ParagraphControlKind::InlineBoundaryStart
+                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                        )
+                        .then_some(crate::InlineBoundaryAllocation::ZERO),
+                        occurrence,
+                        strut: None,
+                    }
                 })
                 .collect(),
         })

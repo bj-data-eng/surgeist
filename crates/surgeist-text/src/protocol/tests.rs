@@ -99,6 +99,7 @@ fn request(prepared: &PreparedText) -> LineSelectionRequest {
         .unwrap()
         .handle();
     LineSelectionRequest {
+        boundary_context: Vec::new(),
         incoming: None,
         start,
         end: termination.view().boundary(),
@@ -434,22 +435,32 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
     let controls = participants
         .iter()
         .filter_map(|item| match item {
-            PreparedParticipant::Control(control) => Some(ControlAllocation {
-                occurrence: control.clone(),
-                strut: if policy == ParagraphStrut::AllocatedContributions {
-                    Some(ControlStrut {
-                        baseline: 0.0,
-                        line_extent: 0.0,
-                        alignment: LineBoxAlignment::Baseline,
-                    })
-                } else {
-                    None
-                },
+            PreparedParticipant::Control(control) => Some({
+                let occurrence = control.clone();
+                ControlAllocation {
+                    boundary: matches!(
+                        occurrence.view().kind(),
+                        crate::ParagraphControlKind::InlineBoundaryStart
+                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                    )
+                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    occurrence,
+                    strut: if policy == ParagraphStrut::AllocatedContributions {
+                        Some(ControlStrut {
+                            baseline: 0.0,
+                            line_extent: 0.0,
+                            alignment: LineBoxAlignment::Baseline,
+                        })
+                    } else {
+                        None
+                    },
+                }
             }),
             _ => None,
         })
         .collect();
     p.select(LineSelectionRequest {
+        boundary_context: Vec::new(),
         incoming: None,
         start: p.boundary_views().next().unwrap().handle(),
         end,

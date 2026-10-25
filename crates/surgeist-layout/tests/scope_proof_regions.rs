@@ -445,6 +445,7 @@ fn fixture_with_child_topology(
             layout::LayoutInput::inline_boundary(layout::InlineBoundaryInput::new(
                 kind,
                 layout::InlineMetrics::try_new(8.0, 10.0).unwrap(),
+                layout::InlineBoundaryEdgeOf::ZERO,
             )),
         );
     }

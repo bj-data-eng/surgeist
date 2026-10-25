@@ -95,9 +95,18 @@ fn finish(p: &PreparedText, alternative: usize) -> FinalizedLine {
         .collect();
     r.controls = p
         .control_views()
-        .map(|v| ControlAllocation {
-            occurrence: v.handle(),
-            strut: None,
+        .map(|v| {
+            let occurrence = v.handle();
+            ControlAllocation {
+                boundary: matches!(
+                    occurrence.view().kind(),
+                    crate::ParagraphControlKind::InlineBoundaryStart
+                        | crate::ParagraphControlKind::InlineBoundaryEnd
+                )
+                .then_some(crate::InlineBoundaryAllocation::ZERO),
+                occurrence,
+                strut: None,
+            }
         })
         .collect();
     p.select(r)

@@ -81,6 +81,7 @@ fn transparent(selected: &SelectedData, cluster: &PreparedCluster) -> bool {
 }
 
 fn positions(
+    selected: &SelectedData,
     shaped: &ShapedData,
     atomics: &BTreeMap<usize, &AtomicAllocation>,
     order: &crate::SuppliedVisualOrder<'_, '_>,
@@ -112,7 +113,14 @@ fn positions(
                     inflow_allocation(atomics[&occurrence])?.0.advance,
                 )?;
             }
-            ShapedItem::Anchor { .. } => {}
+            ShapedItem::Anchor { unit } => {
+                pen = add(
+                    "Phase II boundary end",
+                    TextNumericPhase::Finalization,
+                    pen,
+                    crate::protocol::boundary::advance(selected, unit),
+                )?;
+            }
         }
     }
     Ok((result, pen))
@@ -165,7 +173,7 @@ pub(super) fn natural(
     order: &crate::SuppliedVisualOrder<'_, '_>,
     dispositions: &[SpacingSlotDisposition],
 ) -> Result<Natural> {
-    let (positions, total) = positions(shaped, atomics, order)?;
+    let (positions, total) = positions(selected, shaped, atomics, order)?;
     let rtl = selected.presentation.analysis.base_level & 1 != 0;
     let side = if rtl { Side::Start } else { Side::End };
     let mut result = Natural {
@@ -190,7 +198,12 @@ pub(super) fn natural(
     };
     for ordinal in visual {
         let index = match shaped.items[ordinal] {
-            ShapedItem::Anchor { .. } => continue,
+            ShapedItem::Anchor { unit } => {
+                if crate::protocol::boundary::advance(selected, unit) > 0.0 {
+                    break;
+                }
+                continue;
+            }
             ShapedItem::InlineBox { .. } => break,
             ShapedItem::TextCluster(index) => index,
         };
@@ -278,6 +291,7 @@ fn include(bounds: &mut Option<(f64, f64)>, start: f64, end: f64) {
 /// Omitted rows retain actual paint/source geometry. Only measurement
 /// contributions and occupied intervals are folded here; no glyph is rewritten.
 fn measure(
+    selected: &SelectedData,
     shaped: &ShapedData,
     atomics: &BTreeMap<usize, &AtomicAllocation>,
     order: &crate::SuppliedVisualOrder<'_, '_>,
@@ -301,6 +315,7 @@ fn measure(
             ShapedItem::InlineBox { occurrence, .. } => {
                 inflow_allocation(atomics[&occurrence])?.0.advance
             }
+            ShapedItem::Anchor { unit } => crate::protocol::boundary::advance(selected, unit),
             _ => 0.0,
         };
         advance = add(
@@ -363,7 +378,18 @@ fn measure(
                     flow.advance,
                 )?;
             }
-            ShapedItem::Anchor { .. } => {}
+            ShapedItem::Anchor { unit } => {
+                let end = add(
+                    "Phase II occupied boundary",
+                    TextNumericPhase::Finalization,
+                    pen,
+                    crate::protocol::boundary::advance(selected, unit),
+                )?;
+                if end != pen {
+                    include(&mut bounds, pen, end);
+                }
+                pen = end;
+            }
         }
     }
     let (occupied_start, occupied_end) = bounds.unwrap_or((0.0, 0.0));
@@ -391,7 +417,7 @@ pub(super) fn allocated(
             return Err(cause.error());
         }
     }
-    let (positions, total) = positions(shaped, atomics, order)?;
+    let (positions, total) = positions(selected, shaped, atomics, order)?;
     let rtl = selected.presentation.analysis.base_level & 1 != 0;
     // Ordinary and zero-only rows consume no hanging frame. Preserve checked
     // precision when a real conditional or outward-overlap observation needs it.
@@ -471,8 +497,9 @@ pub(super) fn allocated(
             overlap,
         });
     }
-    let fit = measure(shaped, atomics, order, &omit, None, None)?;
+    let fit = measure(selected, shaped, atomics, order, &omit, None, None)?;
     let minimum = measure(
+        selected,
         shaped,
         atomics,
         order,
@@ -485,6 +512,7 @@ pub(super) fn allocated(
         None,
     )?;
     let maximum = measure(
+        selected,
         shaped,
         atomics,
         order,
@@ -507,7 +535,15 @@ pub(super) fn allocated(
         })
         .collect();
     let clip = edge.map(|edge| (rtl, if rtl { total - edge } else { edge }));
-    let alignment = measure(shaped, atomics, order, &removed, Some(&exclusions), clip)?;
+    let alignment = measure(
+        selected,
+        shaped,
+        atomics,
+        order,
+        &removed,
+        Some(&exclusions),
+        clip,
+    )?;
     // Physical overlap is an intersection, not the omitted signed advance.
     // With no supplied span the actual Text metric frame is purpose-neutral
     // and follows the alignment measure, as finalization will place it.
@@ -572,12 +608,14 @@ pub(super) fn allocated(
 }
 
 pub(super) fn standalone(
+    selected: &SelectedData,
     metrics: &LineMetrics,
     shaped: &ShapedData,
     atomics: &BTreeMap<usize, &AtomicAllocation>,
     order: &crate::SuppliedVisualOrder<'_, '_>,
 ) -> Result<LineMeasurements> {
     let raw = measure(
+        selected,
         shaped,
         atomics,
         order,

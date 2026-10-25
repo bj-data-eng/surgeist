@@ -126,14 +126,14 @@ fn capacity() -> Error {
 
 /// A receipt is exact, or it retains every possible event seam between the two
 /// genuine origin occurrences. A flat capture never chooses a control's side.
-struct ConnectionSeam {
+pub(crate) struct ConnectionSeam {
     connection: usize,
-    lower: usize,
-    upper: usize,
-    atom: usize,
+    pub(crate) lower: usize,
+    pub(crate) upper: usize,
+    pub(crate) atom: usize,
 }
 
-fn connection_seams(
+pub(crate) fn connection_seams(
     input: &SourceProjection,
     events: &[LogicalEvent],
     paragraph: &ParagraphData,

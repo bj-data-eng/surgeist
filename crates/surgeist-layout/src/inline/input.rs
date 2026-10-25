@@ -175,10 +175,14 @@ mod tests {
 
         let boundary_metrics = InlineMetricsOf::try_new(S::from_f64(29.0), S::from_f64(31.0))
             .expect("valid non-default inline-boundary metrics");
-        let boundary = InlineBoundaryInputOf::new(InlineBoundaryKind::End, boundary_metrics)
-            .with_writing_mode(WritingMode::SidewaysRl)
-            .with_direction(Direction::Rtl)
-            .with_vertical_align(VerticalAlign::Bottom);
+        let boundary = InlineBoundaryInputOf::new(
+            InlineBoundaryKind::End,
+            boundary_metrics,
+            crate::InlineBoundaryEdgeOf::ZERO,
+        )
+        .with_writing_mode(WritingMode::SidewaysRl)
+        .with_direction(Direction::Rtl)
+        .with_vertical_align(VerticalAlign::Bottom);
         let boundary_input = LayoutInputOf::inline_boundary(boundary);
         let boundary_projection = projection_from_input(&boundary_input);
         let InlineParticipantKindOf::InlineBoundary(projected_boundary) =

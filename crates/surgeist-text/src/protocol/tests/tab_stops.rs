@@ -877,9 +877,18 @@ fn source_less_zero_tab_replacement_retains_alternative_bounds() {
     r.context.tabs = TabContext::CssStops { origin: None };
     r.controls = p
         .control_views()
-        .map(|c| ControlAllocation {
-            occurrence: c.handle(),
-            strut: None,
+        .map(|c| {
+            let occurrence = c.handle();
+            ControlAllocation {
+                boundary: matches!(
+                    occurrence.view().kind(),
+                    crate::ParagraphControlKind::InlineBoundaryStart
+                        | crate::ParagraphControlKind::InlineBoundaryEnd
+                )
+                .then_some(crate::InlineBoundaryAllocation::ZERO),
+                occurrence,
+                strut: None,
+            }
         })
         .collect();
     let line = p

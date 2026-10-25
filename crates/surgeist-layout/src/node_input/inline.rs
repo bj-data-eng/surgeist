@@ -377,6 +377,54 @@ pub enum InlineBoundaryKind {
     End,
 }
 
+/// Actual used border and padding on this endpoint's own inline side.
+/// Components and their sum are finite, nonnegative Layout coordinates.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct InlineBoundaryEdgeOf<S: LayoutScalar = DefaultScalar> {
+    border: S,
+    padding: S,
+}
+
+pub type InlineBoundaryEdge = InlineBoundaryEdgeOf<DefaultScalar>;
+
+impl<S: LayoutScalar> InlineBoundaryEdgeOf<S> {
+    /// An affirmative used zero edge, rather than missing geometry.
+    pub const ZERO: Self = Self {
+        border: S::ZERO,
+        padding: S::ZERO,
+    };
+
+    /// Validates the used components and their sum in the actual scalar lane.
+    ///
+    /// # Errors
+    /// Rejects negative/nonfinite components or a nonfinite component sum.
+    pub fn try_new(
+        border: S,
+        padding: S,
+    ) -> Result<Self, crate::NonNegativeFiniteScalarErrorOf<S>> {
+        let border = crate::NonNegativeFiniteOf::new(border)?.get();
+        let padding = crate::NonNegativeFiniteOf::new(padding)?.get();
+        crate::NonNegativeFiniteOf::new(border + padding)?;
+        Ok(Self { border, padding })
+    }
+
+    #[must_use]
+    pub const fn border(self) -> S {
+        self.border
+    }
+
+    #[must_use]
+    pub const fn padding(self) -> S {
+        self.padding
+    }
+
+    /// The constructor-proved sum in S; consumers lower this result once.
+    #[must_use]
+    pub fn advance(self) -> S {
+        self.border + self.padding
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct InlineBoundaryInputOf<S: LayoutScalar = DefaultScalar> {
     kind: InlineBoundaryKind,
@@ -384,19 +432,25 @@ pub struct InlineBoundaryInputOf<S: LayoutScalar = DefaultScalar> {
     direction: Direction,
     vertical_align: VerticalAlign,
     metrics: InlineMetricsOf<S>,
+    edge: InlineBoundaryEdgeOf<S>,
 }
 
 pub type InlineBoundaryInput = InlineBoundaryInputOf<DefaultScalar>;
 
 impl<S: LayoutScalar> InlineBoundaryInputOf<S> {
     #[must_use]
-    pub const fn new(kind: InlineBoundaryKind, metrics: InlineMetricsOf<S>) -> Self {
+    pub const fn new(
+        kind: InlineBoundaryKind,
+        metrics: InlineMetricsOf<S>,
+        edge: InlineBoundaryEdgeOf<S>,
+    ) -> Self {
         Self {
             kind,
             writing_mode: WritingMode::HorizontalTb,
             direction: Direction::Ltr,
             vertical_align: VerticalAlign::Baseline,
             metrics,
+            edge,
         }
     }
 
@@ -421,6 +475,11 @@ impl<S: LayoutScalar> InlineBoundaryInputOf<S> {
     #[must_use]
     pub const fn kind(self) -> InlineBoundaryKind {
         self.kind
+    }
+
+    #[must_use]
+    pub const fn edge(self) -> InlineBoundaryEdgeOf<S> {
+        self.edge
     }
 
     #[must_use]

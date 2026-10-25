@@ -93,6 +93,7 @@ fn observe(
         .handle();
     let line = prepared
         .select(text::LineSelectionRequest {
+            boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: end_offer.view().boundary(),

@@ -3,6 +3,8 @@
 mod both_sides;
 #[path = "casing_indications.rs"]
 mod casing_indications;
+#[path = "incoming_custody.rs"]
+mod incoming_custody;
 #[path = "wbr_evidence.rs"]
 mod wbr_evidence;
 #[path = "width_indications.rs"]
@@ -130,9 +132,18 @@ fn selected_request(
         .iter()
         .filter_map(|part| {
             if let PreparedParticipant::Control(occurrence) = part {
-                Some(ControlAllocation {
-                    occurrence: occurrence.clone(),
-                    strut: None,
+                Some({
+                    let occurrence = occurrence.clone();
+                    ControlAllocation {
+                        boundary: matches!(
+                            occurrence.view().kind(),
+                            crate::ParagraphControlKind::InlineBoundaryStart
+                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                        )
+                        .then_some(crate::InlineBoundaryAllocation::ZERO),
+                        occurrence,
+                        strut: None,
+                    }
                 })
             } else {
                 None
@@ -1535,9 +1546,18 @@ fn transparent_oof_does_not_split_the_actual_mixed_in_flow_rtl_run() {
             .iter()
             .filter_map(|v| {
                 if let PreparedParticipant::Control(c) = v {
-                    Some(ControlAllocation {
-                        occurrence: c.clone(),
-                        strut: None,
+                    Some({
+                        let occurrence = c.clone();
+                        ControlAllocation {
+                            boundary: matches!(
+                                occurrence.view().kind(),
+                                crate::ParagraphControlKind::InlineBoundaryStart
+                                    | crate::ParagraphControlKind::InlineBoundaryEnd
+                            )
+                            .then_some(crate::InlineBoundaryAllocation::ZERO),
+                            occurrence,
+                            strut: None,
+                        }
                     })
                 } else {
                     None

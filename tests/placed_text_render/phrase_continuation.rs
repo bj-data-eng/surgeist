@@ -223,6 +223,7 @@ fn capture() -> (
         layout::LayoutInput::InlineBoundary(layout::InlineBoundaryInput::new(
             kind,
             layout::InlineMetrics::try_new(16.0, 20.0).unwrap(),
+            layout::InlineBoundaryEdge::ZERO,
         ))
     };
     let tree = ContinuationTree {
