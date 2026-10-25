@@ -144,6 +144,202 @@ fn ids(line: &FinalizedLine) -> Vec<u32> {
 }
 
 #[test]
+fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
+    use crate::{
+        Affinity, ContextualSourceInput, DocumentSegmentBreaks, ParagraphBoundaryDefinition,
+        ParagraphBoundaryPolicy, ParagraphConnectionKind, ParagraphControl, ParagraphControlKind,
+        ParagraphOrigin, ParagraphOriginKind, SourceProcessingConnection, SourceProcessingEnvelope,
+        SourceProcessingEvent as E, SourceProcessingParagraph, SourceProcessingScope,
+        SourceProcessingTopology, WhiteSpaceTrim,
+    };
+    use std::sync::Arc;
+
+    // Unicode17 SpecialCasing removes Lithuanian dot-above after soft-dotted
+    // text in upper/title context. A genuine authored hard boundary ends that
+    // context; the receiving standalone mark is still original source.
+    for forced in [false, true] {
+        let source = Source::new("i\u{307}");
+        let mut events = vec![
+            E::EnterScope(0),
+            E::EnterParagraph(0),
+            E::Origin {
+                origin: 0,
+                affinity: Affinity::After,
+            },
+        ];
+        if forced {
+            events.push(E::Control {
+                control: 0,
+                affinity: Affinity::Before,
+            });
+        }
+        events.extend([
+            E::Connection(0),
+            E::Origin {
+                origin: 1,
+                affinity: Affinity::After,
+            },
+            E::ExitParagraph(0),
+            E::ExitScope(0),
+        ]);
+        let processed = Arc::new(
+            crate::process_contextual_source(ContextualSourceInput {
+                source: source.clone(),
+                segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+                envelope: SourceProcessingEnvelope::Complete,
+                origins: [Range::new(0, 1), Range::new(1, 2)]
+                    .into_iter()
+                    .map(|range| ParagraphOrigin {
+                        text_node: None,
+                        source: source.clone(),
+                        local: range,
+                        aggregate: range,
+                        kind: ParagraphOriginKind::Authored,
+                    })
+                    .collect(),
+                connections: vec![SourceProcessingConnection {
+                    before_origin: 0,
+                    after_origin: 1,
+                    kind: ParagraphConnectionKind::Continuous,
+                }],
+                controls: if forced {
+                    vec![ParagraphControl {
+                        at: 1,
+                        kind: ParagraphControlKind::ForcedBreak,
+                    }]
+                } else {
+                    Vec::new()
+                },
+                boundary_policies: vec![ParagraphBoundaryPolicy {
+                    definition: ParagraphBoundaryDefinition::Connection(0),
+                    preceding_wrap: crate::Wrap::Word,
+                    following_wrap: crate::Wrap::Word,
+                    ancestor_wrap: crate::Wrap::Word,
+                }],
+                replacements: Vec::new(),
+                scopes: vec![SourceProcessingScope::Block {
+                    topology: SourceProcessingTopology::Complete,
+                    used_direction: ParagraphBaseDirection::LeftToRight,
+                    trim: WhiteSpaceTrim::default(),
+                    base_style: case_style(CaseTransform::Uppercase, Some("lt")),
+                }],
+                paragraphs: vec![SourceProcessingParagraph {
+                    base_direction: ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: ParagraphStrut::DefaultFont,
+                }],
+                events,
+            })
+            .unwrap(),
+        );
+        assert_eq!(processed.processed_text().code_units(), [0x69, 0x307]);
+        let analyzed =
+            AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
+                .unwrap();
+        assert_eq!(analyzed.source().text().code_units(), [0x69, 0x307]);
+        assert_eq!(
+            analyzed.inner.projection.text,
+            if forced { "I\u{307}" } else { "I" }
+        );
+        let correspondence = (0..analyzed.inner.transform.rows.len())
+            .flat_map(|row| analyzed.inner.transform.original_pieces(row))
+            .map(|piece| (piece.origin, piece.aggregate, piece.local))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            correspondence,
+            [
+                (0, Range::new(0, 1), Range::new(0, 1)),
+                (1, Range::new(1, 2), Range::new(1, 2)),
+            ]
+        );
+        let mut system = System::new(SystemOptions {
+            font_catalogue: FontCatalogueMode::RegisteredOnly,
+        })
+        .unwrap();
+        system
+            .register_fonts(crate::shaping_test_fonts::casing_ahem())
+            .unwrap();
+        let prepared = system
+            .prepare(
+                &crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word),
+                PreparationOptions::default(),
+            )
+            .unwrap();
+        assert_eq!(prepared.unit_views().count(), if forced { 2 } else { 1 });
+        if forced {
+            assert_eq!(
+                prepared
+                    .unit_views()
+                    .map(|unit| unit.source_range())
+                    .collect::<Vec<_>>(),
+                [Range::new(0, 1), Range::new(1, 2)]
+            );
+            let control = prepared.control_views().next().unwrap();
+            assert_eq!(control.kind(), &ParagraphControlKind::ForcedBreak);
+            assert_eq!(control.source_position().get(), 1);
+            assert!(prepared.control_views().nth(1).is_none());
+        } else {
+            assert!(prepared.control_views().next().is_none());
+        }
+        let mut start = prepared.boundary_views().next().unwrap().handle();
+        let mut lines = Vec::new();
+        let endings = if forced {
+            vec![PreparedBreakKind::Forced, PreparedBreakKind::ParagraphEnd]
+        } else {
+            vec![PreparedBreakKind::ParagraphEnd]
+        };
+        for kind in endings {
+            let offer = prepared
+                .opportunity_views()
+                .find(|offer| offer.kind() == kind)
+                .unwrap()
+                .handle();
+            let mut selected = request(&prepared);
+            selected.start = start;
+            selected.end = offer.view().boundary();
+            let from = selected.start.view().participant_offset();
+            let to = selected.end.view().participant_offset();
+            selected.participants = prepared.participants().skip(from).take(to - from).collect();
+            selected.controls = selected
+                .participants
+                .iter()
+                .filter_map(|participant| {
+                    if let PreparedParticipant::Control(control) = participant {
+                        Some(ControlAllocation {
+                            occurrence: control.clone(),
+                            strut: None,
+                            boundary: None,
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            selected.termination = PreparedTermination::Ordinary(offer);
+            selected.context.start = if lines.is_empty() {
+                LineStart::Paragraph
+            } else {
+                LineStart::Continuation
+            };
+            selected.context.end = if kind == PreparedBreakKind::Forced {
+                LineEnd::Forced
+            } else {
+                LineEnd::Paragraph
+            };
+            let line = prepared
+                .select(selected)
+                .unwrap()
+                .finalize(SpacingAllocations::None)
+                .unwrap();
+            start = line.selected_line().request().end.clone();
+            lines.push(line);
+        }
+        let placed = layout(prepared, lines, false);
+        assert_eq!(placed.lines().len(), if forced { 2 } else { 1 });
+        assert_eq!(placed.source().text().code_units(), [0x69, 0x307]);
+    }
+}
+
+#[test]
 fn native_expansion_uses_two_real_output_participants_and_receiving_only_source_geometry() {
     // Actual unchanged Ahem maps ß to134, S to53; each advances10px.
     let p = capture(
