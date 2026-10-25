@@ -1324,6 +1324,15 @@ are explicit native policy completing this gap, not uniquely mandated CSS or a
 claim of browser equivalence. Fit and intrinsic inclusion retain their separate
 normative roles.
 
+## Native box-edge wrapping
+
+The [native wrap-edge determination](text-wrap-edges--native-determination.md)
+separates Text 4 applicability and imported box propagation from explicit native
+edge/inside conflict policy and early hard-boundary completion. Layout owns the
+effective box plan; Text admits computed mandatory causes before processing.
+Actual box-order and final source/plan custody remain required. The determination
+selects semantics without asserting implementation completion or browser equivalence.
+
 ## Hanging punctuation composition
 
 The [native punctuation determination](text-hanging-punctuation--native-determination.md)

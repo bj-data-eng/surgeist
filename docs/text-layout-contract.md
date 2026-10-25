@@ -593,6 +593,16 @@ The standalone `System::layout` convenience path retains the currently supported
 
 The explicit native `TabContext::FontAdvance` policy uses the selected font's actual U+0009 glyph advance, preserving the standalone policy through the same finalizer. It does not approximate a tab with a space or implement CSS tab stops. `NoTabs` validates actual absence. The [CSS tab contract](#preserved-css-tab-stops) below defines the independently prepared CSS-stop operation and its required block capture. A taken discretionary opportunity requires its actual issued alternative, including an explicitly computed empty replacement; a natural paragraph end does not select a hyphen merely because the preceding source contains SHY. A source-defined replacement validates its real defining source occurrence. A control-defined replacement retains its exact control/opportunity/alternative owner and may have no text origin; incidental source-anchor provenance must be supplied and validated, never guessed from the numeric offset.
 
+### Native box-edge wrapping
+
+The [box-edge determination](../references/text-wrap-edges--native-determination.md)
+defines actual-box propagation, independent edge/inside avoidance and early
+mandatory-boundary custody. Layout owns applicability and the effective plan;
+Text admits distinct computed mandatory causes before processing executes.
+The post-analysis relation-permission binding above cannot introduce such a
+hard boundary. Final admission revalidates influencing tree semantics and binds
+the actual source, computed causes and prepared identities.
+
 ### Hanging punctuation and formatted-line roles
 
 Text owns the normalized `HangingPunctuation` declaration, complete selected
