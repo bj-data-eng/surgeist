@@ -357,6 +357,15 @@ remain separate. Standalone applies the same effective pair through its existing
 raw Normal/Anywhere selection path; its characterized raw candidate ownership
 does not become the native captured-paragraph contract.
 
+`WordBreak::Manual` retains Normal's ordinary rules with lexical line breaking
+deliberately disabled. SA units use their AL/CM interpretation for line rules;
+missing lexical capability does not activate fallback under Manual. Declared
+overflow wrapping remains effective. Orthographic opportunities, actual Wbr and
+ZWSP, forced breaks and independently admitted LineBreak Anywhere retain their
+own rules. Hyphenation also retains its actual owner and policy: Manual is not
+Hyphens None or KeepAll. The declared values remain visible in captured styles
+and cache identity; editing, accessibility and other word metadata do not change.
+
 ### Native line-break policies
 
 Text owns `Style::line_break` and its `LineBreak` values Auto, Loose, Normal,

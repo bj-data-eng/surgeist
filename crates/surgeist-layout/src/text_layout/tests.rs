@@ -59,6 +59,8 @@ mod whitespace_edges;
 mod whitespace_modes;
 #[path = "tests/word_break_break_word.rs"]
 mod word_break_break_word;
+#[path = "tests/word_break_manual.rs"]
+mod word_break_manual;
 #[path = "tests/zone_composition.rs"]
 mod zone_composition;
 

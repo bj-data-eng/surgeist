@@ -1020,6 +1020,7 @@ pub enum surgeist_text::WordBreak
 pub surgeist_text::WordBreak::BreakAll
 pub surgeist_text::WordBreak::BreakWord
 pub surgeist_text::WordBreak::KeepAll
+pub surgeist_text::WordBreak::Manual
 pub surgeist_text::WordBreak::Normal
 pub enum surgeist_text::WordSpaceTransform
 pub surgeist_text::WordSpaceTransform::IdeographicSpace

@@ -10,9 +10,7 @@ use icu_properties::{
 };
 
 use super::{line_break::MissingLexicalModels, style_at};
-use crate::{
-    engine::resolve::AnalyzedStyleRun, projection::SourceProjection, style::OrdinaryWordBreak,
-};
+use crate::{engine::resolve::AnalyzedStyleRun, projection::SourceProjection};
 
 pub(super) fn propose(
     _missing_models: MissingLexicalModels,
@@ -34,8 +32,7 @@ pub(super) fn propose(
                     .style
                     .authored()
                     .effective_breaking()
-                    .word
-                    != OrdinaryWordBreak::BreakAll
+                    .lexical_line_breaking
                 && !protected_edge(projection.atoms[at].code_point)
             {
                 proposals[at] = true;

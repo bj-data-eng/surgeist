@@ -273,15 +273,20 @@ impl Style {
         Self::default()
     }
 
-    /// Interpret the CSS legacy keyword without replacing either declaration.
+    /// Interpret declared breaking policies without replacing their inputs.
     pub(crate) fn effective_breaking(&self) -> EffectiveBreaking {
-        let (word, overflow) = match self.word_break {
-            WordBreak::Normal => (OrdinaryWordBreak::Normal, self.overflow_wrap),
-            WordBreak::BreakAll => (OrdinaryWordBreak::BreakAll, self.overflow_wrap),
-            WordBreak::KeepAll => (OrdinaryWordBreak::KeepAll, self.overflow_wrap),
-            WordBreak::BreakWord => (OrdinaryWordBreak::Normal, OverflowWrap::Anywhere),
+        let (word, overflow, lexical_line_breaking) = match self.word_break {
+            WordBreak::Normal => (OrdinaryWordBreak::Normal, self.overflow_wrap, true),
+            WordBreak::BreakAll => (OrdinaryWordBreak::BreakAll, self.overflow_wrap, false),
+            WordBreak::KeepAll => (OrdinaryWordBreak::KeepAll, self.overflow_wrap, true),
+            WordBreak::BreakWord => (OrdinaryWordBreak::Normal, OverflowWrap::Anywhere, true),
+            WordBreak::Manual => (OrdinaryWordBreak::Normal, self.overflow_wrap, false),
         };
-        EffectiveBreaking { word, overflow }
+        EffectiveBreaking {
+            word,
+            overflow,
+            lexical_line_breaking,
+        }
     }
 }
 
@@ -296,6 +301,9 @@ pub(crate) enum OrdinaryWordBreak {
 pub(crate) struct EffectiveBreaking {
     pub(crate) word: OrdinaryWordBreak,
     pub(crate) overflow: OverflowWrap,
+    /// Whether lexical line analysis and its missing-model fallback may run.
+    /// This does not govern word metadata, orthography, or hyphenation.
+    pub(crate) lexical_line_breaking: bool,
 }
 
 impl Default for Style {
@@ -370,6 +378,9 @@ pub enum WordBreak {
     /// CSS legacy behavior: Normal word breaking with Anywhere overflow wrapping,
     /// regardless of the separately retained declared OverflowWrap value.
     BreakWord,
+    /// Normal breaking with lexical line analysis disabled; orthographic
+    /// opportunities, hyphenation, and declared overflow wrapping remain active.
+    Manual,
 }
 
 /// Line-breaking restrictions; Auto uses Text's deterministic Strict policy.

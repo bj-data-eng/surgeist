@@ -56,6 +56,11 @@ alone has a different min-content effect. See the
 [word-break contract](../../../docs/text-layout-contract.md#native-word-break-policies)
 for ownership, hyphenation and Standalone phase behavior.
 
+`WordBreak::Manual` disables lexical line breaking and its missing-capability
+fallback while retaining Normal's other rules and declared overflow policy.
+Orthographic, explicit and required opportunities and actual hyphenation remain
+independent; source words and editing metadata are unchanged.
+
 The current non-complex provider lacks Thai/Lao lexical models. Normal and
 KeepAll supply ordinary fallback cuts between qualified whole letter units,
 without declaring detected word boundaries or changing locale metadata. See
