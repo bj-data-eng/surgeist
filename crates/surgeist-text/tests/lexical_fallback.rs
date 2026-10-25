@@ -748,3 +748,167 @@ fn standalone_consumes_missing_lexical_fallback_as_ordinary_with_real_notdef_met
     // Do not prescribe a glyph count for the formatting ZWJ itself.
     assert_eq!(positive_advances, [10.0, 10.0, 10.0]);
 }
+
+#[test]
+fn uniform_sa_run_end_cannot_offer_a_break_immediately_before_word_joiner() {
+    // Unicode17 UAX14 revision55 LB11 prohibits WJ adjacency after earlier
+    // rules have been considered. No earlier LB8 cause exists in this source.
+    // https://www.unicode.org/reports/tr14/tr14-55.html#LB11
+    assert_eq!(
+        CodePointMapData::<Class>::new().get32(0x2060),
+        Class::WordJoiner
+    );
+    let mut observed = Vec::new();
+    for direction in DIRECTIONS {
+        let p = prepare(input("กก\u{2060}", style(Some("th")), direction));
+        assert_eq!(
+            p.analyzed_source().source().text().code_units(),
+            &[0x0e01, 0x0e01, 0x2060]
+        );
+        assert_eq!(
+            p.analyzed_source().graphemes().collect::<Vec<_>>(),
+            [
+                t::Range::new(0, 1),
+                t::Range::new(1, 2),
+                t::Range::new(2, 3)
+            ]
+        );
+        for offer in allowed(&p) {
+            let boundary = offer.view().boundary();
+            let at = boundary.view().participant_offset();
+            let participants = p.participants().collect::<Vec<_>>();
+            assert!(matches!(
+                participants[at - 1],
+                t::PreparedParticipant::Text(_)
+            ));
+            assert!(matches!(participants[at], t::PreparedParticipant::Text(_)));
+        }
+        observed.push((direction, cuts(&p)));
+    }
+    assert_eq!(
+        observed,
+        [(DIRECTIONS[0], vec![1]), (DIRECTIONS[1], vec![1])],
+        "retain genuine fallback1; the provider SA-run end is not permission for forbidden before-WJ cut2"
+    );
+}
+
+#[test]
+fn before_wj_prohibition_does_not_depend_on_a_latin_style_or_overflow_seam() {
+    let mut violations = Vec::new();
+    for direction in DIRECTIONS {
+        for latin_span in [false, true] {
+            let mut request = input("กก\u{2060}AA", style(Some("th")), direction);
+            if latin_span {
+                let mut tail = style(Some("en"));
+                tail.overflow_wrap = t::OverflowWrap::Anywhere;
+                request.source.span(t::Range::new(3, 5), tail);
+            }
+            let p = prepare(request);
+            if cuts(&p) != [1] {
+                violations.push((direction, latin_span, cuts(&p)));
+            }
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "LB11 applies to the real source WJ with or without the original unrelated Latin span: {violations:?}"
+    );
+}
+
+#[test]
+fn normal_keep_all_and_break_all_preserve_wj_adjacency_across_strictnesses() {
+    let mut violations = Vec::new();
+    for direction in DIRECTIONS {
+        for joiner in ['\u{2060}', '\u{feff}'] {
+            assert_eq!(
+                CodePointMapData::<Class>::new().get32(u32::from(joiner)),
+                Class::WordJoiner
+            );
+            for word in [
+                t::WordBreak::Normal,
+                t::WordBreak::KeepAll,
+                t::WordBreak::BreakAll,
+            ] {
+                for strictness in STRICTNESSES {
+                    for trailing in ["", "ก"] {
+                        let value = format!("กก{joiner}{trailing}");
+                        let mut base = style(Some("th"));
+                        base.word_break = word;
+                        base.line_break = strictness;
+                        let p = prepare(input(&value, base, direction));
+                        let end = value.encode_utf16().count();
+                        assert_eq!(
+                            p.analyzed_source().graphemes().collect::<Vec<_>>(),
+                            (0..end)
+                                .map(|at| t::Range::new(at, at + 1))
+                                .collect::<Vec<_>>()
+                        );
+                        if cuts(&p) != [1] {
+                            violations.push((
+                                direction,
+                                joiner,
+                                word,
+                                strictness,
+                                trailing,
+                                cuts(&p),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "LB11 protects both sides of WJ; BreakAll's valid letter-pair cut1 remains independent: {violations:?}"
+    );
+}
+
+#[test]
+fn earlier_zero_width_space_rule_retains_its_break_before_wj_through_spaces() {
+    // LB8 precedes LB11: its genuine ZW SP* cause must survive a WJ guard.
+    // https://www.unicode.org/reports/tr14/tr14-55.html#LB8
+    for direction in DIRECTIONS {
+        for spaces in [0, 1, 2] {
+            let value = format!("A\u{200b}{}\u{2060}A", " ".repeat(spaces));
+            let before_wj = 2 + spaces;
+            let p = prepare(input(&value, style(Some("th")), direction));
+            assert!(
+                allowed(&p).iter().any(|offer| {
+                    let boundary = offer.view().boundary();
+                    boundary.view().source_before().get() == before_wj
+                        && boundary.view().source_after().get() == before_wj
+                }),
+                "the earlier LB8 cause authenticates the before-WJ cut: spaces={spaces} {direction:?}"
+            );
+            assert!(
+                !cuts(&p).contains(&(before_wj + 1)),
+                "LB8 does not lend permission to the separate after-WJ cut"
+            );
+        }
+    }
+}
+
+#[test]
+fn deliberate_line_break_anywhere_overrides_wj_only_at_whole_typographic_units() {
+    for direction in DIRECTIONS {
+        for (value, expected) in [("กก\u{2060}ก", vec![1, 2, 3]), ("ก่\u{2060}ก", vec![2, 3])]
+        {
+            for word in [
+                t::WordBreak::Normal,
+                t::WordBreak::KeepAll,
+                t::WordBreak::BreakAll,
+            ] {
+                let mut base = style(Some("th"));
+                base.word_break = word;
+                base.line_break = t::LineBreak::Anywhere;
+                let p = prepare(input(value, base, direction));
+                assert_eq!(
+                    cuts(&p),
+                    expected,
+                    "explicit Anywhere has independent ordinary authority while the base+tone unit stays intact: {value:?} {word:?} {direction:?}"
+                );
+            }
+        }
+    }
+}
