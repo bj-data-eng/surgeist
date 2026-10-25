@@ -205,6 +205,14 @@ it for deterministic Text tests, copied from the existing Render fixture:
 The font and license files are unchanged. The fixture is not a production font
 or evidence of general script, variation or shaping conformance.
 
+The original [Kern Ahem derivative](tests/fixtures/fonts/kern-ahem/PROVENANCE.md)
+retains Ahem's cmap, outlines and metrics, changes its family identity and adds
+one horizontal kerning pair for deterministic Text tests. Its
+[COPYING](tests/fixtures/fonts/kern-ahem/COPYING) and
+[upstream README](tests/fixtures/fonts/kern-ahem/UPSTREAM-README) are unchanged
+copies of the original notices. The local generator and provenance identify
+the exact source and modifications.
+
 ## CSS Text small-kana mapping
 
 The full-size-kana mapping facts in `src/transform.rs` and the independent
