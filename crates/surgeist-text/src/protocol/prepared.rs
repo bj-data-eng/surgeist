@@ -87,6 +87,10 @@ pub(crate) struct AtomicData {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ControlData {
+    pub(crate) anchor: usize,
+    pub(crate) semantic_atom: Option<usize>,
+    /// Actual owning mixed participant, including a transformed Wbr text row.
+    pub(crate) participant: Option<usize>,
     pub(crate) occurrence: usize,
     pub(crate) source: usize,
     pub(crate) processed: usize,
@@ -348,11 +352,14 @@ pub(crate) fn prepare_tables(
     // Every genuine control retains an observation, including a Wbr consumed
     // by one text-bearing participant. Inventory order remains anchor order.
     tables.control_rows = vec![usize::MAX; paragraph.controls.len()];
-    for anchor in &paragraph.anchor_order {
+    for (order, anchor) in paragraph.anchor_order.iter().enumerate() {
         if let ParagraphAnchorItem::Control(occurrence) = anchor.item {
             tables.control_rows[occurrence] = tables.controls.len();
             let control = &paragraph.controls[occurrence];
             tables.controls.push(ControlData {
+                anchor: order,
+                semantic_atom: None,
+                participant: None,
                 occurrence,
                 source: control.at,
                 processed: analyzed
@@ -397,6 +404,13 @@ pub(crate) fn prepare_tables(
         let mut preliminary = None;
         match event {
             Event::Text(index) => {
+                if let crate::transform::relation::ComponentOwner::Wbr(control) =
+                    analyzed.transform.component_for_atom(index).owner
+                {
+                    let row = &mut tables.controls[tables.control_rows[control]];
+                    row.participant = Some(participant);
+                    row.semantic_atom.get_or_insert(index);
+                }
                 collapsed_space_wrap = None;
                 let value = &projection.atoms[index];
                 let cluster = cluster_for_atom[index].map(|index| &shaped.clusters[index]);
@@ -517,6 +531,9 @@ pub(crate) fn prepare_tables(
                     collapsed_space_wrap = None;
                 }
                 tables.controls[row] = ControlData {
+                    anchor: tables.controls[row].anchor,
+                    semantic_atom: Some(atom),
+                    participant: Some(participant),
                     occurrence,
                     source: control.at,
                     processed: processed_at,

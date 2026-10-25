@@ -110,7 +110,7 @@ fn custody(
     input: &SourceProjection,
     events: &[LogicalEvent],
     atom: usize,
-) -> (usize, usize, usize) {
+) -> (usize, usize, usize, usize) {
     let left_origin = incident_origins(paragraph, input.atoms[atom - 1].source)
         .next_back()
         .expect("actual left original contribution");
@@ -168,7 +168,7 @@ fn custody(
         }
         cut += 1;
     }
-    (owner, cut, at)
+    (owner, cut, at, seam)
 }
 
 pub(crate) fn proposals(
@@ -338,7 +338,8 @@ pub(crate) fn proposals(
                 .as_ref()
                 .filter(|topology| topology.capture.complete[topology.domain])
                 .ok_or_else(|| refusal(TextTransformError::MissingPhraseTopology { at }))?;
-            let (scope, event_cut, at) = custody(topology, paragraph, input, &events, atom);
+            let (scope, event_cut, at, capture_cut) =
+                custody(topology, paragraph, input, &events, atom);
             let fact = &topology.capture.scopes[scope];
             let own_style = fact.style.as_ref().ok_or_else(|| {
                 refusal(TextTransformError::MissingPhraseScopeStyle { scope, at })
@@ -372,6 +373,7 @@ pub(crate) fn proposals(
             map.virtuals.try_reserve(1).map_err(|_| super::capacity())?;
             let control_cut = events[..event_cut].iter().filter(|event| matches!(event.kind, Event::Anchor(anchor) if matches!(anchor.item, ParagraphAnchorItem::Control(_)))).count();
             map.virtuals.push(VirtualSeparatorData {
+                capture_cut,
                 scope: issued_scope,
                 source: at,
                 processed: processed.project(at, crate::Affinity::After),

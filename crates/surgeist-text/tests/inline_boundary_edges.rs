@@ -14,6 +14,9 @@ mod font;
 #[path = "inline_boundary_edges/geometry.rs"]
 mod geometry;
 
+#[path = "inline_boundary_edges/scope_incidence.rs"]
+mod scope_incidence;
+
 use t::{ParagraphControlKind as K, SourceProcessingEvent as E};
 
 const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");

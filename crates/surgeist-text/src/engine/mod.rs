@@ -54,6 +54,9 @@ impl std::ops::Deref for AnalyzedData {
 
 /// Executed source/Unicode data shared by distinct immutable wrapping contexts.
 pub(crate) struct AnalyzedCore {
+    pub(crate) scope_cuts: std::sync::OnceLock<
+        std::result::Result<analysis::scope::ScopeCutIndex, analysis::scope::ScopeIndexCapacity>,
+    >,
     pub(crate) processed: Arc<crate::ProcessedSource>,
     pub(crate) paragraph: ParagraphData,
     pub(crate) host_projection: SourceProjection,
@@ -198,6 +201,7 @@ pub(crate) fn analyze_paragraph(
         .collect();
     Ok(Arc::new(AnalyzedData {
         core: Arc::new(AnalyzedCore {
+            scope_cuts: std::sync::OnceLock::new(),
             processed,
             paragraph,
             host_projection,

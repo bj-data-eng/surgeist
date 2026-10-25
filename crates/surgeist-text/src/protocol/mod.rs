@@ -15,6 +15,8 @@ mod conditional;
 pub(crate) use conditional::request_context;
 mod continuation;
 mod direction;
+mod wrapping_scope;
+pub use wrapping_scope::WrappingScopeQueryError;
 pub(crate) mod flow;
 pub(crate) mod input;
 pub use direction::LineDirectionFacts;
@@ -643,6 +645,9 @@ pub enum ProtocolContextField {
 /// Actual invalid association or incomplete input; no caller ordinal issues a capability.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolError {
+    WrappingScopeQuery {
+        reason: WrappingScopeQueryError,
+    },
     InvalidMeasurementFlow,
     /// The queried range does not belong to one canonical body bidi context.
     InvalidLineDirectionQuery,

@@ -47,6 +47,8 @@ pub(crate) struct ScopeData {
 
 #[derive(Clone, Debug)]
 pub(crate) struct VirtualSeparatorData {
+    /// Actual insertion cut in the canonical captured event stream.
+    pub(crate) capture_cut: usize,
     pub(crate) scope: usize,
     pub(crate) source: usize,
     pub(crate) processed: usize,

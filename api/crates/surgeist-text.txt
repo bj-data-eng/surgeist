@@ -729,6 +729,8 @@ pub surgeist_text::ProtocolError::UnsupportedContext
 pub surgeist_text::ProtocolError::UnsupportedContext::field: surgeist_text::ProtocolContextField
 pub surgeist_text::ProtocolError::UnsupportedStandaloneAnalysis
 pub surgeist_text::ProtocolError::UnsupportedWrappingAnalysis
+pub surgeist_text::ProtocolError::WrappingScopeQuery
+pub surgeist_text::ProtocolError::WrappingScopeQuery::reason: surgeist_text::WrappingScopeQueryError
 pub enum surgeist_text::ProtocolHandleKind
 pub surgeist_text::ProtocolHandleKind::Alternative
 pub surgeist_text::ProtocolHandleKind::Atomic
@@ -1079,6 +1081,12 @@ pub surgeist_text::WrappingNeighbor::Atomic::occurrence: usize
 pub surgeist_text::WrappingNeighbor::Text
 pub surgeist_text::WrappingNeighbor::Text::local: surgeist_text::Range
 pub surgeist_text::WrappingNeighbor::Text::origin: usize
+pub enum surgeist_text::WrappingScopeQueryError
+pub surgeist_text::WrappingScopeQueryError::ForeignCapture
+pub surgeist_text::WrappingScopeQueryError::MissingCapture
+pub surgeist_text::WrappingScopeQueryError::NonInlineScope
+pub surgeist_text::WrappingScopeQueryError::UnrepresentedIncidence
+pub surgeist_text::WrappingScopeQueryError::WrongDomain
 pub struct surgeist_text::AnalysisIdentity
 impl core::cmp::Eq for surgeist_text::AnalysisIdentity
 impl core::cmp::PartialEq for surgeist_text::AnalysisIdentity
@@ -2173,6 +2181,10 @@ pub fn surgeist_text::PreparedText::font_catalogue_identity(&self) -> &surgeist_
 pub fn surgeist_text::PreparedText::preparation_options(&self) -> surgeist_text::PreparationOptions
 pub fn surgeist_text::PreparedText::tab_reference(&self) -> core::option::Option<&surgeist_text::ParagraphTabReference>
 pub fn surgeist_text::PreparedText::terminal_edge(&self) -> surgeist_text::ParagraphTerminalEdge
+impl surgeist_text::PreparedText
+pub fn surgeist_text::PreparedText::boundary_consumes_control(&self, boundary: &surgeist_text::PreparedBoundary, control: &surgeist_text::PreparedControl) -> surgeist_text::Result<bool>
+pub fn surgeist_text::PreparedText::boundary_inside_captured_scope(&self, boundary: &surgeist_text::PreparedBoundary, scope: &surgeist_text::CapturedScope) -> surgeist_text::Result<bool>
+pub fn surgeist_text::PreparedText::control_is_boundary_exact(&self, control: &surgeist_text::PreparedControl) -> surgeist_text::Result<bool>
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::boundary_context_demand(&self, request: &surgeist_text::LineSelectionRequest) -> surgeist_text::Result<core::option::Option<surgeist_text::PreparedControl>>
 pub fn surgeist_text::PreparedText::select(&self, request: surgeist_text::LineSelectionRequest) -> surgeist_text::Result<surgeist_text::SelectedLine>

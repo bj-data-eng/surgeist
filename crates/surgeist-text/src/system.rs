@@ -158,9 +158,8 @@ impl System {
 
     fn install_catalogue(&mut self, candidate: Catalogue) {
         let old_catalogue = std::mem::replace(&mut self.catalogue, candidate);
-        let old_cache = std::mem::take(&mut self.cache);
-        self.stats.record_invalidations(old_cache.len());
-        drop(old_cache);
+        self.stats.record_invalidations(self.cache.len());
+        self.cache = HashMap::new();
         drop(old_catalogue);
     }
 

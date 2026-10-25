@@ -110,7 +110,7 @@ pub use protocol::{
     PreparedVirtualSeparator, PreparedWord, PreparedWordPortion, PreparedWordView,
     PresentationRange, ProtocolContextField, ProtocolError, ProtocolHandleKind, SelectedLine,
     SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlot, SpacingSlotDisposition,
-    SpacingSlotFeedback, SpacingSlotOwner, TabContext,
+    SpacingSlotFeedback, SpacingSlotOwner, TabContext, WrappingScopeQueryError,
 };
 pub use range::{Range, SourcePosition, SourceRange};
 pub use source_model::{

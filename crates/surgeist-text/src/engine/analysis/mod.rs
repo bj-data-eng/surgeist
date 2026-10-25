@@ -9,6 +9,7 @@ pub(crate) mod hyphenation;
 mod lexical_fallback;
 mod line_break;
 pub(crate) mod phrase;
+pub(crate) mod scope;
 pub(crate) mod unit_properties;
 pub(crate) mod wrapping;
 
