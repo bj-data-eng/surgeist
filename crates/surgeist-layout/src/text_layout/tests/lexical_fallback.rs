@@ -321,3 +321,179 @@ fn real_notdef_metrics_remain_usable_with_ancestor_nowrap_and_independent_forced
     lane::<f32>();
     lane::<f64>();
 }
+
+const WJ_RUN: &str = "กก\u{2060}AA";
+
+/// Mixed missing Thai/real Latin glyphs; WJ has no positive advance, but its
+/// formatting glyph count and glyph ID are deliberately unspecified.
+fn wj_run_facts<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+    paragraph: &PreparedParagraph,
+) -> Vec<LineFact> {
+    assert_eq!(batch.placed_text().len(), 1);
+    let placed = batch.placed_text()[0].layout();
+    assert_eq!(placed.source().text(), &text::Text::from(WJ_RUN));
+    let origin = paragraph.origin(1);
+    assert_eq!(origin.view().source().text(), &text::Text::from(WJ_RUN));
+    assert_eq!(origin.view().source().id(), Some(text::Id::from_u64(65402)));
+    assert_eq!(origin.view().source().revision(), 19);
+    let endpoint = |offset, affinity| {
+        placed
+            .positions()
+            .find(|position| position.source_cursor() == text::Cursor::new(offset, affinity))
+            .unwrap()
+    };
+    let copied = placed
+        .position_selection(
+            &endpoint(0, text::Affinity::After),
+            &endpoint(5, text::Affinity::Before),
+        )
+        .unwrap();
+    assert_eq!(copied.source_text(), &text::Text::from(WJ_RUN));
+    assert_eq!(copied.plaintext(), &text::Text::from(WJ_RUN));
+    let mut finalized = vec![None; placed.lines().len()];
+    for entry in batch.final_inline_fragments() {
+        let fragment = entry.fragment();
+        let line = fragment.finalized_fragment().finalized_line();
+        assert_eq!(line.prepared_text(), paragraph.prepared);
+        finalized[fragment.line_index()] = Some(line);
+    }
+    let mut positive = Vec::new();
+    let result = placed
+        .lines()
+        .iter()
+        .zip(finalized)
+        .enumerate()
+        .map(|(index, (placed_line, finalized))| {
+            let finalized = finalized.expect("mixed source line keeps its authentic origin");
+            let mut raw = 0.0;
+            for run in finalized.run_views() {
+                let face = run.face();
+                assert_eq!(face.bytes(), AHEM);
+                assert_eq!(face.index(), 0);
+                let instance = run.effective_instance().unwrap();
+                assert_eq!(instance.font_size(), 10.0);
+                assert_eq!(instance.axis_count(), 0);
+                let metrics = instance.metrics(face.catalogue_identity()).unwrap();
+                assert_eq!(metrics.units_per_em(), 1000);
+                assert_eq!((metrics.ascent(), metrics.descent()), (8.0, -2.0));
+                raw += run.advance();
+                for glyph in run.glyphs() {
+                    if glyph.advance() > 0.0 {
+                        positive.push((glyph.range(), glyph.id(), glyph.advance()));
+                    } else {
+                        assert_eq!(glyph.advance(), 0.0);
+                    }
+                }
+            }
+            assert_eq!(finalized.feedback().advance, raw);
+            let placed_raw: f64 = placed
+                .inline_metric_facts()
+                .runs()
+                .iter()
+                .filter(|run| run.line() == index)
+                .map(|run| run.advance())
+                .sum();
+            assert_eq!(placed_raw, raw);
+            let selected = finalized.selected_line();
+            let request = selected.request();
+            assert!(request.alternative.is_none());
+            assert!(request.incoming.is_none());
+            assert!(finalized.hyphenation_continuation().is_none());
+            let text::PreparedTermination::Ordinary(offer) = &request.termination else {
+                panic!("OverflowNormal cannot grant a conditional WJ seam")
+            };
+            (
+                placed_line.range(),
+                raw,
+                finalized.measurements().fit().advance(),
+                request.context.end,
+                Termination::Ordinary(offer.view().kind()),
+            )
+        })
+        .collect();
+    positive.sort_by_key(|glyph| glyph.0.start);
+    // Actual Ahem metadata: Thai is missing glyph0; A maps to glyph35. Both
+    // advances are1000 design units at1000 UPEM, hence10px in this instance.
+    assert_eq!(
+        positive,
+        [
+            (text::Range::new(0, 1), 0, 10.0),
+            (text::Range::new(1, 2), 0, 10.0),
+            (text::Range::new(3, 4), 35, 10.0),
+            (text::Range::new(4, 5), 35, 10.0),
+        ]
+    );
+    result
+}
+
+#[test]
+fn sa_provider_run_end_before_word_joiner_cannot_split_the_native_fitting_line() {
+    // UAX14 revision55 LB11 prohibits breaks before/after WJ. No earlier
+    // ZW SP* permission exists here. Genuine lexical fallback1 is unaffected.
+    fn lane<S: LayoutScalar>() -> Vec<(Vec<usize>, Vec<LineFact>)> {
+        let mut observed = Vec::new();
+        for word in [text::WordBreak::Normal, text::WordBreak::KeepAll] {
+            for rtl in [false, true] {
+                let p = paragraph(WJ_RUN, "th", word, Wrap::Word, rtl);
+                let actual = compute::<S>(&p, AvailableOf::definite(S::from_f64(20.0)), rtl);
+                observed.push((allowed(&p), wj_run_facts(&actual, &p)));
+            }
+        }
+        observed
+    }
+    let actual = (lane::<f32>(), lane::<f64>());
+    let expected = vec![
+        (
+            vec![1],
+            vec![
+                line(0, 1, 10.0, text::PreparedBreakKind::Allowed),
+                line(1, 5, 30.0, text::PreparedBreakKind::ParagraphEnd),
+            ],
+        );
+        4
+    ];
+    assert_eq!(actual, (expected.clone(), expected));
+}
+
+#[test]
+fn word_joiner_at_sa_provider_run_end_keeps_the_thirty_pixel_min_content_piece() {
+    fn lane<S: LayoutScalar>() -> Vec<(f64, Vec<LineFact>)> {
+        let mut observed = Vec::new();
+        for word in [text::WordBreak::Normal, text::WordBreak::KeepAll] {
+            for rtl in [false, true] {
+                let p = paragraph(WJ_RUN, "th", word, Wrap::Word, rtl);
+                for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
+                    let actual = compute::<S>(&p, available, rtl);
+                    let width = actual
+                        .unrounded_entries()
+                        .iter()
+                        .find(|entry| entry.node() == 0)
+                        .unwrap()
+                        .output()
+                        .size
+                        .width
+                        .to_f64();
+                    observed.push((width, wj_run_facts(&actual, &p)));
+                }
+            }
+        }
+        observed
+    }
+    let actual = (lane::<f32>(), lane::<f64>());
+    let pair = [
+        (
+            30.0,
+            vec![
+                line(0, 1, 10.0, text::PreparedBreakKind::Allowed),
+                line(1, 5, 30.0, text::PreparedBreakKind::ParagraphEnd),
+            ],
+        ),
+        (
+            40.0,
+            vec![line(0, 5, 40.0, text::PreparedBreakKind::ParagraphEnd)],
+        ),
+    ];
+    let expected = (0..4).flat_map(|_| pair.clone()).collect::<Vec<_>>();
+    assert_eq!(actual, (expected.clone(), expected));
+}

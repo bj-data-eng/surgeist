@@ -912,3 +912,151 @@ fn deliberate_line_break_anywhere_overrides_wj_only_at_whole_typographic_units()
         }
     }
 }
+
+#[test]
+fn sa_run_end_cannot_offer_a_break_before_a_whole_glue_unit() {
+    // UAX14 revision55 LB12/LB12a protect GL here: the preceding Thai letter
+    // is not one of the SP/BA/HY/HH exceptions, and no earlier LB8 applies.
+    // https://www.unicode.org/reports/tr14/tr14-55.html#LB12a
+    let mut violations = Vec::new();
+    for glue in ['\u{a0}', '\u{202f}', '\u{2007}'] {
+        assert_eq!(
+            CodePointMapData::<Class>::new().get32(u32::from(glue)),
+            Class::Glue
+        );
+        assert_eq!(
+            CodePointMapData::<Gcb>::new().get32(u32::from(glue)),
+            Gcb::Other
+        );
+        assert_eq!(
+            CodePointMapData::<Category>::new().get32(u32::from(glue)),
+            Category::SpaceSeparator
+        );
+        for direction in DIRECTIONS {
+            for trailing in ["", "ก"] {
+                let value = format!("กก{glue}{trailing}");
+                let p = prepare(input(&value, style(Some("th")), direction));
+                let end = value.encode_utf16().count();
+                assert_eq!(
+                    p.analyzed_source().graphemes().collect::<Vec<_>>(),
+                    (0..end)
+                        .map(|at| t::Range::new(at, at + 1))
+                        .collect::<Vec<_>>(),
+                    "GL is a genuine whole unit, not an interior combining-mark seam"
+                );
+                if cuts(&p) != [1] {
+                    violations.push((glue, direction, trailing, cuts(&p)));
+                }
+            }
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "retain fallback1 but no before-GL cut2 or after-GL cut3: {violations:?}"
+    );
+}
+
+#[test]
+fn lb12a_space_break_after_and_hyphen_exceptions_keep_before_gl_permission() {
+    // These four concrete whole-unit prefixes qualify the adopted LB12a
+    // exceptions; a generic GL veto would erase their genuine opportunities.
+    for (prefix, class) in [
+        (' ', Class::Space),
+        ('\u{2003}', Class::BreakAfter),
+        ('-', Class::Hyphen),
+        ('\u{2010}', Class::UnambiguousHyphen),
+    ] {
+        assert_eq!(
+            CodePointMapData::<Class>::new().get32(u32::from(prefix)),
+            class
+        );
+        assert_eq!(
+            CodePointMapData::<Gcb>::new().get32(u32::from(prefix)),
+            Gcb::Other
+        );
+        for glue in ['\u{a0}', '\u{202f}'] {
+            assert_eq!(
+                CodePointMapData::<Class>::new().get32(u32::from(glue)),
+                Class::Glue
+            );
+            for direction in DIRECTIONS {
+                let value = format!("A{prefix}{glue}A");
+                let p = prepare(input(&value, style(Some("th")), direction));
+                assert_eq!(
+                    p.analyzed_source().graphemes().collect::<Vec<_>>(),
+                    [
+                        t::Range::new(0, 1),
+                        t::Range::new(1, 2),
+                        t::Range::new(2, 3),
+                        t::Range::new(3, 4)
+                    ]
+                );
+                assert!(
+                    allowed(&p).iter().any(|offer| {
+                        let boundary = offer.view().boundary();
+                        boundary.view().source_before().get() == 2
+                            && boundary.view().source_after().get() == 2
+                    }),
+                    "LB12a {class:?} exception supplies the actual before-GL cut: {value:?} {direction:?}"
+                );
+                assert!(
+                    !cuts(&p).contains(&3),
+                    "LB12 still protects the separate after-GL edge"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn sa_run_end_preserves_hard_precedence_and_does_not_break_before_sp_or_zwsp() {
+    let mut violations = Vec::new();
+    for direction in DIRECTIONS {
+        for separator in [' ', '\u{200b}'] {
+            assert_eq!(
+                CodePointMapData::<Class>::new().get32(u32::from(separator)),
+                if separator == ' ' {
+                    Class::Space
+                } else {
+                    Class::ZWSpace
+                }
+            );
+            let value = format!("กก{separator}ก");
+            let p = prepare(input(&value, style(Some("th")), direction));
+            assert_eq!(
+                p.analyzed_source().graphemes().collect::<Vec<_>>(),
+                [
+                    t::Range::new(0, 1),
+                    t::Range::new(1, 2),
+                    t::Range::new(2, 3),
+                    t::Range::new(3, 4)
+                ]
+            );
+            if cuts(&p) != [1, 3] {
+                violations.push((separator, direction, cuts(&p)));
+            }
+        }
+        // Native preparation already gives real hard separators precedence.
+        assert_eq!(
+            CodePointMapData::<Class>::new().get32(0x000a),
+            Class::LineFeed
+        );
+        let hard = prepare(input("กก\nก", style(Some("th")), direction));
+        assert_eq!(
+            cuts(&hard),
+            [1],
+            "the real hard separator forbids a before-hard soft cut2"
+        );
+        assert_eq!(
+            hard.opportunity_views()
+                .filter(|offer| offer.kind() == t::PreparedBreakKind::Forced)
+                .map(|offer| offer.boundary().view().source_after().get())
+                .collect::<Vec<_>>(),
+            [3]
+        );
+    }
+    assert!(
+        violations.is_empty(),
+        "LB7 forbids provider slice-end cut2 before SP/ZWSP while fallback1 and the genuine after-separator3 remain: {violations:?}"
+    );
+}
