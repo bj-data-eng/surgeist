@@ -1,0 +1,109 @@
+name: PR hygiene
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  history:
+    name: Published history is not rewritten
+    if: github.event.action == 'synchronize'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check that the previous head is an ancestor of the new head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          set -euo pipefail
+          if ! status=$(gh api "repos/$REPO/compare/$BEFORE...$AFTER" --jq .status 2> compare-error.txt); then
+            cat compare-error.txt
+            if grep -q 'HTTP 404' compare-error.txt; then
+              echo "::error title=History rewritten::$BEFORE no longer exists, so the branch was rewritten. A pushed branch is not rebased, amended or force-pushed; merge origin/main into it instead."
+            else
+              echo "::error title=History check failed::Could not compare $BEFORE with $AFTER; re-run this job."
+            fi
+            exit 1
+          fi
+          case "$status" in
+            ahead | identical)
+              echo "$AFTER extends $BEFORE."
+              ;;
+            *)
+              echo "::error title=History rewritten::$AFTER does not extend $BEFORE (compare status: $status). A pushed branch is not rebased, amended or force-pushed; merge origin/main into it instead."
+              exit 1
+              ;;
+          esac
+
+  closing-keywords:
+    name: One closing keyword per issue
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Reject keyword lists and summarize closed issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          EXPECTED_COMMITS: ${{ github.event.pull_request.commits }}
+        run: |
+          set -euo pipefail
+          body=$(gh api "repos/$REPO/pulls/$NUMBER" --jq '.body // ""')
+          messages=$(gh api --paginate "repos/$REPO/pulls/$NUMBER/commits" --jq '.[].commit.message')
+          fetched=$(gh api --paginate "repos/$REPO/pulls/$NUMBER/commits" --jq '.[].sha' | wc -l | tr -d ' ')
+          if [ "$fetched" -lt "$EXPECTED_COMMITS" ]; then
+            echo "::warning title=Commits not checked::Only $fetched of $EXPECTED_COMMITS commits could be read; the rest were not checked for closing keywords."
+          fi
+
+          # Fenced blocks and code spans are examples, not keywords.
+          text=$(printf '%s\n%s\n' "$body" "$messages" \
+            | awk '/^[[:space:]]*(```|~~~)/ { fenced = !fenced; next } !fenced' \
+            | sed 's/`[^`]*`//g')
+
+          keyword='(^|[^[:alnum:]_])(close[sd]?|fix(e[sd])?|resolve[sd]?)'
+          issue='([[:alnum:]_.-]+/[[:alnum:]_.-]+)?#[0-9]+'
+          separator='[[:space:]]*(,|;|/|&|and|or)?[[:space:]]*(and[[:space:]]+)?'
+          list="$keyword:?[[:space:]]+$issue$separator$issue"
+          if lists=$(printf '%s\n' "$text" | grep -ainE "$list"); then
+            while IFS= read -r line; do
+              line=${line#*:}
+              line=${line//'%'/%25}
+              line=${line//$'\r'/}
+              echo "::error title=Closing keyword list::$line -- GitHub links only the first issue of a list; give each issue its own line."
+            done <<< "$lists"
+            exit 1
+          fi
+
+          single="$keyword:?[[:space:]]+$issue"
+          {
+            echo "### Issues this pull request closes"
+            echo
+            echo "Merging closes these issues, and the Project then sets them to Done."
+            echo
+            printf '%s\n' "$text" | grep -aioE "$single" | grep -aoE "$issue" | sort -u | sed 's/^/- /' || echo "- none"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  branch-name:
+    name: Branch follows branch/<topic>
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Warn when the head branch is not branch/<topic>
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          case "$HEAD_REF" in
+            branch/?*)
+              echo "$HEAD_REF follows branch/<topic>."
+              ;;
+            *)
+              echo "::warning title=Branch name::$HEAD_REF does not follow branch/<topic>. That is fine only when the assignment named the branch."
+              ;;
+          esac
