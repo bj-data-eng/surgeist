@@ -46,6 +46,16 @@ private implementation organization.
 | Cache identity | `Key`, `SourceKey`, `StyleKey`, `OptionsKey`, `FontGeneration`, `Stats` | [cache.rs](../src/cache.rs) |
 | Errors | `Error`, `ErrorCode`, `ErrorDetail`, `Result` | [error.rs](../src/error.rs) |
 
+## Word breaking
+
+`WordBreak::BreakWord` has effective Normal word breaking and Anywhere overflow
+wrapping for every declared `OverflowWrap`. Readback and cache identity retain
+the declared pair. Native conditional cuts participate in finite overflow and
+min-content selection; max-content remains unwrapped. `OverflowWrap::BreakWord`
+alone has a different min-content effect. See the
+[word-break contract](../../../docs/text-layout-contract.md#native-word-break-policies)
+for ownership, hyphenation and Standalone phase behavior.
+
 ## Native line breaking
 
 `Style::line_break` selects `LineBreak::{Auto, Loose, Normal, Strict, Anywhere}`.

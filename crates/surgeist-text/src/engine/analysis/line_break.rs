@@ -16,26 +16,27 @@ use icu_segmenter::{
 
 use super::{Boundary, is_hard_separator, style_at};
 use crate::{
-    LineBreak, WordBreak, engine::resolve::AnalyzedStyleRun, projection::SourceProjection,
+    LineBreak, engine::resolve::AnalyzedStyleRun, projection::SourceProjection,
+    style::OrdinaryWordBreak,
 };
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(super) struct Policy {
     strictness: LineBreak,
-    word: WordBreak,
+    word: OrdinaryWordBreak,
     cjk: bool,
 }
 
 impl Policy {
     const BASELINE: Self = Self {
         strictness: LineBreak::Strict,
-        word: WordBreak::Normal,
+        word: OrdinaryWordBreak::Normal,
         cjk: false,
     };
 
     fn normal_word(self) -> Self {
         Self {
-            word: WordBreak::Normal,
+            word: OrdinaryWordBreak::Normal,
             ..self
         }
     }
@@ -82,7 +83,7 @@ pub(super) fn policies(styles: &[AnalyzedStyleRun]) -> crate::Result<Vec<Policy>
             };
             Ok(Policy {
                 strictness,
-                word: style.word_break,
+                word: style.effective_breaking().word,
                 cjk: cjk && strictness != LineBreak::Strict,
             })
         })
@@ -97,9 +98,9 @@ fn provider(text: &str, policy: Policy) -> Vec<bool> {
         _ => LineBreakStrictness::Strict,
     });
     options.word_option = Some(match policy.word {
-        WordBreak::Normal => LineBreakWordOption::Normal,
-        WordBreak::BreakAll => LineBreakWordOption::BreakAll,
-        WordBreak::KeepAll => LineBreakWordOption::KeepAll,
+        OrdinaryWordBreak::Normal => LineBreakWordOption::Normal,
+        OrdinaryWordBreak::BreakAll => LineBreakWordOption::BreakAll,
+        OrdinaryWordBreak::KeepAll => LineBreakWordOption::KeepAll,
     });
     // ICU's only content-locale distinction is ja/zh. This identifier conveys
     // the proven Appendix-F classification, never an invented authored locale.
@@ -213,7 +214,8 @@ pub(super) fn apply(
             .copied()
             .filter(|policy| policy.normal_word() == group)
         {
-            let actual_storage = (policy.word != WordBreak::Normal).then(|| provider(text, policy));
+            let actual_storage =
+                (policy.word != OrdinaryWordBreak::Normal).then(|| provider(text, policy));
             let actual = actual_storage.as_ref().unwrap_or(normal);
             for atom in component.start + 1..component.end {
                 if policies[style_at(projection, styles, atom)] != policy {
@@ -459,7 +461,7 @@ fn required_pair(
     if matches!(after_cp, 0x2010 | 0x2013) {
         let id = before == Class::Ideographic
             || before == Class::ConditionalJapaneseStarter && loose
-            || policy.word == WordBreak::BreakAll
+            || policy.word == OrdinaryWordBreak::BreakAll
                 && matches!(
                     before,
                     Class::Alphabetic | Class::Numeric | Class::ComplexContext | Class::Ambiguous
@@ -477,7 +479,7 @@ fn required_pair(
     // class-based restriction. Named iteration/punctuation rules above retain
     // their independent precedence (see the adopted small-kana determination).
     if after == Class::ConditionalJapaneseStarter {
-        return (policy.word != WordBreak::BreakAll).then_some(loose);
+        return (policy.word != OrdinaryWordBreak::BreakAll).then_some(loose);
     }
     if matches!(
         after_cp,

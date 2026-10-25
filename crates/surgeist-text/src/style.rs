@@ -272,6 +272,30 @@ impl Style {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Interpret the CSS legacy keyword without replacing either declaration.
+    pub(crate) fn effective_breaking(&self) -> EffectiveBreaking {
+        let (word, overflow) = match self.word_break {
+            WordBreak::Normal => (OrdinaryWordBreak::Normal, self.overflow_wrap),
+            WordBreak::BreakAll => (OrdinaryWordBreak::BreakAll, self.overflow_wrap),
+            WordBreak::KeepAll => (OrdinaryWordBreak::KeepAll, self.overflow_wrap),
+            WordBreak::BreakWord => (OrdinaryWordBreak::Normal, OverflowWrap::Anywhere),
+        };
+        EffectiveBreaking { word, overflow }
+    }
+}
+
+/// The three ordinary modes, after interpreting declared breaking properties.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) enum OrdinaryWordBreak {
+    Normal,
+    BreakAll,
+    KeepAll,
+}
+
+pub(crate) struct EffectiveBreaking {
+    pub(crate) word: OrdinaryWordBreak,
+    pub(crate) overflow: OverflowWrap,
 }
 
 impl Default for Style {
@@ -343,6 +367,9 @@ pub enum WordBreak {
     Normal,
     BreakAll,
     KeepAll,
+    /// CSS legacy behavior: Normal word breaking with Anywhere overflow wrapping,
+    /// regardless of the separately retained declared OverflowWrap value.
+    BreakWord,
 }
 
 /// Line-breaking restrictions; Auto uses Text's deterministic Strict policy.

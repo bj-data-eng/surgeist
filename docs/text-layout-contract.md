@@ -335,6 +335,28 @@ Source-only accessibility takes no placement point. It reports source values, un
 
 Accessibility state binds to the exact analyzed allocation and an explicit source-only or placed phase; placed state additionally binds to the exact placement identity. Source-only reads require the source-only binding, and layout reads require the matching placed binding. Updates may coherently replace or enrich the binding, rebuilding optional fields so previous geometry cannot survive a source-only replacement. Preserve checked node-ID issuance, source affinity, focus rules and atomic failure. Verify selectable fontless graphemes, explicit layout refusal, ordinary registered-font enrichment, mismatched analysis/placement rejection, absent fabricated geometry and preservation of the previous accessibility state after failure.
 
+### Native word-break policies
+
+`WordBreak::BreakWord` retains its declared value and the separately declared
+`OverflowWrap` in validated/captured styles and cache identity. Text gives them
+one effective policy: ordinary Normal word breaking and conditional
+Anywhere overflow wrapping, regardless of the declared OverflowWrap value.
+The [pinned CSS definition](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#valdef-word-break-break-word)
+defines this property value.
+
+This adds no ordinary word-interior cuts by itself. Native Overflow and
+MinContent conditional queries consume the effective Anywhere policy; Layout
+still establishes ordinary-fit exhaustion, chooses a real conditional trial
+and finalizes it through Text. Max-content remains unwrapped. In particular,
+WordBreak BreakWord includes these cuts in min-content, while OverflowWrap
+BreakWord alone excludes them. Actual hyphenation remains Normal word-break
+behavior, subject to its independent owner, LineBreak and other admission gates.
+
+Ordinary following-box ownership and native emergency logical-before ownership
+remain separate. Standalone applies the same effective pair through its existing
+raw Normal/Anywhere selection path; its characterized raw candidate ownership
+does not become the native captured-paragraph contract.
+
 ### Native line-break policies
 
 Text owns `Style::line_break` and its `LineBreak` values Auto, Loose, Normal,

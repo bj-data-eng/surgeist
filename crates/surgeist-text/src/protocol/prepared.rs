@@ -12,6 +12,7 @@ use crate::engine::{
     layout::data::{ShapedData, ShapedItem},
     resolve::ResolvedStyleRun,
 };
+use crate::style::OrdinaryWordBreak;
 use crate::{Range, projection::SourceProjection, transform::relation::GeneratedSeparatorOwner};
 
 use super::paragraph::{ParagraphAnchor, ParagraphAnchorItem, ParagraphControlKind};
@@ -695,7 +696,7 @@ fn issue_opportunities(
             let eligible = count_admitted
                 && !before_hard
                 && authored.hyphens != crate::Hyphens::None
-                && authored.word_break != crate::WordBreak::BreakAll
+                && authored.effective_breaking().word != OrdinaryWordBreak::BreakAll
                 && authored.line_break != crate::LineBreak::Anywhere
                 && authored.wrap == crate::Wrap::Word
                 && (control.is_some() || wrapping_allowed(analyzed, boundary)?);
@@ -1104,7 +1105,7 @@ fn automatic_cut(
         || counts.is_some_and(|value| value.admits(authored.hyphenate_limit_chars));
     if !count_admitted
         || authored.hyphens != crate::Hyphens::Auto
-        || authored.word_break == crate::WordBreak::BreakAll
+        || authored.effective_breaking().word == OrdinaryWordBreak::BreakAll
         || authored.line_break == crate::LineBreak::Anywhere
         || authored.wrap != crate::Wrap::Word
         || analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]]
@@ -1151,7 +1152,9 @@ fn ordinary_after_source_shy(
         return Ok(false);
     };
     let following = analyzed.styles[info.1].style.authored();
-    if following.word_break != crate::WordBreak::BreakAll || info.0.boundary < Boundary::Line {
+    if following.effective_breaking().word != OrdinaryWordBreak::BreakAll
+        || info.0.boundary < Boundary::Line
+    {
         return Ok(false);
     }
     if analyzed.paragraph.base_direction.is_some() {
@@ -1344,7 +1347,7 @@ pub(crate) fn conditional_boundaries(
             .style
             .authored();
         if !matches!(
-            (style.overflow_wrap, purpose),
+            (style.effective_breaking().overflow, purpose),
             (crate::OverflowWrap::Anywhere, _)
                 | (
                     crate::OverflowWrap::BreakWord,
@@ -1414,7 +1417,8 @@ fn standalone_opportunity(
             let style = &analyzed.styles[analyzed.analysis.infos[atom].1]
                 .style
                 .authored();
-            style.wrap == crate::Wrap::Word && style.overflow_wrap != crate::OverflowWrap::Normal
+            style.wrap == crate::Wrap::Word
+                && style.effective_breaking().overflow != crate::OverflowWrap::Normal
         }),
         _ => false,
     })
