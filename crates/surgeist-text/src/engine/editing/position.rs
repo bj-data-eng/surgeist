@@ -1015,6 +1015,14 @@ mod tests {
                 alternative: None,
                 context: LineContext {
                     base_direction,
+                    line_box_direction: match base_direction {
+                        crate::ParagraphBaseDirection::LeftToRight => {
+                            crate::LineBoxDirection::LeftToRight
+                        }
+                        crate::ParagraphBaseDirection::RightToLeft => {
+                            crate::LineBoxDirection::RightToLeft
+                        }
+                    },
                     orientation: LineOrientation::Horizontal,
                     start: LineStart::Paragraph,
                     end: LineEnd::Paragraph,
@@ -1586,6 +1594,7 @@ mod tests {
                     alternative: None,
                     context: LineContext {
                         base_direction: ParagraphBaseDirection::LeftToRight,
+                        line_box_direction: crate::LineBoxDirection::LeftToRight,
                         orientation: LineOrientation::Horizontal,
                         start: if index == 0 {
                             LineStart::Paragraph
@@ -1827,6 +1836,7 @@ mod tests {
                 alternative: None,
                 context: LineContext {
                     base_direction: ParagraphBaseDirection::LeftToRight,
+                    line_box_direction: crate::LineBoxDirection::LeftToRight,
                     orientation: LineOrientation::Horizontal,
                     start: LineStart::Continuation,
                     end: LineEnd::Soft,
@@ -2064,6 +2074,14 @@ mod tests {
                 alternative: None,
                 context: LineContext {
                     base_direction,
+                    line_box_direction: match base_direction {
+                        crate::ParagraphBaseDirection::LeftToRight => {
+                            crate::LineBoxDirection::LeftToRight
+                        }
+                        crate::ParagraphBaseDirection::RightToLeft => {
+                            crate::LineBoxDirection::RightToLeft
+                        }
+                    },
                     orientation: LineOrientation::Horizontal,
                     start: LineStart::Paragraph,
                     end: LineEnd::Paragraph,
@@ -2436,6 +2454,7 @@ mod tests {
                     alternative: None,
                     context: LineContext {
                         base_direction: ParagraphBaseDirection::LeftToRight,
+                        line_box_direction: crate::LineBoxDirection::LeftToRight,
                         orientation: LineOrientation::Horizontal,
                         start: if index == 0 {
                             LineStart::Paragraph

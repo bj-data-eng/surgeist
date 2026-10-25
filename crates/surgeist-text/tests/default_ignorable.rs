@@ -105,6 +105,14 @@ fn observe(
             line_strut: None,
             context: text::LineContext {
                 base_direction: direction,
+                line_box_direction: match direction {
+                    surgeist_text::ParagraphBaseDirection::LeftToRight => {
+                        surgeist_text::LineBoxDirection::LeftToRight
+                    }
+                    surgeist_text::ParagraphBaseDirection::RightToLeft => {
+                        surgeist_text::LineBoxDirection::RightToLeft
+                    }
+                },
                 orientation: text::LineOrientation::Horizontal,
                 start: text::LineStart::Paragraph,
                 end: text::LineEnd::Paragraph,

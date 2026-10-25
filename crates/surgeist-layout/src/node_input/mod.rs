@@ -22,7 +22,7 @@ pub use alignment::{AlignContent, AlignItems, AlignSelf, ItemOrder, JustifyConte
 pub use box_model::{
     BoxSizing, Clear, Direction, Display, Float, FloatExclusion, FloatExclusionInterval,
     FloatExclusionIntervalError, FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf,
-    FloatExclusionQuery, FloatExclusionQueryOf, Position,
+    FloatExclusionQuery, FloatExclusionQueryOf, LineBoxDirectionPolicy, Position,
 };
 pub use flex::{
     FlexDirection, FlexGrow, FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap,
@@ -77,6 +77,7 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     pub flex_item_collapse: FlexItemCollapse,
     pub box_sizing: BoxSizing,
     pub direction: Direction,
+    pub line_box_direction_policy: LineBoxDirectionPolicy,
     pub block_generation: BlockGeneration,
     pub text_indent: TextIndentOf<S>,
     /// Block-owned computed successive-line limit; defaults to no limit.
@@ -182,6 +183,7 @@ impl NodeInputOf<DefaultScalar> {
         flex_item_collapse: FlexItemCollapse::Normal,
         box_sizing: BoxSizing::BorderBox,
         direction: Direction::Ltr,
+        line_box_direction_policy: LineBoxDirectionPolicy::Normal,
         block_generation: BlockGeneration::Principal,
         text_indent: TextIndentOf::ZERO,
         hyphenate_limit_lines: crate::HyphenateLimitLines::NoLimit,
@@ -266,6 +268,7 @@ impl<S: LayoutScalar> Default for NodeInputOf<S> {
             flex_item_collapse: FlexItemCollapse::Normal,
             box_sizing: BoxSizing::BorderBox,
             direction: Direction::Ltr,
+            line_box_direction_policy: LineBoxDirectionPolicy::Normal,
             block_generation: BlockGeneration::Principal,
             text_indent: TextIndentOf::ZERO,
             hyphenate_limit_lines: crate::HyphenateLimitLines::NoLimit,

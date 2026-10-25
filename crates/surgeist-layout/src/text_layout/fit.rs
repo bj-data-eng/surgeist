@@ -145,6 +145,7 @@ pub(crate) struct LineFlow {
 }
 
 pub(crate) struct FittedLine {
+    pub line_box_end: crate::line_box::LineBoxContext,
     pub zone_basis: ZoneBasis,
     pub phrase_basis: Vec<PhraseBasis>,
     pub hyphenation_end: crate::hyphenation::LineHyphenationState,
@@ -183,6 +184,7 @@ impl From<surgeist_text::Error> for FitError {
 }
 
 pub(crate) struct FitInput<'a> {
+    pub line_box_context: crate::line_box::LineBoxContext,
     pub prepared: &'a PreparedText,
     pub available: Available,
     pub base_direction: ParagraphBaseDirection,
@@ -449,6 +451,7 @@ impl EvaluatedCandidate {
 }
 
 struct EndpointContext<'a> {
+    line_box_context: crate::line_box::LineBoxContext,
     start: &'a PreparedBoundary,
     incoming: Option<&'a HyphenationContinuation>,
     position: &'a CandidatePosition,
@@ -677,7 +680,8 @@ where
                             ending: LineEnd::Soft,
                         },
                         query.indent_state,
-                    );
+                        query.line_box_context,
+                    )?;
                     let trial = self.evaluate_mode(input, request, query.position, None, true)?;
                     if !trial.formatted {
                         continue;
@@ -724,7 +728,8 @@ where
                 query.incoming,
                 endpoint,
                 query.indent_state,
-            );
+                query.line_box_context,
+            )?;
             let candidate = self.evaluate(input, request, query.position, None)?;
             if zone_suppressed {
                 dispositions.push(ConditionalDisposition::ConsumerHyphenationPolicy(
@@ -776,7 +781,8 @@ where
                             ending: LineEnd::Soft,
                         },
                         query.indent_state,
-                    );
+                        query.line_box_context,
+                    )?;
                     let trial = self.evaluate(input, request, query.position, Some(&candidate))?;
                     if trial.fits {
                         priority = Some(trial.finalized);
@@ -851,7 +857,8 @@ where
                 ending: LineEnd::Soft,
             },
             empty_indent,
-        );
+            query.line_box_context,
+        )?;
         let trial = self.evaluate(input, request, &empty_position, preceding)?;
         let basis = PhraseBasis {
             ordinary: ordinary.basis(query.position),
@@ -974,7 +981,17 @@ fn selection_request(
     incoming: Option<&HyphenationContinuation>,
     endpoint: LineEndpoint,
     indent_state: crate::text_indent::IndentLineState,
-) -> LineSelectionRequest {
+    line_box_context: crate::line_box::LineBoxContext,
+) -> Result<LineSelectionRequest, FitError> {
+    let facts = input
+        .prepared
+        .line_direction_facts(start, &endpoint.boundary)?;
+    let strong = if facts.has_eligible_strong() {
+        facts.paragraph_strong_direction()
+    } else {
+        None
+    };
+    let line_box_direction = line_box_context.resolve(strong);
     let from = start.view().participant_offset();
     let to = endpoint.boundary.view().participant_offset();
     let participants = input
@@ -1005,7 +1022,7 @@ fn selection_request(
         })
         .cloned()
         .collect();
-    LineSelectionRequest {
+    Ok(LineSelectionRequest {
         start: start.clone(),
         end: endpoint.boundary,
         participants,
@@ -1013,6 +1030,7 @@ fn selection_request(
         alternative: endpoint.alternative,
         incoming: incoming.cloned(),
         context: LineContext {
+            line_box_direction,
             base_direction: input.base_direction,
             orientation: input.orientation,
             start: if from == 0 {
@@ -1036,7 +1054,7 @@ fn selection_request(
         controls,
         boundary_context: Vec::new(),
         line_strut: input.line_strut,
-    }
+    })
 }
 
 /// Fit only preparation-issued opportunities. Every measured candidate executes
@@ -1100,6 +1118,7 @@ pub(crate) fn fit(
         let mut logical_start = 0.0;
         let mut minimum_block: Option<f64> = None;
         let mut indent_state = input.indent_state;
+        let mut line_box_context = input.line_box_context;
         let mut hyphenation_state = input.hyphenation_state;
         // A rebuilt sequence owns fresh continuation custody. Requests below
         // retain it in reuse, convergence and visited-choice identity.
@@ -1146,6 +1165,7 @@ pub(crate) fn fit(
                         .into_iter()
                         .chain(alternatives.iter().cloned().map(Some));
                     let query = EndpointContext {
+                        line_box_context,
                         start: &start_boundary,
                         incoming: incoming.as_ref(),
                         position: &position,
@@ -1236,6 +1256,7 @@ pub(crate) fn fit(
                     )?;
                     let query = EndpointContext {
                         start: &start_boundary,
+                        line_box_context,
                         incoming: incoming.as_ref(),
                         position: &position,
                         indent_state,
@@ -1397,6 +1418,9 @@ pub(crate) fn fit(
                 let ending = candidate.request.context.end;
                 let end = candidate.request.end.view().participant_offset();
                 indent_state.commit(ending == LineEnd::Forced);
+                if candidate.formatted {
+                    line_box_context.commit(candidate.request.context.line_box_direction);
+                }
                 accept_encounters()?;
                 if matches!(input.available, Available::Definite(_)) && candidate.formatted {
                     hyphenation_state.commit(candidate.request.alternative.is_some());
@@ -1406,6 +1430,7 @@ pub(crate) fn fit(
                 incoming = candidate.finalized.hyphenation_continuation();
                 let available = candidate.finalized.metric_bounds().size.width;
                 result.push(FittedLine {
+                    line_box_end: line_box_context,
                     zone_basis,
                     phrase_basis,
                     hyphenation_end: hyphenation_state,

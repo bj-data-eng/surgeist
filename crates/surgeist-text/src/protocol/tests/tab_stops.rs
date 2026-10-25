@@ -113,6 +113,10 @@ fn finish(p: &PreparedText, origin: Option<f64>, indent: f64) -> crate::Result<F
         crate::Direction::RightToLeft => ParagraphBaseDirection::RightToLeft,
         _ => ParagraphBaseDirection::LeftToRight,
     };
+    r.context.line_box_direction = match p.analyzed_source().direction() {
+        crate::Direction::RightToLeft => crate::LineBoxDirection::RightToLeft,
+        _ => crate::LineBoxDirection::LeftToRight,
+    };
     r.context.indent = indent;
     p.select(r)?.finalize(SpacingAllocations::None)
 }
@@ -125,6 +129,10 @@ fn intrinsic_request(p: &PreparedText, indent: f64) -> LineSelectionRequest {
     r.context.base_direction = match p.analyzed_source().direction() {
         crate::Direction::RightToLeft => ParagraphBaseDirection::RightToLeft,
         _ => ParagraphBaseDirection::LeftToRight,
+    };
+    r.context.line_box_direction = match p.analyzed_source().direction() {
+        crate::Direction::RightToLeft => crate::LineBoxDirection::RightToLeft,
+        _ => crate::LineBoxDirection::LeftToRight,
     };
     r
 }
@@ -1497,6 +1505,7 @@ fn rtl_last_tab_needs_no_unrepresentable_temporary_destination() {
     let finish = |p: &PreparedText, tabs| {
         let mut r = request(p);
         r.context.base_direction = ParagraphBaseDirection::RightToLeft;
+        r.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
         r.context.indent = huge;
         r.context.available_inline = Some(huge);
         r.context.tabs = tabs;
@@ -1721,6 +1730,10 @@ fn block_space_metric_uses_actual_used_direction_and_zero_keeps_even_level() {
             .unwrap();
         let mut r = request(&p);
         r.context.base_direction = direction;
+        r.context.line_box_direction = match direction {
+            crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
+            crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+        };
         let line = p
             .select(r)
             .unwrap()
@@ -1803,6 +1816,7 @@ fn absent_tabs_do_not_consume_a_temporary_signed_pen() {
         .unwrap();
     let mut request_ordinary = request(&ordinary);
     request_ordinary.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    request_ordinary.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     request_ordinary.context.indent = 1e308;
     request_ordinary.context.available_inline = Some(1e308);
     assert_eq!(
@@ -1823,6 +1837,7 @@ fn absent_tabs_do_not_consume_a_temporary_signed_pen() {
         .unwrap();
     let mut r = request(&p);
     r.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    r.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     r.context.indent = 1e308;
     r.context.available_inline = Some(1e308);
     r.context.tabs = TabContext::CssStops { origin: None };
@@ -1850,6 +1865,7 @@ fn zero_tabs_do_not_consume_a_temporary_signed_pen() {
         .unwrap();
     let mut control = request(&ordinary);
     control.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    control.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     control.context.indent = 1e308;
     control.context.available_inline = Some(1e308);
     assert_eq!(
@@ -1875,6 +1891,7 @@ fn zero_tabs_do_not_consume_a_temporary_signed_pen() {
     let p = css_capture(&mut system, input, 1.0).unwrap();
     let mut r = request(&p);
     r.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    r.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     r.context.indent = 1e308;
     r.context.available_inline = Some(1e308);
     r.context.tabs = TabContext::CssStops { origin: None };

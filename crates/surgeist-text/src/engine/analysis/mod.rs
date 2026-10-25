@@ -4,6 +4,7 @@
 // separate segmentation input, usize indices, and occurrence-backed atomics.
 
 pub(crate) mod cluster;
+pub(crate) mod direction;
 pub(crate) mod hyphenation;
 mod lexical_fallback;
 mod line_break;
@@ -185,7 +186,7 @@ pub(crate) fn analyze(
     styles: &[AnalyzedStyleRun],
     boxes: &[InlineBox],
     paragraph: &ParagraphData,
-) -> Result<(Analysis, Vec<Range<usize>>)> {
+) -> Result<(Analysis, Vec<Range<usize>>, direction::DirectionBody)> {
     let sources = AnalysisDataSources;
     for (policy, row) in paragraph.boundary_policies.iter().enumerate() {
         let at = row.at(paragraph, boxes);
@@ -403,6 +404,8 @@ pub(crate) fn analyze(
             &mut owners,
         );
     }
+    let direction =
+        direction::DirectionBody::new(original.iter().map(|(_, (class, _))| *class), owners)?;
     let mut bidi = BidiResolver::new();
     bidi.resolve(
         original.into_iter(),
@@ -411,7 +414,7 @@ pub(crate) fn analyze(
     let mut levels = vec![bidi.base_level(); infos.len()];
     let mut box_levels = vec![bidi.base_level(); boxes.len()];
     let mut control_levels = vec![bidi.base_level(); paragraph.controls.len()];
-    for (owner, &level) in owners.into_iter().zip(bidi.levels()) {
+    for (owner, &level) in direction.owners().iter().copied().zip(bidi.levels()) {
         match owner {
             BidiOwner::Atom(index) => levels[index] = level,
             BidiOwner::Atomic(index) => box_levels[index] = level,
@@ -451,6 +454,7 @@ pub(crate) fn analyze(
             phrases,
         },
         word_ranges,
+        direction,
     ))
 }
 
@@ -464,7 +468,8 @@ fn style_at(projection: &SourceProjection, styles: &[AnalyzedStyleRun], atom: us
         })
 }
 
-enum BidiOwner {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BidiOwner {
     Atom(usize),
     Atomic(usize),
     Control(usize),
@@ -657,7 +662,7 @@ mod tests {
             owner: crate::engine::resolve::AnalyzedStyleOwner::Source(crate::Range::new(0, 4)),
             style: crate::ValidatedStyle::try_from(crate::Style::default()).expect("default style"),
         }];
-        let (analysis, _) = analyze(
+        let (analysis, _, direction) = analyze(
             &projection,
             &styles,
             &[],
@@ -671,5 +676,15 @@ mod tests {
         assert_eq!(projection.atoms[0].code_point, 0xd800);
         assert_eq!(projection.atoms[2].code_point, 0xdc00);
         assert_eq!(projection.atoms[0].glyph, '\u{fffd}');
+        let events = (0..projection.atoms.len())
+            .map(|atom| wrapping::LogicalEvent {
+                atom,
+                source: projection.atoms[atom].source.start,
+                kind: wrapping::Event::Text(atom),
+            })
+            .collect::<Vec<_>>();
+        let direction = direction.bind(&events).unwrap();
+        assert_eq!(direction.query(0, 2), Some((Some(0), true)));
+        assert_eq!(direction.query(3, 4), Some((Some(0), true)));
     }
 }

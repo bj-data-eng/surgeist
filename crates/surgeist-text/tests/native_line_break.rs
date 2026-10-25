@@ -509,6 +509,20 @@ fn finish(
             } else {
                 DIRECTIONS[0]
             },
+            line_box_direction: match if p.analyzed_source().direction()
+                == t::Direction::RightToLeft
+            {
+                DIRECTIONS[1]
+            } else {
+                DIRECTIONS[0]
+            } {
+                surgeist_text::ParagraphBaseDirection::LeftToRight => {
+                    surgeist_text::LineBoxDirection::LeftToRight
+                }
+                surgeist_text::ParagraphBaseDirection::RightToLeft => {
+                    surgeist_text::LineBoxDirection::RightToLeft
+                }
+            },
             orientation: t::LineOrientation::Horizontal,
             start: if from == 0 {
                 t::LineStart::Paragraph

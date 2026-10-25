@@ -886,6 +886,10 @@ fn full_receiving_level_and_real_formatting_receiver_remain_distinct_from_local_
         let offer = cut(&p, 3, counts(2, 3));
         let mut first = selected_request(&p, start(&p), offer.clone(), None, true);
         first.context.base_direction = paragraph_direction;
+        first.context.line_box_direction = match paragraph_direction {
+            crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
+            crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+        };
         let first = finish(&p, first).unwrap();
         let mut next = selected_request(
             &p,
@@ -895,6 +899,10 @@ fn full_receiving_level_and_real_formatting_receiver_remain_distinct_from_local_
             false,
         );
         next.context.base_direction = paragraph_direction;
+        next.context.line_box_direction = match paragraph_direction {
+            crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
+            crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+        };
         let line = finish(&p, next).unwrap();
         assert_eq!(line.feedback().advance, 40.0);
         let selected = &line.inner.selected;

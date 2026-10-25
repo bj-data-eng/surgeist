@@ -76,6 +76,18 @@ impl Direction {
     }
 }
 
+/// Normalized policy for the direction used by line-box alignment and indentation.
+///
+/// Body bidi ordering is independently supplied by prepared Text.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LineBoxDirectionPolicy {
+    /// Use the containing box's used direction.
+    #[default]
+    Normal,
+    /// Use full-paragraph strong facts, with accepted-line fallback for weak lines.
+    Plaintext,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum Position {
     #[default]

@@ -160,6 +160,11 @@ fn finish(
             } else {
                 t::ParagraphBaseDirection::LeftToRight
             },
+            line_box_direction: if p.analyzed_source().direction() == t::Direction::RightToLeft {
+                surgeist_text::LineBoxDirection::RightToLeft
+            } else {
+                surgeist_text::LineBoxDirection::LeftToRight
+            },
             orientation: t::LineOrientation::Horizontal,
             start: if from == 0 {
                 t::LineStart::Paragraph
@@ -855,6 +860,7 @@ fn suppressed_source_shy_retains_whole_word_portion_and_measurement_tail() {
             line_strut: None,
             context: t::LineContext {
                 base_direction: t::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
                 orientation: t::LineOrientation::Horizontal,
                 start: t::LineStart::Paragraph,
                 end: t::LineEnd::Soft,

@@ -60,6 +60,7 @@ pub(super) enum MixedInlineParticipantOf<S: LayoutScalar = DefaultScalar> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunInputOf<S: LayoutScalar = DefaultScalar> {
+    pub line_box_context: crate::line_box::LineBoxContext,
     pub observe_tail: bool,
     pub available_inline_extent: AvailableOf<S>,
     pub flow_axes: FlowAxes,
@@ -151,6 +152,7 @@ impl<S: LayoutScalar> InlineEndpointOf<S> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
+    pub line_box_context: crate::line_box::LineBoxContext,
     pub lines: Vec<crate::hyphenation::CommittedInlineLine>,
     pub hyphenation_state: crate::hyphenation::LineHyphenationState,
     pub indent_state: crate::text_indent::IndentLineState,
@@ -912,16 +914,26 @@ fn selected_line_inline_start<S: LayoutScalar>(
     line: &SelectedInlineLineOf<S>,
     flow_axes: FlowAxes,
     text_align: TextAlign,
+    direction: Direction,
 ) -> S {
+    let same_direction = direction == flow_axes.direction();
+    let text_align = match (same_direction, text_align) {
+        (false, TextAlign::Start | TextAlign::Justify) => TextAlign::End,
+        (false, TextAlign::End) => TextAlign::Start,
+        (_, alignment) => alignment,
+    };
     line.inline_start_override.unwrap_or_else(|| {
-        line.band.inline_start
-            + line.indent
-            + text_line_offset(
-                line.used_inline_extent,
-                line.band.inline_end - line.band.inline_start - line.indent,
-                flow_axes,
-                text_align,
-            )
+        let capacity = line.band.inline_end - line.band.inline_start - line.indent;
+        let free_space = capacity - line.used_inline_extent;
+        // Overlong content aligns to the resolved line-box Start, regardless
+        // of requested alignment. Opposed containing progression needs the
+        // signed deficit to reach that edge; matching progression starts at0.
+        let offset = if free_space < S::ZERO {
+            if same_direction { S::ZERO } else { free_space }
+        } else {
+            text_line_offset(line.used_inline_extent, capacity, flow_axes, text_align)
+        };
+        line.band.inline_start + if same_direction { line.indent } else { S::ZERO } + offset
     })
 }
 
@@ -957,8 +969,9 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
     supplied: &[SuppliedInlineParticipant],
     flow_axes: FlowAxes,
     text_align: TextAlign,
+    direction: Direction,
 ) -> (S, Vec<usize>, Vec<S>) {
-    let line_inline_start = selected_line_inline_start(line, flow_axes, text_align);
+    let line_inline_start = selected_line_inline_start(line, flow_axes, text_align, direction);
     let mut order = vec![0; line.units.len()];
     let visual_order = SuppliedLine::new(supplied)
         .reorder_into(&mut order)
@@ -1062,6 +1075,10 @@ where
         })
         .peekable();
     let mut indent_state = input.indent_state;
+    let mut line_box_context = input.line_box_context;
+    // This route has only atomic/control occurrences, so every actual line is
+    // weak. Its fallback is constant until a prepared Text run supplies strong facts.
+    let line_direction = line_box_context.weak_direction();
     let mut pending_strut = None;
     let mut block_cursor = S::ZERO;
     let mut float_strut = None;
@@ -1199,9 +1216,11 @@ where
             SelectedInlineLineEnd::Paragraph => surgeist_text::LineEnd::Paragraph,
         };
         indent_state.commit(selected.end == SelectedInlineLineEnd::Forced);
+        line_box_context.commit(line_box_context.resolve(None));
         pending_strut = selected.pending_strut;
         let line_block_end = block_cursor + line.baseline + line.after_baseline;
-        let line_inline_start = selected_line_inline_start(&line, input.flow_axes, line.alignment);
+        let line_inline_start =
+            selected_line_inline_start(&line, input.flow_axes, line.alignment, line_direction);
         let line_inline_end = line_inline_start + line.used_inline_extent;
         if has_float_transition && line.split_baseline_edge_phase.is_some() {
             float_edge_phase = line.split_baseline_edge_phase;
@@ -1250,6 +1269,7 @@ where
             &supplied[line.descriptor_range.clone()],
             input.flow_axes,
             line.alignment,
+            line_direction,
         );
         inline_extent = inline_extent.max(line_inline_start + line.used_inline_extent);
         post_line_clear_intents.push(line.post_line_clear_intent);
@@ -1340,6 +1360,7 @@ where
     }
 
     MixedInlineRunReportOf {
+        line_box_context,
         lines,
         hyphenation_state: crate::hyphenation::LineHyphenationState::default(),
         indent_state,
@@ -1698,6 +1719,10 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
         })
         .collect();
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+        line_box_context: crate::line_box::LineBoxContext::new(
+            crate::LineBoxDirectionPolicy::Normal,
+            flow_axes.direction(),
+        ),
         observe_tail: false,
         available_inline_extent: input.available_width,
         flow_axes,

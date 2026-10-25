@@ -178,6 +178,10 @@ where
     let mut index = 0;
     let mut first_in_flow = true;
     let mut inline_indent_state = None;
+    let mut line_box_context = crate::line_box::LineBoxContext::new(
+        constants.line_box_direction_policy,
+        constants.direction,
+    );
     let mut hyphenation_state =
         crate::hyphenation::LineHyphenationState::new(constants.hyphenate_limit_lines);
     let tail_active = constants.hyphenate_limit_last == crate::HyphenateLimitLast::Always
@@ -317,6 +321,7 @@ where
                             crate::text_layout::fit::TailContext::Unresolved
                         },
                         hyphenation_state,
+                        line_box_context,
                         source_index_start: transition.start,
                         cursor_block,
                         owned_float_block_end,
@@ -332,6 +337,7 @@ where
                     },
                     InlineRunTransitionState {
                         indent_state: &mut inline_indent_state,
+                        line_box_context: &mut line_box_context,
                         hyphenation_state: &mut hyphenation_state,
                         tail_ledger: &mut tail_ledger,
                         cursor_block: &mut cursor_block,

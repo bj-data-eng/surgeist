@@ -667,6 +667,13 @@ pub(crate) fn standalone_request(
             } else {
                 ParagraphBaseDirection::RightToLeft
             },
+            // Raw Standalone owns one container and explicitly retains its
+            // resolved raw bidi profile as the line-box geometry policy.
+            line_box_direction: if prepared.analyzed.analysis.base_level & 1 == 0 {
+                super::LineBoxDirection::LeftToRight
+            } else {
+                super::LineBoxDirection::RightToLeft
+            },
             orientation: LineOrientation::Horizontal,
             start: if from == 0 {
                 LineStart::Paragraph

@@ -41,6 +41,10 @@ fn mr02_input<S: LayoutScalar>(
     participants: Vec<MixedInlineParticipantOf<S>>,
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
+        line_box_context: crate::line_box::LineBoxContext::new(
+            crate::LineBoxDirectionPolicy::Normal,
+            Direction::Ltr,
+        ),
         observe_tail: false,
         available_inline_extent,
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
@@ -678,6 +682,10 @@ fn fri06_c03_strut_private_builder_retains_control_baselines_and_post_line_inten
             InlineMetricsOf::from_line_height_and_baseline(S::from_f64(20.0), S::from_f64(15.0))
                 .unwrap();
         let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+            line_box_context: crate::line_box::LineBoxContext::new(
+                crate::LineBoxDirectionPolicy::Normal,
+                flow_axes.direction(),
+            ),
             observe_tail: false,
             available_inline_extent: AvailableOf::MAX_CONTENT,
             flow_axes,
@@ -731,6 +739,10 @@ fn fri06_c04_line_band_private_callback_retries_transition_and_reselects_same_cu
         let mut queries = Vec::new();
         let report = layout_mixed_inline_run_with_band_source(
             MixedInlineRunInputOf {
+                line_box_context: crate::line_box::LineBoxContext::new(
+                    crate::LineBoxDirectionPolicy::Normal,
+                    flow_axes.direction(),
+                ),
                 observe_tail: false,
                 available_inline_extent: AvailableOf::definite(S::from_f64(100.0)),
                 flow_axes,
@@ -2017,6 +2029,10 @@ fn numeric_unexpandable_alignment_uses_actual_last_line_policy_both_scalars() {
                 input.flow_axes = FlowAxes::new(
                     WritingMode::HorizontalTb,
                     if rtl { Direction::Rtl } else { Direction::Ltr },
+                );
+                input.line_box_context = crate::line_box::LineBoxContext::new(
+                    crate::LineBoxDirectionPolicy::Normal,
+                    input.flow_axes.direction(),
                 );
                 input.text_align = align;
                 let report = layout_mixed_inline_run(input);

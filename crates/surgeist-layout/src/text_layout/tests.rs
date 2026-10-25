@@ -32,6 +32,8 @@ mod indent;
 mod inline_boundary_edges;
 #[path = "tests/lexical_fallback.rs"]
 mod lexical_fallback;
+#[path = "tests/line_box_direction.rs"]
+mod line_box_direction;
 #[path = "tests/line_break.rs"]
 mod line_break;
 #[path = "tests/line_limit_composition.rs"]
@@ -244,6 +246,10 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
         &[],
         &[],
         super::run::Context {
+            line_box_context: crate::line_box::LineBoxContext::new(
+                crate::LineBoxDirectionPolicy::Normal,
+                Direction::Ltr,
+            ),
             frame: super::run::Frame::Canonical {
                 origin: Point::ZERO,
                 size,

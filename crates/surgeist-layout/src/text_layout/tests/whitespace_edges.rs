@@ -31,6 +31,10 @@ fn run_in_band<S: LayoutScalar>(
         &[],
         &[],
         super::super::run::Context {
+            line_box_context: crate::line_box::LineBoxContext::new(
+                crate::LineBoxDirectionPolicy::Normal,
+                Direction::Ltr,
+            ),
             frame: super::super::run::Frame::Canonical {
                 origin: Point::ZERO,
                 size,

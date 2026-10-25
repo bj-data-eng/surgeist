@@ -31,6 +31,7 @@ fn finalized(source: text::Source) -> (text::PreparedText, text::FinalizedLine) 
             line_strut: None,
             context: text::LineContext {
                 base_direction: text::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
                 orientation: text::LineOrientation::Horizontal,
                 start: text::LineStart::Paragraph,
                 end: text::LineEnd::Paragraph,
@@ -218,6 +219,7 @@ fn actual_gpos_mark_placement_reaches_admitted_outline_ink_without_advance_subst
             line_strut: None,
             context: text::LineContext {
                 base_direction: text::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
                 orientation: text::LineOrientation::Horizontal,
                 start: text::LineStart::Paragraph,
                 end: text::LineEnd::Paragraph,

@@ -1833,6 +1833,7 @@ fn before_auto_uses_the_actual_lri_occurrence_in_an_rtl_paragraph() {
             })
             .collect();
         r.context.base_direction = ParagraphBaseDirection::RightToLeft;
+        r.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
         r.context.end = LineEnd::Soft;
         let line = p
             .select(r)

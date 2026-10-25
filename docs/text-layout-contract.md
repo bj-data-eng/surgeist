@@ -865,6 +865,55 @@ LF is not Forced. Collapse, Discard and Preserve retain their own rules.
 [Native endpoint geometry](#native-inline-endpoint-geometry) supplies the separate
 used border/padding contribution without changing these mode meanings.
 
+### Line-box direction and accepted-line context
+
+The [Text 4 line-box direction rule](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#bidi-linebox)
+separates the containing block, the bidi paragraph and the line box. Layout's
+normalized `LineBoxDirectionPolicy::Normal` uses the actual containing direction.
+`Plaintext` uses the full bidi paragraph's first-strong direction for a candidate
+with eligible strong content; a weak or empty candidate inherits the preceding
+accepted line-box direction, or the containing direction on the first line.
+These normalized inputs do not implement a computed Style producer or all
+`unicode-bidi` semantics.
+
+Text owns immutable strong facts from the canonical body after Phase I and
+semantic transformations. `PreparedText::line_direction_facts` authenticates its
+issued start/end boundaries and returns `LineDirectionFacts`: the optional full
+bidi-context strong direction and whether that actual candidate contains an
+eligible strong character. Absence is affirmative no-strong, independent of the
+captured resolved body base. The common P2/P3 owner excludes isolate contents
+with their true prefix context; a suffix query cannot reset isolate depth.
+Actual evaluated/generated body content counts, while a selected hyphen or
+continuation indication cannot supply paragraph authority.
+
+Facts are indexed once over actual body contexts, including B-class separators
+and genuine ForcedBreak LF. A nonempty query may include its context's terminating
+separator but cannot cross into another context. An empty query at an internal
+seam belongs to the right context; terminal empty queries retain that empty
+context. Foreign, reversed and cross-context queries fail rather than returning
+a fabricated LTR value. Each native or captured paragraph declares its actual
+body extent; numeric adjacency cannot join separate preparations into a larger
+bidi paragraph.
+
+Every selected `LineContext` supplies a resolved `line_box_direction`, separate
+from its validated `base_direction`. Text consumes the former for Start/End
+alignment, indent side and overflow placement. It preserves the latter's body
+levels, ordering, mirroring, shaping, source/caret custody and physical whitespace
+exclusions. CSS tabs keep their separately captured nearest-block/grid basis.
+The raw standalone profile explicitly selects its own resolved line-box basis;
+it does not claim to be a CSS Plaintext producer.
+
+Layout resolves each ordinary, conditional and measurement candidate from its
+actual range. A failed wider strong candidate cannot freeze the direction of a
+successful weak prefix. Only actual accepted lines, including genuine empty or
+Forced lines, advance the containing formatter's previous-direction state.
+Speculative trials, float/height retries and detached measurements do not.
+Carry accepted state across runs in one container and reset it in a new
+container. MinContent and MaxContent have independent invocation-local chronology;
+query order and finite cache history cannot change their result. Actual policy,
+containing basis, incoming accepted state and resolved candidate context remain
+part of captured pass/request/replay identity.
+
 ### Native whitespace edges and hanging
 
 Text owns selected-line Phase II classification under #64/#72; Layout consumes

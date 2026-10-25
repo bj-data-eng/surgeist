@@ -129,8 +129,11 @@ fn assert_directions<S: LayoutScalar>() {
     for (rtl, block_rtl, origin, advance, a, b) in [
         (false, false, 0.0, 50.0, 0.0, 40.0),
         (true, true, 0.0, 50.0, 90.0, 50.0),
-        (false, true, 100.0, 30.0, 0.0, 20.0),
-        (true, false, -100.0, 30.0, 90.0, 70.0),
+        // Normal aligns the unchanged30px body result against the containing
+        // line-box Start: right70 in RTL, left0 in LTR. Tab origins stay on
+        // their captured block grid and retain body progression independently.
+        (false, true, 100.0, 30.0, 70.0, 90.0),
+        (true, false, -100.0, 30.0, 20.0, 0.0),
     ] {
         let prepared = paragraph("A\tB", rtl, block_rtl, false);
         let actual = batch::<S>(&prepared, block(block_rtl, 0.0, TextAlign::Start), false);
@@ -139,6 +142,16 @@ fn assert_directions<S: LayoutScalar>() {
         assert_eq!(positions, [(0, 35, a), (0, 36, b)], "{rtl}/{block_rtl}");
         let line = &lines(&actual)[0];
         assert_eq!(line.feedback().advance, advance);
+        let selected = line.selected_line();
+        assert_eq!(selected.request().context.base_direction, direction(rtl));
+        assert_eq!(
+            selected.request().context.line_box_direction,
+            if block_rtl {
+                surgeist_text::LineBoxDirection::RightToLeft
+            } else {
+                surgeist_text::LineBoxDirection::LeftToRight
+            }
+        );
         assert_eq!(
             line.selected_line().request().context.tabs,
             TabContext::CssStops {
@@ -238,6 +251,14 @@ fn intrinsic_with_indent(
         &[],
         &[],
         super::super::run::Context {
+            line_box_context: crate::line_box::LineBoxContext::new(
+                crate::LineBoxDirectionPolicy::Normal,
+                if block_rtl {
+                    Direction::Rtl
+                } else {
+                    Direction::Ltr
+                },
+            ),
             frame: super::super::run::Frame::Canonical {
                 origin: Point::ZERO,
                 size: Size::new(width, 10.0),

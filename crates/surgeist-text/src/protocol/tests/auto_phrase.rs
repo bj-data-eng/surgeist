@@ -126,6 +126,11 @@ fn whole(p: &PreparedText) -> FinalizedLine {
     } else {
         ParagraphBaseDirection::LeftToRight
     };
+    r.context.line_box_direction = if p.analyzed_source().direction() == Direction::RightToLeft {
+        crate::LineBoxDirection::RightToLeft
+    } else {
+        crate::LineBoxDirection::LeftToRight
+    };
     p.select(r)
         .unwrap()
         .finalize(SpacingAllocations::None)

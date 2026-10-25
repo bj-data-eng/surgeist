@@ -9,6 +9,33 @@ use std::vec::Vec;
 /// Type alias for a bidirectional level.
 pub(crate) type BidiLevel = u8;
 
+/// P2/P3 eligibility, retaining isolate prefix state across a body scan.
+pub(crate) struct EligibleStrong {
+    isolates: usize,
+}
+
+impl EligibleStrong {
+    pub(crate) fn new() -> Self {
+        Self { isolates: 0 }
+    }
+
+    pub(crate) fn advance(&mut self, ty: BidiClass) -> Option<BidiLevel> {
+        match ty {
+            BidiClass::RightToLeftIsolate
+            | BidiClass::LeftToRightIsolate
+            | BidiClass::FirstStrongIsolate => self.isolates += 1,
+            BidiClass::PopDirectionalIsolate => self.isolates = self.isolates.saturating_sub(1),
+            BidiClass::LeftToRight | BidiClass::RightToLeft | BidiClass::ArabicLetter
+                if self.isolates == 0 =>
+            {
+                return Some(if ty == BidiClass::LeftToRight { 0 } else { 1 });
+            }
+            _ => {}
+        }
+        None
+    }
+}
+
 /// Resolver for the Unicode bidirectional algorithm.
 #[derive(Clone, Default)]
 pub(crate) struct BidiResolver {
@@ -163,48 +190,22 @@ impl BidiResolver {
     }
 
     fn default_level(types: &[BidiClass]) -> u8 {
-        let mut isolates: usize = 0;
-        for ty in types {
-            let ty = *ty;
-            match ty {
-                BidiClass::RightToLeftIsolate
-                | BidiClass::LeftToRightIsolate
-                | BidiClass::FirstStrongIsolate => isolates += 1,
-                BidiClass::PopDirectionalIsolate => {
-                    isolates = isolates.saturating_sub(1);
-                }
-                BidiClass::LeftToRight | BidiClass::RightToLeft | BidiClass::ArabicLetter
-                    if isolates == 0 =>
-                {
-                    return if ty == BidiClass::LeftToRight { 0 } else { 1 };
-                }
-                _ => {}
-            }
-        }
-        0
+        let mut scanner = EligibleStrong::new();
+        types
+            .iter()
+            .find_map(|ty| scanner.advance(*ty))
+            .unwrap_or(0)
     }
 
     fn default_level_until_pdi(types: &[BidiClass]) -> u8 {
-        let mut isolates: usize = 0;
+        let mut scanner = EligibleStrong::new();
         for ty in types {
             let ty = *ty;
-            match ty {
-                BidiClass::RightToLeftIsolate
-                | BidiClass::LeftToRightIsolate
-                | BidiClass::FirstStrongIsolate => isolates += 1,
-                BidiClass::PopDirectionalIsolate => {
-                    if isolates > 0 {
-                        isolates -= 1;
-                    } else {
-                        return 0;
-                    }
-                }
-                BidiClass::LeftToRight | BidiClass::RightToLeft | BidiClass::ArabicLetter
-                    if isolates == 0 =>
-                {
-                    return if ty == BidiClass::LeftToRight { 0 } else { 1 };
-                }
-                _ => {}
+            if ty == BidiClass::PopDirectionalIsolate && scanner.isolates == 0 {
+                return 0;
+            }
+            if let Some(level) = scanner.advance(ty) {
+                return level;
             }
         }
         0

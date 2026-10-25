@@ -657,6 +657,7 @@ fn native_rtl_frame_and_foreign_positions_keep_exact_transformed_source_identity
     let p = capture_input(i, crate::shaping_test_fonts::kana_ahem());
     let mut r = request(&p);
     r.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    r.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     r.context.alignment = crate::Alignment::Right;
     let line = p
         .select(r)

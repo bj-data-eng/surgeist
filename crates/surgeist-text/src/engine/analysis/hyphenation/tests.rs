@@ -8,7 +8,7 @@ fn analyzed(text: &str) -> (SourceProjection, Words) {
         owner: AnalyzedStyleOwner::Source(crate::Range::new(0, source.text().len())),
         style: crate::ValidatedStyle::try_from(crate::Style::default()).unwrap(),
     }];
-    let (analysis, word_ranges) = super::super::analyze(
+    let (analysis, word_ranges, _) = super::super::analyze(
         &projection,
         &styles,
         &[],

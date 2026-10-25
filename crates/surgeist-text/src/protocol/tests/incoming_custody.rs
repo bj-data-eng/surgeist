@@ -77,6 +77,10 @@ fn finish_at_edges(
     direction: ParagraphBaseDirection,
 ) -> crate::Result<FinalizedLine> {
     request.context.base_direction = direction;
+    request.context.line_box_direction = match direction {
+        crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
+        crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+    };
     let edge = |control: &PreparedControl| {
         crate::InlineBoundaryAllocation::try_new(
             if *control.view().kind() == K::InlineBoundaryStart {

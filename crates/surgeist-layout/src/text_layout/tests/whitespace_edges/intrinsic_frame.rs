@@ -21,6 +21,10 @@ fn observed<S: LayoutScalar>(
         &[],
         &[],
         super::super::super::run::Context {
+            line_box_context: crate::line_box::LineBoxContext::new(
+                crate::LineBoxDirectionPolicy::Normal,
+                Direction::Rtl,
+            ),
             frame: super::super::super::run::Frame::Canonical {
                 origin: Point::ZERO,
                 size,

@@ -467,6 +467,10 @@ fn assert_outgoing_counter_once(p: &text::PreparedText) {
         .collect::<Vec<_>>();
     let fitted = fit::fit(
         fit::FitInput {
+            line_box_context: crate::line_box::LineBoxContext::new(
+                crate::LineBoxDirectionPolicy::Normal,
+                Direction::Ltr,
+            ),
             prepared: p,
             available: fit::Available::Definite(40.0),
             base_direction: text::ParagraphBaseDirection::LeftToRight,

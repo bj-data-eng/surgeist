@@ -62,6 +62,7 @@ pub(crate) struct AnalyzedCore {
     pub(crate) styles: Vec<resolve::AnalyzedStyleRun>,
     pub(crate) analysis: analysis::Analysis,
     pub(crate) logical: analysis::wrapping::LogicalParagraph,
+    pub(crate) direction: analysis::direction::DirectionIndex,
     pub(crate) words: analysis::hyphenation::Words,
 }
 
@@ -179,7 +180,7 @@ pub(crate) fn analyze_paragraph(
     }
     let (projection, transform) =
         crate::transform::apply(projection, &mut styles, &processed, &paragraph)?;
-    let (analysis, words) =
+    let (analysis, words, direction) =
         analysis::analyze(&projection, &styles, processed.source().boxes(), &paragraph)?;
     let words = analysis::hyphenation::Words::new(&projection, &analysis.graphemes, words);
     let logical = analysis::wrapping::LogicalParagraph::new(
@@ -189,6 +190,7 @@ pub(crate) fn analyze_paragraph(
         &styles,
         &analysis,
     )?;
+    let direction = direction.bind(&logical.events)?;
     let wrapping = logical
         .relations
         .iter()
@@ -204,6 +206,7 @@ pub(crate) fn analyze_paragraph(
             styles,
             analysis,
             logical,
+            direction,
             words,
         }),
         wrapping,

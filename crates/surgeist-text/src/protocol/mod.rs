@@ -13,6 +13,8 @@ use selection::SelectedData;
 pub(crate) mod boundary;
 mod conditional;
 mod continuation;
+mod direction;
+pub use direction::LineDirectionFacts;
 pub(crate) mod finalized;
 mod hyphenation;
 pub(crate) mod measurements;
@@ -210,6 +212,16 @@ pub enum LineEnd {
     Paragraph,
 }
 
+/// Resolved inline direction of the line box, independent of body bidi order.
+///
+/// The consumer resolves this basis for alignment and indentation. It does not
+/// replace the captured paragraph base used for Unicode bidi resolution.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum LineBoxDirection {
+    LeftToRight,
+    RightToLeft,
+}
+
 /// Actual tab context; `NoTabs` is validated against the selected sequence.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TabContext {
@@ -235,6 +247,8 @@ pub enum SpacingPolicy {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LineContext {
     pub base_direction: ParagraphBaseDirection,
+    /// Independently resolved alignment and indentation basis.
+    pub line_box_direction: LineBoxDirection,
     pub orientation: LineOrientation,
     pub start: LineStart,
     pub end: LineEnd,
@@ -588,6 +602,8 @@ pub enum ProtocolContextField {
 /// Actual invalid association or incomplete input; no caller ordinal issues a capability.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolError {
+    /// The queried range does not belong to one canonical body bidi context.
+    InvalidLineDirectionQuery,
     InvalidWordPortion,
     MeasurementNotPlaceable,
     InvalidPhrasePortion,

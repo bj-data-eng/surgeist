@@ -13,6 +13,7 @@ mod hyphenation_policy;
 mod joining_context;
 mod joining_positioning;
 mod kana;
+mod line_box_direction;
 mod mandatory_breaks;
 mod manual_hyphenation;
 mod math;
@@ -112,6 +113,7 @@ fn request(prepared: &PreparedText) -> LineSelectionRequest {
         line_strut: None,
         context: LineContext {
             base_direction: ParagraphBaseDirection::LeftToRight,
+            line_box_direction: crate::LineBoxDirection::LeftToRight,
             orientation: LineOrientation::Horizontal,
             start: LineStart::Paragraph,
             end: LineEnd::Paragraph,
@@ -648,6 +650,7 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
     drop(system);
     let mut whole_request = request(&prepared);
     whole_request.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    whole_request.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     let whole = prepared
         .select(whole_request.clone())
         .unwrap()

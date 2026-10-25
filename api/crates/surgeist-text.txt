@@ -394,6 +394,9 @@ pub enum surgeist_text::LineBoxAlignment
 pub surgeist_text::LineBoxAlignment::Baseline
 pub surgeist_text::LineBoxAlignment::Bottom
 pub surgeist_text::LineBoxAlignment::Top
+pub enum surgeist_text::LineBoxDirection
+pub surgeist_text::LineBoxDirection::LeftToRight
+pub surgeist_text::LineBoxDirection::RightToLeft
 pub enum surgeist_text::LineBreak
 pub surgeist_text::LineBreak::Anywhere
 pub surgeist_text::LineBreak::Auto
@@ -655,6 +658,7 @@ pub surgeist_text::ProtocolError::InvalidControlGeometry::occurrence: usize
 pub surgeist_text::ProtocolError::InvalidFragment
 pub surgeist_text::ProtocolError::InvalidFragment::fragment: usize
 pub surgeist_text::ProtocolError::InvalidFragment::line: usize
+pub surgeist_text::ProtocolError::InvalidLineDirectionQuery
 pub surgeist_text::ProtocolError::InvalidLineStrut
 pub surgeist_text::ProtocolError::InvalidOriginRange
 pub surgeist_text::ProtocolError::InvalidOriginRange::aggregate: surgeist_text::Range
@@ -1633,10 +1637,15 @@ pub surgeist_text::LineContext::available_inline: core::option::Option<f64>
 pub surgeist_text::LineContext::base_direction: surgeist_text::ParagraphBaseDirection
 pub surgeist_text::LineContext::end: surgeist_text::LineEnd
 pub surgeist_text::LineContext::indent: f64
+pub surgeist_text::LineContext::line_box_direction: surgeist_text::LineBoxDirection
 pub surgeist_text::LineContext::orientation: surgeist_text::LineOrientation
 pub surgeist_text::LineContext::spacing: surgeist_text::SpacingPolicy
 pub surgeist_text::LineContext::start: surgeist_text::LineStart
 pub surgeist_text::LineContext::tabs: surgeist_text::TabContext
+pub struct surgeist_text::LineDirectionFacts
+impl surgeist_text::LineDirectionFacts
+pub fn surgeist_text::LineDirectionFacts::has_eligible_strong(&self) -> bool
+pub fn surgeist_text::LineDirectionFacts::paragraph_strong_direction(&self) -> core::option::Option<surgeist_text::ParagraphBaseDirection>
 pub struct surgeist_text::LineEdgeUnitView<'a>
 impl surgeist_text::LineEdgeUnitView<'_>
 pub fn surgeist_text::LineEdgeUnitView<'_>::advance(&self) -> f64
@@ -2110,6 +2119,8 @@ pub fn surgeist_text::PreparedText::conditional_search(&self, start: &surgeist_t
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::hyphenation_cut_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedHyphenationCutView<'_>>
 pub fn surgeist_text::PreparedText::word_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedWordView<'_>>
+impl surgeist_text::PreparedText
+pub fn surgeist_text::PreparedText::line_direction_facts(&self, start: &surgeist_text::PreparedBoundary, end: &surgeist_text::PreparedBoundary) -> surgeist_text::Result<surgeist_text::LineDirectionFacts>
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::phrases(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedPhrase> + '_
 impl core::cmp::Eq for surgeist_text::PreparedText

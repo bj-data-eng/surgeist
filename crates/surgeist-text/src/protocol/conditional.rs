@@ -607,6 +607,7 @@ fn policy_context(line: &FinalizedLine) -> Vec<u64> {
     let context = &request.context;
     let mut values = vec![
         context.base_direction as u64,
+        context.line_box_direction as u64,
         context.orientation as u64,
         context.start as u64,
         context.end as u64,
@@ -1204,8 +1205,9 @@ impl PreparedConditionalOpportunity {
 }
 
 // These semantic line choices stay stable across candidate evaluation. Width,
-// indent, effective alignment and tab coordinates come from each converged frame;
-// the query retains its own frame identity without certifying Layout staleness.
+// indent, effective alignment, line-box direction and tab coordinates come from
+// each converged frame; the query retains its own frame identity without
+// certifying Layout staleness.
 fn selection_context(context: &super::LineContext) -> Vec<u64> {
     vec![
         context.base_direction as u64,

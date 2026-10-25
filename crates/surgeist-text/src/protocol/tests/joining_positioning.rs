@@ -88,6 +88,10 @@ fn line(
         None
     };
     value.context.base_direction = direction;
+    value.context.line_box_direction = match direction {
+        crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
+        crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+    };
     value.context.spacing = SpacingPolicy::None;
     value.context.start = if from == 0 {
         LineStart::Paragraph

@@ -344,6 +344,7 @@ fn rendered(bytes: &[u8], value: &str) -> Rendered {
             line_strut: None,
             context: text::LineContext {
                 base_direction: text::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
                 orientation: text::LineOrientation::Horizontal,
                 start: text::LineStart::Paragraph,
                 end: text::LineEnd::Paragraph,

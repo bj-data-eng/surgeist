@@ -74,6 +74,11 @@ fn selected(
         crate::Direction::RightToLeft => ParagraphBaseDirection::RightToLeft,
         crate::Direction::Auto => panic!("analysis returns a resolved base direction"),
     };
+    r.context.line_box_direction = match p.analyzed_source().direction() {
+        crate::Direction::LeftToRight => crate::LineBoxDirection::LeftToRight,
+        crate::Direction::RightToLeft => crate::LineBoxDirection::RightToLeft,
+        crate::Direction::Auto => panic!("analysis returns a resolved base direction"),
+    };
     r.start = start;
     r.end = ending.view().boundary();
     let from = r.start.view().participant_offset();
@@ -1022,6 +1027,14 @@ fn discard_surviving_separator_stays_ordinary_at_soft_forced_and_block_ends_in_b
                     .collect();
                 r.termination = crate::PreparedTermination::Ordinary(stop.clone());
                 r.context.base_direction = direction;
+                r.context.line_box_direction = match direction {
+                    crate::ParagraphBaseDirection::LeftToRight => {
+                        crate::LineBoxDirection::LeftToRight
+                    }
+                    crate::ParagraphBaseDirection::RightToLeft => {
+                        crate::LineBoxDirection::RightToLeft
+                    }
+                };
                 r.context.end = match kind {
                     PreparedBreakKind::Allowed => LineEnd::Soft,
                     PreparedBreakKind::Forced => LineEnd::Forced,
@@ -1112,6 +1125,14 @@ fn discard_surviving_separator_consumes_no_terminal_or_available_context_in_both
                 for width in [None, Some(10.0)] {
                     let mut r = request(&p);
                     r.context.base_direction = direction;
+                    r.context.line_box_direction = match direction {
+                        crate::ParagraphBaseDirection::LeftToRight => {
+                            crate::LineBoxDirection::LeftToRight
+                        }
+                        crate::ParagraphBaseDirection::RightToLeft => {
+                            crate::LineBoxDirection::RightToLeft
+                        }
+                    };
                     r.context.available_inline = width;
                     let line = p
                         .select(r)

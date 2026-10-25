@@ -137,6 +137,7 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
             line_strut: None,
             context: LineContext {
                 base_direction: ParagraphBaseDirection::LeftToRight,
+                line_box_direction: crate::LineBoxDirection::LeftToRight,
                 orientation: LineOrientation::Horizontal,
                 start: LineStart::Paragraph,
                 end,

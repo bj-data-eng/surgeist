@@ -377,6 +377,7 @@ fn finish(
             line_strut: None,
             context: text::LineContext {
                 base_direction: text::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
                 orientation: text::LineOrientation::Horizontal,
                 start: if continuation {
                     text::LineStart::Continuation

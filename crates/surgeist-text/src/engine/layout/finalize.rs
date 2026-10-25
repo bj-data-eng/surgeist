@@ -9,8 +9,8 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
-    Alignment, BidiLevel, Error, ErrorCode, InlineWhitespaceEdge, Point, Rect, Result,
-    SuppliedInlineParticipant, SuppliedLine, TextNumericError, TextNumericPhase,
+    Alignment, BidiLevel, Error, ErrorCode, InlineWhitespaceEdge, LineBoxDirection, Point, Rect,
+    Result, SuppliedInlineParticipant, SuppliedLine, TextNumericError, TextNumericPhase,
 };
 
 use super::super::{
@@ -1607,16 +1607,24 @@ pub(super) fn standalone_amounts(
 
 fn alignment_offset(
     selection: &LineContext,
-    base: u8,
+    body_base: u8,
     width: f64,
     metrics: &LineMetrics,
 ) -> Result<f64> {
-    let rtl = base & 1 != 0;
-    let mut offset = if rtl {
-        -metrics.trailing_whitespace
-    } else {
-        selection.indent
-    };
+    let rtl = selection.line_box_direction == LineBoxDirection::RightToLeft;
+    let mut offset = if rtl { 0.0 } else { selection.indent };
+    // Standalone's trailing SPACE still belongs to the physical edge selected
+    // by body bidi. Native supplies its measured alignment advance here with
+    // trailing=0, then subtracts its actual physical hanging_start separately.
+    // The independently resolved line-box basis must not flip either owner.
+    if body_base & 1 != 0 {
+        offset = add(
+            "body trailing alignment",
+            TextNumericPhase::Finalization,
+            offset,
+            -metrics.trailing_whitespace,
+        )?;
+    }
     let preliminary = width - selection.indent - metrics.advance + metrics.trailing_whitespace;
     let factor = if preliminary <= 0.0 {
         if rtl { 1.0 } else { 0.0 }
@@ -2059,6 +2067,7 @@ mod tests {
                 alternative: None,
                 context: LineContext {
                     base_direction: ParagraphBaseDirection::LeftToRight,
+                    line_box_direction: LineBoxDirection::LeftToRight,
                     orientation: LineOrientation::Horizontal,
                     start: LineStart::Paragraph,
                     end: LineEnd::Paragraph,
@@ -2460,6 +2469,7 @@ mod tests {
                 line_strut: None,
                 context: LineContext {
                     base_direction: ParagraphBaseDirection::LeftToRight,
+                    line_box_direction: LineBoxDirection::LeftToRight,
                     orientation: LineOrientation::Horizontal,
                     start: LineStart::Paragraph,
                     end: LineEnd::Paragraph,
@@ -2913,6 +2923,7 @@ mod tests {
                     alternative: None,
                     context: LineContext {
                         base_direction: ParagraphBaseDirection::RightToLeft,
+                        line_box_direction: LineBoxDirection::RightToLeft,
                         orientation: LineOrientation::Horizontal,
                         start: if first {
                             LineStart::Paragraph

@@ -63,6 +63,13 @@ fn selected_end(
                 } else {
                     ParagraphBaseDirection::LeftToRight
                 },
+                line_box_direction: if prepared.analyzed_source().direction()
+                    == Direction::RightToLeft
+                {
+                    crate::LineBoxDirection::RightToLeft
+                } else {
+                    crate::LineBoxDirection::LeftToRight
+                },
                 orientation: LineOrientation::Horizontal,
                 start: LineStart::Paragraph,
                 end: match termination.view().kind() {

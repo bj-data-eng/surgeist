@@ -151,6 +151,7 @@ impl VisibleInlineRunTransition {
     {
         let InlineRunTransitionState {
             indent_state,
+            line_box_context,
             hyphenation_state,
             tail_ledger,
             cursor_block,
@@ -186,6 +187,7 @@ impl VisibleInlineRunTransition {
             tail_ledger.run(core::mem::take(&mut placement.lines));
         }
         *hyphenation_state = placement.hyphenation_state;
+        *line_box_context = placement.line_box_context;
         if let Some(committed) = placement.indent_state {
             *indent_state = Some(committed);
         }
@@ -231,6 +233,7 @@ impl VisibleInlineRunTransition {
 }
 
 pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
+    pub(super) line_box_context: &'a mut crate::line_box::LineBoxContext,
     pub(super) indent_state: &'a mut Option<crate::text_indent::IndentLineState>,
     pub(super) hyphenation_state: &'a mut crate::hyphenation::LineHyphenationState,
     pub(super) tail_ledger: &'a mut crate::hyphenation::BlockTailLedger,
@@ -252,6 +255,7 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
 }
 
 struct InlineRunPlacement<Node, S: LayoutScalar> {
+    line_box_context: crate::line_box::LineBoxContext,
     lines: Vec<crate::hyphenation::CommittedInlineLine>,
     floats: Vec<PendingFloat<Node, S>>,
     owned_float_block_end: S,
@@ -274,6 +278,7 @@ impl<Node, S: LayoutScalar> InlineRunPlacement<Node, S> {
 }
 
 pub(super) struct InlineRunContext<'a, S: LayoutScalar> {
+    pub(super) line_box_context: crate::line_box::LineBoxContext,
     pub(super) tail: crate::text_layout::fit::TailContext,
     pub(super) indent_state: crate::text_indent::IndentLineState,
     pub(super) hyphenation_state: crate::hyphenation::LineHyphenationState,
@@ -351,6 +356,7 @@ where
     S: LayoutScalar,
 {
     let InlineRunContext {
+        line_box_context,
         indent_state,
         hyphenation_state,
         tail,
@@ -733,6 +739,7 @@ where
             indent_state,
             hyphenation_state,
             hyphenate_limit_zone: constants.hyphenate_limit_zone,
+            line_box_context,
             tail,
         };
         let text_controls = binding
@@ -930,6 +937,7 @@ where
     } else {
         layout_mixed_inline_run_with_band_source(
             MixedInlineRunInputOf {
+                line_box_context,
                 observe_tail: tail != crate::text_layout::fit::TailContext::Unrestricted,
                 available_inline_extent,
                 flow_axes: constants.flow_axes,
@@ -1271,6 +1279,7 @@ where
         })
         .fold(owned_float_block_end, |a, b| a.max(b));
     Ok(InlineRunPlacement {
+        line_box_context: report.line_box_context,
         lines: report.lines,
         floats: encounter_plans,
         owned_float_block_end: float_end,

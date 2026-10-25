@@ -222,6 +222,7 @@ mod output;
 #[path = "../tests/layout/browser_parity/pinned_font.rs"]
 mod pinned_font;
 pub use hyphenation::{HyphenateLimitLast, HyphenateLimitLines};
+mod line_box;
 mod text_indent;
 mod text_layout;
 pub use text_layout::{
@@ -298,11 +299,11 @@ pub use node_input::{
     GridFlowTolerance, GridFlowToleranceOf, GridPlacement, InlineBoundaryEdge,
     InlineBoundaryEdgeOf, InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind,
     InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf, ItemOrder,
-    LayoutInput, LayoutInputOf, LayoutInputView, LayoutInputViewOf, LineBreakDisplay,
-    LineBreakInput, LineBreakInputOf, NodeInput, NodeInputOf, Overflow, OverflowClipBox,
-    OverflowClipMargin, OverflowClipMarginOf, Position, RawGridLine, RawGridPlacement,
-    ScrollMargin, ScrollMarginError, ScrollMarginErrorOf, ScrollMarginOf, ScrollPadding,
-    ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf, ScrollSnapAlign,
+    LayoutInput, LayoutInputOf, LayoutInputView, LayoutInputViewOf, LineBoxDirectionPolicy,
+    LineBreakDisplay, LineBreakInput, LineBreakInputOf, NodeInput, NodeInputOf, Overflow,
+    OverflowClipBox, OverflowClipMargin, OverflowClipMarginOf, Position, RawGridLine,
+    RawGridPlacement, ScrollMargin, ScrollMarginError, ScrollMarginErrorOf, ScrollMarginOf,
+    ScrollPadding, ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf, ScrollSnapAlign,
     ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType,
     ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, TextAlign, TextAlignLast, TextIndent,
     TextIndentOf, TextJustification, VerticalAlign, WritingMode,

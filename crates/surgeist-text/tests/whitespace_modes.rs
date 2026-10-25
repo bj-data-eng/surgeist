@@ -189,6 +189,14 @@ fn finish(
             line_strut: None,
             context: t::LineContext {
                 base_direction: direction(prepared),
+                line_box_direction: match direction(prepared) {
+                    surgeist_text::ParagraphBaseDirection::LeftToRight => {
+                        surgeist_text::LineBoxDirection::LeftToRight
+                    }
+                    surgeist_text::ParagraphBaseDirection::RightToLeft => {
+                        surgeist_text::LineBoxDirection::RightToLeft
+                    }
+                },
                 orientation: t::LineOrientation::Horizontal,
                 start: if from == 0 {
                     t::LineStart::Paragraph

@@ -61,6 +61,10 @@ fn selection(
     let end = offer.view().boundary();
     let mut context = context(LineEnd::Soft);
     context.base_direction = direction;
+    context.line_box_direction = match direction {
+        crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
+        crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+    };
     context.spacing = SpacingPolicy::None;
     LineSelectionRequest {
         start: p.boundary_views().next().unwrap().handle(),

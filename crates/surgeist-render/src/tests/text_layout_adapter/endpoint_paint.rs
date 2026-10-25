@@ -193,6 +193,7 @@ fn placed_pair(prepared: &text::PreparedText, opening: f64) -> text::Layout {
         line_strut: None,
         context: text::LineContext {
             base_direction: text::ParagraphBaseDirection::LeftToRight,
+            line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
             orientation: text::LineOrientation::Horizontal,
             start: text::LineStart::Paragraph,
             end: text::LineEnd::Paragraph,

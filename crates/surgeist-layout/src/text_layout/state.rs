@@ -13,6 +13,8 @@ pub(crate) struct CanonicalFrame<Node, S: LayoutScalar> {
 
 #[derive(Clone)]
 pub(crate) struct PendingParagraph<Node> {
+    pub line_box_start: crate::line_box::LineBoxContext,
+    pub line_box_end: crate::line_box::LineBoxContext,
     pub container: Node,
     pub nodes: Vec<Node>,
     pub prepared: surgeist_text::PreparedText,
@@ -47,6 +49,11 @@ pub(crate) struct LineBasis {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PassBasis<Node, S: LayoutScalar> {
+    pub line_boxes: Vec<(
+        Node,
+        crate::line_box::LineBoxContext,
+        crate::line_box::LineBoxContext,
+    )>,
     pub tail: Vec<(Node, super::fit::TailContext)>,
     pub frames: Vec<CanonicalFrame<Node, S>>,
     pub lines: Vec<LineBasis>,
@@ -201,6 +208,11 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
 
     pub fn basis(&self, frames: Vec<CanonicalFrame<Node, S>>) -> PassBasis<Node, S> {
         PassBasis {
+            line_boxes: self
+                .pending
+                .iter()
+                .map(|p| (p.container, p.line_box_start, p.line_box_end))
+                .collect(),
             tail: self
                 .pending
                 .iter()

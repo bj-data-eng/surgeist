@@ -71,6 +71,12 @@ fn finish(p: &PreparedText, origin: Option<f64>, indent: f64) -> crate::Result<F
     } else {
         ParagraphBaseDirection::LeftToRight
     };
+    r.context.line_box_direction =
+        if p.analyzed_source().direction() == crate::Direction::RightToLeft {
+            crate::LineBoxDirection::RightToLeft
+        } else {
+            crate::LineBoxDirection::LeftToRight
+        };
     r.context.indent = indent;
     r.context.available_inline = None;
     r.context.alignment = crate::Alignment::Left;

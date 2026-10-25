@@ -190,6 +190,7 @@ fn selected_line(
         })
         .collect();
     value.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    value.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     value.context.start = if from == 0 {
         LineStart::Paragraph
     } else {
@@ -689,6 +690,7 @@ fn discretionary_line(
     value.termination = PreparedTermination::Ordinary(offer.handle());
     value.alternative = Some(offer.alternatives().next().unwrap().handle());
     value.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    value.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     value.context.start = if from == 0 {
         LineStart::Paragraph
     } else {

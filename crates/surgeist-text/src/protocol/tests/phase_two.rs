@@ -217,6 +217,10 @@ fn allocated_zero_retains_natural_eligibility_and_real_source_geometry_both_dire
         let p = prepare(&mut system, captured);
         let mut r = request(&p);
         r.context.base_direction = direction;
+        r.context.line_box_direction = match direction {
+            crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
+            crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+        };
         r.context.available_inline = Some(15.0);
         r.context.alignment = crate::Alignment::Center;
         let selected = p.select(r).unwrap();
@@ -690,6 +694,10 @@ fn zero_preserved_selection(
     let p = prepare(system, captured);
     let mut r = request(&p);
     r.context.base_direction = direction;
+    r.context.line_box_direction = match direction {
+        crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
+        crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+    };
     r.context.available_inline = Some(15.0);
     p.select(r).unwrap()
 }
@@ -1131,6 +1139,10 @@ fn deferred_terminal_failure_keeps_real_atomic_allocation_and_prior_result_retry
         let p = prepare(&mut system, captured);
         let mut r = request(&p);
         r.context.base_direction = direction;
+        r.context.line_box_direction = match direction {
+            crate::ParagraphBaseDirection::LeftToRight => crate::LineBoxDirection::LeftToRight,
+            crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
+        };
         r.atomics = p
             .atomic_views()
             .map(|atomic| AtomicAllocation {

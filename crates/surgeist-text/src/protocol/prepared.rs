@@ -1756,7 +1756,7 @@ pub(crate) fn prepare_indication_fonts(
             inserted_atoms,
             original_atoms,
         } = replacement_projection(analyzed, tables, input)?;
-        let (mut analysis, _) = crate::engine::analysis::analyze(
+        let (mut analysis, _, _) = crate::engine::analysis::analyze(
             &projection,
             &analyzed.styles,
             analyzed.processed.source().boxes(),

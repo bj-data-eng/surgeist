@@ -417,6 +417,9 @@ pub surgeist_layout::LengthResolutionStatus::InvalidNumeric::value: S
 pub surgeist_layout::LengthResolutionStatus::MissingBasis
 pub surgeist_layout::LengthResolutionStatus::NonNumeric
 pub surgeist_layout::LengthResolutionStatus::Resolved
+pub enum surgeist_layout::LineBoxDirectionPolicy
+pub surgeist_layout::LineBoxDirectionPolicy::Normal
+pub surgeist_layout::LineBoxDirectionPolicy::Plaintext
 pub enum surgeist_layout::LineBreakDisplay
 pub surgeist_layout::LineBreakDisplay::Break
 pub surgeist_layout::LineBreakDisplay::None
@@ -1320,6 +1323,7 @@ pub surgeist_layout::NodeInputOf::item_order: surgeist_layout::ItemOrder
 pub surgeist_layout::NodeInputOf::justify_content: core::option::Option<surgeist_layout::AlignContent>
 pub surgeist_layout::NodeInputOf::justify_items: core::option::Option<surgeist_layout::AlignItems>
 pub surgeist_layout::NodeInputOf::justify_self: core::option::Option<surgeist_layout::AlignItems>
+pub surgeist_layout::NodeInputOf::line_box_direction_policy: surgeist_layout::LineBoxDirectionPolicy
 pub surgeist_layout::NodeInputOf::margin: surgeist_layout::Edges<surgeist_layout::LengthAutoOf<S>>
 pub surgeist_layout::NodeInputOf::max_size: surgeist_layout::Size<surgeist_layout::MaxSizeOf<S>>
 pub surgeist_layout::NodeInputOf::min_size: surgeist_layout::Size<surgeist_layout::MinSizeOf<S>>

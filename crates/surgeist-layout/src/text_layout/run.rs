@@ -42,6 +42,7 @@ pub(crate) enum Frame<S: LayoutScalar> {
 }
 
 pub(crate) struct Context<S: LayoutScalar> {
+    pub line_box_context: crate::line_box::LineBoxContext,
     pub frame: Frame<S>,
     pub containing_size: Size<S>,
     pub inset: Point<S>,
@@ -168,6 +169,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
     };
     let lines = fit::fit(
         fit::FitInput {
+            line_box_context: context.line_box_context,
             prepared: &binding.prepared,
             available,
             base_direction: direction,
@@ -533,6 +535,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         lines: Vec::new(),
         hyphenation_state: context.hyphenation_state,
         indent_state: context.indent_state,
+        line_box_context: context.line_box_context,
         inline_extent: S::ZERO,
         block_extent: S::ZERO,
         float_edge_phase: None,
@@ -567,6 +570,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             });
         }
         report.hyphenation_state = line.hyphenation_end;
+        report.line_box_context = line.line_box_end;
         let feedback = line.finalized.feedback();
         let contribution = match context.available {
             AvailableOf::MinContent => line.finalized.measurements().min_content_contribution(),
@@ -807,6 +811,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     }
     let indent_end = report.indent_state;
     let hyphenation_end = report.hyphenation_state;
+    let line_box_end = report.line_box_context;
     Ok(Output {
         report,
         line_bounds,
@@ -827,6 +832,8 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             outflows,
             indent: context.indent.widened(),
             indent_start: context.indent_state,
+            line_box_start: context.line_box_context,
+            line_box_end,
             indent_end,
             hyphenation_start: context.hyphenation_state,
             hyphenation_end,

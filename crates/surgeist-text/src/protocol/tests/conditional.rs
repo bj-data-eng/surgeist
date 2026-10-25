@@ -350,6 +350,7 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     let prepared = prepare(&mut system, value);
     let mut control = request(&prepared);
     control.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    control.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     let whole = prepared
         .select(control)
         .unwrap()
@@ -367,6 +368,7 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     assert_eq!(sources(&cuts), [1, 2]);
     let mut first_request = selection(&prepared, &cuts[0]);
     first_request.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    first_request.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     let first = prepared
         .select(first_request)
         .unwrap()
@@ -389,6 +391,7 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     assert_eq!(sources(&second_cuts), [2]);
     let mut second_request = selection(&prepared, &second_cuts[0]);
     second_request.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    second_request.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     let second = prepared
         .select(second_request)
         .unwrap()
@@ -400,6 +403,7 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     last_request.participants = prepared.participants().skip(2).collect();
     last_request.context.start = LineStart::Continuation;
     last_request.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    last_request.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     let last = prepared
         .select(last_request)
         .unwrap()
@@ -1359,6 +1363,7 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
     let prepared = prepare(&mut system, value);
     let mut whole_request = request(&prepared);
     whole_request.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    whole_request.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     let whole = prepared
         .select(whole_request)
         .unwrap()
@@ -1376,6 +1381,7 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
     trial.termination = PreparedTermination::Ordinary(first.handle());
     trial.alternative = Some(alternative);
     trial.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    trial.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     trial.context.end = LineEnd::Soft;
     trial.context.available_inline = Some(20.0);
     let trial = prepared
@@ -1389,6 +1395,7 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
     assert_eq!(sources(&cuts), [1, 2, 3]);
     let mut selected = selection(&prepared, &cuts[1]);
     selected.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    selected.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     let line = prepared
         .select(selected)
         .unwrap()
@@ -1419,6 +1426,7 @@ fn conditional_provider_and_numeric_refusals_leave_prior_actual_results_valid() 
     let prepared = prepare(&mut system, value);
     let mut whole_request = request(&prepared);
     whole_request.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    whole_request.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     let whole = prepared
         .select(whole_request)
         .unwrap()
@@ -1434,6 +1442,7 @@ fn conditional_provider_and_numeric_refusals_leave_prior_actual_results_valid() 
         .unwrap();
     let mut value = selection(&prepared, cut);
     value.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    value.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     let selected = prepared.select(value.clone()).unwrap();
     assert_eq!(
         selected

@@ -73,6 +73,11 @@ fn request(
             } else {
                 t::ParagraphBaseDirection::LeftToRight
             },
+            line_box_direction: if p.analyzed_source().direction() == t::Direction::RightToLeft {
+                surgeist_text::LineBoxDirection::RightToLeft
+            } else {
+                surgeist_text::LineBoxDirection::LeftToRight
+            },
             orientation: t::LineOrientation::Horizontal,
             start: if from == 0 {
                 t::LineStart::Paragraph

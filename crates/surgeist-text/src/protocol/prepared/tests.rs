@@ -900,6 +900,7 @@ fn native_connection_space_owner_depends_on_actual_disappearance() {
 fn context(end: LineEnd) -> LineContext {
     LineContext {
         base_direction: ParagraphBaseDirection::LeftToRight,
+        line_box_direction: crate::LineBoxDirection::LeftToRight,
         orientation: LineOrientation::Horizontal,
         start: LineStart::Paragraph,
         end,
