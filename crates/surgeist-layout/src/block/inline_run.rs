@@ -985,7 +985,26 @@ where
     } else {
         let wrapping = if matches!(available_inline_extent, AvailableOf::Definite(_)) {
             tree.wrapping_context()
-                .map(|(context, graph)| context.numeric_projection(graph, container, run))
+                .map(|(context, graph)| {
+                    // Wrapping cuts index emitted participants, not native slots
+                    // omitted for hidden or out-of-flow children.
+                    let nodes: Vec<_> = participants
+                        .iter()
+                        .map(|participant| {
+                            let source_index = match participant {
+                                MixedInlineParticipantOf::Atomic { item, .. } => item.source_index,
+                                MixedInlineParticipantOf::ForcedLineBreak(control) => {
+                                    control.source_index()
+                                }
+                                MixedInlineParticipantOf::Boundary(control) => {
+                                    control.source_index()
+                                }
+                            };
+                            run[source_index - source_index_start]
+                        })
+                        .collect();
+                    context.numeric_projection(graph, container, &nodes)
+                })
                 .transpose()
                 .map_err(|error| crate::inline_wrapping::wrapping_error(container, error))?
         } else {
