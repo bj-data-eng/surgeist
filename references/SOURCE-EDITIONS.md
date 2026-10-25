@@ -1324,6 +1324,15 @@ are explicit native policy completing this gap, not uniquely mandated CSS or a
 claim of browser equivalence. Fit and intrinsic inclusion retain their separate
 normative roles.
 
+## Hanging punctuation composition
+
+The [native punctuation determination](text-hanging-punctuation--native-determination.md)
+selects actual attributed advance, union measurement with inline-start placement
+priority for one TCU eligible at both edges, and effective Appendix-E eligibility
+before literal exceptions. It distinguishes CSS requirements from these bounded
+native choices and records the qualified Unicode and prospective kern examples.
+It does not establish feature availability or browser equivalence.
+
 ## Preserved CSS tab stops
 
 The [Text/Layout contract](../docs/text-layout-contract.md#preserved-css-tab-stops)
