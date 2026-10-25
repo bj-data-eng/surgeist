@@ -1060,3 +1060,184 @@ fn sa_run_end_preserves_hard_precedence_and_does_not_break_before_sp_or_zwsp() {
         "LB7 forbids provider slice-end cut2 before SP/ZWSP while fallback1 and the genuine after-separator3 remain: {violations:?}"
     );
 }
+
+#[test]
+fn ordinary_sa_context_has_fallback_without_a_fabricated_latin_run_end() {
+    // Text4 lexical-breaking resolves SA as AL plus actual analyzed word cuts.
+    // No lexical model exists here: fallback supplies cut1, not the slice end2.
+    // https://www.unicode.org/reports/tr14/tr14-55.html#LB28
+    let mut violations = Vec::new();
+    for direction in DIRECTIONS {
+        for (value, locale, word) in [
+            ("กกAA", "th", t::WordBreak::Normal),
+            ("กกAA", "th", t::WordBreak::KeepAll),
+            ("กกAA", "th", t::WordBreak::BreakWord),
+            ("ກກAA", "lo", t::WordBreak::Normal),
+        ] {
+            let mut base = style(Some(locale));
+            base.word_break = word;
+            let p = prepare(input(value, base, direction));
+            assert_eq!(
+                p.analyzed_source().graphemes().collect::<Vec<_>>(),
+                (0..4)
+                    .map(|at| t::Range::new(at, at + 1))
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(p.analyzed_source().style().word_break, word);
+            assert_eq!(
+                p.analyzed_source().style().overflow_wrap,
+                t::OverflowWrap::Normal
+            );
+            if cuts(&p) != [1] {
+                violations.push((direction, value, word, cuts(&p)));
+            }
+        }
+        for (value, locale) in [("กกAA", "th"), ("ກກAA", "lo")] {
+            let mut manual = style(Some(locale));
+            manual.word_break = t::WordBreak::Manual;
+            assert_eq!(
+                cuts(&prepare(input(value, manual, direction))),
+                [],
+                "published Manual AL context remains distinct from lexical fallback"
+            );
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "ordinary resolved AL context keeps only genuine Thai/Lao fallback1: {violations:?}"
+    );
+}
+
+#[test]
+fn ordinary_sa_resolution_retains_full_letter_number_and_punctuation_context() {
+    for (cp, class) in [
+        (u32::from('A'), Class::Alphabetic),
+        (0x10400, Class::Alphabetic),
+        (u32::from('א'), Class::HebrewLetter),
+        (u32::from('1'), Class::Numeric),
+        (u32::from(','), Class::InfixNumeric),
+        (u32::from('('), Class::OpenPunctuation),
+    ] {
+        assert_eq!(CodePointMapData::<Class>::new().get32(cp), class);
+    }
+    let mut violations = Vec::new();
+    for direction in DIRECTIONS {
+        for (value, expected) in [
+            ("กกא", vec![1]),          // LB28: AL/HL attachment.
+            ("กก1", vec![1]),          // LB23: AL/NU attachment.
+            ("1กก", vec![2]),          // LB23: NU/AL attachment, fallback2.
+            ("(  กกA", vec![4]),       // LB14 OP SP*; then fallback4, LB28.
+            (",กกA", vec![2]),         // LB29 IS/AL; then fallback2, LB28.
+            ("กก A", vec![1, 3]),      // Independent preserved-SPACE owner.
+            ("\u{10400}กกA", vec![3]), // Unchanged four-byte AL context.
+        ] {
+            for ch in value.chars() {
+                assert_eq!(
+                    CodePointMapData::<Gcb>::new().get32(u32::from(ch)),
+                    Gcb::Other
+                );
+            }
+            let expected_units = value
+                .chars()
+                .scan(0, |at, ch| {
+                    let start = *at;
+                    *at += ch.len_utf16();
+                    Some(t::Range::new(start, *at))
+                })
+                .collect::<Vec<_>>();
+            let p = prepare(input(value, style(Some("th")), direction));
+            assert_eq!(
+                p.analyzed_source().graphemes().collect::<Vec<_>>(),
+                expected_units
+            );
+            if cuts(&p) != expected {
+                violations.push((direction, value, cuts(&p), expected));
+            }
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "LB1-resolved SA context must pass through the complete ordinary rules, with exact source endpoints: {violations:?}"
+    );
+}
+
+#[test]
+fn ordinary_sa_marks_inherit_glue_before_a_loose_cjk_opportunity() {
+    // LB1 resolves SA Mn/Mc to CM; LB9 retains GL through that mark, so LB12
+    // still forbids the Loose candidate. The Mc fixture tests class resolution,
+    // not Myanmar lexical or orthographic support.
+    // https://www.unicode.org/reports/tr14/tr14-55.html#LB1
+    assert_eq!(CodePointMapData::<Class>::new().get32(0x00a0), Class::Glue);
+    let mut violations = Vec::new();
+    for (mark, category, class, gcb) in [
+        (
+            '\u{0e48}',
+            Category::NonspacingMark,
+            Class::ComplexContext,
+            Gcb::Extend,
+        ),
+        (
+            '\u{103b}',
+            Category::SpacingMark,
+            Class::ComplexContext,
+            Gcb::SpacingMark,
+        ),
+        (
+            '\u{0301}',
+            Category::NonspacingMark,
+            Class::CombiningMark,
+            Gcb::Extend,
+        ),
+    ] {
+        let cp = u32::from(mark);
+        assert_eq!(CodePointMapData::<Category>::new().get32(cp), category);
+        assert_eq!(CodePointMapData::<Class>::new().get32(cp), class);
+        assert_eq!(CodePointMapData::<Gcb>::new().get32(cp), gcb);
+        for direction in DIRECTIONS {
+            for word in [t::WordBreak::Normal, t::WordBreak::Manual] {
+                let mut base = style(Some("ja"));
+                base.word_break = word;
+                base.line_break = t::LineBreak::Loose;
+                let value = format!("\u{a0}{mark}\u{301c}");
+                let p = prepare(input(&value, base, direction));
+                assert_eq!(
+                    p.analyzed_source().graphemes().collect::<Vec<_>>(),
+                    [t::Range::new(0, 2), t::Range::new(2, 3)]
+                );
+                if !cuts(&p).is_empty() {
+                    violations.push((mark, direction, word, cuts(&p)));
+                }
+            }
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "resolved CM must not erase inherited GL or manufacture cut2: {violations:?}"
+    );
+}
+
+#[test]
+fn resolved_sa_context_preserves_required_loose_and_deliberate_anywhere_owners() {
+    for direction in DIRECTIONS {
+        for (word, expected) in [
+            (t::WordBreak::Normal, vec![1, 2]),
+            (t::WordBreak::Manual, vec![2]),
+        ] {
+            let mut base = style(Some("ja"));
+            base.word_break = word;
+            base.line_break = t::LineBreak::Loose;
+            assert_eq!(
+                cuts(&prepare(input("กก\u{301c}", base, direction))),
+                expected,
+                "the actual required CJK owner survives ordinary SA resolution"
+            );
+        }
+        let mut base = style(Some("th"));
+        base.line_break = t::LineBreak::Anywhere;
+        assert_eq!(
+            cuts(&prepare(input("กกAA", base, direction))),
+            [1, 2, 3],
+            "deliberate Anywhere retains its independent whole-TCU cuts"
+        );
+    }
+}

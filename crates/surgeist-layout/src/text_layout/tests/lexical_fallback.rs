@@ -324,17 +324,20 @@ fn real_notdef_metrics_remain_usable_with_ancestor_nowrap_and_independent_forced
 
 const WJ_RUN: &str = "กก\u{2060}AA";
 
-/// Mixed missing Thai/real Latin glyphs; WJ has no positive advance, but its
-/// formatting glyph count and glyph ID are deliberately unspecified.
-fn wj_run_facts<S: LayoutScalar>(
+/// Mixed missing Thai/real Latin glyphs. Any formatting controls have no
+/// positive advance, but their glyph count and glyph ID are unspecified.
+fn mixed_sa_latin_facts<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     paragraph: &PreparedParagraph,
+    source: &str,
+    latin_start: usize,
 ) -> Vec<LineFact> {
     assert_eq!(batch.placed_text().len(), 1);
     let placed = batch.placed_text()[0].layout();
-    assert_eq!(placed.source().text(), &text::Text::from(WJ_RUN));
+    let source = text::Text::from(source);
+    assert_eq!(placed.source().text(), &source);
     let origin = paragraph.origin(1);
-    assert_eq!(origin.view().source().text(), &text::Text::from(WJ_RUN));
+    assert_eq!(origin.view().source().text(), &source);
     assert_eq!(origin.view().source().id(), Some(text::Id::from_u64(65402)));
     assert_eq!(origin.view().source().revision(), 19);
     let endpoint = |offset, affinity| {
@@ -346,11 +349,11 @@ fn wj_run_facts<S: LayoutScalar>(
     let copied = placed
         .position_selection(
             &endpoint(0, text::Affinity::After),
-            &endpoint(5, text::Affinity::Before),
+            &endpoint(source.len(), text::Affinity::Before),
         )
         .unwrap();
-    assert_eq!(copied.source_text(), &text::Text::from(WJ_RUN));
-    assert_eq!(copied.plaintext(), &text::Text::from(WJ_RUN));
+    assert_eq!(copied.source_text(), &source);
+    assert_eq!(copied.plaintext(), &source);
     let mut finalized = vec![None; placed.lines().len()];
     for entry in batch.final_inline_fragments() {
         let fragment = entry.fragment();
@@ -401,7 +404,7 @@ fn wj_run_facts<S: LayoutScalar>(
             assert!(request.incoming.is_none());
             assert!(finalized.hyphenation_continuation().is_none());
             let text::PreparedTermination::Ordinary(offer) = &request.termination else {
-                panic!("OverflowNormal cannot grant a conditional WJ seam")
+                panic!("OverflowNormal cannot grant a conditional seam")
             };
             (
                 placed_line.range(),
@@ -420,8 +423,8 @@ fn wj_run_facts<S: LayoutScalar>(
         [
             (text::Range::new(0, 1), 0, 10.0),
             (text::Range::new(1, 2), 0, 10.0),
-            (text::Range::new(3, 4), 35, 10.0),
-            (text::Range::new(4, 5), 35, 10.0),
+            (text::Range::new(latin_start, latin_start + 1), 35, 10.0),
+            (text::Range::new(latin_start + 1, latin_start + 2), 35, 10.0),
         ]
     );
     result
@@ -437,7 +440,7 @@ fn sa_provider_run_end_before_word_joiner_cannot_split_the_native_fitting_line()
             for rtl in [false, true] {
                 let p = paragraph(WJ_RUN, "th", word, Wrap::Word, rtl);
                 let actual = compute::<S>(&p, AvailableOf::definite(S::from_f64(20.0)), rtl);
-                observed.push((allowed(&p), wj_run_facts(&actual, &p)));
+                observed.push((allowed(&p), mixed_sa_latin_facts(&actual, &p, WJ_RUN, 3)));
             }
         }
         observed
@@ -474,7 +477,7 @@ fn word_joiner_at_sa_provider_run_end_keeps_the_thirty_pixel_min_content_piece()
                         .size
                         .width
                         .to_f64();
-                    observed.push((width, wj_run_facts(&actual, &p)));
+                    observed.push((width, mixed_sa_latin_facts(&actual, &p, WJ_RUN, 3)));
                 }
             }
         }
@@ -492,6 +495,83 @@ fn word_joiner_at_sa_provider_run_end_keeps_the_thirty_pixel_min_content_piece()
         (
             40.0,
             vec![line(0, 5, 40.0, text::PreparedBreakKind::ParagraphEnd)],
+        ),
+    ];
+    let expected = (0..4).flat_map(|_| pair.clone()).collect::<Vec<_>>();
+    assert_eq!(actual, (expected.clone(), expected));
+}
+
+const SA_LATIN_RUN: &str = "กกAA";
+
+#[test]
+fn ordinary_sa_context_does_not_accept_a_missing_model_run_end_before_latin() {
+    // Text4 6.1.1.1 resolves ordinary SA context as AL plus lexical causes.
+    // Missing models authenticate no lexical endpoint at2. Fallback1 remains;
+    // resolved AL x AL at2 cannot separate the remaining Thai/Latin sequence.
+    fn lane<S: LayoutScalar>() -> Vec<(Vec<usize>, Vec<LineFact>)> {
+        let mut observed = Vec::new();
+        for word in [text::WordBreak::Normal, text::WordBreak::KeepAll] {
+            for rtl in [false, true] {
+                let p = paragraph(SA_LATIN_RUN, "th", word, Wrap::Word, rtl);
+                let actual = compute::<S>(&p, AvailableOf::definite(S::from_f64(20.0)), rtl);
+                observed.push((
+                    allowed(&p),
+                    mixed_sa_latin_facts(&actual, &p, SA_LATIN_RUN, 2),
+                ));
+            }
+        }
+        observed
+    }
+    let actual = (lane::<f32>(), lane::<f64>());
+    let expected = vec![
+        (
+            vec![1],
+            vec![
+                line(0, 1, 10.0, text::PreparedBreakKind::Allowed),
+                line(1, 4, 30.0, text::PreparedBreakKind::ParagraphEnd),
+            ],
+        );
+        4
+    ];
+    assert_eq!(actual, (expected.clone(), expected));
+}
+
+#[test]
+fn ordinary_sa_context_keeps_the_thirty_pixel_min_content_piece() {
+    fn lane<S: LayoutScalar>() -> Vec<(f64, Vec<LineFact>)> {
+        let mut observed = Vec::new();
+        for word in [text::WordBreak::Normal, text::WordBreak::KeepAll] {
+            for rtl in [false, true] {
+                let p = paragraph(SA_LATIN_RUN, "th", word, Wrap::Word, rtl);
+                for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
+                    let actual = compute::<S>(&p, available, rtl);
+                    let width = actual
+                        .unrounded_entries()
+                        .iter()
+                        .find(|entry| entry.node() == 0)
+                        .unwrap()
+                        .output()
+                        .size
+                        .width
+                        .to_f64();
+                    observed.push((width, mixed_sa_latin_facts(&actual, &p, SA_LATIN_RUN, 2)));
+                }
+            }
+        }
+        observed
+    }
+    let actual = (lane::<f32>(), lane::<f64>());
+    let pair = [
+        (
+            30.0,
+            vec![
+                line(0, 1, 10.0, text::PreparedBreakKind::Allowed),
+                line(1, 4, 30.0, text::PreparedBreakKind::ParagraphEnd),
+            ],
+        ),
+        (
+            40.0,
+            vec![line(0, 4, 40.0, text::PreparedBreakKind::ParagraphEnd)],
         ),
     ];
     let expected = (0..4).flat_map(|_| pair.clone()).collect::<Vec<_>>();
