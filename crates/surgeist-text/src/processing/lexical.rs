@@ -40,7 +40,12 @@ impl Token {
         self.deleted() || matches!(self.kind, Kind::BidiControl | Kind::Marker)
     }
     fn collapse(&self, kind: Kind) -> bool {
-        self.mode == WhiteSpace::Collapse && self.kind == kind
+        self.kind == kind
+            && match kind {
+                Kind::Space => self.mode.collapses_spaces(),
+                Kind::Break => self.mode == WhiteSpace::Collapse,
+                _ => false,
+            }
     }
     fn delete(&mut self, cause: DeletionCause) {
         self.mapping = MappingKind::Delete(cause);
@@ -160,7 +165,7 @@ fn phase_one(tokens: &mut [Token]) {
         if token.transparent() {
             continue;
         }
-        if token.mode == WhiteSpace::Collapse && matches!(token.kind, Kind::Space | Kind::Break) {
+        if token.collapse(Kind::Space) || token.collapse(Kind::Break) {
             if preceding_space {
                 token.delete(DeletionCause::CollapsedSpace);
             }
@@ -259,7 +264,7 @@ fn tokenize(
                     None,
                     None,
                 ),
-                WhiteSpace::Preserve => {
+                WhiteSpace::Preserve | WhiteSpace::PreserveBreaks | WhiteSpace::BreakSpaces => {
                     (Kind::Break, MappingKind::Replace, Some(0x000a), Some('\n'))
                 }
                 WhiteSpace::PreserveSpaces | WhiteSpace::Collapse => {
@@ -274,10 +279,11 @@ fn tokenize(
                     None,
                     None,
                 ),
-                (WhiteSpace::Preserve, 0x000d)
-                | (WhiteSpace::PreserveSpaces | WhiteSpace::Collapse, 0x0009 | 0x000d) => {
-                    (Kind::Space, MappingKind::Replace, Some(0x0020), Some(' '))
-                }
+                (WhiteSpace::Preserve | WhiteSpace::BreakSpaces, 0x000d)
+                | (
+                    WhiteSpace::PreserveSpaces | WhiteSpace::Collapse | WhiteSpace::PreserveBreaks,
+                    0x0009 | 0x000d,
+                ) => (Kind::Space, MappingKind::Replace, Some(0x0020), Some(' ')),
                 _ => (
                     Kind::Space,
                     MappingKind::Copy,
@@ -356,12 +362,9 @@ fn emit(
         plaintext.push(super::PlaintextToken {
             processed: Range::new(start, end),
             domain: token.domain,
-            collapsible: token.mode == WhiteSpace::Collapse
-                && matches!(token.kind, Kind::Space | Kind::Break),
+            collapsible: token.collapse(Kind::Space) || token.collapse(Kind::Break),
             reset: token.plaintext_reset
-                || !token.deleted()
-                    && token.mode == WhiteSpace::Preserve
-                    && token.kind == Kind::Break,
+                || !token.deleted() && token.mode.preserves_breaks() && token.kind == Kind::Break,
             transparent: token.deleted()
                 || matches!(token.kind, Kind::BidiControl | Kind::Marker)
                 || token.kind == Kind::Barrier && token.atomic.is_none(),
@@ -591,7 +594,9 @@ fn trim_exterior(
         {
             continue;
         }
-        if token.mode == WhiteSpace::Collapse && matches!(token.kind, Kind::Space | Kind::Break) {
+        // Genuine trim runs before Phase I. PreserveBreaks' original
+        // delimiters remain collapsible for this explicit exterior trimming.
+        if token.mode.collapses_spaces() && matches!(token.kind, Kind::Space | Kind::Break) {
             token.delete(DeletionCause::Trim);
         } else {
             break;

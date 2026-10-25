@@ -1337,7 +1337,7 @@ fn native_metrics(
     groups.finish(result)
 }
 
-/// Applicable Collapse line-edge suppression. Invisible occurrence/control
+/// Applicable collapsible-space line-edge suppression. Invisible occurrence/control
 /// anchors and out-of-flow boxes are transparent; real in-flow atomics stop it.
 fn collapse_edges(
     selected: &SelectedData,
@@ -1375,12 +1375,10 @@ fn collapse_edges(
                     .style
                     .authored()
                     .white_space;
-                let edge = if cluster.whitespace == Whitespace::Space
-                    && mode == crate::WhiteSpace::Collapse
-                {
+                let edge = if cluster.whitespace == Whitespace::Space && mode.collapses_spaces() {
                     InlineWhitespaceEdge::DiscardAtBoth
                 } else if selected.metric_policy == LineMetricPolicy::Native
-                    && mode == crate::WhiteSpace::Collapse
+                    && mode.collapses_spaces()
                     && selected.presentation.projection.atoms[cluster.atoms.clone()]
                         .iter()
                         .all(|atom| atom.code_point == 0x1680)
@@ -2484,6 +2482,102 @@ mod tests {
                 reason: ProtocolError::IneligibleSpacingSlot { slot: 0 }
             })
         ));
+    }
+
+    #[test]
+    fn new_whitespace_modes_issue_distinct_edge_and_intrinsic_measurements() {
+        qualify_en_quad_fixture();
+        for wrap in [crate::Wrap::Word, crate::Wrap::None] {
+            for (value, mode, raw, contribution) in [
+                (" X ", WhiteSpace::PreserveBreaks, 10.0, 10.0),
+                ("\u{1680}X\u{1680}", WhiteSpace::PreserveBreaks, 20.0, 20.0),
+                ("X\u{2000}", WhiteSpace::PreserveBreaks, 15.0, 10.0),
+                (" X ", WhiteSpace::BreakSpaces, 30.0, 30.0),
+                ("\u{1680}X\u{1680}", WhiteSpace::BreakSpaces, 30.0, 30.0),
+                ("X\u{2000}", WhiteSpace::BreakSpaces, 15.0, 15.0),
+            ] {
+                let selected = selected_with_source(
+                    Source::new(value),
+                    Style {
+                        font: Font::new().family("Ahem"),
+                        size: 10.0,
+                        white_space: mode,
+                        wrap,
+                        ..Style::default()
+                    },
+                    None,
+                    None,
+                );
+                let line = selected.finalize(SpacingAllocations::None).unwrap();
+                assert_eq!(line.feedback().advance, raw, "{value:?}/{mode:?}/{wrap:?}");
+                assert_eq!(line.measurements().fit().advance(), contribution);
+                assert_eq!(line.measurements().alignment().advance(), contribution);
+                assert_eq!(
+                    line.measurements().min_content_contribution().advance(),
+                    contribution
+                );
+                assert_eq!(
+                    line.measurements().max_content_contribution().advance(),
+                    contribution
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn ordinary_break_spaces_separator_stops_a_preceding_hanging_group() {
+        qualify_en_quad_fixture();
+        let mut source = Source::new("X\u{2000}\u{2000}");
+        source.span(
+            crate::Range::new(2, 3),
+            Style {
+                font: Font::new().family("Ahem"),
+                size: 10.0,
+                white_space: WhiteSpace::BreakSpaces,
+                ..Style::default()
+            },
+        );
+        let line = selected_with_source(
+            source,
+            Style {
+                font: Font::new().family("Ahem"),
+                size: 10.0,
+                white_space: WhiteSpace::PreserveBreaks,
+                ..Style::default()
+            },
+            None,
+            None,
+        )
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+        assert_eq!(line.feedback().advance, 20.0);
+        assert_eq!(line.measurements().fit().advance(), 20.0);
+        assert_eq!(
+            line.measurements().min_content_contribution().advance(),
+            20.0
+        );
+        assert_eq!(
+            line.measurements().max_content_contribution().advance(),
+            20.0
+        );
+    }
+
+    fn qualify_en_quad_fixture() {
+        use skrifa::MetadataProvider;
+        let bytes = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
+        let font = skrifa::FontRef::new(bytes).unwrap();
+        assert!(font.charmap().map(0x2000_u32).is_none());
+        assert_eq!(font.charmap().map(0x20_u32).unwrap().to_u32(), 3);
+        assert_eq!(
+            crate::test_fonts::u16_at(crate::test_fonts::table(bytes, *b"head"), 18),
+            1000
+        );
+        assert_eq!(
+            crate::test_fonts::u16_at(crate::test_fonts::table(bytes, *b"hmtx"), 3 * 4),
+            1000
+        );
+        // U+2000 EN QUAD has no nominal glyph here. The real space fallback
+        // uses its Unicode half-em width: 500 design units = 5px at size10.
     }
 
     #[test]

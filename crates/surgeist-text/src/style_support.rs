@@ -25,6 +25,10 @@ pub enum TextStyleFeature {
     WhiteSpaceDiscard,
     /// PreserveSpaces executes in the processed-paragraph phase.
     WhiteSpacePreserveSpaces,
+    /// PreserveBreaks executes in the processed-paragraph phase.
+    WhiteSpacePreserveBreaks,
+    /// BreakSpaces executes in the processed-paragraph phase.
+    WhiteSpaceBreakSpaces,
     WordBreak,
     TextWrap,
     OverflowWrap,
@@ -88,6 +92,8 @@ impl TextStyleFeature {
         Self::WhiteSpaceCollapse,
         Self::WhiteSpaceDiscard,
         Self::WhiteSpacePreserveSpaces,
+        Self::WhiteSpacePreserveBreaks,
+        Self::WhiteSpaceBreakSpaces,
         Self::WordBreak,
         Self::TextWrap,
         Self::OverflowWrap,
@@ -128,6 +134,8 @@ impl TextStyleFeature {
                     | Self::WhiteSpaceCollapse
                     | Self::WhiteSpaceDiscard
                     | Self::WhiteSpacePreserveSpaces
+                    | Self::WhiteSpacePreserveBreaks
+                    | Self::WhiteSpaceBreakSpaces
             )
         {
             return TextStyleSupport::Supported;
@@ -179,11 +187,12 @@ impl TextStyleFeature {
             Self::WhiteSpaceCollapse => TextStyleSupport::Unsupported(
                 UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
             ),
-            Self::WhiteSpaceDiscard | Self::WhiteSpacePreserveSpaces => {
-                TextStyleSupport::Unsupported(
-                    UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
-                )
-            }
+            Self::WhiteSpaceDiscard
+            | Self::WhiteSpacePreserveSpaces
+            | Self::WhiteSpacePreserveBreaks
+            | Self::WhiteSpaceBreakSpaces => TextStyleSupport::Unsupported(
+                UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
+            ),
             Self::FontVariant => {
                 TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresFontPolicy)
             }

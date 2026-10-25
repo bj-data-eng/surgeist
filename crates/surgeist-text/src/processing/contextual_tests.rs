@@ -23,6 +23,12 @@ fn contextual_space_preservation_uses_emitted_token_facts_and_real_trim() {
             vec![Range::new(0, 1), Range::new(2, 3), Range::new(4, 6)],
         ),
         (WhiteSpace::Discard, "AB", vec![]),
+        (WhiteSpace::PreserveBreaks, " A B\n", vec![]),
+        (
+            WhiteSpace::BreakSpaces,
+            " A\tB\n ",
+            vec![Range::new(0, 1), Range::new(5, 6)],
+        ),
     ] {
         let processed = process_contextual_source(input(" A\tB\n ", mode)).unwrap();
         assert_eq!(processed.processed_text(), &Text::from(expected));
@@ -385,7 +391,16 @@ fn block_inner_trim_keeps_indentation_while_inline_inner_trim_removes_it() {
 
 #[test]
 fn exterior_inline_trim_removes_parent_origin_spaces_with_original_affinities() {
-    let mut capture = input("A  B  C", WhiteSpace::Collapse);
+    for (value, mode) in [
+        ("A  B  C", WhiteSpace::Collapse),
+        ("A \nB\n C", WhiteSpace::PreserveBreaks),
+    ] {
+        check_exterior_inline_trim(value, mode);
+    }
+}
+
+fn check_exterior_inline_trim(value: &str, mode: WhiteSpace) {
+    let mut capture = input(value, mode);
     capture.origins = vec![
         origin(&capture.source, Range::new(0, 3)),
         origin(&capture.source, Range::new(3, 4)),
@@ -647,6 +662,8 @@ fn plaintext_uses_lexical_eligibility_and_only_real_line_context_resets() {
         ("\tX", WhiteSpace::PreserveSpaces, " X"),
         (" \n X", WhiteSpace::Collapse, "X"),
         (" \n X", WhiteSpace::Preserve, " \n X"),
+        (" \n \n X", WhiteSpace::PreserveBreaks, "\n\nX"),
+        (" \n \n X", WhiteSpace::BreakSpaces, " \n \n X"),
     ] {
         let result = process_contextual_source(input(source, mode)).unwrap();
         assert_eq!(

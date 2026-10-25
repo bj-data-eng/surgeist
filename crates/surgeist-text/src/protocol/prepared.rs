@@ -785,7 +785,10 @@ fn issue_opportunities(
             // indication-free copy of the SHY's ICU permission. Independent
             // explicit controls and atomic permission were considered above.
             None
-        } else if standalone_opportunity(analyzed, tables, boundary)
+        } else if (boundary.participant < tables.participants.len()
+            && break_spaces_opportunity(analyzed, tables, boundary)
+            && wrapping_allowed(analyzed, boundary)?)
+            || standalone_opportunity(analyzed, tables, boundary)
             || (boundary.participant < tables.participants.len()
                 && analyzed
                     .analysis
@@ -828,6 +831,70 @@ fn issue_opportunities(
         alternatives: Vec::new(),
     });
     Ok(())
+}
+
+/// BreakSpaces adds an offer immediately after an actual separator only at an
+/// existing typography-safe cut. A suppressed interior cut is never relocated
+/// past combining continuations. Unicode glue/joiner protections remain active.
+fn break_spaces_opportunity(
+    analyzed: &AnalyzedData,
+    tables: &PreparedTables,
+    boundary: &BoundaryData,
+) -> bool {
+    use icu_properties::{
+        CodePointMapData,
+        props::{GeneralCategory, LineBreak},
+    };
+    if analyzed.paragraph.base_direction.is_none() {
+        return false;
+    }
+    let Some(ParticipantData::Text(unit)) = boundary
+        .participant
+        .checked_sub(1)
+        .and_then(|index| tables.participants.get(index))
+    else {
+        return false;
+    };
+    if tables.units[*unit].atoms.is_empty() || tables.units[*unit].atoms.end != boundary.atom {
+        return false;
+    }
+    let separator = |cp| {
+        cp == 0x09
+            || cp != 0xa0
+                && CodePointMapData::<GeneralCategory>::new().get32(cp)
+                    == GeneralCategory::SpaceSeparator
+    };
+    let previous = boundary.atom - 1;
+    if !separator(analyzed.projection.atoms[previous].code_point)
+        || analyzed.styles[analyzed.analysis.infos[previous].1]
+            .style
+            .authored()
+            .white_space
+            != crate::WhiteSpace::BreakSpaces
+    {
+        return false;
+    }
+    let classes = CodePointMapData::<LineBreak>::new();
+    let previous = analyzed.projection.atoms[previous].code_point;
+    if matches!(
+        classes.get32(previous),
+        LineBreak::Glue | LineBreak::WordJoiner | LineBreak::ZWJ
+    ) {
+        return false;
+    }
+    !analyzed
+        .projection
+        .atoms
+        .get(boundary.atom)
+        .is_some_and(|atom| {
+            matches!(
+                classes.get32(atom.code_point),
+                LineBreak::WordJoiner | LineBreak::ZWJ // Use the adopted UAX boundary for a following GL. Its revision55
+                                                       // LB12a exceptions include SP/BA/HY/HH, so TAB before NBSP remains
+                                                       // legal; a blanket following-GL veto would erase that permission.
+            ) || classes.get32(atom.code_point) == LineBreak::Glue
+                && analyzed.analysis.infos[boundary.atom].0.boundary < Boundary::Line
+        })
 }
 
 fn automatic_cut(
@@ -1197,8 +1264,7 @@ fn disappearing_space_wrap(analyzed: &AnalyzedData, atom: usize) -> Option<crate
     let style = analyzed.styles[analyzed.analysis.infos[atom].1]
         .style
         .authored();
-    (analyzed.projection.atoms[atom].code_point == 0x20
-        && style.white_space == crate::WhiteSpace::Collapse)
+    (analyzed.projection.atoms[atom].code_point == 0x20 && style.white_space.collapses_spaces())
         .then_some(style.wrap)
 }
 

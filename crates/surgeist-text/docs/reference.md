@@ -100,12 +100,20 @@ original immutable Layout.
 ## Source-local whitespace processing
 
 `process_source_whitespace` consumes an actual `Source`, base `Style` and explicit
-`DocumentSegmentBreaks`, returning immutable `ProcessedSource`. It currently
-executes effective Collapse, Discard, Preserve and PreserveSpaces. A document delimiter is one original occurrence: Preserve replaces
-it by one LF, PreserveSpaces by one space, and Discard deletes it. Outside those
-occurrences, Preserve and PreserveSpaces convert CR to space; PreserveSpaces also
-converts TAB to space, while Preserve retains TAB and ordinary spaces. Discard
-removes SPACE, TAB and CR. LF fallback and `Defined(Vec::new())`
+`DocumentSegmentBreaks`, returning immutable `ProcessedSource`. All six
+`WhiteSpace` values execute before font selection:
+
+| Mode | Actual document delimiter | Other SPACE, TAB and ordinary CR |
+| --- | --- | --- |
+| `Collapse` | Contextually becomes SPACE or disappears; following collapsible duplicate breaks disappear. | TAB/CR become SPACE; adjacent collapsible spaces collapse. |
+| `Discard` | Deleted. | Deleted. |
+| `Preserve` | One LF per delimiter. | SPACE/TAB retained; CR becomes SPACE. |
+| `PreserveSpaces` | One SPACE per delimiter. | SPACE retained; TAB/CR become SPACE without collapse. |
+| `PreserveBreaks` | One LF per surviving delimiter; consecutive LFs remain distinct. | TAB/CR become collapsible SPACE; adjacent collapsible spaces and runs around delimiters collapse. |
+| `BreakSpaces` | One LF per delimiter. | SPACE/TAB retained; CR becomes preserved SPACE. |
+
+A supplied document delimiter is one original occurrence; an ordinary CR outside
+that inventory never invents a forced break. LF fallback and `Defined(Vec::new())`
 remain distinct. Last applicable original span wins; empty spans remain records.
 A delimiter crossing a change of effective mode refuses rather than splitting
 the occurrence; same-mode span-origin changes admit. Intrinsic validation is
@@ -147,15 +155,22 @@ remain bounded by their actual admitted capabilities; see [composed lines](compo
 
 ### Lexical Collapse
 
-Collapse runs before wrapping or bidi placement. Discard deletion is applied
-first. Eligible Collapse SPACE/TAB/CR runs around surviving original document
-breaks are removed, including around preserved breaks. Following duplicate
-Collapse breaks are removed. Remaining Collapse breaks become SPACE or disappear
-under the context rule below, TAB/CR become SPACE, and following duplicate
-Collapse spaces are deleted. The first surviving representative retains its
-original range/style; retained bidi controls keep their exact units and order.
-Preserve/PreserveSpaces output spaces are not eligible duplicates. Leading and
-trailing representatives remain: this phase does not perform line trimming.
+SPACE collapsing applies to `Collapse` and `PreserveBreaks`; document-break
+collapsing and contextual break transformation apply only to `Collapse`.
+Discard deletion runs first. Eligible collapsible SPACE/TAB/CR runs around
+surviving original document breaks are removed, including around preserved
+breaks. Following duplicate Collapse breaks disappear; remaining Collapse breaks
+become SPACE or disappear under the context rule below. PreserveBreaks retains
+each surviving delimiter as LF, including consecutive delimiters; these yield
+distinct Forced opportunities even under `Wrap::None`.
+
+TAB/ordinary CR become SPACE, and following duplicate collapsible spaces are
+deleted across eligible Collapse/PreserveBreaks spans. Each disappearing original
+space retains its own source participant and actual containing style's Wrap
+permission. The first surviving representative retains its original range/style;
+bidi controls retain exact units and order. Preserve, PreserveSpaces and
+BreakSpaces output spaces are not eligible duplicates. Leading and trailing
+representatives remain: this phase does not perform selected-line trimming.
 
 The selected Surgeist UA rule removes a break next to U+200B; otherwise it removes
 one between two scalars whose actual Unicode East_Asian_Width is F/W/H and whose
@@ -177,7 +192,7 @@ forward/inverse affinity and borrowed original span/box laws still apply. These
 are actual lexical outcomes, not computed soft opportunities or preparation IDs.
 Source-local input does not provide ordinary host box edges, NCA wrap permissions,
 trim/block facts or selected lines. Those producers remain necessary for the
-full document/line pipeline. All four current whitespace modes execute in this
+full document/line pipeline. All six whitespace modes execute in this
 source-processing phase; actual cross-delimiter mode errors remain precise.
 
 ### Contextual source processing
@@ -191,8 +206,10 @@ open while a block inside an inline ends and resumes a paragraph.
 
 Full effective paragraph styles, delimiter policy, direction, strut and
 `WhiteSpaceTrim` facts are captured before trimming and the shared Phase I pass.
-`IncompleteExterior` refuses when required surrounding context is absent. These
-are normalized producer facts, without authentication of a live DOM or Style tree.
+`IncompleteExterior` refuses when required surrounding context is absent. Genuine
+exterior trimming can remove original PreserveBreaks delimiters before Phase I;
+surviving LF then retains its separate forced-break role. These are normalized
+producer facts, without authentication of a live DOM or Style tree.
 
 Retain the result in `Arc<ProcessedSource>` and obtain views from `paragraphs()`.
 `AnalyzedSource::from_processed_paragraph` consumes an issued view with its fixed
@@ -215,6 +232,29 @@ space removal; soft wrapping does not create a source break. In-flow atomic
 occurrences end leading-space eligibility, while out-of-flow occurrences remain
 transparent. This remains a partial plaintext projection, not serialization of
 a document or generated alternative content.
+
+### Native mode opportunities and line edges
+
+Captured/analyzed/prepared paragraph paths execute all six modes. PreserveBreaks
+uses Collapse-equivalent Phase II removal of leading/trailing U+0020 and trailing
+U+1680, retains leading U+1680, and hangs remaining eligible separator sequences
+unconditionally, including under nowrap. NBSP remains ordinary content.
+
+BreakSpaces offers after each eligible preserved SPACE/TAB or other separator at
+its actual character-end cut, under genuine neighboring/NCA Wrap permission and
+typographic-unit/glue constraints. It creates neither a before-first-space cut
+nor an offer relocated past a combining continuation. U+2007/U+202F retain their
+own GL protection; SPACE/TAB before GL use the adopted Unicode 17/revision 55
+boundary, rather than a blanket next-GL veto. WJ/ZWJ protection and genuine
+higher-priority ZW opportunities remain. See the [glue source reconciliation](../../../references/css-text-break-spaces-glue--source-reconciliation-20261024.md).
+
+BreakSpaces keeps preserved spaces/tabs/separators in ordinary flow: no line-edge
+removal, hanging or intrinsic omission at Soft, Forced or BlockEnd, including
+nowrap. An ordinary BreakSpaces row stops preceding hanging groups even at zero
+advance. Text's real opportunities and measurements feed Layout selection;
+[the whitespace contract](../../../docs/text-layout-contract.md#native-whitespace-edges-and-hanging)
+defines fit, alignment and intrinsic contribution custody. Inline border/padding
+edge capabilities remain separate from these modes.
 
 ## Font catalogue publications
 
@@ -626,7 +666,7 @@ style resolver.
 | Supported | Family lists; named/numeric weights; basic/expanded stretch; normal/italic/oblique slant; feature and variation settings; font size; line height; letter/word spacing; concrete text color; locale. |
 | Supported | Preserved whitespace; word-break, wrapping, and overflow-wrap controls; paragraph alignment; supported indent shapes; inline-box alignment facts; underline/strikethrough; decoration offset, thickness, and concrete color; concrete selection color. |
 | Unsupported: paragraph direction control | Explicit text direction. Automatic direction still resolves to left-to-right or right-to-left in `Layout::direction()`. |
-| Phase-specific | Collapse, Discard and PreserveSpaces execute through explicit processed-paragraph capture; raw standalone layout requires Preserve. |
+| Phase-specific | Collapse, Discard, PreserveSpaces, PreserveBreaks and BreakSpaces execute through explicit processed-paragraph capture; raw standalone layout requires Preserve. |
 | Unsupported: font or text-flow policy | Non-normal font variants, text overflow behavior beyond the accepted default, last-line alignment behavior beyond the accepted default. |
 | Unsupported: decoration policy | Overline and decoration styles beyond the exposed solid decoration contract. |
 | Unsupported: color resolution | Symbolic text and decoration colors. |
@@ -642,6 +682,12 @@ in both phases. `NativeWbr` reports processed-paragraph support; standalone layo
 requires processed-source layout. `NativeAutomaticPhrases` reports contextual
 Japanese phrase execution in ProcessedParagraph, with the capture and detection
 limits above; standalone layout requires processed-source layout.
+
+`TextStyleFeature::{WhiteSpacePreserveBreaks, WhiteSpaceBreakSpaces}` report
+Supported for `ProcessedParagraph`. Raw standalone formatting refuses each with
+`ErrorDetail::UnsupportedTextStyle`, its matching feature and
+`UnsupportedTextStyleReason::RequiresProcessedSourceLayout`; it does not silently
+switch to a processed profile.
 
 `FontVariant::Normal`, `TextOverflow::Clip`, `TextAlignLast::Auto`, and
 `TextTransform::none()` are the exposed default values. Their acceptance does not

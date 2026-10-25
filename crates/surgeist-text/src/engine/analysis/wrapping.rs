@@ -157,7 +157,7 @@ impl LogicalParagraph {
                 (Some(Influence::Text { atom, .. }), Some(Influence::Atomic { .. })) => {
                     let style = styles[analysis.infos[atom].1].style.authored();
                     projection.atoms[atom].code_point == 0x20
-                        && style.white_space == crate::WhiteSpace::Collapse
+                        && style.white_space.collapses_spaces()
                         && style.wrap == Wrap::Word
                 }
                 _ => false,

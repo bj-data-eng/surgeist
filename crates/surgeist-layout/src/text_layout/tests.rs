@@ -47,6 +47,8 @@ mod tab_stops;
 mod wbr;
 #[path = "tests/whitespace_edges.rs"]
 mod whitespace_edges;
+#[path = "tests/whitespace_modes.rs"]
+mod whitespace_modes;
 #[path = "tests/zone_composition.rs"]
 mod zone_composition;
 

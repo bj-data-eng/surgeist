@@ -52,6 +52,98 @@ fn system() -> System {
     system
 }
 
+fn whitespace_preparation(value: &str, mode: WhiteSpace, wrap: crate::Wrap) -> PreparedText {
+    let mut input = paragraph(Source::new(value));
+    input.base_style.white_space = mode;
+    input.base_style.wrap = wrap;
+    let analyzed =
+        crate::test_wrapping::bind_missing(&AnalyzedSource::from_paragraph(input).unwrap(), wrap);
+    system()
+        .prepare(&analyzed, PreparationOptions::default())
+        .unwrap()
+}
+
+#[test]
+fn preserve_breaks_issues_each_forced_delimiter_even_without_soft_wrapping() {
+    for wrap in [crate::Wrap::Word, crate::Wrap::None] {
+        let prepared = whitespace_preparation("A \t\n\n \tB", WhiteSpace::PreserveBreaks, wrap);
+        assert_eq!(
+            prepared
+                .analyzed_source()
+                .processed_source()
+                .processed_text()
+                .code_units(),
+            [65, 10, 10, 66]
+        );
+        assert_eq!(
+            prepared
+                .opportunity_views()
+                .filter(|offer| offer.kind() == PreparedBreakKind::Forced)
+                .map(|offer| offer.boundary().view().source_before().get())
+                .collect::<Vec<_>>(),
+            [4, 5]
+        );
+    }
+}
+
+#[test]
+fn break_spaces_issues_after_each_separator_without_splitting_its_grapheme() {
+    for (value, expected) in [
+        ("A  \t\u{2000}B", vec![2, 3, 4, 5]),
+        ("A \u{301}B", vec![]),
+        ("A\u{a0}B", vec![]),
+    ] {
+        let prepared = whitespace_preparation(value, WhiteSpace::BreakSpaces, crate::Wrap::Word);
+        assert_eq!(
+            prepared
+                .opportunity_views()
+                .filter(|offer| offer.kind() == PreparedBreakKind::Allowed)
+                .map(|offer| offer.boundary().view().source_before().get())
+                .collect::<Vec<_>>(),
+            expected,
+            "{value:?}"
+        );
+    }
+    let nowrap = whitespace_preparation("A  \t B", WhiteSpace::BreakSpaces, crate::Wrap::None);
+    assert!(
+        !nowrap
+            .opportunity_views()
+            .any(|offer| offer.kind() == PreparedBreakKind::Allowed)
+    );
+}
+
+#[test]
+fn break_spaces_keeps_adopted_glue_joiner_and_typographic_unit_precedence() {
+    for (value, expected) in [
+        ("A\u{2007}B", vec![]),
+        ("A\u{202f}B", vec![]),
+        (" \u{a0}", vec![1]),
+        ("\t\u{a0}", vec![1]),
+        ("\u{2007}\u{a0}", vec![]),
+        ("\u{2007}\u{2060}B", vec![]),
+        (" \u{2060}B", vec![]),
+        (" \u{200d}\u{301}", vec![]),
+        (" \u{200d}\u{301}B", vec![]),
+        ("A B", vec![2]),
+        ("A  B", vec![2, 3]),
+        ("\t\tB", vec![1, 2]),
+        ("\u{2007}\u{202f}B", vec![]),
+        (" \u{2007}B", vec![1]),
+        ("A\u{2007}\u{200b}\u{202f}B", vec![3]),
+    ] {
+        let prepared = whitespace_preparation(value, WhiteSpace::BreakSpaces, crate::Wrap::Word);
+        assert_eq!(
+            prepared
+                .opportunity_views()
+                .filter(|offer| offer.kind() == PreparedBreakKind::Allowed)
+                .map(|offer| offer.boundary().view().source_before().get())
+                .collect::<Vec<_>>(),
+            expected,
+            "{value:?}"
+        );
+    }
+}
+
 fn native_atomic_preparation(
     text: &str,
     count: usize,

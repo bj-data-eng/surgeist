@@ -317,6 +317,23 @@ pub enum WhiteSpace {
     /// Preserve spaces while normalizing tabs and document delimiters to spaces.
     /// The explicit processed-paragraph front consumes this mode.
     PreserveSpaces,
+    /// Collapse spaces and tabs while retaining each document delimiter as LF.
+    PreserveBreaks,
+    /// Preserve whitespace and permit wrapping after each retained separator.
+    BreakSpaces,
+}
+
+impl WhiteSpace {
+    pub(crate) const fn collapses_spaces(self) -> bool {
+        matches!(self, Self::Collapse | Self::PreserveBreaks)
+    }
+
+    pub(crate) const fn preserves_breaks(self) -> bool {
+        matches!(
+            self,
+            Self::Preserve | Self::PreserveBreaks | Self::BreakSpaces
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -742,6 +759,12 @@ fn validate_style(style: &Style, phase: StyleInputPhase) -> Result<ParsedStyle> 
                 WhiteSpace::PreserveSpaces => {
                     "standalone preserve-spaces requires explicit processed-paragraph capture"
                 }
+                WhiteSpace::PreserveBreaks => {
+                    "standalone preserve-breaks requires explicit processed-paragraph capture"
+                }
+                WhiteSpace::BreakSpaces => {
+                    "standalone break-spaces requires explicit processed-paragraph capture"
+                }
                 WhiteSpace::Preserve => unreachable!("unsupported branch excludes Preserve"),
             },
         )
@@ -749,6 +772,8 @@ fn validate_style(style: &Style, phase: StyleInputPhase) -> Result<ParsedStyle> 
             feature: match style.white_space {
                 WhiteSpace::Discard => TextStyleFeature::WhiteSpaceDiscard,
                 WhiteSpace::PreserveSpaces => TextStyleFeature::WhiteSpacePreserveSpaces,
+                WhiteSpace::PreserveBreaks => TextStyleFeature::WhiteSpacePreserveBreaks,
+                WhiteSpace::BreakSpaces => TextStyleFeature::WhiteSpaceBreakSpaces,
                 WhiteSpace::Collapse => TextStyleFeature::WhiteSpaceCollapse,
                 WhiteSpace::Preserve => unreachable!("unsupported branch excludes Preserve"),
             },

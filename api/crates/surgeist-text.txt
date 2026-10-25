@@ -892,9 +892,11 @@ pub surgeist_text::TextStyleFeature::TextWrap
 pub surgeist_text::TextStyleFeature::Underline
 pub surgeist_text::TextStyleFeature::Uppercase
 pub surgeist_text::TextStyleFeature::VerticalAlign
+pub surgeist_text::TextStyleFeature::WhiteSpaceBreakSpaces
 pub surgeist_text::TextStyleFeature::WhiteSpaceCollapse
 pub surgeist_text::TextStyleFeature::WhiteSpaceDiscard
 pub surgeist_text::TextStyleFeature::WhiteSpacePreserve
+pub surgeist_text::TextStyleFeature::WhiteSpacePreserveBreaks
 pub surgeist_text::TextStyleFeature::WhiteSpacePreserveSpaces
 pub surgeist_text::TextStyleFeature::WordBreak
 pub surgeist_text::TextStyleFeature::WordSpacing
@@ -980,9 +982,11 @@ pub surgeist_text::Weight::Thin
 impl core::convert::From<surgeist_text::Weight> for parlance::font::FontWeight
 pub fn parlance::font::FontWeight::from(weight: surgeist_text::Weight) -> Self
 pub enum surgeist_text::WhiteSpace
+pub surgeist_text::WhiteSpace::BreakSpaces
 pub surgeist_text::WhiteSpace::Collapse
 pub surgeist_text::WhiteSpace::Discard
 pub surgeist_text::WhiteSpace::Preserve
+pub surgeist_text::WhiteSpace::PreserveBreaks
 pub surgeist_text::WhiteSpace::PreserveSpaces
 pub enum surgeist_text::Width
 pub surgeist_text::Width::Condensed

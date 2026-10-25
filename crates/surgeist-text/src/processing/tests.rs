@@ -12,6 +12,12 @@ fn actual_space_preservation_survives_coalescence_without_source_local_plaintext
             vec![Range::new(1, 3), Range::new(4, 5), Range::new(6, 7)],
         ),
         (WhiteSpace::Discard, "ABCD", vec![]),
+        (WhiteSpace::PreserveBreaks, "A B C\nD", vec![]),
+        (
+            WhiteSpace::BreakSpaces,
+            "A  B\tC\nD",
+            vec![Range::new(1, 3)],
+        ),
     ] {
         let source = Source::new("A  B\tC\nD");
         let result = process_source_whitespace(

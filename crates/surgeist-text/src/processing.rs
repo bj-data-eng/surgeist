@@ -130,7 +130,7 @@ pub struct ProcessedSource {
     preserved_spaces: Vec<Range>,
 }
 
-/// Executes source-local Collapse, Discard, Preserve or PreserveSpaces.
+/// Executes the selected source-local whitespace mode.
 ///
 /// Intrinsic source and document-delimiter validation precedes execution.
 /// Collapse uses actual Unicode context and preserves lexical deletion causes;

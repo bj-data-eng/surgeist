@@ -543,6 +543,52 @@ admission. Preserve authentic provider groups, semantic graphemes, source-only
 pieces, affinities, exact original UTF-16, copy and plaintext. A computed visible
 hyphen is classified by its actual emitted atom, not its authored SHY source.
 
+### Native whitespace processing modes
+
+Text's `WhiteSpace` values are Collapse, Discard, Preserve, PreserveSpaces,
+PreserveBreaks and BreakSpaces. Genuine captured trimming runs before Phase I;
+source-local processing retains its narrower explicit source/delimiter inputs.
+The [Text reference](../crates/surgeist-text/docs/reference.md#source-local-whitespace-processing)
+records each mode's lexical operation and original-source correspondence.
+
+PreserveBreaks converts TAB and ordinary CR to collapsible U+0020, collapses
+adjacent eligible spaces across genuine Collapse/PreserveBreaks spans, and removes
+collapsible SPACE/TAB around actual delimiters within their real domain. Each
+surviving delimiter becomes one LF; duplicate-break collapsing and contextual
+break transformation do not apply to these LFs. Consecutive delimiters therefore
+produce distinct Forced opportunities, including under `Wrap::None`. Explicit
+exterior trimming may remove original delimiters before this preservation step.
+Each disappearing original SPACE retains its actual containing style's Wrap gate.
+
+BreakSpaces preserves SPACE/TAB and actual delimiter LFs; ordinary CR becomes
+preserved SPACE. Preparation issues an opportunity immediately after each eligible
+preserved SPACE/TAB or other space separator at that character's actual end, only
+at a typography-safe cut with genuine neighboring/NCA wrapping permission.
+Forced, explicit and atomic owners retain precedence. The mode supplies no
+before-first-space opportunity and cannot relocate a suppressed interior SPACE
+cut to the far end of a combining typographic unit. Its preserved TAB uses the
+same genuine font-advance/CSS-stop demands as Preserve.
+
+Follow the [glue source reconciliation](../references/css-text-break-spaces-glue--source-reconciliation-20261024.md)
+and the retained [Unicode 17/revision 55](../references/uax14--17.0.0--rev55-metadata.md)
+boundary rules: U+2007/U+202F retain their own GL protection, and WJ/ZWJ and
+indivisible typographic units remain protected. A following GL is not a blanket
+veto: the adopted SPACE/TAB-before-GL exceptions remain legal when their actual
+boundary permits. Preserve genuine higher-priority ZW opportunities. This
+contract does not adopt Unicode 18/revision 57's changed BA exception.
+
+These modes execute through native captured, analyzed and prepared paragraph
+paths. Raw standalone formatting retains its Preserve-only profile: new modes
+refuse with `ErrorDetail::UnsupportedTextStyle`, the matching
+`TextStyleFeature::{WhiteSpacePreserveBreaks, WhiteSpaceBreakSpaces}` and
+`UnsupportedTextStyleReason::RequiresProcessedSourceLayout`. Original UTF-16,
+deleted-source affinity and partial plaintext retain their existing custody.
+Copied plaintext preserves actual LF/SPACE/TAB outcomes without serializing Soft
+wraps, transformations or tab placement. PreserveSpaces retains #74's separate
+TAB/delimiter-to-SPACE conversion and Preserve-equivalent hanging; its converted
+LF is not Forced. Collapse, Discard and Preserve retain their own rules. Inline
+border/padding edge capabilities remain a separate contribution.
+
 ### Native whitespace edges and hanging
 
 Text owns selected-line Phase II classification under #64/#72; Layout consumes
@@ -554,8 +600,11 @@ It selects the required operation, without claiming unqualified feature support.
 
 Classify actual processed code points, governing styles and canonical line order.
 Other space separators are Unicode Zs excluding U+0020 and U+00A0. NBSP cannot
-inherit their removal or hanging rules. Collapse removes its applicable leading
-and trailing U+0020 and trailing U+1680, retaining source custody. Surviving
+inherit their removal or hanging rules. Collapse and PreserveBreaks remove their
+applicable leading/trailing U+0020 and trailing U+1680, retaining leading U+1680
+and exact source custody. Their remaining eligible separator sequences hang
+unconditionally, including under nowrap; PreserveBreaks still retains actual
+LF/Forced chronology. Surviving
 Discard characters retain ordinary advance, including original U+3000 and
 separator-generated U+0020/U+3000. Discard supplies no conditional or
 unconditional whitespace-rule hanging at soft, forced or block ends, including
@@ -567,9 +616,14 @@ with wrapping enabled, eligible trailing sequences hang unconditionally at a rea
 Soft ending and conditionally before an actual forced break or block end.
 PreserveSpaces applies that same Phase II rule after its own Phase I conversion;
 a converted LF does not supply a forced break. No preservation-rule hanging
-applies under nowrap. BreakSpaces requires its real processing and after-each-space
-opportunities, and never hangs its preserved spaces/tabs/separators; it cannot be
-implemented as a finalizer flag. Missing modes retain their positive requirements.
+applies under nowrap. BreakSpaces retains every preserved SPACE/TAB/separator
+contribution without line-edge removal, hanging or intrinsic omission at Soft,
+Forced or BlockEnd, under either wrap policy. These rows retain ordinary flow
+and stop preceding hanging groups, even at zero advance. Fit, alignment,
+MinContent and MaxContent consume the same retained contribution. MinContent may
+choose genuine after-each opportunities; MaxContent still honors actual Forced
+lines. This mode therefore depends on its prepared opportunity inventory as well
+as finalization, rather than a finalizer flag.
 
 An issued paragraph ending proves preparation completion, not CSS block end.
 Native input retains a distinct `ParagraphTerminalEdge` capture: `Unknown`,
