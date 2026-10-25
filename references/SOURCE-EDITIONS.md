@@ -1331,6 +1331,9 @@ selects actual attributed advance, union measurement with inline-start placement
 priority for one TCU eligible at both edges, and effective Appendix-E eligibility
 before literal exceptions. It distinguishes CSS requirements from these bounded
 native choices and records the qualified Unicode and prospective kern examples.
+Its [current-line BP determination](text-hanging-punctuation--native-determination.md#current-line-border-and-padding-incidence)
+separates actual intervening line-fragment decoration from off-selected joining
+context; captured enclosure alone does not establish a hanging barrier.
 It does not establish feature availability or browser equivalence.
 
 ## Preserved CSS tab stops

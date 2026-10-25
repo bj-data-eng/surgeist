@@ -55,6 +55,39 @@ placement priority is explicit native policy; CSS does not resolve this
 degenerate placement tie. Normal eligibility, formatted-line conditions and
 inline border/padding barriers still apply independently at each edge.
 
+## Current-line border and padding incidence
+
+Under the pinned [hanging rule](css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#hanging),
+nonzero inline-axis border or padding **between the glyph and the edge of the
+line** prevents hanging. Captured enclosure or shaping-context reachability alone does
+not establish that spatial relationship. The pinned
+[fragment-decoration rules](css-break-3--CR-css-break-3-20181204--4d47d4b2dd36.md#break-decoration)
+distinguish `slice`, which inserts no border/padding at a broken edge, from
+`clone`, which decorates each fragment. A remote endpoint cannot establish
+decoration on the current line merely because it belongs to an ancestor inline.
+
+The native selected-contribution profile uses authentic, canonically ordered
+line-local endpoint contributions for this barrier. Require actual current-
+fragment incidence, intervention between the complete selected TCU and that
+physical edge, and genuine used border/padding. Positive selected BP blocks that
+edge and contributes once; zero is transparent. Margin, container padding and
+indentation do not supply this veto.
+
+An off-selected `boundary_context` allocation has joining authority and supplies
+no selected flow, placement or fragment. It therefore cannot independently veto
+hanging, even when its value is positive or captured ancestry is available.
+Preserve its shaping effect, geometry validation and demand ordering. Do not
+infer scope pairing from flat `ParagraphControl` order: pairing remains owned by
+contextual capture. A following incoming Start can affect joining without
+preventing a selected closing mark from hanging under a valid Last role.
+
+This selected-profile boundary is explicit native policy, not a claim that CSS
+forbids all exterior fragment decoration. A requested decoration outside this
+model, such as a cloned continuation edge, requires actual capture/Layout-owned
+current-line decoration incidence and used geometry. Until that capability is
+provided, refuse the consumed operation precisely; do not infer an envelope,
+manufacture zero geometry or import a remote joining endpoint as decoration.
+
 ## Effective-unit eligibility
 
 Apply Appendix E before category and literal-code-point punctuation eligibility.
