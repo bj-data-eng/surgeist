@@ -26,7 +26,7 @@ jobs:
           if ! status=$(gh api "repos/$REPO/compare/$BEFORE...$AFTER" --jq .status 2> compare-error.txt); then
             cat compare-error.txt
             if grep -q 'HTTP 404' compare-error.txt; then
-              echo "::error title=History rewritten::$BEFORE no longer exists, so the branch was rewritten. A pushed branch is not rebased, amended or force-pushed; merge origin/main into it instead."
+              echo "::error title=Comparison unavailable::Could not compare $BEFORE with $AFTER (HTTP 404), so ancestry could not be verified. Check commit availability and repository access, then re-run this job."
             else
               echo "::error title=History check failed::Could not compare $BEFORE with $AFTER; re-run this job."
             fi
