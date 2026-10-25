@@ -61,8 +61,9 @@ fallback while retaining Normal's other rules and declared overflow policy.
 Orthographic, explicit and required opportunities and actual hyphenation remain
 independent; source words and editing metadata are unchanged.
 
-The current non-complex provider lacks Thai/Lao lexical models. Normal and
-KeepAll supply ordinary fallback cuts between qualified whole letter units,
+The current non-complex provider lacks Thai/Lao lexical models and uses AL/CM
+ordinary SA context. Normal and KeepAll separately supply fallback cuts between
+qualified whole letter units,
 without declaring detected word boundaries or changing locale metadata. See
 the [missing-capability contract](../../../docs/text-layout-contract.md#missing-lexical-capability)
 for wrapping, intrinsic sizing and the bounded writing-system support.

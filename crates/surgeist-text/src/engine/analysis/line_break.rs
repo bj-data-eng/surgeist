@@ -25,7 +25,6 @@ pub(super) struct Policy {
     strictness: LineBreak,
     word: OrdinaryWordBreak,
     cjk: bool,
-    sa_as_al: bool,
 }
 
 impl Policy {
@@ -33,7 +32,6 @@ impl Policy {
         strictness: LineBreak::Strict,
         word: OrdinaryWordBreak::Normal,
         cjk: false,
-        sa_as_al: false,
     };
 
     fn normal_word(self) -> Self {
@@ -88,10 +86,6 @@ pub(super) fn policies(styles: &[AnalyzedStyleRun]) -> crate::Result<Vec<Policy>
                 strictness,
                 word: breaking.word,
                 cjk: cjk && strictness != LineBreak::Strict,
-                // Resolve before normal_word(): BreakAll also disables lexical
-                // analysis, but its independent ID policy is not Manual.
-                sa_as_al: !breaking.lexical_line_breaking
-                    && breaking.word == OrdinaryWordBreak::Normal,
             })
         })
         .collect()
@@ -105,7 +99,7 @@ pub(super) struct MissingLexicalModels(());
 /// maps back to the unchanged component's original UTF-8 byte boundary.
 enum ProviderInput<'a> {
     Original(&'a str),
-    Manual {
+    ResolvedSa {
         text: String,
         boundaries: Vec<(usize, usize)>,
         original_len: usize,
@@ -113,15 +107,21 @@ enum ProviderInput<'a> {
 }
 
 impl<'a> ProviderInput<'a> {
-    fn manual(original: &'a str) -> Self {
+    fn without_lexical_models(original: &'a str) -> Self {
         let classes = CodePointMapData::<Class>::new();
+        if !original
+            .chars()
+            .any(|ch| classes.get(ch) == Class::ComplexContext)
+        {
+            return Self::Original(original);
+        }
         let mut text = String::with_capacity(original.len());
         let mut boundaries = Vec::new();
         for (byte, ch) in original.char_indices() {
             boundaries.push((text.len(), byte));
             let class = classes.get(ch);
             text.push(if class == Class::ComplexContext {
-                match resolved_class(ch as u32, class, true) {
+                match resolved_class(ch as u32, class) {
                     Class::CombiningMark => '\u{300}',
                     _ => 'a',
                 }
@@ -130,7 +130,7 @@ impl<'a> ProviderInput<'a> {
             });
         }
         boundaries.push((text.len(), original.len()));
-        Self::Manual {
+        Self::ResolvedSa {
             text,
             boundaries,
             original_len: original.len(),
@@ -140,14 +140,15 @@ impl<'a> ProviderInput<'a> {
     fn text(&self) -> &str {
         match self {
             Self::Original(text) => text,
-            Self::Manual { text, .. } => text,
+            Self::ResolvedSa { text, .. } => text,
         }
     }
 }
 
-fn resolved_class(code_point: u32, class: Class, sa_as_al: bool) -> Class {
-    if sa_as_al && class == Class::ComplexContext {
-        // Manual retains LB1's SA mark treatment before LB9 inheritance.
+fn resolved_class(code_point: u32, class: Class) -> Class {
+    if class == Class::ComplexContext {
+        // Without lexical models, ordinary SA uses LB1's AL/CM context;
+        // qualified lexical fallback is proposed separately from these cuts.
         if matches!(
             CodePointMapData::<GeneralCategory>::new().get32(code_point),
             GeneralCategory::NonspacingMark | GeneralCategory::SpacingMark
@@ -179,14 +180,14 @@ fn provider(input: &ProviderInput<'_>, policy: Policy) -> (Vec<bool>, MissingLex
     options.content_locale = policy.cjk.then_some(&cjk);
     let original_len = match input {
         ProviderInput::Original(text) => text.len(),
-        ProviderInput::Manual { original_len, .. } => *original_len,
+        ProviderInput::ResolvedSa { original_len, .. } => *original_len,
     };
     let mut cuts = vec![false; original_len + 1];
     let mut cursor = 0;
     for byte in LineSegmenter::new_for_non_complex_scripts(options).segment_str(input.text()) {
         let original = match input {
             ProviderInput::Original(_) => byte,
-            ProviderInput::Manual { boundaries, .. } => {
+            ProviderInput::ResolvedSa { boundaries, .. } => {
                 while boundaries[cursor].0 < byte {
                     cursor += 1;
                 }
@@ -216,167 +217,152 @@ pub(super) fn apply(
             needed.push(policy);
         }
     }
-    // At most 3 strictnesses * 4 effective word policies * 2 CJK classifications.
+    // At most 3 strictnesses * 3 word modes * 2 CJK classifications.
     let start = offsets[component.start];
     let text = &projection.segmentation[start..offsets[component.end]];
-    let mut missing_lexical = None;
-    for sa_as_al in [false, true] {
-        if !needed.iter().any(|policy| policy.sa_as_al == sa_as_al) {
-            continue;
-        }
-        let input = if sa_as_al {
-            ProviderInput::manual(text)
+    // This input resolution belongs to the selected non-complex constructor,
+    // not to a style mode or the presence/absence of returned cut positions.
+    let input = ProviderInput::without_lexical_models(text);
+    let (baseline, missing_lexical) = provider(&input, Policy::BASELINE);
+    let classes = CodePointMapData::<Class>::new();
+    let mut effective = Vec::with_capacity(component.len());
+    let mut owners = Vec::with_capacity(component.len());
+    let mut opening = Vec::with_capacity(component.len());
+    let mut zero_width_space = Vec::with_capacity(component.len());
+    let mut blocks_opening = false;
+    let mut follows_zero_width_space = false;
+    for atom in component.clone() {
+        let code_point = projection.atoms[atom].code_point;
+        let class = resolved_class(code_point, classes.get32(code_point));
+        let inherited = matches!(class, Class::CombiningMark | Class::ZWJ)
+            .then(|| {
+                effective.last().copied().filter(|previous| {
+                    !matches!(
+                        *previous,
+                        Class::MandatoryBreak
+                            | Class::CarriageReturn
+                            | Class::LineFeed
+                            | Class::NextLine
+                            | Class::Space
+                            | Class::ZWSpace
+                    )
+                })
+            })
+            .flatten();
+        let local = atom - component.start;
+        let owner = if inherited.is_some() {
+            owners[local - 1]
         } else {
-            ProviderInput::Original(text)
+            local
         };
-        let baseline_policy = Policy {
-            sa_as_al,
-            ..Policy::BASELINE
-        };
-        let (baseline, missing_models) = provider(&input, baseline_policy);
-        missing_lexical = Some(missing_models);
-        let classes = CodePointMapData::<Class>::new();
-        let mut effective = Vec::with_capacity(component.len());
-        let mut owners = Vec::with_capacity(component.len());
-        let mut opening = Vec::with_capacity(component.len());
-        let mut zero_width_space = Vec::with_capacity(component.len());
-        let mut blocks_opening = false;
-        let mut follows_zero_width_space = false;
-        for atom in component.clone() {
-            let code_point = projection.atoms[atom].code_point;
-            let class = resolved_class(code_point, classes.get32(code_point), sa_as_al);
-            let inherited = matches!(class, Class::CombiningMark | Class::ZWJ)
-                .then(|| {
-                    effective.last().copied().filter(|previous| {
-                        !matches!(
-                            *previous,
+        let class = inherited.unwrap_or({
+            if matches!(class, Class::CombiningMark | Class::ZWJ) {
+                Class::Alphabetic
+            } else {
+                class
+            }
+        });
+        owners.push(owner);
+        effective.push(class);
+        if class != Class::Space {
+            follows_zero_width_space = class == Class::ZWSpace;
+            let cp = projection.atoms[component.start + owner].code_point;
+            let prior = owner.checked_sub(1).map(|i| effective[i]);
+            blocks_opening = class == Class::OpenPunctuation
+                || class == Class::Quotation
+                    && CodePointMapData::<GeneralCategory>::new().get32(cp)
+                        == GeneralCategory::InitialPunctuation
+                    && prior.is_none_or(|value| {
+                        matches!(
+                            value,
                             Class::MandatoryBreak
                                 | Class::CarriageReturn
                                 | Class::LineFeed
                                 | Class::NextLine
+                                | Class::OpenPunctuation
+                                | Class::Quotation
+                                | Class::Glue
                                 | Class::Space
                                 | Class::ZWSpace
                         )
-                    })
-                })
-                .flatten();
-            let local = atom - component.start;
-            let owner = if inherited.is_some() {
-                owners[local - 1]
-            } else {
-                local
-            };
-            let class = inherited.unwrap_or({
-                if matches!(class, Class::CombiningMark | Class::ZWJ) {
-                    Class::Alphabetic
-                } else {
-                    class
-                }
-            });
-            owners.push(owner);
-            effective.push(class);
-            if class != Class::Space {
-                follows_zero_width_space = class == Class::ZWSpace;
-                let cp = projection.atoms[component.start + owner].code_point;
-                let prior = owner.checked_sub(1).map(|i| effective[i]);
-                blocks_opening = class == Class::OpenPunctuation
-                    || class == Class::Quotation
-                        && CodePointMapData::<GeneralCategory>::new().get32(cp)
-                            == GeneralCategory::InitialPunctuation
-                        && prior.is_none_or(|value| {
-                            matches!(
-                                value,
-                                Class::MandatoryBreak
-                                    | Class::CarriageReturn
-                                    | Class::LineFeed
-                                    | Class::NextLine
-                                    | Class::OpenPunctuation
-                                    | Class::Quotation
-                                    | Class::Glue
-                                    | Class::Space
-                                    | Class::ZWSpace
-                            )
-                        });
-            }
-            opening.push(blocks_opening);
-            zero_width_space.push(follows_zero_width_space);
+                    });
         }
-        // Provider local0/eot are sentinels, never text/text permission. Actual
-        // terminal ZW/SP causes retain their independently qualified permissions.
-        if policies[style_at(projection, styles, component.end - 1)].sa_as_al == sa_as_al
-            && independent_ending(projection, styles, &component, &effective, &opening)
+        opening.push(blocks_opening);
+        zero_width_space.push(follows_zero_width_space);
+    }
+    // Provider local0/eot are sentinels, never text/text permission. Actual
+    // terminal ZW/SP causes retain their independently qualified permissions.
+    if independent_ending(projection, styles, &component, &effective, &opening) {
+        boundaries[component.end] = Boundary::Line;
+    }
+    let mut groups = Vec::new();
+    for policy in &needed {
+        if !groups.contains(&policy.normal_word()) {
+            groups.push(policy.normal_word());
+        }
+    }
+    // Retain only baseline, one strictness/locale Normal-word pass, and one
+    // actual word-mode pass at a time. Each finite provider tuple runs once.
+    for group in groups {
+        let normal_storage = (group != Policy::BASELINE).then(|| provider(&input, group).0);
+        let normal = normal_storage.as_ref().unwrap_or(&baseline);
+        for policy in needed
+            .iter()
+            .copied()
+            .filter(|policy| policy.normal_word() == group)
         {
-            boundaries[component.end] = Boundary::Line;
-        }
-        let mut groups = Vec::new();
-        for policy in needed.iter().filter(|policy| policy.sa_as_al == sa_as_al) {
-            if !groups.contains(&policy.normal_word()) {
-                groups.push(policy.normal_word());
-            }
-        }
-        // Retain only baseline, one strictness/locale Normal-word pass, and one
-        // actual word-mode pass at a time. Each finite provider tuple runs once.
-        for group in groups {
-            let normal_storage = (group != baseline_policy).then(|| provider(&input, group).0);
-            let normal = normal_storage.as_ref().unwrap_or(&baseline);
-            for policy in needed
-                .iter()
-                .copied()
-                .filter(|policy| policy.normal_word() == group)
-            {
-                let actual_storage =
-                    (policy.word != OrdinaryWordBreak::Normal).then(|| provider(&input, policy).0);
-                let actual = actual_storage.as_ref().unwrap_or(normal);
-                for atom in component.start + 1..component.end {
-                    if policies[style_at(projection, styles, atom)] != policy {
-                        continue;
-                    }
-                    let byte = offsets[atom] - start;
-                    let independent = baseline[byte];
-                    let before = effective[atom - component.start - 1];
-                    let after = classes.get32(projection.atoms[atom].code_point);
-                    let required = required_pair(
+            let actual_storage =
+                (policy.word != OrdinaryWordBreak::Normal).then(|| provider(&input, policy).0);
+            let actual = actual_storage.as_ref().unwrap_or(normal);
+            for atom in component.start + 1..component.end {
+                if policies[style_at(projection, styles, atom)] != policy {
+                    continue;
+                }
+                let byte = offsets[atom] - start;
+                let independent = baseline[byte];
+                let before = effective[atom - component.start - 1];
+                let after = classes.get32(projection.atoms[atom].code_point);
+                let required = required_pair(
+                    projection.atoms[atom - 1].code_point,
+                    projection.atoms[atom].code_point,
+                    before,
+                    after,
+                    policy,
+                );
+                let allowed = match required {
+                    // Strict Normal-word output preserves independently caused SPACE
+                    // and ZWSP permissions without retaining the provider's extra CJ.
+                    Some(false) => independent,
+                    Some(true) => actual[byte] || normal[byte],
+                    None => actual[byte],
+                };
+                if !allowed
+                    || !provider_cut_allowed(
                         projection.atoms[atom - 1].code_point,
                         projection.atoms[atom].code_point,
                         before,
                         after,
-                        policy,
-                    );
-                    let allowed = match required {
-                        // Strict Normal-word output preserves independently caused SPACE
-                        // and ZWSP permissions without retaining the provider's extra CJ.
-                        Some(false) => independent,
-                        Some(true) => actual[byte] || normal[byte],
-                        None => actual[byte],
-                    };
-                    if !allowed
-                        || !provider_cut_allowed(
-                            projection.atoms[atom - 1].code_point,
-                            projection.atoms[atom].code_point,
-                            before,
-                            after,
-                            zero_width_space[atom - component.start - 1],
-                        )
+                        zero_width_space[atom - component.start - 1],
+                    )
+                {
+                    continue;
+                }
+                if !independent {
+                    // Retain the extra-tailoring floor before ZWJ. Baseline
+                    // before-ZWJ permissions remain provider-owned: LB8a is an
+                    // after-ZWJ prohibition, and LB9 excludes prior SP/hard/ZW.
+                    if after == Class::ZWJ {
+                        continue;
+                    }
+                    // Preserve UAX55 LB14/LB15a and quote rules bypassed by ICU's
+                    // early CSS return. Opening state is precomputed, not rescanned.
+                    if opening[atom - component.start - 1]
+                        || quote_blocks(projection, &component, &effective, &owners, atom)
                     {
                         continue;
                     }
-                    if !independent {
-                        // Retain the extra-tailoring floor before ZWJ. Baseline
-                        // before-ZWJ permissions remain provider-owned: LB8a is an
-                        // after-ZWJ prohibition, and LB9 excludes prior SP/hard/ZW.
-                        if after == Class::ZWJ {
-                            continue;
-                        }
-                        // Preserve UAX55 LB14/LB15a and quote rules bypassed by ICU's
-                        // early CSS return. Opening state is precomputed, not rescanned.
-                        if opening[atom - component.start - 1]
-                            || quote_blocks(projection, &component, &effective, &owners, atom)
-                        {
-                            continue;
-                        }
-                    }
-                    boundaries[atom] = Boundary::Line;
                 }
+                boundaries[atom] = Boundary::Line;
             }
         }
     }
@@ -403,7 +389,7 @@ pub(super) fn apply(
             *boundary = Boundary::Anywhere;
         }
     }
-    missing_lexical.expect("a nonempty component has an effective line policy")
+    missing_lexical
 }
 
 fn provider_cut_allowed(
@@ -413,8 +399,8 @@ fn provider_cut_allowed(
     after: Class,
     follows_zero_width_space: bool,
 ) -> bool {
-    // ICU's no-model complex handler can return an SA slice endpoint without
-    // consulting its boundary table. Even baseline cuts need these protections.
+    // Provider cuts and ICU's early CSS returns still need actual semantic
+    // protection, including inherited glue. Baseline cuts are no exemption.
     // Semantic hard separators and LB7 precede LB8's component-local ZW SP*.
     if is_hard_separator(before_code_point)
         || is_hard_separator(after_code_point)
@@ -651,7 +637,11 @@ fn required_pair(
 mod tests {
     use super::*;
 
-    fn manual_boundaries(text: &str, line_break: LineBreak) -> Vec<Boundary> {
+    fn ordinary_boundaries(
+        text: &str,
+        word_break: crate::WordBreak,
+        line_break: LineBreak,
+    ) -> Vec<Boundary> {
         let source = crate::Source::new(text);
         let projection = SourceProjection::new(&source).unwrap();
         let styles = vec![AnalyzedStyleRun {
@@ -660,7 +650,7 @@ mod tests {
                 source.text().len(),
             )),
             style: crate::ValidatedStyle::try_from(crate::Style {
-                word_break: crate::WordBreak::Manual,
+                word_break,
                 line_break,
                 ..crate::Style::default()
             })
@@ -685,7 +675,7 @@ mod tests {
     }
 
     #[test]
-    fn manual_provider_resolves_sa_marks_and_maps_cuts_to_original_multibyte_endpoints() {
+    fn ordinary_provider_resolves_sa_marks_and_maps_cuts_to_original_multibyte_endpoints() {
         let classes = CodePointMapData::<Class>::new();
         assert_eq!(classes.get('a'), Class::Alphabetic);
         assert_eq!(classes.get('\u{300}'), Class::CombiningMark);
@@ -696,14 +686,8 @@ mod tests {
             GeneralCategory::NonspacingMark
         );
         let text = "\u{10400}ก\u{e48}ก A";
-        let input = ProviderInput::manual(text);
-        let (cuts, _) = provider(
-            &input,
-            Policy {
-                sa_as_al: true,
-                ..Policy::BASELINE
-            },
-        );
+        let input = ProviderInput::without_lexical_models(text);
+        let (cuts, _) = provider(&input, Policy::BASELINE);
         // AL CM AL remains one alphabetic run; LB18 supplies the SPACE cut.
         // The untouched supplementary AL and shorter representatives require
         // actual endpoint mapping, not a constant byte displacement.
@@ -717,48 +701,77 @@ mod tests {
     }
 
     #[test]
-    fn manual_baseline_cannot_restore_sa_run_end_before_strict_small_kana() {
-        for strictness in [LineBreak::Auto, LineBreak::Normal, LineBreak::Strict] {
-            assert_ne!(
-                manual_boundaries("กกぁ", strictness)[2],
-                Boundary::Line,
-                "{strictness:?}"
-            );
-        }
+    fn non_sa_input_borrows_original_storage_and_keeps_provider_cuts() {
+        let text = "abc A";
+        let input = ProviderInput::without_lexical_models(text);
+        assert!(std::ptr::eq(input.text().as_ptr(), text.as_ptr()));
+        let (cuts, _) = provider(&input, Policy::BASELINE);
         assert_eq!(
-            manual_boundaries("กกぁ", LineBreak::Loose)[2],
-            Boundary::Line
+            cuts.iter()
+                .enumerate()
+                .filter_map(|(byte, cut)| cut.then_some(byte))
+                .collect::<Vec<_>>(),
+            [0, 4, 5]
         );
     }
 
     #[test]
-    fn manual_sa_resolution_retains_full_al_numeric_and_opening_context() {
-        // UAX55 LB23/28/29 retain alphabetic/numeric words; LB14 retains
-        // opening context across spaces. LB18's unrelated SPACE cut survives.
-        for (text, expected) in [
-            ("กก12", vec![]),
-            ("12กก", vec![]),
-            ("กกאב", vec![]),
-            ("אבกก", vec![]),
-            ("กก.กก", vec![]),
-            ("(  กก", vec![]),
-            ("กก) กก", vec![4]),
-            ("กก กก", vec![3]),
+    fn ordinary_baseline_cannot_restore_sa_run_end_before_strict_small_kana() {
+        for word_break in [
+            crate::WordBreak::Normal,
+            crate::WordBreak::KeepAll,
+            crate::WordBreak::BreakWord,
+            crate::WordBreak::Manual,
         ] {
+            for strictness in [LineBreak::Auto, LineBreak::Normal, LineBreak::Strict] {
+                assert_ne!(
+                    ordinary_boundaries("กกぁ", word_break, strictness)[2],
+                    Boundary::Line,
+                    "{strictness:?}"
+                );
+            }
             assert_eq!(
-                manual_boundaries(text, LineBreak::Auto)
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(atom, boundary)| (*boundary == Boundary::Line).then_some(atom))
-                    .collect::<Vec<_>>(),
-                expected,
-                "{text:?}"
+                ordinary_boundaries("กกぁ", word_break, LineBreak::Loose)[2],
+                Boundary::Line
             );
         }
     }
 
     #[test]
-    fn manual_sa_mark_inherits_glue_before_extra_loose_iteration_cut() {
+    fn ordinary_sa_resolution_retains_full_al_numeric_and_opening_context() {
+        // UAX55 LB23/28/29 retain alphabetic/numeric words; LB14 retains
+        // opening context across spaces. LB18's unrelated SPACE cut survives.
+        for word_break in [
+            crate::WordBreak::Normal,
+            crate::WordBreak::KeepAll,
+            crate::WordBreak::BreakWord,
+            crate::WordBreak::Manual,
+        ] {
+            for (text, expected) in [
+                ("กก12", vec![]),
+                ("12กก", vec![]),
+                ("กกאב", vec![]),
+                ("אבกก", vec![]),
+                ("กก.กก", vec![]),
+                ("(  กก", vec![]),
+                ("กก) กก", vec![4]),
+                ("กก กก", vec![3]),
+            ] {
+                assert_eq!(
+                    ordinary_boundaries(text, word_break, LineBreak::Auto)
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(atom, boundary)| (*boundary == Boundary::Line).then_some(atom))
+                        .collect::<Vec<_>>(),
+                    expected,
+                    "{text:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn ordinary_sa_mark_inherits_glue_before_extra_loose_iteration_cut() {
         let classes = CodePointMapData::<Class>::new();
         let categories = CodePointMapData::<GeneralCategory>::new();
         let graphemes = CodePointMapData::<icu_properties::props::GraphemeClusterBreak>::new();
@@ -773,11 +786,19 @@ mod tests {
             .unwrap();
         let text = format!("a{glue_mark}\u{e48}々");
         // SA Mn resolves to CM, so LB9 retains GL despite ICU's early Loose
-        // return for the named iteration mark. Other modes' context is intact.
-        assert_ne!(
-            manual_boundaries(&text, LineBreak::Loose)[3],
-            Boundary::Line
-        );
+        // return for the named iteration mark, including BreakAll's ID mode.
+        for word_break in [
+            crate::WordBreak::Normal,
+            crate::WordBreak::KeepAll,
+            crate::WordBreak::BreakWord,
+            crate::WordBreak::Manual,
+            crate::WordBreak::BreakAll,
+        ] {
+            assert_ne!(
+                ordinary_boundaries(&text, word_break, LineBreak::Loose)[3],
+                Boundary::Line
+            );
+        }
     }
 
     #[test]

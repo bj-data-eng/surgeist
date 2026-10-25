@@ -417,8 +417,11 @@ separate from accepting a native LineBreak value.
 
 ### Missing lexical capability
 
-The selected non-complex line segmenter has no Thai/Lao lexical models. For
-adjacent Thai or Lao SA letter units in the same writing system, Text supplies
+The selected non-complex line segmenter has no Thai/Lao lexical models. Ordinary
+SA context uses AL, or CM for SA nonspacing/spacing marks, through a provider-only
+input with exact original endpoints. A provider slice end is not an analyzed
+linguistic boundary. For adjacent Thai or Lao SA letter units in the same
+writing system, Text supplies
 ordinary fallback opportunities between whole retained typographic units.
 Normal and KeepAll retain this fallback; effective BreakWord uses Normal.
 BreakAll retains its independent ID-based permission. The
