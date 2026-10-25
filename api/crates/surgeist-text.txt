@@ -250,6 +250,11 @@ pub surgeist_text::FinalizedFragmentOwner::Alternative(surgeist_text::PreparedAl
 pub surgeist_text::FinalizedFragmentOwner::Control(surgeist_text::PreparedControl)
 pub surgeist_text::FinalizedFragmentOwner::Origin(surgeist_text::PreparedOrigin)
 pub surgeist_text::FinalizedFragmentOwner::VirtualSeparator(surgeist_text::PreparedVirtualSeparator)
+pub enum surgeist_text::FlowSegmentRole
+pub surgeist_text::FlowSegmentRole::EntryPrefix
+pub surgeist_text::FlowSegmentRole::PriorPartition
+pub surgeist_text::FlowSegmentRole::Remaining
+pub surgeist_text::FlowSegmentRole::Target
 pub enum surgeist_text::FontCatalogueMode
 pub surgeist_text::FontCatalogueMode::RegisteredOnly
 pub surgeist_text::FontCatalogueMode::System
@@ -338,6 +343,9 @@ pub surgeist_text::FontOutlineError::Unsupported
 pub surgeist_text::FontOutlineError::Unsupported::capability: surgeist_text::FontOutlineCapability
 pub enum surgeist_text::FontVariant
 pub surgeist_text::FontVariant::Normal
+pub enum surgeist_text::HangingPunctuationEnd
+pub surgeist_text::HangingPunctuationEnd::AllowEnd
+pub surgeist_text::HangingPunctuationEnd::ForceEnd
 pub enum surgeist_text::Hit
 pub surgeist_text::Hit::InlineBox(surgeist_text::Id)
 pub surgeist_text::Hit::None
@@ -509,6 +517,8 @@ pub surgeist_text::ParagraphTerminalEdge::BlockEnd
 pub surgeist_text::ParagraphTerminalEdge::NonBlockBoundary
 pub surgeist_text::ParagraphTerminalEdge::Unknown
 pub enum surgeist_text::PhaseTwoContext
+pub surgeist_text::PhaseTwoContext::FirstFormattedLine
+pub surgeist_text::PhaseTwoContext::LastFormattedLine
 pub surgeist_text::PhaseTwoContext::TabOrigin
 pub surgeist_text::PhaseTwoContext::TerminalBlockEdge
 pub enum surgeist_text::PhraseOverflowDecision
@@ -660,6 +670,7 @@ pub surgeist_text::ProtocolError::InvalidFragment::fragment: usize
 pub surgeist_text::ProtocolError::InvalidFragment::line: usize
 pub surgeist_text::ProtocolError::InvalidLineDirectionQuery
 pub surgeist_text::ProtocolError::InvalidLineStrut
+pub surgeist_text::ProtocolError::InvalidMeasurementFlow
 pub surgeist_text::ProtocolError::InvalidOriginRange
 pub surgeist_text::ProtocolError::InvalidOriginRange::aggregate: surgeist_text::Range
 pub surgeist_text::ProtocolError::InvalidOriginRange::local: surgeist_text::Range
@@ -910,6 +921,7 @@ pub surgeist_text::TextStyleFeature::FontVariant
 pub surgeist_text::TextStyleFeature::FontVariationSettings
 pub surgeist_text::TextStyleFeature::FullSizeKana
 pub surgeist_text::TextStyleFeature::FullWidth
+pub surgeist_text::TextStyleFeature::HangingPunctuation
 pub surgeist_text::TextStyleFeature::InlineBoxVerticalAlign
 pub surgeist_text::TextStyleFeature::LetterSpacing
 pub surgeist_text::TextStyleFeature::LineBreak
@@ -1416,6 +1428,22 @@ pub fn surgeist_text::FinalizedSharedUnitView<'_>::finalized_line(&self) -> &sur
 pub fn surgeist_text::FinalizedSharedUnitView<'_>::presentation_range(&self) -> surgeist_text::PresentationRange
 pub fn surgeist_text::FinalizedSharedUnitView<'_>::source_pieces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::Range> + '_
 pub fn surgeist_text::FinalizedSharedUnitView<'_>::source_range(&self) -> surgeist_text::Range
+pub struct surgeist_text::FlowObservation
+impl surgeist_text::FlowObservation
+pub fn surgeist_text::FlowObservation::has_retained_flow_participation(&self) -> bool
+pub fn surgeist_text::FlowObservation::request(&self) -> &surgeist_text::FlowObservationRequest
+pub fn surgeist_text::FlowObservation::segment(&self) -> surgeist_text::PreparedFlowSegment
+impl core::cmp::Eq for surgeist_text::FlowObservation
+impl core::cmp::PartialEq for surgeist_text::FlowObservation
+pub fn surgeist_text::FlowObservation::eq(&self, other: &Self) -> bool
+impl core::hash::Hash for surgeist_text::FlowObservation
+pub fn surgeist_text::FlowObservation::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_text::FlowObservationRequest
+pub surgeist_text::FlowObservationRequest::atomics: alloc::vec::Vec<surgeist_text::AtomicAllocation>
+pub surgeist_text::FlowObservationRequest::boundary_context: alloc::vec::Vec<surgeist_text::InlineBoundaryContextAllocation>
+pub surgeist_text::FlowObservationRequest::context: surgeist_text::LineContext
+pub surgeist_text::FlowObservationRequest::controls: alloc::vec::Vec<surgeist_text::ControlAllocation>
+pub surgeist_text::FlowObservationRequest::line_strut: core::option::Option<surgeist_text::LineStrut>
 pub struct surgeist_text::Font
 pub surgeist_text::Font::family: alloc::vec::Vec<alloc::string::String>
 pub surgeist_text::Font::features: alloc::vec::Vec<alloc::string::String>
@@ -1488,6 +1516,15 @@ pub struct surgeist_text::FontWidthRatio(_)
 impl surgeist_text::FontWidthRatio
 pub const fn surgeist_text::FontWidthRatio::get(self) -> f32
 pub fn surgeist_text::FontWidthRatio::try_new(value: f32) -> surgeist_text::Result<Self>
+pub struct surgeist_text::FormattedLineContext
+impl surgeist_text::FormattedLineContext
+pub const fn surgeist_text::FormattedLineContext::first(self) -> core::option::Option<bool>
+pub const fn surgeist_text::FormattedLineContext::last(self) -> core::option::Option<bool>
+pub const fn surgeist_text::FormattedLineContext::new(first: core::option::Option<bool>, last: core::option::Option<bool>) -> Self
+pub struct surgeist_text::FormattedLineUsage
+impl surgeist_text::FormattedLineUsage
+pub const fn surgeist_text::FormattedLineUsage::first(self) -> bool
+pub const fn surgeist_text::FormattedLineUsage::last(self) -> bool
 pub struct surgeist_text::Glyph
 impl surgeist_text::Glyph
 pub const fn surgeist_text::Glyph::advance(self) -> f32
@@ -1509,6 +1546,12 @@ pub const fn surgeist_text::GlyphPlacement::id(self) -> u32
 pub const fn surgeist_text::GlyphPlacement::pen(self) -> f64
 pub const fn surgeist_text::GlyphPlacement::x(self) -> f32
 pub const fn surgeist_text::GlyphPlacement::y(self) -> f32
+pub struct surgeist_text::HangingPunctuation
+impl surgeist_text::HangingPunctuation
+pub const fn surgeist_text::HangingPunctuation::end(self) -> core::option::Option<surgeist_text::HangingPunctuationEnd>
+pub const fn surgeist_text::HangingPunctuation::first(self) -> bool
+pub const fn surgeist_text::HangingPunctuation::last(self) -> bool
+pub const fn surgeist_text::HangingPunctuation::new(first: bool, end: core::option::Option<surgeist_text::HangingPunctuationEnd>, last: bool) -> Self
 pub struct surgeist_text::HyphenateLimitChars
 pub surgeist_text::HyphenateLimitChars::after: surgeist_text::HyphenationMinimum
 pub surgeist_text::HyphenateLimitChars::before: surgeist_text::HyphenationMinimum
@@ -1636,6 +1679,7 @@ pub surgeist_text::LineContext::alignment: surgeist_text::Alignment
 pub surgeist_text::LineContext::available_inline: core::option::Option<f64>
 pub surgeist_text::LineContext::base_direction: surgeist_text::ParagraphBaseDirection
 pub surgeist_text::LineContext::end: surgeist_text::LineEnd
+pub surgeist_text::LineContext::formatted_line: surgeist_text::FormattedLineContext
 pub surgeist_text::LineContext::indent: f64
 pub surgeist_text::LineContext::line_box_direction: surgeist_text::LineBoxDirection
 pub surgeist_text::LineContext::orientation: surgeist_text::LineOrientation
@@ -1656,6 +1700,7 @@ pub fn surgeist_text::LineEdgeUnitView<'_>::finalized_line(&self) -> &surgeist_t
 pub fn surgeist_text::LineEdgeUnitView<'_>::outward_overlap(&self) -> f64
 pub fn surgeist_text::LineEdgeUnitView<'_>::owners(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::LineEdgeOwner> + '_
 pub fn surgeist_text::LineEdgeUnitView<'_>::presentation_range(&self) -> surgeist_text::PresentationRange
+pub fn surgeist_text::LineEdgeUnitView<'_>::punctuation_unit(&self) -> core::option::Option<surgeist_text::PresentationRange>
 pub fn surgeist_text::LineEdgeUnitView<'_>::source_pieces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::Range> + '_
 pub struct surgeist_text::LineFeedback
 pub surgeist_text::LineFeedback::advance: f64
@@ -1672,6 +1717,7 @@ pub struct surgeist_text::LineMeasurements
 impl surgeist_text::LineMeasurements
 pub const fn surgeist_text::LineMeasurements::alignment(&self) -> surgeist_text::InlineMeasure
 pub const fn surgeist_text::LineMeasurements::fit(&self) -> surgeist_text::InlineMeasure
+pub const fn surgeist_text::LineMeasurements::formatted_line_usage(&self) -> surgeist_text::FormattedLineUsage
 pub const fn surgeist_text::LineMeasurements::max_content_contribution(&self) -> surgeist_text::InlineMeasure
 pub const fn surgeist_text::LineMeasurements::min_content_contribution(&self) -> surgeist_text::InlineMeasure
 pub struct surgeist_text::LineMetricFact
@@ -1976,6 +2022,16 @@ impl surgeist_text::PreparedControlView<'_>
 pub fn surgeist_text::PreparedControlView<'_>::handle(&self) -> surgeist_text::PreparedControl
 impl core::fmt::Debug for surgeist_text::PreparedControlView<'_>
 pub fn surgeist_text::PreparedControlView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_text::PreparedFlowSegment
+impl surgeist_text::PreparedFlowSegment
+pub fn surgeist_text::PreparedFlowSegment::alternative(&self) -> core::option::Option<surgeist_text::PreparedAlternative>
+pub fn surgeist_text::PreparedFlowSegment::end(&self) -> surgeist_text::PreparedBoundary
+pub fn surgeist_text::PreparedFlowSegment::incoming(&self) -> core::option::Option<surgeist_text::HyphenationContinuation>
+pub fn surgeist_text::PreparedFlowSegment::mandatory_end(&self) -> core::option::Option<surgeist_text::PreparedOpportunity>
+pub fn surgeist_text::PreparedFlowSegment::outgoing(&self) -> core::option::Option<surgeist_text::HyphenationContinuation>
+pub fn surgeist_text::PreparedFlowSegment::participants(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedParticipant> + '_
+pub fn surgeist_text::PreparedFlowSegment::role(&self) -> surgeist_text::FlowSegmentRole
+pub fn surgeist_text::PreparedFlowSegment::start(&self) -> surgeist_text::PreparedBoundary
 pub struct surgeist_text::PreparedHyphenationCut
 impl surgeist_text::PreparedHyphenationCut
 pub fn surgeist_text::PreparedHyphenationCut::prepared_text(&self) -> surgeist_text::PreparedText
@@ -2000,6 +2056,12 @@ pub fn surgeist_text::PreparedHyphenationCutView<'_>::style(&self) -> &surgeist_
 pub fn surgeist_text::PreparedHyphenationCutView<'_>::word(&self) -> core::option::Option<surgeist_text::PreparedWord>
 impl core::fmt::Debug for surgeist_text::PreparedHyphenationCutView<'_>
 pub fn surgeist_text::PreparedHyphenationCutView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_text::PreparedMeasurementFlow
+impl surgeist_text::PreparedMeasurementFlow
+pub fn surgeist_text::PreparedMeasurementFlow::completion(&self) -> surgeist_text::PreparedOpportunity
+pub fn surgeist_text::PreparedMeasurementFlow::entry(&self) -> surgeist_text::PreparedBoundary
+pub fn surgeist_text::PreparedMeasurementFlow::segments(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedFlowSegment> + '_
+pub fn surgeist_text::PreparedMeasurementFlow::validate_observations(&self, observations: &[surgeist_text::FlowObservation]) -> surgeist_text::Result<()>
 pub struct surgeist_text::PreparedOpportunity
 impl surgeist_text::PreparedOpportunity
 pub fn surgeist_text::PreparedOpportunity::prepared_text(&self) -> surgeist_text::PreparedText
@@ -2116,6 +2178,10 @@ pub fn surgeist_text::PreparedText::boundary_context_demand(&self, request: &sur
 pub fn surgeist_text::PreparedText::select(&self, request: surgeist_text::LineSelectionRequest) -> surgeist_text::Result<surgeist_text::SelectedLine>
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::conditional_search(&self, start: &surgeist_text::PreparedBoundary, incoming: core::option::Option<&surgeist_text::HyphenationContinuation>, ceiling: &surgeist_text::PreparedOpportunity, purpose: surgeist_text::ConditionalPurpose, skipped: &[surgeist_text::ConditionalDisposition], frame: core::option::Option<&surgeist_text::FinalizedLine>) -> surgeist_text::Result<surgeist_text::PreparedConditionalSearch>
+impl surgeist_text::PreparedText
+pub fn surgeist_text::PreparedText::flow_boundary_context_demand(&self, segment: &surgeist_text::PreparedFlowSegment, request: &surgeist_text::FlowObservationRequest) -> surgeist_text::Result<core::option::Option<surgeist_text::PreparedControl>>
+pub fn surgeist_text::PreparedText::measurement_flow(&self, query_start: &surgeist_text::PreparedBoundary, query_incoming: core::option::Option<&surgeist_text::HyphenationContinuation>, target: &surgeist_text::PreparedTermination) -> surgeist_text::Result<surgeist_text::PreparedMeasurementFlow>
+pub fn surgeist_text::PreparedText::observe_flow(&self, segment: &surgeist_text::PreparedFlowSegment, request: &surgeist_text::FlowObservationRequest) -> surgeist_text::Result<surgeist_text::FlowObservation>
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::hyphenation_cut_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedHyphenationCutView<'_>>
 pub fn surgeist_text::PreparedText::word_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedWordView<'_>>
@@ -2506,6 +2572,7 @@ pub struct surgeist_text::Style
 pub surgeist_text::Style::brush: surgeist_text::Brush
 pub surgeist_text::Style::direction: surgeist_text::Direction
 pub surgeist_text::Style::font: surgeist_text::Font
+pub surgeist_text::Style::hanging_punctuation: surgeist_text::HangingPunctuation
 pub surgeist_text::Style::hyphenate_character: surgeist_text::HyphenateCharacter
 pub surgeist_text::Style::hyphenate_limit_chars: surgeist_text::HyphenateLimitChars
 pub surgeist_text::Style::hyphens: surgeist_text::Hyphens

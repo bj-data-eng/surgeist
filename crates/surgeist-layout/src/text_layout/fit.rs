@@ -1,5 +1,7 @@
 //! Candidate fitting over the actual immutable Text operations.
 
+use super::formatted::FormattedTailSnapshot;
+pub(crate) use super::roles::{RoleBasis, RoleUse};
 use crate::{TextAlign, TextAlignLast, TextJustification};
 use surgeist_text::{
     Alignment, AtomicAllocation, ConditionalDisposition, ConditionalPurpose, ConditionalStage,
@@ -145,6 +147,8 @@ pub(crate) struct LineFlow {
 }
 
 pub(crate) struct FittedLine {
+    pub first_formatted: bool,
+    pub role_uses: Vec<RoleUse>,
     pub line_box_end: crate::line_box::LineBoxContext,
     pub zone_basis: ZoneBasis,
     pub phrase_basis: Vec<PhraseBasis>,
@@ -184,6 +188,7 @@ impl From<surgeist_text::Error> for FitError {
 }
 
 pub(crate) struct FitInput<'a> {
+    pub formatted: &'a FormattedTailSnapshot,
     pub line_box_context: crate::line_box::LineBoxContext,
     pub prepared: &'a PreparedText,
     pub available: Available,
@@ -276,17 +281,29 @@ fn resolve_boundary_context(
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+struct FinalizationAlignment {
+    normal: TextAlign,
+    last: TextAlignLast,
+    justification: TextJustification,
+}
+
 fn finalize_candidate(
     prepared: &PreparedText,
     controls: &[ControlAllocation],
     reusable: &[ReusableLine],
     mut request: LineSelectionRequest,
-    normal: TextAlign,
-    last: TextAlignLast,
-    justification: TextJustification,
+    alignment: FinalizationAlignment,
+    active_request: &mut LineSelectionRequest,
 ) -> Result<FinalizedCandidate, FitError> {
+    let FinalizationAlignment {
+        normal,
+        last,
+        justification,
+    } = alignment;
     let effective = normal.for_line(last, request.context.end != LineEnd::Soft);
     request.context.alignment = text_alignment(effective);
+    *active_request = request.clone();
     resolve_boundary_context(prepared, controls, &mut request)?;
     let natural = natural_line(prepared, reusable, &request)?;
     let selected = natural.selected_line();
@@ -345,6 +362,7 @@ fn finalize_candidate(
             // Pinned CSS Text3 §6.4.3; a new alignment is a new actual request,
             // so no slot capabilities are transferred from the zero pass.
             request.context.alignment = text_alignment(normal.unexpandable(last));
+            *active_request = request.clone();
             resolve_boundary_context(prepared, controls, &mut request)?;
             let finalized = natural_line(prepared, reusable, &request)?;
             amounts = vec![0.0; finalized.selected_line().spacing_slots().len()];
@@ -360,6 +378,80 @@ fn finalize_candidate(
         finalized: natural,
         amounts,
     })
+}
+
+/// Both full and natural-only trials pass this boundary. A context change
+/// rebuilds selection and complete spacing slots rather than transferring them.
+fn finalize_with_roles(
+    input: &FitInput<'_>,
+    mut request: LineSelectionRequest,
+    natural_only: bool,
+    entry: &super::roles::RoleEntry<'_>,
+) -> Result<(FinalizedCandidate, Option<RoleBasis>), FitError> {
+    request.context.formatted_line = surgeist_text::FormattedLineContext::default();
+    let mut basis = super::roles::initial_basis(&request, entry.current_first);
+    for _ in 0..=2 {
+        let mut active = request.clone();
+        let result = if natural_only {
+            resolve_boundary_context(input.prepared, input.controls, &mut active)?;
+            natural_line(input.prepared, input.reusable, &active).map(|finalized| {
+                FinalizedCandidate {
+                    amounts: vec![0.0; finalized.selected_line().spacing_slots().len()],
+                    request: active.clone(),
+                    finalized,
+                }
+            })
+        } else {
+            finalize_candidate(
+                input.prepared,
+                input.controls,
+                input.reusable,
+                request.clone(),
+                FinalizationAlignment {
+                    normal: input.alignment,
+                    last: input.last_alignment,
+                    justification: input.justification,
+                },
+                &mut active,
+            )
+        };
+        match result {
+            Ok(candidate) => return Ok((candidate, basis)),
+            Err(FitError::Text(error)) => {
+                let role = match error.detail() {
+                    Some(surgeist_text::ErrorDetail::InvalidTextProtocol {
+                        reason:
+                            surgeist_text::ProtocolError::MissingPhaseTwoContext(
+                                role @ (surgeist_text::PhaseTwoContext::FirstFormattedLine
+                                | surgeist_text::PhaseTwoContext::LastFormattedLine),
+                            ),
+                    }) => *role,
+                    _ => return Err(FitError::Text(error)),
+                };
+                let Some(value) = super::roles::resolve(input, &active, entry, role, &mut basis)?
+                else {
+                    return Err(FitError::Text(error));
+                };
+                let old = active.context.formatted_line;
+                let next = match role {
+                    surgeist_text::PhaseTwoContext::FirstFormattedLine => {
+                        surgeist_text::FormattedLineContext::new(Some(value), old.last())
+                    }
+                    surgeist_text::PhaseTwoContext::LastFormattedLine => {
+                        surgeist_text::FormattedLineContext::new(old.first(), Some(value))
+                    }
+                    _ => return Err(FitError::Text(error)),
+                };
+                if old == next {
+                    return Err(FitError::Text(error));
+                }
+                active.context.formatted_line = next;
+                request = active;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Err(FitError::FeedbackCycle)
 }
 
 /// Every probe executes the complete table on this actual selection. Never
@@ -450,7 +542,9 @@ impl EvaluatedCandidate {
     }
 }
 
+#[derive(Clone, Copy)]
 struct EndpointContext<'a> {
+    accepted_prefix: &'a [FittedLine],
     line_box_context: crate::line_box::LineBoxContext,
     start: &'a PreparedBoundary,
     incoming: Option<&'a HyphenationContinuation>,
@@ -471,6 +565,7 @@ struct EndpointChoice {
 /// These callbacks all operate on the same unpublished invocation. Reset only
 /// restores its accepted encounter checkpoint; it is not a child publication.
 struct CandidateEnvironment<B, C, A, R, X> {
+    roles: Vec<RoleUse>,
     band: B,
     canonical: C,
     allocate: A,
@@ -490,20 +585,29 @@ where
         &mut self,
         input: &FitInput<'_>,
         request: LineSelectionRequest,
-        position: &CandidatePosition,
+        query: &EndpointContext<'_>,
         preceding: Option<&EvaluatedCandidate>,
     ) -> Result<EvaluatedCandidate, FitError> {
-        self.evaluate_mode(input, request, position, preceding, false)
+        self.evaluate_mode(input, request, query, preceding, false)
     }
 
     fn evaluate_mode(
         &mut self,
         input: &FitInput<'_>,
         mut request: LineSelectionRequest,
-        position: &CandidatePosition,
+        query: &EndpointContext<'_>,
         preceding: Option<&EvaluatedCandidate>,
         natural_only: bool,
     ) -> Result<EvaluatedCandidate, FitError> {
+        let position = query.position;
+        let entry = super::roles::RoleEntry {
+            current_first: query.indent_state.first_formatted(),
+            query_start: query.start,
+            query_incoming: query.incoming,
+            accepted: query.accepted_prefix,
+            preceding: preceding
+                .map(|candidate| (&candidate.finalized, candidate.amounts.as_slice())),
+        };
         (self.reset)(EncounterReset::Candidate);
         let mut height = 0.0;
         let mut placed_start = position.logical_start;
@@ -514,26 +618,9 @@ where
             request.context.available_inline = selection_width(input.available, band)?;
             request.context.tabs = tab_context(input, band, request.context.available_inline)?;
             let mut allocation_bases = Vec::new();
-            let (finalized, amounts) = loop {
-                let candidate = if natural_only {
-                    resolve_boundary_context(input.prepared, input.controls, &mut request)?;
-                    let finalized = natural_line(input.prepared, input.reusable, &request)?;
-                    FinalizedCandidate {
-                        amounts: vec![0.0; finalized.selected_line().spacing_slots().len()],
-                        request,
-                        finalized,
-                    }
-                } else {
-                    finalize_candidate(
-                        input.prepared,
-                        input.controls,
-                        input.reusable,
-                        request,
-                        input.alignment,
-                        input.last_alignment,
-                        input.justification,
-                    )?
-                };
+            let (finalized, amounts, role_basis) = loop {
+                let (candidate, role_basis) =
+                    finalize_with_roles(input, request, natural_only, &entry)?;
                 request = candidate.request;
                 (self.replay)(
                     &candidate.finalized,
@@ -544,7 +631,7 @@ where
                     && actual.controls == request.controls
                     && actual.line_strut == request.line_strut
                 {
-                    break (candidate.finalized, candidate.amounts);
+                    break (candidate.finalized, candidate.amounts, role_basis);
                 }
                 let basis = (request.clone(), candidate.amounts);
                 if allocation_bases.contains(&basis) {
@@ -616,6 +703,27 @@ where
                 measurement.advance() <= width - request.context.indent
                     && occupied <= width - request.context.indent
             });
+            let usage = finalized.measurements().formatted_line_usage();
+            if usage.first() || usage.last() {
+                let basis = role_basis.ok_or(FitError::InvalidGeometry)?;
+                let used = RoleUse {
+                    request: request.clone(),
+                    amounts: amounts.clone(),
+                    usage,
+                    outgoing: finalized.hyphenation_continuation(),
+                    basis,
+                    bands,
+                    encounters: encounters.clone(),
+                    logical_start: position.logical_start,
+                    source_floor: position.source_floor,
+                    minimum_block: position.minimum_block,
+                    deferred_from: position.deferred_from.clone(),
+                    placed_start,
+                };
+                if !self.roles.contains(&used) {
+                    self.roles.push(used);
+                }
+            }
             return Ok(EvaluatedCandidate {
                 request,
                 finalized,
@@ -682,7 +790,7 @@ where
                         query.indent_state,
                         query.line_box_context,
                     )?;
-                    let trial = self.evaluate_mode(input, request, query.position, None, true)?;
+                    let trial = self.evaluate_mode(input, request, query, None, true)?;
                     if !trial.formatted {
                         continue;
                     }
@@ -730,7 +838,7 @@ where
                 query.indent_state,
                 query.line_box_context,
             )?;
-            let candidate = self.evaluate(input, request, query.position, None)?;
+            let candidate = self.evaluate(input, request, query, None)?;
             if zone_suppressed {
                 dispositions.push(ConditionalDisposition::ConsumerHyphenationPolicy(
                     candidate.finalized,
@@ -783,7 +891,7 @@ where
                         query.indent_state,
                         query.line_box_context,
                     )?;
-                    let trial = self.evaluate(input, request, query.position, Some(&candidate))?;
+                    let trial = self.evaluate(input, request, query, Some(&candidate))?;
                     if trial.fits {
                         priority = Some(trial.finalized);
                         break;
@@ -859,7 +967,12 @@ where
             empty_indent,
             query.line_box_context,
         )?;
-        let trial = self.evaluate(input, request, &empty_position, preceding)?;
+        let phrase_query = EndpointContext {
+            position: &empty_position,
+            indent_state: empty_indent,
+            ..*query
+        };
+        let trial = self.evaluate(input, request, &phrase_query, preceding)?;
         let basis = PhraseBasis {
             ordinary: ordinary.basis(query.position),
             position: empty_position.clone(),
@@ -1030,6 +1143,7 @@ fn selection_request(
         alternative: endpoint.alternative,
         incoming: incoming.cloned(),
         context: LineContext {
+            formatted_line: surgeist_text::FormattedLineContext::default(),
             line_box_direction,
             base_direction: input.base_direction,
             orientation: input.orientation,
@@ -1098,6 +1212,7 @@ pub(crate) fn fit(
         })
         .collect();
     let mut environment = CandidateEnvironment {
+        roles: Vec::new(),
         band: band_source,
         canonical: canonical_block,
         allocate,
@@ -1112,6 +1227,7 @@ pub(crate) fn fit(
         && matches!(input.available, Available::Definite(_));
     let mut visited: Vec<Vec<LineSelectionRequest>> = Vec::new();
     'sequence: loop {
+        environment.roles.clear();
         (environment.reset)(EncounterReset::Sequence);
         let mut result: Vec<FittedLine> = Vec::new();
         let mut start = 0;
@@ -1146,6 +1262,7 @@ pub(crate) fn fit(
                 deferred_from: None,
             };
             let mut transitions = Vec::new();
+            let role_start = environment.roles.len();
             loop {
                 let mut phrase_basis = Vec::new();
                 let mut choice: Option<EvaluatedCandidate> = None;
@@ -1165,6 +1282,7 @@ pub(crate) fn fit(
                         .into_iter()
                         .chain(alternatives.iter().cloned().map(Some));
                     let query = EndpointContext {
+                        accepted_prefix: &result,
                         line_box_context,
                         start: &start_boundary,
                         incoming: incoming.as_ref(),
@@ -1255,6 +1373,7 @@ pub(crate) fn fit(
                         (purpose == ConditionalPurpose::Overflow).then_some(&candidate.finalized),
                     )?;
                     let query = EndpointContext {
+                        accepted_prefix: &result,
                         start: &start_boundary,
                         line_box_context,
                         incoming: incoming.as_ref(),
@@ -1417,6 +1536,7 @@ pub(crate) fn fit(
                 }
                 let ending = candidate.request.context.end;
                 let end = candidate.request.end.view().participant_offset();
+                let first_formatted = indent_state.first_formatted();
                 indent_state.commit(ending == LineEnd::Forced);
                 if candidate.formatted {
                     line_box_context.commit(candidate.request.context.line_box_direction);
@@ -1430,6 +1550,8 @@ pub(crate) fn fit(
                 incoming = candidate.finalized.hyphenation_continuation();
                 let available = candidate.finalized.metric_bounds().size.width;
                 result.push(FittedLine {
+                    first_formatted,
+                    role_uses: environment.roles.split_off(role_start),
                     line_box_end: line_box_context,
                     zone_basis,
                     phrase_basis,

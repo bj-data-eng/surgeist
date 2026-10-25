@@ -600,7 +600,7 @@ pub(crate) fn default_metrics(
 /// A selected line reshapes with its retained original faces and actual selected
 /// boundary context. It never queries the current catalogue or redoes fallback.
 pub(crate) fn finalize(
-    selected: &crate::protocol::selection::SelectedData,
+    selected: crate::protocol::input::PresentationInput<'_>,
     scratch: &mut ShapeContext,
 ) -> Result<(
     ShapedData,
@@ -627,7 +627,7 @@ pub(crate) fn finalize(
     }
     if input.projection.atoms.is_empty() {
         if !native {
-            let boundary = &prepared.tables.boundaries[selected.request.start.index];
+            let boundary = &prepared.tables.boundaries[selected.start];
             output.empty_run = prepared.shaped.empty_run.clone().or_else(|| {
                 prepared
                     .shaped
@@ -639,8 +639,7 @@ pub(crate) fn finalize(
             });
         }
     } else {
-        let computed =
-            selected.request.alternative.is_some() || selected.request.incoming.is_some();
+        let computed = selected.computed;
         let barriers = &selected.boundaries.presentation;
         let mut selected_domains: Vec<JoiningDomain> = Vec::new();
         let mut original_domains: Vec<JoiningDomain> = Vec::new();

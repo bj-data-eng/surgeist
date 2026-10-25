@@ -4,7 +4,7 @@ use super::inline::{
     AtomicInlineBoxParticipant, ForcedLineBreakControlOf, InlineBoundaryControlOf,
     InlineControlAlignment, InlineFlowOf, InlineParticipantKindOf, InlineParticipantProjection,
     LogicalLineBandQueryResultOf, MixedInlineParticipantOf, MixedInlineRunInputOf,
-    layout_mixed_inline_run_with_band_source,
+    layout_mixed_inline_run_with_formatted_observation,
 };
 use super::value::{ResolvedLengthAutoOf, UnresolvedLengthReason};
 use super::{
@@ -97,35 +97,45 @@ fn compute_block_with_optional_inherited_float_exclusions<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let scrollbar_width = block_container_projection::<Tree, M>(tree, node)
-        .scrollbar_width
-        .get();
-    let mut pass_input = input;
-    loop {
-        let output = compute_block_inner::<Tree, Tree::Scalar, M>(
-            tree,
-            node,
-            pass_input,
-            inherited.as_ref(),
-        )?;
-        if !input.run_mode().is_perform_layout() {
-            return Ok(output);
+    let anonymous = tree.node_input(node).block_generation == crate::BlockGeneration::Anonymous;
+    let formatted = tree
+        .text_computation()
+        .is_some_and(|text| text.formatted_begin_block(node, input, anonymous));
+    let result = (|| {
+        let scrollbar_width = block_container_projection::<Tree, M>(tree, node)
+            .scrollbar_width
+            .get();
+        let mut pass_input = input;
+        loop {
+            let output = compute_block_inner::<Tree, Tree::Scalar, M>(
+                tree,
+                node,
+                pass_input,
+                inherited.as_ref(),
+            )?;
+            if !input.run_mode().is_perform_layout() {
+                return Ok(output);
+            }
+            let Some(geometry) = output.scroll_geometry else {
+                return Ok(output);
+            };
+            let next_state = pass_input.settled_auto_scrollbars().transition(geometry);
+            if next_state == pass_input.settled_auto_scrollbars()
+                || scrollbar_width == Tree::Scalar::ZERO
+                || !crate::scroll::settled_auto_scrollbars_change_available_geometry(
+                    geometry, next_state,
+                )
+                .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?
+            {
+                return Ok(output);
+            }
+            pass_input = input.with_settled_auto_scrollbars(next_state);
         }
-        let Some(geometry) = output.scroll_geometry else {
-            return Ok(output);
-        };
-        let next_state = pass_input.settled_auto_scrollbars().transition(geometry);
-        if next_state == pass_input.settled_auto_scrollbars()
-            || scrollbar_width == Tree::Scalar::ZERO
-            || !crate::scroll::settled_auto_scrollbars_change_available_geometry(
-                geometry, next_state,
-            )
-            .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?
-        {
-            return Ok(output);
-        }
-        pass_input = input.with_settled_auto_scrollbars(next_state);
+    })();
+    if formatted && let Some(text) = tree.text_computation() {
+        text.formatted_end_block(node, input, anonymous, result.is_ok());
     }
+    result
 }
 
 fn compute_block_inner<'input, Tree, S, M>(
@@ -141,8 +151,12 @@ where
     let style = block_container_projection::<Tree, M>(tree, node);
     let constants = Constants::from_projection::<Tree, M>(tree, node, &style, input)?;
     let children = tree.children(node).collect::<Vec<_>>();
+    let observe_formatted = tree
+        .text_computation()
+        .is_some_and(|text| text.formatted_active());
 
     if children.is_empty()
+        && !observe_formatted
         && input.run_mode() == RunMode::ComputeSize
         && let Size {
             width: Some(width),
@@ -154,6 +168,7 @@ where
         )));
     }
     if input.run_mode() == RunMode::ComputeSize
+        && !observe_formatted
         && let Size {
             width: Some(width),
             height: Some(height),
@@ -244,6 +259,9 @@ where
     } else {
         (constants, intrinsic_pass)
     };
+    if let Some(text) = tree.text_computation() {
+        text.formatted_record_flow(final_pass.formatted.clone());
+    }
     let logical_output_size = LogicalSizeOf::new(
         provisional_logical_output_size.inline,
         constants

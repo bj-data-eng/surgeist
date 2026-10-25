@@ -156,6 +156,17 @@ breaks; `hanging` inverts that predicate. Only accepted lines advance this state
 including empty lines. Candidate retries and clearance do not consume it.
 Text-bearing and box/control-only inline runs use the same policy.
 
+Prepared Text hanging punctuation uses explicit First/Last formatted-container
+roles. Layout supplies actual First state and validates demanded Last assumptions
+against accepted Text, numeric, empty and Forced lines, including genuine later
+in-flow children. Endpoint-based replay permits a terminal punctuation candidate
+to absorb a former last line. Detached full-word/phrase trials retain prospective
+entry and remaining-flow authority without committing line history. Intrinsic
+and finite invocations keep separate chronology; geometry-only cache hits lacking
+a demanded summary are recomputed. Text owns punctuation classes and signed
+advance accounting, and Layout consumes its fit/alignment/intrinsic receipts.
+See the [shared formatted-line contract](../../../docs/text-layout-contract.md#hanging-punctuation-and-formatted-line-roles).
+
 `block_generation` distinguishes principal boxes from actual anonymous blocks.
 For anonymous blocks, Layout derives first-line eligibility through the first
 in-flow-child chain; an earlier empty in-flow block consumes that position.

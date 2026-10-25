@@ -13,6 +13,197 @@ use crate::protocol::{
 use crate::{Result, ValidatedOptions, Wrap};
 use std::sync::Arc;
 
+/// Raw emitted history stays invocation-local. Indentation's each-line state is
+/// separate from this actual first-formatted-line observation.
+struct RawAcceptedLine {
+    line: FinalizedLine,
+    first: bool,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct RawEntry<'a> {
+    start: usize,
+    incoming: Option<&'a crate::HyphenationContinuation>,
+    accepted: &'a [RawAcceptedLine],
+}
+
+pub(super) enum RawRoleBasis<'a> {
+    Actual { first: bool },
+    Prospective { entry: RawEntry<'a> },
+}
+
+impl RawRoleBasis<'_> {
+    pub(super) fn initial(&self, end: crate::LineEnd) -> crate::FormattedLineContext {
+        match self {
+            Self::Actual { first } => crate::FormattedLineContext::new(
+                Some(*first),
+                Some(end == crate::LineEnd::Paragraph),
+            ),
+            // A measurement can describe a receiving line even while its query
+            // is on the actual first line. Never copy the query's role flags.
+            Self::Prospective { .. } => crate::FormattedLineContext::default(),
+        }
+    }
+
+    pub(super) fn resolve(
+        &self,
+        prepared: &Arc<PreparedData>,
+        request: &crate::LineSelectionRequest,
+        profile: crate::protocol::selection::LineMetricPolicy,
+        scratch: &mut ShapeContext,
+    ) -> Result<crate::FormattedLineContext> {
+        use crate::{FlowSegmentRole, LineEnd};
+        let Self::Prospective { entry } = self else {
+            return Ok(self.initial(request.context.end));
+        };
+        let target = &request.termination;
+        if !matches!(
+            target,
+            PreparedTermination::Measurement(_) | PreparedTermination::PhraseMeasurement(_)
+        ) {
+            return Err(invalid_raw_flow());
+        }
+        let handle = crate::PreparedText {
+            inner: Arc::clone(prepared),
+        };
+        let query_start = crate::PreparedBoundary {
+            prepared: Arc::clone(prepared),
+            index: entry.start,
+        };
+        let flow = handle.measurement_flow(&query_start, entry.incoming, target)?;
+        let phrase = matches!(target, PreparedTermination::PhraseMeasurement(_));
+        let mut first = if phrase {
+            entry.accepted.is_empty()
+        } else {
+            manual_entry_first(prepared, *entry, &flow.entry())?
+        };
+        let mut observations = Vec::new();
+        for segment in flow.segments() {
+            let mut context = request.context.clone();
+            context.formatted_line = crate::FormattedLineContext::default();
+            context.start = if segment.start().view().participant_offset() == 0 {
+                crate::LineStart::Paragraph
+            } else {
+                crate::LineStart::Continuation
+            };
+            context.end = if segment.role() == FlowSegmentRole::Target {
+                LineEnd::Soft
+            } else {
+                segment
+                    .mandatory_end()
+                    .map_or(LineEnd::Soft, |offer| match offer.view().kind() {
+                        PreparedBreakKind::Forced => LineEnd::Forced,
+                        PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
+                        _ => LineEnd::Soft,
+                    })
+            };
+            let observation_request = crate::FlowObservationRequest {
+                context,
+                atomics: crate::protocol::selection::standalone_atomics(
+                    prepared,
+                    segment.start().index,
+                    segment.end().index,
+                )?,
+                controls: Vec::new(),
+                line_strut: None,
+                boundary_context: Vec::new(),
+            };
+            observations.push(super::flow::observe(
+                &handle,
+                &segment,
+                &observation_request,
+                profile,
+                scratch,
+            )?);
+        }
+        flow.validate_observations(&observations)?;
+        let mut later_line = false;
+        for observation in &observations {
+            let segment = observation.segment();
+            let forced = segment
+                .mandatory_end()
+                .is_some_and(|offer| offer.view().kind() == PreparedBreakKind::Forced);
+            match segment.role() {
+                FlowSegmentRole::EntryPrefix => {
+                    let preceding = observation.has_retained_flow_participation() || forced;
+                    if phrase && preceding {
+                        return Err(invalid_raw_flow());
+                    }
+                    first &= !preceding;
+                }
+                FlowSegmentRole::PriorPartition => {
+                    // This is Raw's admission + emitted-line contract, not an
+                    // assertion that Native retained participation emits a line.
+                    let admitted = segment.mandatory_end().is_some()
+                        || raw_soft_admitted(prepared, segment.start().index, segment.end().index);
+                    first &= !admitted;
+                }
+                FlowSegmentRole::Target => {
+                    // A genuine manual cut schedules the receiving Paragraph
+                    // even if its indication is Before-only/empty at body end.
+                    later_line |=
+                        segment.alternative().is_some() || segment.outgoing().is_some() || forced;
+                }
+                FlowSegmentRole::Remaining => {
+                    // Neutral trailing custody can close this hypothetical
+                    // unbroken line. A real break or receiving prefix cannot.
+                    later_line |= observation.has_retained_flow_participation()
+                        || forced
+                        || segment.incoming().is_some();
+                }
+            }
+        }
+        // The raw call owns the complete single container. Its recipe completion
+        // has no external child tail; actual trailing Forced/empty work above is
+        // still required and never erased by a Soft measurement API ending.
+        Ok(crate::FormattedLineContext::new(
+            Some(first),
+            Some(!later_line),
+        ))
+    }
+}
+
+fn invalid_raw_flow() -> crate::Error {
+    crate::protocol::protocol_error(crate::ProtocolError::InvalidMeasurementFlow)
+}
+
+fn manual_entry_first(
+    prepared: &Arc<PreparedData>,
+    entry: RawEntry<'_>,
+    word_entry: &crate::PreparedBoundary,
+) -> Result<bool> {
+    let at = word_entry.view().participant_offset();
+    for row in entry.accepted {
+        let request = &row.line.selected.request;
+        let from = request.start.view().participant_offset();
+        let to = request.end.view().participant_offset();
+        if from <= at && at < to {
+            if !row.first {
+                return Ok(false);
+            }
+            if from == at {
+                return Ok(true);
+            }
+            let participant = crate::PreparedText {
+                inner: Arc::clone(prepared),
+            }
+            .participants()
+            .nth(at)
+            .ok_or_else(invalid_raw_flow)?;
+            let line = receipt(&row.line);
+            return Ok(!line
+                .prefix_at(&crate::TextSeam::BeforeParticipant(participant))?
+                .has_retained_flow_participation());
+        }
+    }
+    if at < prepared.tables.boundaries[entry.start].participant {
+        // A backwards whole-word hypothesis needs the actual containing prefix
+        // receipt. Its absence is not permission to guess first/nonfirst.
+        return Err(invalid_raw_flow());
+    }
+    Ok(entry.accepted.is_empty())
+}
+
 pub(super) fn layout(
     prepared: Arc<PreparedData>,
     options: ValidatedOptions,
@@ -34,8 +225,11 @@ pub(super) fn layout(
         };
         let line = choose(
             &prepared,
-            start,
-            incoming.as_ref(),
+            RawEntry {
+                start,
+                incoming: incoming.as_ref(),
+                accepted: &lines,
+            },
             indent,
             options,
             scratch,
@@ -48,7 +242,8 @@ pub(super) fn layout(
         start = request.end.index;
         paragraph_start = request.context.end == crate::LineEnd::Forced;
         let done = request.context.end == crate::LineEnd::Paragraph;
-        lines.push(line);
+        let first = lines.is_empty();
+        lines.push(RawAcceptedLine { line, first });
         if done {
             break;
         }
@@ -56,26 +251,33 @@ pub(super) fn layout(
     if authored.width.is_none() {
         let width = lines
             .iter()
-            .map(|line| {
-                (line.data.metrics.advance + line.selected.request.context.indent.max(0.0)
-                    - line.data.metrics.trailing_whitespace)
-                    .max(0.0)
+            .map(|row| {
+                (row.line
+                    .data
+                    .measurements
+                    .as_ref()
+                    .expect("finalized raw measures")
+                    .max_content_contribution()
+                    .advance()
+                    + row.line.selected.request.context.indent.max(0.0))
+                .max(0.0)
             })
             .fold(0.0, f64::max);
         let mut resolved = Vec::with_capacity(lines.len());
-        for line in lines {
-            let mut request = line.selected.request.clone();
+        for row in lines {
+            let mut request = row.line.selected.request.clone();
             request.context.available_inline = Some(width);
             resolved.push(finalize_standalone(
                 Arc::clone(&prepared),
                 request,
                 authored.quantize,
                 scratch,
+                &mut RawRoleBasis::Actual { first: row.first },
             )?);
         }
-        lines = resolved;
+        return placement::place(resolved.into_iter().map(Arc::new).collect());
     }
-    placement::place(lines.into_iter().map(Arc::new).collect())
+    placement::place(lines.into_iter().map(|row| Arc::new(row.line)).collect())
 }
 
 fn fits(line: &FinalizedLine, width: Option<f64>) -> Result<bool> {
@@ -90,39 +292,40 @@ fn fits(line: &FinalizedLine, width: Option<f64>) -> Result<bool> {
         .measurements
         .as_ref()
         .expect("finalized raw measures")
-        .alignment();
-    Ok(measure.advance() <= available && raw_occupied(line)? <= available)
-}
-
-fn raw_occupied(line: &FinalizedLine) -> Result<f64> {
-    let mut start = line.data.metrics.offset;
-    let mut end = start;
-    for row in &line.data.clusters {
-        if matches!(
-            row.disposition,
-            crate::SpacingSlotDisposition::Retained { trailing: true }
-        ) {
-            continue;
-        }
-        start = start.min(row.x.min(row.x + row.advance));
-        end = end.max(row.x.max(row.x + row.advance));
-    }
-    for row in &line.data.boxes {
-        if let FinalizedBoxGeometry::InFlow { flow, .. } = row.geometry {
-            start = start.min(row.slot.x + flow.occupied_start);
-            end = end.max(row.slot.x + flow.occupied_end);
-        }
-    }
-    super::finite(
+        .fit();
+    let occupied = super::finite(
         "raw occupied span",
         crate::TextNumericPhase::Finalization,
-        end - start,
-    )
+        measure.occupied_end() - measure.occupied_start(),
+    )?;
+    Ok(measure.advance() <= available && occupied <= available)
+}
+
+/// Raw's actual nonmandatory admission is intentionally distinct from Native's
+/// post-discard Soft participation rule.
+fn raw_soft_admitted(prepared: &PreparedData, start: usize, end: usize) -> bool {
+    use crate::protocol::prepared::ParticipantData;
+    let tables = &prepared.tables;
+    let from = tables.boundaries[start].participant;
+    let to = tables.boundaries[end].participant;
+    to != tables.participants.len()
+        && tables.participants[from..to]
+            .iter()
+            .any(|participant| match *participant {
+                ParticipantData::Text(i) => !tables.units[i].atoms.is_empty(),
+                ParticipantData::Atomic(i) => {
+                    prepared.analyzed.processed.source().boxes()[tables.atomics[i].occurrence]
+                        .kind()
+                        == crate::InlineBoxKind::InFlow
+                }
+                ParticipantData::Control(_) => false,
+            })
 }
 
 fn automatic_allowed(
     prepared: &Arc<PreparedData>,
     alternative: usize,
+    entry: RawEntry<'_>,
     indent: f64,
     options: ValidatedOptions,
     scratch: &mut ShapeContext,
@@ -167,6 +370,7 @@ fn automatic_allowed(
             request,
             options.authored().quantize,
             scratch,
+            &mut RawRoleBasis::Prospective { entry },
         )?;
         if fits(&line, options.authored().width)? {
             return Ok(false);
@@ -177,12 +381,14 @@ fn automatic_allowed(
 
 fn choose(
     prepared: &Arc<PreparedData>,
-    start: usize,
-    incoming: Option<&crate::HyphenationContinuation>,
+    entry: RawEntry<'_>,
     indent: f64,
     options: ValidatedOptions,
     scratch: &mut ShapeContext,
 ) -> Result<FinalizedLine> {
+    let RawEntry {
+        start, incoming, ..
+    } = entry;
     let tables = &prepared.tables;
     let mut ordinary = None;
     let mut first = None;
@@ -208,23 +414,7 @@ fn choose(
             offer.kind,
             PreparedBreakKind::Forced | PreparedBreakKind::ParagraphEnd
         );
-        if !mandatory
-            && (boundary.participant == tables.participants.len()
-                || !tables.participants[tables.boundaries[start].participant..boundary.participant]
-                    .iter()
-                    .any(|participant| match *participant {
-                        crate::protocol::prepared::ParticipantData::Text(i) => {
-                            !tables.units[i].atoms.is_empty()
-                        }
-                        crate::protocol::prepared::ParticipantData::Atomic(i) => {
-                            prepared.analyzed.processed.source().boxes()
-                                [tables.atomics[i].occurrence]
-                                .kind()
-                                == crate::InlineBoxKind::InFlow
-                        }
-                        crate::protocol::prepared::ParticipantData::Control(_) => false,
-                    }))
-        {
+        if !mandatory && !raw_soft_admitted(prepared, start, offer.boundary) {
             continue;
         }
         if options.authored().width.is_none() && !mandatory {
@@ -266,7 +456,7 @@ fn choose(
             .chain(offer.alternatives.iter().copied().map(Some));
         for variant in variants {
             if let Some(alternative) = variant
-                && !automatic_allowed(prepared, alternative, indent, options, scratch, None)?
+                && !automatic_allowed(prepared, alternative, entry, indent, options, scratch, None)?
             {
                 continue;
             }
@@ -291,6 +481,9 @@ fn choose(
                 request,
                 options.authored().quantize,
                 scratch,
+                &mut RawRoleBasis::Actual {
+                    first: entry.accepted.is_empty(),
+                },
             )?;
             let actual_fit = fits(&line, options.authored().width)?;
             if is_emergency {
@@ -318,8 +511,7 @@ fn choose(
         && options.authored().width.is_some()
         && let Some(frame) = first.as_ref()
         && tables.auto_phrase_between(start, frame.selected.request.end.index)
-        && let Some(line) =
-            choose_phrase(prepared, start, incoming, indent, options, scratch, frame)?
+        && let Some(line) = choose_phrase(prepared, entry, indent, options, scratch, frame)?
     {
         return Ok(line);
     }
@@ -347,8 +539,7 @@ fn receipt(line: &FinalizedLine) -> crate::FinalizedLine {
 
 fn choose_phrase(
     prepared: &Arc<PreparedData>,
-    start: usize,
-    incoming: Option<&crate::HyphenationContinuation>,
+    entry: RawEntry<'_>,
     indent: f64,
     options: ValidatedOptions,
     scratch: &mut ShapeContext,
@@ -357,6 +548,9 @@ fn choose_phrase(
     use crate::{
         ConditionalDisposition, ConditionalPurpose, ConditionalStage, PhraseOverflowDecision,
     };
+    let RawEntry {
+        start, incoming, ..
+    } = entry;
     let handle = crate::PreparedText {
         inner: Arc::clone(prepared),
     };
@@ -404,6 +598,9 @@ fn choose_phrase(
                 request,
                 options.authored().quantize,
                 scratch,
+                &mut RawRoleBasis::Actual {
+                    first: entry.accepted.is_empty(),
+                },
             )?;
             skipped.push(ConditionalDisposition::ConsumerHyphenationPolicy(receipt(
                 &line,
@@ -443,7 +640,13 @@ fn choose_phrase(
             authored.alignment,
         )?;
         request.incoming = portion.incoming();
-        let line = finalize_standalone(Arc::clone(prepared), request, authored.quantize, scratch)?;
+        let line = finalize_standalone(
+            Arc::clone(prepared),
+            request,
+            authored.quantize,
+            scratch,
+            &mut RawRoleBasis::Prospective { entry },
+        )?;
         decisions.push(if fits(&line, authored.width)? {
             PhraseOverflowDecision::Fits(receipt(&line))
         } else {
@@ -462,6 +665,7 @@ fn choose_phrase(
                 automatic_allowed(
                     prepared,
                     alternative.index,
+                    entry,
                     indent,
                     options,
                     scratch,
@@ -485,6 +689,9 @@ fn choose_phrase(
                 request,
                 options.authored().quantize,
                 scratch,
+                &mut RawRoleBasis::Actual {
+                    first: entry.accepted.is_empty(),
+                },
             )?;
             let actual_fit = fits(&line, options.authored().width)?;
             if allowed && actual_fit {
@@ -515,6 +722,9 @@ fn choose_phrase(
         batch = next;
     }
 }
+
+#[cfg(test)]
+mod punctuation_tests;
 
 #[cfg(test)]
 mod tests {

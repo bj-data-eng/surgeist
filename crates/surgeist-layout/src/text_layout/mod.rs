@@ -2,6 +2,8 @@
 
 pub(crate) mod capture;
 pub(crate) mod fit;
+pub(crate) mod formatted;
+mod roles;
 pub(crate) mod run;
 pub(crate) mod state;
 #[cfg(test)]

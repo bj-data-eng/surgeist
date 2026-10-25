@@ -44,6 +44,7 @@ where
 }
 
 pub(super) struct InFlowResult<Node, S: LayoutScalar> {
+    pub(super) formatted: Option<crate::text_layout::formatted::FormattedFlow<Node, S>>,
     pub(super) content_size: LogicalSizeOf<S>,
     pub(super) scroll_content_size: LogicalSizeOf<S>,
     pub(super) owned_float_block_end: S,
@@ -176,6 +177,21 @@ where
     let mut contributions = ScrollContributionAccumulatorOf::new(contribution_seed);
 
     let mut index = 0;
+    if let Some(text) = tree.text_computation() {
+        text.formatted_begin_flow(
+            input,
+            inner_inline.map(AvailableOf::definite).unwrap_or(
+                constants
+                    .flow_axes
+                    .logical_size(constants.available_content)
+                    .inline,
+            ),
+            set_layout,
+        );
+    }
+    let mut formatted = tree
+        .text_computation()
+        .and_then(|text| text.formatted_new_flow());
     let mut first_in_flow = true;
     let mut inline_indent_state = None;
     let mut line_box_context = crate::line_box::LineBoxContext::new(
@@ -336,6 +352,7 @@ where
                         }),
                     },
                     InlineRunTransitionState {
+                        formatted: &mut formatted,
                         indent_state: &mut inline_indent_state,
                         line_box_context: &mut line_box_context,
                         hyphenation_state: &mut hyphenation_state,
@@ -680,6 +697,18 @@ where
             continue;
         }
         resolved_terminal_float_block_end = None;
+        if child_style.display.inner_display() == crate::Display::Block
+            && let Some(flow) = &mut formatted
+        {
+            let anonymous =
+                tree.node_input(child).block_generation == crate::BlockGeneration::Anonymous;
+            if let Some(item) = tree
+                .text_computation()
+                .and_then(|text| text.formatted_child(child, child_input, anonymous))
+            {
+                flow.items.push(item);
+            }
+        }
         let inset_offset = relative_inset_offset(
             constants
                 .flow_axes
@@ -872,7 +901,11 @@ where
             crate::text_layout::fit::FitError::MissingBlockTail,
         ));
     }
+    if let Some(text) = tree.text_computation() {
+        text.formatted_record_traversal(&formatted);
+    }
     Ok(InFlowResult {
+        formatted,
         content_size,
         scroll_content_size,
         owned_float_block_end,

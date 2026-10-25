@@ -9,7 +9,7 @@ pub(crate) mod hyphenation;
 mod lexical_fallback;
 mod line_break;
 pub(crate) mod phrase;
-mod unit_properties;
+pub(crate) mod unit_properties;
 pub(crate) mod wrapping;
 
 use std::ops::Range;

@@ -428,6 +428,7 @@ mod tests {
             boundary_context: vec![],
             line_strut: None,
             context: crate::LineContext {
+                formatted_line: crate::FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::RightToLeft,
                 line_box_direction: crate::LineBoxDirection::RightToLeft,
                 orientation: crate::LineOrientation::Horizontal,

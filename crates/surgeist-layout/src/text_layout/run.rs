@@ -42,6 +42,7 @@ pub(crate) enum Frame<S: LayoutScalar> {
 }
 
 pub(crate) struct Context<S: LayoutScalar> {
+    pub formatted: super::formatted::FormattedTailSnapshot,
     pub line_box_context: crate::line_box::LineBoxContext,
     pub frame: Frame<S>,
     pub containing_size: Size<S>,
@@ -80,6 +81,7 @@ pub(crate) struct LineBounds<S: LayoutScalar> {
 }
 
 pub(crate) struct Output<Node, S: LayoutScalar> {
+    pub formatted: super::formatted::FormattedTailUses,
     pub report: MixedInlineRunReportOf<S>,
     pub paragraph: PendingParagraph<Node>,
     pub line_bounds: Vec<LineBounds<S>>,
@@ -169,6 +171,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
     };
     let lines = fit::fit(
         fit::FitInput {
+            formatted: &context.formatted,
             line_box_context: context.line_box_context,
             prepared: &binding.prepared,
             available,
@@ -545,6 +548,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         controls: Vec::new(),
         post_line_clear_intents: Vec::new(),
         line_bands: Vec::new(),
+        formatted_lines: None,
     };
     let mut placements = Vec::new();
     let mut bands = Vec::new();
@@ -558,7 +562,31 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     let mut atomic_origins = Vec::new();
     let mut static_positions = Vec::new();
     let mut outflows = Vec::new();
+    let mut formatted = super::formatted::FormattedTailUses::default();
+    let observe_formatted = context.formatted.observes()
+        || lines.iter().any(|line| {
+            line.role_uses
+                .iter()
+                .any(|used| used.demanded_assignment().is_some())
+        });
     for (line_index, line) in lines.into_iter().enumerate() {
+        for used in line.role_uses {
+            if let Some(demand) = used.demanded_assignment()
+                && !formatted.demands.contains(demand)
+            {
+                formatted.demands.push(demand.clone());
+            }
+            formatted.roles.push(used);
+        }
+        if observe_formatted {
+            let selected = line.finalized.selected_line();
+            formatted
+                .accepted
+                .push(super::formatted::FormattedTailEndpoint::new(
+                    selected.request().end.clone(),
+                    selected.request().alternative.clone(),
+                ));
+        }
         if context.tail != fit::TailContext::Unrestricted
             && matches!(context.available, AvailableOf::Definite(_))
         {
@@ -813,6 +841,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     let hyphenation_end = report.hyphenation_state;
     let line_box_end = report.line_box_context;
     Ok(Output {
+        formatted,
         report,
         line_bounds,
         fragments,

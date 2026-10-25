@@ -26,6 +26,8 @@ mod canonical;
 mod conditional_overflow;
 #[path = "tests/float_fit.rs"]
 mod float_fit;
+#[path = "tests/hanging_punctuation.rs"]
+mod hanging_punctuation;
 #[path = "tests/indent.rs"]
 mod indent;
 #[path = "tests/inline_boundary_edges.rs"]
@@ -246,6 +248,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
         &[],
         &[],
         super::run::Context {
+            formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
                 crate::LineBoxDirectionPolicy::Normal,
                 Direction::Ltr,

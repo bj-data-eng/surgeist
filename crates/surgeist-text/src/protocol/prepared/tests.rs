@@ -899,6 +899,7 @@ fn native_connection_space_owner_depends_on_actual_disappearance() {
 
 fn context(end: LineEnd) -> LineContext {
     LineContext {
+        formatted_line: crate::FormattedLineContext::default(),
         base_direction: ParagraphBaseDirection::LeftToRight,
         line_box_direction: crate::LineBoxDirection::LeftToRight,
         orientation: LineOrientation::Horizontal,
@@ -1044,7 +1045,7 @@ fn discarded_original_coverage_and_distinct_empty_occurrences_survive_selection(
     drop(system);
     drop(analyzed);
     let (shaped, mapping) = crate::engine::shape::finalize(
-        &selected.inner,
+        selected.inner.presentation_input(),
         &mut crate::engine::shape::ShapeContext::default(),
     )
     .unwrap();
@@ -1201,7 +1202,7 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
     system.refresh_fonts().unwrap();
     drop(system);
     let (shaped, _) = crate::engine::shape::finalize(
-        &selected.inner,
+        selected.inner.presentation_input(),
         &mut crate::engine::shape::ShapeContext::default(),
     )
     .unwrap();
@@ -1299,7 +1300,7 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
     assert!(matches!(fragments[1].owner, FragmentOwner::Control(0)));
     assert!(fragments.iter().all(|f| f.source.is_none()));
     let (shaped, _) = crate::engine::shape::finalize(
-        &selected.inner,
+        selected.inner.presentation_input(),
         &mut crate::engine::shape::ShapeContext::default(),
     )
     .unwrap();

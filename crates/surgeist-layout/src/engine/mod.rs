@@ -131,7 +131,10 @@ where
         }
         let frames = session.canonical_frames(root)?;
         let basis = session.text_pass_basis(frames.clone());
-        if frames == session.text_basis() && rejected_bases.last() == Some(&basis) {
+        if frames == session.text_basis()
+            && rejected_bases.last() == Some(&basis)
+            && session.formatted_text_valid()
+        {
             return session.complete_with_text(root);
         }
         if rejected_bases.contains(&basis) {

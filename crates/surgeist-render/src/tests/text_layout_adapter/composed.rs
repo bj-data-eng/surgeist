@@ -32,6 +32,7 @@ fn finalized(source: text::Source) -> (text::PreparedText, text::FinalizedLine) 
             context: text::LineContext {
                 base_direction: text::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
+                formatted_line: text::FormattedLineContext::default(),
                 orientation: text::LineOrientation::Horizontal,
                 start: text::LineStart::Paragraph,
                 end: text::LineEnd::Paragraph,
@@ -156,6 +157,89 @@ fn placed_line_refuses_a_backend_transform_that_collapses_positive_ink() {
 }
 
 #[test]
+fn hanging_punctuation_reaches_paint_with_its_original_advance_and_source() {
+    let mut system = system(AHEM.to_vec());
+    let analyzed = text::AnalyzedSource::new(
+        text::Source::new("A."),
+        text::Style {
+            hanging_punctuation: text::HangingPunctuation::new(
+                false,
+                Some(text::HangingPunctuationEnd::ForceEnd),
+                false,
+            ),
+            ..style()
+        },
+    )
+    .unwrap();
+    let prepared = system
+        .prepare(&analyzed, text::PreparationOptions::default())
+        .unwrap();
+    let ending = prepared
+        .opportunity_views()
+        .find(|offer| offer.kind() == text::PreparedBreakKind::ParagraphEnd)
+        .unwrap()
+        .handle();
+    let line = prepared
+        .select(text::LineSelectionRequest {
+            incoming: None,
+            start: prepared.boundary_views().next().unwrap().handle(),
+            end: ending.view().boundary(),
+            termination: text::PreparedTermination::Ordinary(ending),
+            alternative: None,
+            participants: prepared.participants().collect(),
+            atomics: vec![],
+            controls: vec![],
+            boundary_context: vec![],
+            line_strut: None,
+            context: text::LineContext {
+                base_direction: text::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: text::LineBoxDirection::LeftToRight,
+                formatted_line: text::FormattedLineContext::new(Some(true), Some(true)),
+                orientation: text::LineOrientation::Horizontal,
+                start: text::LineStart::Paragraph,
+                end: text::LineEnd::Paragraph,
+                available_inline: Some(20.0),
+                indent: 0.0,
+                alignment: text::Alignment::Start,
+                tabs: text::TabContext::NoTabs,
+                spacing: text::SpacingPolicy::None,
+            },
+        })
+        .unwrap()
+        .finalize(text::SpacingAllocations::None)
+        .unwrap();
+    // Retained Ahem has A35/period16 with one-em advances. ForceEnd changes
+    // participation in the 20px frame, without shortening either 20px glyph.
+    assert_eq!(line.feedback().advance, 40.0);
+    assert_eq!(line.measurements().fit().advance(), 20.0);
+    assert_eq!(line.measurements().alignment().advance(), 20.0);
+    let input = placed(prepared, line, 3.25, 41.5);
+    assert_eq!(input.lines().len(), 1);
+    assert_eq!(input.lines()[0].bounds().size.width, 20.0);
+    assert_eq!(input.lines()[0].range(), text::Range::new(0, 2));
+    assert_eq!(input.source().text(), &text::Text::from("A."));
+    let stats = system.stats();
+    let scene = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    assert_eq!(system.stats(), stats);
+    assert_eq!(scene.scene().commands.len(), 1);
+    let (paint, transform) = outline(&scene.scene().commands[0]);
+    assert_eq!(transform, Transform::translation(3.25, 41.5).unwrap());
+    assert_eq!(paint.font().bytes(), AHEM);
+    assert_eq!(
+        paint.glyphs(),
+        [
+            TextGlyph::try_new(35, 0.0, 0.0, 20.0).unwrap(),
+            TextGlyph::try_new(16, 20.0, 0.0, 20.0).unwrap(),
+        ]
+    );
+    let caret = input
+        .cursor(text::Cursor::new(1, text::Affinity::After))
+        .unwrap()
+        .rect();
+    assert_eq!(caret.origin.x, 23.25);
+}
+
+#[test]
 fn aggregate_placed_run_refusal_preserves_an_already_admitted_scene() {
     let (prepared, line) = finalized(split_source());
     let input = placed(prepared, line, 10.25, 30.5);
@@ -220,6 +304,7 @@ fn actual_gpos_mark_placement_reaches_admitted_outline_ink_without_advance_subst
             context: text::LineContext {
                 base_direction: text::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
+                formatted_line: text::FormattedLineContext::default(),
                 orientation: text::LineOrientation::Horizontal,
                 start: text::LineStart::Paragraph,
                 end: text::LineEnd::Paragraph,

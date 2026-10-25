@@ -67,6 +67,8 @@ struct StagedInlineFragmentGroup<Node, S: LayoutScalar> {
 /// One actual child request executed off-side against the same immutable tree
 /// and canonical Text invocation. This is not a rounded/completed child batch.
 pub(crate) struct FloatChildPacket<Node, S: LayoutScalar> {
+    formatted_basis: Vec<crate::text_layout::formatted::BoundAssignment<Node, S>>,
+    formatted: Option<crate::text_layout::formatted::FormattedState<Node, S>>,
     pub(crate) node: Node,
     pub(crate) input: ComputeInputOf<S>,
     pub(crate) output: ComputeOutputOf<S>,
@@ -169,6 +171,7 @@ where
             &capture.paragraphs,
             capture.associations.clone(),
         ));
+        session.text.as_mut().unwrap().graph = Some(&capture.graph);
         session
     }
 
@@ -256,6 +259,10 @@ where
             .frames
     }
 
+    pub(super) fn formatted_text_valid(&self) -> bool {
+        self.text.as_ref().is_none_or(|text| text.formatted_valid())
+    }
+
     pub(super) fn begin_text_pass(
         &mut self,
         frames: Vec<crate::text_layout::state::CanonicalFrame<Tree::Node, Tree::Scalar>>,
@@ -264,7 +271,11 @@ where
             .text
             .as_mut()
             .expect("Text compute entry initialized its state");
+        text.formatted_next_pass();
         text.frames = frames.into();
+        if let Some(formatted) = &mut text.formatted {
+            formatted.frames = text.frames.clone();
+        }
         text.reusable = text
             .pending
             .iter()
@@ -448,7 +459,20 @@ where
     {
         let style = self.tree.node_input(node);
         if self.tree.has_leaf_measurement(node) {
-            return crate::measurement::compute_tree_leaf(self.tree, node, input, style);
+            let result = crate::measurement::compute_tree_leaf(self.tree, node, input, style);
+            if result.is_ok()
+                && let Some(text) = &mut self.text
+            {
+                let anonymous = style.block_generation == crate::BlockGeneration::Anonymous;
+                if text.formatted_begin_block(node, input, anonymous) {
+                    // The actual host leaf operation emits no line-box API.
+                    // A positive measured size is not a formatted line.
+                    let flow = text.formatted_new_flow();
+                    text.formatted_record_flow(flow);
+                    text.formatted_end_block(node, input, anonymous, true);
+                }
+            }
+            return result;
         }
 
         match style.display.inner_display() {
@@ -621,7 +645,8 @@ where
                 let context = <Self as CacheAccess<Tree::MeasureError>>::cache_context(self);
                 if let Some(output) = <Self as CacheAccess<Tree::MeasureError>>::cache_get(
                     self, node, &input, context,
-                ) && self.restore_committed_subtree(node)
+                ) && self.cache_restore_semantics(node, &input)
+                    && self.restore_committed_subtree(node)
                 {
                     return Ok(output);
                 }
@@ -659,9 +684,28 @@ where
                 text.associations.clone(),
             );
             state.frames = text.frames.clone();
+            state.graph = text.graph;
+            state.formatted = text.formatted.as_ref().map(|state| state.fork());
             observation.text = Some(state);
         }
-        probe.observe(&mut observation, node)
+        let result = probe.observe(&mut observation, node);
+        if result.is_ok()
+            && let Some(formatted) = observation
+                .text
+                .as_ref()
+                .and_then(|text| text.formatted.as_ref())
+            && let Some(text) = &mut self.text
+        {
+            // A consumed probe can affect the parent's sizing decision. Retain
+            // only its purpose-scoped semantic dependencies; none of its
+            // geometry, pending Text, fragments or cache writes are published.
+            let state = text
+                .formatted
+                .get_or_insert_with(crate::text_layout::formatted::FormattedState::new);
+            state.frames = text.frames.clone();
+            state.accept(formatted);
+        }
+        result
     }
 
     fn probe_float_child(
@@ -699,6 +743,8 @@ where
             );
             state.frames = std::sync::Arc::clone(&text.frames);
             state.reusable = std::sync::Arc::clone(&text.reusable);
+            state.graph = text.graph;
+            state.formatted = text.formatted.as_ref().map(|state| state.fork());
             let frames = std::sync::Arc::clone(&state.frames);
             probe.text = Some(state);
             frames
@@ -706,20 +752,27 @@ where
             std::sync::Arc::from([])
         };
         let output = probe.compute_child(node, input)?;
-        let (pending, atomic_origins, absolute_baselines, scope_fragments) =
+        let (pending, atomic_origins, absolute_baselines, scope_fragments, formatted) =
             probe.text.map_or_else(
-                || (Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+                || (Vec::new(), Vec::new(), Vec::new(), Vec::new(), None),
                 |text| {
                     (
                         text.pending,
                         text.atomic_origins,
                         text.absolute_baselines,
                         text.scope_fragments,
+                        text.formatted,
                     )
                 },
             );
         let associations = self.text.as_ref().map(|text| text.associations.clone());
         Ok(std::sync::Arc::new(FloatChildPacket {
+            formatted_basis: self
+                .text
+                .as_ref()
+                .and_then(|text| text.formatted.as_ref())
+                .map_or_else(Vec::new, |state| state.assignments.clone()),
+            formatted,
             node,
             input,
             output,
@@ -753,6 +806,19 @@ where
                 LayoutErrorKindOf::TextFeedbackCycle,
             ));
         }
+        if self
+            .text
+            .as_ref()
+            .and_then(|text| text.formatted.as_ref())
+            .map_or(&[][..], |state| state.assignments.as_slice())
+            != packet.formatted_basis
+        {
+            return Err(LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(packet.node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::TextFeedbackCycle,
+            ));
+        }
         for entry in &packet.entries {
             self.set_unrounded(entry.node(), entry.output());
         }
@@ -766,6 +832,13 @@ where
             self.cache_clear(entry.node());
         }
         if let Some(text) = &mut self.text {
+            if let Some(observed) = &packet.formatted {
+                let state = text
+                    .formatted
+                    .get_or_insert_with(crate::text_layout::formatted::FormattedState::new);
+                state.frames = text.frames.clone();
+                state.accept(observed);
+            }
             for group in &packet.scope_fragments {
                 text.record_scope_fragments(
                     group.container,
@@ -931,10 +1004,29 @@ where
         input: &ComputeInputOf<Self::Scalar>,
         context: crate::CacheKeyContext,
     ) -> Option<ComputeOutputOf<Self::Scalar>> {
-        if self.invalidated_nodes.contains(&node) {
+        if self.invalidated_nodes.contains(&node)
+            || self
+                .text
+                .as_ref()
+                .is_some_and(|text| !text.formatted_cache_available(node, input))
+        {
             return None;
         }
-        self.tree.cache_get(node, input, context)
+        let output = self.tree.cache_get(node, input, context)?;
+        self.text
+            .as_ref()
+            .is_none_or(|text| text.formatted_cache_matches(node, input, context, output))
+            .then_some(output)
+    }
+
+    fn cache_restore_semantics(
+        &mut self,
+        node: Self::Node,
+        input: &ComputeInputOf<Self::Scalar>,
+    ) -> bool {
+        self.text
+            .as_mut()
+            .is_none_or(|text| text.formatted_restore_cache(node, input))
     }
 
     fn cache_store(
@@ -944,6 +1036,9 @@ where
         context: crate::CacheKeyContext,
         output: ComputeOutputOf<Self::Scalar>,
     ) {
+        if let Some(formatted) = self.text.as_mut().and_then(|text| text.formatted.as_mut()) {
+            formatted.bind_output(node, input, context, output);
+        }
         if let Some(index) = self.cache_store_entries.iter().position(|entry| {
             entry.node() == node && entry.input() == input && entry.context() == context
         }) {
@@ -965,6 +1060,10 @@ where
             .push(LayoutCacheClearEntry::new(node));
     }
 }
+
+#[cfg(test)]
+#[path = "formatted_session_tests.rs"]
+mod formatted_tests;
 
 #[cfg(test)]
 mod tests {

@@ -29,6 +29,9 @@ mod phrase_transform;
 #[path = "placed_text_render/phrase_continuation.rs"]
 mod phrase_continuation;
 
+#[path = "placed_text_render/hanging.rs"]
+mod hanging_punctuation;
+
 struct Tree {
     inputs: [layout::LayoutInput; 2],
     non_box: layout::NodeInput,

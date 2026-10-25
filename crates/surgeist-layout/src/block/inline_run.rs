@@ -150,6 +150,7 @@ impl VisibleInlineRunTransition {
         S: LayoutScalar,
     {
         let InlineRunTransitionState {
+            formatted,
             indent_state,
             line_box_context,
             hyphenation_state,
@@ -182,6 +183,10 @@ impl VisibleInlineRunTransition {
             float_exclusions,
             contributions,
         )?;
+
+        if let (Some(flow), Some(item)) = (formatted.as_mut(), placement.formatted.take()) {
+            flow.items.push(item);
+        }
 
         if !placement.lines.is_empty() {
             tail_ledger.run(core::mem::take(&mut placement.lines));
@@ -233,6 +238,7 @@ impl VisibleInlineRunTransition {
 }
 
 pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
+    pub(super) formatted: &'a mut Option<crate::text_layout::formatted::FormattedFlow<Node, S>>,
     pub(super) line_box_context: &'a mut crate::line_box::LineBoxContext,
     pub(super) indent_state: &'a mut Option<crate::text_indent::IndentLineState>,
     pub(super) hyphenation_state: &'a mut crate::hyphenation::LineHyphenationState,
@@ -255,6 +261,7 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
 }
 
 struct InlineRunPlacement<Node, S: LayoutScalar> {
+    formatted: Option<crate::text_layout::formatted::FormattedFlowItem<Node, S>>,
     line_box_context: crate::line_box::LineBoxContext,
     lines: Vec<crate::hyphenation::CommittedInlineLine>,
     floats: Vec<PendingFloat<Node, S>>,
@@ -681,6 +688,7 @@ where
     let logical_content_box_inset = constants.logical_content_box_inset();
     let provider_error = std::cell::RefCell::new(None);
     let mut text_output = None;
+    let mut formatted_item = None;
     let mut report = if let Some(binding) = text_binding {
         let (frame, frames, reusable, associations) = {
             let state = tree
@@ -719,7 +727,21 @@ where
             // An intrinsic result is not a newly authored definite constraint.
             AvailableOf::MinContent | AvailableOf::MaxContent => available_inline_extent,
         };
+        let formatted_mode = match available {
+            AvailableOf::Definite(value) => {
+                crate::text_layout::fit::Available::Definite(value.to_f64())
+            }
+            AvailableOf::MinContent => crate::text_layout::fit::Available::Minimum,
+            AvailableOf::MaxContent => crate::text_layout::fit::Available::Maximum,
+        };
+        let formatted = tree
+            .text_computation()
+            .map(|state| {
+                state.formatted_snapshot(container, run, &binding.prepared, input, formatted_mode)
+            })
+            .unwrap_or_default();
         let context = crate::text_layout::run::Context {
+            formatted,
             frame: frame.map_or(crate::text_layout::run::Frame::Measurement, |frame| {
                 crate::text_layout::run::Frame::Canonical {
                     origin: frame.origin,
@@ -925,6 +947,16 @@ where
             return Err(error);
         }
         let output = result.map_err(|error| text_run_error(container, error))?;
+        formatted_item = tree.text_computation().and_then(|state| {
+            state.formatted_merge_run(
+                container,
+                run,
+                &binding.prepared,
+                input,
+                formatted_mode,
+                output.formatted.clone(),
+            )
+        });
         let accepted = encounters.into_inner().finish();
         for child in accepted.children {
             tree.accept_float_child(&child.packet)?;
@@ -935,7 +967,10 @@ where
         text_output = Some(output);
         report
     } else {
-        layout_mixed_inline_run_with_band_source(
+        let observe_formatted = tree
+            .text_computation()
+            .is_some_and(|state| state.formatted_active());
+        layout_mixed_inline_run_with_formatted_observation(
             MixedInlineRunInputOf {
                 line_box_context,
                 observe_tail: tail != crate::text_layout::fit::TailContext::Unrestricted,
@@ -988,9 +1023,16 @@ where
                 float_exclusions.clearance_for_line_intent(cursor_block + block, clear)
                     - cursor_block
             },
+            observe_formatted,
         )
     };
     if text_output.is_none() {
+        if let Some(lines) = &report.formatted_lines {
+            formatted_item = Some(crate::text_layout::formatted::FormattedFlowItem::Numeric(
+                run.to_vec(),
+                lines.clone(),
+            ));
+        }
         report.hyphenation_state = hyphenation_state;
         if matches!(available_inline_extent, AvailableOf::Definite(_))
             && !report.line_bands.is_empty()
@@ -1279,6 +1321,7 @@ where
         })
         .fold(owned_float_block_end, |a, b| a.max(b));
     Ok(InlineRunPlacement {
+        formatted: formatted_item,
         line_box_context: report.line_box_context,
         lines: report.lines,
         floats: encounter_plans,

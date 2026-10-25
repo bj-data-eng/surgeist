@@ -132,6 +132,7 @@ fn select(
                     line_extent: 20.0,
                 }),
             context: LineContext {
+                formatted_line: crate::FormattedLineContext::default(),
                 base_direction: if prepared.analyzed_source().direction() == Direction::RightToLeft
                 {
                     ParagraphBaseDirection::RightToLeft

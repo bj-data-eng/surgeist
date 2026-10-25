@@ -593,6 +593,50 @@ The standalone `System::layout` convenience path retains the currently supported
 
 The explicit native `TabContext::FontAdvance` policy uses the selected font's actual U+0009 glyph advance, preserving the standalone policy through the same finalizer. It does not approximate a tab with a space or implement CSS tab stops. `NoTabs` validates actual absence. The [CSS tab contract](#preserved-css-tab-stops) below defines the independently prepared CSS-stop operation and its required block capture. A taken discretionary opportunity requires its actual issued alternative, including an explicitly computed empty replacement; a natural paragraph end does not select a hyphen merely because the preceding source contains SHY. A source-defined replacement validates its real defining source occurrence. A control-defined replacement retains its exact control/opportunity/alternative owner and may have no text origin; incidental source-anchor provenance must be supplied and validated, never guessed from the numeric offset.
 
+### Hanging punctuation and formatted-line roles
+
+Text owns the normalized `HangingPunctuation` declaration, complete selected
+typographic-unit classification and natural/allocated advance accounting. First
+and Last use the candidate's actual formatting-container roles; ForceEnd is
+unconditional and AllowEnd is conditional on natural overflow. Preserve the
+[native punctuation determination](../references/text-hanging-punctuation--native-determination.md)
+for effective properties, attributed advances and same-unit union. Hanging
+changes fit, alignment and intrinsic contributions without removing glyphs,
+font struts, justification participation, source pieces or interaction geometry.
+Inline border/padding barriers use actual intervening selected-line endpoint
+contributions. An off-selected joining-context allocation supplies no line-local
+decoration and cannot independently veto hanging; captured enclosure alone is
+also insufficient. The native determination defines this profile and the
+current-fragment incidence required by an additional decoration capability.
+
+`LineContext::formatted_line` supplies First and Last independently through
+`FormattedLineContext`. Unknown differs from affirmative false. Text demands a
+missing role only when eligible, unbarred punctuation needs it; this includes a
+dependency visible only in an intrinsic measure or a zero-advance eligible unit.
+`LineMeasurements::formatted_line_usage()` reports roles actually consumed,
+including supplied false values. A role does not establish CSS block-end
+whitespace authority. Candidate-specific roles belong to exact request/replay
+identity, rather than a conditional search's stable branch context.
+
+Layout owns actual formatted-line chronology and container/child propagation.
+Accepted empty, Forced and numeric-only lines count; rejected phantom trials do
+not. Last dependencies use authentic terminal mixed occurrences and actual
+in-flow child summaries through the existing unpublished pass/replay gate.
+Validate every consumed assumption before publishing geometry. A demanded cached
+subtree without a matching summary is a semantic miss; no-demand formatting
+retains its ordinary cache path. Speculative float summaries merge only when
+the actual child packet is accepted.
+
+Detached word/phrase measurements use authentic prospective roles. Text issues
+their measurement-flow recipes and nonplaceable post-collapse participation
+observations; consumers interpret those observations using their own emission
+rules. Retained participation alone never proves a generated line. Preserve the
+full manual-partition target, distinguish a genuine predecessor from a phantom
+phrase prefix, and account for future Forced/empty/receiving obligations before
+combining local closure with the external owner tail. Trials do not commit line
+history, and intrinsic invocations do not borrow finite history. Standalone uses
+the same punctuation kernel with its actual raw metric and emission profile.
+
 ### Native inline endpoint geometry
 
 Layout owns used border/padding on each endpoint's own inline side. Its
@@ -941,14 +985,19 @@ with wrapping enabled, eligible trailing sequences hang unconditionally at a rea
 Soft ending and conditionally before an actual forced break or block end.
 PreserveSpaces applies that same Phase II rule after its own Phase I conversion;
 a converted LF does not supply a forced break. No preservation-rule hanging
-applies under nowrap. BreakSpaces retains every preserved SPACE/TAB/separator
-contribution without line-edge removal, hanging or intrinsic omission at Soft,
+applies under nowrap. BreakSpaces whitespace processing retains every preserved
+SPACE/TAB/separator contribution without line-edge removal, whitespace hanging or intrinsic omission at Soft,
 Forced or BlockEnd, under either wrap policy. These rows retain ordinary flow
 and stop preceding hanging groups, even at zero advance. Fit, alignment,
 MinContent and MaxContent consume the same retained contribution. MinContent may
 choose genuine after-each opportunities; MaxContent still honors actual Forced
 lines. This mode therefore depends on its prepared opportunity inventory as well
 as finalization, rather than a finalizer flag.
+
+An independently eligible punctuation cause still applies in Discard or
+BreakSpaces. For example, First can hang a surviving U+3000 on an actual first
+formatted line; its whitespace mode alone cannot erase that permission. Union
+the causes by actual contribution identity instead of omitting a unit twice.
 
 An issued paragraph ending proves preparation completion, not CSS block end.
 Native input retains a distinct `ParagraphTerminalEdge` capture: `Unknown`,

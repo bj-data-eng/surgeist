@@ -114,6 +114,7 @@ fn finalize(prepared: &PreparedText) -> FinalizedLine {
             controls: vec![],
             line_strut: None,
             context: LineContext {
+                formatted_line: crate::FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 line_box_direction: LineBoxDirection::LeftToRight,
                 orientation: LineOrientation::Horizontal,

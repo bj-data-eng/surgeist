@@ -251,6 +251,7 @@ fn intrinsic_with_indent(
         &[],
         &[],
         super::super::run::Context {
+            formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
                 crate::LineBoxDirectionPolicy::Normal,
                 if block_rtl {

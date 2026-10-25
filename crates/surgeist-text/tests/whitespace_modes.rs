@@ -188,6 +188,7 @@ fn finish(
             controls,
             line_strut: None,
             context: t::LineContext {
+                formatted_line: surgeist_text::FormattedLineContext::default(),
                 base_direction: direction(prepared),
                 line_box_direction: match direction(prepared) {
                     surgeist_text::ParagraphBaseDirection::LeftToRight => {

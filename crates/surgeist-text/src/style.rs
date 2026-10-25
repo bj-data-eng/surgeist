@@ -235,9 +235,40 @@ impl From<Slant> for FontStyle {
     }
 }
 
+/// Mutually exclusive CSS end-hanging permissions.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum HangingPunctuationEnd {
+    ForceEnd,
+    AllowEnd,
+}
+
+/// Normalized CSS hanging-punctuation declaration. All permissions absent is none.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct HangingPunctuation {
+    first: bool,
+    end: Option<HangingPunctuationEnd>,
+    last: bool,
+}
+impl HangingPunctuation {
+    pub const fn new(first: bool, end: Option<HangingPunctuationEnd>, last: bool) -> Self {
+        Self { first, end, last }
+    }
+    pub const fn first(self) -> bool {
+        self.first
+    }
+    pub const fn end(self) -> Option<HangingPunctuationEnd> {
+        self.end
+    }
+    pub const fn last(self) -> bool {
+        self.last
+    }
+}
+
 /// Resolved text style accepted by the text layout engine.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Style {
+    /// Native hanging declaration; formatted roles are supplied at line time.
+    pub hanging_punctuation: HangingPunctuation,
     pub tab_size: crate::TabSize,
     pub font: Font,
     pub size: f32,
@@ -324,6 +355,7 @@ pub(crate) struct EffectiveBreaking {
 impl Default for Style {
     fn default() -> Self {
         Self {
+            hanging_punctuation: HangingPunctuation::default(),
             font: Font::default(),
             size: 16.0,
             line_height: LineHeight::MetricsRelative(1.0),

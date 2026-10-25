@@ -104,6 +104,7 @@ fn observe(
             controls: vec![],
             line_strut: None,
             context: text::LineContext {
+                formatted_line: surgeist_text::FormattedLineContext::default(),
                 base_direction: direction,
                 line_box_direction: match direction {
                     surgeist_text::ParagraphBaseDirection::LeftToRight => {

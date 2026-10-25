@@ -18,6 +18,7 @@ use super::super::{
     shape::{self, ShapeContext},
 };
 use super::{add, data::*, finite};
+use crate::protocol::input::PresentationInput;
 use crate::protocol::selection::{LineMetricPolicy, SelectedData};
 use crate::protocol::{
     AtomicAllocation, ControlAllocation, ControlStrut, LineBoxAlignment, LineContext, LineEnd,
@@ -25,6 +26,22 @@ use crate::protocol::{
 };
 
 mod phase_two;
+
+/// Role-independent shaping and edge collapse shared with nonplaceable flow
+/// observations. No hanging, spacing, tabs or geometry receipt is produced here.
+pub(super) fn shape_and_collapse(
+    input: PresentationInput<'_>,
+    scratch: &mut ShapeContext,
+) -> Result<(
+    ShapedData,
+    Arc<crate::protocol::prepared::SelectedMapping>,
+    Vec<SpacingSlotDisposition>,
+)> {
+    let (mut shaped, mapping) = shape::finalize(input, scratch)?;
+    validate_rows(input, &shaped)?;
+    let dispositions = collapse_edges(input, &mut shaped)?;
+    Ok((shaped, mapping, dispositions))
+}
 
 pub(super) fn finalize(
     selected: Arc<SelectedData>,
@@ -34,9 +51,8 @@ pub(super) fn finalize(
     let selection = &selected.request.context;
     let atomics = atomic_allocations(&selected)?;
     let controls = control_allocations(&selected)?;
-    let (mut shaped, mapping) = shape::finalize(&selected, scratch)?;
-    validate_rows(&selected, &shaped)?;
-    let mut dispositions = collapse_edges(&selected, &mut shaped)?;
+    let (mut shaped, mapping, mut dispositions) =
+        shape_and_collapse(selected.presentation_input(), scratch)?;
     let levels = line_levels(&selected, &shaped)?;
     let base = selected.presentation.analysis.base_level;
     let ordered = crate::protocol::prepared::presentation::order_items(&selected, &shaped)?;
@@ -52,17 +68,7 @@ pub(super) fn finalize(
         .composed_order(&ordered)
         .ok_or_else(|| invalid("composed line order is not a complete permutation"))?;
     resolve_tabs(&selected, &mut shaped, &atomics, &order)?;
-    let natural = if selected.metric_policy == LineMetricPolicy::Native {
-        Some(phase_two::natural(
-            &selected,
-            &shaped,
-            &atomics,
-            &order,
-            &dispositions,
-        )?)
-    } else {
-        None
-    };
+    let natural = phase_two::natural(&selected, &shaped, &atomics, &order, &dispositions)?;
     let mut spacing_slots = apply_spacing(&selected, &mut shaped, amounts, &dispositions)?;
     if amounts.iter().any(|amount| *amount != 0.0) {
         resolve_tabs(&selected, &mut shaped, &atomics, &order)?;
@@ -94,12 +100,8 @@ pub(super) fn finalize(
             selected.request.line_strut,
         )?;
     }
-    let measurements = match natural {
-        Some(natural) => {
-            phase_two::allocated(&selected, &shaped, &atomics, &order, natural, &mut metrics)?
-        }
-        None => phase_two::standalone(&selected, &metrics, &shaped, &atomics, &order)?,
-    };
+    let measurements =
+        phase_two::allocated(&selected, &shaped, &atomics, &order, natural, &mut metrics)?;
     let width = selection.available_inline.unwrap_or_else(|| {
         (measurements.alignment().advance() + selection.indent.max(0.0)).max(0.0)
     });
@@ -110,7 +112,7 @@ pub(super) fn finalize(
     )?;
     metrics.inline_min = 0.0;
     metrics.inline_max = width;
-    metrics.offset = if selected.metric_policy == LineMetricPolicy::Native {
+    metrics.offset = {
         let mut measured = metrics;
         measured.advance = measurements.alignment().advance();
         measured.trailing_whitespace = 0.0;
@@ -121,8 +123,6 @@ pub(super) fn finalize(
             offset,
             -metrics.hanging_start,
         )?
-    } else {
-        alignment_offset(selection, base, width, &metrics)?
     };
 
     let mut data = FinalizedLineData {
@@ -172,7 +172,8 @@ pub(super) fn finalize(
         let level = levels[ordinal];
         match shaped.items[ordinal] {
             ShapedItem::Anchor { unit, .. } => {
-                let advance = crate::protocol::boundary::advance(&selected, unit);
+                let advance =
+                    crate::protocol::boundary::advance(selected.presentation_input(), unit);
                 let inline_end = add(
                     "inline boundary end",
                     TextNumericPhase::Finalization,
@@ -562,7 +563,7 @@ pub(super) fn finalize(
         let rect = Rect::new(
             anchor.slot.x,
             metrics.block_min,
-            crate::protocol::boundary::advance(&selected, anchor.unit),
+            crate::protocol::boundary::advance(selected.presentation_input(), anchor.unit),
             metrics.block_max - metrics.block_min,
         );
         use crate::protocol::{paragraph::FragmentOwner, prepared::PresentationUnitKind};
@@ -994,7 +995,7 @@ fn atomic_allocations(selected: &SelectedData) -> Result<BTreeMap<usize, &Atomic
         .collect()
 }
 
-fn validate_rows(selected: &SelectedData, shaped: &ShapedData) -> Result<()> {
+fn validate_rows(selected: PresentationInput<'_>, shaped: &ShapedData) -> Result<()> {
     for cluster in &shaped.clusters {
         crate::range::validate(
             selected.prepared.analyzed.processed.source().text(),
@@ -1075,7 +1076,7 @@ fn line_metrics(
                     "line boundary advance",
                     TextNumericPhase::Finalization,
                     result.advance,
-                    crate::protocol::boundary::advance(selected, unit),
+                    crate::protocol::boundary::advance(selected.presentation_input(), unit),
                 )?;
             }
             ShapedItem::TextCluster(index) => {
@@ -1384,7 +1385,7 @@ fn native_metrics(
 /// Applicable collapsible-space line-edge suppression. Invisible occurrence/control
 /// anchors and out-of-flow boxes are transparent; real in-flow atomics stop it.
 fn collapse_edges(
-    selected: &SelectedData,
+    selected: PresentationInput<'_>,
     shaped: &mut ShapedData,
 ) -> Result<Vec<SpacingSlotDisposition>> {
     let mut projected = Vec::new();
@@ -1466,7 +1467,7 @@ fn classify_trailing(
     for item in shaped.items.iter().rev() {
         match *item {
             ShapedItem::Anchor { unit } => {
-                if crate::protocol::boundary::advance(selected, unit) != 0.0 {
+                if crate::protocol::boundary::advance(selected.presentation_input(), unit) != 0.0 {
                     break;
                 }
                 continue;
@@ -1558,7 +1559,14 @@ fn apply_spacing(
 pub(super) fn standalone_amounts(
     selected: &SelectedData,
     metrics: &LineMetrics,
+    measurements: &crate::LineMeasurements,
 ) -> Result<Vec<f64>> {
+    let measured = LineMetrics {
+        advance: measurements.alignment().advance(),
+        trailing_whitespace: 0.0,
+        ..*metrics
+    };
+    let metrics = &measured;
     let selection = &selected.request.context;
     let mut amounts = vec![0.0; selected.spacing_slots.len()];
     if selection.alignment != Alignment::Justify || selection.end != LineEnd::Soft {
@@ -1747,7 +1755,9 @@ fn resolve_tabs(
     }
     for ordinal in ordinals {
         let advance = match shaped.items[ordinal] {
-            ShapedItem::Anchor { unit } => crate::protocol::boundary::advance(selected, unit),
+            ShapedItem::Anchor { unit } => {
+                crate::protocol::boundary::advance(selected.presentation_input(), unit)
+            }
             ShapedItem::InlineBox { occurrence, .. } => {
                 inflow_allocation(atomics[&occurrence])?.0.advance
             }
@@ -2068,6 +2078,7 @@ mod tests {
                 context: LineContext {
                     base_direction: ParagraphBaseDirection::LeftToRight,
                     line_box_direction: LineBoxDirection::LeftToRight,
+                    formatted_line: crate::FormattedLineContext::default(),
                     orientation: LineOrientation::Horizontal,
                     start: LineStart::Paragraph,
                     end: LineEnd::Paragraph,
@@ -2470,6 +2481,7 @@ mod tests {
                 context: LineContext {
                     base_direction: ParagraphBaseDirection::LeftToRight,
                     line_box_direction: LineBoxDirection::LeftToRight,
+                    formatted_line: crate::FormattedLineContext::default(),
                     orientation: LineOrientation::Horizontal,
                     start: LineStart::Paragraph,
                     end: LineEnd::Paragraph,
@@ -2924,6 +2936,7 @@ mod tests {
                     context: LineContext {
                         base_direction: ParagraphBaseDirection::RightToLeft,
                         line_box_direction: LineBoxDirection::RightToLeft,
+                        formatted_line: crate::FormattedLineContext::default(),
                         orientation: LineOrientation::Horizontal,
                         start: if first {
                             LineStart::Paragraph
@@ -2973,8 +2986,11 @@ mod tests {
         assert_eq!(pdi_unit.code_point, Some(0x2069));
         assert_eq!(pdi_unit.bidi_class, Some(BidiClass::PopDirectionalIsolate));
         assert_eq!(pdi_unit.level, 2);
-        let (shaped, _) =
-            shape::finalize(&first_selected.inner, &mut ShapeContext::default()).unwrap();
+        let (shaped, _) = shape::finalize(
+            first_selected.inner.presentation_input(),
+            &mut ShapeContext::default(),
+        )
+        .unwrap();
         let pdi_item = shaped.items.iter().position(|item| matches!(item,
             ShapedItem::TextCluster(index) if shaped.clusters[*index].source == Range::new(4, 5)
         )).unwrap();

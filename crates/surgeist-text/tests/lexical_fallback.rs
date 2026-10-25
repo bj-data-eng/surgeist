@@ -548,6 +548,7 @@ fn assumed_line_opportunities_do_not_become_detected_word_movement_stops() {
                 boundary_context: vec![],
                 line_strut: None,
                 context: t::LineContext {
+                    formatted_line: surgeist_text::FormattedLineContext::default(),
                     base_direction: direction,
                     line_box_direction: match direction {
                         surgeist_text::ParagraphBaseDirection::LeftToRight => {

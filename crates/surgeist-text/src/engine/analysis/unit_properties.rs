@@ -9,7 +9,7 @@ use icu_properties::{
 use crate::engine::OriginalAtom;
 
 /// Appendix E's exception uses raw ScriptExtensions, not a shaping-run script.
-pub(super) fn has_common_enclosing_mark(atoms: &[OriginalAtom]) -> bool {
+pub(crate) fn has_common_enclosing_mark(atoms: &[OriginalAtom]) -> bool {
     let categories = CodePointMapData::<GeneralCategory>::new();
     let scripts = ScriptWithExtensions::new();
     atoms.iter().any(|atom| {
@@ -20,7 +20,7 @@ pub(super) fn has_common_enclosing_mark(atoms: &[OriginalAtom]) -> bool {
 
 /// Native unit operations ignore raw Cf when locating their base. Other marks,
 /// native visible Cc, and opaque original UTF-16 units keep their own identity.
-pub(super) fn first_non_format(atoms: &[OriginalAtom]) -> Option<&OriginalAtom> {
+pub(crate) fn first_non_format(atoms: &[OriginalAtom]) -> Option<&OriginalAtom> {
     let categories = CodePointMapData::<GeneralCategory>::new();
     atoms
         .iter()

@@ -2042,7 +2042,7 @@ fn replacement_projection(
 /// both original-context analysis and the actual retained font assignments.
 pub(crate) fn select_presentation(
     prepared: &crate::engine::PreparedData,
-    request: &super::LineSelectionRequest,
+    request: super::input::RequestInput<'_>,
 ) -> crate::Result<SelectedPresentation> {
     presentation::select(prepared, request)
 }

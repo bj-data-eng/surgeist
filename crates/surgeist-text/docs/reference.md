@@ -313,13 +313,40 @@ own GL protection; SPACE/TAB before GL use the adopted Unicode 17/revision 55
 boundary, rather than a blanket next-GL veto. WJ/ZWJ protection and genuine
 higher-priority ZW opportunities remain. See the [glue source reconciliation](../../../references/css-text-break-spaces-glue--source-reconciliation-20261024.md).
 
-BreakSpaces keeps preserved spaces/tabs/separators in ordinary flow: no line-edge
-removal, hanging or intrinsic omission at Soft, Forced or BlockEnd, including
+BreakSpaces whitespace processing keeps preserved spaces/tabs/separators in ordinary flow: no line-edge
+removal, whitespace hanging or intrinsic omission at Soft, Forced or BlockEnd, including
 nowrap. An ordinary BreakSpaces row stops preceding hanging groups even at zero
 advance. Text's real opportunities and measurements feed Layout selection;
 [the whitespace contract](../../../docs/text-layout-contract.md#native-whitespace-edges-and-hanging)
 defines fit, alignment and intrinsic contribution custody. Native inline endpoints
 supply their own used geometry through the selection contract below.
+Independent punctuation eligibility, such as First on a surviving U+3000,
+retains its separate effect under BreakSpaces or Discard.
+
+## Hanging punctuation
+
+`Style::hanging_punctuation` retains `HangingPunctuation::new(first, end, last)`;
+`end` is absent, `ForceEnd` or `AllowEnd`. The default is neutral. First and Last
+require actual formatting-container roles in `LineContext::formatted_line`,
+independent of paragraph direction and line-ending enums. Unknown roles remain
+distinct from false and produce `MissingPhaseTwoContext` only when the operation
+needs them. Finalized measurements report which roles were consumed.
+
+The operation classifies complete selected typographic units using the base's
+governing Style and the pinned effective-property rules. It hangs at most one
+punctuation unit at each edge, composes with whitespace hanging, and respects
+actual inline border/padding barriers. Raw glyphs, source/caret correspondence
+and justification participation remain intact. `LineEdgeUnitView::punctuation_unit`
+identifies the complete unit even when it spans several contribution rows.
+Fit, alignment and min/max contributions retain their separate conditional rules.
+
+Native and Standalone consumers share the punctuation operation. Standalone keeps
+its raw whitespace and quantized-metric profile. A native caller supplies the
+roles of its actual container; Text does not infer a live tree from source offsets.
+Nonplaceable measurement-flow observations authenticate retained participation,
+while the consumer owns hypothetical line emission and First/Last interpretation.
+See the [shared contract](../../../docs/text-layout-contract.md#hanging-punctuation-and-formatted-line-roles)
+and [native determination](../../../references/text-hanging-punctuation--native-determination.md).
 
 ## Native inline endpoint geometry
 
@@ -784,7 +811,7 @@ style resolver.
 | Status | Features |
 | --- | --- |
 | Supported | Family lists; named/numeric weights; basic/expanded stretch; normal/italic/oblique slant; feature and variation settings; font size; line height; letter/word spacing; concrete text color; locale. |
-| Supported | Preserved whitespace; word-break, wrapping, and overflow-wrap controls; paragraph alignment; supported indent shapes; inline-box alignment facts; underline/strikethrough; decoration offset, thickness, and concrete color; concrete selection color. |
+| Supported | Preserved whitespace; word-break, wrapping, and overflow-wrap controls; hanging punctuation; paragraph alignment; supported indent shapes; inline-box alignment facts; underline/strikethrough; decoration offset, thickness, and concrete color; concrete selection color. |
 | Unsupported: paragraph direction control | Explicit text direction. Automatic direction still resolves to left-to-right or right-to-left in `Layout::direction()`. |
 | Phase-specific | Collapse, Discard, PreserveSpaces, PreserveBreaks and BreakSpaces execute through explicit processed-paragraph capture; raw standalone layout requires Preserve. |
 | Unsupported: font or text-flow policy | Non-normal font variants, text overflow behavior beyond the accepted default, last-line alignment behavior beyond the accepted default. |

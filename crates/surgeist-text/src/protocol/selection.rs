@@ -16,6 +16,20 @@ pub(crate) struct SelectedData {
     pub(crate) boundaries: super::boundary::Resolved,
 }
 
+impl SelectedData {
+    pub(crate) fn presentation_input(&self) -> super::input::PresentationInput<'_> {
+        super::input::PresentationInput {
+            prepared: &self.prepared,
+            presentation: &self.presentation,
+            boundaries: &self.boundaries,
+            start: self.request.start.index,
+            computed: self.request.alternative.is_some() || self.request.incoming.is_some(),
+            metric_policy: self.metric_policy,
+            controls: &self.request.controls,
+        }
+    }
+}
+
 /// A supported logical space contribution, before any provider-independent delta.
 pub(crate) struct SpacingSlotData {
     /// Exact selected presentation unit; replacement and original ownership
@@ -27,7 +41,7 @@ pub(crate) struct SpacingSlotData {
 }
 
 /// Existing standalone pixel metric policy is not a preparation input.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum LineMetricPolicy {
     Native,
     Exact,
@@ -58,7 +72,8 @@ impl PreparedText {
         request: &LineSelectionRequest,
     ) -> Result<Option<super::PreparedControl>> {
         let mut presentation = admit(self, request)?;
-        super::boundary::resolve(self, request, &mut presentation).map(|(_, missing)| missing)
+        super::boundary::resolve(self, request.into(), &mut presentation)
+            .map(|(_, missing)| missing)
     }
 }
 
@@ -68,7 +83,8 @@ pub(crate) fn select(
     metric_policy: LineMetricPolicy,
 ) -> Result<SelectedLine> {
     let mut presentation = admit(prepared, &request)?;
-    let (boundaries, missing) = super::boundary::resolve(prepared, &request, &mut presentation)?;
+    let (boundaries, missing) =
+        super::boundary::resolve(prepared, (&request).into(), &mut presentation)?;
     if let Some(missing) = missing {
         return Err(protocol_error(ProtocolError::MissingBoundaryContext {
             occurrence: missing.index,
@@ -109,20 +125,9 @@ fn admit(
     prepared: &PreparedText,
     request: &LineSelectionRequest,
 ) -> Result<super::prepared::SelectedPresentation> {
-    super::continuation::validate(prepared, &request.start, request.incoming.as_ref())?;
+    let input = super::input::RequestInput::from(request);
+    let (start, end) = admit_range(prepared, input)?;
     let tables = &prepared.inner.tables;
-    require_prepared(
-        prepared,
-        &request.start.prepared,
-        ProtocolHandleKind::Boundary,
-        request.start.index,
-    )?;
-    require_prepared(
-        prepared,
-        &request.end.prepared,
-        ProtocolHandleKind::Boundary,
-        request.end.index,
-    )?;
     let bounds_error = || {
         protocol_error(ProtocolError::InvalidBoundaryRange {
             start: request.start.index,
@@ -130,58 +135,6 @@ fn admit(
             participants: tables.participants.len(),
         })
     };
-    let start = tables
-        .boundaries
-        .get(request.start.index)
-        .ok_or_else(bounds_error)?;
-    let end = tables
-        .boundaries
-        .get(request.end.index)
-        .ok_or_else(bounds_error)?;
-    if start.participant > end.participant
-        || end.participant > tables.participants.len()
-        || request.participants.len() != end.participant - start.participant
-    {
-        return Err(bounds_error());
-    }
-    for (position, (actual, expected)) in request
-        .participants
-        .iter()
-        .zip(&tables.participants[start.participant..end.participant])
-        .enumerate()
-    {
-        let (owner, index, kind, matches_kind) = match (actual, expected) {
-            (PreparedParticipant::Text(value), ParticipantData::Text(index)) => (
-                &value.prepared,
-                value.index,
-                ProtocolHandleKind::Unit,
-                value.index == *index,
-            ),
-            (PreparedParticipant::Atomic(value), ParticipantData::Atomic(index)) => (
-                &value.prepared,
-                value.index,
-                ProtocolHandleKind::Atomic,
-                value.index == *index,
-            ),
-            (PreparedParticipant::Control(value), ParticipantData::Control(index)) => (
-                &value.prepared,
-                value.index,
-                ProtocolHandleKind::Control,
-                value.index == *index,
-            ),
-            _ => {
-                return Err(protocol_error(ProtocolError::ParticipantMismatch {
-                    position,
-                }));
-            }
-        };
-        require_prepared(prepared, owner, kind, index)?;
-        if !matches_kind {
-            return Err(protocol_error(ProtocolError::ParticipantMismatch {
-                position,
-            }));
-        }
-    }
     let ordinary = match &request.termination {
         super::PreparedTermination::Ordinary(termination) => {
             require_prepared(
@@ -293,12 +246,100 @@ fn admit(
             }));
         }
     }
-    validate_context(
-        &request.context,
-        prepared.inner.analyzed.analysis.base_level,
+    admit_geometry(prepared, input)
+}
+
+pub(crate) fn admit_range<'a>(
+    prepared: &'a PreparedText,
+    request: super::input::RequestInput<'_>,
+) -> Result<(
+    &'a super::prepared::BoundaryData,
+    &'a super::prepared::BoundaryData,
+)> {
+    super::continuation::validate(prepared, request.start, request.incoming)?;
+    let tables = &prepared.inner.tables;
+    require_prepared(
+        prepared,
+        &request.start.prepared,
+        ProtocolHandleKind::Boundary,
+        request.start.index,
     )?;
+    require_prepared(
+        prepared,
+        &request.end.prepared,
+        ProtocolHandleKind::Boundary,
+        request.end.index,
+    )?;
+    let bounds_error = || {
+        protocol_error(ProtocolError::InvalidBoundaryRange {
+            start: request.start.index,
+            end: request.end.index,
+            participants: tables.participants.len(),
+        })
+    };
+    let start = tables
+        .boundaries
+        .get(request.start.index)
+        .ok_or_else(bounds_error)?;
+    let end = tables
+        .boundaries
+        .get(request.end.index)
+        .ok_or_else(bounds_error)?;
+    if start.participant > end.participant
+        || end.participant > tables.participants.len()
+        || request.participants.len() != end.participant - start.participant
+    {
+        return Err(bounds_error());
+    }
+    for (position, (actual, expected)) in request
+        .participants
+        .iter()
+        .zip(&tables.participants[start.participant..end.participant])
+        .enumerate()
+    {
+        let (owner, index, kind, matches_kind) = match (actual, expected) {
+            (PreparedParticipant::Text(value), ParticipantData::Text(index)) => (
+                &value.prepared,
+                value.index,
+                ProtocolHandleKind::Unit,
+                value.index == *index,
+            ),
+            (PreparedParticipant::Atomic(value), ParticipantData::Atomic(index)) => (
+                &value.prepared,
+                value.index,
+                ProtocolHandleKind::Atomic,
+                value.index == *index,
+            ),
+            (PreparedParticipant::Control(value), ParticipantData::Control(index)) => (
+                &value.prepared,
+                value.index,
+                ProtocolHandleKind::Control,
+                value.index == *index,
+            ),
+            _ => {
+                return Err(protocol_error(ProtocolError::ParticipantMismatch {
+                    position,
+                }));
+            }
+        };
+        require_prepared(prepared, owner, kind, index)?;
+        if !matches_kind {
+            return Err(protocol_error(ProtocolError::ParticipantMismatch {
+                position,
+            }));
+        }
+    }
+    Ok((start, end))
+}
+
+pub(crate) fn admit_geometry(
+    prepared: &PreparedText,
+    request: super::input::RequestInput<'_>,
+) -> Result<super::prepared::SelectedPresentation> {
+    let tables = &prepared.inner.tables;
+    validate_context(request.context, prepared.inner.analyzed.analysis.base_level)?;
     let mut expected_atomics = BTreeSet::new();
-    for participant in &request.participants {
+    for participant in request.participants {
         if let PreparedParticipant::Atomic(atomic) = participant
             && !expected_atomics.insert(atomic.index)
         {
@@ -308,7 +349,7 @@ fn admit(
         }
     }
     let mut observed_atomics = BTreeSet::new();
-    for allocation in &request.atomics {
+    for allocation in request.atomics {
         let atomic = &allocation.occurrence;
         require_prepared(
             prepared,
@@ -358,7 +399,7 @@ fn admit(
         })
         .collect();
     let mut observed_controls = BTreeSet::new();
-    for allocation in &request.controls {
+    for allocation in request.controls {
         let control = &allocation.occurrence;
         require_prepared(
             prepared,
@@ -573,7 +614,7 @@ pub(crate) fn standalone_request(
     indent: f64,
     alignment: crate::Alignment,
 ) -> Result<LineSelectionRequest> {
-    use super::{AtomicBoxAllocation, AtomicFlowAllocation, PreparedAtomic, PreparedBoundary};
+    use super::PreparedBoundary;
     let end = match &termination {
         super::PreparedTermination::Ordinary(offer) => offer.view().boundary().index,
         super::PreparedTermination::Conditional(cut) => cut.boundary().index,
@@ -611,42 +652,7 @@ pub(crate) fn standalone_request(
         inner: Arc::clone(&prepared),
     };
     let participants = handle.participants().skip(from).take(to - from).collect();
-    let atomics = tables
-        .atomics
-        .iter()
-        .enumerate()
-        .filter(|(_, row)| row.participant >= from && row.participant < to)
-        .map(|(index, row)| {
-            let item = prepared.analyzed.processed.source().boxes()[row.occurrence];
-            let size = item.size();
-            let in_flow = item.kind() == InlineBoxKind::InFlow;
-            AtomicAllocation {
-                occurrence: PreparedAtomic {
-                    prepared: Arc::clone(&prepared),
-                    index,
-                },
-                allocation: if in_flow {
-                    super::AtomicLineAllocation::InFlow {
-                        flow: AtomicFlowAllocation {
-                            advance: size.width,
-                            before_baseline: size.height,
-                            after_baseline: 0.0,
-                            occupied_start: 0.0,
-                            occupied_end: size.width,
-                        },
-                        alignment: super::LineBoxAlignment::Baseline,
-                        box_geometry: AtomicBoxAllocation {
-                            border: crate::Rect::new(0.0, -size.height, size.width, size.height),
-                            content: crate::Rect::new(0.0, -size.height, size.width, size.height),
-                            baseline: 0.0,
-                        },
-                    }
-                } else {
-                    super::AtomicLineAllocation::OutOfFlow
-                },
-            }
-        })
-        .collect();
+    let atomics = standalone_atomics(&prepared, start, end)?;
     let request = LineSelectionRequest {
         boundary_context: Vec::new(),
         incoming: None,
@@ -662,6 +668,7 @@ pub(crate) fn standalone_request(
         termination,
         alternative,
         context: LineContext {
+            formatted_line: super::FormattedLineContext::default(),
             base_direction: if prepared.analyzed.analysis.base_level & 1 == 0 {
                 ParagraphBaseDirection::LeftToRight
             } else {
@@ -693,4 +700,58 @@ pub(crate) fn standalone_request(
         line_strut: None,
     };
     Ok(request)
+}
+
+/// Actual raw Source-box allocations shared by selection and nonplaceable flow.
+pub(crate) fn standalone_atomics(
+    prepared: &Arc<PreparedData>,
+    start: usize,
+    end: usize,
+) -> Result<Vec<AtomicAllocation>> {
+    let tables = &prepared.tables;
+    if tables.profile != crate::engine::PreparationProfile::Standalone
+        || start > end
+        || end >= tables.boundaries.len()
+    {
+        return Err(protocol_error(ProtocolError::InvalidMeasurementFlow));
+    }
+    let from = tables.boundaries[start].participant;
+    let to = tables.boundaries[end].participant;
+    use super::{AtomicBoxAllocation, AtomicFlowAllocation, PreparedAtomic};
+    Ok(tables
+        .atomics
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| row.participant >= from && row.participant < to)
+        .map(|(index, row)| {
+            let item = prepared.analyzed.processed.source().boxes()[row.occurrence];
+            let size = item.size();
+            let in_flow = item.kind() == InlineBoxKind::InFlow;
+            AtomicAllocation {
+                occurrence: PreparedAtomic {
+                    prepared: Arc::clone(prepared),
+                    index,
+                },
+                allocation: if in_flow {
+                    super::AtomicLineAllocation::InFlow {
+                        flow: AtomicFlowAllocation {
+                            advance: size.width,
+                            before_baseline: size.height,
+                            after_baseline: 0.0,
+                            occupied_start: 0.0,
+                            occupied_end: size.width,
+                        },
+                        alignment: super::LineBoxAlignment::Baseline,
+                        box_geometry: AtomicBoxAllocation {
+                            border: crate::Rect::new(0.0, -size.height, size.width, size.height),
+                            content: crate::Rect::new(0.0, -size.height, size.width, size.height),
+                            baseline: 0.0,
+                        },
+                    }
+                } else {
+                    super::AtomicLineAllocation::OutOfFlow
+                },
+            }
+        })
+        .collect())
 }

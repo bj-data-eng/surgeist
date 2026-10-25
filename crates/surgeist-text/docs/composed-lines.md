@@ -190,6 +190,14 @@ uses the same selected-line and placement machinery.
    endings, nowrap and independent ordinary content retain their own semantics.
    See the [native whitespace contract](../../../docs/text-layout-contract.md#native-whitespace-edges-and-hanging)
    for current modes, supplied-spacing remapping and remaining styled barriers.
+   `LineContext::formatted_line` separately carries actual First/Last container
+   roles. Unknown facts are demanded lazily by eligible hanging punctuation;
+   `formatted_line_usage()` reports consumed roles even when their supplied value
+   was false. An ending enum or source offset cannot supply those roles.
+   A detached measurement obtains prospective authority from its actual owner,
+   accepted entry and issued measurement-flow observations. Those observations
+   expose retained participation, not generated-line proof or placement rights.
+   See [hanging punctuation](reference.md#hanging-punctuation).
 5. Supply `PlacementRequest` to `Layout::from_finalized_lines`. Coverage is the
    actual whole paragraph or issued boundary range. Lines must cover it contiguously
    under the same preparation. Whole coverage requires an empty first incoming,

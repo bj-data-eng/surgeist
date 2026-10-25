@@ -68,6 +68,7 @@ fn request(
         boundary_context: vec![],
         line_strut: None,
         context: t::LineContext {
+            formatted_line: surgeist_text::FormattedLineContext::default(),
             base_direction: if p.analyzed_source().direction() == t::Direction::RightToLeft {
                 t::ParagraphBaseDirection::RightToLeft
             } else {

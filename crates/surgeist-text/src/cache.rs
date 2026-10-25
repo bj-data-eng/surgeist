@@ -380,6 +380,7 @@ fn hash_inline_box<H: Hasher>(box_: InlineBox, hasher: &mut H) {
 }
 
 fn hash_style<H: Hasher>(style: &Style, hasher: &mut H) {
+    style.hanging_punctuation.hash(hasher);
     hash_f64(style.tab_size.value(), hasher);
     style.tab_size.is_spaces().hash(hasher);
     hash_font(&style.font, hasher);

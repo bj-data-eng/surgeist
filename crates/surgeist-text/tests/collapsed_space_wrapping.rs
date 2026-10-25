@@ -376,6 +376,7 @@ fn finish(
             controls: vec![],
             line_strut: None,
             context: text::LineContext {
+                formatted_line: surgeist_text::FormattedLineContext::default(),
                 base_direction: text::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
                 orientation: text::LineOrientation::Horizontal,

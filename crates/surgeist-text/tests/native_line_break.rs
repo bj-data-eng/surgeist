@@ -504,6 +504,7 @@ fn finish(
         boundary_context: vec![],
         line_strut: None,
         context: t::LineContext {
+            formatted_line: surgeist_text::FormattedLineContext::default(),
             base_direction: if p.analyzed_source().direction() == t::Direction::RightToLeft {
                 DIRECTIONS[1]
             } else {

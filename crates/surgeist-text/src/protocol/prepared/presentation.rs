@@ -272,7 +272,7 @@ impl Output {
 
 pub(super) fn select(
     prepared: &crate::engine::PreparedData,
-    request: &super::super::LineSelectionRequest,
+    request: super::super::input::RequestInput<'_>,
 ) -> crate::Result<SelectedPresentation> {
     let tables = &prepared.tables;
     let start = tables.boundaries[request.start.index];

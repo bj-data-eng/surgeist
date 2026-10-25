@@ -49,6 +49,7 @@ pub(crate) struct LineBasis {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PassBasis<Node, S: LayoutScalar> {
+    pub formatted: Option<super::formatted::FormattedPassBasis<Node, S>>,
     pub line_boxes: Vec<(
         Node,
         crate::line_box::LineBoxContext,
@@ -84,6 +85,8 @@ pub(crate) struct ScopeFragmentGroup<Node, S: LayoutScalar> {
 /// use actual preceding canonical outputs and must reproduce their full basis
 /// before any placed Text or completed batch can escape.
 pub(crate) struct TextComputation<'input, Node, S: LayoutScalar> {
+    pub formatted: Option<super::formatted::FormattedState<Node, S>>,
+    pub graph: Option<&'input crate::engine::validation::ValidationGraph<Node>>,
     pub paragraphs: &'input [TextParagraphBinding<Node>],
     pub associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
     pub frames: std::sync::Arc<[CanonicalFrame<Node, S>]>,
@@ -95,11 +98,262 @@ pub(crate) struct TextComputation<'input, Node, S: LayoutScalar> {
 }
 
 impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> {
+    pub(crate) fn formatted_active(&self) -> bool {
+        self.formatted
+            .as_ref()
+            .is_some_and(|state| !state.demanded.is_empty())
+    }
+
+    pub(crate) fn formatted_valid(&self) -> bool {
+        self.formatted
+            .as_ref()
+            .is_none_or(super::formatted::FormattedState::valid)
+    }
+
+    pub(crate) fn formatted_snapshot(
+        &self,
+        container: Node,
+        nodes: &[Node],
+        prepared: &surgeist_text::PreparedText,
+        input: crate::ComputeInputOf<S>,
+        mode: super::fit::Available,
+    ) -> super::formatted::FormattedTailSnapshot {
+        if let Some(state) = &self.formatted {
+            state.snapshot(&state.binding(container, nodes, prepared, input, mode))
+        } else {
+            // A checked Layout run has actual complete tree authority. No tail
+            // collection or sidecar lookup is performed until a reached demand.
+            super::formatted::FormattedTailSnapshot::known(prepared.clone(), None)
+        }
+    }
+
+    pub(crate) fn formatted_merge_run(
+        &mut self,
+        container: Node,
+        nodes: &[Node],
+        prepared: &surgeist_text::PreparedText,
+        input: crate::ComputeInputOf<S>,
+        mode: super::fit::Available,
+        uses: super::formatted::FormattedTailUses,
+    ) -> Option<super::formatted::FormattedFlowItem<Node, S>> {
+        if self.formatted.is_none() && uses.demands.is_empty() && uses.roles.is_empty() {
+            return None;
+        }
+        let state = self
+            .formatted
+            .get_or_insert_with(super::formatted::FormattedState::new);
+        state.frames = self.frames.clone();
+        let binding = state.binding(container, nodes, prepared, input, mode);
+        let item =
+            super::formatted::FormattedFlowItem::Text(binding.clone(), uses.accepted.clone());
+        state.merge(binding, uses);
+        self.formatted_active().then_some(item)
+    }
+
+    pub(crate) fn formatted_begin_block(
+        &mut self,
+        node: Node,
+        input: crate::ComputeInputOf<S>,
+        anonymous: bool,
+    ) -> bool {
+        if !self.formatted_active() {
+            return false;
+        }
+        self.formatted
+            .as_mut()
+            .unwrap()
+            .stack
+            .push(super::formatted::ComputeScope {
+                node,
+                input,
+                anonymous,
+                frame: None,
+            });
+        true
+    }
+
+    pub(crate) fn formatted_end_block(
+        &mut self,
+        node: Node,
+        input: crate::ComputeInputOf<S>,
+        anonymous: bool,
+        success: bool,
+    ) {
+        if let Some(state) = &mut self.formatted {
+            state.finish_block(
+                super::formatted::ComputeScope {
+                    node,
+                    input,
+                    anonymous,
+                    frame: None,
+                },
+                success,
+            );
+        }
+    }
+
+    pub(crate) fn formatted_new_flow(&self) -> Option<super::formatted::FormattedFlow<Node, S>> {
+        self.formatted_active()
+            .then(|| super::formatted::FormattedFlow {
+                frame: self
+                    .formatted
+                    .as_ref()
+                    .and_then(|state| state.stack.last())
+                    .and_then(|scope| scope.frame),
+                items: Vec::new(),
+            })
+    }
+
+    pub(crate) fn formatted_begin_flow(
+        &mut self,
+        input: crate::ComputeInputOf<S>,
+        available: crate::AvailableOf<S>,
+        publication: bool,
+    ) {
+        if self.formatted_active()
+            && let Some(scope) = self
+                .formatted
+                .as_mut()
+                .and_then(|state| state.stack.last_mut())
+        {
+            scope.frame = Some(super::formatted::FlowFrame {
+                input,
+                available,
+                publication,
+            });
+        }
+    }
+
+    pub(crate) fn formatted_record_traversal(
+        &mut self,
+        flow: &Option<super::formatted::FormattedFlow<Node, S>>,
+    ) {
+        if let (Some(state), Some(flow)) = (&mut self.formatted, flow) {
+            state.record(flow.clone());
+        }
+    }
+
+    pub(crate) fn formatted_record_flow(
+        &mut self,
+        flow: Option<super::formatted::FormattedFlow<Node, S>>,
+    ) {
+        if let (Some(state), Some(flow)) = (&mut self.formatted, flow) {
+            state.select(flow);
+        }
+    }
+
+    pub(crate) fn formatted_child(
+        &self,
+        node: Node,
+        input: crate::ComputeInputOf<S>,
+        anonymous: bool,
+    ) -> Option<super::formatted::FormattedFlowItem<Node, S>> {
+        if !self.formatted_active() {
+            return None;
+        }
+        let mut scope = self.formatted.as_ref()?.stack.clone();
+        scope.push(super::formatted::ComputeScope {
+            node,
+            input,
+            anonymous,
+            frame: None,
+        });
+        Some(super::formatted::FormattedFlowItem::Child(scope))
+    }
+
+    /// Required ancestors must execute to reach the demanded owner. Descendant
+    /// summaries are needed only inside that owner; unrelated sibling caches
+    /// retain the ordinary geometry-only path.
+    pub(crate) fn formatted_cache_required(&self, node: Node) -> bool {
+        if !self.formatted_active() {
+            return false;
+        }
+        let Some(graph) = self.graph else {
+            return true;
+        };
+        let Some(subject) = graph.index(node) else {
+            return true;
+        };
+        self.formatted
+            .as_ref()
+            .unwrap()
+            .demanded
+            .iter()
+            .any(|owner| {
+                let Some(owner) = graph.index(*owner) else {
+                    return true;
+                };
+                let reaches = |start: usize, end: usize| {
+                    let mut pending = vec![start];
+                    let mut seen = Vec::new();
+                    while let Some(at) = pending.pop() {
+                        if at == end {
+                            return true;
+                        }
+                        if !seen.contains(&at) {
+                            seen.push(at);
+                            pending.extend(&graph.children[at]);
+                        }
+                    }
+                    false
+                };
+                reaches(owner, subject) || reaches(subject, owner)
+            })
+    }
+
+    pub(crate) fn formatted_cache_available(
+        &self,
+        node: Node,
+        input: &crate::ComputeInputOf<S>,
+    ) -> bool {
+        !self.formatted_cache_required(node)
+            || self
+                .formatted
+                .as_ref()
+                .and_then(|state| state.receipt(node, input))
+                .is_some_and(|receipt| receipt.output.is_some())
+    }
+
+    pub(crate) fn formatted_cache_matches(
+        &self,
+        node: Node,
+        input: &crate::ComputeInputOf<S>,
+        context: crate::CacheKeyContext,
+        output: crate::ComputeOutputOf<S>,
+    ) -> bool {
+        !self.formatted_cache_required(node)
+            || self
+                .formatted
+                .as_ref()
+                .is_some_and(|state| state.cache_matches(node, input, context, output))
+    }
+
+    pub(crate) fn formatted_restore_cache(
+        &mut self,
+        node: Node,
+        input: &crate::ComputeInputOf<S>,
+    ) -> bool {
+        if !self.formatted_cache_required(node) {
+            return true;
+        }
+        self.formatted
+            .as_mut()
+            .is_some_and(|state| state.restore(node, input))
+    }
+
+    pub(crate) fn formatted_next_pass(&mut self) {
+        if let Some(state) = &mut self.formatted {
+            state.next_pass();
+        }
+    }
+
     pub fn new(
         paragraphs: &'input [TextParagraphBinding<Node>],
         associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
     ) -> Self {
         Self {
+            formatted: None,
+            graph: None,
             paragraphs,
             associations,
             frames: std::sync::Arc::from([]),
@@ -208,6 +462,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
 
     pub fn basis(&self, frames: Vec<CanonicalFrame<Node, S>>) -> PassBasis<Node, S> {
         PassBasis {
+            formatted: self
+                .formatted
+                .as_ref()
+                .map(super::formatted::FormattedState::basis),
             line_boxes: self
                 .pending
                 .iter()

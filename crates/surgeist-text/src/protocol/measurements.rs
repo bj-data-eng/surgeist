@@ -56,6 +56,7 @@ pub enum LineEdgeDisposition {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct EdgeRow {
+    pub(crate) punctuation_unit: Option<super::PresentationRange>,
     pub(crate) disposition: LineEdgeDisposition,
     pub(crate) atoms: std::ops::Range<usize>,
     pub(crate) excluded: f64,
@@ -66,6 +67,7 @@ pub(crate) struct EdgeRow {
 /// contributions are not a complete paragraph's min/max-content result.
 #[derive(Clone, Debug)]
 pub struct LineMeasurements {
+    pub(crate) formatted_usage: super::FormattedLineUsage,
     pub(crate) fit: InlineMeasure,
     pub(crate) alignment: InlineMeasure,
     pub(crate) minimum: InlineMeasure,
@@ -73,6 +75,9 @@ pub struct LineMeasurements {
     pub(crate) edges: Vec<EdgeRow>,
 }
 impl LineMeasurements {
+    pub const fn formatted_line_usage(&self) -> super::FormattedLineUsage {
+        self.formatted_usage
+    }
     pub const fn fit(&self) -> InlineMeasure {
         self.fit
     }
@@ -125,6 +130,9 @@ pub struct LineEdgeUnitView<'a> {
     index: usize,
 }
 impl LineEdgeUnitView<'_> {
+    pub fn punctuation_unit(&self) -> Option<super::PresentationRange> {
+        self.line.measurements().edges[self.index].punctuation_unit
+    }
     pub fn finalized_line(&self) -> &FinalizedLine {
         self.line
     }

@@ -155,6 +155,7 @@ fn finish(
         boundary_context: vec![],
         line_strut: None,
         context: t::LineContext {
+            formatted_line: surgeist_text::FormattedLineContext::default(),
             base_direction: if p.analyzed_source().direction() == t::Direction::RightToLeft {
                 t::ParagraphBaseDirection::RightToLeft
             } else {
@@ -859,6 +860,7 @@ fn suppressed_source_shy_retains_whole_word_portion_and_measurement_tail() {
             boundary_context: vec![],
             line_strut: None,
             context: t::LineContext {
+                formatted_line: surgeist_text::FormattedLineContext::default(),
                 base_direction: t::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
                 orientation: t::LineOrientation::Horizontal,

@@ -131,6 +131,15 @@ pub(crate) trait CacheAccess<M = core::convert::Infallible> {
         context: CacheKeyContext,
         output: ComputeOutputOf<Self::Scalar>,
     );
+    /// Restore invocation-local semantic receipts accompanying an admitted
+    /// geometry hit. Box-only executors have no such additional state.
+    fn cache_restore_semantics(
+        &mut self,
+        _node: Self::Node,
+        _input: &ComputeInputOf<Self::Scalar>,
+    ) -> bool {
+        true
+    }
     fn cache_clear(&mut self, node: Self::Node);
 }
 
@@ -154,7 +163,9 @@ where
     }
 
     let context = tree.cache_context();
-    if let Some(output) = tree.cache_get(node, &input, context) {
+    if let Some(output) = tree.cache_get(node, &input, context)
+        && tree.cache_restore_semantics(node, &input)
+    {
         return Ok(output);
     }
 

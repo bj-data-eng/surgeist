@@ -456,6 +456,7 @@ fn intrinsic<S: LayoutScalar>(
         &[],
         &[],
         super::super::run::Context {
+            formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
                 LineBoxDirectionPolicy::Plaintext,
                 Direction::Rtl,

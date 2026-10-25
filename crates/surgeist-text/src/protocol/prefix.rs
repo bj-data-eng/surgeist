@@ -271,41 +271,29 @@ impl PrefixData {
                 }
             };
             owner = unit;
-            let retained = match *item {
-                ShapedItem::TextCluster(index) => {
-                    let retained = !matches!(
-                        dispositions[index],
-                        super::SpacingSlotDisposition::DiscardedAtLineEdge
-                    );
-                    if retained {
-                        result.retained_sources[unit].extend(
-                            selected.presentation.projection.atoms
-                                [shaped.clusters[index].atoms.clone()]
-                            .iter()
-                            .map(|atom| atom.source)
-                            .filter(|range| !range.is_empty()),
-                        );
-                    }
-                    retained
-                }
-                ShapedItem::InlineBox { occurrence, .. } => matches!(
-                    atomics[&occurrence].allocation,
-                    super::AtomicLineAllocation::InFlow { .. }
-                ),
-                ShapedItem::Anchor { .. } => match units[unit].kind {
-                    PresentationUnitKind::Control { occurrence } => {
-                        controls[&occurrence].strut.is_some()
-                            || super::boundary::advance(selected, unit) > 0.0
-                    }
-                    _ => false,
-                },
-            };
+            let retained = retained_item(
+                selected.presentation_input(),
+                item,
+                atomics,
+                controls,
+                dispositions,
+            );
+            if retained && let ShapedItem::TextCluster(index) = *item {
+                result.retained_sources[unit].extend(
+                    selected.presentation.projection.atoms[shaped.clusters[index].atoms.clone()]
+                        .iter()
+                        .map(|atom| atom.source)
+                        .filter(|range| !range.is_empty()),
+                );
+            }
             result.has_in_flow_content |= match *item {
                 ShapedItem::TextCluster(index) => {
                     retained && shaped.clusters[index].whitespace != Whitespace::Newline
                 }
                 ShapedItem::InlineBox { .. } => retained,
-                ShapedItem::Anchor { unit } => super::boundary::advance(selected, unit) > 0.0,
+                ShapedItem::Anchor { unit } => {
+                    super::boundary::advance(selected.presentation_input(), unit) > 0.0
+                }
             };
             result
                 .retained_prefix
@@ -321,7 +309,9 @@ impl PrefixData {
                     super::AtomicLineAllocation::InFlow { flow, .. } => flow.advance,
                     super::AtomicLineAllocation::OutOfFlow => 0.0,
                 },
-                ShapedItem::Anchor { unit } => super::boundary::advance(selected, unit),
+                ShapedItem::Anchor { unit } => {
+                    super::boundary::advance(selected.presentation_input(), unit)
+                }
                 _ => 0.0,
             });
         }
@@ -537,3 +527,29 @@ fn participant_key(participant: &PreparedParticipant) -> (u8, usize) {
 
 #[cfg(test)]
 mod tests;
+
+/// One role-independent predicate shared by finalized prefixes and flow observations.
+pub(crate) fn retained_item(
+    input: super::input::PresentationInput<'_>,
+    item: &ShapedItem,
+    atomics: &BTreeMap<usize, &super::AtomicAllocation>,
+    controls: &BTreeMap<usize, &super::ControlAllocation>,
+    dispositions: &[super::SpacingSlotDisposition],
+) -> bool {
+    match *item {
+        ShapedItem::TextCluster(index) => !matches!(
+            dispositions[index],
+            super::SpacingSlotDisposition::DiscardedAtLineEdge
+        ),
+        ShapedItem::InlineBox { occurrence, .. } => matches!(
+            atomics[&occurrence].allocation,
+            super::AtomicLineAllocation::InFlow { .. }
+        ),
+        ShapedItem::Anchor { unit } => match input.presentation.units[unit].kind {
+            PresentationUnitKind::Control { occurrence } => {
+                controls[&occurrence].strut.is_some() || super::boundary::advance(input, unit) > 0.0
+            }
+            _ => false,
+        },
+    }
+}

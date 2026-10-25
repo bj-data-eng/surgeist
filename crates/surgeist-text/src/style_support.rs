@@ -1,6 +1,7 @@
 /// Text-owned style-facing feature names for root/style integration.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TextStyleFeature {
+    HangingPunctuation,
     FontFamilyList,
     NamedFontWeight,
     NumericFontWeight,
@@ -71,6 +72,7 @@ pub enum TextStylePhase {
 
 impl TextStyleFeature {
     pub const ALL: &'static [Self] = &[
+        Self::HangingPunctuation,
         Self::FontFamilyList,
         Self::NamedFontWeight,
         Self::NumericFontWeight,
@@ -149,7 +151,8 @@ impl TextStyleFeature {
             Self::MathAuto => TextStyleSupport::Unsupported(
                 UnsupportedTextStyleReason::RequiresCompleteTextNodeContext,
             ),
-            Self::FontFamilyList
+            Self::HangingPunctuation
+            | Self::FontFamilyList
             | Self::NamedFontWeight
             | Self::NumericFontWeight
             | Self::BasicFontStretch

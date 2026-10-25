@@ -152,6 +152,7 @@ impl<S: LayoutScalar> InlineEndpointOf<S> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
+    pub formatted_lines: Option<Vec<crate::text_layout::formatted::NumericFormattedLine>>,
     pub line_box_context: crate::line_box::LineBoxContext,
     pub lines: Vec<crate::hyphenation::CommittedInlineLine>,
     pub hyphenation_state: crate::hyphenation::LineHyphenationState,
@@ -1012,6 +1013,7 @@ pub(super) fn layout_mixed_inline_run<S: LayoutScalar>(
             next_transition: None,
         },
         |block, _| block,
+        false,
     )
 }
 
@@ -1028,7 +1030,40 @@ where
 {
     let supplied = project_inline_participants(&input.participants);
     let available = resolved_inline_available(&input, &supplied);
-    layout_mixed_inline_run_from_available(input, supplied, available, band_source, clear_source)
+    layout_mixed_inline_run_from_available(
+        input,
+        supplied,
+        available,
+        band_source,
+        clear_source,
+        false,
+    )
+}
+
+pub(super) fn layout_mixed_inline_run_with_formatted_observation<S, BandSource, ClearSource>(
+    input: MixedInlineRunInputOf<S>,
+    band_source: BandSource,
+    clear_source: ClearSource,
+    observe: bool,
+) -> MixedInlineRunReportOf<S>
+where
+    S: LayoutScalar,
+    BandSource: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    ClearSource: FnMut(S, PostLineClearIntent) -> S,
+{
+    if !observe {
+        return layout_mixed_inline_run_with_band_source(input, band_source, clear_source);
+    }
+    let supplied = project_inline_participants(&input.participants);
+    let available = resolved_inline_available(&input, &supplied);
+    layout_mixed_inline_run_from_available(
+        input,
+        supplied,
+        available,
+        band_source,
+        clear_source,
+        true,
+    )
 }
 
 fn layout_mixed_inline_run_from_available<S, BandSource, ClearSource>(
@@ -1037,6 +1072,7 @@ fn layout_mixed_inline_run_from_available<S, BandSource, ClearSource>(
     available: S,
     mut band_source: BandSource,
     mut clear_source: ClearSource,
+    observe_formatted: bool,
 ) -> MixedInlineRunReportOf<S>
 where
     S: LayoutScalar,
@@ -1045,6 +1081,7 @@ where
 {
     let wraps = !matches!(input.available_inline_extent, AvailableOf::MaxContent);
     let mut selected_lines = Vec::new();
+    let mut formatted_lines = observe_formatted.then(Vec::new);
     let mut cursor = InlineSourceCursor::default();
     let run = ProjectedInlineRun {
         participants: &input.participants,
@@ -1215,6 +1252,13 @@ where
             SelectedInlineLineEnd::Forced => surgeist_text::LineEnd::Forced,
             SelectedInlineLineEnd::Paragraph => surgeist_text::LineEnd::Paragraph,
         };
+        if let Some(lines) = &mut formatted_lines {
+            lines.push(crate::text_layout::formatted::NumericFormattedLine {
+                source_end: selected.next_cursor.source,
+                descriptor_end: selected.next_cursor.descriptor,
+                ending: line.ending,
+            });
+        }
         indent_state.commit(selected.end == SelectedInlineLineEnd::Forced);
         line_box_context.commit(line_box_context.resolve(None));
         pending_strut = selected.pending_strut;
@@ -1360,6 +1404,7 @@ where
     }
 
     MixedInlineRunReportOf {
+        formatted_lines,
         line_box_context,
         lines,
         hyphenation_state: crate::hyphenation::LineHyphenationState::default(),

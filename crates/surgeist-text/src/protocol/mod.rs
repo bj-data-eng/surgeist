@@ -12,9 +12,16 @@ use selection::SelectedData;
 
 pub(crate) mod boundary;
 mod conditional;
+pub(crate) use conditional::request_context;
 mod continuation;
 mod direction;
+pub(crate) mod flow;
+pub(crate) mod input;
 pub use direction::LineDirectionFacts;
+pub use flow::{
+    FlowObservation, FlowObservationRequest, FlowSegmentRole, PreparedFlowSegment,
+    PreparedMeasurementFlow,
+};
 pub(crate) mod finalized;
 mod hyphenation;
 pub(crate) mod measurements;
@@ -246,6 +253,7 @@ pub enum SpacingPolicy {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LineContext {
+    pub formatted_line: FormattedLineContext,
     pub base_direction: ParagraphBaseDirection,
     /// Independently resolved alignment and indentation basis.
     pub line_box_direction: LineBoxDirection,
@@ -257,6 +265,39 @@ pub struct LineContext {
     pub alignment: Alignment,
     pub tabs: TabContext,
     pub spacing: SpacingPolicy,
+}
+
+/// Actual formatting-container roles; unknown is distinct from affirmative false.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct FormattedLineContext {
+    first: Option<bool>,
+    last: Option<bool>,
+}
+impl FormattedLineContext {
+    pub const fn new(first: Option<bool>, last: Option<bool>) -> Self {
+        Self { first, last }
+    }
+    pub const fn first(self) -> Option<bool> {
+        self.first
+    }
+    pub const fn last(self) -> Option<bool> {
+        self.last
+    }
+}
+
+/// Roles actually consumed by emitted line measurements, including false roles.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct FormattedLineUsage {
+    pub(crate) first: bool,
+    pub(crate) last: bool,
+}
+impl FormattedLineUsage {
+    pub const fn first(self) -> bool {
+        self.first
+    }
+    pub const fn last(self) -> bool {
+        self.last
+    }
 }
 
 /// Signed flow contributions, distinct from nonnegative border/content sizes.
@@ -602,6 +643,7 @@ pub enum ProtocolContextField {
 /// Actual invalid association or incomplete input; no caller ordinal issues a capability.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolError {
+    InvalidMeasurementFlow,
     /// The queried range does not belong to one canonical body bidi context.
     InvalidLineDirectionQuery,
     InvalidWordPortion,
@@ -804,6 +846,8 @@ pub enum ProtocolError {
 /// Positioning) measurements, not an implementation or delivery-stage marker.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PhaseTwoContext {
+    FirstFormattedLine,
+    LastFormattedLine,
     TerminalBlockEdge,
     TabOrigin,
 }

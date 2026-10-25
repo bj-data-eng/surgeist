@@ -598,13 +598,18 @@ fn validate_frontier(
 // Retain the actual finite trial's semantic geometry and participation, not its
 // receipt allocation. All these numbers crossed successful finalization and are
 // finite; canonical signed zero has the same semantic identity.
-fn policy_context(line: &FinalizedLine) -> Vec<u64> {
-    fn number(values: &mut Vec<u64>, value: f64) {
-        values.push(if value == 0.0 { 0 } else { value.to_bits() });
+fn role(value: Option<bool>) -> u64 {
+    match value {
+        None => 0,
+        Some(false) => 1,
+        Some(true) => 2,
     }
-    let selected = line.selected_line();
-    let request = selected.request();
-    let context = &request.context;
+}
+fn number(values: &mut Vec<u64>, value: f64) {
+    values.push(if value == 0.0 { 0 } else { value.to_bits() });
+}
+pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u64> {
+    let context = request.context;
     let mut values = vec![
         context.base_direction as u64,
         context.line_box_direction as u64,
@@ -612,11 +617,13 @@ fn policy_context(line: &FinalizedLine) -> Vec<u64> {
         context.start as u64,
         context.end as u64,
         context.spacing as u64,
+        role(context.formatted_line.first()),
+        role(context.formatted_line.last()),
     ];
-    number(
-        &mut values,
-        context.available_inline.expect("finite policy receipt"),
-    );
+    values.push(u64::from(context.available_inline.is_some()));
+    if let Some(width) = context.available_inline {
+        number(&mut values, width);
+    }
     number(&mut values, context.indent);
     match context.tabs {
         super::TabContext::NoTabs => values.push(0),
@@ -630,7 +637,7 @@ fn policy_context(line: &FinalizedLine) -> Vec<u64> {
         }
     }
     values.push(request.atomics.len() as u64);
-    for allocation in &request.atomics {
+    for allocation in request.atomics {
         values.push(allocation.occurrence.index as u64);
         match allocation.allocation {
             super::AtomicLineAllocation::OutOfFlow => values.push(0),
@@ -662,7 +669,7 @@ fn policy_context(line: &FinalizedLine) -> Vec<u64> {
         }
     }
     values.push(request.controls.len() as u64);
-    for allocation in &request.controls {
+    for allocation in request.controls {
         values.push(allocation.occurrence.index as u64);
         values.push(u64::from(allocation.boundary.is_some()));
         if let Some(boundary) = allocation.boundary {
@@ -676,7 +683,7 @@ fn policy_context(line: &FinalizedLine) -> Vec<u64> {
         }
     }
     values.push(request.boundary_context.len() as u64);
-    for allocation in &request.boundary_context {
+    for allocation in request.boundary_context {
         values.push(allocation.occurrence.index as u64);
         number(&mut values, allocation.boundary.advance());
     }
@@ -685,6 +692,11 @@ fn policy_context(line: &FinalizedLine) -> Vec<u64> {
         number(&mut values, strut.baseline);
         number(&mut values, strut.line_extent);
     }
+    values
+}
+fn policy_context(line: &FinalizedLine) -> Vec<u64> {
+    let selected = line.selected_line();
+    let mut values = request_context(selected.request().into());
     number(&mut values, line.feedback().advance);
     for slot in line.spacing_slots() {
         number(&mut values, slot.advance);
@@ -834,6 +846,16 @@ impl PreparedText {
     }
 }
 impl PreparedConditionalSearch {
+    pub(super) fn matches_flow_query(
+        &self,
+        prepared: &PreparedText,
+        start: usize,
+        incoming: Option<&super::HyphenationContinuation>,
+    ) -> bool {
+        self.identity.prepared == *prepared
+            && self.identity.start == start
+            && self.identity.incoming.as_ref() == incoming
+    }
     /// Whole remaining affected phrase pieces, clipped to the queried start.
     /// Measure each through `PhraseMeasurement`, including its exact incoming
     /// continuation. A fresh-line measurement may use a different numerical

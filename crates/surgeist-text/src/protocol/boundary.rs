@@ -3,10 +3,7 @@ use super::paragraph::{ParagraphAnchor, ParagraphAnchorItem, ParagraphControlKin
 use super::prepared::{
     PresentationUnitKind, RetainedAssignment, SelectedPresentation, presentation::Attachment,
 };
-use super::{
-    LineSelectionRequest, PreparedControl, PreparedText, ProtocolError, ProtocolHandleKind,
-    protocol_error,
-};
+use super::{PreparedControl, PreparedText, ProtocolError, ProtocolHandleKind, protocol_error};
 use crate::{
     Result,
     engine::{PreparedData, analysis::wrapping::Event},
@@ -81,13 +78,12 @@ fn incidences(prepared: &PreparedData) -> Vec<Incidence> {
         .collect()
 }
 
-pub(crate) fn advance(selected: &super::selection::SelectedData, unit: usize) -> f64 {
+pub(crate) fn advance(selected: super::input::PresentationInput<'_>, unit: usize) -> f64 {
     let PresentationUnitKind::Control { occurrence } = selected.presentation.units[unit].kind
     else {
         return 0.0;
     };
     selected
-        .request
         .controls
         .iter()
         .find(|row| {
@@ -338,7 +334,7 @@ fn split_assignments(presentation: &mut SelectedPresentation, cuts: &BTreeSet<us
 
 pub(crate) fn resolve(
     prepared: &PreparedText,
-    request: &LineSelectionRequest,
+    request: super::input::RequestInput<'_>,
     presentation: &mut SelectedPresentation,
 ) -> Result<(Resolved, Option<PreparedControl>)> {
     let data = &prepared.inner;
@@ -351,7 +347,7 @@ pub(crate) fn resolve(
         })
         .collect();
     let mut supplied = BTreeSet::new();
-    for row in &request.boundary_context {
+    for row in request.boundary_context {
         super::selection::require_prepared(
             prepared,
             &row.occurrence.prepared,
