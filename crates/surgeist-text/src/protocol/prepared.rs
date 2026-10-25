@@ -695,6 +695,7 @@ fn issue_opportunities(
             let eligible = count_admitted
                 && !before_hard
                 && authored.hyphens != crate::Hyphens::None
+                && authored.word_break != crate::WordBreak::BreakAll
                 && authored.wrap == crate::Wrap::Word
                 && (control.is_some() || wrapping_allowed(analyzed, boundary)?);
             if eligible {
@@ -753,7 +754,15 @@ fn issue_opportunities(
             // soft owner before the next real hard separator, including CB.
             None
         } else if hyphenation {
-            (!alternatives.is_empty()).then_some(PreparedBreakKind::Discretionary)
+            let atomic = atomic_permission(analyzed, boundary)?.unwrap_or_else(|| {
+                analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]].atomic
+                    && standalone_atomic_opportunity(analyzed, tables, boundary)
+            });
+            if atomic || ordinary_after_source_shy(analyzed, tables, boundary)? {
+                Some(PreparedBreakKind::Allowed)
+            } else {
+                (!alternatives.is_empty()).then_some(PreparedBreakKind::Discretionary)
+            }
         } else if matches!(
             control,
             Some(ParagraphControlKind::OptionalBreak {
@@ -1086,6 +1095,7 @@ fn automatic_cut(
         || counts.is_some_and(|value| value.admits(authored.hyphenate_limit_chars));
     if !count_admitted
         || authored.hyphens != crate::Hyphens::Auto
+        || authored.word_break == crate::WordBreak::BreakAll
         || authored.wrap != crate::Wrap::Word
         || analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]]
             .before_hard_separator
@@ -1096,6 +1106,49 @@ fn automatic_cut(
         return Ok(None);
     }
     Ok(Some((index, style, origin)))
+}
+
+/// This exact source SHY ending can independently lend an ordinary BreakAll
+/// cut. Its following text owns the rule; the SHY's indication/local wrap
+/// eligibility neither grants this permission nor transfers it to later anchors.
+fn ordinary_after_source_shy(
+    analyzed: &AnalyzedData,
+    tables: &PreparedTables,
+    boundary: &BoundaryData,
+) -> crate::Result<bool> {
+    let Some(ParticipantData::Text(unit)) = boundary
+        .participant
+        .checked_sub(1)
+        .and_then(|previous| tables.participants.get(previous))
+    else {
+        return Ok(false);
+    };
+    let unit = &tables.units[*unit];
+    if unit.deleted
+        || unit.atoms.len() != 1
+        || unit.atoms.end != boundary.atom
+        || analyzed.projection.atoms[unit.atoms.start].code_point != 0xad
+    {
+        return Ok(false);
+    }
+    let relation = &analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]];
+    if !matches!(relation.after,
+        Some(crate::engine::analysis::wrapping::Influence::Text { atom, .. }) if atom == boundary.atom)
+    {
+        return Ok(false);
+    }
+    let Some(info) = analyzed.analysis.infos.get(boundary.atom) else {
+        return Ok(false);
+    };
+    let following = analyzed.styles[info.1].style.authored();
+    if following.word_break != crate::WordBreak::BreakAll || info.0.boundary < Boundary::Line {
+        return Ok(false);
+    }
+    if analyzed.paragraph.base_direction.is_some() {
+        native_permission(analyzed, boundary)
+    } else {
+        Ok(following.wrap == crate::Wrap::Word)
+    }
 }
 
 fn used_placement(

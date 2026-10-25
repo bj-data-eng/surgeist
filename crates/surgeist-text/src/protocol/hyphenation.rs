@@ -479,13 +479,12 @@ impl PreparedWordPortion {
             .tables
             .hyphenation_cuts
             .iter()
-            .any(|row| {
+            .enumerate()
+            .any(|(cut, row)| {
                 row.word == Some(self.word.index)
-                    && matches!(
-                        row.provenance,
-                        HyphenationProvenance::Source | HyphenationProvenance::Control
-                    )
-                    && row.opportunity.is_some()
+                    && admitted_manual_alternatives(&self.word.prepared.tables, cut)
+                        .next()
+                        .is_some()
             })
     }
     pub(super) fn validate(
@@ -546,22 +545,18 @@ impl PreparedWordView<'_> {
             .ok_or_else(|| super::protocol_error(super::ProtocolError::InvalidWordPortion))?;
         let mut result = Vec::new();
         let mut incoming = vec![None];
-        for cut in &tables.hyphenation_cuts {
-            if cut.word != Some(self.index)
-                || !matches!(
-                    cut.provenance,
-                    HyphenationProvenance::Source | HyphenationProvenance::Control
-                )
-            {
+        for (cut_index, cut) in tables.hyphenation_cuts.iter().enumerate() {
+            if cut.word != Some(self.index) {
                 continue;
             }
-            let Some(opportunity) = cut.opportunity else {
-                continue;
-            };
             if cut.boundary <= start || cut.boundary > end {
                 continue;
             }
-            for &alternative in &tables.opportunities[opportunity].alternatives {
+            let alternatives: Vec<_> = admitted_manual_alternatives(tables, cut_index).collect();
+            if alternatives.is_empty() {
+                continue;
+            }
+            for &alternative in &alternatives {
                 for &prior in &incoming {
                     result.push(PreparedWordPortion {
                         word: self.handle(),
@@ -572,8 +567,7 @@ impl PreparedWordView<'_> {
                     });
                 }
             }
-            incoming = tables.opportunities[opportunity]
-                .alternatives
+            incoming = alternatives
                 .iter()
                 .map(|&alternative| {
                     let handle = super::PreparedAlternative {
@@ -623,6 +617,27 @@ impl PreparedWordView<'_> {
             })
             .collect())
     }
+}
+
+/// Truthful source/control cut observations can also point at a None-only
+/// ordinary offer. Only an admitted matching manual alternative partitions it.
+fn admitted_manual_alternatives(
+    tables: &super::prepared::PreparedTables,
+    cut: usize,
+) -> impl Iterator<Item = usize> + '_ {
+    tables.hyphenation_cuts[cut]
+        .opportunity
+        .into_iter()
+        .flat_map(|offer| tables.opportunities[offer].alternatives.iter().copied())
+        .filter(move |&alternative| {
+            let alternative = &tables.alternatives[alternative];
+            alternative.hyphenation_cut == cut
+                && matches!(
+                    alternative.definition,
+                    super::prepared::AlternativeDefinition::Source { .. }
+                        | super::prepared::AlternativeDefinition::Control { .. }
+                )
+        })
 }
 
 /// Transparent mixed cuts keep distinct custody; in-flow atomic and control influences are not text aliases.

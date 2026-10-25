@@ -55,6 +55,15 @@ on every genuine word contribution, compared without ASCII case distinctions;
 generic English and other locales have no automatic resource. See
 [resource support and attribution](hyphenation-resources.md).
 
+The [BreakAll owner contract](../../../docs/text-layout-contract.md#breakall-and-independent-ordinary-cuts)
+suppresses Source/Control/Automatic hyphenation when that cut's actual owner has
+BreakAll, including empty alternatives, while retaining truthful observations.
+Independent ordinary after-source-SHY permission uses the following ordinary
+owner, actual Unicode/typographic boundary and native NCA Wrap permission;
+source-free Controls or equal source offsets supply no BA permission. An Allowed
+cut can retain both its genuine nonhyphenating `None` and an admitted manual
+alternative. See the [source determination](../../../references/text-break-all-hyphenation--determination-20261024.md).
+
 `Style::hyphenate_limit_chars` accepts a computed `HyphenateLimitChars` triple
 of `HyphenationMinimum` components. Native `Auto` components independently use
 5/2/2; explicit counts are nonnegative minima, with no sum or word-length clamp.
@@ -62,9 +71,11 @@ The supplying style adapter owns specified-value expansion and checked integer
 conversion. The actual raw standalone operation stays unconstrained. See the
 [count contract](../../../docs/text-layout-contract.md#automatic-resources-word-custody-and-initial-limits).
 
-Word portions retain the admitted manual partition. A
-`PreparedTermination::Measurement` finalizes an issued portion through the same
-selected-line pipeline and cannot be placed. Consumers use
+Word portions retain only cuts with an actual matching admitted Source/Control
+alternative. A retained cut/opportunity alone, including Allowed/None-only, does
+not partition a word or advance a portion start; Allowed plus a manual choice
+does. `PreparedTermination::Measurement` finalizes an issued portion through the
+same selected-line pipeline and cannot be placed. Consumers use
 `ConditionalDisposition` to account for earlier ordinary variants when requesting
 conditional cuts; actual fitting remains consumer-owned. The
 [composition guide](composed-lines.md) defines selection and placement use.

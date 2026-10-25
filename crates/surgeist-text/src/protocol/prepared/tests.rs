@@ -1,4 +1,6 @@
 use super::*;
+#[path = "break_all_hyphenation.rs"]
+mod break_all_hyphenation;
 use crate::protocol::paragraph::*;
 use crate::protocol::*;
 use crate::{

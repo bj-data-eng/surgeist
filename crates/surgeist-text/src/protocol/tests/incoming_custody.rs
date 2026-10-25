@@ -274,7 +274,20 @@ fn incoming_missing_and_atomic_receivers_keep_precise_refusals() {
         vec![(3, K::InlineBoundaryStart)],
     );
     // The real in-flow atomic terminates the preceding lexical word.
-    let offer = cut(&p, 3, counts(2, 0));
+    let cut = p
+        .hyphenation_cut_views()
+        .find(|cut| {
+            cut.provenance() == crate::HyphenationProvenance::Source
+                && cut.boundary().view().source_before().get() == 3
+        })
+        .unwrap();
+    assert_eq!(cut.counts(), Some(counts(2, 0)));
+    let offer = cut.opportunity().unwrap();
+    assert_eq!(offer.view().kind(), PreparedBreakKind::Allowed);
+    assert_eq!(offer.view().alternatives().count(), 1);
+    assert!(
+        matches!(offer.view().alternatives().next().unwrap().definition(),crate::PreparedAlternativeDefinition::Source { source, .. } if source==Range::new(2,3))
+    );
     let first = finish_at_edges(
         &p,
         selected_request(&p, start(&p), offer.clone(), None, true),

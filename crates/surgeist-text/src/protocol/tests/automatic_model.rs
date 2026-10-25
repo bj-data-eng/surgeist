@@ -395,6 +395,18 @@ fn ordinary_trial(
     let from = value.start.view().participant_offset();
     let to = value.end.view().participant_offset();
     value.participants = p.participants().skip(from).take(to - from).collect();
+    value.controls = value
+        .participants
+        .iter()
+        .filter_map(|participant| match participant {
+            PreparedParticipant::Control(occurrence) => Some(ControlAllocation {
+                occurrence: occurrence.clone(),
+                strut: None,
+                boundary: None,
+            }),
+            _ => None,
+        })
+        .collect();
     value.termination = PreparedTermination::Ordinary(offer);
     value.alternative = alternative;
     value.context.start = if from == 0 {
@@ -1139,61 +1151,152 @@ fn automatic_words_respect_actual_disconnections_at_connected_origin_boundaries(
 
 #[test]
 fn automatic_allowed_endpoint_keeps_its_nonhyphenating_variant_as_a_real_barrier() {
-    let mut value = input(Source::new("associate"), &[0, 9]);
-    value.base_style.word_break = crate::WordBreak::BreakAll;
-    value.base_style.overflow_wrap = crate::OverflowWrap::Anywhere;
-    let p = prepare(value);
-    let start = p.boundary_views().next().unwrap().handle();
-    let offer = cut_at(&p, 2).view().opportunity().unwrap();
-    assert_eq!(offer.view().kind(), PreparedBreakKind::Allowed);
-    let auto = offer.view().alternatives().next().unwrap().handle();
-    let ordinary = ordinary_trial(&p, start.clone(), offer.clone(), None, Some(10.0));
-    assert_eq!(ordinary.feedback().advance, 20.0);
-    assert!(ordinary.selected_line().request().alternative.is_none());
-    let automatic = ordinary_trial(
-        &p,
-        start.clone(),
-        offer.clone(),
-        Some(auto.clone()),
-        Some(10.0),
-    );
-    assert_eq!(automatic.feedback().advance, 30.0);
-    // Isolate the actual Allowed+Auto endpoint: there is no earlier endpoint
-    // between this source1 start and the source3 ceiling to cause rejection.
-    let start = p
-        .boundary_views()
-        .find(|row| row.participant_offset() == 1)
-        .unwrap()
-        .handle();
-    let ceiling = p
-        .opportunity_views()
-        .find(|row| row.boundary().view().participant_offset() == 3)
-        .unwrap()
-        .handle();
-    let automatic = ordinary_trial(&p, start.clone(), offer, Some(auto.clone()), Some(10.0));
-    assert_eq!(automatic.feedback().advance, 20.0);
-    // An automatic disposition cannot discharge that endpoint's real None
-    // variant, even when the exact automatic trial itself is supplied.
-    assert!(
-        p.conditional_opportunities(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &[crate::ConditionalDisposition::AutoFitExhausted(automatic)]
-        )
-        .is_err()
-    );
-    assert!(
-        p.conditional_opportunities(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::MinContent,
-            &[crate::ConditionalDisposition::AutoIntrinsicRefinement(auto)]
-        )
-        .is_err()
-    );
+    for mode in [crate::WordBreak::Normal, crate::WordBreak::KeepAll] {
+        let mut value = input(Source::new("associate"), &[0, 9]);
+        value.base_style.word_break = mode;
+        value.base_style.overflow_wrap = crate::OverflowWrap::Anywhere;
+        value.controls.push(paragraph::ParagraphControl {
+            at: 2,
+            kind: paragraph::ParagraphControlKind::Wbr {
+                style: Box::new(value.base_style.clone()),
+            },
+        });
+        value.anchor_order.push(paragraph::ParagraphAnchor {
+            item: paragraph::ParagraphAnchorItem::Control(0),
+            affinity: crate::Affinity::After,
+        });
+        let p = prepare(value);
+        let word = p.word_views().next().unwrap();
+        assert_eq!(word.query(), Some("associate"));
+        assert_eq!(word.resource(), HyphenationResource::EnUs2005);
+        assert_eq!(
+            word.provenance(),
+            Some(HyphenationProvenance::SourceException { entry: "associate" })
+        );
+        let wbr = p.participants().position(|part| matches!(part, PreparedParticipant::Control(control) if matches!(control.view().kind(), paragraph::ParagraphControlKind::Wbr { .. }))).unwrap();
+        let after_wbr = p
+            .boundary_views()
+            .find(|boundary| boundary.participant_offset() == wbr + 1)
+            .unwrap()
+            .handle();
+        let start = p.boundary_views().next().unwrap().handle();
+        let cut = p
+            .hyphenation_cut_views()
+            .find(|cut| {
+                cut.boundary() == after_wbr
+                    && cut.provenance()
+                        == HyphenationProvenance::SourceException { entry: "associate" }
+            })
+            .unwrap()
+            .handle();
+        let offer = cut.view().opportunity().unwrap();
+        assert_eq!(offer.view().boundary(), after_wbr);
+        assert_eq!(after_wbr.view().source_before().get(), 2);
+        assert_eq!(offer.view().kind(), PreparedBreakKind::Allowed);
+        let auto = offer.view().alternatives().next().unwrap().handle();
+        assert!(
+            matches!(auto.view().definition(), crate::PreparedAlternativeDefinition::Automatic { cut: actual } if actual == cut)
+        );
+        let ordinary = ordinary_trial(&p, start.clone(), offer.clone(), None, Some(10.0));
+        assert_eq!(ordinary.feedback().advance, 20.0);
+        assert!(ordinary.selected_line().request().alternative.is_none());
+        let automatic = ordinary_trial(
+            &p,
+            start.clone(),
+            offer.clone(),
+            Some(auto.clone()),
+            Some(10.0),
+        );
+        assert_eq!(automatic.feedback().advance, 30.0);
+        // Preserve the original nonzero source1-to-cut2 automatic trial.
+        let start = p
+            .boundary_views()
+            .find(|row| row.participant_offset() == 1)
+            .unwrap()
+            .handle();
+        let ceiling = cut_at(&p, 4).view().opportunity().unwrap();
+        assert_eq!(ceiling.view().boundary().view().source_before().get(), 4);
+        let automatic = ordinary_trial(
+            &p,
+            start.clone(),
+            offer.clone(),
+            Some(auto.clone()),
+            Some(10.0),
+        );
+        assert_eq!(automatic.feedback().advance, 20.0);
+        // The actual pre-Wbr boundary excludes its separate earlier Auto offer.
+        // Failure must identify this Wbr's None sibling, not that earlier barrier.
+        let start = p
+            .boundary_views()
+            .find(|boundary| boundary.participant_offset() == wbr)
+            .unwrap()
+            .handle();
+        let automatic = ordinary_trial(
+            &p,
+            start.clone(),
+            offer.clone(),
+            Some(auto.clone()),
+            Some(10.0),
+        );
+        // An automatic disposition cannot discharge that endpoint's real None
+        // variant, even when the exact automatic trial itself is supplied.
+        let error = p
+            .conditional_opportunities(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &[crate::ConditionalDisposition::AutoFitExhausted(automatic)],
+            )
+            .unwrap_err();
+        assert!(
+            matches!(reason(&error), ProtocolError::InvalidConditionalReceipt { receipt: 0, opportunity } if *opportunity == offer.index)
+        );
+        let error = p
+            .conditional_opportunities(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::MinContent,
+                &[crate::ConditionalDisposition::AutoIntrinsicRefinement(
+                    auto.clone(),
+                )],
+            )
+            .unwrap_err();
+        assert!(
+            matches!(reason(&error), ProtocolError::InvalidConditionalReceipt { receipt: 0, opportunity } if *opportunity == offer.index)
+        );
+        // Complete coverage still works: the genuine zero-flow Wbr None requires
+        // its own phantom receipt before the separately authenticated Auto variant.
+        for purpose in [ConditionalPurpose::Overflow, ConditionalPurpose::MinContent] {
+            let width = (purpose == ConditionalPurpose::Overflow).then_some(10.0);
+            let none = ordinary_trial(&p, start.clone(), offer.clone(), None, width);
+            assert_eq!(none.feedback().advance, 0.0);
+            let automatic =
+                ordinary_trial(&p, start.clone(), offer.clone(), Some(auto.clone()), width);
+            let auto_disposition = if purpose == ConditionalPurpose::Overflow {
+                crate::ConditionalDisposition::AutoFitExhausted(automatic)
+            } else {
+                crate::ConditionalDisposition::AutoIntrinsicRefinement(auto.clone())
+            };
+            let cuts = p
+                .conditional_opportunities(
+                    &start,
+                    None,
+                    &ceiling,
+                    purpose,
+                    &[
+                        crate::ConditionalDisposition::Phantom(none),
+                        auto_disposition,
+                    ],
+                )
+                .unwrap();
+            assert!(
+                cuts.iter()
+                    .any(|cut| cut.boundary().view().source_before().get() == 3)
+            );
+        }
+    }
 }
 #[test]
 fn automatic_range_units_keep_optional_ligature_shares_distinct() {

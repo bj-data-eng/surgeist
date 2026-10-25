@@ -1072,10 +1072,12 @@ its governing style and convention, or consume explicitly resolved native text
 alternatives. The latter retains a nonempty ordered alternative list, including
 empty strings, and its native provenance; it does not assert language-convention
 coverage. It is not a second style-string override. Both modes use the governing
-style for font selection and hyphenation eligibility, and `none` suppresses both.
-Conflicting modes or duplicate definitions are invalid. A bare source SHY uses
-style resolution rather than silently becoming an ordinary break without an
-indication. A terminal paragraph end does not select that SHY alternative.
+style for font selection and hyphenation eligibility, and `none` or that owner's
+BreakAll suppresses both. Conflicting modes or duplicate definitions are invalid.
+A bare source SHY uses style resolution rather than silently becoming an
+ordinary break without an indication. Independent ordinary after-SHY permission follows the
+[actual-owner rules](#breakall-and-independent-ordinary-cuts); suppression alone
+cannot create it. A terminal paragraph end does not select that SHY alternative.
 
 Retain the actual resolved convention, governing style and font/resource context
 in preparation and all affected cache identities. Qualification covers none versus
@@ -1094,6 +1096,71 @@ A range may retain an open outgoing obligation or authentic incoming choice
 without claiming an omitted predecessor was committed or widening original
 source-query coverage. Receiving an indication does not create another
 hyphenated ending for line-count policy.
+
+#### BreakAll and independent ordinary cuts
+
+Follow the [BreakAll hyphenation determination](../references/text-break-all-hyphenation--determination-20261024.md):
+the actual Source SHY owner, discretionary Control owner, or logical-preceding
+text owner of an Automatic cut cannot admit a hyphenation alternative when that
+owner has `WordBreak::BreakAll`. Apply this alongside its existing hyphens gate,
+without transferring ownership to the following text box. Suppression includes
+empty indications: there is no alternative trial, continuation or hyphenated-line
+effect, rather than merely hidden ink. Retain truthful cut/resource observations;
+a suppressed alternative does not require indication resolution or font matching.
+Language/resource qualification and wrapping retain their own authorities.
+
+Independently evaluate ordinary permission at the actual after-source-SHY mixed
+cut. In otherwise eligible Latin `a SHY b` with uniform BreakAll, the following
+letter/class rule admits an ordinary cut after SHY, with no indication; it does
+not create a break before SHY. The following ordinary box's BreakAll, actual
+Unicode neighbors, typographic-unit boundary and native nearest-common-ancestor
+Wrap permission govern that choice. The SHY owner's local Wrap gate governs its
+manual choice separately and cannot stand in for ordinary NCA permission.
+
+For an otherwise legal after-source-SHY relation with hyphens:manual and all
+other manual-admission requirements satisfied:
+
+| SHY owner | Following ordinary owner | Actual choices at that cut |
+| --- | --- | --- |
+| BreakAll | BreakAll | Allowed, nonhyphenating `None` only. |
+| BreakAll | Normal | No SHY-derived offer; independent permissions survive. |
+| Normal | BreakAll | Allowed with both `None` and the admitted manual alternative. |
+| Normal | Normal | Discretionary manual alternative without ordinary promotion. |
+
+Disabling hyphens removes the manual choice without removing independently legal
+`None`. Equal source offsets cannot promote another endpoint: retain the exact
+source-after-SHY participant, original source custody and authentic Soft endpoint
+attachment. A source-free discretionary Control has no implicit BA character and
+cannot borrow the source-SHY permission. Consecutive SHYs, punctuation, marks and
+glue require their actual rules/context. Genuine Wbr, ZWSP, forced, atomic and
+always-visible-hyphen permissions remain independent; none donates proof to a
+suppressed SHY or an equal-offset control.
+
+#### Admitted partitions and complete variant evidence
+
+A manual partition requires an actual matching admitted Source/Control
+alternative at its cut, not merely a retained cut observation, opportunity
+presence or Discretionary kind. `PreparedWordView::portions` skips
+unadmitted manual cuts without advancing the portion start or replacing its
+incoming choice. Allowed plus a manual alternative remains a genuine partition;
+Allowed/None-only does not become one because a Source cut was observed.
+
+An explicit Wbr can independently share an endpoint with Auto. For genuine
+`as` + Wbr + `sociate`, Normal or KeepAll, en-US, hyphens:auto, wrapping enabled
+and no word-space transform, the complete lexical word remains `associate`.
+The actual boundary after Wbr retains both nonhyphenating `None` and the resource's
+independent Auto choice; a later genuinely issued offer supplies the
+conditional-enumeration ceiling. With 10px letters and a 10px indication, the
+full-prefix None/Auto trials retain their distinct 20/30px advances. Authenticate Wbr, source, resource and
+mixed-cut identity; a different pre-Wbr offer cannot supply that evidence.
+Transformed full-width spelling is no resource proxy: the query does not perform
+width normalization.
+
+Complete conditional evidence still covers each actual variant separately.
+`AutoFitExhausted` and `AutoIntrinsicRefinement` cannot discharge the endpoint's
+`None` or manual siblings; `ConsumerHyphenationPolicy` cannot discharge `None`.
+The admitted-manual predicate also governs `AutoManualPriority`; no observation
+or unrelated earlier offer weakens ordinary barriers or partition requirements.
 
 ### Hyphenation indication bidi
 
@@ -1215,8 +1282,9 @@ artificial independently hyphenated words.
 
 The logical-preceding actual text contribution owns an automatic cut's style,
 origin, `hyphens`, indication, convention and font-selection authority. Its
-`Auto` admits automatic production; its `Manual` or `None` does not. Empty
-wrappers and out-of-flow occurrences cannot own the cut. Nearest-common-ancestor
+`Auto` permits automatic production subject to its other gates, including that
+owner's non-BreakAll word-break; its `Manual` or `None` does not. Empty wrappers
+and out-of-flow occurrences cannot own the cut. Nearest-common-ancestor
 wrapping permission remains separate. Neither a first-run style nor the adjacent
 effective fallback font can replace the actual owner. These mixed-style and
 resource choices are explicit Surgeist policy where the pinned specification
