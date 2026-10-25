@@ -2204,43 +2204,39 @@ impl TestTree {
         Ok(id)
     }
 
-    fn measure(&self, node: usize, input: layout::LeafMeasureInput) -> layout::Size {
+    fn measure(&self, node: usize, input: layout::LeafMeasureInput, text: &str) -> layout::Size {
         let known = input.known_content_size();
         let available = input
             .available_content_size()
             .map(layout::MeasurementAvailable::into_available);
-        if let Some(text) = &self.nodes[node].text {
-            let text = TextMeasure::new(
-                text,
-                self.nodes[node].font_family,
-                self.nodes[node].font_size,
-                self.nodes[node].line_height,
-                self.nodes[node].preserve_fractional_min_content,
-                self.nodes[node].use_tighter_monospace_wrap,
-            );
-            if self.box_node_input(node).writing_mode.is_vertical() {
-                let height = known.height.unwrap_or_else(|| match available.height {
-                    layout::Available::Definite(height) => height,
-                    layout::Available::MinContent => text.min_content_width(),
-                    layout::Available::MaxContent => text.max_content_width(),
-                });
-                let width = known.width.unwrap_or_else(|| text.width_for_height(height));
-                return layout::Size::new(width, height);
-            }
-
-            let width = known.width.unwrap_or_else(|| match available.width {
-                layout::Available::Definite(width) => text
-                    .max_content_width()
-                    .min(width)
-                    .max(text.min_content_width()),
+        let text = TextMeasure::new(
+            text,
+            self.nodes[node].font_family,
+            self.nodes[node].font_size,
+            self.nodes[node].line_height,
+            self.nodes[node].preserve_fractional_min_content,
+            self.nodes[node].use_tighter_monospace_wrap,
+        );
+        if self.box_node_input(node).writing_mode.is_vertical() {
+            let height = known.height.unwrap_or_else(|| match available.height {
+                layout::Available::Definite(height) => height,
                 layout::Available::MinContent => text.min_content_width(),
                 layout::Available::MaxContent => text.max_content_width(),
             });
-            let height = known.height.unwrap_or_else(|| text.height_for_width(width));
+            let width = known.width.unwrap_or_else(|| text.width_for_height(height));
             return layout::Size::new(width, height);
         }
 
-        layout::Size::new(known.width.unwrap_or(0.0), known.height.unwrap_or(0.0))
+        let width = known.width.unwrap_or_else(|| match available.width {
+            layout::Available::Definite(width) => text
+                .max_content_width()
+                .min(width)
+                .max(text.min_content_width()),
+            layout::Available::MinContent => text.min_content_width(),
+            layout::Available::MaxContent => text.max_content_width(),
+        });
+        let height = known.height.unwrap_or_else(|| text.height_for_width(width));
+        layout::Size::new(width, height)
     }
 
     fn apply_completed_batch(&mut self, batch: &layout::CompletedLayoutBatch<usize>) {
@@ -2253,10 +2249,6 @@ impl TestTree {
             .as_box()
             .unwrap_or(&self.nodes[node].non_box_input)
     }
-}
-
-fn can_use_leaf_measurement(display: layout::Display, child_count: usize, has_text: bool) -> bool {
-    child_count == 0 && (has_text || !display.establishes_grid_formatting_context())
 }
 
 fn fixture_inline_metrics(
@@ -2555,14 +2547,10 @@ impl layout::LayoutTree for TestTree {
     }
 
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
-        if self.nodes[node].layout_input.as_box().is_none() {
-            return false;
-        }
-        can_use_leaf_measurement(
-            self.box_node_input(node).display,
-            self.nodes[node].children.len(),
-            self.nodes[node].text.is_some(),
-        )
+        let node = &self.nodes[node];
+        // Only fixture text supplies intrinsic content measurements. Empty
+        // ordinary boxes retain their native container formatting algorithm.
+        node.layout_input.as_box().is_some() && node.children.is_empty() && node.text.is_some()
     }
 
     fn measure_leaf(
@@ -2570,8 +2558,11 @@ impl layout::LayoutTree for TestTree {
         node: Self::Node,
         input: layout::LeafMeasureInput,
     ) -> Option<Result<layout::Size, Self::MeasureError>> {
-        self.nodes[node].layout_input.as_box()?;
-        Some(Ok(self.measure(node, input)))
+        if !self.has_leaf_measurement(node) {
+            return None;
+        }
+        let text = self.nodes[node].text.as_deref()?;
+        Some(Ok(self.measure(node, input, text)))
     }
 }
 
