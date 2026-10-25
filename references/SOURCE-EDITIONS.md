@@ -4,6 +4,15 @@ The reference collection records the full selected source scope of [CSS Snapshot
 
 This mapping describes the repository at `104bff510075d1acb59c23bb9491c7a368b7d05a`. The [catalog](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/specs/catalog.json) selects editions under its existing 2026-09-10 publication-cutoff policy; [conformance metadata](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/src/conformance.rs) records source attribution and declared subsets. They are separate evidence: catalog membership and a registry entry do not prove implementation. The full pinned Snapshot scope remains the target even where the catalog or implementation has no corresponding production. The [source catalog](SOURCE-CATALOG.md) identifies each retained text or metadata-only representation.
 
+## BreakSpaces and protected Unicode boundaries
+
+The [BreakSpaces glue reconciliation](css-text-break-spaces-glue--source-reconciliation-20261024.md)
+records current CSS Text 4 clauses, CSSWG checks, current WPT expectations and
+pinned browser witnesses for #64. The selected interpretation retains GL
+protection for U+2007/U+202F as well as neighboring joiner and typographic-unit
+constraints. It distinguishes the repository's UAX14 revision 55 from revision
+57's changed BA-before-GL rule; no Unicode baseline upgrade is implied.
+
 ## DOM memory-layout implementation witness
 
 The [Blink element-data sharing witness](blink-element-data-sharing--4ea1cdf4aa65.md)
