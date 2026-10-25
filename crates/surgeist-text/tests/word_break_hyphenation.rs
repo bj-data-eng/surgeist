@@ -1099,3 +1099,182 @@ fn coincident_wbr_cannot_transfer_ordinary_authority_to_suppressed_discretionary
         "equal source offsets do not transfer the Wbr's actual control permission"
     );
 }
+
+// An in-flow atomic is the actual influencing neighbor at each incident cut.
+// Neither source SHY nor the text beyond the atomic can replace that authority.
+fn shy_atomic_input(
+    owner: t::WordBreak,
+    following: t::WordBreak,
+    direction: t::ParagraphBaseDirection,
+    before_ancestor: t::Wrap,
+    after_ancestor: t::Wrap,
+) -> (t::PreparedText, t::Source, [t::PreparedBoundary; 2]) {
+    let atomic = t::InlineBox::new(
+        t::Id::from_u64(65008),
+        t::InlineBoxKind::InFlow,
+        2,
+        t::Size::new(3.0, 4.0),
+    );
+    let mut base = manual_style(owner);
+    base.hyphens = t::Hyphens::None;
+    let mut source = t::Source::identified(t::Text::from("a\u{ad}b"), t::Id::from_u64(65009), 37);
+    source.span(t::Range::new(1, 2), base.clone());
+    let mut next = base.clone();
+    next.word_break = following;
+    source.span(t::Range::new(2, 3), next);
+    source.inline_box(atomic);
+    let mut input = paragraph(source.clone(), base.clone());
+    input.base_direction = direction;
+    input.anchor_order.push(t::ParagraphAnchor {
+        item: t::ParagraphAnchorItem::Atomic(0),
+        affinity: t::Affinity::After,
+    });
+    for (definition, ancestor_wrap) in [
+        (
+            t::ParagraphBoundaryDefinition::AtomicBefore(0),
+            before_ancestor,
+        ),
+        (
+            t::ParagraphBoundaryDefinition::AtomicAfter(0),
+            after_ancestor,
+        ),
+    ] {
+        input.boundary_policies.push(t::ParagraphBoundaryPolicy {
+            definition,
+            preceding_wrap: t::Wrap::Word,
+            following_wrap: t::Wrap::Word,
+            ancestor_wrap,
+        });
+    }
+    let p = prepare_input(input);
+    assert_eq!(p.analyzed_source().source(), &source);
+    assert_eq!(
+        p.analyzed_source().processed_source().processed_text(),
+        source.text()
+    );
+    assert_eq!(source.text(), &t::Text::from("a\u{ad}b"));
+    assert_eq!(source.boxes(), &[atomic]);
+    assert_eq!(
+        p.control_views().count(),
+        0,
+        "no synthetic SHY control or BA character"
+    );
+    assert_eq!(p.alternative_views().count(), 0);
+    let atomics = p.atomic_views().collect::<Vec<_>>();
+    assert_eq!(atomics.len(), 1);
+    assert_eq!(atomics[0].original_box(), &atomic);
+    assert_eq!(atomics[0].source_position().get(), 2);
+    let issued = atomics[0].handle();
+    let at = p
+        .participants()
+        .position(
+            |part| matches!(part, t::PreparedParticipant::Atomic(ref handle) if *handle == issued),
+        )
+        .unwrap();
+    assert_eq!(at, 2);
+    let boundaries = [at, at + 1].map(|offset| {
+        p.boundary_views()
+            .find(|boundary| boundary.participant_offset() == offset)
+            .unwrap()
+            .handle()
+    });
+    assert_ne!(boundaries[0], boundaries[1]);
+    for boundary in &boundaries {
+        assert_eq!(boundary.view().source_before().get(), 2);
+        assert_eq!(boundary.view().source_after().get(), 2);
+    }
+    let source_cuts = p
+        .hyphenation_cut_views()
+        .filter(|cut| cut.provenance() == t::HyphenationProvenance::Source)
+        .collect::<Vec<_>>();
+    assert_eq!(source_cuts.len(), 1);
+    assert_eq!(source_cuts[0].boundary(), boundaries[0]);
+    assert_eq!(source_cuts[0].style(), &base);
+    assert!(
+        !p.opportunity_views()
+            .any(|offer| offer.boundary().view().source_before().get() == 1),
+        "no before-SHY permission"
+    );
+    (p, source, boundaries)
+}
+
+#[test]
+fn inactive_source_shy_preserves_both_actual_atomic_permissions_without_borrowing_far_text() {
+    let mut observed = Vec::new();
+    for direction in directions() {
+        for owner in [t::WordBreak::Normal, t::WordBreak::BreakAll] {
+            for following in [t::WordBreak::Normal, t::WordBreak::BreakAll] {
+                let (p, source, boundaries) =
+                    shy_atomic_input(owner, following, direction, t::Wrap::Word, t::Wrap::Word);
+                let actual = boundaries.map(|boundary| {
+                    let offer = p
+                        .opportunity_views()
+                        .find(|offer| offer.boundary() == boundary);
+                    if let Some(offer) = &offer {
+                        assert_eq!(offer.alternatives().count(), 0);
+                    }
+                    offer.map(|offer| offer.handle())
+                });
+                if let Some(before) = &actual[0] {
+                    // AtomicBefore excludes the actual atomic: only a and the
+                    // unpainted authored SHY participate. No atomic allocation.
+                    let prefix = finish(&p, start(&p), before.clone(), None, 10.0);
+                    assert_eq!(prefix.feedback().advance, 10.0);
+                    assert_eq!(glyphs(&prefix), [(t::Range::new(0, 1), 67, 10.0)]);
+                    assert!(prefix.selected_line().request().atomics.is_empty());
+                }
+                observed.push((
+                    direction,
+                    owner,
+                    following,
+                    actual.map(|offer| offer.map(|offer| offer.view().kind())),
+                ));
+                assert_eq!(p.analyzed_source().source(), &source);
+            }
+        }
+    }
+    assert!(
+        observed
+            .iter()
+            .all(|row| row.3 == [Some(t::PreparedBreakKind::Allowed); 2]),
+        "actual AtomicBefore/After Word permission, independent of source SHY/far following text: {observed:?}"
+    );
+}
+
+#[test]
+fn inactive_source_shy_atomic_permissions_obey_each_actual_ancestor_and_do_not_borrow_far_break_all()
+ {
+    let mut observed = Vec::new();
+    for direction in directions() {
+        for ancestors in [
+            [t::Wrap::None, t::Wrap::None],
+            [t::Wrap::None, t::Wrap::Word],
+            [t::Wrap::Word, t::Wrap::None],
+        ] {
+            let (p, source, boundaries) = shy_atomic_input(
+                t::WordBreak::BreakAll,
+                t::WordBreak::BreakAll,
+                direction,
+                ancestors[0],
+                ancestors[1],
+            );
+            let actual = boundaries.map(|boundary| {
+                p.opportunity_views()
+                    .find(|offer| offer.boundary() == boundary)
+                    .map(|offer| {
+                        assert_eq!(offer.alternatives().count(), 0);
+                        offer.kind()
+                    })
+            });
+            let expected = ancestors.map(|ancestor| {
+                (ancestor == t::Wrap::Word).then_some(t::PreparedBreakKind::Allowed)
+            });
+            observed.push((direction, ancestors, actual, expected));
+            assert_eq!(p.analyzed_source().source(), &source);
+        }
+    }
+    assert!(
+        observed.iter().all(|row| row.2 == row.3),
+        "each genuine atomic NCA owns only its own permission: {observed:?}"
+    );
+}
