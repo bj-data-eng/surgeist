@@ -4,6 +4,14 @@ The reference collection records the full selected source scope of [CSS Snapshot
 
 This mapping describes the repository at `104bff510075d1acb59c23bb9491c7a368b7d05a`. The [catalog](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/specs/catalog.json) selects editions under its existing 2026-09-10 publication-cutoff policy; [conformance metadata](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/src/conformance.rs) records source attribution and declared subsets. They are separate evidence: catalog membership and a registry entry do not prove implementation. The full pinned Snapshot scope remains the target even where the catalog or implementation has no corresponding production. The [source catalog](SOURCE-CATALOG.md) identifies each retained text or metadata-only representation.
 
+## Break-all and hyphenation ownership
+
+The [break-all hyphenation determination](text-break-all-hyphenation--determination-20261024.md)
+records current CSSWG and browser evidence for #65, separates hyphenation-owner
+suppression from ordinary after-SHY permission, and defines the exact native
+cut and mixed-style policies. It also supplies a genuine Wbr plus automatic
+hyphenation fixture to replace the conflicting break-all test oracle.
+
 ## Incoming hyphenation indications at inline edges
 
 The [incoming indication custody determination](text-incoming-indication-edge--determination-20261024.md)
