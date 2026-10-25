@@ -2,6 +2,7 @@ use super::layout::decoration_top;
 use super::*;
 
 mod catalogue;
+mod phrase_font;
 mod utf16;
 mod whitespace_line_height;
 
