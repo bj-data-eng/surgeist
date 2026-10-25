@@ -56,15 +56,15 @@ retained association, transformed coordinates, current offsets, snap selection,
 CSSOM, host scrollbar UI, or runtime events.
 
 Current source pins, import rules, artifact inventory, and expected outcome counts
-are declared in `corpus.toml`. The full parity runner remains explicitly ignored
-in ordinary Cargo test runs; invoke it separately to compare every checked-in
-fixture. Generation infrastructure changes must preserve XML bytes and complete
+are declared in `corpus.toml`. Ordinary Cargo test runs compare every checked-in
+fixture through the full parity runner, without launching a browser or regenerating
+fixtures. Generation infrastructure changes must preserve XML bytes and complete
 per-fixture outcomes unless browser expectation changes are separately intended.
 
 Run checked-in fixtures:
 
 ```sh
-cargo test -p surgeist-layout --test layout runs_all_checked_in_browser_parity_xml -- --ignored
+cargo test --offline --locked -j 1 -p surgeist-layout --test layout runs_all_checked_in_browser_parity_xml
 ```
 
 Browser generation and source import require the shared generator's supported

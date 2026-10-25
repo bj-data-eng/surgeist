@@ -2150,7 +2150,6 @@ fn filtered_parity_fixtures(
 }
 
 #[test]
-#[ignore = "run when validating full Surgeist layout parity against checked-in XML"]
 fn runs_all_checked_in_browser_parity_xml() {
     let fixtures = support::fixture_files("xml").expect("fixtures should load");
     assert!(
