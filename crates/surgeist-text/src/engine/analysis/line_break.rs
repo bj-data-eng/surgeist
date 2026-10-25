@@ -140,7 +140,9 @@ pub(super) fn apply(
     let mut effective = Vec::with_capacity(component.len());
     let mut owners = Vec::with_capacity(component.len());
     let mut opening = Vec::with_capacity(component.len());
+    let mut zero_width_space = Vec::with_capacity(component.len());
     let mut blocks_opening = false;
+    let mut follows_zero_width_space = false;
     for atom in component.clone() {
         let class = classes.get32(projection.atoms[atom].code_point);
         let inherited = matches!(class, Class::CombiningMark | Class::ZWJ)
@@ -174,6 +176,7 @@ pub(super) fn apply(
         owners.push(owner);
         effective.push(class);
         if class != Class::Space {
+            follows_zero_width_space = class == Class::ZWSpace;
             let cp = projection.atoms[component.start + owner].code_point;
             let prior = owner.checked_sub(1).map(|i| effective[i]);
             blocks_opening = class == Class::OpenPunctuation
@@ -196,6 +199,7 @@ pub(super) fn apply(
                     });
         }
         opening.push(blocks_opening);
+        zero_width_space.push(follows_zero_width_space);
     }
     // Provider local0/eot are sentinels, never text/text permission. Actual
     // terminal ZW/SP causes retain their independently qualified permissions.
@@ -243,18 +247,22 @@ pub(super) fn apply(
                     Some(true) => actual[byte] || normal[byte],
                     None => actual[byte],
                 };
-                if !allowed {
+                if !allowed
+                    || !provider_cut_allowed(
+                        projection.atoms[atom - 1].code_point,
+                        projection.atoms[atom].code_point,
+                        before,
+                        after,
+                        zero_width_space[atom - component.start - 1],
+                    )
+                {
                     continue;
                 }
                 if !independent {
-                    let forbidden =
-                        |class| matches!(class, Class::Glue | Class::WordJoiner | Class::ZWJ);
-                    if forbidden(before)
-                        || forbidden(after)
-                        || classes.get32(projection.atoms[atom - 1].code_point) == Class::ZWJ
-                        || is_hard_separator(projection.atoms[atom - 1].code_point)
-                        || is_hard_separator(projection.atoms[atom].code_point)
-                    {
+                    // Retain the extra-tailoring floor before ZWJ. Baseline
+                    // before-ZWJ permissions remain provider-owned: LB8a is an
+                    // after-ZWJ prohibition, and LB9 excludes prior SP/hard/ZW.
+                    if after == Class::ZWJ {
                         continue;
                     }
                     // Preserve UAX55 LB14/LB15a and quote rules bypassed by ICU's
@@ -293,6 +301,36 @@ pub(super) fn apply(
         }
     }
     missing_lexical
+}
+
+fn provider_cut_allowed(
+    before_code_point: u32,
+    after_code_point: u32,
+    before: Class,
+    after: Class,
+    follows_zero_width_space: bool,
+) -> bool {
+    // ICU's no-model complex handler can return an SA slice endpoint without
+    // consulting its boundary table. Even baseline cuts need these protections.
+    // Semantic hard separators and LB7 precede LB8's component-local ZW SP*.
+    if is_hard_separator(before_code_point)
+        || is_hard_separator(after_code_point)
+        || matches!(after, Class::Space | Class::ZWSpace)
+    {
+        return false;
+    }
+    if follows_zero_width_space {
+        return true;
+    }
+    // LB8a/LB11/LB12, followed by LB12a's explicit before-GL exceptions.
+    !matches!(before, Class::WordJoiner | Class::Glue)
+        && after != Class::WordJoiner
+        && before_code_point != 0x200d
+        && (after != Class::Glue
+            || matches!(
+                before,
+                Class::Space | Class::BreakAfter | Class::Hyphen | Class::UnambiguousHyphen
+            ))
 }
 
 fn independent_ending(
@@ -509,6 +547,46 @@ fn required_pair(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn provider_admission_keeps_lb8_before_glue_but_not_before_hard_or_zw() {
+        for (text, seam, allowed) in [
+            ("กก\u{200b} \u{a0}ก", 4, true),
+            ("กก\u{200b} \u{2060}ก", 4, true),
+            ("กก\u{200b} \nก", 4, false),
+            ("กก\u{200b} \u{200b}ก", 4, false),
+            // LB9 excludes prior SP; LB8a does not prohibit before ZWJ.
+            ("กก \u{200d}ก", 3, true),
+        ] {
+            let source = crate::Source::new(text);
+            let projection = SourceProjection::new(&source).unwrap();
+            let styles = vec![AnalyzedStyleRun {
+                owner: crate::engine::resolve::AnalyzedStyleOwner::Source(crate::Range::new(
+                    0,
+                    source.text().len(),
+                )),
+                style: crate::ValidatedStyle::try_from(crate::Style::default()).unwrap(),
+            }];
+            let offsets: Vec<_> = projection
+                .segmentation
+                .char_indices()
+                .map(|(byte, _)| byte)
+                .chain(std::iter::once(projection.segmentation.len()))
+                .collect();
+            let mut boundaries = vec![Boundary::None; projection.atoms.len() + 1];
+            apply(
+                &projection,
+                &styles,
+                &policies(&styles).unwrap(),
+                &offsets,
+                0..projection.atoms.len(),
+                &mut boundaries,
+            );
+            // The actual ZW SP* prefix permits WJ/GL, but LB6/LB7 win first.
+            // Inspect this phase directly, before prepared's hard-break guard.
+            assert_eq!(boundaries[seam] == Boundary::Line, allowed, "{text:?}");
+        }
+    }
 
     #[test]
     fn terminal_preserved_separator_retains_context_and_incident_prohibitions() {
