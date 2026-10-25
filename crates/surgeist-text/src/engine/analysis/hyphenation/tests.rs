@@ -1,5 +1,6 @@
 use super::*;
 use crate::engine::resolve::{AnalyzedStyleOwner, AnalyzedStyleRun};
+use icu_properties::{props::Script, script::ScriptWithExtensions};
 
 fn analyzed(text: &str) -> (SourceProjection, Words) {
     let source = crate::Source::new(text);
@@ -81,6 +82,8 @@ fn effective_unit_categories_are_independent_of_lexical_membership_and_glyphs() 
         ("\u{93e}", true),
         ("\u{61c}", false),
         ("\u{ad}", false),
+        ("\u{1}", true),
+        ("\u{600}a", true),
         ("a\u{903}", true),
         ("a\u{301}", true),
         ("'", false),
@@ -113,6 +116,19 @@ fn effective_unit_categories_are_independent_of_lexical_membership_and_glyphs() 
         None,
         "countable symbol alone is not a lexical word"
     );
+}
+
+#[test]
+fn opaque_original_unit_keeps_its_raw_category_for_counting() {
+    let source = crate::Source::new(crate::Text::from_code_units(vec![0xd800, 0x301]));
+    let projection = SourceProjection::new(&source).unwrap();
+    assert_eq!(projection.graphemes, [0, 2]);
+    assert_eq!(projection.atoms[0].code_point, 0xd800);
+    assert_eq!(
+        CodePointMapData::<GeneralCategory>::new().get32(0xd800),
+        GeneralCategory::Surrogate
+    );
+    assert!(counts(&projection, 0..2));
 }
 
 #[test]

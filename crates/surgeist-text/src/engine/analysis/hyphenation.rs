@@ -5,10 +5,10 @@ use std::ops::Range;
 
 use icu_properties::{
     CodePointMapData,
-    props::{GeneralCategory, GeneralCategoryGroup, Script},
-    script::ScriptWithExtensions,
+    props::{GeneralCategory, GeneralCategoryGroup},
 };
 
+use super::unit_properties::{first_non_format, has_common_enclosing_mark};
 use crate::projection::SourceProjection;
 
 /// Atom identities refer to the retained, unbroken processed projection. Neither
@@ -111,20 +111,14 @@ impl Words {
 
 fn counts(projection: &SourceProjection, unit: Range<usize>) -> bool {
     let categories = CodePointMapData::<GeneralCategory>::new();
-    let scripts = ScriptWithExtensions::new();
     let atoms = &projection.atoms[unit];
     // Appendix E's Common enclosing-mark exception precedes the base category.
-    if atoms.iter().any(|atom| {
-        categories.get32(atom.code_point) == GeneralCategory::EnclosingMark
-            && scripts.has_script32(atom.code_point, Script::Common)
-    }) {
+    if has_common_enclosing_mark(atoms) {
         return true;
     }
     // Native tailoring: formatting-only EGCs have no independent contribution;
     // embedded format controls neither add a unit nor disqualify its base.
-    let Some(base) = atoms.iter().find(|atom| {
-        atom.code_point != 0xad && categories.get32(atom.code_point) != GeneralCategory::Format
-    }) else {
+    let Some(base) = first_non_format(atoms) else {
         return false;
     };
     let category = categories.get32(base.code_point);

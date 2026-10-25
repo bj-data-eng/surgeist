@@ -9,7 +9,11 @@ use icu_properties::{
     script::ScriptWithExtensions,
 };
 
-use super::{line_break::MissingLexicalModels, style_at};
+use super::{
+    line_break::MissingLexicalModels,
+    style_at,
+    unit_properties::{first_non_format, has_common_enclosing_mark},
+};
 use crate::{engine::resolve::AnalyzedStyleRun, projection::SourceProjection};
 
 pub(super) fn propose(
@@ -48,15 +52,10 @@ fn qualified_unit(projection: &SourceProjection, unit: Range<usize>) -> Option<S
     let categories = CodePointMapData::<GeneralCategory>::new();
     let scripts = ScriptWithExtensions::new();
     // A Common enclosing mark makes the complete TCU Other Symbol/Common.
-    if atoms.iter().any(|atom| {
-        categories.get32(atom.code_point) == GeneralCategory::EnclosingMark
-            && scripts.has_script32(atom.code_point, Script::Common)
-    }) {
+    if has_common_enclosing_mark(atoms) {
         return None;
     }
-    let base = atoms
-        .iter()
-        .find(|atom| categories.get32(atom.code_point) != GeneralCategory::Format)?;
+    let base = first_non_format(atoms)?;
     let category = categories.get32(base.code_point);
     // This also excludes Zs-based sequences (Appendix E's Modifier Symbol),
     // pure marks, punctuation, symbols and formatting-only units.
@@ -182,6 +181,8 @@ mod tests {
             (" \u{0e48}", None),
             ("\u{0e48}", None),
             ("\u{200e}", None),
+            ("\u{600}ก", Some(Script::Thai)),
+            ("\u{1}", None),
         ] {
             let projection = SourceProjection::new(&crate::Source::new(text)).unwrap();
             assert_eq!(
@@ -190,5 +191,12 @@ mod tests {
                 "{text:?}"
             );
         }
+        let projection =
+            SourceProjection::new(&crate::Source::new(crate::Text::from_code_units(vec![
+                0xd800, 0x301,
+            ])))
+            .unwrap();
+        assert_eq!(projection.graphemes, [0, 2]);
+        assert_eq!(qualified_unit(&projection, 0..2), None);
     }
 }
