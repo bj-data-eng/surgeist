@@ -3,7 +3,7 @@
 
 //! The raw chooser retains its own ordinary/emergency policy and metric profile.
 //! Every candidate uses the same selected-line finalizer and genuine mixed cuts.
-use super::super::{FinalizedLine, PreparedData, analysis::Boundary, shape::ShapeContext};
+use super::super::{FinalizedLine, PreparedData, shape::ShapeContext};
 use super::{data::*, finalize_standalone, placement};
 use crate::protocol::prepared::AlternativeDefinition;
 use crate::protocol::selection::standalone_request;
@@ -243,7 +243,9 @@ fn choose(
             && offer.alternatives.is_empty()
             && !atomic
             && boundary.atom < prepared.analyzed.analysis.infos.len()
-            && prepared.analyzed.analysis.infos[boundary.atom].0.boundary < Boundary::Line;
+            && !prepared.analyzed.analysis.infos[boundary.atom]
+                .0
+                .has_ordinary_line_candidate();
         let variants = (offer.kind != PreparedBreakKind::Discretionary)
             .then_some(None)
             .into_iter()

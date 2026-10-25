@@ -56,6 +56,12 @@ alone has a different min-content effect. See the
 [word-break contract](../../../docs/text-layout-contract.md#native-word-break-policies)
 for ownership, hyphenation and Standalone phase behavior.
 
+The current non-complex provider lacks Thai/Lao lexical models. Normal and
+KeepAll supply ordinary fallback cuts between qualified whole letter units,
+without declaring detected word boundaries or changing locale metadata. See
+the [missing-capability contract](../../../docs/text-layout-contract.md#missing-lexical-capability)
+for wrapping, intrinsic sizing and the bounded writing-system support.
+
 ## Native line breaking
 
 `Style::line_break` selects `LineBreak::{Auto, Loose, Normal, Strict, Anywhere}`.

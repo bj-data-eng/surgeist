@@ -406,6 +406,29 @@ These operations do not establish additional syllabic tailoring or complete
 lexical/orthographic support for every writing system. Those capabilities remain
 separate from accepting a native LineBreak value.
 
+### Missing lexical capability
+
+The selected non-complex line segmenter has no Thai/Lao lexical models. For
+adjacent Thai or Lao SA letter units in the same writing system, Text supplies
+ordinary fallback opportunities between whole retained typographic units.
+Normal and KeepAll retain this fallback; effective BreakWord uses Normal.
+BreakAll retains its independent ID-based permission. The
+[lexical-fallback determination](../references/text-lexical-fallback--determination-20261025.md)
+defines the bounded KeepAll policy and capability distinction.
+
+Eligibility follows actual processed script and character properties under
+known, absent, und or mismatched language metadata; the declared locale stays
+unchanged. Actual following-text policy, ancestor wrapping, glue, hard breaks,
+semantic barriers and exact mixed-cut custody still govern admission. Inline
+and out-of-flow metadata cannot supply authority. Layout consumes these offers
+before emergency overflow, including for min-content; max-content stays unwrapped.
+
+These cuts record missing lexical capability, not detected linguistic words.
+They do not add editing, accessibility, phrase or hyphenation word boundaries.
+A qualified analyzer finding no internal boundary must not activate fallback.
+This implementation qualifies Thai/Lao grapheme-based units only; dictionary
+admission and other writing systems' syllabic tailoring remain separate work.
+
 ### Empty text and font struts
 
 For genuinely empty source with no inline participants, intrinsic text advance and `Metrics::full_width` are zero. Retain the actual admitted-font empty-line strut, baseline and height, one `0..0` line and the original endpoint zero. No source character, glyph or phantom space advance is introduced. In the registered Ahem size-20, unconstrained, unquantized profile, the result is size `(0, 20)`, full width zero, baseline 16 and no clusters or glyphs. A real authored space retains its actual advance.

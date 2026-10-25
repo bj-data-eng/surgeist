@@ -762,13 +762,13 @@ fn issue_opportunities(
             });
             if atomic
                 || ordinary_after_source_shy(analyzed, tables, boundary)?
-                || anywhere_opportunity(analyzed, boundary)?
+                || ordinary_text_opportunity(analyzed, boundary)?
             {
                 Some(PreparedBreakKind::Allowed)
             } else {
                 (!alternatives.is_empty()).then_some(PreparedBreakKind::Discretionary)
             }
-        } else if anywhere_opportunity(analyzed, boundary)?
+        } else if ordinary_text_opportunity(analyzed, boundary)?
             || matches!(
                 control,
                 Some(ParagraphControlKind::OptionalBreak {
@@ -1230,9 +1230,13 @@ fn native_permission(analyzed: &AnalyzedData, boundary: &BoundaryData) -> crate:
         })
 }
 
-/// Either actual adjacent text owner can supply an ordinary TCU opportunity.
+/// Authenticates actual text-pair proposals: either-side Anywhere or a qualified
+/// following-owned missing-lexical assumption. Their causes remain distinct.
 /// Controls, atomics and transparent metadata never lend their captured Style.
-fn anywhere_opportunity(analyzed: &AnalyzedData, boundary: &BoundaryData) -> crate::Result<bool> {
+fn ordinary_text_opportunity(
+    analyzed: &AnalyzedData,
+    boundary: &BoundaryData,
+) -> crate::Result<bool> {
     use crate::engine::analysis::wrapping::Influence;
     let relation = &analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]];
     let (
@@ -1265,7 +1269,8 @@ fn anywhere_opportunity(analyzed: &AnalyzedData, boundary: &BoundaryData) -> cra
             .line_break
             == crate::LineBreak::Anywhere
     });
-    if !anywhere {
+    let lexical_fallback = analyzed.analysis.infos[after].0.lexical_fallback_before();
+    if !anywhere && !lexical_fallback {
         return Ok(false);
     }
     if analyzed.paragraph.base_direction.is_some() {

@@ -5,6 +5,7 @@
 
 pub(crate) mod cluster;
 pub(crate) mod hyphenation;
+mod lexical_fallback;
 mod line_break;
 pub(crate) mod wrapping;
 
@@ -109,6 +110,8 @@ pub(crate) struct CharInfo {
     emoji: bool,
     contributes: bool,
     normalize: bool,
+    /// Missing-lexical line proposal; never a detected word boundary.
+    lexical_fallback_before: bool,
 }
 
 impl CharInfo {
@@ -123,6 +126,12 @@ impl CharInfo {
     }
     pub(crate) fn force_normalize(self) -> bool {
         self.normalize
+    }
+    pub(crate) fn lexical_fallback_before(self) -> bool {
+        self.lexical_fallback_before
+    }
+    pub(crate) fn has_ordinary_line_candidate(self) -> bool {
+        self.boundary >= Boundary::Line || self.lexical_fallback_before
     }
 }
 
@@ -219,6 +228,8 @@ pub(crate) fn analyze(
     let mut boundaries = vec![Boundary::None; projection.atoms.len() + 1];
     let mut word_ranges = Vec::new();
     let line_policies = line_break::policies(styles)?;
+    let mut lexical_fallbacks = vec![false; projection.atoms.len()];
+    let mut grapheme_cursor = 0;
     let mut component_stops = projection.barrier_atoms.clone();
     component_stops.extend([0, projection.atoms.len()]);
     component_stops.sort_unstable();
@@ -241,7 +252,7 @@ pub(crate) fn analyze(
             }
             previous = atom;
         }
-        line_break::apply(
+        let missing_lexical = line_break::apply(
             projection,
             styles,
             &line_policies,
@@ -249,6 +260,18 @@ pub(crate) fn analyze(
             component_start..component_end,
             &mut boundaries,
         );
+        let mut grapheme_end = grapheme_cursor;
+        while grapheme_end < graphemes.len() && graphemes[grapheme_end].end <= component_end {
+            grapheme_end += 1;
+        }
+        lexical_fallback::propose(
+            missing_lexical,
+            projection,
+            styles,
+            &graphemes[grapheme_cursor..grapheme_end],
+            &mut lexical_fallbacks,
+        );
+        grapheme_cursor = grapheme_end;
     }
     let mut infos = Vec::with_capacity(projection.atoms.len());
     let mut mandatory = false;
@@ -277,6 +300,7 @@ pub(crate) fn analyze(
                 && atom.code_point != 0x200c
                 && !props.is_variation_selector())
                 || gcb == GraphemeClusterBreak::SpacingMark,
+            lexical_fallback_before: lexical_fallbacks[index],
         };
         mandatory = is_hard_separator(atom.code_point);
         infos.push((info, style));

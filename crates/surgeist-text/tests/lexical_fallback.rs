@@ -597,3 +597,154 @@ fn assumed_line_opportunities_do_not_become_detected_word_movement_stops() {
         }
     }
 }
+
+#[test]
+fn standalone_consumes_missing_lexical_fallback_as_ordinary_with_real_notdef_metrics() {
+    // The font's unscaled hmtx gives an em-sized .notdef; exact source ranges
+    // and actual shaped advances qualify the consuming line decisions below.
+    use skrifa::{
+        GlyphId, MetadataProvider,
+        instance::{LocationRef, Size},
+    };
+    let font = skrifa::FontRef::new(AHEM).unwrap();
+    assert_eq!(font.charmap().map('ก'), None);
+    assert_eq!(font.charmap().map('ກ'), None);
+    assert_eq!(
+        font.metrics(Size::unscaled(), LocationRef::default())
+            .units_per_em,
+        1000
+    );
+    assert_eq!(
+        font.glyph_metrics(Size::unscaled(), LocationRef::default())
+            .advance_width(GlyphId::new(0)),
+        Some(1000.0)
+    );
+    // These are authentic missing-glyph advances, not Thai/Lao glyph coverage.
+    let mut system = t::System::new(t::SystemOptions {
+        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
+    })
+    .unwrap();
+    system.register_fonts(AHEM.to_vec()).unwrap();
+    for (value, locale, word) in [
+        ("กก", "th", t::WordBreak::Normal),
+        ("ກກ", "lo", t::WordBreak::Normal),
+        ("กก", "th", t::WordBreak::KeepAll),
+        ("ກກ", "lo", t::WordBreak::KeepAll),
+    ] {
+        let source = t::Source::identified(value, t::Id::from_u64(65404), 23);
+        let mut base = style(Some(locale));
+        base.word_break = word;
+        assert_eq!(base.overflow_wrap, t::OverflowWrap::Normal);
+        let layout = system
+            .layout(
+                source.clone(),
+                base,
+                t::Options {
+                    width: Some(10.0),
+                    quantize: false,
+                    ..t::Options::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(layout.source(), &source);
+        assert_eq!(
+            layout
+                .lines()
+                .iter()
+                .map(|line| line.range())
+                .collect::<Vec<_>>(),
+            [t::Range::new(0, 1), t::Range::new(1, 2)],
+            "ordinary missing-lexical fallback is consumed under OverflowNormal: {locale} {word:?}"
+        );
+        let mut glyphs = Vec::new();
+        for run in layout.glyph_runs() {
+            assert_eq!(run.font().bytes(), AHEM);
+            for glyph in run.glyphs() {
+                glyphs.push((glyph.range(), glyph.id(), glyph.advance()));
+            }
+        }
+        glyphs.sort_by_key(|glyph| glyph.0.start);
+        assert_eq!(
+            glyphs,
+            [
+                (t::Range::new(0, 1), 0, 10.0),
+                (t::Range::new(1, 2), 0, 10.0)
+            ]
+        );
+        assert_eq!(
+            layout
+                .move_cursor(t::Cursor::new(0, t::Affinity::After), t::Movement::NextWord)
+                .unwrap()
+                .index(),
+            2,
+            "soft line placement does not invent a detected word boundary"
+        );
+    }
+    // A later fitting emergency candidate must not displace an earlier fitting
+    // ordinary fallback. The enclosing paragraph remains OverflowWrap::Normal;
+    // only the last Thai unit independently authorizes raw emergency cuts.
+    // The middle Thai+ZWJ TCU has no ordinary cut at its protected trailing edge.
+    let mut source = t::Source::identified("กก\u{200d}ก", t::Id::from_u64(65405), 29);
+    let mut emergency_tail = style(Some("th"));
+    emergency_tail.overflow_wrap = t::OverflowWrap::Anywhere;
+    source.span(t::Range::new(3, 4), emergency_tail);
+    let mut native = input("กก\u{200d}ก", style(Some("th")), DIRECTIONS[0]);
+    native.source = source.clone();
+    native.origins[0].source = source.clone();
+    let qualified = prepare(native);
+    assert_eq!(
+        qualified.analyzed_source().graphemes().collect::<Vec<_>>(),
+        [
+            t::Range::new(0, 1),
+            t::Range::new(1, 3),
+            t::Range::new(3, 4)
+        ]
+    );
+    assert_eq!(
+        cuts(&qualified),
+        [1],
+        "the complete Thai+ZWJ TCU leaves only the lexical fallback as ordinary permission"
+    );
+    let raw_analysis = t::AnalyzedSource::new(source.clone(), style(Some("th"))).unwrap();
+    let raw = system
+        .prepare(&raw_analysis, t::PreparationOptions::default())
+        .unwrap();
+    assert_eq!(
+        cuts(&raw),
+        [1, 3],
+        "the distinct raw inventory actually offers the later emergency candidate"
+    );
+    let layout = system
+        .layout(
+            source.clone(),
+            style(Some("th")),
+            t::Options {
+                width: Some(20.0),
+                quantize: false,
+                ..t::Options::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(layout.source(), &source);
+    assert_eq!(
+        layout
+            .lines()
+            .iter()
+            .map(|line| line.range())
+            .collect::<Vec<_>>(),
+        [t::Range::new(0, 1), t::Range::new(1, 4)],
+        "ordinary fallback at1 outranks the later fitting raw emergency cut at3"
+    );
+    let mut positive_advances = Vec::new();
+    for run in layout.glyph_runs() {
+        assert_eq!(run.font().bytes(), AHEM);
+        for glyph in run.glyphs() {
+            if glyph.advance() != 0.0 {
+                assert_eq!(glyph.id(), 0);
+                positive_advances.push(glyph.advance());
+            }
+        }
+    }
+    // Do not prescribe a glyph count for the formatting ZWJ itself.
+    assert_eq!(positive_advances, [10.0, 10.0, 10.0]);
+}

@@ -90,7 +90,11 @@ pub(super) fn policies(styles: &[AnalyzedStyleRun]) -> crate::Result<Vec<Policy>
         .collect()
 }
 
-fn provider(text: &str, policy: Policy) -> Vec<bool> {
+/// Constructor-bound absence, separate from the cut result (which may be empty).
+/// Only this concrete provider selection can construct the witness.
+pub(super) struct MissingLexicalModels(());
+
+fn provider(text: &str, policy: Policy) -> (Vec<bool>, MissingLexicalModels) {
     let mut options = LineBreakOptions::default();
     options.strictness = Some(match policy.strictness {
         LineBreak::Loose => LineBreakStrictness::Loose,
@@ -110,7 +114,7 @@ fn provider(text: &str, policy: Policy) -> Vec<bool> {
     for byte in LineSegmenter::new_for_non_complex_scripts(options).segment_str(text) {
         cuts[byte] = true;
     }
-    cuts
+    (cuts, MissingLexicalModels(()))
 }
 
 pub(super) fn apply(
@@ -120,7 +124,7 @@ pub(super) fn apply(
     offsets: &[usize],
     component: Range<usize>,
     boundaries: &mut [Boundary],
-) {
+) -> MissingLexicalModels {
     let mut needed = Vec::new();
     for atom in component.clone() {
         let policy = policies[style_at(projection, styles, atom)];
@@ -131,7 +135,7 @@ pub(super) fn apply(
     // At most 3 strictnesses * 3 word modes * 2 CJK classifications.
     let start = offsets[component.start];
     let text = &projection.segmentation[start..offsets[component.end]];
-    let baseline = provider(text, Policy::BASELINE);
+    let (baseline, missing_lexical) = provider(text, Policy::BASELINE);
     let classes = CodePointMapData::<Class>::new();
     let mut effective = Vec::with_capacity(component.len());
     let mut owners = Vec::with_capacity(component.len());
@@ -207,7 +211,7 @@ pub(super) fn apply(
     // Retain only baseline, one strictness/locale Normal-word pass, and one
     // actual word-mode pass at a time. Each finite provider tuple runs once.
     for group in groups {
-        let normal_storage = (group != Policy::BASELINE).then(|| provider(text, group));
+        let normal_storage = (group != Policy::BASELINE).then(|| provider(text, group).0);
         let normal = normal_storage.as_ref().unwrap_or(&baseline);
         for policy in needed
             .iter()
@@ -215,7 +219,7 @@ pub(super) fn apply(
             .filter(|policy| policy.normal_word() == group)
         {
             let actual_storage =
-                (policy.word != OrdinaryWordBreak::Normal).then(|| provider(text, policy));
+                (policy.word != OrdinaryWordBreak::Normal).then(|| provider(text, policy).0);
             let actual = actual_storage.as_ref().unwrap_or(normal);
             for atom in component.start + 1..component.end {
                 if policies[style_at(projection, styles, atom)] != policy {
@@ -288,6 +292,7 @@ pub(super) fn apply(
             *boundary = Boundary::Anywhere;
         }
     }
+    missing_lexical
 }
 
 fn independent_ending(
