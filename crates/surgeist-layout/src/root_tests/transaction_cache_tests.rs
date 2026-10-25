@@ -148,13 +148,14 @@ fn prepared_fragment_publication_preserves_actual_original_nodes_ranges_and_issu
             inputs,
             HashMap::from([(0, vec![1, 2]), (1, Vec::new()), (2, Vec::new())]),
         );
-        let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0)]).unwrap();
+        let capture =
+            LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
         let request = LayoutRootRequestOf::viewport(Size::new(
             AvailableOf::definite(S::from_f64(30.0)),
             AvailableOf::MAX_CONTENT,
         ))
         .unwrap();
-        let batch = compute_layout_with_text(&capture, 0, request).unwrap();
+        let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
         let rows = origin_fragment_associations(batch.final_inline_fragments());
         let first: Vec<_> = rows.iter().filter(|row| row.0 == 1).collect();
         assert_eq!(
@@ -220,8 +221,9 @@ fn prepared_fragment_publication_preserves_actual_original_nodes_ranges_and_issu
             std::mem::take(&mut hidden_inputs),
             HashMap::from([(0, vec![1, 2]), (1, Vec::new()), (2, Vec::new())]),
         );
-        let capture = TextLayoutInput::try_new(&hidden, 0, vec![paragraph.binding(0)]).unwrap();
-        let batch = compute_layout_with_text(&capture, 0, request).unwrap();
+        let capture =
+            LayoutFlowInput::try_new(&hidden, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+        let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
         assert!(batch.final_inline_fragments().is_empty());
         assert!(batch.placed_text().is_empty());
     }

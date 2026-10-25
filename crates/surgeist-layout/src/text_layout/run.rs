@@ -1,5 +1,9 @@
 //! The existing block formatter's concrete consuming Text adapter.
 
+#[cfg(test)]
+#[path = "wrapping_run_tests.rs"]
+mod wrapping_tests;
+
 use super::{
     TextParagraphBinding,
     fit::{self, Band, FitError, FittedLine},
@@ -19,6 +23,149 @@ use surgeist_text::{
     AtomicPlacement, FinalizedLine, LineAnchor, LineOrientation, LinePlacement,
     ParagraphBaseDirection, Rect,
 };
+
+/// Actual per-run incidence projection. Errors remain data until a real soft
+/// choice comparison needs the corresponding requested scope.
+pub(crate) struct WrappingProjection<Node> {
+    context: std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>,
+    flow: Node,
+    rows: Vec<(
+        crate::inline_wrapping::ScopeRow<Node>,
+        Result<ScopeIncidence, crate::inline_wrapping::WrappingScopeError>,
+    )>,
+}
+
+enum ScopeIncidence {
+    Outside,
+    Captured(surgeist_text::CapturedScope),
+    Native {
+        start: EndpointIncidence,
+        end: EndpointIncidence,
+    },
+}
+
+enum EndpointIncidence {
+    BeforeRun,
+    AfterRun,
+    Local(surgeist_text::PreparedControl),
+    Unavailable,
+}
+
+impl EndpointIncidence {
+    fn consumed(
+        &self,
+        prepared: &surgeist_text::PreparedText,
+        end: &surgeist_text::PreparedBoundary,
+    ) -> Result<bool, FitError> {
+        use crate::inline_wrapping::WrappingScopeError;
+        match self {
+            Self::BeforeRun => Ok(true),
+            Self::AfterRun => Ok(false),
+            Self::Local(control) => {
+                if !prepared.control_is_boundary_exact(control)? {
+                    return Err(WrappingScopeError::UnsupportedIncidence.into());
+                }
+                Ok(prepared.boundary_consumes_control(end, control)?)
+            }
+            Self::Unavailable => Err(WrappingScopeError::UnsupportedIncidence.into()),
+        }
+    }
+}
+
+impl<Node: Copy + Eq> WrappingProjection<Node> {
+    pub(crate) fn new(
+        context: &std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>,
+        graph: &crate::engine::validation::ValidationGraph<Node>,
+        binding: &TextParagraphBinding<Node>,
+        associations: &super::capture::ScopeAssociations<Node>,
+    ) -> Option<Self> {
+        use super::capture::CapturedScopeRelation;
+        use crate::inline_wrapping::{ScopeEndpoint, WrappingScopeError};
+        let rows = context
+            .rows()
+            .filter(|row| row.flow == binding.container)
+            .map(|row| {
+                let relation = row.capture.as_ref().map(|scope| {
+                    (
+                        scope,
+                        associations.captured_scope_relation(&binding.prepared, scope),
+                    )
+                });
+                let incidence = match relation {
+                    Some((_, CapturedScopeRelation::Outside)) => Ok(ScopeIncidence::Outside),
+                    Some((scope, CapturedScopeRelation::Local)) => {
+                        Ok(ScopeIncidence::Captured(scope.clone()))
+                    }
+                    Some((_, CapturedScopeRelation::Unavailable)) | None => row
+                        .pair
+                        .ok_or(WrappingScopeError::UnsupportedIncidence)
+                        .and_then(|pair| {
+                            context.native_pair_projection(
+                                graph,
+                                binding.container,
+                                &binding.nodes,
+                                pair,
+                            )
+                        })
+                        .map(|pair| {
+                            let endpoint = |endpoint| match endpoint {
+                                ScopeEndpoint::BeforeRun => EndpointIncidence::BeforeRun,
+                                ScopeEndpoint::AfterRun => EndpointIncidence::AfterRun,
+                                ScopeEndpoint::Local(node) => binding
+                                    .controls
+                                    .iter()
+                                    .find(|control| control.node == node)
+                                    .map_or(EndpointIncidence::Unavailable, |control| {
+                                        EndpointIncidence::Local(control.occurrence.clone())
+                                    }),
+                            };
+                            ScopeIncidence::Native {
+                                start: endpoint(pair.start),
+                                end: endpoint(pair.end),
+                            }
+                        }),
+                };
+                (row.clone(), incidence)
+            })
+            .collect::<Vec<_>>();
+        (!rows.is_empty()).then(|| Self {
+            context: context.clone(),
+            flow: binding.container,
+            rows,
+        })
+    }
+
+    fn classify(
+        &self,
+        prepared: &surgeist_text::PreparedText,
+        end: &surgeist_text::PreparedBoundary,
+    ) -> Result<crate::inline_wrapping::AvoidClass, FitError> {
+        let mut projected = self.rows.iter();
+        self.context.classify(self.flow, |row| {
+            let (actual, incidence) = projected
+                .next()
+                .ok_or(crate::inline_wrapping::WrappingScopeError::InconsistentIncidence)?;
+            if actual != row {
+                return Err(
+                    crate::inline_wrapping::WrappingScopeError::InconsistentIncidence.into(),
+                );
+            }
+            match incidence
+                .as_ref()
+                .map_err(|error| FitError::Wrapping(*error))?
+            {
+                ScopeIncidence::Outside => Ok(false),
+                ScopeIncidence::Captured(scope) => {
+                    Ok(prepared.boundary_inside_captured_scope(end, scope)?)
+                }
+                ScopeIncidence::Native {
+                    start,
+                    end: closing,
+                } => Ok(start.consumed(prepared, end)? && !closing.consumed(prepared, end)?),
+            }
+        })
+    }
+}
 
 pub(crate) struct Atomic<Node, S: LayoutScalar> {
     pub node: Node,
@@ -41,7 +188,8 @@ pub(crate) enum Frame<S: LayoutScalar> {
     Canonical { origin: Point<f64>, size: Size<S> },
 }
 
-pub(crate) struct Context<S: LayoutScalar> {
+pub(crate) struct Context<Node, S: LayoutScalar> {
+    pub wrapping: Option<WrappingProjection<Node>>,
     pub formatted: super::formatted::FormattedTailSnapshot,
     pub line_box_context: crate::line_box::LineBoxContext,
     pub frame: Frame<S>,
@@ -61,7 +209,7 @@ pub(crate) struct Context<S: LayoutScalar> {
     pub tail: fit::TailContext,
 }
 
-impl<S: LayoutScalar> Context<S> {
+impl<Node, S: LayoutScalar> Context<Node, S> {
     fn inline_start_inset(&self) -> S {
         self.axes
             .logical_edges(crate::Edges::new(
@@ -105,7 +253,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
     associations: &super::capture::ScopeAssociations<Node>,
     atomics: &[Atomic<Node, S>],
     controls: &[Control<Node, S>],
-    context: Context<S>,
+    context: Context<Node, S>,
     reusable: &[fit::ReusableLine],
     environment: LineEnvironment<
         impl FnMut(f64, f64) -> Result<Band, FitError>,
@@ -169,8 +317,20 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         AvailableOf::MinContent => fit::Available::Minimum,
         AvailableOf::MaxContent => fit::Available::Maximum,
     };
+    let classify = |end: &surgeist_text::PreparedBoundary| {
+        context
+            .wrapping
+            .as_ref()
+            .expect("the classifier is lent only for an actual requested scope")
+            .classify(&binding.prepared, end)
+    };
+    let wrapping = context
+        .wrapping
+        .as_ref()
+        .map(|_| &classify as &fit::WrappingClassifier<'_>);
     let lines = fit::fit(
         fit::FitInput {
+            wrapping,
             formatted: &context.formatted,
             line_box_context: context.line_box_context,
             prepared: &binding.prepared,
@@ -319,7 +479,7 @@ fn flow<S: LayoutScalar>(
 fn canonical_allocations<Node: Copy + Eq, S: LayoutScalar>(
     binding: &TextParagraphBinding<Node>,
     atomics: &[Atomic<Node, S>],
-    context: &Context<S>,
+    context: &Context<Node, S>,
     origin: Point<f64>,
     line: &FinalizedLine,
     band: Band,
@@ -404,7 +564,7 @@ fn canonical_allocations<Node: Copy + Eq, S: LayoutScalar>(
 
 fn canonical_controls<Node: Copy + Eq, S: LayoutScalar>(
     controls: &[Control<Node, S>],
-    context: &Context<S>,
+    context: &Context<Node, S>,
     origin: Point<f64>,
     line: &FinalizedLine,
     band: Band,
@@ -461,9 +621,9 @@ fn canonical_controls<Node: Copy + Eq, S: LayoutScalar>(
         .collect()
 }
 
-fn canonical_line_strut<S: LayoutScalar>(
+fn canonical_line_strut<Node, S: LayoutScalar>(
     original: Option<surgeist_text::LineStrut>,
-    context: &Context<S>,
+    context: &Context<Node, S>,
     origin: Point<f64>,
     line: &FinalizedLine,
     band: Band,
@@ -489,8 +649,8 @@ fn canonical_line_strut<S: LayoutScalar>(
     }))
 }
 
-fn line_inline_origin<S: LayoutScalar>(
-    context: &Context<S>,
+fn line_inline_origin<Node, S: LayoutScalar>(
+    context: &Context<Node, S>,
     origin: f64,
     start: f64,
     available: f64,
@@ -508,8 +668,8 @@ fn line_inline_origin<S: LayoutScalar>(
     round(add(origin, local_x)?)
 }
 
-fn line_anchor<S: LayoutScalar>(
-    context: &Context<S>,
+fn line_anchor<Node, S: LayoutScalar>(
+    context: &Context<Node, S>,
     origin: Point<f64>,
     start: f64,
     available: f64,
@@ -530,7 +690,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     associations: &super::capture::ScopeAssociations<Node>,
     atomics: &[Atomic<Node, S>],
     controls: &[Control<Node, S>],
-    context: &Context<S>,
+    context: &Context<Node, S>,
     origin: Point<f64>,
     lines: Vec<FittedLine>,
 ) -> Result<Output<Node, S>, FitError> {

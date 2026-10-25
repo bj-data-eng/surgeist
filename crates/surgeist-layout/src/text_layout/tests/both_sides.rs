@@ -267,10 +267,10 @@ fn compute<S: LayoutScalar>(
         controls,
         line_strut: None,
     };
-    let captured = TextLayoutInput::try_new(&tree, 0, vec![binding]).unwrap();
+    let captured = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
     let input =
         LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap();
-    compute_layout_with_text(&captured, 0, input).unwrap()
+    compute_layout_with_flow(&captured, 0, input).unwrap()
 }
 
 fn lines<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::FinalizedLine> {
@@ -467,6 +467,7 @@ fn assert_outgoing_counter_once(p: &text::PreparedText) {
         .collect::<Vec<_>>();
     let fitted = fit::fit(
         fit::FitInput {
+            wrapping: None,
             formatted: &super::super::formatted::FormattedTailSnapshot::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
                 crate::LineBoxDirectionPolicy::Normal,

@@ -373,8 +373,9 @@ fn justification_feedback_preserves_one_selected_endpoint_total() {
                     ..NodeInputOf::default()
                 },
             );
-        let capture = TextLayoutInput::try_new(&tree, 0, vec![fixture.binding.clone()]).unwrap();
-        let batch = compute_layout_with_text(&capture, 0, request(48.0)).unwrap();
+        let capture =
+            LayoutFlowInput::try_new(&tree, 0, vec![fixture.binding.clone()], Vec::new()).unwrap();
+        let batch = compute_layout_with_flow(&capture, 0, request(48.0)).unwrap();
         let line = finalized_lines(&batch).remove(0);
         qualify(&line);
         assert_eq!(line.feedback().advance, 48.0);

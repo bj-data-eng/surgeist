@@ -62,17 +62,19 @@
 //! [`LayoutErrorOf`] with no partial public result. Recursive compute modes are
 //! internal.
 //!
-//! [`TextLayoutInput`] binds actual immutable Text preparations to the borrowed
-//! tree. [`compute_layout_with_text`] selects and finalizes Text-issued line
-//! candidates against actual box and float constraints. It retains the exact
+//! [`LayoutFlowInput`] binds immutable Text paragraphs and declared
+//! [`WrappingScopeInput`] boxes to one borrowed tree. Numeric box/control flow
+//! can supply no Text paragraphs. [`compute_layout_with_flow`] consumes that
+//! checked flow and selects Text-issued candidates when present. It retains the exact
 //! placed [`surgeist_text::Layout`] in each [`PlacedTextOutput`], alongside
 //! source-associated fragment handles and canonical atomic allocations.
 //! Text owns shaping and source mappings; Layout owns fitting and placement,
 //! Render owns paint conversion, and Runtime owns coherent publication.
-//! The prepared-text profile supports horizontal LTR and RTL flow, zero
-//! indentation, and font-advance tabs. [`TextAlign`] and [`TextAlignLast`] select
-//! line alignment. [`TextJustification::Spaces`] permits explicit expansion of
-//! actual retained U+0020 slots during justification; [`TextJustification::None`]
+//! The prepared-text profile supports horizontal LTR and RTL flow, signed
+//! indentation, and font-advance or CSS-stop tabs. [`TextAlign`] and
+//! [`TextAlignLast`] select line alignment. [`TextJustification::Spaces`] permits
+//! explicit expansion of actual retained U+0020 slots during justification;
+//! [`TextJustification::None`]
 //! adds no expansion. Text owns line-edge and trailing-space decisions.
 //! Other Text orientations return a precise unsupported error.
 //! [`NodeInputOf::non_box`] is the canonical tree companion for text and inline
@@ -222,12 +224,14 @@ mod output;
 #[path = "../tests/layout/browser_parity/pinned_font.rs"]
 mod pinned_font;
 pub use hyphenation::{HyphenateLimitLast, HyphenateLimitLines};
+mod inline_wrapping;
 mod line_box;
 mod text_indent;
 mod text_layout;
+pub use inline_wrapping::{WrapInside, WrappingScopeError, WrappingScopeInput};
 pub use text_layout::{
-    TextAtomicBinding, TextBindingError, TextControlBinding, TextControlParticipation,
-    TextLayoutInput, TextOriginBinding, TextParagraphBinding, TextParticipation,
+    LayoutFlowInput, TextAtomicBinding, TextBindingError, TextControlBinding,
+    TextControlParticipation, TextOriginBinding, TextParagraphBinding, TextParticipation,
     TextScopeAssociation, TextScopeBinding,
 };
 mod scalar;
@@ -259,8 +263,8 @@ pub(crate) use engine::round_layout;
 #[cfg(test)]
 pub(crate) use engine::{compute_hidden, compute_root};
 pub use engine::{
-    compute_layout, compute_layout_invalidated, compute_layout_with_text,
-    compute_layout_with_text_invalidated,
+    compute_layout, compute_layout_invalidated, compute_layout_with_flow,
+    compute_layout_with_flow_invalidated,
 };
 pub use error::{
     AtomicInlineParticipationRoleError, CalcSizeBehaviorBasis, FloatExclusionRoleError,

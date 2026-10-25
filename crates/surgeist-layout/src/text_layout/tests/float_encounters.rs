@@ -68,8 +68,8 @@ fn assert_shared<S: LayoutScalar>(mark: bool, count: usize) {
         .extend((0..count).map(|i| 30 + u32::try_from(i).unwrap()));
     binding.nodes.push(11);
     let tree = float_tree::<S>(&binding, 20.0, Float::Left, count);
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding.clone()]).unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request(20.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding.clone()], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.lines().len(), 1);
     assert_eq!(
@@ -91,7 +91,7 @@ fn assert_shared<S: LayoutScalar>(mark: bool, count: usize) {
         );
     }
     assert_eq!(output(&batch, 2).size.height, S::from_f64(20.0));
-    let warm = compute_layout_with_text(&capture, 2, request(20.0)).unwrap();
+    let warm = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();
     assert_eq!(warm.final_entries(), batch.final_entries());
     let facts = |batch: &CompletedLayoutBatchOf<u32, S>| {
         batch
@@ -162,8 +162,8 @@ fn assert_ordinary<S: LayoutScalar>(rtl: bool, side: Float) {
             ..NodeInputOf::default()
         },
     );
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request(30.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 2, request(30.0)).unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.lines().len(), 1);
     assert_eq!(layout.lines()[0].range(), text::Range::new(0, 2));
@@ -216,8 +216,8 @@ impl<S: LayoutScalar> CachedHost<S> {
         binding: &TextParagraphBinding<u32>,
         dirty: &[u32],
     ) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, S>, S, &'static str> {
-        let capture = TextLayoutInput::try_new(self, 2, vec![binding.clone()])?;
-        compute_layout_with_text_invalidated(&capture, 2, request(30.0), dirty)
+        let capture = LayoutFlowInput::try_new(self, 2, vec![binding.clone()], Vec::new())?;
+        compute_layout_with_flow_invalidated(&capture, 2, request(30.0), dirty)
     }
 }
 impl<S: LayoutScalar> Traverse for CachedHost<S> {
@@ -454,8 +454,8 @@ fn leading_empty_origin_float_keeps_its_encounter_while_text_avoids_its_band() {
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 30, 11];
     let tree = float_tree::<f64>(&binding, 10.0, Float::Left, 1);
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request(10.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 2, request(10.0)).unwrap();
     assert_eq!(output(&batch, 30).location, Point::ZERO);
     assert_eq!(batch.placed_text()[0].layout().lines().len(), 1);
     assert_eq!(
@@ -480,8 +480,8 @@ fn assert_soft_replay<S: LayoutScalar>() {
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 30, 11];
     let tree = float_tree::<S>(&binding, 25.0, Float::Left, 1);
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request(25.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 2, request(25.0)).unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.lines().len(), 2);
     assert_eq!(layout.lines()[0].range(), text::Range::new(0, 2));
@@ -531,8 +531,8 @@ fn assert_clear<S: LayoutScalar>() {
             ..NodeInputOf::default()
         },
     );
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request(20.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();
     assert_eq!(
         output(&batch, 30).location,
         Point::new(S::ZERO, S::from_f64(16.0))
@@ -579,8 +579,8 @@ fn assert_signed<S: LayoutScalar>(spacing: f64) {
             },
         );
     }
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request(12.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 2, request(12.0)).unwrap();
     assert_eq!(output(&batch, 30).location, Point::ZERO);
     assert_eq!(
         output(&batch, 31).location,
@@ -634,8 +634,8 @@ fn preceding_unbreakable_content_keeps_its_line_and_defers_the_encountered_float
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 30, 11];
     let tree = float_tree::<f64>(&binding, 20.0, Float::Left, 1);
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request(20.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();
     assert_eq!(output(&batch, 30).location, Point::new(0.0, 10.0));
     assert_eq!(batch.placed_text()[0].layout().lines().len(), 1);
     assert_eq!(
@@ -661,8 +661,8 @@ fn assert_discarded_prefix<S: LayoutScalar>() {
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 11, 30, 12];
     let tree = float_tree::<S>(&binding, 10.0, Float::Left, 1).children(2, binding.nodes.clone());
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request(10.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 2, request(10.0)).unwrap();
     assert_eq!(output(&batch, 30).location, Point::ZERO);
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.source().text().code_units(), [32, 88]);
@@ -720,8 +720,8 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
     assert!(whole.prefix_at(&seam).unwrap().interior_unit().is_some());
     assert_eq!(whole.feedback().advance, 22.5);
     let tree = float_tree::<f64>(&binding, 26.0, Float::Left, 1).children(2, binding.nodes.clone());
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request(26.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 2, request(26.0)).unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.lines().len(), 2);
     assert_eq!(layout.lines()[0].range(), text::Range::new(0, 1));
@@ -797,8 +797,8 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
             20,
             LayoutInputOf::text_control(TextControlParticipation::new(control.clone())),
         );
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request(35.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 2, request(35.0)).unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.source().text().code_units(), [65, 88, 88, 88, 88]);
     assert_eq!(layout.lines().len(), 2);
@@ -850,8 +850,8 @@ fn assert_retained_zero_prefix<S: LayoutScalar>() {
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 11, 30, 12];
     let tree = float_tree::<S>(&binding, 10.0, Float::Left, 1).children(2, binding.nodes.clone());
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request(10.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 2, request(10.0)).unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.source().text().code_units(), [65, 88]);
     assert_eq!(layout.lines().len(), 1);
@@ -912,8 +912,9 @@ fn assert_nested_float_text_packet<S: LayoutScalar>() {
         .children(40, [])
         .input(40, child.text_input(40));
     let compute = |host: &CachedHost<S>| {
-        let capture = TextLayoutInput::try_new(host, 2, vec![outer.clone(), inner.clone()])?;
-        compute_layout_with_text_invalidated(&capture, 2, request(10.0), &[2])
+        let capture =
+            LayoutFlowInput::try_new(host, 2, vec![outer.clone(), inner.clone()], Vec::new())?;
+        compute_layout_with_flow_invalidated(&capture, 2, request(10.0), &[2])
     };
     let mut host = CachedHost::new(tree);
     let cold = compute(&host).unwrap();
@@ -1068,12 +1069,12 @@ fn captured_float_intrinsic<S: LayoutScalar>(side: Float, minimum: bool) -> (f64
     .unwrap();
     // Existing ordinary-float lane is an independent control using the same
     // actual preparation and box geometry, without interleaved-window capture.
-    let ordinary = TextLayoutInput::try_new(&tree, 2, vec![binding.clone()]).unwrap();
-    let ordinary = compute_layout_with_text(&ordinary, 2, request).unwrap();
+    let ordinary = LayoutFlowInput::try_new(&tree, 2, vec![binding.clone()], Vec::new()).unwrap();
+    let ordinary = compute_layout_with_flow(&ordinary, 2, request).unwrap();
     let ordinary_width = output(&ordinary, 2).size.width.to_f64();
     binding.nodes = vec![30, 10];
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
-    let actual = compute_layout_with_text(&capture, 2, request).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
+    let actual = compute_layout_with_flow(&capture, 2, request).unwrap();
     assert_eq!(
         actual.placed_text()[0]
             .layout()
@@ -1131,8 +1132,8 @@ fn trailing_float_after_terminal_forced_break_retains_the_real_empty_paragraph_l
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 30];
     let tree = float_tree::<f64>(&binding, 40.0, Float::Left, 1).children(2, binding.nodes.clone());
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request(40.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 2, request(40.0)).unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.source().text().code_units(), [65, 10]);
     assert_eq!(layout.lines().len(), 2);
@@ -1205,13 +1206,13 @@ fn assert_max_float_cohort<S: LayoutScalar>(
             },
         );
     }
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
     let request = LayoutRootRequestOf::viewport(Size::new(
         AvailableOf::MAX_CONTENT,
         AvailableOf::MAX_CONTENT,
     ))
     .unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request).unwrap();
+    let batch = compute_layout_with_flow(&capture, 2, request).unwrap();
     assert_eq!(
         output(&batch, 2).size.width,
         S::from_f64(expected_width),
@@ -1224,7 +1225,7 @@ fn assert_max_float_cohort<S: LayoutScalar>(
             "float {i} source {source:?}"
         );
     }
-    let warm = compute_layout_with_text(&capture, 2, request).unwrap();
+    let warm = compute_layout_with_flow(&capture, 2, request).unwrap();
     assert_eq!(warm.final_entries(), batch.final_entries());
 }
 fn max_float_cohorts<S: LayoutScalar>() {
@@ -1333,13 +1334,13 @@ fn expired_captured_max_cohorts<S: LayoutScalar>() -> f64 {
             },
         );
     }
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
     let request = LayoutRootRequestOf::viewport(Size::new(
         AvailableOf::MAX_CONTENT,
         AvailableOf::MAX_CONTENT,
     ))
     .unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request).unwrap();
+    let batch = compute_layout_with_flow(&capture, 2, request).unwrap();
     assert_eq!(output(&batch, 30).location, Point::new(S::ZERO, S::ZERO));
     assert_eq!(
         output(&batch, 31).location,
@@ -1392,8 +1393,8 @@ fn source_ordered_clear_tops<S: LayoutScalar>(mirror: bool, capture_all: bool) -
             },
         );
     }
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request(100.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 2, request(100.0)).unwrap();
     [30, 31, 32]
         .into_iter()
         .map(|node| output(&batch, node).location.y.to_f64())
@@ -1465,9 +1466,9 @@ fn transparent_leading_capture<S: LayoutScalar>(
             ..NodeInputOf::default()
         },
     );
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding])
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new())
         .map_err(|e| format!("admission {e:?}"))?;
-    let batch = compute_layout_with_text(&capture, 2, request(40.0))
+    let batch = compute_layout_with_flow(&capture, 2, request(40.0))
         .map_err(|e| format!("consumption {e:?}"))?;
     assert_eq!(batch.placed_text().len(), 1);
     assert_eq!(
@@ -1491,7 +1492,7 @@ fn transparent_leading_capture<S: LayoutScalar>(
         assert_eq!(output(&batch, 30).location, Point::ZERO);
     }
     let warm =
-        compute_layout_with_text(&capture, 2, request(40.0)).map_err(|e| format!("warm {e:?}"))?;
+        compute_layout_with_flow(&capture, 2, request(40.0)).map_err(|e| format!("warm {e:?}"))?;
     assert_eq!(warm.final_entries(), batch.final_entries());
     Ok(())
 }
@@ -1610,13 +1611,13 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
             },
         );
     }
-    let capture = TextLayoutInput::try_new(&tree, 2, vec![binding]).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
     let request = LayoutRootRequestOf::viewport(Size::new(
         AvailableOf::MAX_CONTENT,
         AvailableOf::MAX_CONTENT,
     ))
     .unwrap();
-    let batch = compute_layout_with_text(&capture, 2, request).unwrap();
+    let batch = compute_layout_with_flow(&capture, 2, request).unwrap();
     let layout = batch.placed_text()[0].layout();
     assert!(layout.source().text().code_units().is_empty());
     assert_eq!(layout.lines().len(), 1);
@@ -1629,7 +1630,7 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
             Point::new(actual.location.x.to_f64(), actual.location.y.to_f64())
         })
         .collect();
-    let warm = compute_layout_with_text(&capture, 2, request).unwrap();
+    let warm = compute_layout_with_flow(&capture, 2, request).unwrap();
     assert_eq!(warm.final_entries(), batch.final_entries());
     (output(&batch, 2).size.width.to_f64(), geometry)
 }
@@ -1745,8 +1746,9 @@ fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional
                 ..NodeInputOf::default()
             },
         );
-        let capture = TextLayoutInput::try_new(&tree, 2, vec![binding.clone()]).unwrap();
-        let batch = compute_layout_with_text(&capture, 2, request(80.0)).unwrap();
+        let capture =
+            LayoutFlowInput::try_new(&tree, 2, vec![binding.clone()], Vec::new()).unwrap();
+        let batch = compute_layout_with_flow(&capture, 2, request(80.0)).unwrap();
         let layout = batch.placed_text()[0].layout();
         assert_eq!(
             layout.source().text().code_units(),
@@ -1777,7 +1779,7 @@ fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional
                 .definition(),
             text::PreparedAlternativeDefinition::Source { .. }
         ));
-        let warm = compute_layout_with_text(&capture, 2, request(80.0)).unwrap();
+        let warm = compute_layout_with_flow(&capture, 2, request(80.0)).unwrap();
         assert_eq!(warm.final_entries(), batch.final_entries());
     }
     check::<f32>();
@@ -1814,8 +1816,9 @@ fn automatic_initial_manual_portion_retains_float_before_word_without_replaying_
                 ..NodeInputOf::default()
             },
         );
-        let capture = TextLayoutInput::try_new(&tree, 2, vec![binding.clone()]).unwrap();
-        let batch = compute_layout_with_text(&capture, 2, request(80.0)).unwrap();
+        let capture =
+            LayoutFlowInput::try_new(&tree, 2, vec![binding.clone()], Vec::new()).unwrap();
+        let batch = compute_layout_with_flow(&capture, 2, request(80.0)).unwrap();
         let layout = batch.placed_text()[0].layout();
         assert_eq!(
             layout.source().text().code_units(),
@@ -1844,7 +1847,7 @@ fn automatic_initial_manual_portion_retains_float_before_word_without_replaying_
                 .iter()
                 .any(|line| line.range() == text::Range::new(3, 9))
         );
-        let warm = compute_layout_with_text(&capture, 2, request(80.0)).unwrap();
+        let warm = compute_layout_with_flow(&capture, 2, request(80.0)).unwrap();
         assert_eq!(warm.final_entries(), batch.final_entries());
     }
     check::<f32>();

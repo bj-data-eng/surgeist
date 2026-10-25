@@ -85,7 +85,7 @@ fn rejects<S: LayoutScalar>(
     binding: TextParagraphBinding<u32>,
     expected: TextBindingError,
 ) {
-    let Err(error) = TextLayoutInput::try_new(tree, 0, vec![binding]) else {
+    let Err(error) = LayoutFlowInput::try_new(tree, 0, vec![binding], Vec::new()) else {
         panic!("invalid actual wbr binding must refuse");
     };
     assert!(
@@ -99,7 +99,7 @@ fn generated_inventory<S: LayoutScalar>() {
         let foreign = paragraph(false, expanded);
         let tree = tree::<S>(&p, &[1, 2]);
         let binding = p.binding(0);
-        TextLayoutInput::try_new(&tree, 0, vec![binding.clone()]).unwrap();
+        LayoutFlowInput::try_new(&tree, 0, vec![binding.clone()], Vec::new()).unwrap();
         assert!(binding.origins.is_empty());
         if expanded {
             let participants: Vec<_> = p.prepared.participants().collect();
@@ -164,7 +164,7 @@ fn shared_order<S: LayoutScalar>() {
     let p = paragraph(true, true);
     let binding = p.binding(0);
     let normal = tree::<S>(&p, &[1, 2, 3, 4]);
-    TextLayoutInput::try_new(&normal, 0, vec![binding.clone()]).unwrap();
+    LayoutFlowInput::try_new(&normal, 0, vec![binding.clone()], Vec::new()).unwrap();
     let reversed = tree::<S>(&p, &[1, 3, 2, 4]);
     let mut wrong = binding;
     wrong.nodes = vec![1, 3, 2, 4];

@@ -16,6 +16,7 @@ pub(crate) fn fragment_for(
 ) -> surgeist_text::FinalizedFragment {
     let lines = crate::text_layout::fit::fit(
         crate::text_layout::fit::FitInput {
+            wrapping: None,
             formatted: &crate::text_layout::formatted::FormattedTailSnapshot::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
                 crate::LineBoxDirectionPolicy::Normal,

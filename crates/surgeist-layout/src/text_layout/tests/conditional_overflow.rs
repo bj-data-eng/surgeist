@@ -141,10 +141,11 @@ fn paragraph<S: LayoutScalar>(
             },
         )
         .input(1, paragraph.text_input(1));
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0)]).unwrap();
+    let capture =
+        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
     let request =
         LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap();
-    let batch = compute_layout_with_text(&capture, 0, request).unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
     let width = batch
         .final_entries()
         .iter()
@@ -312,7 +313,8 @@ fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinction
                     )
                     .input(1, paragraph.text_input(1));
                 let capture =
-                    TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0)]).unwrap();
+                    LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new())
+                        .unwrap();
                 // Five actual Ahem glyphs are 50px unbroken; manual's empty
                 // indication splits into 20px and 30px pieces. Only Anywhere admits
                 // the 10px emergency pieces into min-content.
@@ -325,7 +327,7 @@ fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinction
                         AvailableOf::MAX_CONTENT,
                     ))
                     .unwrap();
-                    let batch = compute_layout_with_text(&capture, 0, request).unwrap();
+                    let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
                     let width = batch
                         .final_entries()
                         .iter()
@@ -416,8 +418,8 @@ fn interleaved<S: LayoutScalar>(
         )
         .input(1, paragraph.text_input(1))
         .input(3, paragraph.text_input(3));
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 0, request(20.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
     let location = batch
         .final_entries()
         .iter()

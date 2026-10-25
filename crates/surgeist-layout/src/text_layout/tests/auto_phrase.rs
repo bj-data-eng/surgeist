@@ -61,8 +61,8 @@ fn compute<S: LayoutScalar>(
     for &node in &binding.nodes {
         tree = tree.children(node, []).input(node, p.text_input(node));
     }
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![binding]).unwrap();
-    compute_layout_with_text(
+    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+    compute_layout_with_flow(
         &capture,
         0,
         LayoutRootRequestOf::viewport(Size::new(width, AvailableOf::MAX_CONTENT)).unwrap(),
@@ -222,6 +222,7 @@ fn intrinsic<S: LayoutScalar>(
         &[],
         &[],
         super::super::run::Context {
+            wrapping: None,
             formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
                 crate::LineBoxDirectionPolicy::Normal,
@@ -756,8 +757,9 @@ fn phantom_prefix_shape_replay_allows_each_restored_candidate_its_own_height_ban
             hits: Default::default(),
         };
         let run = |tree: &ShapeTree<S>| {
-            let capture = TextLayoutInput::try_new(tree, 0, vec![binding.clone()]).unwrap();
-            compute_layout_with_text(
+            let capture =
+                LayoutFlowInput::try_new(tree, 0, vec![binding.clone()], Vec::new()).unwrap();
+            compute_layout_with_flow(
                 &capture,
                 0,
                 LayoutRootRequestOf::viewport(Size::new(

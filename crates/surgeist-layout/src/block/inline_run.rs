@@ -741,6 +741,18 @@ where
             })
             .unwrap_or_default();
         let context = crate::text_layout::run::Context {
+            wrapping: if matches!(available, AvailableOf::Definite(_)) {
+                tree.wrapping_context().and_then(|(context, graph)| {
+                    crate::text_layout::run::WrappingProjection::new(
+                        context,
+                        graph,
+                        binding,
+                        &associations,
+                    )
+                })
+            } else {
+                None
+            },
             formatted,
             frame: frame.map_or(crate::text_layout::run::Frame::Measurement, |frame| {
                 crate::text_layout::run::Frame::Canonical {
@@ -967,11 +979,20 @@ where
         text_output = Some(output);
         report
     } else {
+        let wrapping = if matches!(available_inline_extent, AvailableOf::Definite(_)) {
+            tree.wrapping_context()
+                .map(|(context, graph)| context.numeric_projection(graph, container, run))
+                .transpose()
+                .map_err(|error| crate::inline_wrapping::wrapping_error(container, error))?
+        } else {
+            None
+        };
         let observe_formatted = tree
             .text_computation()
             .is_some_and(|state| state.formatted_active());
         layout_mixed_inline_run_with_formatted_observation(
             MixedInlineRunInputOf {
+                wrapping,
                 line_box_context,
                 observe_tail: tail != crate::text_layout::fit::TailContext::Unrestricted,
                 available_inline_extent,
@@ -1025,6 +1046,7 @@ where
             },
             observe_formatted,
         )
+        .map_err(|error| crate::inline_wrapping::numeric_wrapping_error(container, error))?
     };
     if text_output.is_none() {
         if let Some(lines) = &report.formatted_lines {
@@ -1432,6 +1454,9 @@ pub(super) fn text_run_error<Node: Copy, S: LayoutScalar, M>(
     error: crate::text_layout::fit::FitError,
 ) -> LayoutErrorOf<Node, S, M> {
     let kind = match error {
+        crate::text_layout::fit::FitError::Wrapping(error) => {
+            return crate::inline_wrapping::wrapping_error(node, error);
+        }
         crate::text_layout::fit::FitError::Text(error) => LayoutErrorKindOf::Text(error),
         crate::text_layout::fit::FitError::FeedbackCycle => LayoutErrorKindOf::TextFeedbackCycle,
         crate::text_layout::fit::FitError::SpacingBudget { available, advance } => {

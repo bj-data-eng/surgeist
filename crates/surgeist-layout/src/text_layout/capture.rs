@@ -7,6 +7,9 @@ use super::{
     binding_error,
 };
 use crate::engine::validation::ValidationGraph;
+use crate::inline_wrapping::{
+    CanonicalScopeProof, WrapInside, WrappingScopeError, WrappingScopeInput, WrappingScopeProof,
+};
 use surgeist_text::{
     CapturedControl, CapturedDomainDefinition, CapturedEventPosition, CapturedFlowEvent as Event,
     CapturedParagraph, CapturedScope, PreparedScope, PreparedText, ScopeRole,
@@ -91,6 +94,32 @@ impl<Node> Default for ScopeAssociations<Node> {
     }
 }
 impl<Node: Copy + Eq> ScopeAssociations<Node> {
+    pub(crate) fn captured_scope_relation(
+        &self,
+        prepared: &PreparedText,
+        scope: &CapturedScope,
+    ) -> CapturedScopeRelation {
+        let Some(paragraph) = self
+            .paragraphs
+            .iter()
+            .find(|p| &p.prepared == prepared)
+            .and_then(|p| p.captured.as_ref())
+        else {
+            return CapturedScopeRelation::Unavailable;
+        };
+        if paragraph.domain() != scope.domain()
+            || !paragraph
+                .enter_position()
+                .same_capture(&scope.enter_position())
+        {
+            return CapturedScopeRelation::Unavailable;
+        }
+        if paragraph.scope_intersections().any(|i| i.scope() == *scope) {
+            CapturedScopeRelation::Local
+        } else {
+            CapturedScopeRelation::Outside
+        }
+    }
     pub fn paragraph_is_flow(&self, index: usize) -> bool {
         self.paragraphs[index].class == ParagraphClass::Flow
     }
@@ -116,6 +145,34 @@ impl<Node: Copy + Eq> ScopeAssociations<Node> {
             }
         }
         None
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CapturedScopeRelation {
+    Local,
+    Outside,
+    Unavailable,
+}
+
+pub(super) struct CaptureResolution<Node> {
+    pub associations: ScopeAssociations<Node>,
+    pub wrapping: Vec<WrappingScopeProof<Node>>,
+}
+#[derive(Clone)]
+struct NativeRegion<Node> {
+    flow: Node,
+    pair: (Node, Node),
+    start: CapturedControl,
+    end: CapturedControl,
+    owner: usize,
+    first: usize,
+    last: usize,
+    active: bool,
+}
+impl<Node> NativeRegion<Node> {
+    fn domain(&self) -> CapturedScope {
+        self.start.paragraph().domain()
     }
 }
 struct Control<Node> {
@@ -184,13 +241,24 @@ struct Proof<'a, Tree: crate::LayoutTree> {
     metadata: HashSet<CapturedParagraph>,
     nearest: HashMap<CapturedScope, Option<CapturedScope>>,
     enclosing: HashMap<CapturedScope, Option<CapturedScope>>,
+    semantic: Vec<CapturedScope>,
+    known: Vec<CapturedScope>,
+    wrapping: Vec<CapturedScope>,
+    native: Vec<NativeRegion<Tree::Node>>,
 }
 
 pub(super) fn resolve<Tree: crate::LayoutTree>(
     tree: &Tree,
     graph: &ValidationGraph<Tree::Node>,
     paragraphs: &[TextParagraphBinding<Tree::Node>],
-) -> ResultOf<Tree, ScopeAssociations<Tree::Node>> {
+    wrapping_scopes: &[WrappingScopeInput<Tree::Node>],
+) -> ResultOf<Tree, CaptureResolution<Tree::Node>> {
+    if paragraphs.is_empty() {
+        return Ok(CaptureResolution {
+            associations: ScopeAssociations::default(),
+            wrapping: Vec::new(),
+        });
+    }
     let (enter, exit) = graph_order(graph);
     let mut proof = Proof {
         tree,
@@ -215,14 +283,33 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
         metadata: HashSet::new(),
         nearest: HashMap::new(),
         enclosing: HashMap::new(),
+        semantic: Vec::new(),
+        known: Vec::new(),
+        wrapping: Vec::new(),
+        native: Vec::new(),
     };
     proof.index()?;
+    proof.activate_wrapping(wrapping_scopes)?;
     proof.prepare_observations()?;
     // A is selected from producer topology before resolving its supplied rows.
     let regions = proof.result.regions.clone();
     for region in &regions {
         for event in proof
             .selected(region)
+            .iter()
+            .map(|entry| entry.event.clone())
+            .collect::<Vec<_>>()
+        {
+            proof.require_expected(&event)?;
+            if let Event::BlockStart(child) | Event::BlockEnd(child) = event {
+                push_unique(&mut proof.domains, child);
+            }
+        }
+    }
+    let native = proof.active_native_regions();
+    for region in &native {
+        for event in proof
+            .native_selected(region)
             .iter()
             .map(|entry| entry.event.clone())
             .collect::<Vec<_>>()
@@ -241,11 +328,19 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
             push_unique(&mut proof.domains, child);
         }
     }
+    for region in &native {
+        for child in proof.domains_in_roots(&region.domain(), proof.native_roots(region))? {
+            push_unique(&mut proof.domains, child);
+        }
+    }
     proof.close_associations()?;
     proof.validate_pairs()?;
     proof.validate_metadata()?;
     for region in &regions {
         proof.compare_region(region)?;
+    }
+    for region in &native {
+        proof.compare_native_region(region)?;
     }
     for (index, paragraph) in paragraphs.iter().enumerate() {
         if proof.result.paragraphs[index].class == ParagraphClass::AssociationOnly {
@@ -271,11 +366,246 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
         validate_virtuals(paragraph)
             .map_err(|reason| binding_error(paragraph.container, reason))?;
     }
+    let wrapping = proof.wrapping_proofs()?;
     proof.result.structural = proof.domains;
-    Ok(proof.result)
+    Ok(CaptureResolution {
+        associations: proof.result,
+        wrapping,
+    })
 }
 
 impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
+    fn activate_wrapping(
+        &mut self,
+        inputs: &[WrappingScopeInput<Tree::Node>],
+    ) -> ResultOf<Tree, ()> {
+        if inputs.is_empty() {
+            return Ok(());
+        }
+        for paragraph in &self.result.paragraphs {
+            if let Some(captured) = &paragraph.captured {
+                for intersection in captured.scope_intersections() {
+                    let scope = intersection.scope();
+                    if scope.role() == ScopeRole::Inline {
+                        push_unique(&mut self.known, scope);
+                    }
+                }
+            }
+        }
+        for input in inputs {
+            if let WrappingScopeInput::NativePair { start, end, .. } = input {
+                let complete = self.controls.iter().any(|row| {
+                    (row.node == *start || row.node == *end)
+                        && row.captured.paragraph().domain().domain_topology()
+                            == surgeist_text::SourceProcessingTopology::Complete
+                });
+                let matching = self.known.iter().any(|scope| {
+                    scope.entry_control().is_some_and(|control| {
+                        self.controls
+                            .iter()
+                            .any(|row| row.captured == control && row.node == *start)
+                    }) && scope.exit_control().is_some_and(|control| {
+                        self.controls
+                            .iter()
+                            .any(|row| row.captured == control && row.node == *end)
+                    })
+                });
+                if complete && !matching {
+                    return Err(crate::inline_wrapping::wrapping_error(
+                        self.graph.nodes[0],
+                        WrappingScopeError::CaptureAssociation,
+                    ));
+                }
+                let source = self
+                    .controls
+                    .iter()
+                    .find(|row| row.node == *start)
+                    .zip(self.controls.iter().find(|row| row.node == *end));
+                if let Some((a, b)) = source.filter(|(a, b)| {
+                    a.captured.paragraph().domain() == b.captured.paragraph().domain()
+                }) {
+                    let (flow, span) = crate::inline_wrapping::native_span(
+                        self.tree,
+                        self.graph,
+                        *start,
+                        *end,
+                        &self.paths,
+                    )
+                    .map_err(|reason| {
+                        crate::inline_wrapping::wrapping_error(self.graph.nodes[0], reason)
+                    })?;
+                    let domain = a.captured.paragraph().domain();
+                    if self.domain(&domain)?.container != flow
+                        || self.paragraphs[a.paragraph].container != flow
+                        || self.paragraphs[b.paragraph].container != flow
+                        || a.captured
+                            .event_position()
+                            .partial_cmp(&b.captured.event_position())
+                            != Some(std::cmp::Ordering::Less)
+                    {
+                        return Err(crate::inline_wrapping::wrapping_error(
+                            flow,
+                            WrappingScopeError::CaptureAssociation,
+                        ));
+                    }
+                    let active = matches!(
+                        input,
+                        WrappingScopeInput::NativePair {
+                            wrap_inside: WrapInside::Avoid,
+                            ..
+                        }
+                    ) && !matching;
+                    if let Some(prior) = self
+                        .native
+                        .iter_mut()
+                        .find(|row| row.pair == (*start, *end))
+                    {
+                        prior.active |= active;
+                    } else {
+                        self.native.push(NativeRegion {
+                            flow,
+                            pair: (*start, *end),
+                            start: a.captured.clone(),
+                            end: b.captured.clone(),
+                            owner: self.graph.index(flow).expect("proved native flow"),
+                            first: span.first,
+                            last: span.last,
+                            active,
+                        });
+                    }
+                    push_unique(&mut self.domains, domain);
+                }
+            }
+            if let WrappingScopeInput::Captured { scope, wrap_inside } = input {
+                if scope.role() != ScopeRole::Inline {
+                    return Err(crate::inline_wrapping::wrapping_error(
+                        self.graph.nodes[0],
+                        WrappingScopeError::NonInlineScope,
+                    ));
+                }
+                if !self.known.contains(scope) {
+                    let present = self.result.paragraphs.iter().any(|p| p.captured.is_some());
+                    let same = self
+                        .result
+                        .paragraphs
+                        .iter()
+                        .filter_map(|p| p.captured.as_ref())
+                        .any(|p| p.enter_position().same_capture(&scope.enter_position()));
+                    let reason = if present && !same {
+                        WrappingScopeError::ForeignCapture
+                    } else {
+                        WrappingScopeError::MissingCapture
+                    };
+                    return Err(crate::inline_wrapping::wrapping_error(
+                        self.graph.nodes[0],
+                        reason,
+                    ));
+                }
+                let mut current = Some(scope.clone());
+                while let Some(scope) = current.filter(|s| s.role() == ScopeRole::Inline) {
+                    push_unique(&mut self.wrapping, scope.clone());
+                    current = scope.parent();
+                }
+                push_unique(&mut self.domains, scope.domain());
+                if scope.entry_control().is_some() || scope.exit_control().is_some() {
+                    push_unique(&mut self.scopes, scope.clone());
+                } else {
+                    push_unique(&mut self.semantic, scope.clone());
+                }
+                if *wrap_inside == WrapInside::Avoid {
+                    add_region(&mut self.result.regions, scope.clone());
+                }
+            }
+        }
+        // Known physical pairing is metadata, not a request to validate every
+        // unrelated interior. Resolve only actual supplied endpoint bindings.
+        for scope in &self.known {
+            let start = scope
+                .entry_control()
+                .and_then(|c| self.controls.iter().find(|r| r.captured == c));
+            let end = scope
+                .exit_control()
+                .and_then(|c| self.controls.iter().find(|r| r.captured == c));
+            match (start, end) {
+                (Some(start), Some(end)) => {
+                    push_unique(&mut self.scopes, scope.clone());
+                    push_unique(&mut self.domains, scope.domain());
+                    push_unique(&mut self.wrapping, scope.clone());
+                    if inputs.iter().any(|input| {
+                        matches!(input, WrappingScopeInput::NativePair {
+                            start:a, end:b, wrap_inside:WrapInside::Avoid,
+                        } if start.node == *a && end.node == *b)
+                    }) {
+                        add_region(&mut self.result.regions, scope.clone());
+                    }
+                }
+                (start, end) => {
+                    if inputs.iter().any(|input| {
+                        matches!(input, WrappingScopeInput::NativePair {start:a,end:b,..}
+                        if start.is_some_and(|r|r.node==*a) || end.is_some_and(|r|r.node==*b))
+                    }) {
+                        return Err(crate::inline_wrapping::wrapping_error(
+                            self.graph.nodes[0],
+                            WrappingScopeError::CaptureAssociation,
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// An enclosing requested pair already proves its own-flow interior. Keep
+    /// only maximal such work items; identities and the common forest are not
+    /// merged, and canonical semantic/physical proof remains independent.
+    fn active_native_regions(&self) -> Vec<NativeRegion<Tree::Node>> {
+        self.native
+            .iter()
+            .filter(|region| region.active)
+            .filter(|region| {
+                !self.native.iter().any(|outer| {
+                    outer.active
+                        && outer.owner == region.owner
+                        && outer.domain() == region.domain()
+                        && outer.first < region.first
+                        && region.last < outer.last
+                        && outer.start.event_position() < region.start.event_position()
+                        && region.end.event_position() < outer.end.event_position()
+                })
+            })
+            .cloned()
+            .collect()
+    }
+    fn wrapping_proofs(&self) -> ResultOf<Tree, Vec<WrappingScopeProof<Tree::Node>>> {
+        let mut result = self
+            .wrapping
+            .iter()
+            .map(|scope| {
+                let pair = self
+                    .result
+                    .inline
+                    .iter()
+                    .find(|row| row.scope == *scope)
+                    .map(|row| (row.start, row.end));
+                Ok(WrappingScopeProof::Captured(CanonicalScopeProof {
+                    scope: scope.clone(),
+                    flow: self.domain(&scope.domain())?.container,
+                    pair,
+                }))
+            })
+            .collect::<ResultOf<Tree, Vec<_>>>()?;
+        result.extend(
+            self.native
+                .iter()
+                .map(|row| WrappingScopeProof::NativePair {
+                    flow: row.flow,
+                    pair: row.pair,
+                    start: row.start.clone(),
+                    end: row.end.clone(),
+                }),
+        );
+        Ok(result)
+    }
     fn index(&mut self) -> ResultOf<Tree, ()> {
         for (index, paragraph) in self.paragraphs.iter().enumerate() {
             let captured = paragraph.prepared.captured_paragraph();
@@ -703,6 +1033,11 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         if region.role() == ScopeRole::Domain {
             return Ok(self.graph.children[node].clone());
         }
+        if self.semantic.contains(region) && !self.result.inline.iter().any(|s| &s.scope == region)
+        {
+            let (first, last) = self.semantic_neighbors(region);
+            return self.gap_roots(&region.domain(), first, last);
+        }
         let pair = self
             .result
             .inline
@@ -725,9 +1060,16 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         Ok(self.graph.children[node][first..=last].to_vec())
     }
     fn region_domains(&self, region: &CapturedScope) -> ResultOf<Tree, Vec<CapturedScope>> {
+        self.domains_in_roots(&region.domain(), self.roots(region)?)
+    }
+    fn domains_in_roots(
+        &self,
+        domain: &CapturedScope,
+        roots: Vec<usize>,
+    ) -> ResultOf<Tree, Vec<CapturedScope>> {
         let mut result = Vec::new();
         let mut seen = vec![false; self.graph.nodes.len()];
-        let mut pending = self.roots(region)?;
+        let mut pending = roots;
         while let Some(index) = pending.pop() {
             if seen[index] {
                 continue;
@@ -736,7 +1078,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
             if let Some(domain) = self.node_domains[index]
                 .iter()
                 .map(|&i| &self.result.domains[i])
-                .find(|d| d.scope != region.domain() && same_capture(&d.scope, region))
+                .find(|d| &d.scope != domain && same_capture(&d.scope, domain))
             {
                 self.require_node(domain.container)?;
                 push_unique(&mut result, domain.scope.clone());
@@ -902,9 +1244,9 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         }
         Ok(false)
     }
-    fn compare_region(&self, region: &CapturedScope) -> ResultOf<Tree, ()> {
+    fn expected_events(&self, entries: &[PositionedEvent]) -> ResultOf<Tree, Vec<Event>> {
         let mut expected = Vec::new();
-        for entry in self.selected(region) {
+        for entry in entries {
             let event = entry.event.clone();
             if let Event::ParagraphStart(p) | Event::ParagraphEnd(p) = &event {
                 let index = self
@@ -917,8 +1259,69 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
             }
             expected.push(event);
         }
+        Ok(expected)
+    }
+    fn native_roots(&self, region: &NativeRegion<Tree::Node>) -> Vec<usize> {
+        self.graph.children[region.owner][region.first..=region.last].to_vec()
+    }
+    fn native_selected(&self, region: &NativeRegion<Tree::Node>) -> &[PositionedEvent] {
+        let events = &self.expected[&region.domain()].events;
+        let first = region.start.event_position();
+        let last = region.end.event_position();
+        let start = events.partition_point(|row| row.position < first);
+        let end = events.partition_point(|row| row.position <= last);
+        &events[start..end]
+    }
+    fn compare_native_region(&self, region: &NativeRegion<Tree::Node>) -> ResultOf<Tree, ()> {
+        let expected = self.expected_events(self.native_selected(region))?;
+        let mut actual = self.actual(&region.domain(), self.native_roots(region), true, None)?;
+        let lower = (self.enter[self.require_node(region.pair.0)?], 1);
+        let upper = (self.enter[self.require_node(region.pair.1)?], 1);
+        actual.retain(|row| lower <= row.key && row.key <= upper);
+        if expected.iter().ne(actual.iter().map(|row| &row.event)) {
+            return Err(binding_error(region.flow, E::ParticipantOrder));
+        }
+        Ok(())
+    }
+    fn compare_region(&self, region: &CapturedScope) -> ResultOf<Tree, ()> {
+        let mut expected = self.expected_events(self.selected(region))?;
+        let semantic = self.semantic.contains(region)
+            && !self.result.inline.iter().any(|s| &s.scope == region);
         let mut actual = self.actual(&region.domain(), self.roots(region)?, true, None)?;
-        if region.role() == ScopeRole::Inline {
+        if semantic {
+            // Without physical edges, authentic adjacent flow events close
+            // both semantic edges. They prove order, not allocated BP extent.
+            let (before, after) = self.semantic_neighbors(region);
+            if let Some(before) = before {
+                expected.insert(0, before.clone());
+            }
+            if let Some(after) = after {
+                expected.push(after.clone());
+            }
+            let first = before.map_or(Some(0), |event| {
+                actual.iter().position(|a| &a.event == event)
+            });
+            let last = after.map_or(Some(actual.len()), |event| {
+                actual
+                    .iter()
+                    .rposition(|a| &a.event == event)
+                    .map(|i| i + 1)
+            });
+            let (Some(first), Some(last)) = (first, last) else {
+                return Err(binding_error(
+                    self.domain(&region.domain())?.container,
+                    E::ScopeAssociation,
+                ));
+            };
+            if first > last {
+                return Err(binding_error(
+                    self.domain(&region.domain())?.container,
+                    E::ParticipantOrder,
+                ));
+            }
+            actual = actual.drain(first..last).collect();
+        }
+        if region.role() == ScopeRole::Inline && !semantic {
             let pair = self
                 .result
                 .inline
@@ -1121,6 +1524,47 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         let last = events.partition_point(|event| event.position < end);
         &events[first..last]
     }
+
+    fn visible(&self, event: &Event) -> bool {
+        match event {
+            Event::ParagraphStart(p) | Event::ParagraphEnd(p) => self.paragraph(p).map_or_else(
+                || {
+                    let (first, last) = self.expected[&p.domain()].paragraphs[p];
+                    last != first + 1
+                },
+                |i| self.result.paragraphs[i].class == ParagraphClass::Flow,
+            ),
+            _ => true,
+        }
+    }
+
+    fn semantic_neighbors(&self, scope: &CapturedScope) -> (Option<&Event>, Option<&Event>) {
+        let flow = &self.expected[&scope.domain()];
+        let first = flow
+            .events
+            .partition_point(|row| row.position <= scope.enter_position());
+        let last = flow
+            .events
+            .partition_point(|row| row.position < scope.exit_position());
+        let before = first.checked_sub(1).and_then(|i| {
+            if self.visible(&flow.events[i].event) {
+                Some(i)
+            } else {
+                flow.previous[i]
+            }
+        });
+        let after = (last < flow.events.len()).then_some(last).and_then(|i| {
+            if self.visible(&flow.events[i].event) {
+                Some(i)
+            } else {
+                flow.next[i]
+            }
+        });
+        (
+            before.map(|i| &flow.events[i].event),
+            after.map(|i| &flow.events[i].event),
+        )
+    }
     fn prepare_observations(&mut self) -> ResultOf<Tree, ()> {
         for &node in self.graph.finish.iter().rev() {
             for &child in &self.graph.children[node] {
@@ -1196,6 +1640,9 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         }
         let mut domains = Vec::new();
         for region in &self.result.regions {
+            push_unique(&mut domains, region.domain());
+        }
+        for region in self.native.iter().filter(|region| region.active) {
             push_unique(&mut domains, region.domain());
         }
         for paragraph in &self.result.paragraphs {

@@ -89,7 +89,7 @@ pub struct TextScopeBinding<Node> {
 }
 
 /// Supplied association facts, checked together against the immutable tree by
-/// `TextLayoutInput::try_new` before any layout computation can consume them.
+/// `LayoutFlowInput::try_new` before any layout computation can consume them.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextParagraphBinding<Node> {
     pub prepared: PreparedText,
@@ -128,29 +128,34 @@ pub enum TextBindingError {
     TerminalBlockEdge,
 }
 
-/// A complete, checked Text participation capture over one borrowed tree.
+/// Complete, checked inline flow over one borrowed tree.
 ///
 /// The tree borrow prevents mutable replacement of its normalized inputs while
-/// the capture is being consumed. Issued Text handles retain the exact original
-/// preparation; independently prepared equal text cannot replace that basis.
-pub struct TextLayoutInput<'tree, Tree: crate::LayoutTree> {
+/// the input is being consumed. Text paragraphs retain their exact preparation.
+/// Wrapping scopes describe actual normalized inline boxes; numeric-only flow
+/// needs no Text preparation.
+pub struct LayoutFlowInput<'tree, Tree: crate::LayoutTree> {
     pub(crate) tree: &'tree Tree,
     pub(crate) root: Tree::Node,
     pub(crate) paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
     pub(crate) invalidated: Vec<Tree::Node>,
     pub(crate) graph: crate::engine::validation::ValidationGraph<Tree::Node>,
     pub(crate) associations: std::sync::Arc<capture::ScopeAssociations<Tree::Node>>,
+    pub(crate) wrapping: std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>,
 }
 
-impl<'tree, Tree: crate::LayoutTree> TextLayoutInput<'tree, Tree> {
-    /// Validates the complete captured paragraph inventory against this root.
+impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
+    /// Validates paragraph participation and declared wrapping scopes at this root.
     ///
     /// This proves association to supplied immutable normalized inputs. It does
     /// not authenticate live DOM or computed-style facts absent from the tree.
+    /// Empty paragraphs admit box/control-only flow. Empty scopes retain the
+    /// ordinary automatic wrapping policy.
     pub fn try_new(
         tree: &'tree Tree,
         root: Tree::Node,
         paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
+        wrapping_scopes: Vec<crate::WrappingScopeInput<Tree::Node>>,
     ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
         let mut influencing = Vec::new();
         let mut occupied = Vec::new();
@@ -502,13 +507,12 @@ impl<'tree, Tree: crate::LayoutTree> TextLayoutInput<'tree, Tree> {
                 }
             }
         }
-        let (graph, invalidated) =
-            crate::engine::validation::validate_layout_request_with_text_graph(
-                tree,
-                root,
-                &influencing,
-                &paragraphs,
-            )?;
+        let (graph, _) = crate::engine::validation::validate_layout_request_with_text_graph(
+            tree,
+            root,
+            &influencing,
+            &paragraphs,
+        )?;
         // Every actual prepared-text node under this root must be covered. A
         // partial inventory cannot silently use the box-only compute entry.
         for &node in &graph.nodes {
@@ -519,7 +523,17 @@ impl<'tree, Tree: crate::LayoutTree> TextLayoutInput<'tree, Tree> {
                 return Err(binding_error(node, TextBindingError::MissingParagraph));
             }
         }
-        let associations = std::sync::Arc::new(capture::resolve(tree, &graph, &paragraphs)?);
+        let resolved = capture::resolve(tree, &graph, &paragraphs, &wrapping_scopes)?;
+        let wrapping = crate::inline_wrapping::WrappingContext::new(
+            tree,
+            &graph,
+            &wrapping_scopes,
+            &resolved.wrapping,
+        )
+        .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
+        influencing.extend(wrapping.dependencies());
+        let invalidated = graph.invalidation(&influencing)?;
+        let associations = std::sync::Arc::new(resolved.associations);
         Ok(Self {
             tree,
             root,
@@ -527,6 +541,7 @@ impl<'tree, Tree: crate::LayoutTree> TextLayoutInput<'tree, Tree> {
             invalidated,
             graph,
             associations,
+            wrapping: std::sync::Arc::new(wrapping),
         })
     }
 

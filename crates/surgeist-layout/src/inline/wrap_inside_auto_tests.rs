@@ -64,6 +64,7 @@ fn numeric_input<S: LayoutScalar>(
             direction,
         ),
         observe_tail: true,
+        wrapping: None,
         available_inline_extent: AvailableOf::definite(S::from_f64(25.0)),
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, direction),
         text_align: TextAlign::Start,
@@ -132,7 +133,7 @@ fn assert_numeric_receipts<S: LayoutScalar>(
     assert_eq!(second.line.used_inline_extent, S::from_f64(10.0));
     assert!(select(second.next_cursor, second.pending_strut).is_none());
 
-    let report = layout_mixed_inline_run(input);
+    let report = layout_mixed_inline_run(input).unwrap();
     assert_eq!(
         report.lines.iter().map(|line| line.end).collect::<Vec<_>>(),
         [first_end, surgeist_text::LineEnd::Paragraph]

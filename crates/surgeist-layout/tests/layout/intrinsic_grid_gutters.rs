@@ -682,7 +682,7 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
             ],
             non_box: NodeInputOf::non_box(),
         };
-        let capture = TextLayoutInput::try_new(
+        let capture = LayoutFlowInput::try_new(
             &tree,
             0,
             vec![TextParagraphBinding {
@@ -703,9 +703,10 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
                 controls: vec![],
                 line_strut: None,
             }],
+            Vec::new(),
         )
         .unwrap();
-        let batch = compute_layout_with_text(
+        let batch = compute_layout_with_flow(
             &capture,
             0,
             LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),

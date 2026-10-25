@@ -219,7 +219,7 @@ fn rejects(
     binding: TextParagraphBinding<u32>,
     expected: TextBindingError,
 ) {
-    let Err(error) = TextLayoutInput::try_new(tree, 0, vec![binding]) else {
+    let Err(error) = LayoutFlowInput::try_new(tree, 0, vec![binding], Vec::new()) else {
         panic!("invalid scope association must refuse")
     };
     assert!(
@@ -231,7 +231,7 @@ fn rejects(
 #[test]
 fn automatic_phrase_scope_inventory_requires_the_exact_issued_scope_and_own_pair() {
     let f = fixture(20.0, true, [10, 11, 12, 13]);
-    TextLayoutInput::try_new(&f.tree, 0, vec![f.binding.clone()]).unwrap();
+    LayoutFlowInput::try_new(&f.tree, 0, vec![f.binding.clone()], Vec::new()).unwrap();
     let mut missing = f.binding.clone();
     missing.controls.pop();
     rejects(&f.tree, missing, TextBindingError::ControlCoverage);
@@ -299,8 +299,9 @@ fn scope_facts(batch: &CompletedLayoutBatchOf<u32, f64>) -> Vec<ScopeFragmentFac
 #[test]
 fn automatic_phrase_multiple_occurrences_publish_one_scope_owner_at_each_placed_position() {
     let f = fixture(20.0, true, [10, 11, 12, 13]);
-    let capture = TextLayoutInput::try_new(&f.tree, 0, vec![f.binding.clone()]).unwrap();
-    let batch = compute_layout_with_text(&capture, 0, request(500.0)).unwrap();
+    let capture =
+        LayoutFlowInput::try_new(&f.tree, 0, vec![f.binding.clone()], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
     let facts = scope_facts(&batch);
     assert_eq!(facts.len(), 3);
     assert!(facts.iter().all(|fact| fact.0 == f.scope && fact.3 == 0));
@@ -429,8 +430,8 @@ fn compute(
     tree: &CachedTree,
     binding: &TextParagraphBinding<u32>,
 ) -> CompletedLayoutBatchOf<u32, f64> {
-    let capture = TextLayoutInput::try_new(tree, 100, vec![binding.clone()]).unwrap();
-    compute_layout_with_text(&capture, 100, request(500.0)).unwrap()
+    let capture = LayoutFlowInput::try_new(tree, 100, vec![binding.clone()], Vec::new()).unwrap();
+    compute_layout_with_flow(&capture, 100, request(500.0)).unwrap()
 }
 
 fn with_cached_sibling(tree: PublicLayoutTreeOf<f64>) -> PublicLayoutTreeOf<f64> {
@@ -523,8 +524,9 @@ fn automatic_phrase_scope_fragments_follow_real_split_lines_and_rtl_line_anchors
         [10, 11, 12, 13],
         ParagraphBaseDirection::RightToLeft,
     );
-    let capture = TextLayoutInput::try_new(&f.tree, 0, vec![f.binding.clone()]).unwrap();
-    let wide = compute_layout_with_text(&capture, 0, request(500.0)).unwrap();
+    let capture =
+        LayoutFlowInput::try_new(&f.tree, 0, vec![f.binding.clone()], Vec::new()).unwrap();
+    let wide = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
     // Ahem advances are10px for all13 original units and20px for each of
     // three generated spaces: occupied width190, RTL start500-190=310.
     // UAX9: paragraph level1 gives strong L Japanese level2; terminal ON
@@ -539,7 +541,7 @@ fn automatic_phrase_scope_fragments_follow_real_split_lines_and_rtl_line_anchors
             .collect::<Vec<_>>(),
         [350.0, 400.0, 440.0]
     );
-    let split = compute_layout_with_text(&capture, 0, request(70.0)).unwrap();
+    let split = compute_layout_with_flow(&capture, 0, request(70.0)).unwrap();
     let facts = scope_facts(&split);
     assert_eq!(facts.len(), 3);
     assert!(facts.iter().map(|fact| fact.3).max().unwrap() > 0);
@@ -580,8 +582,8 @@ fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_o
         cache_hits: Cell::new(0),
     };
     let compute_all = |tree: &CachedTree, paragraphs: &[TextParagraphBinding<u32>]| {
-        let capture = TextLayoutInput::try_new(tree, 100, paragraphs.to_vec()).unwrap();
-        compute_layout_with_text_invalidated(&capture, 100, request(500.0), &[102]).unwrap()
+        let capture = LayoutFlowInput::try_new(tree, 100, paragraphs.to_vec(), Vec::new()).unwrap();
+        compute_layout_with_flow_invalidated(&capture, 100, request(500.0), &[102]).unwrap()
     };
     let initial = compute_all(&tree, &first);
     initial.apply_to(&mut tree).unwrap();

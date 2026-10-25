@@ -365,9 +365,14 @@ fn bind(prepared: text::PreparedText, rtl: bool, bytes: Vec<u8>) -> Fixture {
 }
 
 fn compute(fixture: &Fixture, width: layout::Available) -> layout::CompletedLayoutBatch<usize> {
-    let capture =
-        layout::TextLayoutInput::try_new(&fixture.tree, 0, vec![fixture.binding.clone()]).unwrap();
-    layout::compute_layout_with_text(
+    let capture = layout::LayoutFlowInput::try_new(
+        &fixture.tree,
+        0,
+        vec![fixture.binding.clone()],
+        Vec::new(),
+    )
+    .unwrap();
+    layout::compute_layout_with_flow(
         &capture,
         0,
         layout::LayoutRootRequest::viewport(layout::Size::new(

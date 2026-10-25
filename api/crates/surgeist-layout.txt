@@ -247,6 +247,7 @@ pub surgeist_layout::LanePlacementError::InvalidGridAxisStart::start: usize
 pub surgeist_layout::LanePlacementError::InvalidGridFlowToleranceBasis
 pub surgeist_layout::LanePlacementError::InvalidGridFlowToleranceResolution
 #[non_exhaustive] pub enum surgeist_layout::LayoutErrorKindOf<S: surgeist_layout::LayoutScalar, M>
+pub surgeist_layout::LayoutErrorKindOf::InlineFeedbackCycle
 pub surgeist_layout::LayoutErrorKindOf::InternalInvariant(surgeist_layout::LayoutInternalInvariant)
 pub surgeist_layout::LayoutErrorKindOf::InvalidInput(surgeist_layout::LayoutInvalidInputOf<S>)
 pub surgeist_layout::LayoutErrorKindOf::Measurement(M)
@@ -328,9 +329,11 @@ pub surgeist_layout::LayoutInvalidInputOf::RootAvailability::axis: surgeist_layo
 pub surgeist_layout::LayoutInvalidInputOf::RootAvailability::error: surgeist_layout::NonNegativeFiniteScalarErrorOf<S>
 pub surgeist_layout::LayoutInvalidInputOf::TextBinding(surgeist_layout::TextBindingError)
 pub surgeist_layout::LayoutInvalidInputOf::TreeTopologyCycle
+pub surgeist_layout::LayoutInvalidInputOf::WrappingScope(surgeist_layout::WrappingScopeError)
 #[non_exhaustive] pub enum surgeist_layout::LayoutMissingContext
 pub surgeist_layout::LayoutMissingContext::AnonymousGeneratingBlock
 pub surgeist_layout::LayoutMissingContext::FloatExclusionProvider
+pub surgeist_layout::LayoutMissingContext::InlineWrapping
 pub surgeist_layout::LayoutMissingContext::RequiredBasis
 pub surgeist_layout::LayoutMissingContext::TextBlockTail
 pub surgeist_layout::LayoutMissingContext::TextCapture
@@ -342,6 +345,7 @@ pub surgeist_layout::LayoutOperation::ChildLayout
 pub surgeist_layout::LayoutOperation::FloatExclusionQuery
 pub surgeist_layout::LayoutOperation::GridLanePlacement
 pub surgeist_layout::LayoutOperation::HiddenLayout
+pub surgeist_layout::LayoutOperation::InlineWrapping
 pub surgeist_layout::LayoutOperation::LeafMeasurement
 pub surgeist_layout::LayoutOperation::RootLayout
 pub surgeist_layout::LayoutOperation::RoundingFinalization
@@ -790,6 +794,32 @@ pub enum surgeist_layout::VerticalAlign
 pub surgeist_layout::VerticalAlign::Baseline
 pub surgeist_layout::VerticalAlign::Bottom
 pub surgeist_layout::VerticalAlign::Top
+pub enum surgeist_layout::WrapInside
+pub surgeist_layout::WrapInside::Auto
+pub surgeist_layout::WrapInside::Avoid
+#[non_exhaustive] pub enum surgeist_layout::WrappingScopeError
+pub surgeist_layout::WrappingScopeError::AmbiguousNode
+pub surgeist_layout::WrappingScopeError::CaptureAssociation
+pub surgeist_layout::WrappingScopeError::ConflictingScope
+pub surgeist_layout::WrappingScopeError::CrossingScopes
+pub surgeist_layout::WrappingScopeError::DifferentFlow
+pub surgeist_layout::WrappingScopeError::DuplicateScope
+pub surgeist_layout::WrappingScopeError::EndpointOrder
+pub surgeist_layout::WrappingScopeError::EndpointRole
+pub surgeist_layout::WrappingScopeError::ForeignCapture
+pub surgeist_layout::WrappingScopeError::InconsistentIncidence
+pub surgeist_layout::WrappingScopeError::MissingCapture
+pub surgeist_layout::WrappingScopeError::NodeNotReachable
+pub surgeist_layout::WrappingScopeError::NonInlineScope
+pub surgeist_layout::WrappingScopeError::UnsupportedIncidence
+pub enum surgeist_layout::WrappingScopeInput<Node>
+pub surgeist_layout::WrappingScopeInput::Captured
+pub surgeist_layout::WrappingScopeInput::Captured::scope: surgeist_text::processing::contextual::capture::CapturedScope
+pub surgeist_layout::WrappingScopeInput::Captured::wrap_inside: surgeist_layout::WrapInside
+pub surgeist_layout::WrappingScopeInput::NativePair
+pub surgeist_layout::WrappingScopeInput::NativePair::end: Node
+pub surgeist_layout::WrappingScopeInput::NativePair::start: Node
+pub surgeist_layout::WrappingScopeInput::NativePair::wrap_inside: surgeist_layout::WrapInside
 pub enum surgeist_layout::WritingMode
 pub surgeist_layout::WritingMode::HorizontalTb
 pub surgeist_layout::WritingMode::SidewaysLr
@@ -1176,6 +1206,11 @@ pub const fn surgeist_layout::LayoutErrorOf<Node, S, M>::kind(&self) -> &surgeis
 pub const fn surgeist_layout::LayoutErrorOf<Node, S, M>::new(site: surgeist_layout::LayoutErrorSiteOf<Node>, operation: surgeist_layout::LayoutOperation, kind: surgeist_layout::LayoutErrorKindOf<S, M>) -> Self
 pub const fn surgeist_layout::LayoutErrorOf<Node, S, M>::operation(&self) -> surgeist_layout::LayoutOperation
 pub const fn surgeist_layout::LayoutErrorOf<Node, S, M>::site(&self) -> surgeist_layout::LayoutErrorSiteOf<Node> where Node: core::marker::Copy
+pub struct surgeist_layout::LayoutFlowInput<'tree, Tree: surgeist_layout::LayoutTree>
+impl<'tree, Tree: surgeist_layout::LayoutTree> surgeist_layout::LayoutFlowInput<'tree, Tree>
+pub fn surgeist_layout::LayoutFlowInput<'tree, Tree>::paragraphs(&self) -> &[surgeist_layout::TextParagraphBinding<<Tree as surgeist_layout::Traverse>::Node>]
+pub fn surgeist_layout::LayoutFlowInput<'tree, Tree>::tree(&self) -> &'tree Tree
+pub fn surgeist_layout::LayoutFlowInput<'tree, Tree>::try_new(tree: &'tree Tree, root: <Tree as surgeist_layout::Traverse>::Node, paragraphs: alloc::vec::Vec<surgeist_layout::TextParagraphBinding<<Tree as surgeist_layout::Traverse>::Node>>, wrapping_scopes: alloc::vec::Vec<surgeist_layout::WrappingScopeInput<<Tree as surgeist_layout::Traverse>::Node>>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, Self, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError>
 pub struct surgeist_layout::LayoutOutputEntryOf<Node, S: surgeist_layout::LayoutScalar>
 impl<Node, S> surgeist_layout::LayoutOutputEntryOf<Node, S> where Node: core::marker::Copy, S: surgeist_layout::LayoutScalar
 pub const fn surgeist_layout::LayoutOutputEntryOf<Node, S>::node(&self) -> Node
@@ -1592,11 +1627,6 @@ impl<S: surgeist_layout::LayoutScalar> surgeist_layout::TextIndentOf<S>
 pub const surgeist_layout::TextIndentOf<S>::ZERO: Self
 impl<S: surgeist_layout::LayoutScalar> core::default::Default for surgeist_layout::TextIndentOf<S>
 pub fn surgeist_layout::TextIndentOf<S>::default() -> Self
-pub struct surgeist_layout::TextLayoutInput<'tree, Tree: surgeist_layout::LayoutTree>
-impl<'tree, Tree: surgeist_layout::LayoutTree> surgeist_layout::TextLayoutInput<'tree, Tree>
-pub fn surgeist_layout::TextLayoutInput<'tree, Tree>::paragraphs(&self) -> &[surgeist_layout::TextParagraphBinding<<Tree as surgeist_layout::Traverse>::Node>]
-pub fn surgeist_layout::TextLayoutInput<'tree, Tree>::tree(&self) -> &'tree Tree
-pub fn surgeist_layout::TextLayoutInput<'tree, Tree>::try_new(tree: &'tree Tree, root: <Tree as surgeist_layout::Traverse>::Node, paragraphs: alloc::vec::Vec<surgeist_layout::TextParagraphBinding<<Tree as surgeist_layout::Traverse>::Node>>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, Self, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError>
 pub struct surgeist_layout::TextOriginBinding<Node>
 pub surgeist_layout::TextOriginBinding::node: Node
 pub surgeist_layout::TextOriginBinding::origin: surgeist_text::protocol::PreparedOrigin
@@ -1748,8 +1778,8 @@ pub fn surgeist_layout::Traverse::child_count(&self, node: Self::Node) -> usize
 pub fn surgeist_layout::Traverse::children(&self, node: Self::Node) -> Self::Children
 pub fn surgeist_layout::compute_layout<Tree>(tree: &Tree, root: <Tree as surgeist_layout::Traverse>::Node, request: surgeist_layout::LayoutRootRequestOf<<Tree as surgeist_layout::Traverse>::Scalar>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, surgeist_layout::CompletedLayoutBatchOf<<Tree as surgeist_layout::Traverse>::Node, <Tree as surgeist_layout::Traverse>::Scalar>, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::LayoutTree
 pub fn surgeist_layout::compute_layout_invalidated<Tree>(tree: &Tree, root: <Tree as surgeist_layout::Traverse>::Node, request: surgeist_layout::LayoutRootRequestOf<<Tree as surgeist_layout::Traverse>::Scalar>, changed_nodes: &[<Tree as surgeist_layout::Traverse>::Node]) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, surgeist_layout::CompletedLayoutBatchOf<<Tree as surgeist_layout::Traverse>::Node, <Tree as surgeist_layout::Traverse>::Scalar>, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::LayoutTree
-pub fn surgeist_layout::compute_layout_with_text<Tree>(capture: &surgeist_layout::TextLayoutInput<'_, Tree>, root: <Tree as surgeist_layout::Traverse>::Node, request: surgeist_layout::LayoutRootRequestOf<<Tree as surgeist_layout::Traverse>::Scalar>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, surgeist_layout::CompletedLayoutBatchOf<<Tree as surgeist_layout::Traverse>::Node, <Tree as surgeist_layout::Traverse>::Scalar>, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::LayoutTree
-pub fn surgeist_layout::compute_layout_with_text_invalidated<Tree>(capture: &surgeist_layout::TextLayoutInput<'_, Tree>, root: <Tree as surgeist_layout::Traverse>::Node, request: surgeist_layout::LayoutRootRequestOf<<Tree as surgeist_layout::Traverse>::Scalar>, changed_nodes: &[<Tree as surgeist_layout::Traverse>::Node]) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, surgeist_layout::CompletedLayoutBatchOf<<Tree as surgeist_layout::Traverse>::Node, <Tree as surgeist_layout::Traverse>::Scalar>, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::LayoutTree
+pub fn surgeist_layout::compute_layout_with_flow<Tree>(capture: &surgeist_layout::LayoutFlowInput<'_, Tree>, root: <Tree as surgeist_layout::Traverse>::Node, request: surgeist_layout::LayoutRootRequestOf<<Tree as surgeist_layout::Traverse>::Scalar>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, surgeist_layout::CompletedLayoutBatchOf<<Tree as surgeist_layout::Traverse>::Node, <Tree as surgeist_layout::Traverse>::Scalar>, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::LayoutTree
+pub fn surgeist_layout::compute_layout_with_flow_invalidated<Tree>(capture: &surgeist_layout::LayoutFlowInput<'_, Tree>, root: <Tree as surgeist_layout::Traverse>::Node, request: surgeist_layout::LayoutRootRequestOf<<Tree as surgeist_layout::Traverse>::Scalar>, changed_nodes: &[<Tree as surgeist_layout::Traverse>::Node]) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, surgeist_layout::CompletedLayoutBatchOf<<Tree as surgeist_layout::Traverse>::Node, <Tree as surgeist_layout::Traverse>::Scalar>, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::LayoutTree
 pub fn surgeist_layout::compute_leaf<S, M>(input: surgeist_layout::ComputeInputOf<S>, style: &surgeist_layout::NodeInputOf<S>, measure: impl core::ops::function::FnMut(surgeist_layout::LeafMeasureInputOf<S>) -> core::result::Result<surgeist_layout::Size<S>, M>) -> surgeist_layout::LayoutResultOf<(), surgeist_layout::ComputeOutputOf<S>, S, M> where S: surgeist_layout::LayoutScalar
 pub const fn surgeist_layout::grid_axis_for_lanes(auto_flow: surgeist_layout::GridAutoFlow) -> surgeist_layout::GridAxisKind
 pub const fn surgeist_layout::lane_axis(auto_flow: surgeist_layout::GridAutoFlow) -> surgeist_layout::GridAxisKind

@@ -76,6 +76,7 @@ pub enum LayoutOperation {
     RoundingFinalization,
     GridLanePlacement,
     TextCapture,
+    InlineWrapping,
     TextSelection,
     TextPlacement,
 }
@@ -91,6 +92,9 @@ pub enum LayoutErrorKindOf<S: LayoutScalar = DefaultScalar, M = core::convert::I
     Text(surgeist_text::Error),
     /// A complete canonical Text feedback basis repeated without acceptance.
     TextFeedbackCycle,
+    /// Numeric inline avoidance repeated an actual metric-envelope/float-band
+    /// basis without convergence. No chosen line has been published.
+    InlineFeedbackCycle,
     /// Layout's completed justification correction still exceeds the actual
     /// line budget. Both quantities are logical Text advances, before scalar
     /// conversion or physical placement.
@@ -148,6 +152,7 @@ pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
     InvalidationNodeNotReachable,
     TreeTopologyCycle,
     TextBinding(crate::text_layout::TextBindingError),
+    WrappingScope(crate::inline_wrapping::WrappingScopeError),
 }
 
 pub type LayoutInvalidInput = LayoutInvalidInputOf<DefaultScalar>;
@@ -179,6 +184,7 @@ pub enum LayoutMissingContext {
     RequiredBasis,
     FloatExclusionProvider,
     TextCapture,
+    InlineWrapping,
     /// The selected hyphenation needs an owning completed-block continuation.
     TextBlockTail,
     TextOutOfFlowGeometry,
@@ -456,4 +462,16 @@ where
             )),
         ),
     }
+}
+
+/// Refusal from the common immutable inline-scope owner.
+pub(crate) fn wrapping_error<Node, S: LayoutScalar, M>(
+    node: Node,
+    reason: crate::inline_wrapping::WrappingScopeError,
+) -> LayoutErrorOf<Node, S, M> {
+    LayoutErrorOf::new(
+        LayoutErrorSiteOf::Node(node),
+        LayoutOperation::InlineWrapping,
+        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(reason)),
+    )
 }

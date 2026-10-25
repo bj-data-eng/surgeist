@@ -48,8 +48,9 @@ fn native_batch<S: LayoutScalar>(
             },
         );
     }
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0)]).unwrap();
-    let batch = compute_layout_with_text(&capture, 0, request(width)).unwrap();
+    let capture =
+        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request(width)).unwrap();
     if with_float {
         let float = batch
             .final_entries()
@@ -237,12 +238,13 @@ fn intrinsic_root_batch<S: LayoutScalar>(
             },
         )
         .input(1, paragraph.text_input(1));
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0)]).unwrap();
+    let capture =
+        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
     // This is the actual root PerformLayout front with both preferred axes
     // AUTO. No separate ComputeSize or caller-provided known width is used.
     let request =
         LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap();
-    let batch = compute_layout_with_text(&capture, 0, request).unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
     let float = batch
         .final_entries()
         .iter()

@@ -280,8 +280,8 @@ fn capture() -> (
             }
         })
         .collect();
-    let captured = layout::TextLayoutInput::try_new(&tree, 0, bindings).unwrap();
-    let batch = layout::compute_layout_with_text(
+    let captured = layout::LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()).unwrap();
+    let batch = layout::compute_layout_with_flow(
         &captured,
         0,
         layout::LayoutRootRequest::viewport(layout::Size::new(

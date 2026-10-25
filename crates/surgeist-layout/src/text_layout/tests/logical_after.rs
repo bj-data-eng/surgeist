@@ -138,10 +138,10 @@ fn compute<S: LayoutScalar>(
         controls: vec![],
         line_strut: None,
     };
-    let captured = TextLayoutInput::try_new(&tree, 0, vec![binding]).unwrap();
+    let captured = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
     let request =
         LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap();
-    let result = compute_layout_with_text(&captured, 0, request).unwrap();
+    let result = compute_layout_with_flow(&captured, 0, request).unwrap();
     assert_eq!(result.placed_text().len(), 1);
     assert_eq!(result.placed_text()[0].nodes(), [1]);
     assert_eq!(

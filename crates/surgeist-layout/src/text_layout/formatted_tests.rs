@@ -101,6 +101,7 @@ fn numeric_forced_lines() -> Vec<NumericFormattedLine> {
     let metrics = crate::InlineMetricsOf::from_ascent_descent(8.0, 2.0).unwrap();
     let report = layout_mixed_inline_run_with_formatted_observation(
         MixedInlineRunInputOf {
+            wrapping: None,
             line_box_context: crate::line_box::LineBoxContext::new(
                 crate::LineBoxDirectionPolicy::Normal,
                 Direction::Ltr,
@@ -133,7 +134,8 @@ fn numeric_forced_lines() -> Vec<NumericFormattedLine> {
         },
         |block, _| block,
         true,
-    );
+    )
+    .unwrap();
     let lines = report.formatted_lines.unwrap();
     assert_eq!(lines.len(), report.line_bands.len());
     assert_eq!(lines[0].ending, surgeist_text::LineEnd::Forced);

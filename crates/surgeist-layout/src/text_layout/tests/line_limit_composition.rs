@@ -134,17 +134,26 @@ fn assert_nested_container_limits<S: LayoutScalar>() {
         HyphenateLimitLines::Count(1),
         HyphenateLimitLines::NoLimit,
     );
-    let capture =
-        TextLayoutInput::try_new(&original, 0, vec![first.binding(10), second.binding(20)])
-            .unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &original,
+        0,
+        vec![first.binding(10), second.binding(20)],
+        Vec::new(),
+    )
+    .unwrap();
     let swapped = tree::<S>(
         &first,
         &second,
         HyphenateLimitLines::NoLimit,
         HyphenateLimitLines::Count(1),
     );
-    let swapped_capture =
-        TextLayoutInput::try_new(&swapped, 0, vec![first.binding(10), second.binding(20)]).unwrap();
+    let swapped_capture = LayoutFlowInput::try_new(
+        &swapped,
+        0,
+        vec![first.binding(10), second.binding(20)],
+        Vec::new(),
+    )
+    .unwrap();
     // Both computations reuse the same genuine preparations. Changing which
     // block owns the cap must not rewrite dictionary offers or leak state.
     for (input, first_expected, second_expected) in [
@@ -152,7 +161,7 @@ fn assert_nested_container_limits<S: LayoutScalar>() {
         (&swapped_capture, uncapped.as_slice(), capped.as_slice()),
         (&capture, capped.as_slice(), uncapped.as_slice()),
     ] {
-        let batch = compute_layout_with_text(input, 0, request(30.0)).unwrap();
+        let batch = compute_layout_with_flow(input, 0, request(30.0)).unwrap();
         assert_eq!(batch.placed_text().len(), 2);
         assert_block(&batch, &first, 10, 1, first_expected);
         assert_block(&batch, &second, 20, 2, second_expected);

@@ -534,8 +534,8 @@ fn atomic_domain_shape(
 #[test]
 fn earlier_same_anchor_atomic_accepts_its_own_content_domain_and_computes_phrase_geometry() {
     let (tree, bindings) = atomic_domain();
-    let capture = TextLayoutInput::try_new(&tree, 0, bindings.clone()).unwrap();
-    let batch = compute_layout_with_text(&capture, 0, request(500.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 0, bindings.clone(), Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
     let generated: Vec<_> = batch
         .final_inline_fragments()
         .iter()
@@ -566,7 +566,7 @@ fn later_same_anchor_atomic_rejects_the_earlier_atomics_content_domain() {
     // endpoint controls and parent run. Move only the actual child container.
     let wrong_tree = tree.children(A0, []).children(A1, INLINE_NODES);
     bindings[1].container = A1;
-    let Err(error) = TextLayoutInput::try_new(&wrong_tree, 0, bindings) else {
+    let Err(error) = LayoutFlowInput::try_new(&wrong_tree, 0, bindings, Vec::new()) else {
         panic!("A0's captured atomic content domain must not be accepted under A1")
     };
     assert!(
@@ -583,11 +583,11 @@ fn later_same_anchor_atomic_rejects_the_earlier_atomics_content_domain() {
 #[test]
 fn out_of_flow_content_domain_keeps_its_exact_same_anchor_atomic_custody() {
     let (tree, bindings) = atomic_domain_kind(text::InlineBoxKind::OutOfFlow);
-    TextLayoutInput::try_new(&tree, 0, bindings.clone()).unwrap();
+    LayoutFlowInput::try_new(&tree, 0, bindings.clone(), Vec::new()).unwrap();
     let wrong_tree = tree.children(A0, []).children(A1, INLINE_NODES);
     let mut wrong = bindings;
     wrong[1].container = A1;
-    let Err(error) = TextLayoutInput::try_new(&wrong_tree, 0, wrong) else {
+    let Err(error) = LayoutFlowInput::try_new(&wrong_tree, 0, wrong, Vec::new()) else {
         panic!("out-of-flow atomic identity cannot be donated");
     };
     assert!(matches!(
@@ -603,7 +603,7 @@ fn parent_atomic_order_is_not_replaced_by_content_domain_schedule() {
     let (tree, mut bindings) = atomic_domain();
     let tree = tree.children(0, [A1, A0]);
     bindings[0].nodes = vec![A1, A0];
-    let Err(error) = TextLayoutInput::try_new(&tree, 0, bindings) else {
+    let Err(error) = LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()) else {
         panic!("the genuine parent atomic participants retain their own order");
     };
     assert!(matches!(
@@ -619,7 +619,7 @@ fn deferred_child_content_cannot_reverse_its_actual_boundary_controls() {
     let (tree, mut bindings) = atomic_domain();
     let tree = tree.children(A0, [32, 31, 30]);
     bindings[1].nodes = vec![32, 31, 30];
-    let Err(error) = TextLayoutInput::try_new(&tree, 0, bindings) else {
+    let Err(error) = LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()) else {
         panic!("deferred scheduling does not change child control custody or order");
     };
     assert!(matches!(
@@ -636,8 +636,8 @@ fn several_deferred_atomic_content_domains_keep_independent_actual_flows() {
         let (tree, bindings) = atomic_domain_shape(kind, DomainShape::SeveralDeferred);
         assert_eq!(bindings.len(), 3);
         assert_eq!(bindings[1].prepared.origin_views().len(), 0);
-        let capture = TextLayoutInput::try_new(&tree, 0, bindings.clone()).unwrap();
-        let batch = compute_layout_with_text(&capture, 0, request(500.0)).unwrap();
+        let capture = LayoutFlowInput::try_new(&tree, 0, bindings.clone(), Vec::new()).unwrap();
+        let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
         let generated: Vec<_> = batch
             .final_inline_fragments()
             .iter()
@@ -660,7 +660,7 @@ fn several_deferred_atomic_content_domains_keep_independent_actual_flows() {
 fn deferred_entry_cannot_donate_a_later_inline_parent_to_an_earlier_atomic() {
     let (tree, bindings) =
         atomic_domain_shape(text::InlineBoxKind::InFlow, DomainShape::LaterInlineParent);
-    let Err(error) = TextLayoutInput::try_new(&tree, 0, bindings) else {
+    let Err(error) = LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()) else {
         panic!("the nominated atomic must belong to its retained parent inline ancestry");
     };
     assert!(matches!(
@@ -678,8 +678,8 @@ fn deferred_content_can_follow_its_nominated_atomics_parent_paragraph_exit() {
     let parent = bindings[0].prepared.captured_paragraph().unwrap();
     let child = bindings[1].prepared.captured_paragraph().unwrap().domain();
     assert!(parent.exit_position() < child.enter_position());
-    let capture = TextLayoutInput::try_new(&tree, 0, bindings).unwrap();
-    let batch = compute_layout_with_text(&capture, 0, request(500.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
     assert_eq!(
         batch
             .final_inline_fragments()
@@ -695,8 +695,8 @@ fn plain_block_subtree_root_keeps_its_own_flow_without_an_outside_parent_associa
     let (tree, mut bindings) =
         atomic_domain_shape(text::InlineBoxKind::InFlow, DomainShape::PlainBlock);
     let child = bindings.remove(1);
-    let capture = TextLayoutInput::try_new(&tree, 50, vec![child]).unwrap();
-    let batch = compute_layout_with_text(&capture, 50, request(500.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 50, vec![child], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 50, request(500.0)).unwrap();
     let generated: Vec<_> = batch
         .final_inline_fragments()
         .iter()
@@ -710,7 +710,7 @@ fn plain_block_subtree_root_keeps_its_own_flow_without_an_outside_parent_associa
 fn atomic_content_root_cannot_guess_its_missing_nominated_atomic_binding() {
     let (tree, mut bindings) = atomic_domain();
     let child = bindings.remove(1);
-    let Err(error) = TextLayoutInput::try_new(&tree, A0, vec![child]) else {
+    let Err(error) = LayoutFlowInput::try_new(&tree, A0, vec![child], Vec::new()) else {
         panic!("an atomic content root still requires authentic nominated custody");
     };
     assert!(matches!(
@@ -725,8 +725,8 @@ fn atomic_content_root_cannot_guess_its_missing_nominated_atomic_binding() {
 fn plain_block_custody_allows_unmapped_layout_only_wrappers() {
     let (tree, bindings) =
         atomic_domain_shape(text::InlineBoxKind::InFlow, DomainShape::PlainBlockWrapper);
-    let capture = TextLayoutInput::try_new(&tree, 0, bindings).unwrap();
-    let batch = compute_layout_with_text(&capture, 0, request(500.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
     let generated: Vec<_> = batch
         .final_inline_fragments()
         .iter()
@@ -768,7 +768,7 @@ fn plain_block_definition_cannot_reuse_an_actual_prepared_atomic_container() {
         text::InlineBoxKind::InFlow,
         DomainShape::PlainAtomicConflict,
     );
-    let Err(error) = TextLayoutInput::try_new(&tree, 0, bindings) else {
+    let Err(error) = LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()) else {
         panic!("a plain Block cannot claim an explicitly bound atomic role");
     };
     assert!(matches!(

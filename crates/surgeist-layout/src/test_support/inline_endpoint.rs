@@ -346,8 +346,9 @@ impl Fixture {
         available: AvailableOf<S>,
     ) -> CompletedLayoutBatchOf<u32, S> {
         let tree = self.tree(start, end, rtl, width, float);
-        let capture = TextLayoutInput::try_new(&tree, 0, vec![self.binding.clone()]).unwrap();
-        compute_layout_with_text(
+        let capture =
+            LayoutFlowInput::try_new(&tree, 0, vec![self.binding.clone()], Vec::new()).unwrap();
+        compute_layout_with_flow(
             &capture,
             0,
             LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap(),

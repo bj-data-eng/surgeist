@@ -185,7 +185,7 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
         ],
         non_box: layout::NodeInput::non_box(),
     };
-    let capture = layout::TextLayoutInput::try_new(
+    let capture = layout::LayoutFlowInput::try_new(
         &tree,
         0,
         vec![layout::TextParagraphBinding {
@@ -200,9 +200,10 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
             controls: vec![],
             line_strut: None,
         }],
+        Vec::new(),
     )
     .unwrap();
-    let batch = layout::compute_layout_with_text(
+    let batch = layout::compute_layout_with_flow(
         &capture,
         0,
         layout::LayoutRootRequest::viewport(layout::Size::new(
@@ -406,7 +407,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
         ],
         non_box: layout::NodeInput::non_box(),
     };
-    let capture = layout::TextLayoutInput::try_new(
+    let capture = layout::LayoutFlowInput::try_new(
         &tree,
         0,
         vec![layout::TextParagraphBinding {
@@ -418,6 +419,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
             controls: vec![],
             line_strut: None,
         }],
+        Vec::new(),
     )
     .unwrap();
     let request = layout::LayoutRootRequest::viewport(layout::Size::new(
@@ -425,7 +427,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
         layout::Available::MaxContent,
     ))
     .unwrap();
-    let batch = layout::compute_layout_with_text(&capture, 0, request).unwrap();
+    let batch = layout::compute_layout_with_flow(&capture, 0, request).unwrap();
     assert_eq!(batch.placed_text().len(), 1);
     let committed = &batch.placed_text()[0];
     assert_eq!(committed.container(), 0);
@@ -603,7 +605,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
             )
         );
         assert_eq!(first_node.value(), Some("A"));
-        let other = layout::compute_layout_with_text(&capture, 0, request).unwrap();
+        let other = layout::compute_layout_with_flow(&capture, 0, request).unwrap();
         assert_eq!(
             other.placed_text()[0]
                 .layout()
@@ -717,7 +719,7 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
         ],
         non_box: layout::NodeInput::non_box(),
     };
-    let capture = layout::TextLayoutInput::try_new(
+    let capture = layout::LayoutFlowInput::try_new(
         &tree,
         0,
         vec![layout::TextParagraphBinding {
@@ -732,9 +734,10 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
             controls: vec![],
             line_strut: None,
         }],
+        Vec::new(),
     )
     .unwrap();
-    let batch = layout::compute_layout_with_text(
+    let batch = layout::compute_layout_with_flow(
         &capture,
         0,
         layout::LayoutRootRequest::viewport(layout::Size::new(
@@ -1125,7 +1128,7 @@ mod kana_transform {
             ],
             non_box: layout::NodeInput::non_box(),
         };
-        let capture = layout::TextLayoutInput::try_new(
+        let capture = layout::LayoutFlowInput::try_new(
             &tree,
             0,
             vec![layout::TextParagraphBinding {
@@ -1140,9 +1143,10 @@ mod kana_transform {
                 controls: vec![],
                 line_strut: None,
             }],
+            Vec::new(),
         )
         .unwrap();
-        let batch = layout::compute_layout_with_text(
+        let batch = layout::compute_layout_with_flow(
             &capture,
             0,
             layout::LayoutRootRequest::viewport(layout::Size::new(

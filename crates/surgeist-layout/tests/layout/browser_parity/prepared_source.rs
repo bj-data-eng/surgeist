@@ -672,13 +672,14 @@ mod tests {
                 .collect::<Vec<_>>();
             let tree = super::super::TestTree::from_golden(&golden.root).unwrap();
             let capture =
-                layout::TextLayoutInput::try_new(&tree, 0, tree.paragraphs.clone()).unwrap();
+                layout::LayoutFlowInput::try_new(&tree, 0, tree.paragraphs.clone(), Vec::new())
+                    .unwrap();
             let request = layout::LayoutRootRequest::viewport(layout::Size::new(
                 layout::Available::definite(100.0),
                 layout::Available::MaxContent,
             ))
             .unwrap();
-            let batch = layout::compute_layout_with_text(&capture, 0, request).unwrap();
+            let batch = layout::compute_layout_with_flow(&capture, 0, request).unwrap();
             assert_eq!(batch.unrounded_inline_fragments().len(), raw_children.len());
             for entry in batch.unrounded_inline_fragments() {
                 let text::FinalizedFragmentOwner::Control(control) =

@@ -72,8 +72,8 @@ fn compute<S: LayoutScalar>(
             },
         );
     }
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![binding]).unwrap();
-    compute_layout_with_text(
+    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+    compute_layout_with_flow(
         &capture,
         0,
         LayoutRootRequestOf::viewport(Size::new(width, AvailableOf::MaxContent)).unwrap(),
@@ -508,8 +508,8 @@ fn zone_resolution_is_consumed_only_by_a_real_fallback_and_preserves_numeric_fai
             .children(1, [])
             .style(0, policy)
             .input(1, p.text_input(1));
-        let capture = TextLayoutInput::try_new(&tree, 0, vec![p.binding(0)]).unwrap();
-        compute_layout_with_text(&capture, 0, request(60.0)).map_err(Box::new)
+        let capture = LayoutFlowInput::try_new(&tree, 0, vec![p.binding(0)], Vec::new()).unwrap();
+        compute_layout_with_flow(&capture, 0, request(60.0)).map_err(Box::new)
     }
     // No genuine before-word line: the huge but finite coefficient is unused.
     let p = PreparedParagraph::plain(

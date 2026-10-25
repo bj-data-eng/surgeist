@@ -118,10 +118,10 @@ fn intrinsic<S: LayoutScalar>(p: &PreparedParagraph, available: AvailableOf<S>, 
             },
         )
         .input(10, p.text_input(10));
-    let captured = TextLayoutInput::try_new(&tree, 2, vec![p.binding(2)]).unwrap();
+    let captured = LayoutFlowInput::try_new(&tree, 2, vec![p.binding(2)], Vec::new()).unwrap();
     let request =
         LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap();
-    let batch = compute_layout_with_text(&captured, 2, request).unwrap();
+    let batch = compute_layout_with_flow(&captured, 2, request).unwrap();
     assert_eq!(output(&batch, 2).size.width, S::from_f64(expected));
 }
 

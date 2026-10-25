@@ -321,8 +321,8 @@ fn compute<S: LayoutScalar>(
     width: AvailableOf<S>,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let tree = tree::<S>(p, rtl);
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![p.clone()]).unwrap();
-    compute_layout_with_text(
+    let capture = LayoutFlowInput::try_new(&tree, 0, vec![p.clone()], Vec::new()).unwrap();
+    compute_layout_with_flow(
         &capture,
         0,
         LayoutRootRequestOf::viewport(Size::new(width, AvailableOf::MAX_CONTENT)).unwrap(),
@@ -665,7 +665,7 @@ fn either_side_anywhere_obeys_actual_common_ancestor_and_rejects_stale_bindings(
                     &[(153, 10.0), (35, 10.0)],
                 );
                 let tree = tree::<S>(&old, rtl);
-                let Err(error) = TextLayoutInput::try_new(&tree, 0, vec![fresh]) else {
+                let Err(error) = LayoutFlowInput::try_new(&tree, 0, vec![fresh], Vec::new()) else {
                     panic!("new NCA context cannot reuse old preparation handles")
                 };
                 assert!(matches!(

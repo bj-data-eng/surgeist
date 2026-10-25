@@ -49,9 +49,9 @@ public scalar lane.
 Sources: [engine](../src/engine/mod.rs), [measurement](../src/measurement.rs),
 [tree](../src/tree.rs), [cache](../src/cache.rs), and [errors](../src/error.rs).
 
-- Tree layout: `compute_layout` and `compute_layout_invalidated`; captured Text
-  participation: `TextLayoutInput`, `compute_layout_with_text`, and
-  `compute_layout_with_text_invalidated`.
+- Tree layout: `compute_layout` and `compute_layout_invalidated`; checked inline
+  flow with optional Text: `LayoutFlowInput`, `compute_layout_with_flow`, and
+  `compute_layout_with_flow_invalidated`.
 - Direct leaf measurement: `compute_leaf`.
 - Host contracts: `Traverse`, `LayoutTree`, and `LayoutBatchSink`.
 - Cache and failure contracts: `CacheOf`, `LayoutResultOf`, and `LayoutErrorOf`.
@@ -80,6 +80,32 @@ it keeps the first alternative when an indivisible candidate must overflow.
 allocated strut. Its direction, wrapping, and source-less alternative facts stay
 Text-owned. Existing line breaks and inline boundaries instead supply their real
 Layout strut metrics and must match the corresponding issued semantic role.
+`LayoutFlowInput::try_new(tree, root, paragraphs, wrapping_scopes)` also admits
+box/control-only flow with no Text paragraphs. `WrappingScopeInput::NativePair`
+declares genuine normalized endpoints; `Captured` declares an authentic inline
+capture identity. `WrapInside::Avoid` ranks permitted fitting breaks through the
+same validated scope forest. A captured scope without endpoints supplies semantic
+ownership and no physical border or padding authority. Ordinary `compute_layout`
+keeps automatic wrapping without a declared scope context.
+
+Avoidance prefers a fitting cut outside an avoided box over one inside it, then
+prefers an outer cut over a cut inside a nested avoided box. Incomparable sibling
+chains retain the fitter's normal preference. The preference is noninherited and
+does not create or remove opportunities: forced ends remain mandatory, necessary
+internal breaks remain usable, and min-/max-content keep their ordinary opportunity
+rules. Actual finalized spacing, hanging punctuation, line metrics and float bands
+determine fit before preference is applied. Changed scope declarations require a
+new checked flow; invalidation includes their actual endpoint and owner dependencies.
+
+Text-backed scopes use authenticated mixed-prefix and canonical source incidence,
+including transformed, collapsed and removed content. A semantic captured scope
+can span a whole typographic unit without physical endpoints. Physical paired
+endpoints that cannot preserve genuine participant order across that unit remain
+unsupported; Layout refuses the association rather than moving endpoints around
+the glyph. `WrappingScopeError` identifies invalid or unprovable scope facts.
+Contradictory numeric metric/band feedback returns `InlineFeedbackCycle`; the
+Text-backed fitter retains `TextFeedbackCycle`. Neither publishes a partial batch.
+
 The preparation retains its actual `ParagraphStrut` policy. `DefaultFont`
 contributes the captured base font on each native line; `AllocatedContributions`
 uses real selected text, boxes, controls, and any explicitly supplied Layout

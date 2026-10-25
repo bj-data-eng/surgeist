@@ -64,8 +64,9 @@ fn batch<S: LayoutScalar>(
             },
         );
     }
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0)]).unwrap();
-    compute_layout_with_text(&capture, 0, request(100.0)).unwrap()
+    let capture =
+        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    compute_layout_with_flow(&capture, 0, request(100.0)).unwrap()
 }
 
 fn glyphs<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<(usize, u32, f64)> {
@@ -211,7 +212,7 @@ fn css_tab_capture_rejects_a_different_actual_container_direction() {
         .children(1, [])
         .style(0, block(false, 0.0, TextAlign::Start))
         .input(1, prepared.text_input(1));
-    let error = TextLayoutInput::try_new(&tree, 0, vec![prepared.binding(0)])
+    let error = LayoutFlowInput::try_new(&tree, 0, vec![prepared.binding(0)], Vec::new())
         .err()
         .unwrap();
     assert!(matches!(
@@ -251,6 +252,7 @@ fn intrinsic_with_indent(
         &[],
         &[],
         super::super::run::Context {
+            wrapping: None,
             formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
                 crate::LineBoxDirectionPolicy::Normal,
@@ -426,12 +428,12 @@ fn auto_root_intrinsic_sizing_refinalizes_tabs_against_the_real_used_width() {
                 },
             )
             .input(1, p.text_input(1));
-        let capture = TextLayoutInput::try_new(&tree, 0, vec![p.binding(0)]).unwrap();
+        let capture = LayoutFlowInput::try_new(&tree, 0, vec![p.binding(0)], Vec::new()).unwrap();
         for (available, expected_width) in [
             (AvailableOf::MAX_CONTENT, 50.0),
             (AvailableOf::MIN_CONTENT, 10.0),
         ] {
-            let actual = compute_layout_with_text(
+            let actual = compute_layout_with_flow(
                 &capture,
                 0,
                 LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT))
@@ -479,7 +481,7 @@ fn auto_root_intrinsic_sizing_refinalizes_tabs_against_the_real_used_width() {
         }
         // A fresh finite operation after both intrinsic modes must use the
         // real100px opposite edge: A10/TAB10/B10, regardless of prior results.
-        let finite = compute_layout_with_text(&capture, 0, request(100.0)).unwrap();
+        let finite = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();
         assert_eq!(
             lines(&finite)
                 .iter()

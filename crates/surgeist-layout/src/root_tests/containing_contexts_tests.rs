@@ -1415,9 +1415,14 @@ fn fri06_c02_block_text_containing_baselines_align_flex_items_both_scalars() {
                 (4, Vec::new()),
             ]),
         );
-        let capture =
-            TextLayoutInput::try_new(&tree, 0, vec![first.binding(1), second.binding(2)]).unwrap();
-        let batch = compute_layout_with_text(
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![first.binding(1), second.binding(2)],
+            Vec::new(),
+        )
+        .unwrap();
+        let batch = compute_layout_with_flow(
             &capture,
             0,
             LayoutRootRequestOf::viewport(Size::new(

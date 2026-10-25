@@ -54,8 +54,8 @@ fn compute<S: LayoutScalar>(
             },
         );
     }
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![p.binding(0)]).unwrap();
-    compute_layout_with_text(&capture, 0, request(100.0)).unwrap()
+    let capture = LayoutFlowInput::try_new(&tree, 0, vec![p.binding(0)], Vec::new()).unwrap();
+    compute_layout_with_flow(&capture, 0, request(100.0)).unwrap()
 }
 
 fn check<S: LayoutScalar>() {

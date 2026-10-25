@@ -4,6 +4,11 @@ use crate::{
     LayoutScalar, NodeInputOf, NodeOutputOf, RunMode, Traverse,
 };
 
+pub(crate) type WrappingContextLoan<'a, Node> = (
+    &'a std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>,
+    &'a crate::engine::validation::ValidationGraph<Node>,
+);
+
 // Input loans refer to immutable request storage, independently of temporary
 // borrows of the mutable output/cache computation facade.
 pub(crate) trait Compute<'input, M = core::convert::Infallible>:
@@ -11,6 +16,10 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
 {
     fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<Self::Scalar>;
     fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'input, Self::Scalar>;
+    /// Immutable normalized scope authority, separate from optional Text progress.
+    fn wrapping_context(&self) -> Option<WrappingContextLoan<'_, Self::Node>> {
+        None
+    }
     fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutputOf<Self::Scalar>);
     // Absence is the actual box-only profile, not a successful no-op finalizer.
     fn text_computation(

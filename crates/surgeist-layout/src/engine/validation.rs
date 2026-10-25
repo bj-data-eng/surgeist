@@ -406,7 +406,8 @@ mod tests {
                 },
             )
             .input(3, paragraph.text_input(3));
-        let Err(error) = crate::TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(1)])
+        let Err(error) =
+            crate::LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(1)], Vec::new())
         else {
             panic!("a first valid block parent does not hide the flex parent role");
         };
@@ -421,6 +422,6 @@ mod tests {
                 ..crate::NodeInputOf::default()
             },
         );
-        crate::TextLayoutInput::try_new(&valid, 0, vec![paragraph.binding(1)]).unwrap();
+        crate::LayoutFlowInput::try_new(&valid, 0, vec![paragraph.binding(1)], Vec::new()).unwrap();
     }
 }

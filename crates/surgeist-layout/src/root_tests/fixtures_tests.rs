@@ -84,6 +84,7 @@ pub(super) fn numeric_atomic_fit_with_flow<S: LayoutScalar>(
 ) -> crate::inline::MixedInlineRunReportOf<S> {
     let axes = FlowAxes::new(writing_mode, direction);
     crate::inline::layout_mixed_inline_run(crate::inline::MixedInlineRunInputOf {
+        wrapping: None,
         line_box_context: crate::line_box::LineBoxContext::new(
             crate::LineBoxDirectionPolicy::Normal,
             direction,
@@ -121,6 +122,7 @@ pub(super) fn numeric_atomic_fit_with_flow<S: LayoutScalar>(
             })
             .collect(),
     })
+    .unwrap()
 }
 
 pub(super) fn prepared_source_batch<S: LayoutScalar>(
@@ -156,10 +158,10 @@ pub(super) fn prepared_source_batch<S: LayoutScalar>(
         (1, paragraph.text_input(1)),
     ]);
     let tree = public_layout_tree(inputs, HashMap::from([(0, vec![1]), (1, Vec::new())]));
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0)])?;
+    let capture = LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new())?;
     let available = FlowAxes::new(writing_mode, direction)
         .physical_size(LogicalSizeOf::new(available, AvailableOf::MAX_CONTENT));
-    compute_layout_with_text(
+    compute_layout_with_flow(
         &capture,
         0,
         LayoutRootRequestOf::viewport(available).unwrap(),
@@ -331,8 +333,8 @@ pub(super) fn prepared_mixed_batch<S: LayoutScalar>(
                 .then(|| run.to_vec())
         })
         .expect("all explicitly prepared occurrences belong to one actual run");
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![binding]).unwrap();
-    compute_layout_with_text(
+    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+    compute_layout_with_flow(
         &capture,
         0,
         LayoutRootRequestOf::viewport(Size::new(available_inline, AvailableOf::MAX_CONTENT))
@@ -348,8 +350,8 @@ pub(super) fn prepared_tree_batch<S: LayoutScalar>(
     request: LayoutRootRequestOf<S>,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let tree = public_layout_tree(inputs, children);
-    let capture = TextLayoutInput::try_new(&tree, 0, paragraphs).unwrap();
-    compute_layout_with_text(&capture, 0, request).unwrap()
+    let capture = LayoutFlowInput::try_new(&tree, 0, paragraphs, Vec::new()).unwrap();
+    compute_layout_with_flow(&capture, 0, request).unwrap()
 }
 
 pub(super) fn prepared_front_door_batch<S: LayoutScalar>(
@@ -535,6 +537,7 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
         ))
     };
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+        wrapping: None,
         line_box_context: crate::line_box::LineBoxContext::new(
             crate::LineBoxDirectionPolicy::Normal,
             axes.direction(),
@@ -553,7 +556,8 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
             boundary(3, InlineBoundaryKind::End),
             atomic(4, 7.0, 10.0, 8.0, 1),
         ],
-    });
+    })
+    .unwrap();
     let starts = if axes.direction() == Direction::Rtl {
         [12.0, 12.0, 7.0, 7.0, 0.0]
     } else {
@@ -1308,8 +1312,8 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
         &self,
         request: LayoutRootRequestOf<S>,
     ) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, S>, S, ()> {
-        let capture = TextLayoutInput::try_new(self, 0, vec![self.text.clone()])?;
-        compute_layout_with_text(&capture, 0, request)
+        let capture = LayoutFlowInput::try_new(self, 0, vec![self.text.clone()], Vec::new())?;
+        compute_layout_with_flow(&capture, 0, request)
     }
 
     pub(super) fn compute_invalidated(
@@ -1317,8 +1321,8 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
         request: LayoutRootRequestOf<S>,
         dirty: &[u32],
     ) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, S>, S, ()> {
-        let capture = TextLayoutInput::try_new(self, 0, vec![self.text.clone()])?;
-        compute_layout_with_text_invalidated(&capture, 0, request, dirty)
+        let capture = LayoutFlowInput::try_new(self, 0, vec![self.text.clone()], Vec::new())?;
+        compute_layout_with_flow_invalidated(&capture, 0, request, dirty)
     }
 
     pub(super) fn add_failing_noncanonical_control(&mut self) {

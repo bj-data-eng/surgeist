@@ -111,10 +111,13 @@ fn assert_one_paragraph<S: LayoutScalar>(with_float: bool) {
     assert_eq!(binding.origins[0].origin, paragraph.origin(1));
     assert_eq!(binding.origins[1].origin, paragraph.origin(2));
     assert_eq!(binding.prepared, paragraph.prepared);
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![binding]).unwrap_or_else(|error| {
-        panic!("one prepared paragraph must remain admissible across an ignored float: {error:?}")
-    });
-    let batch = compute_layout_with_text(&capture, 0, request(40.0)).unwrap();
+    let capture =
+        LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap_or_else(|error| {
+            panic!(
+                "one prepared paragraph must remain admissible across an ignored float: {error:?}"
+            )
+        });
+    let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
     assert_eq!(batch.placed_text().len(), 1);
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[65, 10, 88]);
@@ -191,9 +194,14 @@ fn assert_two_explicit_paragraphs<S: LayoutScalar>() {
     let second = PreparedParagraph::plain(2, Source::new("X"), style);
     assert_ne!(first.prepared, second.prepared);
     let tree = tree::<S>(&first, &second, true);
-    let capture =
-        TextLayoutInput::try_new(&tree, 0, vec![first.binding(0), second.binding(0)]).unwrap();
-    let batch = compute_layout_with_text(&capture, 0, request(40.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![first.binding(0), second.binding(0)],
+        Vec::new(),
+    )
+    .unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
     assert_eq!(batch.placed_text().len(), 2);
     let first_layout = batch.placed_text()[0].layout();
     let second_layout = batch.placed_text()[1].layout();

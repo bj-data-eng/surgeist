@@ -49,6 +49,7 @@ pub(crate) struct LineBasis {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PassBasis<Node, S: LayoutScalar> {
+    pub wrapping: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>>,
     pub formatted: Option<super::formatted::FormattedPassBasis<Node, S>>,
     pub line_boxes: Vec<(
         Node,
@@ -85,6 +86,7 @@ pub(crate) struct ScopeFragmentGroup<Node, S: LayoutScalar> {
 /// use actual preceding canonical outputs and must reproduce their full basis
 /// before any placed Text or completed batch can escape.
 pub(crate) struct TextComputation<'input, Node, S: LayoutScalar> {
+    pub wrapping: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>>,
     pub formatted: Option<super::formatted::FormattedState<Node, S>>,
     pub graph: Option<&'input crate::engine::validation::ValidationGraph<Node>>,
     pub paragraphs: &'input [TextParagraphBinding<Node>],
@@ -143,6 +145,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             .formatted
             .get_or_insert_with(super::formatted::FormattedState::new);
         state.frames = self.frames.clone();
+        state.wrapping = self.wrapping.clone();
         let binding = state.binding(container, nodes, prepared, input, mode);
         let item =
             super::formatted::FormattedFlowItem::Text(binding.clone(), uses.accepted.clone());
@@ -352,6 +355,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
     ) -> Self {
         Self {
+            wrapping: None,
             formatted: None,
             graph: None,
             paragraphs,
@@ -462,6 +466,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
 
     pub fn basis(&self, frames: Vec<CanonicalFrame<Node, S>>) -> PassBasis<Node, S> {
         PassBasis {
+            wrapping: self.wrapping.clone(),
             formatted: self
                 .formatted
                 .as_ref()

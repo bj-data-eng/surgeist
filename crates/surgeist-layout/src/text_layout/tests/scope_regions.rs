@@ -224,8 +224,8 @@ fn many_disjoint_owners_keep_their_own_geometry_without_requiring_empty_gaps() {
         }
     }
     bindings.reverse();
-    let capture = TextLayoutInput::try_new(&tree, 0, bindings).unwrap();
-    let batch = compute_layout_with_text(&capture, 0, request(500.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
     let mut generated: Vec<_> = batch
         .final_inline_fragments()
         .iter()
@@ -380,5 +380,5 @@ fn local_emitter_does_not_require_unique_paths_for_dormant_same_domain_text() {
     ];
     // Node400 is one dormant captured origin with two actual graph occurrences.
     // This admission proves the emitting scope before it, not either later path.
-    TextLayoutInput::try_new(&tree, 0, bindings).unwrap();
+    LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()).unwrap();
 }

@@ -134,7 +134,7 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
         ],
         non_box: layout::NodeInput::non_box(),
     };
-    let capture = layout::TextLayoutInput::try_new(
+    let capture = layout::LayoutFlowInput::try_new(
         &tree,
         0,
         vec![layout::TextParagraphBinding {
@@ -153,9 +153,10 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
             controls: vec![],
             line_strut: None,
         }],
+        Vec::new(),
     )
     .unwrap();
-    let batch = layout::compute_layout_with_text(
+    let batch = layout::compute_layout_with_flow(
         &capture,
         0,
         layout::LayoutRootRequest::viewport(layout::Size::new(

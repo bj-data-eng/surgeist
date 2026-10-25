@@ -191,7 +191,7 @@ fn capture(
         inputs,
         non_box: layout::NodeInput::non_box(),
     };
-    let captured = layout::TextLayoutInput::try_new(
+    let captured = layout::LayoutFlowInput::try_new(
         &tree,
         0,
         vec![layout::TextParagraphBinding {
@@ -203,9 +203,10 @@ fn capture(
             atomics: vec![],
             line_strut: None,
         }],
+        Vec::new(),
     )
     .unwrap();
-    let batch = layout::compute_layout_with_text(
+    let batch = layout::compute_layout_with_flow(
         &captured,
         0,
         layout::LayoutRootRequest::viewport(layout::Size::new(

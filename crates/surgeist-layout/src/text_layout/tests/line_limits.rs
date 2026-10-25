@@ -39,9 +39,9 @@ fn compute<S: LayoutScalar>(
             LayoutInputOf::text_control(TextControlParticipation::new(control.occurrence.clone())),
         );
     }
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![binding]).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
     let input = LayoutRootRequestOf::viewport(Size::new(width, AvailableOf::MaxContent)).unwrap();
-    compute_layout_with_text(&capture, 0, input).unwrap()
+    compute_layout_with_flow(&capture, 0, input).unwrap()
 }
 fn observations<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,

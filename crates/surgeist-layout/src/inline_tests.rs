@@ -46,6 +46,7 @@ fn mr02_input<S: LayoutScalar>(
             Direction::Ltr,
         ),
         observe_tail: false,
+        wrapping: None,
         available_inline_extent,
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         text_align: TextAlign::Start,
@@ -99,6 +100,7 @@ fn authored_atomic_shape_band_break_target_keeps_34_38_then_42_46_both_scalars()
                 },
                 |block, _| block,
             )
+            .unwrap()
         };
         // The first band is 136px: 48+34+38=120 fits, adding 42 does not.
         // The actual allowed endpoint after 38 commits 42+46 on the next band.
@@ -143,7 +145,8 @@ fn fri06_mr02_inline_linear_empty_strut_and_forced_clear_preserve_metrics_both_s
         let report = layout_mixed_inline_run(mr02_input(
             AvailableOf::MAX_CONTENT,
             vec![mixed_forced_line_break(7, flow_axes, metrics, Clear::Both)],
-        ));
+        ))
+        .unwrap();
 
         assert_eq!(report.inline_extent, S::ZERO);
         assert_eq!(report.block_extent, S::from_f64(24.0));
@@ -195,7 +198,8 @@ fn supplied_edges_and_real_atomic_overflow_preserve_discard_and_endpoint_roles_b
                 mr02_atomic(11, 10.0, 10.0, 8.0, 0, InlineBreakOpportunity::Allowed),
                 mr02_atomic(13, 30.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
             ],
-        ));
+        ))
+        .unwrap();
         assert_eq!(report.atomics.len(), 2);
         assert_eq!(
             (
@@ -219,7 +223,8 @@ fn supplied_edges_and_real_atomic_overflow_preserve_discard_and_endpoint_roles_b
                 mr02_atomic(30, 5.0, 10.0, 8.0, 0, InlineBreakOpportunity::Allowed),
                 mr02_atomic(31, 6.0, 10.0, 8.0, 0, InlineBreakOpportunity::Mandatory),
             ],
-        ));
+        ))
+        .unwrap();
         assert_eq!(endpoint_breaks.atomics.len(), 2);
         assert_eq!(endpoint_breaks.atomics[0].line_index, 0);
         assert_eq!(endpoint_breaks.atomics[1].line_index, 1);
@@ -258,8 +263,9 @@ fn actual_prepared_collapse_keeps_original_source_while_suppressing_line_edges_b
                 },
             )
             .input(1, paragraph.text_input(1));
-        let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0)]).unwrap();
-        let batch = compute_layout_with_text(
+        let capture =
+            LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+        let batch = compute_layout_with_flow(
             &capture,
             0,
             LayoutRootRequestOf::viewport(Size::new(
@@ -347,7 +353,8 @@ fn fri06_mr02_inline_linear_bidi_mixed_sources_preserve_visual_order_and_baselin
                 mr02_atomic(42, 5.0, 12.0, 9.0, 2, InlineBreakOpportunity::Prohibited),
                 mr02_atomic(43, 7.0, 10.0, 8.0, 1, InlineBreakOpportunity::Prohibited),
             ],
-        ));
+        ))
+        .unwrap();
 
         assert_eq!(report.inline_extent, S::from_f64(22.0));
         assert_eq!(report.block_extent, S::from_f64(12.0));
@@ -384,7 +391,8 @@ fn mr02_intrinsic_extents<S: LayoutScalar>() -> (S, S) {
             mr02_atomic(52, 0.2, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
             mr02_atomic(53, 0.05, 10.0, 8.0, 0, InlineBreakOpportunity::Allowed),
         ],
-    ));
+    ))
+    .unwrap();
     let max = layout_mixed_inline_run(mr02_input(
         AvailableOf::MAX_CONTENT,
         vec![
@@ -392,7 +400,8 @@ fn mr02_intrinsic_extents<S: LayoutScalar>() -> (S, S) {
             mr02_atomic(52, 0.2, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
             mr02_atomic(53, 0.3, 10.0, 8.0, 0, InlineBreakOpportunity::Mandatory),
         ],
-    ));
+    ))
+    .unwrap();
     (min.inline_extent, max.inline_extent)
 }
 
@@ -447,7 +456,8 @@ fn fri06_mr02_inline_linear_float_band_retry_preserves_queries_and_reselection_b
                 }
             },
             |block, _| block,
-        );
+        )
+        .unwrap();
 
         assert_eq!(
             queries,
@@ -484,7 +494,8 @@ fn mr02_candidate_scan_work(participant_count: usize) -> usize {
         .collect();
     reset_inline_candidate_scan_visits();
     let report =
-        layout_mixed_inline_run(mr02_input(AvailableOf::definite(1_000_000.0), participants));
+        layout_mixed_inline_run(mr02_input(AvailableOf::definite(1_000_000.0), participants))
+            .unwrap();
     assert_eq!(report.atomics.len(), participant_count);
     inline_candidate_scan_visits()
 }
@@ -588,7 +599,8 @@ fn fri06_c12_t07_endpoint_break_private_line_membership() -> (usize, usize, usiz
             mixed_forced_line_break(1, flow_axes, metrics, Clear::None),
             mr02_atomic(2, 20.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
         ],
-    ));
+    ))
+    .unwrap();
     let previous_line = report
         .atomics
         .iter()
@@ -687,6 +699,7 @@ fn fri06_c03_strut_private_builder_retains_control_baselines_and_post_line_inten
                 flow_axes.direction(),
             ),
             observe_tail: false,
+            wrapping: None,
             available_inline_extent: AvailableOf::MAX_CONTENT,
             flow_axes,
             text_align: TextAlign::Start,
@@ -697,7 +710,8 @@ fn fri06_c03_strut_private_builder_retains_control_baselines_and_post_line_inten
                 mixed_boundary(0, flow_axes, boundary_metrics),
                 mixed_forced_line_break(1, flow_axes, break_metrics, Clear::Both),
             ],
-        });
+        })
+        .unwrap();
 
         assert_eq!(report.block_extent, S::from_f64(40.0));
         assert_eq!(report.first_baseline, Some(S::from_f64(15.0)));
@@ -744,6 +758,7 @@ fn fri06_c04_line_band_private_callback_retries_transition_and_reselects_same_cu
                     flow_axes.direction(),
                 ),
                 observe_tail: false,
+                wrapping: None,
                 available_inline_extent: AvailableOf::definite(S::from_f64(100.0)),
                 flow_axes,
                 text_align: TextAlign::Start,
@@ -779,7 +794,8 @@ fn fri06_c04_line_band_private_callback_retries_transition_and_reselects_same_cu
                 }
             },
             |block, _| block,
-        );
+        )
+        .unwrap();
 
         assert_eq!(
             queries,
@@ -1862,7 +1878,8 @@ fn resolved_bidi_level_126_preserves_l2_mixed_line_order_both_scalars() {
                 mr02_atomic(1, 5.0, 10.0, 8.0, 126, InlineBreakOpportunity::Prohibited),
                 mr02_atomic(2, 7.0, 10.0, 8.0, 125, InlineBreakOpportunity::Prohibited),
             ],
-        ));
+        ))
+        .unwrap();
         // L2 first reverses the singleton 126, then the whole 125-or-higher run.
         // Visual order is therefore [2,1,0], independently of scalar precision.
         let mut visual: Vec<_> = report
@@ -1895,7 +1912,8 @@ fn supplied_line_projection_and_forced_break_queries_visit_linear_real_formatter
         reset_inline_work_visits();
         reset_inline_candidate_scan_visits();
         let report =
-            layout_mixed_inline_run(mr02_input(AvailableOf::definite(1_000_000.0), participants));
+            layout_mixed_inline_run(mr02_input(AvailableOf::definite(1_000_000.0), participants))
+                .unwrap();
         assert_eq!(report.atomics.len(), count);
         assert_eq!(
             report.inline_extent,
@@ -1916,7 +1934,8 @@ fn supplied_line_projection_and_forced_break_queries_visit_linear_real_formatter
             .collect();
         reset_inline_work_visits();
         let report =
-            layout_mixed_inline_run(mr02_input(AvailableOf::definite(100.0), participants));
+            layout_mixed_inline_run(mr02_input(AvailableOf::definite(100.0), participants))
+                .unwrap();
         assert!(report.atomics.is_empty());
         assert_eq!(report.controls.len(), count * 2);
         assert_eq!(report.inline_extent, 0.0);
@@ -1930,7 +1949,8 @@ fn supplied_line_projection_and_forced_break_queries_visit_linear_real_formatter
             })
             .collect();
         reset_inline_work_visits();
-        let report = layout_mixed_inline_run(mr02_input(AvailableOf::definite(1.0), participants));
+        let report =
+            layout_mixed_inline_run(mr02_input(AvailableOf::definite(1.0), participants)).unwrap();
         assert_eq!(report.atomics.len(), count);
         assert_eq!(report.atomics.last().unwrap().line_index, count - 1);
         assert_eq!(report.atomics.last().unwrap().inline_start, 0.0);
@@ -1951,7 +1971,8 @@ fn assert_mandatory_atomic_queries_are_confined_to_each_actual_line<S: LayoutSca
         let report = layout_mixed_inline_run(mr02_input(
             AvailableOf::definite(S::from_f64(100.0)),
             participants,
-        ));
+        ))
+        .unwrap();
         assert_eq!(report.atomics.len(), count);
         assert_eq!(report.inline_extent, S::ONE);
         assert_eq!(
@@ -2035,7 +2056,7 @@ fn numeric_unexpandable_alignment_uses_actual_last_line_policy_both_scalars() {
                     input.flow_axes.direction(),
                 );
                 input.text_align = align;
-                let report = layout_mixed_inline_run(input);
+                let report = layout_mixed_inline_run(input).unwrap();
                 assert_eq!(
                     report.atomics[0].inline_start,
                     S::from_f64(expected),
@@ -2062,7 +2083,7 @@ fn numeric_unexpandable_alignment_uses_actual_last_line_policy_both_scalars() {
             );
             input.text_align = TextAlign::Justify;
             input.text_align_last = last;
-            let report = layout_mixed_inline_run(input);
+            let report = layout_mixed_inline_run(input).unwrap();
             assert_eq!(report.atomics[0].inline_start, S::from_f64(expected));
         }
     }
@@ -2087,7 +2108,7 @@ fn assert_numeric_mandatory_atomic_last_alignment<S: LayoutScalar>() {
         );
         input.text_align = TextAlign::Start;
         input.text_align_last = last;
-        let report = layout_mixed_inline_run(input);
+        let report = layout_mixed_inline_run(input).unwrap();
         assert_eq!(report.atomics.len(), 2);
         assert_eq!(report.line_bands.len(), 2);
         assert_eq!(report.atomics[0].block_start, S::ZERO);
@@ -2120,7 +2141,7 @@ fn last_tail_observations_keep_actual_numeric_endings_and_zero_atomic_content() 
     fn check<S: LayoutScalar>() {
         let observe = |mut input: MixedInlineRunInputOf<S>| {
             input.observe_tail = true;
-            layout_mixed_inline_run(input)
+            layout_mixed_inline_run(input).unwrap()
         };
         let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
         let metrics =
@@ -2191,7 +2212,8 @@ fn positive_numeric_endpoint_contributes_once_to_intrinsics_and_retries_a_real_f
         };
         let edge = InlineBoundaryEdgeOf::try_new(S::from_f64(3.0), S::from_f64(5.0)).unwrap();
         for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
-            let report = layout_mixed_inline_run(mr02_input(available, participants(edge)));
+            let report =
+                layout_mixed_inline_run(mr02_input(available, participants(edge))).unwrap();
             assert_eq!(report.inline_extent, S::from_f64(28.0));
             assert_eq!(report.atomics[1].inline_start, S::from_f64(18.0));
             assert_eq!(report.controls[0].inline_extent, S::from_f64(8.0));
@@ -2211,7 +2233,8 @@ fn positive_numeric_endpoint_contributes_once_to_intrinsics_and_retries_a_real_f
                     next_transition: (start < S::from_f64(20.0)).then_some(S::from_f64(20.0)),
                 },
                 |block, _| block,
-            );
+            )
+            .unwrap();
             assert_eq!(report.inline_extent, S::from_f64(width));
             assert_eq!(report.line_bands.len(), 1);
             assert_eq!(report.line_bands[0].block_start, S::from_f64(expected_y));

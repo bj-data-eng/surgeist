@@ -134,8 +134,8 @@ fn compute<S: LayoutScalar>(
         .children(1, [])
         .style(0, block(width, direction, policy, indent))
         .input(1, p.text_input(1));
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![p.binding(0)]).unwrap();
-    compute_layout_with_text(&capture, 0, request(width)).unwrap()
+    let capture = LayoutFlowInput::try_new(&tree, 0, vec![p.binding(0)], Vec::new()).unwrap();
+    compute_layout_with_flow(&capture, 0, request(width)).unwrap()
 }
 
 fn request<S: LayoutScalar>(width: f64) -> LayoutRootRequestOf<S> {
@@ -339,13 +339,14 @@ fn chronology<S: LayoutScalar>() {
         .input(6, child.text_input(6));
     let mut tree = CachedTree::new(tree);
     let run = |tree: &CachedTree<S>| {
-        let capture = TextLayoutInput::try_new(
+        let capture = LayoutFlowInput::try_new(
             tree,
             0,
             vec![first.binding(0), child.binding(2), last.binding(0)],
+            Vec::new(),
         )
         .unwrap();
-        compute_layout_with_text(&capture, 0, request(40.0)).unwrap()
+        compute_layout_with_flow(&capture, 0, request(40.0)).unwrap()
     };
     let batch = run(&tree);
     let find = |node| {
@@ -456,6 +457,7 @@ fn intrinsic<S: LayoutScalar>(
         &[],
         &[],
         super::super::run::Context {
+            wrapping: None,
             formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
                 LineBoxDirectionPolicy::Plaintext,
@@ -690,8 +692,9 @@ fn numeric_overflow_cases<S: LayoutScalar>(
                     },
                 )
                 .input(1, p.text_input(1));
-            let capture = TextLayoutInput::try_new(&tree, 0, vec![p.binding(0)]).unwrap();
-            let batch = compute_layout_with_text(&capture, 0, request(40.0)).unwrap();
+            let capture =
+                LayoutFlowInput::try_new(&tree, 0, vec![p.binding(0)], Vec::new()).unwrap();
+            let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
             assert_eq!(
                 glyphs(&batch, 0)
                     .iter()

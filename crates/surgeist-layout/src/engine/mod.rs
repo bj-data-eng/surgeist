@@ -78,22 +78,23 @@ where
     Ok(session.complete_for_root(root))
 }
 
-/// Computes and atomically retains actual Text layouts for a checked immutable
-/// capture. Old geometry caches cannot stand in for Text finalization.
-pub fn compute_layout_with_text<Tree>(
-    capture: &crate::TextLayoutInput<'_, Tree>,
+/// Computes checked immutable inline flow, including numeric-only flow.
+/// Text paragraphs retain their actual finalized layouts; old geometry caches
+/// cannot stand in for Text finalization.
+pub fn compute_layout_with_flow<Tree>(
+    capture: &crate::LayoutFlowInput<'_, Tree>,
     root: Tree::Node,
     request: LayoutRootRequestOf<Tree::Scalar>,
 ) -> ComputeLayoutResult<Tree>
 where
     Tree: LayoutTree,
 {
-    compute_layout_with_text_invalidated(capture, root, request, &[])
+    compute_layout_with_flow_invalidated(capture, root, request, &[])
 }
 
-/// Text computation with the ordinary source-owned invalidation closure.
-pub fn compute_layout_with_text_invalidated<Tree>(
-    capture: &crate::TextLayoutInput<'_, Tree>,
+/// Checked inline-flow computation with the source-owned invalidation closure.
+pub fn compute_layout_with_flow_invalidated<Tree>(
+    capture: &crate::LayoutFlowInput<'_, Tree>,
     root: Tree::Node,
     request: LayoutRootRequestOf<Tree::Scalar>,
     changed_nodes: &[Tree::Node],
@@ -113,7 +114,21 @@ where
     let mut invalidation_seeds = changed_nodes.to_vec();
     invalidation_seeds.extend(capture.invalidated.iter().copied());
     let invalidated = capture.graph.invalidation(&invalidation_seeds)?;
-    let mut session = session::ComputeSession::with_text(capture, invalidated);
+    let mut session = session::ComputeSession::with_flow(capture, invalidated);
+    if capture.paragraphs.is_empty() {
+        match request.context() {
+            LayoutRootContextOf::Viewport => compute_root(&mut session, root, request.available())?,
+            LayoutRootContextOf::FlexItemUnderViewport(context) => {
+                compute_flex_item_root(&mut session, root, request.available(), context)?;
+            }
+        }
+        match request.rounding_mode() {
+            crate::LayoutRoundingMode::NearestCssPixel => {
+                rounding::round_layout(&mut session, root)?
+            }
+        }
+        return Ok(session.complete_for_root(root));
+    }
     let mut rejected_bases = Vec::new();
     loop {
         match request.context() {

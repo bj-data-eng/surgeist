@@ -250,12 +250,17 @@ fn prepared_nested_atomic_baseline_batch<S: LayoutScalar>(
             (5, vec![]),
         ]),
     );
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0), inner.binding(2)])?;
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0), inner.binding(2)],
+        Vec::new(),
+    )?;
     let available = parent_flow.physical_size(LogicalSizeOf::new(
         AvailableOf::definite(S::from_f64(100.0)),
         AvailableOf::MAX_CONTENT,
     ));
-    compute_layout_with_text(
+    compute_layout_with_flow(
         &capture,
         0,
         LayoutRootRequestOf::viewport(available).unwrap(),
@@ -1503,8 +1508,9 @@ fn fri06_c04_line_band_ordinary_block_keeps_outer_edge_and_inherits_parent_float
                 ]),
             );
 
-            let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(2)]).unwrap();
-            let batch = compute_layout_with_text(
+            let capture =
+                LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(2)], Vec::new()).unwrap();
+            let batch = compute_layout_with_flow(
                 &capture,
                 0,
                 LayoutRootRequestOf::viewport(Size::new(
@@ -1632,8 +1638,9 @@ fn fri06_c04_line_band_nested_local_float_keeps_combined_ledger_order_both_scala
             ]),
         );
 
-        let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(3)]).unwrap();
-        let batch = compute_layout_with_text(
+        let capture =
+            LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(3)], Vec::new()).unwrap();
+        let batch = compute_layout_with_flow(
             &capture,
             0,
             LayoutRootRequestOf::viewport(Size::new(

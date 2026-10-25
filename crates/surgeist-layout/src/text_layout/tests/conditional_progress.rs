@@ -71,8 +71,8 @@ fn leading_band<S: LayoutScalar>() {
         )
         .input(1, paragraph.text_input(1))
         .input(3, paragraph.text_input(3));
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 0, request(12.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request(12.0)).unwrap();
     assert_eq!(
         facts(&batch, &paragraph.prepared, "XX"),
         [
@@ -147,8 +147,8 @@ fn forced_tie<S: LayoutScalar>() {
             4,
             LayoutInputOf::text_control(TextControlParticipation::new(control)),
         );
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 0, request(20.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
     let mut first = line(0, 1, 10.0, 20.0, 0.0, 0.0, false);
     first.end = LineEnd::Forced;
     assert_eq!(
@@ -260,8 +260,8 @@ fn registered_batch<S: LayoutScalar>(
         );
     }
     tree = tree.children(0, binding.nodes.clone());
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![binding]).unwrap();
-    compute_layout_with_text(&capture, 0, request(width)).unwrap()
+    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+    compute_layout_with_flow(&capture, 0, request(width)).unwrap()
 }
 
 fn finalized(batch: &CompletedLayoutBatchOf<u32, impl LayoutScalar>) -> Vec<FinalizedLine> {
@@ -512,8 +512,9 @@ fn phantom_frontier<S: LayoutScalar>() {
             },
         )
         .input(1, paragraph.text_input(1));
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0)]).unwrap();
-    let batch = compute_layout_with_text(&capture, 0, request(20.0)).unwrap();
+    let capture =
+        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.source().text().code_units(), [32, 88, 88, 88, 88]);
     assert_eq!(
@@ -664,13 +665,13 @@ fn raw_minimum<S: LayoutScalar>(overflow: OverflowWrap) -> (f64, Vec<LineFact>) 
             1,
             LayoutInputOf::inline_text(TextParticipation::new(origin)),
         );
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![binding]).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
     let request = LayoutRootRequestOf::viewport(Size::new(
         AvailableOf::MIN_CONTENT,
         AvailableOf::MAX_CONTENT,
     ))
     .unwrap();
-    let batch = compute_layout_with_text(&capture, 0, request).unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
     let width = batch
         .final_entries()
         .iter()

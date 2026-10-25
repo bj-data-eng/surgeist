@@ -259,8 +259,8 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
     assert!(empty.line_strut.is_none());
 
     // The real empty block already computes normally without a text run.
-    let capture = layout::TextLayoutInput::try_new(&tree, 0, parents.clone()).unwrap();
-    let baseline = layout::compute_layout_with_text(&capture, 0, request()).unwrap();
+    let capture = layout::LayoutFlowInput::try_new(&tree, 0, parents.clone(), Vec::new()).unwrap();
+    let baseline = layout::compute_layout_with_flow(&capture, 0, request()).unwrap();
     assert_eq!(baseline.placed_text().len(), 2);
     let box3 = baseline
         .final_entries()
@@ -283,12 +283,12 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
     // it must add no strut, line, placed Text result or generated geometry.
     let mut complete = parents;
     complete.insert(1, empty);
-    let capture = layout::TextLayoutInput::try_new(&tree, 0, complete).unwrap_or_else(|error| {
+    let capture = layout::LayoutFlowInput::try_new(&tree, 0, complete, Vec::new()).unwrap_or_else(|error| {
         panic!(
             "a genuine empty captured child paragraph must associate without a Text run: {error:?}"
         )
     });
-    let associated = layout::compute_layout_with_text(&capture, 0, request()).unwrap();
+    let associated = layout::compute_layout_with_flow(&capture, 0, request()).unwrap();
     assert_eq!(associated.final_entries(), baseline.final_entries());
     assert_eq!(associated.placed_text().len(), 2);
     for (actual, expected) in associated.placed_text().iter().zip(baseline.placed_text()) {
@@ -329,7 +329,7 @@ fn source_bearing_paragraph_with_empty_nodes_is_not_association_only() {
     parents[0].origins.clear();
     parents[0].controls.clear();
     parents[0].atomics.clear();
-    let Err(error) = layout::TextLayoutInput::try_new(&tree, 0, parents) else {
+    let Err(error) = layout::LayoutFlowInput::try_new(&tree, 0, parents, Vec::new()) else {
         panic!("a source-bearing paragraph with no run nodes must refuse")
     };
     assert!(
@@ -429,7 +429,7 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
         })],
         non_box: layout::NodeInput::non_box(),
     };
-    let Err(error) = layout::TextLayoutInput::try_new(&tree, 0, vec![binding]) else {
+    let Err(error) = layout::LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()) else {
         panic!("discarding a genuine source space cannot make its paragraph association-only")
     };
     assert!(

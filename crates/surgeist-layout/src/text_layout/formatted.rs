@@ -207,6 +207,7 @@ pub(crate) struct ScopedFlow<Node, S: crate::LayoutScalar> {
 /// The host geometry cache has no storage for it and cannot manufacture one.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SummaryReceipt<Node, S: crate::LayoutScalar> {
+    pub(crate) wrapping: Option<Arc<crate::inline_wrapping::WrappingContext<Node>>>,
     pub(crate) output: Option<(crate::CacheKeyContext, crate::ComputeOutputOf<S>)>,
     pub(crate) frames: Arc<[super::state::CanonicalFrame<Node, S>]>,
     pub(crate) node: Node,
@@ -225,6 +226,7 @@ pub(crate) struct BoundAssignment<Node, S: crate::LayoutScalar> {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct FormattedPassBasis<Node, S: crate::LayoutScalar> {
+    pub(crate) wrapping: Option<Arc<crate::inline_wrapping::WrappingContext<Node>>>,
     pub(crate) frame_basis: Arc<[super::state::CanonicalFrame<Node, S>]>,
     pub(crate) supplied: Vec<BoundAssignment<Node, S>>,
     pub(crate) uses: Vec<BoundUses<Node, S>>,
@@ -234,6 +236,7 @@ pub(crate) struct FormattedPassBasis<Node, S: crate::LayoutScalar> {
 }
 
 pub(crate) struct FormattedState<Node, S: crate::LayoutScalar> {
+    pub(crate) wrapping: Option<Arc<crate::inline_wrapping::WrappingContext<Node>>>,
     pub(crate) frames: Arc<[super::state::CanonicalFrame<Node, S>]>,
     pub(crate) stack: Vec<ComputeScope<Node, S>>,
     pub(crate) assignments: Vec<BoundAssignment<Node, S>>,
@@ -247,6 +250,7 @@ pub(crate) struct FormattedState<Node, S: crate::LayoutScalar> {
 impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
     pub(crate) fn new() -> Self {
         Self {
+            wrapping: None,
             frames: Arc::from([]),
             stack: Vec::new(),
             assignments: Vec::new(),
@@ -482,6 +486,7 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
             })
             .collect();
         FormattedPassBasis {
+            wrapping: self.wrapping.clone(),
             frame_basis: self.frames.clone(),
             supplied: self.assignments.clone(),
             uses: self.uses.clone(),
@@ -516,6 +521,7 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
         }
         if success && self.flow(&Self::call_scope(&self.stack)).is_some() {
             let receipt = SummaryReceipt {
+                wrapping: self.wrapping.clone(),
                 output: None,
                 frames: self.frames.clone(),
                 node: scope.node,
@@ -559,7 +565,8 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
         input: &crate::ComputeInputOf<S>,
     ) -> Option<&SummaryReceipt<Node, S>> {
         self.receipts.iter().find(|receipt| {
-            receipt.frames == self.frames
+            receipt.wrapping == self.wrapping
+                && receipt.frames == self.frames
                 && receipt.node == node
                 && receipt.input == *input
                 && receipt.parent == self.stack
@@ -628,6 +635,7 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
 
     pub(crate) fn fork(&self) -> Self {
         Self {
+            wrapping: self.wrapping.clone(),
             frames: self.frames.clone(),
             assignments: self.assignments.clone(),
             demanded: self.demanded.clone(),

@@ -240,8 +240,8 @@ fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f
         )
         .input(1, paragraph.text_input(1))
         .input(2, paragraph.text_input(2));
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![binding]).unwrap();
-    let batch = compute_layout_with_text(&capture, 0, request(0.0)).unwrap();
+    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request(0.0)).unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(
         layout.source().text().code_units(),

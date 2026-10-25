@@ -104,8 +104,9 @@ fn check<S: LayoutScalar>(
             },
         )
         .input(1, paragraph.text_input(1));
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0)]).unwrap();
-    let batch = compute_layout_with_text(&capture, 0, request(100.0)).unwrap();
+    let capture =
+        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(
         layout.source().text().code_units(),
@@ -309,8 +310,9 @@ fn check_choice_order<S: LayoutScalar>() {
                 },
             )
             .input(1, paragraph.text_input(1));
-        let capture = TextLayoutInput::try_new(&tree, 0, vec![paragraph.binding(0)]).unwrap();
-        let batch = compute_layout_with_text(&capture, 0, request(60.0)).unwrap();
+        let capture =
+            LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+        let batch = compute_layout_with_flow(&capture, 0, request(60.0)).unwrap();
         let layout = batch.placed_text()[0].layout();
         assert_eq!(
             layout.source().text().code_units(),

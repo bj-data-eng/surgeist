@@ -33,8 +33,8 @@ fn compute<S: LayoutScalar>(
             },
         )
         .input(1, p.text_input(1));
-    let capture = TextLayoutInput::try_new(&tree, 0, vec![p.binding(0)]).unwrap();
-    compute_layout_with_text(
+    let capture = LayoutFlowInput::try_new(&tree, 0, vec![p.binding(0)], Vec::new()).unwrap();
+    compute_layout_with_flow(
         &capture,
         0,
         LayoutRootRequestOf::viewport(Size::new(
