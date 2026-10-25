@@ -237,24 +237,19 @@ pub(crate) fn analyze(
             }
             previous = atom;
         }
-        // Preserve complete neighboring atoms for a change of word-break mode,
-        // but never borrow text across an actual disconnected/in-flow edge.
-        let mut first = component_start;
-        while first < component_end {
-            let style_index = style_at(projection, styles, first);
-            let mode = styles[style_index].style.authored().word_break;
-            let mut end = first + 1;
-            while end < component_end {
-                let next = style_at(projection, styles, end);
-                if styles[next].style.authored().word_break != mode {
-                    break;
-                }
-                end += 1;
+        // Unicode context spans every style run in a semantic component. Each
+        // present mode scans that complete context; the following atom owns
+        // candidate admission. Real disconnected/in-flow edges still stop it.
+        let word_break_at = |atom| {
+            styles[style_at(projection, styles, atom)]
+                .style
+                .authored()
+                .word_break
+        };
+        for mode in [WordBreak::Normal, WordBreak::BreakAll, WordBreak::KeepAll] {
+            if !(component_start..component_end).any(|atom| word_break_at(atom) == mode) {
+                continue;
             }
-            let begin_context = first.saturating_sub(1).max(component_start);
-            let end_context = end.saturating_add(1).min(component_end);
-            let start_byte = offsets[begin_context];
-            let end_byte = offsets[end_context];
             let mut options = LineBreakOptions::default();
             options.word_option = Some(match mode {
                 WordBreak::Normal => LineBreakWordOption::Normal,
@@ -265,11 +260,10 @@ pub(crate) fn analyze(
                 .segment_str(&projection.segmentation[start_byte..end_byte])
             {
                 let atom = atom_at(byte + start_byte);
-                if atom > 0 && atom >= first && atom < end {
+                if atom > 0 && atom < component_end && word_break_at(atom) == mode {
                     boundaries[atom] = Boundary::Line;
                 }
             }
-            first = end;
         }
     }
     let mut infos = Vec::with_capacity(projection.atoms.len());

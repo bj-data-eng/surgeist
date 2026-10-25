@@ -318,6 +318,13 @@ and reversed selection, and whole-line custody independently.
 
 ### Font-independent analysis and accessibility
 
+Ordinary line-break analysis retains the complete connected logical text
+component across source and style seams. Each candidate uses its following
+logical text unit's `WordBreak` while retaining earlier Unicode context, such as
+regional-indicator pairing and opening punctuation across spaces. A computed-style
+change does not end that context. Existing semantic barriers, typography and
+captured ancestor wrapping still govern analysis and admission.
+
 `AnalyzedSource::new(Source, Style)` performs the font-independent analysis once and returns an immutable value with an opaque allocation identity. Clones retain that identity; independently analyzed equal text does not. It preserves exact source units, grapheme and host-projection mappings, source affinity and applicable language facts. Isolated UTF-16 units remain valid analysis inputs; a host requiring scalar UTF-8 may reject their accessibility projection at that boundary. Font preparation retains the same analyzed allocation. `System::layout_analyzed` consumes this analysis through the same preparation, selection, finalization and placement machinery as the `System::layout` convenience path.
 
 This deliberately replaces the former successful fontless `Layout` phase while preserving its useful source-only accessibility capability. The existing `absent_selected_font_does_not_erase_original_selectable_graphemes` regression establishes that original graphemes remain selectable without glyphs. Preserve that behavior through the real analyzed-source front door in the same implementation change. Do not retain a fontless-layout branch or manufacture a font, glyph, prepared value or empty geometry to satisfy it.
