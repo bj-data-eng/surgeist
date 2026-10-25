@@ -983,7 +983,7 @@ where
         text_output = Some(output);
         report
     } else {
-        let wrapping = if matches!(available_inline_extent, AvailableOf::Definite(_)) {
+        let wrapping = {
             tree.wrapping_context()
                 .map(|(context, graph)| {
                     // Wrapping cuts index emitted participants, not native slots
@@ -1003,12 +1003,18 @@ where
                             run[source_index - source_index_start]
                         })
                         .collect();
-                    context.numeric_projection(graph, container, &nodes)
+                    context
+                        .numeric_projection(graph, container, &nodes)
+                        .map(|projection| {
+                            if matches!(available_inline_extent, AvailableOf::MinContent) {
+                                projection.without_avoidance()
+                            } else {
+                                projection
+                            }
+                        })
                 })
                 .transpose()
                 .map_err(|error| crate::inline_wrapping::wrapping_error(container, error))?
-        } else {
-            None
         };
         let observe_formatted = tree
             .text_computation()

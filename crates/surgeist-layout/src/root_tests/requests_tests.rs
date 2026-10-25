@@ -254,7 +254,10 @@ fn prepared_nested_atomic_baseline_batch<S: LayoutScalar>(
         &tree,
         0,
         vec![paragraph.binding(0), inner.binding(2)],
-        Vec::new(),
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
     )?;
     let available = parent_flow.physical_size(LogicalSizeOf::new(
         AvailableOf::definite(S::from_f64(100.0)),
@@ -1508,8 +1511,16 @@ fn fri06_c04_line_band_ordinary_block_keeps_outer_edge_and_inherits_parent_float
                 ]),
             );
 
-            let capture =
-                LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(2)], Vec::new()).unwrap();
+            let capture = LayoutFlowInput::try_new(
+                &tree,
+                0,
+                vec![paragraph.binding(2)],
+                crate::WrappingInput {
+                    scopes: Vec::new(),
+                    child_order: Vec::new(),
+                },
+            )
+            .unwrap();
             let batch = compute_layout_with_flow(
                 &capture,
                 0,
@@ -1638,8 +1649,16 @@ fn fri06_c04_line_band_nested_local_float_keeps_combined_ledger_order_both_scala
             ]),
         );
 
-        let capture =
-            LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(3)], Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![paragraph.binding(3)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         let batch = compute_layout_with_flow(
             &capture,
             0,

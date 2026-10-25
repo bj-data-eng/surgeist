@@ -217,8 +217,16 @@ fn check<S: LayoutScalar>(zone: f64, allowed: bool) {
         );
     }
     host.queries.borrow_mut().clear();
-    let capture =
-        LayoutFlowInput::try_new(&host, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &host,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();
     let layout = batch.placed_text()[0].layout();
     let expected = if allowed {

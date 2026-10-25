@@ -129,11 +129,16 @@ pub fn assert_surgeist_matches_with_endpoint_accounting(
     let batch = if tree.paragraphs.is_empty() {
         layout::compute_layout(&tree, 0, request)
     } else {
-        let capture =
-            layout::LayoutFlowInput::try_new(&tree, 0, tree.paragraphs.clone(), Vec::new())
-                .map_err(|error| {
-                    Error::new(format!("{}: capture failed: {error:?}", golden.name))
-                })?;
+        let capture = layout::LayoutFlowInput::try_new(
+            &tree,
+            0,
+            tree.paragraphs.clone(),
+            surgeist_layout::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .map_err(|error| Error::new(format!("{}: capture failed: {error:?}", golden.name)))?;
         layout::compute_layout_with_flow(&capture, 0, request)
     }
     .map_err(|error| Error::new(format!("{}: layout failed: {error:?}", golden.name)))?;
@@ -6467,8 +6472,16 @@ mod tests {
         tree: &TestTree,
         request: layout::LayoutRootRequest,
     ) -> layout::CompletedLayoutBatch<usize> {
-        let capture =
-            layout::LayoutFlowInput::try_new(tree, 0, tree.paragraphs.clone(), Vec::new()).unwrap();
+        let capture = layout::LayoutFlowInput::try_new(
+            tree,
+            0,
+            tree.paragraphs.clone(),
+            surgeist_layout::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         layout::compute_layout_with_flow(&capture, 0, request).unwrap()
     }
     use super::*;

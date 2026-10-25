@@ -58,8 +58,16 @@ fn simple<S: LayoutScalar>(
         .children(1, [])
         .style(0, style)
         .input(1, paragraph.text_input(1));
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     compute_layout_with_flow(&capture, 0, request(width)).unwrap()
 }
 
@@ -166,7 +174,16 @@ fn forced<S: LayoutScalar>(each_line: bool, hanging: bool) -> CompletedLayoutBat
                 binding.controls[0].occurrence.clone(),
             )),
         );
-    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     compute_layout_with_flow(&capture, 0, request(20.0)).unwrap()
 }
 
@@ -227,8 +244,16 @@ fn assert_percentage_float<S: LayoutScalar>() {
                 ..NodeInputOf::default()
             },
         );
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(80.0)).unwrap();
     assert_eq!(xs(&batch), vec![(0, 50.0), (0, 60.0)]);
     assert_eq!(batch.placed_text()[0].layout().lines()[0].baseline(), 8.0);
@@ -297,8 +322,16 @@ fn anonymous<S: LayoutScalar>(
             },
         );
     }
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(container)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(container)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     compute_layout_with_flow(&capture, 0, request(40.0)).unwrap()
 }
 
@@ -347,8 +380,16 @@ fn assert_intrinsic<S: LayoutScalar>() {
                 },
             )
             .input(1, paragraph.text_input(1));
-        let capture =
-            LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![paragraph.binding(0)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         let batch = compute_layout_with_flow(
             &capture,
             0,
@@ -436,8 +477,16 @@ fn assert_retry<S: LayoutScalar>() {
                 ..NodeInputOf::default()
             },
         );
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let cold = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();
     let repeated = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();
     // A real 40px indivisible word cannot fit the 20px float band minus 10.
@@ -536,7 +585,10 @@ fn assert_administrative_groups<S: LayoutScalar>() {
             &tree,
             0,
             vec![first.binding(0), second.binding(0)],
-            Vec::new(),
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
         )
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(60.0)).unwrap();
@@ -592,7 +644,16 @@ fn assert_empty_forced<S: LayoutScalar>() {
                 LayoutInputOf::text_control(TextControlParticipation::new(row.occurrence.clone())),
             );
         }
-        let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![binding],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
         let lines = finalized_lines(&batch);
         assert_eq!(lines.len(), 3);
@@ -627,8 +688,16 @@ fn assert_justified<S: LayoutScalar>() {
         .children(1, [])
         .style(0, style)
         .input(1, paragraph.text_input(1));
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(45.0)).unwrap();
     assert_eq!(
         xs(&batch),
@@ -686,8 +755,16 @@ fn assert_preserved_break_and_fraction<S: LayoutScalar>() {
             .children(1, [])
             .style(0, block(40.0, indent(0.375, each, hanging)))
             .input(1, paragraph.text_input(1));
-        let capture =
-            LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![paragraph.binding(0)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
         assert_eq!(xs(&batch), vec![(0, expected[0]), (1, expected[1])]);
         assert_eq!(
@@ -727,8 +804,16 @@ fn assert_own_anonymous_basis_and_principal_reset<S: LayoutScalar>() {
             },
         )
         .input(3, paragraph.text_input(3));
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(1)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(1)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(80.0)).unwrap();
     assert_eq!(xs(&batch), vec![(0, 5.0)]);
     let tree = PublicLayoutTreeOf::<S>::new()
@@ -740,8 +825,16 @@ fn assert_own_anonymous_basis_and_principal_reset<S: LayoutScalar>() {
         .style(2, block(10.0, TextIndentOf::ZERO))
         .style(1, block(20.0, indent(5.0, false, false)))
         .input(3, paragraph.text_input(3));
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(1)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(1)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(80.0)).unwrap();
     assert_eq!(
         xs(&batch),
@@ -765,8 +858,16 @@ fn assert_scroll<S: LayoutScalar>() {
             .children(1, [])
             .style(0, style)
             .input(1, paragraph.text_input(1));
-        let capture =
-            LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![paragraph.binding(0)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
         let root = batch
             .final_entries()

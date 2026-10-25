@@ -281,7 +281,16 @@ fn capture() -> (
             }
         })
         .collect();
-    let captured = layout::LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()).unwrap();
+    let captured = layout::LayoutFlowInput::try_new(
+        &tree,
+        0,
+        bindings,
+        surgeist_layout::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = layout::compute_layout_with_flow(
         &captured,
         0,

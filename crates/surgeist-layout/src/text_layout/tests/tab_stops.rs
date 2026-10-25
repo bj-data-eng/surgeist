@@ -64,8 +64,16 @@ fn batch<S: LayoutScalar>(
             },
         );
     }
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     compute_layout_with_flow(&capture, 0, request(100.0)).unwrap()
 }
 
@@ -212,9 +220,17 @@ fn css_tab_capture_rejects_a_different_actual_container_direction() {
         .children(1, [])
         .style(0, block(false, 0.0, TextAlign::Start))
         .input(1, prepared.text_input(1));
-    let error = LayoutFlowInput::try_new(&tree, 0, vec![prepared.binding(0)], Vec::new())
-        .err()
-        .unwrap();
+    let error = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![prepared.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .err()
+    .unwrap();
     assert!(matches!(
         error.kind(),
         LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::TextBinding(
@@ -428,7 +444,16 @@ fn auto_root_intrinsic_sizing_refinalizes_tabs_against_the_real_used_width() {
                 },
             )
             .input(1, p.text_input(1));
-        let capture = LayoutFlowInput::try_new(&tree, 0, vec![p.binding(0)], Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![p.binding(0)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         for (available, expected_width) in [
             (AvailableOf::MAX_CONTENT, 50.0),
             (AvailableOf::MIN_CONTENT, 10.0),

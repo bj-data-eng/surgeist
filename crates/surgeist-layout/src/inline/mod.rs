@@ -16,6 +16,8 @@ use surgeist_text::{BidiLevel, SuppliedInlineParticipant, SuppliedLine};
 mod input;
 
 #[cfg(test)]
+mod wrap_edges_tests;
+#[cfg(test)]
 mod wrap_inside_auto_tests;
 #[cfg(test)]
 mod wrap_inside_tests;
@@ -178,6 +180,7 @@ pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
 struct InlineSourceCursor {
     source: usize,
     descriptor: usize,
+    edge_consumed: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -662,7 +665,11 @@ fn starts_inline_strut_phase<S: LayoutScalar>(line: &SelectedInlineLineOf<S>) ->
     })
 }
 
-fn inline_min_content<S: LayoutScalar>(run: ProjectedInlineRun<'_, S>, flow_axes: FlowAxes) -> S {
+fn inline_min_content<S: LayoutScalar>(
+    run: ProjectedInlineRun<'_, S>,
+    flow_axes: FlowAxes,
+    wrapping: Option<&crate::inline_wrapping::NumericWrapping>,
+) -> S {
     let participants = run.participants;
     let mut descriptor = 0;
     let mut group_descriptor_start = 0;
@@ -684,10 +691,11 @@ fn inline_min_content<S: LayoutScalar>(run: ProjectedInlineRun<'_, S>, flow_axes
             continue;
         }
         descriptor += 1;
-        let Some(following_break) = participant.following_break() else {
-            continue;
-        };
-        if following_break == InlineBreakOpportunity::Prohibited {
+        if !wrapping.is_some_and(|w| w.forced(index + 1))
+            && participant
+                .following_break()
+                .is_none_or(|b| b == InlineBreakOpportunity::Prohibited)
+        {
             continue;
         }
         let line = summarize_inline_line(
@@ -714,7 +722,11 @@ fn inline_min_content<S: LayoutScalar>(run: ProjectedInlineRun<'_, S>, flow_axes
     maximum
 }
 
-fn inline_max_content<S: LayoutScalar>(run: ProjectedInlineRun<'_, S>, flow_axes: FlowAxes) -> S {
+fn inline_max_content<S: LayoutScalar>(
+    run: ProjectedInlineRun<'_, S>,
+    flow_axes: FlowAxes,
+    wrapping: Option<&crate::inline_wrapping::NumericWrapping>,
+) -> S {
     let participants = run.participants;
     let mut descriptor = 0;
     let mut group_descriptor_start = 0;
@@ -736,7 +748,9 @@ fn inline_max_content<S: LayoutScalar>(run: ProjectedInlineRun<'_, S>, flow_axes
             continue;
         }
         descriptor += 1;
-        if participant.following_break() != Some(InlineBreakOpportunity::Mandatory) {
+        if participant.following_break() != Some(InlineBreakOpportunity::Mandatory)
+            && !wrapping.is_some_and(|w| w.forced(index + 1))
+        {
             continue;
         }
         maximum = maximum.max(
@@ -775,8 +789,12 @@ fn resolved_inline_available<S: LayoutScalar>(
     };
     match input.available_inline_extent {
         AvailableOf::Definite(value) => value,
-        AvailableOf::MinContent => inline_min_content(run, input.flow_axes),
-        AvailableOf::MaxContent => inline_max_content(run, input.flow_axes),
+        AvailableOf::MinContent => {
+            inline_min_content(run, input.flow_axes, input.wrapping.as_ref())
+        }
+        AvailableOf::MaxContent => {
+            inline_max_content(run, input.flow_axes, input.wrapping.as_ref())
+        }
     }
 }
 
@@ -826,6 +844,7 @@ fn select_next_inline_line<S: LayoutScalar>(
                     flow_axes,
                 ),
                 next_cursor: InlineSourceCursor {
+                    edge_consumed: false,
                     source: scan + 1,
                     descriptor: cursor.descriptor + scan - source_cursor,
                 },
@@ -852,6 +871,7 @@ fn select_next_inline_line<S: LayoutScalar>(
                     flow_axes,
                 ),
                 next_cursor: InlineSourceCursor {
+                    edge_consumed: false,
                     source: break_end,
                     descriptor: cursor.descriptor + break_end - source_cursor,
                 },
@@ -877,6 +897,7 @@ fn select_next_inline_line<S: LayoutScalar>(
                         flow_axes,
                     ),
                     next_cursor: InlineSourceCursor {
+                        edge_consumed: false,
                         source: scan,
                         descriptor: cursor.descriptor + scan - source_cursor,
                     },
@@ -896,6 +917,7 @@ fn select_next_inline_line<S: LayoutScalar>(
             flow_axes,
         ),
         next_cursor: InlineSourceCursor {
+            edge_consumed: false,
             source: participants.len(),
             descriptor: run.supplied.len(),
         },
@@ -1128,20 +1150,27 @@ fn select_scope_inline_line<S: LayoutScalar>(
         pending,
         axes,
     } = query;
-    let baseline = select_next_inline_line(
-        run,
-        cursor,
-        next_boundary_descriptor,
-        available,
-        wraps,
-        pending,
-        axes,
-    );
-    let Some(wrapping) = wrapping.filter(|_| wraps) else {
-        return Ok(baseline);
+    let baseline = || {
+        select_next_inline_line(
+            run,
+            cursor,
+            next_boundary_descriptor,
+            available,
+            wraps,
+            pending,
+            axes,
+        )
     };
-    if cursor.source == run.participants.len() {
-        return Ok(baseline);
+    let Some(wrapping) = wrapping else {
+        return Ok(baseline());
+    };
+    let edge_stop = if !cursor.edge_consumed && wrapping.forced(cursor.source) {
+        Some(cursor.source)
+    } else {
+        wrapping.next_forced(cursor.source)
+    };
+    if cursor.source == run.participants.len() && edge_stop.is_none() {
+        return Ok(baseline());
     }
     let mut stop = run.participants.len();
     let mut forced = None;
@@ -1149,6 +1178,11 @@ fn select_scope_inline_line<S: LayoutScalar>(
     let mut accumulator = NumericReceiptAccumulatorOf::new(pending);
     for i in cursor.source..run.participants.len() {
         let participant = run.participants[i];
+        if edge_stop == Some(i) {
+            stop = i;
+            mandatory = true;
+            break;
+        }
         if let MixedInlineParticipantOf::ForcedLineBreak(control) = participant {
             stop = i;
             forced = Some(control);
@@ -1162,6 +1196,8 @@ fn select_scope_inline_line<S: LayoutScalar>(
             break;
         }
     }
+    let edge_forced = edge_stop == Some(stop);
+    mandatory |= edge_forced;
     let mut completion = accumulator.receipt(
         if mandatory {
             SelectedInlineLineEnd::Forced
@@ -1169,6 +1205,7 @@ fn select_scope_inline_line<S: LayoutScalar>(
             SelectedInlineLineEnd::Paragraph
         },
         InlineSourceCursor {
+            edge_consumed: edge_forced,
             source: stop + usize::from(forced.is_some()),
             descriptor: cursor.descriptor + stop - cursor.source,
         },
@@ -1179,7 +1216,8 @@ fn select_scope_inline_line<S: LayoutScalar>(
     completion.pending_strut = if let Some(control) = forced {
         Some(MixedInlineParticipantOf::ForcedLineBreak(control).metrics(axes))
     } else if mandatory {
-        Some(run.participants[stop - 1].metrics(axes))
+        stop.checked_sub(1)
+            .map(|i| run.participants[i].metrics(axes))
     } else {
         None
     };
@@ -1204,9 +1242,32 @@ fn select_scope_inline_line<S: LayoutScalar>(
             pending_strut: receipt.pending_strut,
         }
     };
-    if fits(&mut completion)? {
+    if fits(&mut completion)? || !wraps {
         return Ok(Some(build(completion)));
     }
+    let descriptor_stop = cursor.descriptor + stop - cursor.source;
+    let bounded = ProjectedInlineRun {
+        participants: &run.participants[..stop + usize::from(forced.is_some())],
+        supplied: &run.supplied[..descriptor_stop],
+    };
+    let fallback = select_next_inline_line(
+        bounded,
+        cursor,
+        descriptor_stop,
+        available,
+        wraps,
+        pending,
+        axes,
+    )
+    .map(|mut candidate| {
+        if candidate.next_cursor.source == stop && mandatory {
+            candidate.end = SelectedInlineLineEnd::Forced;
+            candidate.next_cursor.edge_consumed = edge_forced;
+            candidate.pending_strut = completion.pending_strut;
+        }
+        candidate
+    })
+    .or_else(|| Some(build(completion)));
     let mut first: Option<NumericCandidateReceiptOf<S>> = None;
     let mut frontier: Option<
         crate::inline_wrapping::PreferenceFrontier<NumericCandidateReceiptOf<S>>,
@@ -1221,6 +1282,7 @@ fn select_scope_inline_line<S: LayoutScalar>(
         let mut candidate = accumulator.receipt(
             SelectedInlineLineEnd::Soft,
             InlineSourceCursor {
+                edge_consumed: false,
                 source: end,
                 descriptor: cursor.descriptor + end - cursor.source,
             },
@@ -1246,7 +1308,7 @@ fn select_scope_inline_line<S: LayoutScalar>(
         .and_then(crate::inline_wrapping::PreferenceFrontier::into_preferred)
         .or(first)
         .map(build)
-        .or(baseline))
+        .or(fallback))
 }
 
 fn text_line_offset<S: LayoutScalar>(
@@ -1448,7 +1510,7 @@ where
     let mut boundary_descriptor = 0;
     // Mandatory following breaks also delimit a line. Looking only for forced
     // controls would repeatedly query a suffix of discardable mandatory units.
-    let mut line_boundaries = input
+    let mut original_boundaries = input
         .participants
         .iter()
         .enumerate()
@@ -1464,11 +1526,47 @@ where
                     .following_break()
                     .is_some_and(|following| following == InlineBreakOpportunity::Mandatory))
             .then_some(InlineSourceCursor {
+                edge_consumed: false,
                 source: index + 1,
                 descriptor: boundary_descriptor,
             })
         })
         .peekable();
+    let mut computed_boundaries = input
+        .wrapping
+        .as_ref()
+        .into_iter()
+        .flat_map(|wrapping| {
+            let mut descriptor = 0;
+            std::iter::once((0, 0))
+                .chain(input.participants.iter().enumerate().map(move |(i, p)| {
+                    if !matches!(p, MixedInlineParticipantOf::ForcedLineBreak(_)) {
+                        descriptor += 1;
+                    }
+                    (i + 1, descriptor)
+                }))
+                .filter_map(move |(source, descriptor)| {
+                    wrapping.forced(source).then_some(InlineSourceCursor {
+                        source,
+                        descriptor,
+                        edge_consumed: false,
+                    })
+                })
+        })
+        .peekable();
+    let mut line_boundaries = std::iter::from_fn(move || {
+        match (original_boundaries.peek(), computed_boundaries.peek()) {
+            (Some(a), Some(b)) if a.source == b.source => {
+                computed_boundaries.next();
+                original_boundaries.next()
+            }
+            (Some(a), Some(b)) if a.source < b.source => original_boundaries.next(),
+            (_, Some(_)) => computed_boundaries.next(),
+            (Some(_), None) => original_boundaries.next(),
+            (None, None) => None,
+        }
+    })
+    .peekable();
     let mut indent_state = input.indent_state;
     let mut line_box_context = input.line_box_context;
     // This route has only atomic/control occurrences, so every actual line is
@@ -1497,10 +1595,7 @@ where
                 pending: pending_strut,
                 axes: input.flow_axes,
             },
-            input
-                .wrapping
-                .as_ref()
-                .filter(|_| matches!(input.available_inline_extent, AvailableOf::Definite(_))),
+            input.wrapping.as_ref(),
             |receipt| {
                 resolve_numeric_candidate(
                     receipt,
@@ -1551,10 +1646,7 @@ where
                     pending: pending_strut,
                     axes: input.flow_axes,
                 },
-                input
-                    .wrapping
-                    .as_ref()
-                    .filter(|_| matches!(input.available_inline_extent, AvailableOf::Definite(_))),
+                input.wrapping.as_ref(),
                 |receipt| {
                     resolve_numeric_candidate(
                         receipt,

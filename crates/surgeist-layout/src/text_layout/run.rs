@@ -29,10 +29,23 @@ use surgeist_text::{
 pub(crate) struct WrappingProjection<Node> {
     context: std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>,
     flow: Node,
+    edges: Vec<(
+        usize,
+        Result<EdgeIncidence, crate::inline_wrapping::WrappingScopeError>,
+    )>,
     rows: Vec<(
         crate::inline_wrapping::ScopeRow<Node>,
         Result<ScopeIncidence, crate::inline_wrapping::WrappingScopeError>,
     )>,
+}
+
+enum EdgeIncidence {
+    Outside,
+    Offset(usize),
+    Control {
+        control: surgeist_text::PreparedControl,
+        after: bool,
+    },
 }
 
 enum ScopeIncidence {
@@ -128,10 +141,55 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                 (row.clone(), incidence)
             })
             .collect::<Vec<_>>();
-        (!rows.is_empty()).then(|| Self {
+        let participants = binding.prepared.participants().collect::<Vec<_>>();
+        let physical_edge = |pair: (Node, Node), side: surgeist_text::SourceBoxSide| {
+            let node = if side == surgeist_text::SourceBoxSide::Before {
+                pair.0
+            } else {
+                pair.1
+            };
+            context
+                .native_pair_projection(graph, binding.container, &binding.nodes, (node, node))
+                .and_then(|projected| match projected.start {
+                    ScopeEndpoint::BeforeRun | ScopeEndpoint::AfterRun => {
+                        Ok(EdgeIncidence::Outside)
+                    }
+                    ScopeEndpoint::Local(node) => binding
+                        .controls
+                        .iter()
+                        .find(|c| c.node == node)
+                        .map(|c| EdgeIncidence::Control {
+                            control: c.occurrence.clone(),
+                            after: side == surgeist_text::SourceBoxSide::After,
+                        })
+                        .ok_or(WrappingScopeError::UnsupportedIncidence),
+                })
+        };
+        let edges=context.edge_locations(binding.container).filter(|(_,edge)|edge.effect.avoided).map(|(id,edge)| {
+            let incidence=match &edge.box_ {
+                crate::GeneratedBoxRef::Node(node)=> {
+                    if let Some(atomic)=binding.atomics.iter().find(|a|a.node==*node) {
+                        participants.iter().position(|p|matches!(p,surgeist_text::PreparedParticipant::Atomic(a)if a==&atomic.occurrence))
+                            .map(|offset|EdgeIncidence::Offset(offset+usize::from(edge.side==surgeist_text::SourceBoxSide::After)))
+                            .ok_or(WrappingScopeError::UnsupportedIncidence)
+                    } else {context.native_pair_projection(graph,binding.container,&binding.nodes,(*node,*node)).and_then(|p|match p.start {
+                        ScopeEndpoint::BeforeRun|ScopeEndpoint::AfterRun=>Ok(EdgeIncidence::Outside),
+                        ScopeEndpoint::Local(_)=>Err(WrappingScopeError::UnsupportedIncidence),
+                    })}
+                }
+                crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(scope))=>match associations.captured_scope_relation(&binding.prepared,scope){
+                    CapturedScopeRelation::Outside=>Ok(EdgeIncidence::Outside),
+                    CapturedScopeRelation::Local|CapturedScopeRelation::Unavailable=>context.scope_pair(scope)
+                        .ok_or(WrappingScopeError::UnsupportedIncidence).and_then(|pair|physical_edge(pair,edge.side)),
+                },
+                crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::NativePair{start,end})=>physical_edge((*start,*end),edge.side),
+            }; (id,incidence)
+        }).collect::<Vec<_>>();
+        (!rows.is_empty() || !edges.is_empty()).then(|| Self {
             context: context.clone(),
             flow: binding.container,
             rows,
+            edges,
         })
     }
 
@@ -141,7 +199,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
         end: &surgeist_text::PreparedBoundary,
     ) -> Result<crate::inline_wrapping::AvoidClass, FitError> {
         let mut projected = self.rows.iter();
-        self.context.classify(self.flow, |row| {
+        let mut class = self.context.classify::<FitError>(self.flow, |row| {
             let (actual, incidence) = projected
                 .next()
                 .ok_or(crate::inline_wrapping::WrappingScopeError::InconsistentIncidence)?;
@@ -163,7 +221,24 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                     end: closing,
                 } => Ok(start.consumed(prepared, end)? && !closing.consumed(prepared, end)?),
             }
-        })
+        })?;
+        for (id, incidence) in &self.edges {
+            let matched = match incidence.as_ref().map_err(|e| FitError::Wrapping(*e))? {
+                EdgeIncidence::Outside => false,
+                EdgeIncidence::Offset(offset) => end.view().participant_offset() == *offset,
+                EdgeIncidence::Control { control, after } => {
+                    if !prepared.control_is_boundary_exact(control)? {
+                        return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+                    }
+                    let at=prepared.participants().position(|p|matches!(p,surgeist_text::PreparedParticipant::Control(c)if &c==control)).ok_or(crate::WrappingScopeError::UnsupportedIncidence)?;
+                    end.view().participant_offset() == at + usize::from(*after)
+                }
+            };
+            if matched {
+                class.add_edge(*id);
+            }
+        }
+        Ok(class)
     }
 }
 

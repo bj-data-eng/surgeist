@@ -123,7 +123,16 @@ fn compute<S: LayoutScalar>(p: &PreparedParagraph, width: f64) -> CompletedLayou
             LayoutInputOf::text_control(TextControlParticipation::new(row.occurrence.clone())),
         );
     }
-    let captured = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+    let captured = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let result = compute_layout_with_flow(&captured, 0, request(width)).unwrap();
     assert_eq!(
         result.placed_text()[0]

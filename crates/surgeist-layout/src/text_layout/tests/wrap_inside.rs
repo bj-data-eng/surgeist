@@ -329,7 +329,11 @@ fn policies(fixture: &Captured, values: &[WrapInside]) -> Vec<WrappingScopeInput
         .iter()
         .cloned()
         .zip(values)
-        .map(|(scope, &wrap_inside)| WrappingScopeInput::Captured { scope, wrap_inside })
+        .map(|(scope, &wrap_inside)| WrappingScopeInput::Captured {
+            edges: Default::default(),
+            scope,
+            wrap_inside,
+        })
         .collect()
 }
 
@@ -344,7 +348,10 @@ fn compute<S: LayoutScalar>(
         &tree,
         0,
         vec![fixture.binding.clone()],
-        policies(fixture, values),
+        crate::WrappingInput {
+            scopes: policies(fixture, values),
+            child_order: Vec::new(),
+        },
     )
     .unwrap();
     compute_layout_with_flow(&input, 0, request_at(width)).unwrap()
@@ -444,7 +451,10 @@ fn outside_and_nested<S: LayoutScalar>() {
             &tree,
             0,
             vec![physical.binding.clone()],
-            vec![pair(10000, 10001, WrapInside::Avoid)],
+            crate::WrappingInput {
+                scopes: vec![pair(10000, 10001, WrapInside::Avoid)],
+                child_order: Vec::new(),
+            },
         )
         .unwrap();
         let matched = compute_layout_with_flow(
@@ -784,6 +794,7 @@ fn numeric_tree<S: LayoutScalar>(
 
 fn pair(start: u32, end: u32, policy: WrapInside) -> WrappingScopeInput<u32> {
     WrappingScopeInput::NativePair {
+        edges: Default::default(),
         start,
         end,
         wrap_inside: policy,
@@ -805,7 +816,16 @@ fn numeric<S: LayoutScalar>() {
             if outer {
                 scopes.push(pair(6, 7, WrapInside::Avoid));
             }
-            let flow = LayoutFlowInput::try_new(&tree, 0, vec![], scopes).unwrap();
+            let flow = LayoutFlowInput::try_new(
+                &tree,
+                0,
+                vec![],
+                crate::WrappingInput {
+                    scopes,
+                    child_order: Vec::new(),
+                },
+            )
+            .unwrap();
             let batch = compute_layout_with_flow(
                 &flow,
                 0,
@@ -895,9 +915,17 @@ fn malformed_native_scope_definitions_refuse_without_guessing_flat_pairs() {
             WrappingScopeError::ConflictingScope,
         ),
     ] {
-        let error = LayoutFlowInput::try_new(&tree, 0, vec![], definitions)
-            .err()
-            .expect("invalid normalized scope refuses");
+        let error = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![],
+            crate::WrappingInput {
+                scopes: definitions,
+                child_order: Vec::new(),
+            },
+        )
+        .err()
+        .expect("invalid normalized scope refuses");
         assert!(
             matches!(error.kind(), LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(reason)) if *reason == expected),
             "{error:?}"
@@ -909,7 +937,10 @@ fn malformed_native_scope_definitions_refuse_without_guessing_flat_pairs() {
         &crossing,
         0,
         vec![],
-        vec![pair(6, 7, WrapInside::Avoid), pair(2, 5, WrapInside::Avoid)],
+        crate::WrappingInput {
+            scopes: vec![pair(6, 7, WrapInside::Avoid), pair(2, 5, WrapInside::Avoid)],
+            child_order: Vec::new(),
+        },
     )
     .err()
     .expect("crossing actual endpoint pairs refuse");
@@ -946,7 +977,10 @@ fn foreign_canonical_scope_is_not_reinterpreted_by_matching_source_or_ordinal() 
         &tree,
         0,
         vec![one.binding.clone()],
-        policies(&other, &[WrapInside::Avoid]),
+        crate::WrappingInput {
+            scopes: policies(&other, &[WrapInside::Avoid]),
+            child_order: Vec::new(),
+        },
     )
     .err()
     .expect("different capture cannot certify this source");
@@ -961,10 +995,14 @@ fn foreign_canonical_scope_is_not_reinterpreted_by_matching_source_or_ordinal() 
         &tree,
         0,
         vec![one.binding.clone()],
-        vec![WrappingScopeInput::Captured {
-            scope: block,
-            wrap_inside: WrapInside::Avoid,
-        }],
+        crate::WrappingInput {
+            scopes: vec![WrappingScopeInput::Captured {
+                edges: Default::default(),
+                scope: block,
+                wrap_inside: WrapInside::Avoid,
+            }],
+            child_order: Vec::new(),
+        },
     )
     .err()
     .expect("block scope is not an inline declaration");
@@ -975,9 +1013,17 @@ fn foreign_canonical_scope_is_not_reinterpreted_by_matching_source_or_ordinal() 
         ))
     ));
     let numeric = numeric_tree::<f64>([InlineBreakOpportunity::Allowed; 3], false, false);
-    let error = LayoutFlowInput::try_new(&numeric, 0, vec![], policies(&one, &[WrapInside::Avoid]))
-        .err()
-        .expect("numeric flow does not manufacture capture");
+    let error = LayoutFlowInput::try_new(
+        &numeric,
+        0,
+        vec![],
+        crate::WrappingInput {
+            scopes: policies(&one, &[WrapInside::Avoid]),
+            child_order: Vec::new(),
+        },
+    )
+    .err()
+    .expect("numeric flow does not manufacture capture");
     assert!(matches!(
         error.kind(),
         LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(
@@ -1005,7 +1051,10 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
         &tree,
         0,
         vec![f.binding.clone()],
-        vec![pair(10000, 10003, WrapInside::Avoid)],
+        crate::WrappingInput {
+            scopes: vec![pair(10000, 10003, WrapInside::Avoid)],
+            child_order: Vec::new(),
+        },
     )
     .err()
     .expect("known canonical pairing is authoritative");
@@ -1019,7 +1068,10 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
         &tree,
         0,
         vec![f.binding.clone()],
-        vec![pair(10000, 10001, WrapInside::Avoid)],
+        crate::WrappingInput {
+            scopes: vec![pair(10000, 10001, WrapInside::Avoid)],
+            child_order: Vec::new(),
+        },
     )
     .expect("the actual canonical pair remains admitted");
 
@@ -1041,13 +1093,24 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
     // Complete capture retained both actual standalone control events, but
     // supplied no canonical pairing for them. Their roles/order alone do not
     // authorize inventing a box. Neutral construction still permits controls.
-    LayoutFlowInput::try_new(&tree, 0, vec![unmatched.binding.clone()], vec![])
-        .expect("standalone source controls remain a valid neutral input");
+    LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![unmatched.binding.clone()],
+        crate::WrappingInput {
+            scopes: vec![],
+            child_order: Vec::new(),
+        },
+    )
+    .expect("standalone source controls remain a valid neutral input");
     let error = LayoutFlowInput::try_new(
         &tree,
         0,
         vec![unmatched.binding.clone()],
-        vec![pair(10000, 10001, WrapInside::Avoid)],
+        crate::WrappingInput {
+            scopes: vec![pair(10000, 10001, WrapInside::Avoid)],
+            child_order: Vec::new(),
+        },
     )
     .err()
     .expect("the requested pair has no canonical box in complete capture");
@@ -1075,7 +1138,10 @@ fn captured_physical_interior_tcu_profile_retains_its_existing_precise_refusal()
         &tree,
         0,
         vec![f.binding.clone()],
-        policies(&f, &[WrapInside::Avoid; 2]),
+        crate::WrappingInput {
+            scopes: policies(&f, &[WrapInside::Avoid; 2]),
+            child_order: Vec::new(),
+        },
     )
     .err()
     .expect("known paired cross-origin TCU profile remains unsupported");
@@ -1281,7 +1347,10 @@ fn receiving<S: LayoutScalar>() {
             &tree,
             0,
             vec![p.binding(0)],
-            vec![pair(2, 5, WrapInside::Avoid)],
+            crate::WrappingInput {
+                scopes: vec![pair(2, 5, WrapInside::Avoid)],
+                child_order: Vec::new(),
+            },
         )
         .unwrap();
         let batch = compute_layout_with_flow(
@@ -1369,7 +1438,10 @@ fn receiving<S: LayoutScalar>() {
             &tree,
             0,
             vec![p.binding(0)],
-            vec![pair(2, 5, WrapInside::Avoid)],
+            crate::WrappingInput {
+                scopes: vec![pair(2, 5, WrapInside::Avoid)],
+                child_order: Vec::new(),
+            },
         )
         .unwrap();
         for (width, cut, automatic) in [(75.0, 5, true), (85.0, 3, false)] {
@@ -1454,7 +1526,10 @@ fn replacement_and_terminal<S: LayoutScalar>() {
         &tree,
         0,
         vec![p.binding(0)],
-        vec![pair(2, 5, WrapInside::Avoid)],
+        crate::WrappingInput {
+            scopes: vec![pair(2, 5, WrapInside::Avoid)],
+            child_order: Vec::new(),
+        },
     )
     .unwrap();
     let batch = compute_layout_with_flow(
@@ -1544,7 +1619,10 @@ fn atomic_and_float<S: LayoutScalar>() {
         &tree,
         0,
         vec![p.binding(0)],
-        vec![pair(2, 5, WrapInside::Avoid)],
+        crate::WrappingInput {
+            scopes: vec![pair(2, 5, WrapInside::Avoid)],
+            child_order: Vec::new(),
+        },
     )
     .unwrap();
     let batch = compute_layout_with_flow(
@@ -1601,7 +1679,10 @@ fn atomic_and_float<S: LayoutScalar>() {
         &tree,
         0,
         vec![p.binding(0)],
-        vec![pair(2, 5, WrapInside::Avoid)],
+        crate::WrappingInput {
+            scopes: vec![pair(2, 5, WrapInside::Avoid)],
+            child_order: Vec::new(),
+        },
     )
     .unwrap();
     let batch = compute_layout_with_flow(
@@ -1815,9 +1896,16 @@ fn warm_policy<S: LayoutScalar>() {
     let cold_tree = CachedTree::new(tree.clone());
     let mut warm_tree = CachedTree::new(tree);
     let run = |tree: &CachedTree<S>, policy| {
-        let flow =
-            LayoutFlowInput::try_new(tree, 100, vec![f.binding.clone()], policies(&f, &[policy]))
-                .unwrap();
+        let flow = LayoutFlowInput::try_new(
+            tree,
+            100,
+            vec![f.binding.clone()],
+            crate::WrappingInput {
+                scopes: policies(&f, &[policy]),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         compute_layout_with_flow(
             &flow,
             100,
@@ -2008,6 +2096,7 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
         let tree = text_tree::<S>(&f.binding, rtl);
         let native = pair(10000, 10001, WrapInside::Avoid);
         let canonical = WrappingScopeInput::Captured {
+            edges: Default::default(),
             scope: f.scopes[0].clone(),
             wrap_inside: WrapInside::Avoid,
         };
@@ -2018,8 +2107,16 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
             ("native-only", vec![native.clone()], native_only),
             ("captured-only", vec![canonical.clone()], captured_only),
         ] {
-            let flow =
-                LayoutFlowInput::try_new(&tree, 0, vec![f.binding.clone()], definitions).unwrap();
+            let flow = LayoutFlowInput::try_new(
+                &tree,
+                0,
+                vec![f.binding.clone()],
+                crate::WrappingInput {
+                    scopes: definitions,
+                    child_order: Vec::new(),
+                },
+            )
+            .unwrap();
             let batch = compute_layout_with_flow(
                 &flow,
                 0,
@@ -2041,14 +2138,21 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
                 "mixed {} rtl={rtl} reverse={reverse} {label}",
                 std::any::type_name::<S>()
             );
-            let flow =
-                match LayoutFlowInput::try_new(&tree, 0, vec![f.binding.clone()], definitions) {
-                    Ok(flow) => flow,
-                    Err(error) => {
-                        failures.push(format!("{label}: constructor {error:?}"));
-                        continue;
-                    }
-                };
+            let flow = match LayoutFlowInput::try_new(
+                &tree,
+                0,
+                vec![f.binding.clone()],
+                crate::WrappingInput {
+                    scopes: definitions,
+                    child_order: Vec::new(),
+                },
+            ) {
+                Ok(flow) => flow,
+                Err(error) => {
+                    failures.push(format!("{label}: constructor {error:?}"));
+                    continue;
+                }
+            };
             match compute_layout_with_flow(
                 &flow,
                 0,
@@ -2094,6 +2198,7 @@ fn mixed_crossing<S: LayoutScalar>() -> Vec<String> {
         let tree = text_tree::<S>(&f.binding, rtl);
         let native = pair(10000, 10001, WrapInside::Avoid);
         let canonical = WrappingScopeInput::Captured {
+            edges: Default::default(),
             scope: f.scopes[0].clone(),
             wrap_inside: WrapInside::Avoid,
         };
@@ -2102,7 +2207,15 @@ fn mixed_crossing<S: LayoutScalar>() -> Vec<String> {
             ("captured-first", vec![canonical.clone(), native.clone()]),
         ] {
             let label = format!("crossing {} rtl={rtl} {label}", std::any::type_name::<S>());
-            match LayoutFlowInput::try_new(&tree, 0, vec![f.binding.clone()], definitions) {
+            match LayoutFlowInput::try_new(
+                &tree,
+                0,
+                vec![f.binding.clone()],
+                crate::WrappingInput {
+                    scopes: definitions,
+                    child_order: Vec::new(),
+                },
+            ) {
                 Ok(_) => failures.push(format!(
                     "{label}: constructor admitted crossing definitions"
                 )),

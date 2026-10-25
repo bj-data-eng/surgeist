@@ -93,7 +93,15 @@ fn block_end_claim_cannot_hide_known_later_in_flow_content() {
                 ..NodeInputOf::default()
             },
         );
-    let error = match LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()) {
+    let error = match LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    ) {
         Err(error) => error,
         Ok(_) => panic!("known later block contradicts BlockEnd"),
     };

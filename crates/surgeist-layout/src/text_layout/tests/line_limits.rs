@@ -39,7 +39,16 @@ fn compute<S: LayoutScalar>(
             LayoutInputOf::text_control(TextControlParticipation::new(control.occurrence.clone())),
         );
     }
-    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let input = LayoutRootRequestOf::viewport(Size::new(width, AvailableOf::MaxContent)).unwrap();
     compute_layout_with_flow(&capture, 0, input).unwrap()
 }

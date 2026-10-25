@@ -531,8 +531,16 @@ fn compute(fixture: &Fixture, with_child: bool) -> layout::CompletedLayoutBatch<
     if with_child {
         paragraphs.insert(1, fixture.empty_child.clone());
     }
-    let capture =
-        layout::LayoutFlowInput::try_new(&fixture.tree, 0, paragraphs, Vec::new()).unwrap();
+    let capture = layout::LayoutFlowInput::try_new(
+        &fixture.tree,
+        0,
+        paragraphs,
+        surgeist_layout::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     layout::compute_layout_with_flow(&capture, 0, request()).unwrap()
 }
 
@@ -541,8 +549,15 @@ fn rejects(
     paragraphs: Vec<layout::TextParagraphBinding<usize>>,
     reason: layout::TextBindingError,
 ) {
-    let Err(error) = layout::LayoutFlowInput::try_new(&fixture.tree, 0, paragraphs, Vec::new())
-    else {
+    let Err(error) = layout::LayoutFlowInput::try_new(
+        &fixture.tree,
+        0,
+        paragraphs,
+        surgeist_layout::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    ) else {
         panic!("invalid scope association must refuse {reason:?}")
     };
     assert!(
@@ -703,8 +718,16 @@ fn distinct_empty_paragraphs_share_their_real_empty_domain_slot_in_any_inventory
         fixture.parents[0].clone(),
         fixture.empty_child.clone(),
     ];
-    let capture =
-        layout::LayoutFlowInput::try_new(&fixture.tree, 0, paragraphs, Vec::new()).unwrap();
+    let capture = layout::LayoutFlowInput::try_new(
+        &fixture.tree,
+        0,
+        paragraphs,
+        surgeist_layout::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let associated = layout::compute_layout_with_flow(&capture, 0, request()).unwrap();
     assert_geometry(&associated, &[(3, 0.0), (11, 10.0)]);
     assert_eq!(associated.final_entries(), baseline.final_entries());
@@ -917,14 +940,29 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
 #[test]
 fn an_empty_paragraph_in_a_nonempty_domain_uses_its_authentic_terminal_run_slot() {
     let fixture = nonempty_domain_with_terminal_empty_paragraph();
-    let baseline_capture =
-        layout::LayoutFlowInput::try_new(&fixture.tree, 0, fixture.flow.clone(), Vec::new())
-            .unwrap();
+    let baseline_capture = layout::LayoutFlowInput::try_new(
+        &fixture.tree,
+        0,
+        fixture.flow.clone(),
+        surgeist_layout::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let baseline = layout::compute_layout_with_flow(&baseline_capture, 0, request()).unwrap();
     let mut paragraphs = fixture.flow.clone();
     paragraphs.insert(0, fixture.empty);
-    let capture =
-        layout::LayoutFlowInput::try_new(&fixture.tree, 0, paragraphs, Vec::new()).unwrap();
+    let capture = layout::LayoutFlowInput::try_new(
+        &fixture.tree,
+        0,
+        paragraphs,
+        surgeist_layout::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let associated = layout::compute_layout_with_flow(&capture, 0, request()).unwrap();
     assert_eq!(associated.final_entries(), baseline.final_entries());
     assert_eq!(associated.placed_text().len(), 3);
@@ -961,8 +999,15 @@ fn one_empty_paragraph_cannot_certify_a_nonempty_domain_with_its_real_neighbor_o
     fixture.flow.remove(1);
     let mut paragraphs = fixture.flow;
     paragraphs.push(fixture.empty);
-    let Err(error) = layout::LayoutFlowInput::try_new(&fixture.tree, 0, paragraphs, Vec::new())
-    else {
+    let Err(error) = layout::LayoutFlowInput::try_new(
+        &fixture.tree,
+        0,
+        paragraphs,
+        surgeist_layout::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    ) else {
         panic!("missing genuine neighbor flow cannot establish empty-paragraph incidence")
     };
     assert!(
@@ -1081,7 +1126,15 @@ fn flat_empty_preparation_without_canonical_paragraph_identity_cannot_associate_
         atomics: vec![],
         line_strut: None,
     };
-    let Err(error) = layout::LayoutFlowInput::try_new(&tree, 0, vec![paragraph], Vec::new()) else {
+    let Err(error) = layout::LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph],
+        surgeist_layout::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    ) else {
         panic!("empty output alone cannot provide canonical paragraph/domain authority")
     };
     assert!(

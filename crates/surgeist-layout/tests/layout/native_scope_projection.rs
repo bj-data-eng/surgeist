@@ -109,11 +109,15 @@ fn positions<S: LayoutScalar>(
         &tree,
         0,
         Vec::new(),
-        vec![WrappingScopeInput::NativePair {
-            start: 4,
-            end: 6,
-            wrap_inside: policy,
-        }],
+        WrappingInput {
+            scopes: vec![WrappingScopeInput::NativePair {
+                edges: WrapEdges::AUTO,
+                start: 4,
+                end: 6,
+                wrap_inside: policy,
+            }],
+            child_order: Vec::new(),
+        },
     )
     .unwrap();
     let request = LayoutRootRequestOf::viewport(Size::new(

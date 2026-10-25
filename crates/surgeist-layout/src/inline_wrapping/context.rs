@@ -80,8 +80,9 @@ pub(crate) struct ScopeRow<Node> {
     pub(crate) flow: Node,
     pub(crate) capture: Option<CapturedScope>,
     pub(crate) pair: Option<(Node, Node)>,
-    native: Option<NativeSpan>,
-    policy: WrapInside,
+    pub(crate) native: Option<NativeSpan>,
+    pub(crate) policy: WrapInside,
+    pub(crate) edges: WrapEdges,
     source: Option<SourceExtent>,
 }
 #[derive(Clone, Debug)]
@@ -89,6 +90,7 @@ pub(crate) struct WrappingContext<Node> {
     rows: Vec<ScopeRow<Node>>,
     ancestry: Arc<Ancestry>,
     has_avoid: bool,
+    pub(crate) edge_plan: super::edge_plan::EdgePlan<Node>,
 }
 impl<Node> PartialEq for WrappingContext<Node> {
     fn eq(&self, other: &Self) -> bool {
@@ -102,6 +104,10 @@ impl<Node> Default for WrappingContext<Node> {
             rows: Vec::new(),
             ancestry: Arc::default(),
             has_avoid: false,
+            edge_plan: super::edge_plan::EdgePlan {
+                locations: Vec::new(),
+                dependencies: Vec::new(),
+            },
         }
     }
 }
@@ -262,8 +268,15 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         graph: &ValidationGraph<Node>,
         inputs: &[WrappingScopeInput<Node>],
         proofs: &[WrappingScopeProof<Node>],
+        child_order: &[InlineChildOrderInput<Node>],
     ) -> Result<Self, WrappingScopeError> {
-        if inputs.is_empty() {
+        if inputs.is_empty()
+            && child_order.is_empty()
+            && graph
+                .nodes
+                .iter()
+                .all(|&n| tree.node_input(n).wrap_edges.is_auto())
+        {
             return Ok(Self::default());
         }
         let counts = graph.path_counts();
@@ -275,6 +288,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                     start,
                     end,
                     wrap_inside,
+                    edges,
                 } => {
                     let (flow, native) = native_span(tree, graph, *start, *end, &counts)?;
                     let proof = proofs
@@ -302,6 +316,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                             pair: Some((*start, *end)),
                             native: Some(native),
                             policy: *wrap_inside,
+                            edges: *edges,
                             source: if let Some(proof) = proof {
                                 Some(SourceExtent::canonical(&proof.scope))
                             } else {
@@ -326,7 +341,11 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                         1,
                     )
                 }
-                WrappingScopeInput::Captured { scope, wrap_inside } => {
+                WrappingScopeInput::Captured {
+                    scope,
+                    wrap_inside,
+                    edges,
+                } => {
                     if scope.role() != surgeist_text::ScopeRole::Inline {
                         return Err(WrappingScopeError::NonInlineScope);
                     }
@@ -352,6 +371,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                             pair: proof.pair,
                             native: native.map(|(_, s)| s),
                             policy: *wrap_inside,
+                            edges: *edges,
                             source: Some(SourceExtent::canonical(scope)),
                         },
                         2,
@@ -365,7 +385,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                     .is_some_and(|(a, b)| a == b)
                     || p.pair.zip(row.pair).is_some_and(|(a, b)| a == b)
             }) {
-                if rows[i].policy != row.policy {
+                if rows[i].policy != row.policy || rows[i].edges != row.edges {
                     return Err(WrappingScopeError::ConflictingScope);
                 }
                 if forms[i] & form != 0 {
@@ -379,9 +399,6 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             }
             rows.push(row);
             forms.push(form);
-        }
-        if rows.iter().all(|row| row.policy == WrapInside::Auto) {
-            return Ok(Self::default());
         }
         let mut parents: Vec<Option<usize>> = vec![None; rows.len()];
         for i in 0..rows.len() {
@@ -420,14 +437,51 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             }
         }
         let has_avoid = rows.iter().any(|row| row.policy == WrapInside::Avoid);
+        let edge_plan = if child_order.is_empty()
+            && rows.iter().all(|r| r.edges.is_auto())
+            && graph
+                .nodes
+                .iter()
+                .all(|&n| tree.node_input(n).wrap_edges.is_auto())
+        {
+            super::edge_plan::EdgePlan {
+                locations: Vec::new(),
+                dependencies: Vec::new(),
+            }
+        } else {
+            super::edge_plan::EdgePlan::new(tree, graph, &rows, child_order)?
+        };
         Ok(Self {
             rows,
             ancestry: Arc::new(Ancestry { intervals }),
             has_avoid,
+            edge_plan,
         })
     }
-    pub(crate) fn has_avoid(&self) -> bool {
-        self.has_avoid
+    pub(crate) fn has_effects(&self) -> bool {
+        self.has_avoid || !self.edge_plan.dependencies.is_empty()
+    }
+    pub(crate) fn scope_pair(&self, scope: &CapturedScope) -> Option<(Node, Node)> {
+        self.rows
+            .iter()
+            .find(|r| r.capture.as_ref() == Some(scope))
+            .and_then(|r| r.pair)
+    }
+    pub(crate) fn edge_locations(
+        &self,
+        flow: Node,
+    ) -> impl Iterator<Item = (usize, &super::edge_plan::EdgeLocation<Node>)> {
+        self.edge_plan
+            .locations
+            .iter()
+            .enumerate()
+            .filter(move |(_, e)| e.flow == flow)
+    }
+    pub(crate) fn requires_source(&self, flow: Node) -> bool {
+        self.edge_plan
+            .locations
+            .iter()
+            .any(|e| e.flow == flow && e.effect.forced)
     }
     pub(crate) fn rows(&self) -> impl Iterator<Item = &ScopeRow<Node>> {
         self.rows
@@ -467,6 +521,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         Ok(AvoidClass {
             ancestry: Arc::clone(&self.ancestry),
             scope: deepest,
+            edges: Vec::new(),
         })
     }
     pub(crate) fn numeric_projection(
@@ -520,10 +575,61 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                 Ok(AvoidClass {
                     ancestry: Arc::clone(&self.ancestry),
                     scope: active.last().map(|&(_, i)| i),
+                    edges: Vec::new(),
                 })
             });
         }
+        let mut forced = vec![false; nodes.len() + 1];
+        for (id, edge) in self
+            .edge_plan
+            .locations
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.flow == flow)
+        {
+            let Some(span) = edge.native.as_ref() else {
+                if edge.effect.forced {
+                    return Err(WrappingScopeError::UnsupportedIncidence);
+                }
+                classes.fill(Err(WrappingScopeError::UnsupportedIncidence));
+                continue;
+            };
+            // The box endpoint owns this edge, not a shared inter-run gap.
+            // Qualify that actual emitted slot before projecting Before/After;
+            // partitioning an outside rank would clamp it to this run's ends.
+            let owner_rank = if edge.side == surgeist_text::SourceBoxSide::Before {
+                span.first
+            } else {
+                span.last
+            };
+            let owner = match ranks.binary_search(&owner_rank) {
+                Ok(owner) => owner,
+                Err(_) => {
+                    if ranks
+                        .first()
+                        .zip(ranks.last())
+                        .is_some_and(|(first, last)| *first < owner_rank && owner_rank < *last)
+                    {
+                        if edge.effect.forced {
+                            return Err(WrappingScopeError::UnsupportedIncidence);
+                        }
+                        classes.fill(Err(WrappingScopeError::UnsupportedIncidence));
+                    }
+                    continue;
+                }
+            };
+            let cut = owner + usize::from(edge.side == surgeist_text::SourceBoxSide::After);
+            if edge.effect.forced {
+                forced[cut] = true;
+            }
+            if edge.effect.avoided
+                && let Ok(class) = &mut classes[cut]
+            {
+                class.edges.push(id);
+            }
+        }
         Ok(NumericWrapping {
+            forced,
             ancestry: Arc::clone(&self.ancestry),
             classes,
         })
@@ -566,11 +672,11 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         })
     }
     pub(crate) fn dependencies(&self) -> Vec<Node> {
-        let mut result = Vec::new();
+        let mut result = self.edge_plan.dependencies.clone();
         for row in self
             .rows
             .iter()
-            .filter(|row| row.policy == WrapInside::Avoid)
+            .filter(|row| row.policy == WrapInside::Avoid || !row.edges.is_auto())
         {
             for n in [Some(row.flow), row.pair.map(|p| p.0), row.pair.map(|p| p.1)]
                 .into_iter()
@@ -588,13 +694,33 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
 pub(crate) struct NumericWrapping {
     ancestry: Arc<Ancestry>,
     classes: Vec<Result<AvoidClass, WrappingScopeError>>,
+    forced: Vec<bool>,
 }
 impl PartialEq for NumericWrapping {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.ancestry, &other.ancestry) && self.classes == other.classes
+        Arc::ptr_eq(&self.ancestry, &other.ancestry)
+            && self.classes == other.classes
+            && self.forced == other.forced
     }
 }
 impl NumericWrapping {
+    pub(crate) fn without_avoidance(mut self) -> Self {
+        for class in self.classes.iter_mut().flatten() {
+            class.scope = None;
+            class.edges.clear();
+        }
+        self
+    }
+    pub(crate) fn forced(&self, cut: usize) -> bool {
+        self.forced.get(cut).copied().unwrap_or(false)
+    }
+    pub(crate) fn next_forced(&self, start: usize) -> Option<usize> {
+        self.forced
+            .iter()
+            .enumerate()
+            .skip(start + 1)
+            .find_map(|(i, &f)| f.then_some(i))
+    }
     pub(crate) fn class(&self, cut: usize) -> Result<AvoidClass, WrappingScopeError> {
         self.classes
             .get(cut)
@@ -604,7 +730,7 @@ impl NumericWrapping {
     pub(crate) fn frontier<T>(&self) -> PreferenceFrontier<T> {
         PreferenceFrontier {
             ancestry: Arc::clone(&self.ancestry),
-            entries: BTreeMap::new(),
+            entries: FrontierEntries::Inside(BTreeMap::new()),
             serial: 0,
         }
     }

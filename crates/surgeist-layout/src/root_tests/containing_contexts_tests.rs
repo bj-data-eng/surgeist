@@ -1419,7 +1419,10 @@ fn fri06_c02_block_text_containing_baselines_align_flex_items_both_scalars() {
             &tree,
             0,
             vec![first.binding(1), second.binding(2)],
-            Vec::new(),
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
         )
         .unwrap();
         let batch = compute_layout_with_flow(

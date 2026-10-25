@@ -203,7 +203,10 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
             controls: vec![],
             line_strut: None,
         }],
-        Vec::new(),
+        surgeist_layout::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(
@@ -423,7 +426,10 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
             controls: vec![],
             line_strut: None,
         }],
-        Vec::new(),
+        surgeist_layout::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
     )
     .unwrap();
     let request = layout::LayoutRootRequest::viewport(layout::Size::new(
@@ -738,7 +744,10 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
             controls: vec![],
             line_strut: None,
         }],
-        Vec::new(),
+        surgeist_layout::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(
@@ -1147,7 +1156,10 @@ mod kana_transform {
                 controls: vec![],
                 line_strut: None,
             }],
-            Vec::new(),
+            surgeist_layout::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
         )
         .unwrap();
         let batch = layout::compute_layout_with_flow(

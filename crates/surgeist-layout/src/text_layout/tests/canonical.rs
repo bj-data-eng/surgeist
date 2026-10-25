@@ -144,7 +144,16 @@ fn nested_batch<S: LayoutScalar>(
             LayoutInputOf::inline_text(TextParticipation::new(origin.origin.clone())),
         );
     }
-    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding.clone()], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding.clone()],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     compute_layout_with_flow(
         &capture,
         0,

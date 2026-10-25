@@ -703,7 +703,10 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
                 controls: vec![],
                 line_strut: None,
             }],
-            Vec::new(),
+            surgeist_layout::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
         )
         .unwrap();
         let batch = compute_layout_with_flow(

@@ -82,10 +82,12 @@ fn exercise<S: LayoutScalar>(
         &tree,
         &graph,
         &[WrappingScopeInput::NativePair {
+            edges: Default::default(),
             start: 2,
             end: 5,
             wrap_inside: WrapInside::Avoid,
         }],
+        &[],
         &[],
     )
     .unwrap();
@@ -240,6 +242,7 @@ fn actual_numeric_receipts_use_their_own_height_qualified_float_band() {
         let mut first = accumulator.receipt(
             SelectedInlineLineEnd::Soft,
             InlineSourceCursor {
+                edge_consumed: false,
                 source: 1,
                 descriptor: 1,
             },
@@ -265,6 +268,7 @@ fn actual_numeric_receipts_use_their_own_height_qualified_float_band() {
         let mut second = accumulator.receipt(
             SelectedInlineLineEnd::Soft,
             InlineSourceCursor {
+                edge_consumed: false,
                 source: 3,
                 descriptor: 3,
             },
@@ -338,6 +342,7 @@ fn actual_numeric_fallback_envelope_cycle_refuses_without_a_retry_threshold() {
         let mut receipt = accumulator.receipt(
             SelectedInlineLineEnd::Soft,
             InlineSourceCursor {
+                edge_consumed: false,
                 source: 1,
                 descriptor: 1,
             },

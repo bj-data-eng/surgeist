@@ -5,6 +5,7 @@ use super::scroll::{retain_flex_scroll_geometry, retained_flex_child_scroll_geom
 use super::{Constants, resolve_auto_optional, resolve_auto_or_zero, resolve_length_or_zero};
 use crate::error::{SizingAlgorithm, layout_child_geometry_error, sizing_resolution_error};
 use crate::geometry::PhysicalAxis;
+use crate::inline_wrapping::{EdgeEffect, WrappingMode};
 use crate::layout_math::{MaxBeforeMinScalarClampExt, OptionalSizeExt};
 use crate::sizing::resolve::{
     EdgesResultExt, ResolvedFlexBasis, SizeResultExt, resolve_flex_basis, resolve_maximum_optional,
@@ -47,6 +48,8 @@ pub(super) struct CollectedFlexItem<Node, S: LayoutScalar> {
     pub(super) node: Node,
     pub(super) source_index: usize,
     pub(super) collapse: FlexItemCollapse,
+    pub(super) wrap_before: EdgeEffect,
+    pub(super) wrap_after: EdgeEffect,
     pub(super) size: Size<Option<S>>,
     pub(super) initial_output: ComputeOutputOf<S>,
     pub(super) flex_base: FlexBaseSize<S>,
@@ -574,6 +577,12 @@ where
         node,
         source_index,
         collapse: style.collapse,
+        wrap_before: style.wrap_edges.before.effect(WrappingMode::Flex {
+            multiline: constants.wraps,
+        }),
+        wrap_after: style.wrap_edges.after.effect(WrappingMode::Flex {
+            multiline: constants.wraps,
+        }),
         size: authored_size,
         initial_output: output,
         flex_base: FlexBaseSize::from_outer(flex_basis, padding_border_main),

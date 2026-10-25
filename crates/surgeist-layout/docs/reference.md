@@ -80,8 +80,9 @@ it keeps the first alternative when an indivisible candidate must overflow.
 allocated strut. Its direction, wrapping, and source-less alternative facts stay
 Text-owned. Existing line breaks and inline boundaries instead supply their real
 Layout strut metrics and must match the corresponding issued semantic role.
-`LayoutFlowInput::try_new(tree, root, paragraphs, wrapping_scopes)` also admits
-box/control-only flow with no Text paragraphs. `WrappingScopeInput::NativePair`
+`LayoutFlowInput::try_new(tree, root, paragraphs, wrapping)` also admits
+box/control-only flow with no Text paragraphs. `WrappingInput` supplies actual
+scope declarations and generated child-order proofs. `WrappingScopeInput::NativePair`
 declares genuine normalized endpoints; `Captured` declares an authentic inline
 capture identity. `WrapInside::Avoid` ranks permitted fitting breaks through the
 same validated scope forest. A captured scope without endpoints supplies semantic
@@ -96,6 +97,30 @@ internal breaks remain usable, and min-/max-content keep their ordinary opportun
 rules. Actual finalized spacing, hanging punctuation, line metrics and float bands
 determine fit before preference is applied. Changed scope declarations require a
 new checked flow; invalidation includes their actual endpoint and owner dependencies.
+
+`NodeInputOf.wrap_edges` supplies before/after declarations for actual atomic
+inline boxes and flex items. Non-atomic boxes carry the same `WrapEdges` in their
+scope declaration. `Avoid` discourages both matching kinds of break;
+`AvoidLine` and `AvoidFlex` affect only their respective kind. `Line` forces an
+inline break; `Flex` partitions actual items only in a multiline flex container.
+Applicability follows the normalized box role. Flex exterior forces add no empty
+line, while collapsed items retain their real strut participation.
+
+Numeric inline forces use genuine participant cuts, including leading/terminal
+mandatory progress, and partition maximum-content groups. Propagation consumes
+actual first/last in-flow child evidence; `InlineChildOrderInput` distinguishes
+the paired box from its endpoints and declares prefix/suffix completeness.
+Missing demanded incidence returns `MissingChildOrder`. Mixed inside/edge
+avoidance uses the [independent-constraint policy](../../../references/text-wrap-edges--native-determination.md#independent-avoidance-constraints).
+Avoidance adds no ordinary opportunities.
+
+Text-backed soft edge avoidance requires authentic physical endpoint or atomic
+incidence. A logical scope edge without that proof returns `UnsupportedIncidence`;
+the [original-cut refinement](../../../references/text-wrap-edges--native-determination.md#original-box-cut-incidence)
+specifies the remaining empty-box support. A Text-backed `Line` declaration
+requires source processing before preparation and currently returns
+`SourceProcessingRequired` at this late admission boundary. Computed mandatory
+boundaries already prepared by Text retain their separate issued causes.
 
 Text-backed scopes use authenticated mixed-prefix and canonical source incidence,
 including transformed, collapsed and removed content. A semantic captured scope

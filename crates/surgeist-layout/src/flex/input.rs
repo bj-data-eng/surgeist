@@ -3,7 +3,7 @@ use crate::scroll::{ScrollBoxProjection, ScrollTargetProjection};
 use crate::{
     AlignContent, AlignItems, Compute, Display, FlexBasisOf, FlexDirection, FlexGrowOf,
     FlexItemCollapse, FlexShrinkOf, FlexWrap, ItemOrder, LayoutScalar, LengthOf, NodeInputOf, Size,
-    SourceIndex, Traverse,
+    SourceIndex, Traverse, WrapEdges,
 };
 
 /// Flex-container facts settled at the flex algorithm entry.
@@ -40,6 +40,7 @@ pub(super) struct FlexItemProjection<'a, S: LayoutScalar> {
     pub(super) display: Display,
     pub(super) item_order: ItemOrder,
     pub(super) collapse: FlexItemCollapse,
+    pub(super) wrap_edges: WrapEdges,
     pub(super) align_self: Option<AlignItems>,
     pub(super) flex_basis: &'a FlexBasisOf<S>,
     pub(super) flex_grow: FlexGrowOf<S>,
@@ -54,6 +55,7 @@ impl<'a, S: LayoutScalar> FlexItemProjection<'a, S> {
             display: input.display,
             item_order: input.item_order,
             collapse: input.flex_item_collapse,
+            wrap_edges: input.wrap_edges,
             align_self: input.align_self,
             flex_basis: &input.flex_basis,
             flex_grow: input.flex_grow,

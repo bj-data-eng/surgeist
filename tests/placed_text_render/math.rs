@@ -271,7 +271,10 @@ fn capture(
             controls: vec![],
             line_strut: None,
         }],
-        Vec::new(),
+        surgeist_layout::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(

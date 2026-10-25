@@ -220,7 +220,15 @@ fn rejects(
     binding: TextParagraphBinding<u32>,
     expected: TextBindingError,
 ) {
-    let Err(error) = LayoutFlowInput::try_new(tree, 0, vec![binding], Vec::new()) else {
+    let Err(error) = LayoutFlowInput::try_new(
+        tree,
+        0,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    ) else {
         panic!("invalid scope association must refuse")
     };
     assert!(
@@ -232,7 +240,16 @@ fn rejects(
 #[test]
 fn automatic_phrase_scope_inventory_requires_the_exact_issued_scope_and_own_pair() {
     let f = fixture(20.0, true, [10, 11, 12, 13]);
-    LayoutFlowInput::try_new(&f.tree, 0, vec![f.binding.clone()], Vec::new()).unwrap();
+    LayoutFlowInput::try_new(
+        &f.tree,
+        0,
+        vec![f.binding.clone()],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let mut missing = f.binding.clone();
     missing.controls.pop();
     rejects(&f.tree, missing, TextBindingError::ControlCoverage);
@@ -300,8 +317,16 @@ fn scope_facts(batch: &CompletedLayoutBatchOf<u32, f64>) -> Vec<ScopeFragmentFac
 #[test]
 fn automatic_phrase_multiple_occurrences_publish_one_scope_owner_at_each_placed_position() {
     let f = fixture(20.0, true, [10, 11, 12, 13]);
-    let capture =
-        LayoutFlowInput::try_new(&f.tree, 0, vec![f.binding.clone()], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &f.tree,
+        0,
+        vec![f.binding.clone()],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
     let facts = scope_facts(&batch);
     assert_eq!(facts.len(), 3);
@@ -431,7 +456,16 @@ fn compute(
     tree: &CachedTree,
     binding: &TextParagraphBinding<u32>,
 ) -> CompletedLayoutBatchOf<u32, f64> {
-    let capture = LayoutFlowInput::try_new(tree, 100, vec![binding.clone()], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        tree,
+        100,
+        vec![binding.clone()],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     compute_layout_with_flow(&capture, 100, request(500.0)).unwrap()
 }
 
@@ -525,8 +559,16 @@ fn automatic_phrase_scope_fragments_follow_real_split_lines_and_rtl_line_anchors
         [10, 11, 12, 13],
         ParagraphBaseDirection::RightToLeft,
     );
-    let capture =
-        LayoutFlowInput::try_new(&f.tree, 0, vec![f.binding.clone()], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &f.tree,
+        0,
+        vec![f.binding.clone()],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let wide = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
     // Ahem advances are10px for all13 original units and20px for each of
     // three generated spaces: occupied width190, RTL start500-190=310.
@@ -583,7 +625,16 @@ fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_o
         cache_hits: Cell::new(0),
     };
     let compute_all = |tree: &CachedTree, paragraphs: &[TextParagraphBinding<u32>]| {
-        let capture = LayoutFlowInput::try_new(tree, 100, paragraphs.to_vec(), Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            tree,
+            100,
+            paragraphs.to_vec(),
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         compute_layout_with_flow_invalidated(&capture, 100, request(500.0), &[102]).unwrap()
     };
     let initial = compute_all(&tree, &first);

@@ -671,9 +671,16 @@ mod tests {
                 .map(|view| view.handle())
                 .collect::<Vec<_>>();
             let tree = super::super::TestTree::from_golden(&golden.root).unwrap();
-            let capture =
-                layout::LayoutFlowInput::try_new(&tree, 0, tree.paragraphs.clone(), Vec::new())
-                    .unwrap();
+            let capture = layout::LayoutFlowInput::try_new(
+                &tree,
+                0,
+                tree.paragraphs.clone(),
+                layout::WrappingInput {
+                    scopes: Vec::new(),
+                    child_order: Vec::new(),
+                },
+            )
+            .unwrap();
             let request = layout::LayoutRootRequest::viewport(layout::Size::new(
                 layout::Available::definite(100.0),
                 layout::Available::MaxContent,

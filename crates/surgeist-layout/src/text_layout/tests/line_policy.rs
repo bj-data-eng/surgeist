@@ -47,8 +47,16 @@ fn batch<S: LayoutScalar>(
             },
         )
         .input(1, paragraph.text_input(1));
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     compute_layout_with_flow(&capture, 0, request(width)).unwrap()
 }
 
@@ -438,8 +446,16 @@ fn assert_float_amounts<S: LayoutScalar>() {
                 },
             );
         }
-        let capture =
-            LayoutFlowInput::try_new(&tree, 0, vec![binding.clone()], Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![binding.clone()],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(45.0)).unwrap();
         let first = lines(&batch).remove(0);
         let slot = first.spacing_slots().next().unwrap();
@@ -568,8 +584,16 @@ fn native_fractional_expansion_keeps_three_words_inside_the_actual_f64_band() {
             .input(node, paragraph.text_input(node));
     }
     let tree = ShapeTree(tree);
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(31.0)).unwrap();
     let actual = lines(&batch);
     let first = &actual[0];

@@ -99,8 +99,16 @@ fn compute<S: LayoutScalar>(
             },
         )
         .input(1, paragraph.text_input(1));
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(width)).unwrap();
     assert_eq!(batch.placed_text().len(), 1);
     assert_eq!(batch.placed_text()[0].nodes(), &[1]);
@@ -492,9 +500,16 @@ fn automatic_intrinsic_refinement_is_distinct_from_finite_manual_priority() {
                         },
                     )
                     .input(1, paragraph.text_input(1));
-                let capture =
-                    LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new())
-                        .unwrap();
+                let capture = LayoutFlowInput::try_new(
+                    &tree,
+                    0,
+                    vec![paragraph.binding(0)],
+                    crate::WrappingInput {
+                        scopes: Vec::new(),
+                        child_order: Vec::new(),
+                    },
+                )
+                .unwrap();
                 for (available, expected) in [
                     (AvailableOf::MIN_CONTENT, minimum),
                     (AvailableOf::MAX_CONTENT, 90.0),

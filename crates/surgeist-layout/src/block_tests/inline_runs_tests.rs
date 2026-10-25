@@ -223,8 +223,16 @@ fn prepared_fixed_metric_text_retains_actual_font_baseline_both_scalars() {
             )
             .with_style(1, NodeInputOf::non_box())
             .with_layout_input(1, text.text_input(1));
-        let capture =
-            LayoutFlowInput::try_new(&tree, 0, vec![text.binding(0)], Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![text.binding(0)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         let batch = compute_layout_with_flow(
             &capture,
             0,
@@ -481,7 +489,16 @@ fn assert_fri08_c07_t01_inline_transition_roles<S: LayoutScalar>() {
         let (tree, text) = fri08_c07_t01_inline_transition_tree(start);
         let mut binding = text.binding(0);
         binding.nodes = vec![3, 4, 5, 6];
-        let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![binding],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         let batch = compute_layout_with_flow(
             &capture,
             0,

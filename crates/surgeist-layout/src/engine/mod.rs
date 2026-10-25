@@ -47,9 +47,18 @@ pub fn compute_layout_invalidated<Tree>(
 where
     Tree: LayoutTree,
 {
-    let invalidated_nodes = validation::validate_layout_request(tree, root, changed_nodes)?;
-
-    compute_validated_layout(tree, root, request, invalidated_nodes)
+    let (graph, invalidated_nodes) =
+        validation::validate_layout_request_with_text_graph(tree, root, changed_nodes, &[])?;
+    let wrapping = crate::inline_wrapping::WrappingContext::new(tree, &graph, &[], &[], &[])
+        .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
+    compute_validated_layout(
+        tree,
+        root,
+        request,
+        invalidated_nodes,
+        &graph,
+        std::sync::Arc::new(wrapping),
+    )
 }
 
 fn compute_validated_layout<Tree>(
@@ -57,11 +66,14 @@ fn compute_validated_layout<Tree>(
     root: Tree::Node,
     request: LayoutRootRequestOf<Tree::Scalar>,
     invalidated_nodes: Vec<Tree::Node>,
+    graph: &validation::ValidationGraph<Tree::Node>,
+    wrapping: std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>,
 ) -> ComputeLayoutResult<Tree>
 where
     Tree: LayoutTree,
 {
     let mut session = session::ComputeSession::new(tree, invalidated_nodes);
+    session.install_wrapping(wrapping, graph);
     match request.context() {
         LayoutRootContextOf::Viewport => {
             compute_root(&mut session, root, request.available())?;

@@ -214,7 +214,16 @@ fn continuation(
 #[test]
 fn complete_inline_scope_around_real_block_without_generated_output_is_accepted() {
     let (tree, bindings) = continuation(false, true);
-    let capture = LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        bindings,
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
     assert_eq!(batch.placed_text().len(), 3);
     assert!(
@@ -239,7 +248,7 @@ fn complete_inline_scope_around_real_block_without_generated_output_is_accepted(
 #[test]
 fn complete_inline_scope_keeps_generated_output_before_and_after_real_block() {
     let (tree, bindings) = continuation(true, true);
-    let capture = LayoutFlowInput::try_new(&tree, 0, bindings.clone(), Vec::new()).unwrap_or_else(|error| {
+    let capture = LayoutFlowInput::try_new(&tree, 0, bindings.clone(), crate::WrappingInput { scopes: Vec::new(), child_order: Vec::new() }).unwrap_or_else(|error| {
         panic!("the complete global inline pair [1,5] must support its actual paragraph projections: {error:?}")
     });
     let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
@@ -305,7 +314,15 @@ fn complete_inline_scope_keeps_generated_output_before_and_after_real_block() {
 #[test]
 fn missing_global_inline_boundary_capture_remains_a_refusal() {
     let (tree, bindings) = continuation(true, false);
-    let Err(error) = LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()) else {
+    let Err(error) = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        bindings,
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    ) else {
         panic!("an uncaptured global pair must not be inferred from nearby controls")
     };
     assert!(matches!(
@@ -636,7 +653,16 @@ fn middle_continuation_with_neither_endpoint_keeps_one_global_owner_and_local_ge
     assert_ne!(owners[0], owners[1]);
     assert_eq!(owners[0].captured_scope(), owners[1].captured_scope());
     bindings.reverse(); // Caller vector order supplies no traversal authority.
-    let capture = LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        bindings,
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
     let mut facts: Vec<_> = batch
         .final_inline_fragments()
@@ -683,7 +709,16 @@ fn genuine_nonemitting_endpoint_paragraphs_supply_remote_controls_without_genera
     assert_eq!(bindings[6].prepared.origin_views().len(), 0);
     assert_eq!(bindings[0].prepared.virtual_separators().len(), 0);
     assert_eq!(bindings[6].prepared.virtual_separators().len(), 0);
-    let capture = LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        bindings,
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
     assert_eq!(batch.placed_text().len(), 7);
     let generated: Vec<_> = batch
@@ -723,7 +758,15 @@ fn foreign_same_ordinal_capture_cannot_supply_a_remote_endpoint() {
             bindings[2].origins[0].origin.clone(),
         )),
     );
-    let Err(error) = LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()) else {
+    let Err(error) = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        bindings,
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    ) else {
         panic!("foreign capture endpoint");
     };
     assert!(matches!(
@@ -744,7 +787,15 @@ fn multiple_actual_paths_to_a_needed_scope_node_refuse_ambiguity() {
         .style(90, NodeInputOf::default())
         .style(91, NodeInputOf::default())
         .style(99, NodeInputOf::default());
-    let Err(error) = LayoutFlowInput::try_new(&tree, 99, bindings, Vec::new()) else {
+    let Err(error) = LayoutFlowInput::try_new(
+        &tree,
+        99,
+        bindings,
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    ) else {
         panic!("scope node has two real occurrences");
     };
     assert!(matches!(
@@ -759,7 +810,15 @@ fn multiple_actual_paths_to_a_needed_scope_node_refuse_ambiguity() {
 fn absent_nonemitting_endpoint_paragraph_is_a_missing_real_association() {
     let (tree, mut bindings) = several_segments(2, true, false);
     bindings.remove(0);
-    let Err(error) = LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()) else {
+    let Err(error) = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        bindings,
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    ) else {
         panic!("the actual remote Start binding must be supplied");
     };
     assert!(matches!(
@@ -774,7 +833,15 @@ fn absent_nonemitting_endpoint_paragraph_is_a_missing_real_association() {
 fn real_nested_block_order_must_agree_with_the_global_capture() {
     let (tree, bindings) = several_segments(3, false, false);
     let tree = tree.children(0, [101, 300, 201, 301, 200, 302, 102]);
-    let Err(error) = LayoutFlowInput::try_new(&tree, 0, bindings, Vec::new()) else {
+    let Err(error) = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        bindings,
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    ) else {
         panic!("the child domains cannot exchange actual tree order");
     };
     assert!(matches!(
@@ -789,7 +856,16 @@ fn real_nested_block_order_must_agree_with_the_global_capture() {
 fn positive_global_endpoints_remain_local_to_their_actual_paragraphs() {
     let (mut tree, bindings) = continuation(true, true);
     let compute = |tree: &PublicLayoutTreeOf<f64>| {
-        let capture = LayoutFlowInput::try_new(tree, 0, bindings.clone(), Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            tree,
+            0,
+            bindings.clone(),
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         compute_layout_with_flow(&capture, 0, request(500.0)).unwrap()
     };
     let zero = compute(&tree);

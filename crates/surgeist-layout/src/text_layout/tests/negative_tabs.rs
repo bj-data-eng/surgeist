@@ -54,7 +54,16 @@ fn compute<S: LayoutScalar>(
             },
         );
     }
-    let capture = LayoutFlowInput::try_new(&tree, 0, vec![p.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![p.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     compute_layout_with_flow(&capture, 0, request(100.0)).unwrap()
 }
 

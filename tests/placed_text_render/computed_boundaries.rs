@@ -243,7 +243,10 @@ fn computed_scope_before_keeps_original_receiving_caret_and_two_painted_lines() 
             controls: vec![],
             line_strut: None,
         }],
-        vec![],
+        surgeist_layout::WrappingInput {
+            scopes: vec![],
+            child_order: Vec::new(),
+        },
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(

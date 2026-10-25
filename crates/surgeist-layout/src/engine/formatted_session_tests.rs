@@ -38,7 +38,16 @@ fn compute<S: LayoutScalar>(
     paragraphs: Vec<TextParagraphBinding<u32>>,
     width: f64,
 ) -> CompletedLayoutBatchOf<u32, S> {
-    let capture = LayoutFlowInput::try_new(tree, 0, paragraphs, Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        tree,
+        0,
+        paragraphs,
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     compute_layout_with_flow(
         &capture,
         0,
@@ -113,7 +122,16 @@ fn intrinsic_and_finite_traversals_keep_separate_actual_owner_frames() {
                 },
             )
             .input(1, p.text_input(1));
-        let capture = LayoutFlowInput::try_new(&tree, 0, vec![p.binding(0)], Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![p.binding(0)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         let cases = [
             (AvailableOf::MIN_CONTENT, 20.0),
             (AvailableOf::MAX_CONTENT, 40.0),
@@ -302,7 +320,16 @@ fn float_probe_tail_truth_is_merged_only_when_its_packet_is_accepted() {
             },
         )
         .input(3, p.text_input(3));
-    let capture = LayoutFlowInput::try_new(&tree, 0, vec![p.binding(2)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![p.binding(2)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let mut session = ComputeSession::with_flow(&capture, vec![]);
     let input = ComputeInputOf::leaf_layout(
         Size::NONE,
@@ -409,7 +436,16 @@ fn warm_geometry_only_numeric_child_cache_cannot_supply_formatted_tail_truth() {
         caches: Default::default(),
         hits: Default::default(),
     };
-    let capture = LayoutFlowInput::try_new(&tree, 0, vec![p.binding(2)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![p.binding(2)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let request = LayoutRootRequestOf::viewport(Size::new(
         AvailableOf::definite(60.0),
         AvailableOf::MAX_CONTENT,

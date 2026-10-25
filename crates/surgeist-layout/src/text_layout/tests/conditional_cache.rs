@@ -200,7 +200,16 @@ fn signed<S: LayoutScalar>(tracking: f64) {
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 30, 11];
     let tree = float_tree::<S>(&binding, 15.0, Float::Left, 1);
-    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        2,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(15.0)).unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(
@@ -266,7 +275,16 @@ fn future<S: LayoutScalar>() {
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 30, 11];
     let tree = float_tree::<S>(&binding, 20.0, Float::Left, 1);
-    let capture = LayoutFlowInput::try_new(&tree, 2, vec![binding], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        2,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(

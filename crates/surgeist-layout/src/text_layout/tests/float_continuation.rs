@@ -111,12 +111,18 @@ fn assert_one_paragraph<S: LayoutScalar>(with_float: bool) {
     assert_eq!(binding.origins[0].origin, paragraph.origin(1));
     assert_eq!(binding.origins[1].origin, paragraph.origin(2));
     assert_eq!(binding.prepared, paragraph.prepared);
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap_or_else(|error| {
-            panic!(
-                "one prepared paragraph must remain admissible across an ignored float: {error:?}"
-            )
-        });
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap_or_else(|error| {
+        panic!("one prepared paragraph must remain admissible across an ignored float: {error:?}")
+    });
     let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
     assert_eq!(batch.placed_text().len(), 1);
     let placed = batch.placed_text()[0].layout();
@@ -198,7 +204,10 @@ fn assert_two_explicit_paragraphs<S: LayoutScalar>() {
         &tree,
         0,
         vec![first.binding(0), second.binding(0)],
-        Vec::new(),
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();

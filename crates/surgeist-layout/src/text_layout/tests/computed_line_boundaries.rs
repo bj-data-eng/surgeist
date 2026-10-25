@@ -398,7 +398,16 @@ fn compute<S: LayoutScalar>(
     width: AvailableOf<S>,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let tree = tree::<S>(fixture, rtl);
-    let flow = LayoutFlowInput::try_new(&tree, 0, vec![fixture.binding.clone()], vec![]).unwrap();
+    let flow = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![fixture.binding.clone()],
+        crate::WrappingInput {
+            scopes: vec![],
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     compute_layout_with_flow(&flow, 0, request_at(width)).unwrap()
 }
 
@@ -855,9 +864,17 @@ fn node_free_computed_only_paragraph_preserves_exact_empty_run_scheduling_limit(
     assert!(f.binding.controls.is_empty());
     assert_eq!(computed_group(&f, 1).view().source_position().get(), 0);
     let tree = tree::<f64>(&f, false);
-    let error = LayoutFlowInput::try_new(&tree, 0, vec![f.binding.clone()], vec![])
-        .err()
-        .expect("there is not yet a native semantic-slot scheduler for a node-free run");
+    let error = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![f.binding.clone()],
+        crate::WrappingInput {
+            scopes: vec![],
+            child_order: Vec::new(),
+        },
+    )
+    .err()
+    .expect("there is not yet a native semantic-slot scheduler for a node-free run");
     assert!(matches!(
         error.kind(),
         LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::TextBinding(
@@ -872,7 +889,16 @@ fn missing_metrics<S: LayoutScalar>() {
         text::ParagraphStrut::AllocatedContributions,
     ));
     let tree = tree::<S>(&f, false);
-    let flow = LayoutFlowInput::try_new(&tree, 0, vec![f.binding.clone()], vec![]).unwrap();
+    let flow = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![f.binding.clone()],
+        crate::WrappingInput {
+            scopes: vec![],
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let error = compute_layout_with_flow(
         &flow,
         0,
@@ -900,9 +926,17 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
     let next_tree = tree::<f64>(&next, false);
     let mut foreign = next.binding.clone();
     foreign.origins[0].origin = first.binding.origins[0].origin.clone();
-    let error = LayoutFlowInput::try_new(&next_tree, 0, vec![foreign], vec![])
-        .err()
-        .expect("equal characters/IDs do not authenticate another preparation");
+    let error = LayoutFlowInput::try_new(
+        &next_tree,
+        0,
+        vec![foreign],
+        crate::WrappingInput {
+            scopes: vec![],
+            child_order: Vec::new(),
+        },
+    )
+    .err()
+    .expect("equal characters/IDs do not authenticate another preparation");
     assert!(matches!(
         error.kind(),
         LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::TextBinding(
@@ -915,9 +949,17 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
             first.binding.origins[0].origin.clone(),
         )),
     );
-    let error = LayoutFlowInput::try_new(&foreign_tree, 0, vec![next.binding.clone()], vec![])
-        .err()
-        .expect("actual host participation must match the issued preparation");
+    let error = LayoutFlowInput::try_new(
+        &foreign_tree,
+        0,
+        vec![next.binding.clone()],
+        crate::WrappingInput {
+            scopes: vec![],
+            child_order: Vec::new(),
+        },
+    )
+    .err()
+    .expect("actual host participation must match the issued preparation");
     assert!(matches!(
         error.kind(),
         LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::TextBinding(
@@ -928,9 +970,17 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
     let endpoint_tree = tree::<f64>(&endpoint, false);
     let mut absent = endpoint.binding.clone();
     absent.controls.clear();
-    let error = LayoutFlowInput::try_new(&endpoint_tree, 0, vec![absent], vec![])
-        .err()
-        .expect("the original target endpoint must retain its native binding");
+    let error = LayoutFlowInput::try_new(
+        &endpoint_tree,
+        0,
+        vec![absent],
+        crate::WrappingInput {
+            scopes: vec![],
+            child_order: Vec::new(),
+        },
+    )
+    .err()
+    .expect("the original target endpoint must retain its native binding");
     assert!(matches!(
         error.kind(),
         LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::TextBinding(
@@ -941,9 +991,17 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
     let atomic_tree = tree::<f64>(&atomic, false);
     let mut absent = atomic.binding.clone();
     absent.atomics.clear();
-    let error = LayoutFlowInput::try_new(&atomic_tree, 0, vec![absent], vec![])
-        .err()
-        .expect("the original target atomic must retain its native binding");
+    let error = LayoutFlowInput::try_new(
+        &atomic_tree,
+        0,
+        vec![absent],
+        crate::WrappingInput {
+            scopes: vec![],
+            child_order: Vec::new(),
+        },
+    )
+    .err()
+    .expect("the original target atomic must retain its native binding");
     assert!(matches!(
         error.kind(),
         LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::TextBinding(
@@ -974,8 +1032,16 @@ fn after_float<S: LayoutScalar>() {
     neutral_input.computed_line_boundaries.clear();
     let mut neutral = prepare(neutral_input);
     let neutral_tree = insert_float::<S>(&mut neutral, true);
-    let flow =
-        LayoutFlowInput::try_new(&neutral_tree, 0, vec![neutral.binding.clone()], vec![]).unwrap();
+    let flow = LayoutFlowInput::try_new(
+        &neutral_tree,
+        0,
+        vec![neutral.binding.clone()],
+        crate::WrappingInput {
+            scopes: vec![],
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let old = compute_layout_with_flow(
         &flow,
         0,
@@ -1017,7 +1083,16 @@ fn after_float<S: LayoutScalar>() {
         assert_eq!(group.view().source_position().get(), 1);
         assert_eq!(f.binding.prepared.control_views().count(), 2);
         let tree = insert_float::<S>(&mut f, true);
-        let flow = LayoutFlowInput::try_new(&tree, 0, vec![f.binding.clone()], vec![]).unwrap();
+        let flow = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![f.binding.clone()],
+            crate::WrappingInput {
+                scopes: vec![],
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         let batch = compute_layout_with_flow(
             &flow,
             0,
@@ -1225,7 +1300,16 @@ fn cached_compute<S: LayoutScalar>(
     tree: &Cached<S>,
     f: &Fixture,
 ) -> CompletedLayoutBatchOf<u32, S> {
-    let flow = LayoutFlowInput::try_new(tree, 1000, vec![f.binding.clone()], vec![]).unwrap();
+    let flow = LayoutFlowInput::try_new(
+        tree,
+        1000,
+        vec![f.binding.clone()],
+        crate::WrappingInput {
+            scopes: vec![],
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     compute_layout_with_flow(
         &flow,
         1000,
@@ -1267,7 +1351,16 @@ fn unproved_float<S: LayoutScalar>() {
     let mut neutral = prepare(scope_input(false, Side::After, false));
     let neutral_tree = insert_float::<S>(&mut neutral, false);
     let mut host = Cached::new(neutral_tree);
-    let flow = LayoutFlowInput::try_new(&host, 0, vec![neutral.binding.clone()], vec![]).unwrap();
+    let flow = LayoutFlowInput::try_new(
+        &host,
+        0,
+        vec![neutral.binding.clone()],
+        crate::WrappingInput {
+            scopes: vec![],
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let old = compute_layout_with_flow(
         &flow,
         0,
@@ -1301,7 +1394,15 @@ fn unproved_float<S: LayoutScalar>() {
     // The native float is genuinely between the two original text nodes, but
     // has no captured event or paired endpoint proving its side of ScopeAfter.
     // Equal source1 cannot choose the preceding physical seam for this force.
-    let error = match LayoutFlowInput::try_new(&host, 0, vec![requested.binding.clone()], vec![]) {
+    let error = match LayoutFlowInput::try_new(
+        &host,
+        0,
+        vec![requested.binding.clone()],
+        crate::WrappingInput {
+            scopes: vec![],
+            child_order: Vec::new(),
+        },
+    ) {
         Ok(flow) => compute_layout_with_flow(
             &flow,
             0,

@@ -67,6 +67,7 @@ fn tree<S: LayoutScalar>(float: bool) -> PublicLayoutTreeOf<S> {
 
 fn scopes(policy: WrapInside) -> Vec<WrappingScopeInput<u32>> {
     vec![WrappingScopeInput::NativePair {
+        edges: Default::default(),
         start: 1,
         end: 3,
         wrap_inside: policy,
@@ -96,7 +97,16 @@ fn native_avoid_results_do_not_enter_geometry_only_host_caches() {
     fn lane<S: LayoutScalar>() {
         let tree = tree::<S>(false);
         for policy in [WrapInside::Auto, WrapInside::Avoid] {
-            let capture = LayoutFlowInput::try_new(&tree, 0, Vec::new(), scopes(policy)).unwrap();
+            let capture = LayoutFlowInput::try_new(
+                &tree,
+                0,
+                Vec::new(),
+                crate::WrappingInput {
+                    scopes: scopes(policy),
+                    child_order: Vec::new(),
+                },
+            )
+            .unwrap();
             let mut owner = ComputeSession::with_flow(&capture, capture.invalidated.clone());
             let output = owner.compute_child(0, input(RunMode::ComputeSize)).unwrap();
             assert_eq!(output.size, Size::new(S::from_f64(25.0), S::from_f64(10.0)));
@@ -136,10 +146,26 @@ fn native_avoid_results_do_not_enter_geometry_only_host_caches() {
 fn a_float_packet_cannot_cross_an_immutable_wrapping_basis() {
     fn lane<S: LayoutScalar>() {
         let tree = tree::<S>(true);
-        let avoid =
-            LayoutFlowInput::try_new(&tree, 0, Vec::new(), scopes(WrapInside::Avoid)).unwrap();
-        let auto =
-            LayoutFlowInput::try_new(&tree, 0, Vec::new(), scopes(WrapInside::Auto)).unwrap();
+        let avoid = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            Vec::new(),
+            crate::WrappingInput {
+                scopes: scopes(WrapInside::Avoid),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
+        let auto = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            Vec::new(),
+            crate::WrappingInput {
+                scopes: scopes(WrapInside::Auto),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         let mut owner = ComputeSession::with_flow(&avoid, avoid.invalidated.clone());
         let packet = owner
             .probe_float_child(4, input(RunMode::PerformLayout))

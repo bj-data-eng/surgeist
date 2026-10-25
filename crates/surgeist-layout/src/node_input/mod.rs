@@ -62,6 +62,7 @@ fn validate_numeric_property<S: LayoutScalar>(
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
+    pub wrap_edges: crate::WrapEdges,
     pub display: Display,
     pub atomic_inline_participation: Option<AtomicInlineParticipation>,
     pub float_exclusion: FloatExclusion,
@@ -174,6 +175,7 @@ pub type NodeInput = NodeInputOf<DefaultScalar>;
 
 impl NodeInputOf<DefaultScalar> {
     pub const DEFAULT: Self = Self {
+        wrap_edges: crate::WrapEdges::AUTO,
         display: Display::Flex,
         atomic_inline_participation: None,
         float_exclusion: FloatExclusion::MarginBox,
@@ -259,6 +261,7 @@ impl NodeInputOf<DefaultScalar> {
 impl<S: LayoutScalar> Default for NodeInputOf<S> {
     fn default() -> Self {
         Self {
+            wrap_edges: crate::WrapEdges::AUTO,
             display: Display::Flex,
             atomic_inline_participation: None,
             float_exclusion: FloatExclusion::MarginBox,

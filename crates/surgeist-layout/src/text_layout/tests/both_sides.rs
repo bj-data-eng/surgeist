@@ -267,7 +267,16 @@ fn compute<S: LayoutScalar>(
         controls,
         line_strut: None,
     };
-    let captured = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+    let captured = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let input =
         LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap();
     compute_layout_with_flow(&captured, 0, input).unwrap()

@@ -347,8 +347,16 @@ impl Fixture {
         available: AvailableOf<S>,
     ) -> CompletedLayoutBatchOf<u32, S> {
         let tree = self.tree(start, end, rtl, width, float);
-        let capture =
-            LayoutFlowInput::try_new(&tree, 0, vec![self.binding.clone()], Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![self.binding.clone()],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         compute_layout_with_flow(
             &capture,
             0,

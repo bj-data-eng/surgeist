@@ -779,13 +779,15 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                             WrappingScopeError::CaptureAssociation,
                         ));
                     }
-                    let active = matches!(
-                        input,
+                    let active = match input {
                         WrappingScopeInput::NativePair {
-                            wrap_inside: WrapInside::Avoid,
-                            ..
+                            wrap_inside, edges, ..
+                        } => {
+                            *wrap_inside == WrapInside::Avoid
+                                || edges.has_effect(crate::inline_wrapping::WrappingMode::Inline)
                         }
-                    ) && !matching;
+                        _ => false,
+                    } && !matching;
                     if let Some(prior) = self
                         .native
                         .iter_mut()
@@ -807,7 +809,12 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                     push_unique(&mut self.domains, domain);
                 }
             }
-            if let WrappingScopeInput::Captured { scope, wrap_inside } = input {
+            if let WrappingScopeInput::Captured {
+                scope,
+                wrap_inside,
+                edges,
+            } = input
+            {
                 if scope.role() != ScopeRole::Inline {
                     return Err(crate::inline_wrapping::wrapping_error(
                         self.graph.nodes[0],
@@ -843,7 +850,9 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                 } else {
                     push_unique(&mut self.semantic, scope.clone());
                 }
-                if *wrap_inside == WrapInside::Avoid {
+                if *wrap_inside == WrapInside::Avoid
+                    || edges.has_effect(crate::inline_wrapping::WrappingMode::Inline)
+                {
                     add_region(&mut self.result.regions, scope.clone());
                 }
             }
@@ -864,8 +873,8 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                     push_unique(&mut self.wrapping, scope.clone());
                     if inputs.iter().any(|input| {
                         matches!(input, WrappingScopeInput::NativePair {
-                            start:a, end:b, wrap_inside:WrapInside::Avoid,
-                        } if start.node == *a && end.node == *b)
+                            start:a, end:b, wrap_inside, edges,
+                        } if start.node == *a && end.node == *b && (*wrap_inside==WrapInside::Avoid || edges.has_effect(crate::inline_wrapping::WrappingMode::Inline)))
                     }) {
                         add_region(&mut self.result.regions, scope.clone());
                     }

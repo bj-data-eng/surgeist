@@ -122,7 +122,16 @@ fn assert_native_invalidation_source_order<S: LayoutScalar>() {
                 binding.controls[0].occurrence.clone(),
             )),
         );
-    let capture = LayoutFlowInput::try_new(&tree, 70, vec![binding], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        70,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let cold = compute_layout_with_flow(&capture, 70, request(40.0)).unwrap();
     // Native Text and its ancestor bypass geometry caches; the independent
     // atomic remains eligible until it is an actual invalidation seed.
@@ -158,8 +167,16 @@ fn assert_terminal_empty_line_scroll<S: LayoutScalar>() {
             },
         )
         .input(1, paragraph.text_input(1));
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
     let placed = batch.placed_text()[0].layout();
     let lines = placed.lines();
@@ -219,7 +236,16 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
         )
         .input(1, paragraph.text_input(1));
     let binding = paragraph.binding(0);
-    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding.clone()], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding.clone()],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(
         &capture,
         0,
@@ -439,7 +465,16 @@ fn assert_fractional_float_clearance<S: LayoutScalar>(explicit_clear: bool) {
         if explicit_clear {
             binding.nodes = vec![2, 3, 4];
         }
-        let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![binding],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
         let placed = batch.placed_text()[0].layout();
         let lines = placed.lines();
@@ -514,8 +549,16 @@ fn assert_no_clear_preserves_fractional_line_position<S: LayoutScalar>() {
             },
         )
         .input(1, paragraph.text_input(1));
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[88, 10, 88, 10, 88]);
@@ -601,8 +644,16 @@ fn assert_actual_no_clear_round_trip<S: LayoutScalar>() {
             },
         )
         .input(1, paragraph.text_input(1));
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[88, 10, 88]);
@@ -668,8 +719,16 @@ fn assert_two_logical_allocations_survive_line_anchor_translation<S: LayoutScala
             },
         )
         .input(1, paragraph.text_input(1));
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(35.0)).unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[88, 88, 32, 88, 88]);
@@ -768,8 +827,16 @@ fn assert_three_logical_allocations_survive_line_anchor_translation<S: LayoutSca
                 },
             );
     }
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[88, 88, 88]);
@@ -890,8 +957,16 @@ fn assert_optional_control<S: LayoutScalar>() {
         ParagraphBaseDirection::LeftToRight,
     );
     let tree = semantic_control_tree::<S>(&paragraph);
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
     let placed = batch.placed_text()[0].layout();
     let lines = placed.lines();
@@ -939,8 +1014,16 @@ fn assert_directional_controls<S: LayoutScalar>() {
         ParagraphBaseDirection::LeftToRight,
     );
     let tree = semantic_control_tree::<S>(&paragraph);
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[65, 66]);
@@ -1013,8 +1096,16 @@ fn assert_discretionary_alternatives<S: LayoutScalar>() {
         .collect::<Vec<_>>();
     assert_eq!(alternatives.len(), 2);
     let tree = semantic_control_tree::<S>(&paragraph);
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(30.0)).unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[88; 6]);
@@ -1097,8 +1188,16 @@ fn assert_atomic_alignment<S: LayoutScalar>() {
                     ..NodeInputOf::default()
                 },
             );
-        let capture =
-            LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![paragraph.binding(0)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();
         let placed = batch.placed_text()[0].layout();
         assert_eq!(placed.lines()[0].baseline(), baseline, "{vertical_align:?}");
@@ -1160,8 +1259,16 @@ fn assert_rtl_asymmetric_insets<S: LayoutScalar>() {
             },
         )
         .input(1, paragraph.text_input(1));
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.lines()[0].bounds().origin.x, 3.0);
@@ -1241,7 +1348,16 @@ fn assert_rtl_atomic_control_slots<S: LayoutScalar>() {
                 binding.controls[0].occurrence.clone(),
             )),
         );
-    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();
     let placed = batch.placed_text()[0].layout();
     let line = &placed.lines()[0];
@@ -1338,7 +1454,16 @@ fn assert_reused_preparation_runs<S: LayoutScalar>() {
             3,
             LayoutInputOf::inline_text(TextParticipation::new(paragraph.origin(1))),
         );
-    let capture = LayoutFlowInput::try_new(&tree, 0, vec![first, second], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![first, second],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
     assert_eq!(batch.placed_text().len(), 2);
     let first = &batch.placed_text()[0];
@@ -1416,8 +1541,16 @@ fn assert_genuine_out_of_flow<S: LayoutScalar>() {
                 ..NodeInputOf::default()
             },
         );
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[65, 66]);
@@ -1494,12 +1627,31 @@ fn distinct_out_of_flow_occurrences_cannot_claim_one_absolute_node() {
             },
         );
     }
-    assert!(LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).is_ok());
+    assert!(
+        LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![paragraph.binding(0)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new()
+            }
+        )
+        .is_ok()
+    );
     let mut binding = paragraph.binding(0);
     binding.atomics[1].node = 2;
-    let error = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new())
-        .err()
-        .unwrap();
+    let error = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .err()
+    .unwrap();
     assert!(matches!(
         error.kind(),
         LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::TextBinding(
@@ -1539,8 +1691,15 @@ fn assert_conflicting_atomic_authority<S: LayoutScalar>() {
                 ..NodeInputOf::default()
             },
         );
-    let Err(error) = LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new())
-    else {
+    let Err(error) = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    ) else {
         panic!("conflicting level/break authority must refuse capture")
     };
     assert_eq!(error.site(), LayoutErrorSiteOf::Node(1));
@@ -1589,7 +1748,15 @@ fn semantic_control_requires_exact_preparation_and_structural_role() {
             1,
             LayoutInputOf::text_control(TextControlParticipation::new(wrong)),
         );
-    let Err(error) = LayoutFlowInput::try_new(&tree, 0, vec![binding.clone()], Vec::new()) else {
+    let Err(error) = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding.clone()],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    ) else {
         panic!("foreign issued control must refuse")
     };
     assert!(matches!(
@@ -1599,7 +1766,15 @@ fn semantic_control_requires_exact_preparation_and_structural_role() {
         ))
     ));
     let tree = tree.input(1, LayoutInputOf::line_break(LineBreakInputOf::new()));
-    let Err(error) = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()) else {
+    let Err(error) = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    ) else {
         panic!("optional control is not an actual forced line break")
     };
     assert!(matches!(
@@ -1624,8 +1799,16 @@ fn assert_terminal_break<S: LayoutScalar>() {
         ParagraphBaseDirection::LeftToRight,
     );
     let tree = semantic_control_tree::<S>(&paragraph);
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
     let placed = batch.placed_text()[0].layout();
     let lines = placed.lines();
@@ -1660,8 +1843,16 @@ fn assert_fractional_line_allocation_scroll<S: LayoutScalar>() {
             },
         )
         .input(1, paragraph.text_input(1));
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(35.0)).unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[88, 88, 32, 88, 88]);
@@ -1828,8 +2019,16 @@ fn assert_logical_allocation_float_sliver<S: LayoutScalar>() {
     );
     tree.queries.borrow_mut().clear();
 
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(35.0)).unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[88, 88, 32, 88, 88]);
@@ -1886,3 +2085,6 @@ mod hyphenation_zone_policy;
 
 #[path = "tests/wrap_inside.rs"]
 mod wrap_inside;
+
+#[path = "tests/wrap_edges.rs"]
+mod wrap_edges;

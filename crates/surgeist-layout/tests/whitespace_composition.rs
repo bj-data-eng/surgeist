@@ -370,7 +370,10 @@ fn compute(fixture: &Fixture, width: layout::Available) -> layout::CompletedLayo
         &fixture.tree,
         0,
         vec![fixture.binding.clone()],
-        Vec::new(),
+        surgeist_layout::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
     )
     .unwrap();
     layout::compute_layout_with_flow(

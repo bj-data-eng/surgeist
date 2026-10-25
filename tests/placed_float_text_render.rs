@@ -153,7 +153,10 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
             controls: vec![],
             line_strut: None,
         }],
-        Vec::new(),
+        surgeist_layout::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(

@@ -139,7 +139,16 @@ fn batch<S: LayoutScalar>(
             },
         );
     }
-    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     compute_layout_with_flow(
         &capture,
         0,
@@ -367,7 +376,10 @@ fn a_flow_box_does_not_invent_a_forced_barrier_for_missing_parent_continuation()
             &tree,
             0,
             vec![first.binding(0), tail.binding(0)],
-            Vec::new(),
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
         )
         .unwrap();
         let error = compute_layout_with_flow(&capture, 0, request(80.0)).unwrap_err();
@@ -439,7 +451,10 @@ fn genuine_forced_segment_and_ordinary_cross_run_results_need_no_missing_tail_pr
                 &tree,
                 0,
                 vec![first.binding(0), tail.binding(0)],
-                Vec::new(),
+                crate::WrappingInput {
+                    scopes: Vec::new(),
+                    child_order: Vec::new(),
+                },
             )
             .unwrap();
             let batch =
@@ -527,7 +542,16 @@ fn a_later_one_line_forced_segment_stays_independent_before_a_child_block_tail()
                     ..NodeInputOf::default()
                 },
             );
-        let capture = LayoutFlowInput::try_new(&tree, 0, vec![p.binding(0)], Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![p.binding(0)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(70.0)).unwrap();
         let layout = batch.placed_text()[0].layout();
         assert_eq!(

@@ -263,8 +263,16 @@ fn actual_prepared_collapse_keeps_original_source_while_suppressing_line_edges_b
                 },
             )
             .input(1, paragraph.text_input(1));
-        let capture =
-            LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![paragraph.binding(0)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         let batch = compute_layout_with_flow(
             &capture,
             0,

@@ -4,6 +4,7 @@ fn class(ancestry: &Arc<Ancestry>, scope: Option<usize>) -> AvoidClass {
     AvoidClass {
         ancestry: Arc::clone(ancestry),
         scope,
+        edges: Vec::new(),
     }
 }
 #[test]
@@ -79,25 +80,26 @@ fn native_scope_proof_checks_real_roles_order_and_non_crossing_pairs() {
         crate::engine::validation::validate_layout_request_with_text_graph(&tree, 0, &[], &[])
             .unwrap();
     let pair = |start, end| WrappingScopeInput::NativePair {
+        edges: Default::default(),
         start,
         end,
         wrap_inside: WrapInside::Avoid,
     };
-    assert!(WrappingContext::new(&tree, &graph, &[pair(1, 4), pair(2, 3)], &[]).is_ok());
+    assert!(WrappingContext::new(&tree, &graph, &[pair(1, 4), pair(2, 3)], &[], &[]).is_ok());
     assert_eq!(
-        WrappingContext::new(&tree, &graph, &[pair(1, 3), pair(2, 4)], &[]).unwrap_err(),
+        WrappingContext::new(&tree, &graph, &[pair(1, 3), pair(2, 4)], &[], &[]).unwrap_err(),
         WrappingScopeError::CrossingScopes
     );
     assert_eq!(
-        WrappingContext::new(&tree, &graph, &[pair(3, 4)], &[]).unwrap_err(),
+        WrappingContext::new(&tree, &graph, &[pair(3, 4)], &[], &[]).unwrap_err(),
         WrappingScopeError::EndpointRole
     );
     assert_eq!(
-        WrappingContext::new(&tree, &graph, &[pair(2, 3), pair(2, 3)], &[]).unwrap_err(),
+        WrappingContext::new(&tree, &graph, &[pair(2, 3), pair(2, 3)], &[], &[]).unwrap_err(),
         WrappingScopeError::DuplicateScope
     );
     assert_eq!(
-        WrappingContext::new(&tree, &graph, &[pair(1, 9)], &[]).unwrap_err(),
+        WrappingContext::new(&tree, &graph, &[pair(1, 9)], &[], &[]).unwrap_err(),
         WrappingScopeError::NodeNotReachable
     );
 }

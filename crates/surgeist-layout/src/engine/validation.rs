@@ -5,30 +5,6 @@ use crate::{
 };
 use crate::{Display, LayoutUnsupportedCapability};
 
-pub(crate) fn validate_layout_request<Tree>(
-    tree: &Tree,
-    root: Tree::Node,
-    changed_nodes: &[Tree::Node],
-) -> LayoutResultOf<Tree::Node, Vec<Tree::Node>, Tree::Scalar, Tree::MeasureError>
-where
-    Tree: LayoutTree,
-{
-    validate_layout_request_with_text(tree, root, changed_nodes, &[])
-}
-
-pub(crate) fn validate_layout_request_with_text<Tree>(
-    tree: &Tree,
-    root: Tree::Node,
-    changed_nodes: &[Tree::Node],
-    paragraphs: &[crate::TextParagraphBinding<Tree::Node>],
-) -> LayoutResultOf<Tree::Node, Vec<Tree::Node>, Tree::Scalar, Tree::MeasureError>
-where
-    Tree: LayoutTree,
-{
-    validate_layout_request_with_text_graph(tree, root, changed_nodes, paragraphs)
-        .map(|(_, invalidated)| invalidated)
-}
-
 /// One discovery of the immutable acyclic graph. Integer edges preserve child
 /// order and all incoming edges without requiring host node hashing or ordering.
 #[derive(Clone)]
@@ -406,9 +382,15 @@ mod tests {
                 },
             )
             .input(3, paragraph.text_input(3));
-        let Err(error) =
-            crate::LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(1)], Vec::new())
-        else {
+        let Err(error) = crate::LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![paragraph.binding(1)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        ) else {
             panic!("a first valid block parent does not hide the flex parent role");
         };
         assert!(matches!(
@@ -422,6 +404,15 @@ mod tests {
                 ..crate::NodeInputOf::default()
             },
         );
-        crate::LayoutFlowInput::try_new(&valid, 0, vec![paragraph.binding(1)], Vec::new()).unwrap();
+        crate::LayoutFlowInput::try_new(
+            &valid,
+            0,
+            vec![paragraph.binding(1)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
     }
 }

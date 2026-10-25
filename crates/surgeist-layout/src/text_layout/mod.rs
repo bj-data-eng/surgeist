@@ -156,7 +156,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
         tree: &'tree Tree,
         root: Tree::Node,
         paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
-        wrapping_scopes: Vec<crate::WrappingScopeInput<Tree::Node>>,
+        wrapping_input: crate::WrappingInput<Tree::Node>,
     ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
         let mut influencing = Vec::new();
         let mut occupied = Vec::new();
@@ -530,14 +530,24 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 return Err(binding_error(node, TextBindingError::MissingParagraph));
             }
         }
-        let resolved = capture::resolve(tree, &graph, &paragraphs, &wrapping_scopes)?;
+        let resolved = capture::resolve(tree, &graph, &paragraphs, &wrapping_input.scopes)?;
         let wrapping = crate::inline_wrapping::WrappingContext::new(
             tree,
             &graph,
-            &wrapping_scopes,
+            &wrapping_input.scopes,
             &resolved.wrapping,
+            &wrapping_input.child_order,
         )
         .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
+        if paragraphs
+            .iter()
+            .any(|p| wrapping.requires_source(p.container))
+        {
+            return Err(crate::inline_wrapping::wrapping_error(
+                root,
+                crate::WrappingScopeError::SourceProcessingRequired,
+            ));
+        }
         influencing.extend(wrapping.dependencies());
         let invalidated = graph.invalidation(&influencing)?;
         let associations = std::sync::Arc::new(resolved.associations);

@@ -169,25 +169,23 @@ where
         }
     }
 
-    pub(super) fn with_flow(
-        capture: &'a crate::LayoutFlowInput<'_, Tree>,
-        invalidated_nodes: Vec<Tree::Node>,
-    ) -> Self {
-        let mut session = Self::new(capture.tree, invalidated_nodes);
-        session.flow_graph = Some(&capture.graph);
-        if capture.wrapping.has_avoid() {
-            session.wrapping = Some(capture.wrapping.clone());
+    pub(super) fn install_wrapping(
+        &mut self,
+        wrapping: std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>,
+        graph: &'a crate::engine::validation::ValidationGraph<Tree::Node>,
+    ) {
+        self.flow_graph = Some(graph);
+        if wrapping.has_effects() {
+            self.wrapping = Some(wrapping.clone());
             // Host geometry has no slot for this immutable selection basis.
             // Keep influencing results out of that cache, including ancestors
             // that could otherwise conceal an old selected sequence.
-            let mut included = vec![false; capture.graph.nodes.len()];
-            let mut pending = capture
-                .wrapping
+            let mut included = vec![false; graph.nodes.len()];
+            let mut pending = wrapping
                 .dependencies()
                 .into_iter()
                 .map(|node| {
-                    capture
-                        .graph
+                    graph
                         .index(node)
                         .expect("the normalized scope proved dependency membership")
                 })
@@ -195,11 +193,10 @@ where
             while let Some(index) = pending.pop() {
                 if !included[index] {
                     included[index] = true;
-                    pending.extend(capture.graph.parents[index].iter().copied());
+                    pending.extend(graph.parents[index].iter().copied());
                 }
             }
-            session.wrapping_uncached = capture
-                .graph
+            self.wrapping_uncached = graph
                 .nodes
                 .iter()
                 .copied()
@@ -207,6 +204,14 @@ where
                 .filter_map(|(node, included)| included.then_some(node))
                 .collect();
         }
+    }
+
+    pub(super) fn with_flow(
+        capture: &'a crate::LayoutFlowInput<'_, Tree>,
+        invalidated_nodes: Vec<Tree::Node>,
+    ) -> Self {
+        let mut session = Self::new(capture.tree, invalidated_nodes);
+        session.install_wrapping(capture.wrapping.clone(), &capture.graph);
         if !capture.paragraphs.is_empty() {
             let mut text = crate::text_layout::state::TextComputation::new(
                 &capture.paragraphs,
@@ -1318,9 +1323,16 @@ mod tests {
                 },
             )
             .input(1, paragraph.text_input(1));
-        let capture =
-            crate::LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new())
-                .unwrap();
+        let capture = crate::LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![paragraph.binding(0)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         for fragments in [
             Vec::new(),
             vec![InlineFragmentOutputOf::new(
@@ -1635,7 +1647,10 @@ mod grid_overflow_observation_tests {
                     &tree,
                     2,
                     vec![tree.text.binding(3)],
-                    Vec::new(),
+                    crate::WrappingInput {
+                        scopes: Vec::new(),
+                        child_order: Vec::new(),
+                    },
                 )
                 .unwrap();
                 let reference =
@@ -1664,7 +1679,10 @@ mod grid_overflow_observation_tests {
                     &tree,
                     2,
                     vec![tree.text.binding(3)],
-                    Vec::new(),
+                    crate::WrappingInput {
+                        scopes: Vec::new(),
+                        child_order: Vec::new(),
+                    },
                 )
                 .unwrap();
                 let mut session = ComputeSession::with_flow(&capture, capture.invalidated.clone());
@@ -1724,7 +1742,10 @@ mod grid_overflow_observation_tests {
                     &tree,
                     2,
                     vec![tree.text.binding(3)],
-                    Vec::new(),
+                    crate::WrappingInput {
+                        scopes: Vec::new(),
+                        child_order: Vec::new(),
+                    },
                 )
                 .unwrap();
                 let mut session = ComputeSession::with_flow(&capture, capture.invalidated.clone());
@@ -1826,8 +1847,16 @@ mod grid_overflow_observation_tests {
                 },
             )
             .input(2, text.text_input(2));
-        let capture =
-            crate::LayoutFlowInput::try_new(&tree, 0, vec![text.binding(1)], Vec::new()).unwrap();
+        let capture = crate::LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![text.binding(1)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
         let mut session = ComputeSession::with_flow(&capture, capture.invalidated.clone());
         let available = Size::splat(AvailableOf::MAX_CONTENT);
         super::super::root::compute_root(&mut session, 0, available).unwrap();

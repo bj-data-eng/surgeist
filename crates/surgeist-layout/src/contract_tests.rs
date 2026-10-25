@@ -326,7 +326,15 @@ fn assert_duplicate_run_nodes<S: LayoutScalar>(nodes: &[u32]) {
     for &node in nodes {
         tree = tree.input(node, paragraph.text_input(node));
     }
-    let result = LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new());
+    let result = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    );
     let error = match result {
         Ok(_) => panic!("repeated actual run node must be refused"),
         Err(error) => error,

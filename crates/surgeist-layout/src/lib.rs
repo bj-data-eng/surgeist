@@ -228,7 +228,11 @@ mod inline_wrapping;
 mod line_box;
 mod text_indent;
 mod text_layout;
-pub use inline_wrapping::{WrapInside, WrappingScopeError, WrappingScopeInput};
+pub use inline_wrapping::{
+    ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
+    InlineBoxRef, InlineChildOrderInput, WrapEdge, WrapEdges, WrapInside, WrappingInput,
+    WrappingScopeError, WrappingScopeInput,
+};
 pub use text_layout::{
     LayoutFlowInput, TextAtomicBinding, TextBindingError, TextControlBinding,
     TextControlParticipation, TextOriginBinding, TextParagraphBinding, TextParticipation,

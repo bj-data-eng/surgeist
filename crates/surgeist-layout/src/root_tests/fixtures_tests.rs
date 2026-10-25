@@ -158,7 +158,15 @@ pub(super) fn prepared_source_batch<S: LayoutScalar>(
         (1, paragraph.text_input(1)),
     ]);
     let tree = public_layout_tree(inputs, HashMap::from([(0, vec![1]), (1, Vec::new())]));
-    let capture = LayoutFlowInput::try_new(&tree, 0, vec![paragraph.binding(0)], Vec::new())?;
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )?;
     let available = FlowAxes::new(writing_mode, direction)
         .physical_size(LogicalSizeOf::new(available, AvailableOf::MAX_CONTENT));
     compute_layout_with_flow(
@@ -333,7 +341,16 @@ pub(super) fn prepared_mixed_batch<S: LayoutScalar>(
                 .then(|| run.to_vec())
         })
         .expect("all explicitly prepared occurrences belong to one actual run");
-    let capture = LayoutFlowInput::try_new(&tree, 0, vec![binding], Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     compute_layout_with_flow(
         &capture,
         0,
@@ -350,7 +367,16 @@ pub(super) fn prepared_tree_batch<S: LayoutScalar>(
     request: LayoutRootRequestOf<S>,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let tree = public_layout_tree(inputs, children);
-    let capture = LayoutFlowInput::try_new(&tree, 0, paragraphs, Vec::new()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        paragraphs,
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
     compute_layout_with_flow(&capture, 0, request).unwrap()
 }
 
@@ -1312,7 +1338,15 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
         &self,
         request: LayoutRootRequestOf<S>,
     ) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, S>, S, ()> {
-        let capture = LayoutFlowInput::try_new(self, 0, vec![self.text.clone()], Vec::new())?;
+        let capture = LayoutFlowInput::try_new(
+            self,
+            0,
+            vec![self.text.clone()],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )?;
         compute_layout_with_flow(&capture, 0, request)
     }
 
@@ -1321,7 +1355,15 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
         request: LayoutRootRequestOf<S>,
         dirty: &[u32],
     ) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, S>, S, ()> {
-        let capture = LayoutFlowInput::try_new(self, 0, vec![self.text.clone()], Vec::new())?;
+        let capture = LayoutFlowInput::try_new(
+            self,
+            0,
+            vec![self.text.clone()],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )?;
         compute_layout_with_flow_invalidated(&capture, 0, request, dirty)
     }
 

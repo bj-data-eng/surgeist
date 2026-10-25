@@ -26,11 +26,15 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
         &tree,
         0,
         vec![fixture.binding.clone()],
-        vec![WrappingScopeInput::NativePair {
-            start: 20,
-            end: 21,
-            wrap_inside: WrapInside::Avoid,
-        }],
+        crate::WrappingInput {
+            scopes: vec![WrappingScopeInput::NativePair {
+                edges: Default::default(),
+                start: 20,
+                end: 21,
+                wrap_inside: WrapInside::Avoid,
+            }],
+            child_order: Vec::new(),
+        },
     )
     .unwrap();
     let binding = &fixture.binding;
