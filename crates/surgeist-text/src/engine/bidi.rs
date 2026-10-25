@@ -66,11 +66,6 @@ impl BidiResolver {
         }
     }
 
-    /// Returns the base level of the text.
-    pub(crate) fn base_level(&self) -> u8 {
-        self.base_level
-    }
-
     /// Returns the sequence of bidi levels corresponding to all characters in the
     /// paragraph.
     pub(crate) fn levels(&self) -> &[BidiLevel] {
@@ -110,7 +105,7 @@ impl BidiResolver {
         }
         self.base_level = match base_level {
             Some(level) => level & 1,
-            _ => Self::default_level(&self.initial_types),
+            _ => Self::default_level(self.initial_types.iter().copied()),
         };
         if !needs_bidi && self.base_level == 0 {
             self.flags |= 1;
@@ -189,12 +184,9 @@ impl BidiResolver {
         }
     }
 
-    fn default_level(types: &[BidiClass]) -> u8 {
+    pub(crate) fn default_level(mut types: impl Iterator<Item = BidiClass>) -> u8 {
         let mut scanner = EligibleStrong::new();
-        types
-            .iter()
-            .find_map(|ty| scanner.advance(*ty))
-            .unwrap_or(0)
+        types.find_map(|ty| scanner.advance(ty)).unwrap_or(0)
     }
 
     fn default_level_until_pdi(types: &[BidiClass]) -> u8 {

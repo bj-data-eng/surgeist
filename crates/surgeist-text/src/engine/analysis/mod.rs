@@ -408,20 +408,35 @@ pub(crate) fn analyze(
     }
     let direction =
         direction::DirectionBody::new(original.iter().map(|(_, (class, _))| *class), owners)?;
-    let mut bidi = BidiResolver::new();
-    bidi.resolve(
-        original.into_iter(),
-        paragraph.base_direction.map(|direction| direction.level()),
+    // Raw Standalone retains one source-wide automatic base. Captured native
+    // input supplies its fixed base; neither policy changes across a body B.
+    let base_level = paragraph.base_direction.map_or_else(
+        || BidiResolver::default_level(original.iter().map(|(_, (class, _))| *class)),
+        |direction| direction.level(),
     );
-    let mut levels = vec![bidi.base_level(); infos.len()];
-    let mut box_levels = vec![bidi.base_level(); boxes.len()];
-    let mut control_levels = vec![bidi.base_level(); paragraph.controls.len()];
-    for (owner, &level) in direction.owners().iter().copied().zip(bidi.levels()) {
-        match owner {
-            BidiOwner::Atom(index) => levels[index] = level,
-            BidiOwner::Atomic(index) => box_levels[index] = level,
-            BidiOwner::Control(index) => control_levels[index] = level,
+    let mut levels = vec![base_level; infos.len()];
+    let mut box_levels = vec![base_level; boxes.len()];
+    let mut control_levels = vec![base_level; paragraph.controls.len()];
+    let mut bidi = BidiResolver::new();
+    let mut owner_start = 0;
+    for body in original.split_inclusive(|(_, (class, _))| *class == BidiClass::ParagraphSeparator)
+    {
+        // P1 makes B part of the preceding paragraph. All contextual UBA work,
+        // including neutral runs and isolate sequences, stays in this body.
+        bidi.resolve(body.iter().copied(), Some(base_level));
+        let owner_end = owner_start + body.len();
+        for (owner, &level) in direction.owners()[owner_start..owner_end]
+            .iter()
+            .copied()
+            .zip(bidi.levels())
+        {
+            match owner {
+                BidiOwner::Atom(index) => levels[index] = level,
+                BidiOwner::Atomic(index) => box_levels[index] = level,
+                BidiOwner::Control(index) => control_levels[index] = level,
+            }
         }
+        owner_start = owner_end;
     }
     for (anchor, &at) in paragraph.anchor_order.iter().zip(&positions) {
         let inherited = match anchor.affinity {
@@ -429,7 +444,7 @@ pub(crate) fn analyze(
             crate::Affinity::After => levels.get(at),
         }
         .copied()
-        .unwrap_or(bidi.base_level());
+        .unwrap_or(base_level);
         match anchor.item {
             ParagraphAnchorItem::Atomic(i) if boxes[i].kind() == InlineBoxKind::OutOfFlow => {
                 box_levels[i] = inherited
@@ -450,7 +465,7 @@ pub(crate) fn analyze(
             levels,
             box_levels,
             control_levels,
-            base_level: bidi.base_level(),
+            base_level,
             graphemes,
             line_candidates,
             phrases,
@@ -616,6 +631,60 @@ pub(crate) fn contributes_to_shaping(category: GeneralCategory, script: Script) 
 mod tests {
     use super::*;
 
+    fn bidi_analysis(text: &str, base: Option<crate::ParagraphBaseDirection>) -> Analysis {
+        let source = crate::Source::new(text);
+        let projection = SourceProjection::new(&source).expect("actual source projection");
+        let styles = [AnalyzedStyleRun {
+            owner: crate::engine::resolve::AnalyzedStyleOwner::Source(crate::Range::new(
+                0,
+                source.text().len(),
+            )),
+            style: crate::ValidatedStyle::try_from(crate::Style::default()).expect("default style"),
+        }];
+        let mut paragraph = ParagraphData::standalone(&source);
+        paragraph.base_direction = base;
+        analyze(&projection, &styles, &[], &paragraph)
+            .expect("actual bidi analysis")
+            .0
+    }
+
+    #[test]
+    fn every_b_terminated_body_keeps_its_own_neutral_context_and_owner_levels() {
+        use crate::ParagraphBaseDirection::RightToLeft;
+        for (text, expected) in [
+            ("", &[][..]),
+            ("\n", &[1][..]),
+            ("\n\n", &[1, 1][..]),
+            ("A\n.A", &[2, 1, 1, 2][..]),
+            ("\nA\n\n.A\n", &[1, 2, 1, 1, 1, 2, 1][..]),
+        ] {
+            let analysis = bidi_analysis(text, Some(RightToLeft));
+            assert_eq!(analysis.base_level, 1, "{text:?}");
+            assert_eq!(analysis.levels, expected, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn standalone_automatic_base_stays_source_wide_across_bodies() {
+        for (text, expected_base) in [
+            ("A\n.א", 0),
+            ("א\n.A", 1),
+            ("123\nא", 1),
+            // Preserve the raw front's existing whole-source isolate scan;
+            // this operation does not introduce per-paragraph automatic bases.
+            ("\u{2067}A\nא", 0),
+        ] {
+            let analysis = bidi_analysis(text, None);
+            assert_eq!(analysis.base_level, expected_base, "{text:?}");
+            assert_eq!(analysis.levels.len(), text.chars().count(), "{text:?}");
+        }
+        let analyzed =
+            crate::AnalyzedSource::new(crate::Source::new("א\n.A"), crate::Style::default())
+                .expect("raw public analysis");
+        assert_eq!(analyzed.direction(), crate::Direction::RightToLeft);
+        assert_eq!(analyzed.inner.analysis.levels, [1, 1, 1, 2]);
+    }
+
     #[test]
     fn every_original_surrogate_has_original_left_to_right_property() {
         let sources = AnalysisDataSources;
@@ -633,24 +702,12 @@ mod tests {
 
     #[test]
     fn original_surrogate_and_literal_replacement_choose_distinct_bidi_bases() {
-        let sources = AnalysisDataSources;
-        let mut bidi = BidiResolver::new();
         for (cp, expected) in [(0xd800, 0), (0xfffd, 1)] {
-            let characters = [(cp, '\u{fffd}'), (0x05d0, '\u{05d0}')];
-            bidi.resolve(
-                characters.into_iter().map(|(cp, glyph)| {
-                    (
-                        glyph,
-                        (
-                            sources.original_properties(cp).bidi_class(),
-                            sources.brackets().get32(cp),
-                        ),
-                    )
-                }),
-                None,
-            );
-            assert_eq!(bidi.base_level(), expected);
-            assert_eq!(bidi.levels().len(), 2);
+            let source = crate::Source::new(crate::Text::from_code_units(vec![cp, 0x05d0]));
+            let analyzed = crate::AnalyzedSource::new(source, crate::Style::default())
+                .expect("original-property analysis");
+            assert_eq!(analyzed.inner.analysis.base_level, expected);
+            assert_eq!(analyzed.inner.analysis.levels.len(), 2);
         }
     }
 
