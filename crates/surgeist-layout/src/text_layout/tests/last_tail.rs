@@ -584,6 +584,7 @@ fn a_rejected_fitting_paragraph_cannot_manufacture_emergency_exhaustion() {
             .unwrap();
         assert_eq!(
             long.opportunity()
+                .expect("ordinary alternative")
                 .view()
                 .boundary()
                 .view()

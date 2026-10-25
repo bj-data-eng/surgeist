@@ -275,17 +275,29 @@ impl Style {
 
     /// Interpret declared breaking policies without replacing their inputs.
     pub(crate) fn effective_breaking(&self) -> EffectiveBreaking {
-        let (word, overflow, lexical_line_breaking) = match self.word_break {
-            WordBreak::Normal => (OrdinaryWordBreak::Normal, self.overflow_wrap, true),
-            WordBreak::BreakAll => (OrdinaryWordBreak::BreakAll, self.overflow_wrap, false),
-            WordBreak::KeepAll => (OrdinaryWordBreak::KeepAll, self.overflow_wrap, true),
-            WordBreak::BreakWord => (OrdinaryWordBreak::Normal, OverflowWrap::Anywhere, true),
-            WordBreak::Manual => (OrdinaryWordBreak::Normal, self.overflow_wrap, false),
+        let (word, overflow, lexical_line_breaking, auto_phrase) = match self.word_break {
+            WordBreak::Normal => (OrdinaryWordBreak::Normal, self.overflow_wrap, true, false),
+            WordBreak::BreakAll => (
+                OrdinaryWordBreak::BreakAll,
+                self.overflow_wrap,
+                false,
+                false,
+            ),
+            WordBreak::KeepAll => (OrdinaryWordBreak::KeepAll, self.overflow_wrap, true, false),
+            WordBreak::BreakWord => (
+                OrdinaryWordBreak::Normal,
+                OverflowWrap::Anywhere,
+                true,
+                false,
+            ),
+            WordBreak::Manual => (OrdinaryWordBreak::Normal, self.overflow_wrap, false, false),
+            WordBreak::AutoPhrase => (OrdinaryWordBreak::Normal, self.overflow_wrap, true, true),
         };
         EffectiveBreaking {
             word,
             overflow,
             lexical_line_breaking,
+            auto_phrase,
         }
     }
 }
@@ -304,6 +316,9 @@ pub(crate) struct EffectiveBreaking {
     /// Whether lexical line analysis and its missing-model fallback may run.
     /// This does not govern word metadata, orthography, or hyphenation.
     pub(crate) lexical_line_breaking: bool,
+    /// Actual owner requests phrase preference and initially excludes hyphens,
+    /// independently of whether its language has a phrase model.
+    pub(crate) auto_phrase: bool,
 }
 
 impl Default for Style {
@@ -381,6 +396,9 @@ pub enum WordBreak {
     /// Normal breaking with lexical line analysis disabled; orthographic
     /// opportunities, hyphenation, and declared overflow wrapping remain active.
     Manual,
+    /// Prefer natural phrases when supported and initially suppress this
+    /// owner's hyphenation. Finite overflow can restore qualified alternatives.
+    AutoPhrase,
 }
 
 /// Line-breaking restrictions; Auto uses Text's deterministic Strict policy.

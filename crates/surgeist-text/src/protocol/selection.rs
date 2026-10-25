@@ -206,6 +206,10 @@ fn admit(
             termination.validate(prepared, request)?;
             None
         }
+        super::PreparedTermination::PhraseMeasurement(portion) => {
+            portion.validate(prepared, request)?;
+            None
+        }
         super::PreparedTermination::Measurement(portion) => {
             portion.validate(prepared, request)?;
             None
@@ -281,7 +285,7 @@ fn admit(
             || tables
                 .alternatives
                 .get(alternative.index)
-                .is_none_or(|row| row.opportunity != index)
+                .is_none_or(|row| row.opportunity != Some(index))
         {
             return Err(protocol_error(ProtocolError::ForeignAlternative {
                 alternative: alternative.index,
@@ -574,6 +578,7 @@ pub(crate) fn standalone_request(
         super::PreparedTermination::Ordinary(offer) => offer.view().boundary().index,
         super::PreparedTermination::Conditional(cut) => cut.boundary().index,
         super::PreparedTermination::Measurement(portion) => portion.end,
+        super::PreparedTermination::PhraseMeasurement(portion) => portion.end,
     };
     let tables = &prepared.tables;
     let invalid = || {
@@ -593,9 +598,9 @@ pub(crate) fn standalone_request(
             PreparedBreakKind::Forced => LineEnd::Forced,
             PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
         },
-        super::PreparedTermination::Measurement(_) | super::PreparedTermination::Conditional(_) => {
-            LineEnd::Soft
-        }
+        super::PreparedTermination::Measurement(_)
+        | super::PreparedTermination::PhraseMeasurement(_)
+        | super::PreparedTermination::Conditional(_) => LineEnd::Soft,
     };
     let from = tables.boundaries[start].participant;
     let to = tables.boundaries[end].participant;

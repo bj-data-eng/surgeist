@@ -93,9 +93,10 @@ pub(crate) struct PreparedParagraph {
     controls: Vec<TextControlBinding<u32>>,
 }
 
-struct ParagraphFacts {
+struct ParagraphFacts<'font> {
     strut: surgeist_text::ParagraphStrut,
     terminal: surgeist_text::ParagraphTerminalEdge,
+    font: &'font [u8],
 }
 
 impl PreparedParagraph {
@@ -114,6 +115,7 @@ impl PreparedParagraph {
             ParagraphFacts {
                 strut: surgeist_text::ParagraphStrut::DefaultFont,
                 terminal,
+                font: AHEM,
             },
             Vec::new(),
             PreparationOptions::default(),
@@ -185,6 +187,7 @@ impl PreparedParagraph {
             ParagraphFacts {
                 strut: paragraph_strut,
                 terminal,
+                font: AHEM,
             },
             replacements,
             PreparationOptions::default(),
@@ -208,6 +211,7 @@ impl PreparedParagraph {
             ParagraphFacts {
                 strut: surgeist_text::ParagraphStrut::DefaultFont,
                 terminal: surgeist_text::ParagraphTerminalEdge::BlockEnd,
+                font: AHEM,
             },
             Vec::new(),
             PreparationOptions::try_new(1.0, surgeist_text::TabPreparation::CssStops).unwrap(),
@@ -215,11 +219,33 @@ impl PreparedParagraph {
         )
     }
 
+    /// Selects a qualified registered test face without changing preparation.
+    pub(crate) fn with_registered_font(
+        parts: Vec<ParagraphPart>,
+        base_style: Style,
+        direction: ParagraphBaseDirection,
+        font: &[u8],
+    ) -> Self {
+        Self::with_preparation(
+            parts,
+            base_style,
+            direction,
+            ParagraphFacts {
+                strut: surgeist_text::ParagraphStrut::DefaultFont,
+                terminal: surgeist_text::ParagraphTerminalEdge::BlockEnd,
+                font,
+            },
+            Vec::new(),
+            PreparationOptions::default(),
+            None,
+        )
+    }
+
     fn with_preparation(
         parts: Vec<ParagraphPart>,
         base_style: Style,
         direction: ParagraphBaseDirection,
-        facts: ParagraphFacts,
+        facts: ParagraphFacts<'_>,
         replacements: Vec<surgeist_text::ParagraphReplacement>,
         options: PreparationOptions,
         tab_reference: Option<surgeist_text::ParagraphTabReference>,
@@ -354,7 +380,7 @@ impl PreparedParagraph {
             font_catalogue: FontCatalogueMode::RegisteredOnly,
         })
         .unwrap();
-        system.register_fonts(AHEM.to_vec()).unwrap();
+        system.register_fonts(facts.font.to_vec()).unwrap();
         let prepared = system.prepare(&analyzed, options).unwrap();
         let origins = prepared
             .origin_views()

@@ -22,6 +22,7 @@ pub(crate) struct PendingParagraph<Node> {
     pub amounts: Vec<Vec<f64>>,
     pub encounters: Vec<Vec<super::fit::EncounterBasis>>,
     pub zones: Vec<super::fit::ZoneBasis>,
+    pub phrases: Vec<Vec<super::fit::PhraseBasis>>,
     pub outflows: Vec<(usize, surgeist_text::PreparedAtomic, Node)>,
     pub indent: crate::text_indent::ResolvedTextIndent<f64>,
     pub indent_start: crate::text_indent::IndentLineState,
@@ -34,6 +35,7 @@ pub(crate) struct PendingParagraph<Node> {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct LineBasis {
     zone: super::fit::ZoneBasis,
+    phrases: Vec<super::fit::PhraseBasis>,
     encounters: Vec<super::fit::EncounterBasis>,
     request: surgeist_text::LineSelectionRequest,
     amounts: Vec<f64>,
@@ -218,17 +220,21 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                         .zip(&paragraph.amounts)
                         .zip(&paragraph.encounters)
                         .zip(&paragraph.zones)
+                        .zip(&paragraph.phrases)
                 })
                 .map(
-                    |(((((placement, band), flow), amounts), encounters), zone)| LineBasis {
-                        zone: zone.clone(),
-                        encounters: encounters.clone(),
-                        amounts: amounts.clone(),
-                        request: placement.line.selected_line().request().clone(),
-                        anchor: placement.anchor,
-                        atomics: placement.atomics.clone(),
-                        bands: *band,
-                        flow: *flow,
+                    |((((((placement, band), flow), amounts), encounters), zone), phrases)| {
+                        LineBasis {
+                            zone: zone.clone(),
+                            phrases: phrases.clone(),
+                            encounters: encounters.clone(),
+                            amounts: amounts.clone(),
+                            request: placement.line.selected_line().request().clone(),
+                            anchor: placement.anchor,
+                            atomics: placement.atomics.clone(),
+                            bands: *band,
+                            flow: *flow,
+                        }
                     },
                 )
                 .collect(),

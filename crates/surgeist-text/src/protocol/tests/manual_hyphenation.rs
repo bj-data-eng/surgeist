@@ -190,7 +190,7 @@ fn bare_shy(primary_hyphen: bool) {
             source: Range::new(2, 3)
         }
     );
-    assert_eq!(alternative.opportunity(), offer.handle());
+    assert_eq!(alternative.opportunity(), Some(offer.handle()));
     let mut value = request(&prepared);
     value.end = offer.boundary();
     value.participants = prepared

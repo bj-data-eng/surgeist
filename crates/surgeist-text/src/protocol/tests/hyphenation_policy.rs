@@ -83,7 +83,7 @@ fn control(value: &mut ParagraphInput, own: Style) {
 }
 fn finish(p: &PreparedText, alternative: usize) -> FinalizedLine {
     let alt = p.alternative_views().nth(alternative).unwrap();
-    let offer = alt.opportunity();
+    let offer = alt.opportunity().unwrap();
     let mut r = request(p);
     r.end = offer.view().boundary();
     r.termination = PreparedTermination::Ordinary(offer);

@@ -18,7 +18,7 @@ impl HyphenationContinuation {
         }
         let boundary = PreparedBoundary {
             prepared: std::sync::Arc::clone(prepared),
-            index: prepared.tables.opportunities[row.opportunity].boundary,
+            index: row.boundary,
         };
         Some(Self {
             alternative,

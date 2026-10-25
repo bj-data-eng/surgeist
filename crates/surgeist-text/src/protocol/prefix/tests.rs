@@ -447,7 +447,7 @@ fn finalized_prefix_replacement_is_bundled_with_its_real_defining_control() {
     let alternative = prepared.alternative_views().next().unwrap().handle();
     let selected = selected_end(
         &prepared,
-        alternative.view().opportunity(),
+        alternative.view().opportunity().unwrap(),
         Some(alternative.clone()),
     );
     let line = selected.finalize(SpacingAllocations::None).unwrap();
@@ -687,7 +687,7 @@ fn finalized_original_prefix_membership_uses_actual_control_bundle_and_allocated
     let first_alternative = prepared.alternative_views().next().unwrap().handle();
     let first = selected_end(
         &prepared,
-        first_alternative.view().opportunity(),
+        first_alternative.view().opportunity().unwrap(),
         Some(first_alternative.clone()),
     )
     .finalize(SpacingAllocations::None)
@@ -696,7 +696,7 @@ fn finalized_original_prefix_membership_uses_actual_control_bundle_and_allocated
     let alternative = prepared.alternative_views().nth(1).unwrap().handle();
     let selected = selected_end(
         &prepared,
-        alternative.view().opportunity(),
+        alternative.view().opportunity().unwrap(),
         Some(alternative),
     );
     let mut r = selected.request().clone();
@@ -844,7 +844,7 @@ fn finalized_original_prefix_source_replacement_keeps_its_defining_source_bundle
     let first_alternative = prepared.alternative_views().next().unwrap().handle();
     let first = selected_end(
         &prepared,
-        first_alternative.view().opportunity(),
+        first_alternative.view().opportunity().unwrap(),
         Some(first_alternative.clone()),
     )
     .finalize(SpacingAllocations::None)
@@ -853,7 +853,7 @@ fn finalized_original_prefix_source_replacement_keeps_its_defining_source_bundle
     let alternative = prepared.alternative_views().nth(1).unwrap().handle();
     let selected = selected_end(
         &prepared,
-        alternative.view().opportunity(),
+        alternative.view().opportunity().unwrap(),
         Some(alternative),
     );
     let mut r = selected.request().clone();

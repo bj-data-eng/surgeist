@@ -168,7 +168,7 @@ fn assert_auto_case(word: &str, hyphens: Hyphens, locale: Option<&str>, cuts: &[
             "automatic insertion displaced no authored text"
         );
         assert_eq!(alternative.insertion_anchor().get(), at);
-        assert_eq!(alternative.opportunity(), offer.handle());
+        assert_eq!(alternative.opportunity(), Some(offer.handle()));
         let mut first_request = request(&prepared);
         first_request.end = offer.boundary();
         first_request.participants = prepared

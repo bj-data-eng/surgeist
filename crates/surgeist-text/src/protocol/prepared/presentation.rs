@@ -80,7 +80,7 @@ pub(super) fn before_attachment(
     row: &AlternativeData,
 ) -> crate::Result<Attachment> {
     if matches!(row.definition, AlternativeDefinition::Automatic { .. }) {
-        let end = tables.boundaries[tables.opportunities[row.opportunity].boundary].participant;
+        let end = tables.boundaries[row.boundary].participant;
         for participant in (0..end).rev() {
             match tables.participants[participant] {
                 ParticipantData::Text(i) => {
@@ -566,6 +566,8 @@ pub(super) fn select(
         })
         .collect();
     let selected_analysis = Analysis {
+        line_candidates: Vec::new(),
+        phrases: crate::engine::analysis::phrase::PhraseCatalog::default(),
         infos: output.infos,
         levels: output.levels,
         graphemes,

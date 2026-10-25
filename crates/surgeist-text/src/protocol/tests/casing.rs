@@ -62,13 +62,16 @@ fn split(p: &PreparedText, at: usize) -> (FinalizedLine, FinalizedLine) {
         unreachable!()
     };
     let offers = p
-        .conditional_opportunities(
+        .conditional_search(
             &first.start,
             None,
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
+            None,
         )
+        .and_then(|search| search.begin(&[]))
+        .map(|batch| batch.opportunities().to_vec())
         .unwrap();
     let offer = offers
         .into_iter()
@@ -358,7 +361,16 @@ fn expansion_preserves_normal_alphabetic_no_break_and_distinct_conditional_permi
         let start = p.boundary_views().next().unwrap().handle();
         let ceiling = p.opportunity_views().next().unwrap().handle();
         let offers = p
-            .conditional_opportunities(&start, None, &ceiling, ConditionalPurpose::Overflow, &[])
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &[],
+                None,
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
             .unwrap();
         assert_eq!(
             offers

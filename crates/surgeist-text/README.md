@@ -39,6 +39,9 @@ Japanese automatic phrase insertion with `SpaceAutoPhrase` or
 actual governing scope's Style; [phrase capture and ownership](docs/reference.md#native-automatic-phrase-separators)
 describe language admission, required topology and conservative detection limits.
 Original UTF-16 and plaintext remain unchanged through expansions and removals.
+`WordBreak::AutoPhrase` separately requests phrase-preserving wrapping over final
+transformed input, with ordered finite overflow restoration. See
+[word breaking](docs/reference.md#word-breaking) for language and intrinsic limits.
 The exclusive `TextTransform::MathAuto` requires complete original Text-node
 content captured on native paragraph origins. It maps eligible surviving text
 through the pinned MathML Core relation; raw standalone layout refuses the

@@ -188,7 +188,8 @@ fn facts<S: LayoutScalar>(
                         Termination::Ordinary(offer.view().kind())
                     }
                     text::PreparedTermination::Conditional(_) => Termination::Conditional,
-                    text::PreparedTermination::Measurement(_) => {
+                    text::PreparedTermination::Measurement(_)
+                    | text::PreparedTermination::PhraseMeasurement(_) => {
                         panic!("a measurement-only trial cannot be placed")
                     }
                 },

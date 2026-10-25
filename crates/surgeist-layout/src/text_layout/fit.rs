@@ -2,10 +2,11 @@
 
 use crate::{TextAlign, TextAlignLast, TextJustification};
 use surgeist_text::{
-    Alignment, AtomicAllocation, ConditionalDisposition, ConditionalPurpose, ControlAllocation,
-    FinalizedLine, HyphenationContinuation, LineContext, LineEnd, LineOrientation,
-    LineSelectionRequest, LineStart, ParagraphBaseDirection, PreparedAlternative, PreparedBoundary,
-    PreparedBreakKind, PreparedParticipant, PreparedTermination, PreparedText, SelectedLine,
+    Alignment, AtomicAllocation, ConditionalDisposition, ConditionalPurpose, ConditionalStage,
+    ControlAllocation, FinalizedLine, HyphenationContinuation, LineContext, LineEnd,
+    LineOrientation, LineSelectionRequest, LineStart, ParagraphBaseDirection,
+    PhraseOverflowDecision, PreparedAlternative, PreparedBoundary, PreparedBreakKind,
+    PreparedParticipant, PreparedPhrasePortion, PreparedTermination, PreparedText, SelectedLine,
     SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlotDisposition, TabContext,
     TabPreparation,
 };
@@ -22,7 +23,7 @@ pub(crate) struct Band {
 /// A source-line encounter checkpoint is not the mutable text avoidance cursor.
 #[derive(Clone)]
 pub(crate) struct EncounterReplay {
-    /// Actual preceding source encounters of a pure word-portion trial.
+    /// Actual preceding source encounters of a pure portion measurement.
     pub preceding: Option<PrecedingEncounter>,
     pub source_floor: f64,
     pub logical: f64,
@@ -145,6 +146,7 @@ pub(crate) struct LineFlow {
 
 pub(crate) struct FittedLine {
     pub zone_basis: ZoneBasis,
+    pub phrase_basis: Vec<PhraseBasis>,
     pub hyphenation_end: crate::hyphenation::LineHyphenationState,
     pub encounters: Vec<EncounterBasis>,
     pub finalized: FinalizedLine,
@@ -412,7 +414,7 @@ fn constrain_spacing_budget(
 }
 
 /// Candidate-local coordinates are distinct from the accepted source checkpoint.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 struct CandidatePosition {
     source_floor: f64,
     logical_start: f64,
@@ -429,6 +431,38 @@ struct EvaluatedCandidate {
     placed_start: f64,
     fits: bool,
     formatted: bool,
+}
+
+impl EvaluatedCandidate {
+    fn basis(&self, position: &CandidatePosition) -> CandidateBasis {
+        CandidateBasis {
+            encounters: self.encounters.clone(),
+            request: self.request.clone(),
+            amounts: self.amounts.clone(),
+            logical_start: position.logical_start,
+            placed_start: self.placed_start,
+            bands: self.bands,
+            height: self.finalized.feedback().line_height,
+            minimum_block: position.minimum_block,
+        }
+    }
+}
+
+struct EndpointContext<'a> {
+    start: &'a PreparedBoundary,
+    incoming: Option<&'a HyphenationContinuation>,
+    position: &'a CandidatePosition,
+    indent_state: crate::text_indent::IndentLineState,
+    hyphenation_state: crate::hyphenation::LineHyphenationState,
+    rejected_choices: &'a [LineSelectionRequest],
+    conditional: bool,
+}
+
+struct EndpointChoice {
+    candidate: Option<EvaluatedCandidate>,
+    dispositions: Vec<ConditionalDisposition>,
+    formatted: bool,
+    fitting_none: bool,
 }
 
 /// These callbacks all operate on the same unpublished invocation. Reset only
@@ -590,6 +624,248 @@ where
                 formatted,
             });
         }
+    }
+
+    fn choose_endpoint(
+        &mut self,
+        input: &FitInput<'_>,
+        query: &EndpointContext<'_>,
+        variants: impl Iterator<Item = LineEndpoint>,
+        zone_basis: &mut ZoneBasis,
+    ) -> Result<EndpointChoice, FitError> {
+        let mut fitting_none = false;
+        let mut endpoint_choice: Option<EvaluatedCandidate> = None;
+        let mut dispositions = Vec::new();
+        let mut ordinary_formatted = false;
+        for endpoint in variants {
+            let mut zone_suppressed = false;
+            let alternative = endpoint.alternative.clone();
+            let automatic = alternative.as_ref().and_then(|alternative| {
+                match alternative.view().definition() {
+                    surgeist_text::PreparedAlternativeDefinition::Automatic { cut } => Some(cut),
+                    _ => None,
+                }
+            });
+            if automatic.is_some() && matches!(input.available, Available::Maximum) {
+                continue;
+            }
+            if let Some(alternative) = alternative.as_ref().filter(|_| automatic.is_some())
+                && let Some(limit) = query
+                    .hyphenation_state
+                    .suppressed_limit(matches!(input.available, Available::Minimum))
+            {
+                dispositions.push(ConditionalDisposition::AutoLineLimit {
+                    alternative: alternative.clone(),
+                    limit,
+                });
+                continue;
+            }
+            if let Some(cut) = &automatic
+                && matches!(input.available, Available::Definite(_))
+                && let Some(word) = cut.view().word()
+            {
+                let mut fallback: Option<EvaluatedCandidate> = None;
+                for offer in word.view().ordinary_fallbacks(query.start)? {
+                    let request = selection_request(
+                        input,
+                        query.start,
+                        query.incoming,
+                        LineEndpoint {
+                            boundary: offer.view().boundary(),
+                            termination: PreparedTermination::Ordinary(offer),
+                            alternative: None,
+                            ending: LineEnd::Soft,
+                        },
+                        query.indent_state,
+                    );
+                    let trial = self.evaluate_mode(input, request, query.position, None, true)?;
+                    if !trial.formatted {
+                        continue;
+                    }
+                    if fallback.is_none() || trial.fits {
+                        fallback = Some(trial);
+                    }
+                }
+                if let Some(fallback) = fallback {
+                    let span = fallback
+                        .request
+                        .context
+                        .available_inline
+                        .ok_or(FitError::MissingZoneBasis)?;
+                    let zone = used_zone(input.hyphenate_limit_zone, span)?;
+                    let end = super::run::add(
+                        fallback.request.context.indent,
+                        fallback.finalized.measurements().alignment().advance(),
+                    )?;
+                    let gap = super::run::add(span, -end)?.max(0.0);
+                    zone_basis.references.push(ZoneReference {
+                        alternative: alternative.clone().expect("automatic variant"),
+                        request: fallback.request.clone(),
+                        zone,
+                        measure: fallback.finalized.measurements().alignment(),
+                        bands: fallback.bands,
+                        encounters: fallback.encounters.clone(),
+                        placed_start: fallback.placed_start,
+                    });
+                    if gap <= zone {
+                        // The genuine meaningful fallback's earlier None variant
+                        // is already the ordinary ceiling. It cannot be discharged
+                        // as phantom or by an automatic-only disposition.
+                        if !query.conditional {
+                            continue;
+                        }
+                        zone_suppressed = true;
+                    }
+                }
+            }
+            let request = selection_request(
+                input,
+                query.start,
+                query.incoming,
+                endpoint,
+                query.indent_state,
+            );
+            let candidate = self.evaluate(input, request, query.position, None)?;
+            if zone_suppressed {
+                dispositions.push(ConditionalDisposition::ConsumerHyphenationPolicy(
+                    candidate.finalized,
+                ));
+                continue;
+            }
+            fitting_none |=
+                candidate.formatted && candidate.fits && candidate.request.alternative.is_none();
+            if query.rejected_choices.contains(&candidate.request) {
+                if candidate.request.alternative.is_some() {
+                    dispositions.push(ConditionalDisposition::ConsumerHyphenationPolicy(
+                        candidate.finalized,
+                    ));
+                } else {
+                    // An unselected meaningful None is still an ordinary
+                    // barrier; rejection does not turn it into phantom.
+                    ordinary_formatted |= candidate.formatted;
+                }
+                continue;
+            }
+            if let Some(cut) = &automatic
+                && matches!(input.available, Available::Definite(_))
+                && let Some(word) = cut.view().word()
+            {
+                let mut priority = None;
+                let portions = match &candidate.request.termination {
+                    PreparedTermination::Conditional(opportunity) => {
+                        opportunity.manual_portions()?
+                    }
+                    _ => word.view().portions()?,
+                };
+                for portion in portions {
+                    let boundary = cut.view().boundary().view().participant_offset();
+                    if !portion.has_manual_partition()
+                        || boundary <= portion.start().view().participant_offset()
+                        || boundary > portion.end().view().participant_offset()
+                    {
+                        continue;
+                    }
+                    let request = selection_request(
+                        input,
+                        &portion.start(),
+                        portion.incoming().as_ref(),
+                        LineEndpoint {
+                            boundary: portion.end(),
+                            termination: PreparedTermination::Measurement(portion.clone()),
+                            alternative: portion.alternative(),
+                            ending: LineEnd::Soft,
+                        },
+                        query.indent_state,
+                    );
+                    let trial = self.evaluate(input, request, query.position, Some(&candidate))?;
+                    if trial.fits {
+                        priority = Some(trial.finalized);
+                        break;
+                    }
+                }
+                if let Some(portion) = priority {
+                    dispositions.push(ConditionalDisposition::AutoManualPriority {
+                        alternative: alternative.clone().expect("automatic alternative"),
+                        portion,
+                    });
+                    continue;
+                }
+            }
+            if !candidate.formatted {
+                dispositions.push(ConditionalDisposition::Phantom(candidate.finalized));
+                continue;
+            }
+            if let Some(alternative) = alternative.filter(|_| automatic.is_some()) {
+                if matches!(input.available, Available::Minimum) {
+                    dispositions.push(ConditionalDisposition::AutoIntrinsicRefinement(alternative));
+                } else {
+                    dispositions.push(ConditionalDisposition::AutoFitExhausted(
+                        candidate.finalized.clone(),
+                    ));
+                }
+            } else if query.conditional {
+                dispositions.push(ConditionalDisposition::Exhausted(
+                    candidate.finalized.clone(),
+                ));
+            } else {
+                ordinary_formatted = true;
+            }
+            let fits = candidate.fits;
+            if endpoint_choice.is_none() || fits {
+                endpoint_choice = Some(candidate);
+            }
+            if fits && !matches!(input.available, Available::Minimum) {
+                break;
+            }
+        }
+        Ok(EndpointChoice {
+            candidate: endpoint_choice,
+            dispositions,
+            formatted: ordinary_formatted,
+            fitting_none,
+        })
+    }
+
+    fn measure_phrase(
+        &mut self,
+        input: &FitInput<'_>,
+        query: &EndpointContext<'_>,
+        ordinary: &EvaluatedCandidate,
+        portion: PreparedPhrasePortion,
+    ) -> Result<(PhraseOverflowDecision, PhraseBasis), FitError> {
+        // A meaningful earlier None is the query ceiling, and a fitting real
+        // prefix wins before search. Earlier portion prefixes are therefore
+        // phantom; do not invent an accepted prefix line or consume its indent.
+        let empty_position = query.position.clone();
+        let empty_indent = query.indent_state;
+        let preceding = (portion.start() != *query.start).then_some(ordinary);
+        let incoming = portion.incoming();
+        let request = selection_request(
+            input,
+            &portion.start(),
+            incoming.as_ref(),
+            LineEndpoint {
+                boundary: portion.end(),
+                termination: PreparedTermination::PhraseMeasurement(portion),
+                alternative: None,
+                ending: LineEnd::Soft,
+            },
+            empty_indent,
+        );
+        let trial = self.evaluate(input, request, &empty_position, preceding)?;
+        let basis = PhraseBasis {
+            ordinary: ordinary.basis(query.position),
+            position: empty_position.clone(),
+            indent_state: empty_indent,
+            trial: trial.basis(&empty_position),
+            fits: trial.fits,
+        };
+        let decision = if trial.fits {
+            PhraseOverflowDecision::Fits(trial.finalized)
+        } else {
+            PhraseOverflowDecision::Overflows(trial.finalized)
+        };
+        Ok((decision, basis))
     }
 
     /// A later rejected candidate may own the provisional ledger. Restore and
@@ -852,6 +1128,7 @@ pub(crate) fn fit(
             };
             let mut transitions = Vec::new();
             loop {
+                let mut phrase_basis = Vec::new();
                 let mut choice: Option<EvaluatedCandidate> = None;
                 let mut fitting_none = false;
                 let mut first_ceiling = None;
@@ -868,196 +1145,39 @@ pub(crate) fn fit(
                         .then_some(None)
                         .into_iter()
                         .chain(alternatives.iter().cloned().map(Some));
-                    let mut endpoint_choice: Option<EvaluatedCandidate> = None;
-                    let mut dispositions = Vec::new();
-                    let mut ordinary_formatted = false;
-                    for alternative in variants {
-                        let automatic = alternative.as_ref().and_then(|alternative| {
-                            match alternative.view().definition() {
-                                surgeist_text::PreparedAlternativeDefinition::Automatic { cut } => {
-                                    Some(cut)
+                    let query = EndpointContext {
+                        start: &start_boundary,
+                        incoming: incoming.as_ref(),
+                        position: &position,
+                        indent_state,
+                        hyphenation_state,
+                        rejected_choices,
+                        conditional: false,
+                    };
+                    let endpoint = environment.choose_endpoint(
+                        &input,
+                        &query,
+                        variants.map(|alternative| LineEndpoint {
+                            boundary: opportunity.view().boundary(),
+                            termination: PreparedTermination::Ordinary(opportunity.clone()),
+                            alternative,
+                            ending: match kind {
+                                PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary => {
+                                    LineEnd::Soft
                                 }
-                                _ => None,
-                            }
-                        });
-                        if automatic.is_some() && matches!(input.available, Available::Maximum) {
-                            continue;
-                        }
-                        if let Some(alternative) =
-                            alternative.as_ref().filter(|_| automatic.is_some())
-                            && let Some(limit) = hyphenation_state
-                                .suppressed_limit(matches!(input.available, Available::Minimum))
-                        {
-                            dispositions.push(ConditionalDisposition::AutoLineLimit {
-                                alternative: alternative.clone(),
-                                limit,
-                            });
-                            continue;
-                        }
-                        if let Some(cut) = &automatic
-                            && matches!(input.available, Available::Definite(_))
-                            && let Some(word) = cut.view().word()
-                        {
-                            let mut fallback: Option<EvaluatedCandidate> = None;
-                            for offer in word.view().ordinary_fallbacks(&start_boundary)? {
-                                let request = selection_request(
-                                    &input,
-                                    &start_boundary,
-                                    incoming.as_ref(),
-                                    LineEndpoint {
-                                        boundary: offer.view().boundary(),
-                                        termination: PreparedTermination::Ordinary(offer),
-                                        alternative: None,
-                                        ending: LineEnd::Soft,
-                                    },
-                                    indent_state,
-                                );
-                                let trial = environment
-                                    .evaluate_mode(&input, request, &position, None, true)?;
-                                if !trial.formatted {
-                                    continue;
-                                }
-                                if fallback.is_none() || trial.fits {
-                                    fallback = Some(trial);
-                                }
-                            }
-                            if let Some(fallback) = fallback {
-                                let span = fallback
-                                    .request
-                                    .context
-                                    .available_inline
-                                    .ok_or(FitError::MissingZoneBasis)?;
-                                let zone = used_zone(input.hyphenate_limit_zone, span)?;
-                                let end = super::run::add(
-                                    fallback.request.context.indent,
-                                    fallback.finalized.measurements().alignment().advance(),
-                                )?;
-                                let gap = super::run::add(span, -end)?.max(0.0);
-                                zone_basis.references.push(ZoneReference {
-                                    alternative: alternative.clone().expect("automatic variant"),
-                                    request: fallback.request.clone(),
-                                    zone,
-                                    measure: fallback.finalized.measurements().alignment(),
-                                    bands: fallback.bands,
-                                    encounters: fallback.encounters.clone(),
-                                    placed_start: fallback.placed_start,
-                                });
-                                if gap <= zone {
-                                    // The genuine meaningful fallback's earlier None variant
-                                    // is already the ordinary ceiling. It cannot be discharged
-                                    // as phantom or by an automatic-only disposition.
-                                    continue;
-                                }
-                            }
-                        }
-                        let request = selection_request(
-                            &input,
-                            &start_boundary,
-                            incoming.as_ref(),
-                            LineEndpoint {
-                                boundary: opportunity.view().boundary(),
-                                termination: PreparedTermination::Ordinary(opportunity.clone()),
-                                alternative: alternative.clone(),
-                                ending: match kind {
-                                    PreparedBreakKind::Allowed
-                                    | PreparedBreakKind::Discretionary => LineEnd::Soft,
-                                    PreparedBreakKind::Forced => LineEnd::Forced,
-                                    PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
-                                },
+                                PreparedBreakKind::Forced => LineEnd::Forced,
+                                PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
                             },
-                            indent_state,
-                        );
-                        let candidate = environment.evaluate(&input, request, &position, None)?;
-                        fitting_none |= candidate.formatted
-                            && candidate.fits
-                            && candidate.request.alternative.is_none();
-                        if rejected_choices.contains(&candidate.request) {
-                            if candidate.request.alternative.is_some() {
-                                dispositions.push(
-                                    ConditionalDisposition::ConsumerHyphenationPolicy(
-                                        candidate.finalized,
-                                    ),
-                                );
-                            } else {
-                                // An unselected meaningful None is still an ordinary
-                                // barrier; rejection does not turn it into phantom.
-                                ordinary_formatted |= candidate.formatted;
-                            }
-                            continue;
-                        }
-                        if let Some(cut) = &automatic
-                            && matches!(input.available, Available::Definite(_))
-                            && let Some(word) = cut.view().word()
-                        {
-                            let mut priority = None;
-                            for portion in word.view().portions()? {
-                                let boundary = cut.view().boundary().view().participant_offset();
-                                if !portion.has_manual_partition()
-                                    || boundary <= portion.start().view().participant_offset()
-                                    || boundary > portion.end().view().participant_offset()
-                                {
-                                    continue;
-                                }
-                                let request = selection_request(
-                                    &input,
-                                    &portion.start(),
-                                    portion.incoming().as_ref(),
-                                    LineEndpoint {
-                                        boundary: portion.end(),
-                                        termination: PreparedTermination::Measurement(
-                                            portion.clone(),
-                                        ),
-                                        alternative: portion.alternative(),
-                                        ending: LineEnd::Soft,
-                                    },
-                                    indent_state,
-                                );
-                                let trial = environment.evaluate(
-                                    &input,
-                                    request,
-                                    &position,
-                                    Some(&candidate),
-                                )?;
-                                if trial.fits {
-                                    priority = Some(trial.finalized);
-                                    break;
-                                }
-                            }
-                            if let Some(portion) = priority {
-                                dispositions.push(ConditionalDisposition::AutoManualPriority {
-                                    alternative: alternative
-                                        .clone()
-                                        .expect("automatic alternative"),
-                                    portion,
-                                });
-                                continue;
-                            }
-                        }
-                        if !candidate.formatted {
-                            dispositions.push(ConditionalDisposition::Phantom(candidate.finalized));
-                            continue;
-                        }
-                        if let Some(alternative) = alternative.filter(|_| automatic.is_some()) {
-                            if matches!(input.available, Available::Minimum) {
-                                dispositions.push(ConditionalDisposition::AutoIntrinsicRefinement(
-                                    alternative,
-                                ));
-                            } else {
-                                dispositions.push(ConditionalDisposition::AutoFitExhausted(
-                                    candidate.finalized.clone(),
-                                ));
-                            }
-                        } else {
-                            ordinary_formatted = true;
-                        }
-                        let fits = candidate.fits;
-                        if endpoint_choice.is_none() || fits {
-                            endpoint_choice = Some(candidate);
-                        }
-                        if fits && !matches!(input.available, Available::Minimum) {
-                            break;
-                        }
-                    }
+                        }),
+                        &mut zone_basis,
+                    )?;
+                    fitting_none |= endpoint.fitting_none;
+                    let EndpointChoice {
+                        candidate: endpoint_choice,
+                        dispositions,
+                        formatted: ordinary_formatted,
+                        ..
+                    } = endpoint;
                     if let Some(candidate) = endpoint_choice
                         && (choice.is_none()
                             || (!matches!(input.available, Available::Minimum)
@@ -1106,43 +1226,106 @@ pub(crate) fn fit(
                     && let Some(ceiling) = first_ceiling
                     && ceiling.view().boundary().view().participant_offset() > start
                 {
-                    let mut fitting = None;
-                    for opportunity in input.prepared.conditional_opportunities(
+                    let search = input.prepared.conditional_search(
                         &start_boundary,
                         incoming.as_ref(),
                         &ceiling,
                         purpose,
                         &skipped_ordinary,
-                    )? {
-                        let request = selection_request(
-                            &input,
-                            &start_boundary,
-                            incoming.as_ref(),
-                            LineEndpoint {
-                                boundary: opportunity.boundary(),
-                                termination: PreparedTermination::Conditional(opportunity),
-                                alternative: None,
-                                ending: LineEnd::Soft,
-                            },
-                            indent_state,
-                        );
-                        let trial = environment.evaluate(&input, request, &position, None)?;
-                        if !trial.formatted || rejected_choices.contains(&trial.request) {
-                            continue;
-                        }
-                        if purpose == ConditionalPurpose::MinContent {
-                            fitting = Some(trial);
-                            break;
-                        }
-                        if trial.fits {
-                            fitting = Some(trial);
-                        } else if minimal_progress.is_none() {
-                            minimal_progress = Some(trial);
-                        }
-                        // Do not assume that later shaped prefixes are wider.
+                        (purpose == ConditionalPurpose::Overflow).then_some(&candidate.finalized),
+                    )?;
+                    let query = EndpointContext {
+                        start: &start_boundary,
+                        incoming: incoming.as_ref(),
+                        position: &position,
+                        indent_state,
+                        hyphenation_state,
+                        rejected_choices,
+                        conditional: true,
+                    };
+                    let mut decisions = Vec::new();
+                    for portion in search.phrase_portions() {
+                        let (decision, basis) =
+                            environment.measure_phrase(&input, &query, &candidate, portion)?;
+                        decisions.push(decision);
+                        phrase_basis.push(basis);
                     }
-                    if let Some(fitting) = fitting {
-                        candidate = fitting;
+                    let mut batch = search.begin(&decisions)?;
+                    let mut restored_fallback = false;
+                    loop {
+                        let stage = batch.stage();
+                        let mut dispositions = Vec::new();
+                        let mut stage_choice: Option<EvaluatedCandidate> = None;
+                        let mut blocked_none = false;
+                        let mut from = 0;
+                        while from < batch.opportunities().len() {
+                            let boundary = batch.opportunities()[from].boundary();
+                            let mut to = from + 1;
+                            while to < batch.opportunities().len()
+                                && batch.opportunities()[to].boundary() == boundary
+                            {
+                                to += 1;
+                            }
+                            let endpoint = environment.choose_endpoint(
+                                &input,
+                                &query,
+                                batch.opportunities()[from..to].iter().cloned().map(
+                                    |opportunity| {
+                                        let alternative = opportunity.alternative();
+                                        LineEndpoint {
+                                            boundary: opportunity.boundary(),
+                                            termination: PreparedTermination::Conditional(
+                                                opportunity,
+                                            ),
+                                            alternative,
+                                            ending: LineEnd::Soft,
+                                        }
+                                    },
+                                ),
+                                &mut zone_basis,
+                            )?;
+                            blocked_none |= endpoint.fitting_none && endpoint.candidate.is_none();
+                            dispositions.extend(endpoint.dispositions);
+                            if let Some(trial) = endpoint.candidate {
+                                if purpose == ConditionalPurpose::MinContent {
+                                    stage_choice = Some(trial);
+                                    break;
+                                }
+                                if stage == ConditionalStage::Arbitrary
+                                    && !trial.fits
+                                    && minimal_progress.is_none()
+                                {
+                                    minimal_progress = Some(trial);
+                                } else if stage_choice.is_none() || trial.fits {
+                                    stage_choice = Some(trial);
+                                }
+                            }
+                            from = to;
+                        }
+                        if blocked_none && stage_choice.as_ref().is_none_or(|choice| !choice.fits) {
+                            if constrained && let Some(parent) = result.pop() {
+                                let depth = result.len();
+                                visited.truncate(depth + 1);
+                                visited[depth]
+                                    .push(parent.finalized.selected_line().request().clone());
+                                continue 'sequence;
+                            }
+                            return Err(FitError::FeedbackCycle);
+                        }
+                        if let Some(choice) = stage_choice {
+                            if choice.fits || purpose == ConditionalPurpose::MinContent {
+                                candidate = choice;
+                                break;
+                            }
+                            if stage != ConditionalStage::Arbitrary && !restored_fallback {
+                                candidate = choice;
+                                restored_fallback = true;
+                            }
+                        }
+                        let Some(next) = batch.advance(&dispositions)? else {
+                            break;
+                        };
+                        batch = next;
                     }
                 }
                 environment.restore(&candidate, &position)?;
@@ -1224,6 +1407,7 @@ pub(crate) fn fit(
                 let available = candidate.finalized.metric_bounds().size.width;
                 result.push(FittedLine {
                     zone_basis,
+                    phrase_basis,
                     hyphenation_end: hyphenation_state,
                     encounters: candidate.encounters,
                     finalized: candidate.finalized,
@@ -1313,6 +1497,17 @@ fn finite(value: f64) -> Result<f64, FitError> {
 pub(crate) struct ZoneBasis {
     policy: crate::LengthPercentageOf<f64>,
     references: Vec<ZoneReference>,
+}
+
+/// The full numerical/replay truth of an otherwise-empty phrase trial remains
+/// Layout-owned and participates in accepted-pass convergence.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PhraseBasis {
+    ordinary: CandidateBasis,
+    position: CandidatePosition,
+    indent_state: crate::text_indent::IndentLineState,
+    trial: CandidateBasis,
+    fits: bool,
 }
 #[derive(Clone, Debug, PartialEq)]
 struct ZoneReference {

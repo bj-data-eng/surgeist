@@ -61,6 +61,27 @@ fallback while retaining Normal's other rules and declared overflow policy.
 Orthographic, explicit and required opportunities and actual hyphenation remain
 independent; source words and editing metadata are unchanged.
 
+`WordBreak::AutoPhrase` keeps supported Japanese phrases together without
+inserting separators. Its analysis uses final transformed input and the shared
+qualified Japanese provider; unsupported language retains Normal ordinary
+breaking. Actual-owner hyphenation is initially suppressed in every language.
+The [AutoPhrase contract](../../../docs/text-layout-contract.md#native-word-break-policies)
+defines independent causes, staged finite restoration, remaining-piece
+measurement/continuation and intrinsic sizing. Separator insertion has its own
+[capture and execution contract](#native-automatic-phrase-separators).
+
+`PreparedText::phrases` exposes final phrase provenance and ordered original,
+control or virtual pieces. `conditional_search` captures the actual interval and
+purpose. Measure its issued `phrase_portions` with
+`PreparedTermination::PhraseMeasurement`, then supply genuine
+`PhraseOverflowDecision` receipts to `begin`. `PreparedConditionalBatch::advance`
+requires complete ordered variant dispositions before issuing the next stage.
+Each opportunity carries its authorized alternative; `manual_portions` provides
+admitted manual-priority measurements for a restored automatic variant.
+`PreparedAlternativeAvailability` distinguishes ordinary and phrase-suppressed
+variants, and alternative readback returns an optional ordinary opportunity.
+A retained suppressed variant does not gain ordinary selection authority.
+
 The current non-complex provider lacks Thai/Lao lexical models and uses AL/CM
 ordinary SA context. Normal and KeepAll separately supply fallback cuts between
 qualified whole letter units,

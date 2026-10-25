@@ -600,7 +600,7 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
             )
             .unwrap();
         let alternative = p.alternative_views().next().unwrap().handle();
-        let offer = alternative.view().opportunity();
+        let offer = alternative.view().opportunity().unwrap();
         let end = offer.view().boundary();
         let mut r = request(&p);
         r.end = end.clone();

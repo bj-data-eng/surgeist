@@ -311,13 +311,16 @@ fn fullwidth_semantics_create_real_normal_opportunities_while_narrow_letters_nee
         unreachable!()
     };
     let conditional = neutral
-        .conditional_opportunities(
+        .conditional_search(
             &query.start,
             None,
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
+            None,
         )
+        .and_then(|search| search.begin(&[]))
+        .map(|batch| batch.opportunities().to_vec())
         .unwrap();
     assert!(
         conditional

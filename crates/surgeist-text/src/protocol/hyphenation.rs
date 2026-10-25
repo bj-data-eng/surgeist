@@ -436,6 +436,7 @@ pub struct PreparedWordPortion {
     pub(crate) end: usize,
     pub(crate) alternative: Option<usize>,
     pub(crate) incoming: Option<usize>,
+    pub(crate) restored: bool,
 }
 impl PreparedWordPortion {
     #[must_use]
@@ -482,7 +483,7 @@ impl PreparedWordPortion {
             .enumerate()
             .any(|(cut, row)| {
                 row.word == Some(self.word.index)
-                    && admitted_manual_alternatives(&self.word.prepared.tables, cut)
+                    && manual_alternatives(&self.word.prepared.tables, cut, self.restored)
                         .next()
                         .is_some()
             })
@@ -504,7 +505,11 @@ impl PreparedWordPortion {
             || request.end.index != self.end
             || request.incoming != self.incoming()
             || request.alternative.as_ref().map(|row| row.index) != self.alternative
-            || !self.word.view().portions()?.contains(self)
+            || !self
+                .word
+                .view()
+                .portions_with_restoration(self.restored)?
+                .contains(self)
         {
             return Err(super::protocol_error(
                 super::ProtocolError::InvalidWordPortion,
@@ -527,6 +532,9 @@ impl PreparedWordView<'_> {
     /// Exact consecutive admitted manual portions; the final portion is the
     /// unbroken residual word end. No ordinary end permission is synthesized.
     pub fn portions(&self) -> crate::Result<Vec<PreparedWordPortion>> {
+        self.portions_with_restoration(false)
+    }
+    fn portions_with_restoration(&self, restored: bool) -> crate::Result<Vec<PreparedWordPortion>> {
         let tables = &self.prepared.tables;
         let word = &self.prepared.analyzed.words.rows()[tables.words[self.index].lexical];
         let first = tables.participants.iter().position(|part| matches!(*part, super::prepared::ParticipantData::Text(i) if tables.units[i].atoms.contains(&word.atoms.start)))
@@ -552,7 +560,7 @@ impl PreparedWordView<'_> {
             if cut.boundary <= start || cut.boundary > end {
                 continue;
             }
-            let alternatives: Vec<_> = admitted_manual_alternatives(tables, cut_index).collect();
+            let alternatives: Vec<_> = manual_alternatives(tables, cut_index, restored).collect();
             if alternatives.is_empty() {
                 continue;
             }
@@ -564,6 +572,7 @@ impl PreparedWordView<'_> {
                         end: cut.boundary,
                         alternative: Some(alternative),
                         incoming: prior,
+                        restored,
                     });
                 }
             }
@@ -588,6 +597,7 @@ impl PreparedWordView<'_> {
                     end,
                     alternative: None,
                     incoming: prior,
+                    restored,
                 });
             }
         }
@@ -619,24 +629,34 @@ impl PreparedWordView<'_> {
     }
 }
 
-/// Truthful source/control cut observations can also point at a None-only
-/// ordinary offer. Only an admitted matching manual alternative partitions it.
-fn admitted_manual_alternatives(
+pub(super) fn restored_portions(
+    prepared: &PreparedText,
+    word: usize,
+) -> crate::Result<Vec<PreparedWordPortion>> {
+    PreparedWord {
+        prepared: Arc::clone(&prepared.inner),
+        index: word,
+    }
+    .view()
+    .portions_with_restoration(true)
+}
+fn manual_alternatives(
     tables: &super::prepared::PreparedTables,
     cut: usize,
+    restored: bool,
 ) -> impl Iterator<Item = usize> + '_ {
-    tables.hyphenation_cuts[cut]
-        .opportunity
-        .into_iter()
-        .flat_map(|offer| tables.opportunities[offer].alternatives.iter().copied())
-        .filter(move |&alternative| {
-            let alternative = &tables.alternatives[alternative];
-            alternative.hyphenation_cut == cut
-                && matches!(
-                    alternative.definition,
-                    super::prepared::AlternativeDefinition::Source { .. }
-                        | super::prepared::AlternativeDefinition::Control { .. }
-                )
+    tables
+        .alternatives
+        .iter()
+        .enumerate()
+        .filter_map(move |(index, row)| {
+            (row.hyphenation_cut == cut
+                && (restored || row.opportunity.is_some())
+                && !matches!(
+                    row.definition,
+                    super::prepared::AlternativeDefinition::Automatic { .. }
+                ))
+            .then_some(index)
         })
 }
 

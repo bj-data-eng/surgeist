@@ -212,13 +212,16 @@ fn missing_thai_lexical_capability_normal_publishes_ordinary_letter_pair_cut() {
         let start = p.boundary_views().next().unwrap().handle();
         let ceiling = p.opportunity_views().next().unwrap().handle();
         assert!(
-            p.conditional_opportunities(
+            p.conditional_search(
                 &start,
                 None,
                 &ceiling,
                 t::ConditionalPurpose::Overflow,
-                &[]
+                &[],
+                None
             )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
             .unwrap()
             .is_empty()
         );

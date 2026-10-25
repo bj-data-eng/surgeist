@@ -632,7 +632,7 @@ fn source_shy_hyphenation_uses_actual_owner_even_with_empty_indication() {
                             let line = finish(
                                 &p,
                                 start(&p),
-                                alternative.opportunity(),
+                                alternative.opportunity().unwrap(),
                                 Some(alternative.handle()),
                             );
                             assert_eq!(
@@ -727,7 +727,10 @@ fn explicit_discretionary_control_cannot_donate_anywhere_or_evade_owner_exclusio
                         for alternative in p.alternative_views() {
                             assert_eq!(alternative.source_range(), None);
                             assert_eq!(alternative.text(), &t::Text::from(indication));
-                            assert_eq!(alternative.opportunity().view().boundary(), cut.boundary());
+                            assert_eq!(
+                                alternative.opportunity().unwrap().view().boundary(),
+                                cut.boundary()
+                            );
                         }
                     }
                 }

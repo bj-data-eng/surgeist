@@ -57,10 +57,15 @@ pub surgeist_text::ConditionalDisposition::AutoManualPriority
 pub surgeist_text::ConditionalDisposition::AutoManualPriority::alternative: surgeist_text::PreparedAlternative
 pub surgeist_text::ConditionalDisposition::AutoManualPriority::portion: surgeist_text::FinalizedLine
 pub surgeist_text::ConditionalDisposition::ConsumerHyphenationPolicy(surgeist_text::FinalizedLine)
+pub surgeist_text::ConditionalDisposition::Exhausted(surgeist_text::FinalizedLine)
 pub surgeist_text::ConditionalDisposition::Phantom(surgeist_text::FinalizedLine)
 pub enum surgeist_text::ConditionalPurpose
 pub surgeist_text::ConditionalPurpose::MinContent
 pub surgeist_text::ConditionalPurpose::Overflow
+pub enum surgeist_text::ConditionalStage
+pub surgeist_text::ConditionalStage::Arbitrary
+pub surgeist_text::ConditionalStage::Hyphens
+pub surgeist_text::ConditionalStage::Normal
 pub enum surgeist_text::DecorationBrush
 pub surgeist_text::DecorationBrush::Color(surgeist_text::Brush)
 pub surgeist_text::DecorationBrush::TextColor
@@ -111,6 +116,7 @@ pub surgeist_text::ErrorCode::FontSystemUnavailable
 pub surgeist_text::ErrorCode::HitTestFailed
 pub surgeist_text::ErrorCode::InvalidFontInstance
 pub surgeist_text::ErrorCode::InvalidFontMetrics
+pub surgeist_text::ErrorCode::InvalidPhraseAnalysis
 pub surgeist_text::ErrorCode::InvalidRange
 pub surgeist_text::ErrorCode::InvalidSourceProcessing
 pub surgeist_text::ErrorCode::InvalidStyle
@@ -122,6 +128,7 @@ pub surgeist_text::ErrorCode::ShapingRefused
 pub surgeist_text::ErrorCode::SourceLengthOverflow
 pub surgeist_text::ErrorCode::SourceProcessingCapacity
 pub surgeist_text::ErrorCode::SourceRevisionExhausted
+pub surgeist_text::ErrorCode::TextAnalysisCapacity
 pub surgeist_text::ErrorCode::UnsupportedFeature
 pub enum surgeist_text::ErrorDetail
 pub surgeist_text::ErrorDetail::AccessibilityBindingMismatch
@@ -501,6 +508,9 @@ pub surgeist_text::ParagraphTerminalEdge::Unknown
 pub enum surgeist_text::PhaseTwoContext
 pub surgeist_text::PhaseTwoContext::TabOrigin
 pub surgeist_text::PhaseTwoContext::TerminalBlockEdge
+pub enum surgeist_text::PhraseOverflowDecision
+pub surgeist_text::PhraseOverflowDecision::Fits(surgeist_text::FinalizedLine)
+pub surgeist_text::PhraseOverflowDecision::Overflows(surgeist_text::FinalizedLine)
 pub enum surgeist_text::PlacementCoverage
 pub surgeist_text::PlacementCoverage::Range
 pub surgeist_text::PlacementCoverage::Range::end: surgeist_text::PreparedBoundary
@@ -509,6 +519,9 @@ pub surgeist_text::PlacementCoverage::WholeParagraph
 pub enum surgeist_text::PlaintextItem<'a>
 pub surgeist_text::PlaintextItem::InlineBox(surgeist_text::ProcessedInlineBox<'a>)
 pub surgeist_text::PlaintextItem::Text(surgeist_text::ProcessedText<'a>)
+pub enum surgeist_text::PreparedAlternativeAvailability
+pub surgeist_text::PreparedAlternativeAvailability::AutoPhraseSuppressed
+pub surgeist_text::PreparedAlternativeAvailability::Ordinary
 pub enum surgeist_text::PreparedAlternativeDefinition
 pub surgeist_text::PreparedAlternativeDefinition::Automatic
 pub surgeist_text::PreparedAlternativeDefinition::Automatic::cut: surgeist_text::PreparedHyphenationCut
@@ -527,10 +540,20 @@ pub enum surgeist_text::PreparedParticipant
 pub surgeist_text::PreparedParticipant::Atomic(surgeist_text::PreparedAtomic)
 pub surgeist_text::PreparedParticipant::Control(surgeist_text::PreparedControl)
 pub surgeist_text::PreparedParticipant::Text(surgeist_text::PreparedUnit)
+pub enum surgeist_text::PreparedPhrasePieceOwner
+pub surgeist_text::PreparedPhrasePieceOwner::Control(surgeist_text::PreparedControl)
+pub surgeist_text::PreparedPhrasePieceOwner::Original
+pub surgeist_text::PreparedPhrasePieceOwner::Original::aggregate: surgeist_text::Range
+pub surgeist_text::PreparedPhrasePieceOwner::Original::local: surgeist_text::Range
+pub surgeist_text::PreparedPhrasePieceOwner::Original::origin: surgeist_text::PreparedOrigin
+pub surgeist_text::PreparedPhrasePieceOwner::Virtual(surgeist_text::PreparedVirtualSeparator)
+pub enum surgeist_text::PreparedPhraseProvenance
+pub surgeist_text::PreparedPhraseProvenance::BudouXJapanese093
 pub enum surgeist_text::PreparedTermination
 pub surgeist_text::PreparedTermination::Conditional(surgeist_text::PreparedConditionalOpportunity)
 pub surgeist_text::PreparedTermination::Measurement(surgeist_text::PreparedWordPortion)
 pub surgeist_text::PreparedTermination::Ordinary(surgeist_text::PreparedOpportunity)
+pub surgeist_text::PreparedTermination::PhraseMeasurement(surgeist_text::PreparedPhrasePortion)
 pub enum surgeist_text::PresentationMappingKind
 pub surgeist_text::PresentationMappingKind::Deleted
 pub surgeist_text::PresentationMappingKind::GeneratedSeparator
@@ -620,6 +643,7 @@ pub surgeist_text::ProtocolError::InvalidConditionalReceipt::receipt: usize
 pub surgeist_text::ProtocolError::InvalidConditionalSelection
 pub surgeist_text::ProtocolError::InvalidConditionalSelection::end: usize
 pub surgeist_text::ProtocolError::InvalidConditionalSelection::start: usize
+pub surgeist_text::ProtocolError::InvalidConditionalStage
 pub surgeist_text::ProtocolError::InvalidConnection
 pub surgeist_text::ProtocolError::InvalidConnection::at: usize
 pub surgeist_text::ProtocolError::InvalidConnection::connection: usize
@@ -638,6 +662,7 @@ pub surgeist_text::ProtocolError::InvalidOriginRange::local: surgeist_text::Rang
 pub surgeist_text::ProtocolError::InvalidOriginRange::origin: usize
 pub surgeist_text::ProtocolError::InvalidOriginSeam
 pub surgeist_text::ProtocolError::InvalidOriginSeam::position: usize
+pub surgeist_text::ProtocolError::InvalidPhrasePortion
 pub surgeist_text::ProtocolError::InvalidPlacedPosition
 pub surgeist_text::ProtocolError::InvalidPlacedPosition::position: usize
 pub surgeist_text::ProtocolError::InvalidReplacement
@@ -1017,6 +1042,7 @@ pub surgeist_text::Width::UltraExpanded
 impl core::convert::From<surgeist_text::Width> for parlance::font::FontWidth
 pub fn parlance::font::FontWidth::from(width: surgeist_text::Width) -> Self
 pub enum surgeist_text::WordBreak
+pub surgeist_text::WordBreak::AutoPhrase
 pub surgeist_text::WordBreak::BreakAll
 pub surgeist_text::WordBreak::BreakWord
 pub surgeist_text::WordBreak::KeepAll
@@ -1824,10 +1850,12 @@ impl core::hash::Hash for surgeist_text::PreparedAlternative
 pub fn surgeist_text::PreparedAlternative::hash<H: core::hash::Hasher>(&self, state: &mut H)
 pub struct surgeist_text::PreparedAlternativeView<'a>
 impl surgeist_text::PreparedAlternativeView<'_>
+pub fn surgeist_text::PreparedAlternativeView<'_>::availability(&self) -> surgeist_text::PreparedAlternativeAvailability
+pub fn surgeist_text::PreparedAlternativeView<'_>::boundary(&self) -> surgeist_text::PreparedBoundary
 pub fn surgeist_text::PreparedAlternativeView<'_>::definition(&self) -> surgeist_text::PreparedAlternativeDefinition
 pub fn surgeist_text::PreparedAlternativeView<'_>::hyphenation_cut(&self) -> surgeist_text::PreparedHyphenationCut
 pub fn surgeist_text::PreparedAlternativeView<'_>::insertion_anchor(&self) -> surgeist_text::SourcePosition
-pub fn surgeist_text::PreparedAlternativeView<'_>::opportunity(&self) -> surgeist_text::PreparedOpportunity
+pub fn surgeist_text::PreparedAlternativeView<'_>::opportunity(&self) -> core::option::Option<surgeist_text::PreparedOpportunity>
 pub fn surgeist_text::PreparedAlternativeView<'_>::source_range(&self) -> core::option::Option<surgeist_text::Range>
 pub fn surgeist_text::PreparedAlternativeView<'_>::text(&self) -> &surgeist_text::Text
 impl surgeist_text::PreparedAlternativeView<'_>
@@ -1879,7 +1907,21 @@ pub fn surgeist_text::PreparedBoundaryView<'_>::source_after(&self) -> surgeist_
 pub fn surgeist_text::PreparedBoundaryView<'_>::source_before(&self) -> surgeist_text::SourcePosition
 impl core::fmt::Debug for surgeist_text::PreparedBoundaryView<'_>
 pub fn surgeist_text::PreparedBoundaryView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_text::PreparedConditionalBatch
+impl surgeist_text::PreparedConditionalBatch
+pub fn surgeist_text::PreparedConditionalBatch::advance(&self, dispositions: &[surgeist_text::ConditionalDisposition]) -> surgeist_text::Result<core::option::Option<Self>>
+pub fn surgeist_text::PreparedConditionalBatch::opportunities(&self) -> &[surgeist_text::PreparedConditionalOpportunity]
+pub fn surgeist_text::PreparedConditionalBatch::stage(&self) -> surgeist_text::ConditionalStage
+impl core::cmp::Eq for surgeist_text::PreparedConditionalBatch
+impl core::cmp::PartialEq for surgeist_text::PreparedConditionalBatch
+pub fn surgeist_text::PreparedConditionalBatch::eq(&self, other: &Self) -> bool
+impl core::hash::Hash for surgeist_text::PreparedConditionalBatch
+pub fn surgeist_text::PreparedConditionalBatch::hash<H: core::hash::Hasher>(&self, state: &mut H)
 pub struct surgeist_text::PreparedConditionalOpportunity
+impl surgeist_text::PreparedConditionalOpportunity
+pub fn surgeist_text::PreparedConditionalOpportunity::alternative(&self) -> core::option::Option<surgeist_text::PreparedAlternative>
+pub fn surgeist_text::PreparedConditionalOpportunity::manual_portions(&self) -> surgeist_text::Result<alloc::vec::Vec<surgeist_text::PreparedWordPortion>>
+pub fn surgeist_text::PreparedConditionalOpportunity::stage(&self) -> surgeist_text::ConditionalStage
 impl surgeist_text::PreparedConditionalOpportunity
 pub fn surgeist_text::PreparedConditionalOpportunity::boundary(&self) -> surgeist_text::PreparedBoundary
 pub fn surgeist_text::PreparedConditionalOpportunity::ceiling(&self) -> surgeist_text::PreparedOpportunity
@@ -1891,6 +1933,15 @@ impl core::cmp::PartialEq for surgeist_text::PreparedConditionalOpportunity
 pub fn surgeist_text::PreparedConditionalOpportunity::eq(&self, other: &Self) -> bool
 impl core::hash::Hash for surgeist_text::PreparedConditionalOpportunity
 pub fn surgeist_text::PreparedConditionalOpportunity::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_text::PreparedConditionalSearch
+impl surgeist_text::PreparedConditionalSearch
+pub fn surgeist_text::PreparedConditionalSearch::begin(&self, decisions: &[surgeist_text::PhraseOverflowDecision]) -> surgeist_text::Result<surgeist_text::PreparedConditionalBatch>
+pub fn surgeist_text::PreparedConditionalSearch::phrase_portions(&self) -> alloc::vec::Vec<surgeist_text::PreparedPhrasePortion>
+impl core::cmp::Eq for surgeist_text::PreparedConditionalSearch
+impl core::cmp::PartialEq for surgeist_text::PreparedConditionalSearch
+pub fn surgeist_text::PreparedConditionalSearch::eq(&self, other: &Self) -> bool
+impl core::hash::Hash for surgeist_text::PreparedConditionalSearch
+pub fn surgeist_text::PreparedConditionalSearch::hash<H: core::hash::Hasher>(&self, h: &mut H)
 pub struct surgeist_text::PreparedControl
 impl surgeist_text::PreparedControl
 pub fn surgeist_text::PreparedControl::captured_control(&self) -> core::option::Option<surgeist_text::CapturedControl>
@@ -1991,6 +2042,24 @@ pub fn surgeist_text::PreparedOriginView<'_>::local_range(&self) -> surgeist_tex
 pub fn surgeist_text::PreparedOriginView<'_>::source(&self) -> &surgeist_text::Source
 impl core::fmt::Debug for surgeist_text::PreparedOriginView<'_>
 pub fn surgeist_text::PreparedOriginView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_text::PreparedPhrase
+impl surgeist_text::PreparedPhrase
+pub fn surgeist_text::PreparedPhrase::component_presentation_range(&self) -> surgeist_text::PresentationRange
+pub fn surgeist_text::PreparedPhrase::pieces(&self) -> alloc::vec::Vec<surgeist_text::PreparedPhrasePiece>
+pub fn surgeist_text::PreparedPhrase::prepared_text(&self) -> surgeist_text::PreparedText
+pub fn surgeist_text::PreparedPhrase::presentation_range(&self) -> surgeist_text::PresentationRange
+pub fn surgeist_text::PreparedPhrase::provenance(&self) -> surgeist_text::PreparedPhraseProvenance
+pub fn surgeist_text::PreparedPhrase::qualified_presentation_cuts(&self) -> impl core::iter::traits::iterator::Iterator<Item = usize> + '_
+pub fn surgeist_text::PreparedPhrase::raw_presentation_cuts(&self) -> impl core::iter::traits::iterator::Iterator<Item = usize> + '_
+pub struct surgeist_text::PreparedPhrasePiece
+pub surgeist_text::PreparedPhrasePiece::owner: surgeist_text::PreparedPhrasePieceOwner
+pub surgeist_text::PreparedPhrasePiece::presentation: surgeist_text::PresentationRange
+pub struct surgeist_text::PreparedPhrasePortion
+impl surgeist_text::PreparedPhrasePortion
+pub fn surgeist_text::PreparedPhrasePortion::end(&self) -> surgeist_text::PreparedBoundary
+pub fn surgeist_text::PreparedPhrasePortion::incoming(&self) -> core::option::Option<surgeist_text::HyphenationContinuation>
+pub fn surgeist_text::PreparedPhrasePortion::phrase(&self) -> surgeist_text::PreparedPhrase
+pub fn surgeist_text::PreparedPhrasePortion::start(&self) -> surgeist_text::PreparedBoundary
 pub struct surgeist_text::PreparedScope
 impl surgeist_text::PreparedScope
 pub fn surgeist_text::PreparedScope::captured_scope(&self) -> surgeist_text::CapturedScope
@@ -2037,10 +2106,12 @@ impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::boundary_context_demand(&self, request: &surgeist_text::LineSelectionRequest) -> surgeist_text::Result<core::option::Option<surgeist_text::PreparedControl>>
 pub fn surgeist_text::PreparedText::select(&self, request: surgeist_text::LineSelectionRequest) -> surgeist_text::Result<surgeist_text::SelectedLine>
 impl surgeist_text::PreparedText
-pub fn surgeist_text::PreparedText::conditional_opportunities(&self, start: &surgeist_text::PreparedBoundary, incoming: core::option::Option<&surgeist_text::HyphenationContinuation>, ceiling: &surgeist_text::PreparedOpportunity, purpose: surgeist_text::ConditionalPurpose, skipped_ordinary: &[surgeist_text::ConditionalDisposition]) -> surgeist_text::Result<alloc::vec::Vec<surgeist_text::PreparedConditionalOpportunity>>
+pub fn surgeist_text::PreparedText::conditional_search(&self, start: &surgeist_text::PreparedBoundary, incoming: core::option::Option<&surgeist_text::HyphenationContinuation>, ceiling: &surgeist_text::PreparedOpportunity, purpose: surgeist_text::ConditionalPurpose, skipped: &[surgeist_text::ConditionalDisposition], frame: core::option::Option<&surgeist_text::FinalizedLine>) -> surgeist_text::Result<surgeist_text::PreparedConditionalSearch>
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::hyphenation_cut_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedHyphenationCutView<'_>>
 pub fn surgeist_text::PreparedText::word_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedWordView<'_>>
+impl surgeist_text::PreparedText
+pub fn surgeist_text::PreparedText::phrases(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedPhrase> + '_
 impl core::cmp::Eq for surgeist_text::PreparedText
 impl core::cmp::PartialEq for surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::eq(&self, other: &Self) -> bool

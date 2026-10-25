@@ -463,10 +463,14 @@ impl PreparedText {
 
     /// Borrows actual prepared alternatives, including retained replacement text.
     pub fn alternative_views(&self) -> impl ExactSizeIterator<Item = PreparedAlternativeView<'_>> {
-        (0..self.inner.tables.alternatives.len()).map(|index| PreparedAlternativeView {
-            prepared: &self.inner,
-            index,
-        })
+        self.inner
+            .tables
+            .ordinary_alternatives
+            .iter()
+            .map(|&index| PreparedAlternativeView {
+                prepared: &self.inner,
+                index,
+            })
     }
 
     /// Issues the actual complete mixed sequence in its captured logical order.
@@ -902,10 +906,27 @@ impl PreparedAlternativeView<'_> {
     }
     /// The actual owning opportunity, qualified by this preparation allocation.
     #[must_use]
-    pub fn opportunity(&self) -> PreparedOpportunity {
-        PreparedOpportunity {
+    pub fn opportunity(&self) -> Option<PreparedOpportunity> {
+        self.data().opportunity.map(|index| PreparedOpportunity {
             prepared: Arc::clone(self.prepared),
-            index: self.data().opportunity,
+            index,
+        })
+    }
+
+    #[must_use]
+    pub fn boundary(&self) -> PreparedBoundary {
+        PreparedBoundary {
+            prepared: Arc::clone(self.prepared),
+            index: self.data().boundary,
+        }
+    }
+
+    #[must_use]
+    pub fn availability(&self) -> super::PreparedAlternativeAvailability {
+        if self.data().opportunity.is_some() {
+            super::PreparedAlternativeAvailability::Ordinary
+        } else {
+            super::PreparedAlternativeAvailability::AutoPhraseSuppressed
         }
     }
 

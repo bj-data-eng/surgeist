@@ -56,7 +56,7 @@ fn prepare(input: ParagraphInput) -> PreparedText {
 fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> SelectedLine {
     let termination = alternative
         .as_ref()
-        .map(|row| row.view().opportunity())
+        .map(|row| row.view().opportunity().unwrap())
         .unwrap_or_else(|| {
             prepared
                 .opportunity_views()

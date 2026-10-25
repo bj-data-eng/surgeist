@@ -1147,7 +1147,7 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
         )
         .unwrap();
     let alternative = prepared.alternative_views().next().unwrap().handle();
-    let termination = alternative.view().opportunity();
+    let termination = alternative.view().opportunity().unwrap();
     let end = termination.view().boundary();
     let count = end.view().participant_offset();
     let selected = prepared
@@ -1254,7 +1254,7 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
         )
         .unwrap();
     let alternative = prepared.alternative_views().next().unwrap().handle();
-    let termination = alternative.view().opportunity();
+    let termination = alternative.view().opportunity().unwrap();
     let selected = prepared
         .select(LineSelectionRequest {
             boundary_context: Vec::new(),

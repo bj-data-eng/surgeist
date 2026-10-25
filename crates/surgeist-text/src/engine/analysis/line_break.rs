@@ -14,7 +14,7 @@ use icu_segmenter::{
     options::{LineBreakOptions, LineBreakStrictness, LineBreakWordOption},
 };
 
-use super::{Boundary, is_hard_separator, style_at};
+use super::{Boundary, LineCandidate, LineCause, is_hard_separator, issue_candidate, style_at};
 use crate::{
     LineBreak, engine::resolve::AnalyzedStyleRun, projection::SourceProjection,
     style::OrdinaryWordBreak,
@@ -145,7 +145,7 @@ impl<'a> ProviderInput<'a> {
     }
 }
 
-fn resolved_class(code_point: u32, class: Class) -> Class {
+pub(super) fn resolved_class(code_point: u32, class: Class) -> Class {
     if class == Class::ComplexContext {
         // Without lexical models, ordinary SA uses LB1's AL/CM context;
         // qualified lexical fallback is proposed separately from these cuts.
@@ -209,7 +209,8 @@ pub(super) fn apply(
     offsets: &[usize],
     component: Range<usize>,
     boundaries: &mut [Boundary],
-) -> MissingLexicalModels {
+    candidates: &mut Vec<LineCandidate>,
+) -> crate::Result<MissingLexicalModels> {
     let mut needed = Vec::new();
     for atom in component.clone() {
         let policy = policies[style_at(projection, styles, atom)];
@@ -230,7 +231,7 @@ pub(super) fn apply(
     let mut opening = Vec::with_capacity(component.len());
     let mut zero_width_space = Vec::with_capacity(component.len());
     let mut blocks_opening = false;
-    let mut follows_zero_width_space = false;
+    let mut follows_zero_width_space = None;
     for atom in component.clone() {
         let code_point = projection.atoms[atom].code_point;
         let class = resolved_class(code_point, classes.get32(code_point));
@@ -265,7 +266,7 @@ pub(super) fn apply(
         owners.push(owner);
         effective.push(class);
         if class != Class::Space {
-            follows_zero_width_space = class == Class::ZWSpace;
+            follows_zero_width_space = (class == Class::ZWSpace).then_some(component.start + owner);
             let cp = projection.atoms[component.start + owner].code_point;
             let prior = owner.checked_sub(1).map(|i| effective[i]);
             blocks_opening = class == Class::OpenPunctuation
@@ -294,6 +295,20 @@ pub(super) fn apply(
     // terminal ZW/SP causes retain their independently qualified permissions.
     if independent_ending(projection, styles, &component, &effective, &opening) {
         boundaries[component.end] = Boundary::Line;
+        let zw = effective
+            .iter()
+            .rposition(|class| *class != Class::Space)
+            .filter(|at| effective[*at] == Class::ZWSpace)
+            .map(|at| component.start + owners[at]);
+        issue_causes(
+            projection,
+            styles,
+            component.end,
+            zw,
+            false,
+            true,
+            candidates,
+        )?;
     }
     let mut groups = Vec::new();
     for policy in &needed {
@@ -342,7 +357,7 @@ pub(super) fn apply(
                         projection.atoms[atom].code_point,
                         before,
                         after,
-                        zero_width_space[atom - component.start - 1],
+                        zero_width_space[atom - component.start - 1].is_some(),
                     )
                 {
                     continue;
@@ -363,6 +378,15 @@ pub(super) fn apply(
                     }
                 }
                 boundaries[atom] = Boundary::Line;
+                issue_causes(
+                    projection,
+                    styles,
+                    atom,
+                    zero_width_space[atom - component.start - 1],
+                    required == Some(true),
+                    independent || required != Some(true),
+                    candidates,
+                )?;
             }
         }
     }
@@ -389,7 +413,64 @@ pub(super) fn apply(
             *boundary = Boundary::Anywhere;
         }
     }
-    missing_lexical
+    Ok(missing_lexical)
+}
+
+fn issue_causes(
+    projection: &SourceProjection,
+    styles: &[AnalyzedStyleRun],
+    atom: usize,
+    zw: Option<usize>,
+    required: bool,
+    implicit: bool,
+    candidates: &mut Vec<LineCandidate>,
+) -> crate::Result<()> {
+    if let Some(owner) = zw {
+        issue_candidate(
+            candidates,
+            LineCandidate {
+                atom,
+                style: style_at(projection, styles, owner),
+                cause: LineCause::SourceZwsp { atom: owner },
+            },
+        )?;
+    }
+    let before = atom - 1;
+    let whitespace = projection.atoms[before].code_point == 9
+        || CodePointMapData::<GeneralCategory>::new().get32(projection.atoms[before].code_point)
+            == GeneralCategory::SpaceSeparator;
+    if whitespace {
+        issue_candidate(
+            candidates,
+            LineCandidate {
+                atom,
+                // Prepared refines an actually disappearing SPACE to its
+                // containing owner using the retained physical separator atom.
+                style: style_at(projection, styles, atom),
+                cause: LineCause::Whitespace { atom: before },
+            },
+        )?;
+    } else if zw.is_none() && implicit {
+        issue_candidate(
+            candidates,
+            LineCandidate {
+                atom,
+                style: style_at(projection, styles, atom),
+                cause: LineCause::Implicit,
+            },
+        )?;
+    }
+    if required {
+        issue_candidate(
+            candidates,
+            LineCandidate {
+                atom,
+                style: style_at(projection, styles, atom),
+                cause: LineCause::RequiredLineBreak,
+            },
+        )?;
+    }
+    Ok(())
 }
 
 fn provider_cut_allowed(
@@ -670,7 +751,9 @@ mod tests {
             &offsets,
             0..projection.atoms.len(),
             &mut boundaries,
-        );
+            &mut Vec::new(),
+        )
+        .unwrap();
         boundaries
     }
 
@@ -834,7 +917,9 @@ mod tests {
                 &offsets,
                 0..projection.atoms.len(),
                 &mut boundaries,
-            );
+                &mut Vec::new(),
+            )
+            .unwrap();
             // The actual ZW SP* prefix permits WJ/GL, but LB6/LB7 win first.
             // Inspect this phase directly, before prepared's hard-break guard.
             assert_eq!(boundaries[seam] == Boundary::Line, allowed, "{text:?}");
@@ -878,7 +963,9 @@ mod tests {
                 &offsets,
                 0..seam,
                 &mut boundaries,
-            );
+                &mut Vec::new(),
+            )
+            .unwrap();
             assert_eq!(boundaries[seam] == Boundary::Line, allowed, "{text:?}");
         }
     }

@@ -8,6 +8,8 @@ use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
 use crate::*;
 use surgeist_text::{ParagraphBaseDirection, ParagraphControlKind, Source, Wrap};
 
+#[path = "tests/auto_phrase.rs"]
+mod auto_phrase;
 #[path = "tests/automatic_phrase.rs"]
 mod automatic_phrase;
 #[path = "tests/automatic_priority.rs"]

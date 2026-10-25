@@ -126,6 +126,7 @@ fn automatic_allowed(
     indent: f64,
     options: ValidatedOptions,
     scratch: &mut ShapeContext,
+    conditional: Option<&crate::PreparedConditionalOpportunity>,
 ) -> Result<bool> {
     let AlternativeDefinition::Automatic { cut, .. } =
         prepared.tables.alternatives[alternative].definition
@@ -139,7 +140,12 @@ fn automatic_allowed(
         prepared: Arc::clone(prepared),
         index: word,
     };
-    for portion in handle.view().portions()? {
+    let portions = if let Some(conditional) = conditional {
+        conditional.manual_portions()?
+    } else {
+        handle.view().portions()?
+    };
+    for portion in portions {
         if !portion.has_manual_partition()
             || prepared.tables.hyphenation_cuts[cut].boundary <= portion.start
             || prepared.tables.hyphenation_cuts[cut].boundary > portion.end
@@ -182,7 +188,15 @@ fn choose(
     let mut first = None;
     let mut emergency = None;
     let mut emergency_first = None;
-    for (index, offer) in tables.opportunities.iter().enumerate() {
+    for (index, offer) in
+        tables
+            .opportunities
+            .iter()
+            .enumerate()
+            .skip(tables.opportunities.partition_point(|row| {
+                tables.boundaries[row.boundary].participant < tables.boundaries[start].participant
+            }))
+    {
         let boundary = tables.boundaries[offer.boundary];
         if boundary.participant < tables.boundaries[start].participant
             || (boundary.participant == tables.boundaries[start].participant
@@ -252,7 +266,7 @@ fn choose(
             .chain(offer.alternatives.iter().copied().map(Some));
         for variant in variants {
             if let Some(alternative) = variant
-                && !automatic_allowed(prepared, alternative, indent, options, scratch)?
+                && !automatic_allowed(prepared, alternative, indent, options, scratch, None)?
             {
                 continue;
             }
@@ -300,6 +314,15 @@ fn choose(
             break;
         }
     }
+    if ordinary.is_none()
+        && options.authored().width.is_some()
+        && let Some(frame) = first.as_ref()
+        && tables.auto_phrase_between(start, frame.selected.request.end.index)
+        && let Some(line) =
+            choose_phrase(prepared, start, incoming, indent, options, scratch, frame)?
+    {
+        return Ok(line);
+    }
     ordinary
         .or(emergency)
         .or(emergency_first)
@@ -310,6 +333,187 @@ fn choose(
                 "raw inventory has no terminating candidate",
             )
         })
+}
+
+fn receipt(line: &FinalizedLine) -> crate::FinalizedLine {
+    crate::FinalizedLine {
+        inner: Arc::new(FinalizedLine {
+            selected: Arc::clone(&line.selected),
+            mapping: Arc::clone(&line.mapping),
+            data: line.data.clone(),
+        }),
+    }
+}
+
+fn choose_phrase(
+    prepared: &Arc<PreparedData>,
+    start: usize,
+    incoming: Option<&crate::HyphenationContinuation>,
+    indent: f64,
+    options: ValidatedOptions,
+    scratch: &mut ShapeContext,
+    frame: &FinalizedLine,
+) -> Result<Option<FinalizedLine>> {
+    use crate::{
+        ConditionalDisposition, ConditionalPurpose, ConditionalStage, PhraseOverflowDecision,
+    };
+    let handle = crate::PreparedText {
+        inner: Arc::clone(prepared),
+    };
+    let PreparedTermination::Ordinary(ceiling) = &frame.selected.request.termination else {
+        return Ok(None);
+    };
+    // Every earlier ordinary variant is an actual rejected hyphen alternative:
+    // a meaningful None variant would already have been the first failed frame.
+    let mut skipped = Vec::new();
+    for (index, offer) in prepared
+        .tables
+        .opportunities
+        .iter()
+        .enumerate()
+        .take(ceiling.index)
+        .skip(
+            prepared
+                .tables
+                .opportunities
+                .partition_point(|row| row.boundary <= start),
+        )
+    {
+        if offer.boundary <= start {
+            continue;
+        }
+        for alternative in &offer.alternatives {
+            let mut request = standalone_request(
+                Arc::clone(prepared),
+                start,
+                PreparedTermination::Ordinary(PreparedOpportunity {
+                    prepared: Arc::clone(prepared),
+                    index,
+                }),
+                Some(PreparedAlternative {
+                    prepared: Arc::clone(prepared),
+                    index: *alternative,
+                }),
+                options.authored().width,
+                indent,
+                options.authored().alignment,
+            )?;
+            request.incoming = incoming.cloned();
+            let line = finalize_standalone(
+                Arc::clone(prepared),
+                request,
+                options.authored().quantize,
+                scratch,
+            )?;
+            skipped.push(ConditionalDisposition::ConsumerHyphenationPolicy(receipt(
+                &line,
+            )));
+        }
+    }
+    let search = handle.conditional_search(
+        &crate::PreparedBoundary {
+            prepared: Arc::clone(prepared),
+            index: start,
+        },
+        incoming,
+        ceiling,
+        ConditionalPurpose::Overflow,
+        &skipped,
+        Some(&receipt(frame)),
+    )?;
+    let mut decisions = Vec::new();
+    for portion in search.phrase_portions() {
+        let authored = options.authored();
+        let enabled =
+            authored.indent.first_line || authored.indent.each_line || authored.indent.hanging;
+        let fresh_indent = if portion.start().index == start {
+            indent
+        } else if enabled && authored.indent.hanging {
+            authored.indent.amount
+        } else {
+            0.0
+        };
+        let mut request = standalone_request(
+            Arc::clone(prepared),
+            portion.start().index,
+            PreparedTermination::PhraseMeasurement(portion.clone()),
+            None,
+            authored.width,
+            fresh_indent,
+            authored.alignment,
+        )?;
+        request.incoming = portion.incoming();
+        let line = finalize_standalone(Arc::clone(prepared), request, authored.quantize, scratch)?;
+        decisions.push(if fits(&line, authored.width)? {
+            PhraseOverflowDecision::Fits(receipt(&line))
+        } else {
+            PhraseOverflowDecision::Overflows(receipt(&line))
+        });
+    }
+    let mut batch = search.begin(&decisions)?;
+    let mut restored_fallback = None;
+    loop {
+        let mut best = None;
+        let mut first = None;
+        let mut exhausted = Vec::new();
+        for candidate in batch.opportunities() {
+            let alternative = candidate.alternative();
+            let allowed = if let Some(alternative) = &alternative {
+                automatic_allowed(
+                    prepared,
+                    alternative.index,
+                    indent,
+                    options,
+                    scratch,
+                    Some(candidate),
+                )?
+            } else {
+                true
+            };
+            let mut request = standalone_request(
+                Arc::clone(prepared),
+                start,
+                PreparedTermination::Conditional(candidate.clone()),
+                alternative,
+                options.authored().width,
+                indent,
+                options.authored().alignment,
+            )?;
+            request.incoming = incoming.cloned();
+            let line = finalize_standalone(
+                Arc::clone(prepared),
+                request,
+                options.authored().quantize,
+                scratch,
+            )?;
+            let actual_fit = fits(&line, options.authored().width)?;
+            if allowed && actual_fit {
+                best = Some(line);
+            } else {
+                exhausted.push(if allowed {
+                    ConditionalDisposition::Exhausted(receipt(&line))
+                } else {
+                    ConditionalDisposition::ConsumerHyphenationPolicy(receipt(&line))
+                });
+                if allowed && first.is_none() {
+                    first = Some(line);
+                }
+            }
+        }
+        if best.is_some() {
+            return Ok(best);
+        }
+        if batch.stage() == ConditionalStage::Arbitrary {
+            return Ok(first.or(restored_fallback));
+        }
+        if restored_fallback.is_none() {
+            restored_fallback = first;
+        }
+        let Some(next) = batch.advance(&exhausted)? else {
+            return Ok(None);
+        };
+        batch = next;
+    }
 }
 
 #[cfg(test)]
@@ -334,6 +538,85 @@ mod tests {
             ..Style::default()
         };
         (system, style)
+    }
+
+    #[test]
+    fn phrase_relaxation_uses_normal_prefixes_and_real_nonfitting_progress() {
+        let (mut system, mut style) = system();
+        system
+            .register_fonts(
+                include_bytes!("../../../tests/fixtures/fonts/phrase-ahem/PhraseAhem.ttf").to_vec(),
+            )
+            .unwrap();
+        style.font = Font::new().family("Surgeist Phrase Ahem");
+        style.locale = Some("ja".to_owned());
+        style.word_break = crate::WordBreak::AutoPhrase;
+        style.size = 10.0;
+        for (width, expected) in [
+            (20.0, vec![Range::new(0, 2), Range::new(2, 3)]),
+            (
+                5.0,
+                vec![Range::new(0, 1), Range::new(1, 2), Range::new(2, 3)],
+            ),
+        ] {
+            let output = system
+                .layout(
+                    Source::new("日本へ"),
+                    style.clone(),
+                    crate::Options {
+                        width: Some(width),
+                        quantize: false,
+                        ..crate::Options::default()
+                    },
+                )
+                .unwrap();
+            assert_eq!(
+                output
+                    .lines()
+                    .iter()
+                    .map(|line| line.range())
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            assert!(output.inner.lines.iter().all(|line| Arc::ptr_eq(
+                &output.inner.prepared,
+                &line.finalized.selected.prepared
+            )));
+        }
+    }
+
+    #[test]
+    fn unsupported_phrase_locale_restores_authored_hyphen_before_raw_arbitrary_cuts() {
+        let (mut system, mut style) = system();
+        style.size = 10.0;
+        style.word_break = crate::WordBreak::AutoPhrase;
+        style.hyphens = crate::Hyphens::Manual;
+        style.hyphenate_character = crate::HyphenateCharacter::String(crate::Text::from("A"));
+        style.overflow_wrap = OverflowWrap::Anywhere;
+        let output = system
+            .layout(
+                Source::new("AB\u{ad}CD"),
+                style,
+                crate::Options {
+                    width: Some(30.0),
+                    quantize: false,
+                    ..crate::Options::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            output
+                .lines()
+                .iter()
+                .map(|line| line.range())
+                .collect::<Vec<_>>(),
+            [Range::new(0, 3), Range::new(3, 5)]
+        );
+        assert_eq!(output.inner.lines[0].finalized.data.metrics.advance, 30.0);
+        assert!(
+            matches!(output.inner.lines[0].finalized.selected.request.termination,
+            PreparedTermination::Conditional(ref cut) if cut.stage()==crate::ConditionalStage::Hyphens)
+        );
     }
 
     #[test]

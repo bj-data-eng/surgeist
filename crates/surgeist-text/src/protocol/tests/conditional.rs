@@ -64,7 +64,16 @@ fn offers(
 ) -> Vec<PreparedConditionalOpportunity> {
     let start = prepared.boundary_views().next().unwrap().handle();
     prepared
-        .conditional_opportunities(&start, None, &first_after(prepared, &start), purpose, &[])
+        .conditional_search(
+            &start,
+            None,
+            &first_after(prepared, &start),
+            purpose,
+            &[],
+            None,
+        )
+        .and_then(|search| search.begin(&[]))
+        .map(|batch| batch.opportunities().to_vec())
         .unwrap()
 }
 
@@ -255,7 +264,9 @@ fn conditional_interval_stops_at_first_ordinary_or_forced_endpoint() {
     assert!(matches!(
         reason(
             &prepared
-                .conditional_opportunities(&start, None, &end, ConditionalPurpose::Overflow, &[])
+                .conditional_search(&start, None, &end, ConditionalPurpose::Overflow, &[], None)
+                .and_then(|search| search.begin(&[]))
+                .map(|batch| batch.opportunities().to_vec())
                 .unwrap_err()
         ),
         ProtocolError::InvalidConditionalReceipt { .. }
@@ -263,7 +274,16 @@ fn conditional_interval_stops_at_first_ordinary_or_forced_endpoint() {
     assert_eq!(
         sources(
             &prepared
-                .conditional_opportunities(&start, None, &first, ConditionalPurpose::Overflow, &[])
+                .conditional_search(
+                    &start,
+                    None,
+                    &first,
+                    ConditionalPurpose::Overflow,
+                    &[],
+                    None
+                )
+                .and_then(|search| search.begin(&[]))
+                .map(|batch| batch.opportunities().to_vec())
                 .unwrap()
         ),
         [1, 2]
@@ -355,13 +375,16 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     assert_eq!(glyphs(&first), [(Range::new(0, 1), 100)]);
     let second_start = cuts[0].boundary();
     let second_cuts = prepared
-        .conditional_opportunities(
+        .conditional_search(
             &second_start,
             None,
             &first_after(&prepared, &second_start),
             ConditionalPurpose::Overflow,
             &[],
+            None,
         )
+        .and_then(|search| search.begin(&[]))
+        .map(|batch| batch.opportunities().to_vec())
         .unwrap();
     assert_eq!(sources(&second_cuts), [2]);
     let mut second_request = selection(&prepared, &second_cuts[0]);
@@ -595,13 +618,16 @@ fn missing_wrapping_fact_is_refused_only_on_the_path_that_consumes_it() {
     assert!(matches!(
         reason(
             &prepared
-                .conditional_opportunities(
+                .conditional_search(
                     &start,
                     None,
                     &first_after(&prepared, &start),
                     ConditionalPurpose::Overflow,
-                    &[]
+                    &[],
+                    None
                 )
+                .and_then(|search| search.begin(&[]))
+                .map(|batch| batch.opportunities().to_vec())
                 .unwrap_err()
         ),
         ProtocolError::MissingWrappingPolicy { .. }
@@ -719,13 +745,16 @@ fn phantom_receipt_preserves_leading_original_custody_and_continuation() {
             .has_retained_flow_participation()
     );
     let cuts = prepared
-        .conditional_opportunities(
+        .conditional_search(
             &start,
             None,
             &ceiling,
             ConditionalPurpose::Overflow,
             &[crate::ConditionalDisposition::Phantom(phantom.clone())],
+            None,
         )
+        .and_then(|search| search.begin(&[]))
+        .map(|batch| batch.opportunities().to_vec())
         .unwrap();
     assert_eq!(sources(&cuts), [2, 3, 4]);
     let first = prepared
@@ -813,25 +842,31 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
         .collect();
     let ceiling = &inventory[3];
     let cuts = prepared
-        .conditional_opportunities(
+        .conditional_search(
             &start,
             None,
             ceiling,
             ConditionalPurpose::Overflow,
             &phantom_dispositions(&receipts),
+            None,
         )
+        .and_then(|search| search.begin(&[]))
+        .map(|batch| batch.opportunities().to_vec())
         .unwrap();
     assert_eq!(sources(&cuts), [2, 3, 4]);
     assert_eq!(
         cuts,
         prepared
-            .conditional_opportunities(
+            .conditional_search(
                 &start,
                 None,
                 ceiling,
                 ConditionalPurpose::Overflow,
-                &phantom_dispositions(&receipts.clone())
+                &phantom_dispositions(&receipts.clone()),
+                None
             )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
             .unwrap()
     );
     let other_trials: Vec<_> = receipts
@@ -849,13 +884,16 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
     assert_eq!(
         cuts,
         prepared
-            .conditional_opportunities(
+            .conditional_search(
                 &start,
                 None,
                 ceiling,
                 ConditionalPurpose::Overflow,
-                &phantom_dispositions(&other_trials)
+                &phantom_dispositions(&other_trials),
+                None
             )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
             .unwrap()
     );
     for bad in [
@@ -874,13 +912,16 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
         assert!(matches!(
             reason(
                 &prepared
-                    .conditional_opportunities(
+                    .conditional_search(
                         &start,
                         None,
                         ceiling,
                         ConditionalPurpose::Overflow,
-                        &phantom_dispositions(&bad)
+                        &phantom_dispositions(&bad),
+                        None
                     )
+                    .and_then(|search| search.begin(&[]))
+                    .map(|batch| batch.opportunities().to_vec())
                     .unwrap_err()
             ),
             ProtocolError::InvalidConditionalReceipt { .. }
@@ -899,13 +940,16 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
     assert!(matches!(
         reason(
             &prepared
-                .conditional_opportunities(
+                .conditional_search(
                     &start,
                     None,
                     ceiling,
                     ConditionalPurpose::MinContent,
-                    &phantom_dispositions(&receipts)
+                    &phantom_dispositions(&receipts),
+                    None
                 )
+                .and_then(|search| search.begin(&[]))
+                .map(|batch| batch.opportunities().to_vec())
                 .unwrap_err()
         ),
         ProtocolError::InvalidConditionalContext {
@@ -925,13 +969,16 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
         })
         .collect();
     let minimum = prepared
-        .conditional_opportunities(
+        .conditional_search(
             &start,
             None,
             ceiling,
             ConditionalPurpose::MinContent,
             &phantom_dispositions(&minimum_receipts),
+            None,
         )
+        .and_then(|search| search.begin(&[]))
+        .map(|batch| batch.opportunities().to_vec())
         .unwrap();
     assert_eq!(sources(&minimum), [2, 3, 4]);
     let minimum_line = prepared
@@ -958,13 +1005,16 @@ fn retained_zero_or_signed_text_cannot_be_a_phantom_receipt() {
         assert!(matches!(
             reason(
                 &prepared
-                    .conditional_opportunities(
+                    .conditional_search(
                         &start,
                         None,
                         &ceiling,
                         ConditionalPurpose::Overflow,
-                        &[crate::ConditionalDisposition::Phantom(receipt)]
+                        &[crate::ConditionalDisposition::Phantom(receipt)],
+                        None
                     )
+                    .and_then(|search| search.begin(&[]))
+                    .map(|batch| batch.opportunities().to_vec())
                     .unwrap_err()
             ),
             ProtocolError::RetainedConditionalPrefix { .. }
@@ -1050,13 +1100,16 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
     assert!(matches!(
         reason(
             &prepared
-                .conditional_opportunities(
+                .conditional_search(
                     &start,
                     None,
                     &inventory[2],
                     ConditionalPurpose::Overflow,
-                    &phantom_dispositions(&receipts)
+                    &phantom_dispositions(&receipts),
+                    None
                 )
+                .and_then(|search| search.begin(&[]))
+                .map(|batch| batch.opportunities().to_vec())
                 .unwrap_err()
         ),
         ProtocolError::InvalidConditionalReceipt { .. }
@@ -1070,13 +1123,16 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
     assert!(matches!(
         reason(
             &prepared
-                .conditional_opportunities(
+                .conditional_search(
                     &start,
                     None,
                     &inventory[2],
                     ConditionalPurpose::Overflow,
-                    &phantom_dispositions(&receipts)
+                    &phantom_dispositions(&receipts),
+                    None
                 )
+                .and_then(|search| search.begin(&[]))
+                .map(|batch| batch.opportunities().to_vec())
                 .unwrap_err()
         ),
         ProtocolError::RetainedConditionalPrefix { .. }
@@ -1439,13 +1495,16 @@ fn raw_analysis_keeps_its_ordinary_model_without_additional_native_cuts() {
         assert!(matches!(
             reason(
                 &prepared
-                    .conditional_opportunities(
+                    .conditional_search(
                         &foreign_start,
                         None,
                         &first_after(&prepared, &start),
                         ConditionalPurpose::MinContent,
-                        &[]
+                        &[],
+                        None
                     )
+                    .and_then(|search| search.begin(&[]))
+                    .map(|batch| batch.opportunities().to_vec())
                     .unwrap_err()
             ),
             ProtocolError::ForeignPreparation {
@@ -1743,18 +1802,30 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
         .unwrap()
         .handle();
     assert!(
-        p.conditional_opportunities(&start, None, &ceiling, ConditionalPurpose::Overflow, &[])
-            .is_err()
+        p.conditional_search(
+            &start,
+            None,
+            &ceiling,
+            ConditionalPurpose::Overflow,
+            &[],
+            None
+        )
+        .and_then(|search| search.begin(&[]))
+        .map(|batch| batch.opportunities().to_vec())
+        .is_err()
     );
     let disposition = ConditionalDisposition::ConsumerHyphenationPolicy(first);
     let cuts = p
-        .conditional_opportunities(
+        .conditional_search(
             &start,
             None,
             &ceiling,
             ConditionalPurpose::Overflow,
             std::slice::from_ref(&disposition),
+            None,
         )
+        .and_then(|search| search.begin(&[]))
+        .map(|batch| batch.opportunities().to_vec())
         .unwrap();
     assert!(
         sources(&cuts).contains(&1),
@@ -1780,33 +1851,42 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
         .unwrap();
     assert_eq!(
         cuts,
-        p.conditional_opportunities(
+        p.conditional_search(
             &start,
             None,
             &ceiling,
             ConditionalPurpose::Overflow,
-            &[ConditionalDisposition::ConsumerHyphenationPolicy(second)]
+            &[ConditionalDisposition::ConsumerHyphenationPolicy(second)],
+            None
         )
+        .and_then(|search| search.begin(&[]))
+        .map(|batch| batch.opportunities().to_vec())
         .unwrap()
     );
     assert!(
-        p.conditional_opportunities(
+        p.conditional_search(
             &start,
             None,
             &ceiling,
             ConditionalPurpose::MinContent,
-            std::slice::from_ref(&disposition)
+            std::slice::from_ref(&disposition),
+            None
         )
+        .and_then(|search| search.begin(&[]))
+        .map(|batch| batch.opportunities().to_vec())
         .is_err()
     );
     assert!(
-        p.conditional_opportunities(
+        p.conditional_search(
             &start,
             None,
             &ceiling,
             ConditionalPurpose::Overflow,
-            &[disposition.clone(), disposition]
+            &[disposition.clone(), disposition],
+            None
         )
+        .and_then(|search| search.begin(&[]))
+        .map(|batch| batch.opportunities().to_vec())
         .is_err()
     );
 }
@@ -1859,13 +1939,16 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
             .unwrap()
     };
     let query = |line| {
-        p.conditional_opportunities(
+        p.conditional_search(
             &start,
             None,
             &ceiling,
             ConditionalPurpose::Overflow,
             &[ConditionalDisposition::ConsumerHyphenationPolicy(line)],
+            None,
         )
+        .and_then(|search| search.begin(&[]))
+        .map(|batch| batch.opportunities().to_vec())
     };
     assert!(query(make(&foreign, 70.0, 0)).is_err());
     assert!(query(make(&p, 70.0, 1)).is_err());
@@ -1914,14 +1997,77 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
         .handle();
     assert!(
         plain
-            .conditional_opportunities(
+            .conditional_search(
                 &begin,
                 None,
                 &end,
                 ConditionalPurpose::Overflow,
-                &[ConditionalDisposition::ConsumerHyphenationPolicy(line)]
+                &[ConditionalDisposition::ConsumerHyphenationPolicy(line)],
+                None
             )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
             .is_err(),
         "meaningful ordinary None remains a genuine barrier"
     );
+}
+
+#[test]
+fn unrelated_auto_phrase_owners_do_not_change_a_normal_intervals_authority() {
+    for phrase_first in [false, true] {
+        let mut value = input("AAAAA\nBBBBB", OverflowWrap::Anywhere);
+        let mut phrase = value.base_style.clone();
+        phrase.word_break = crate::WordBreak::AutoPhrase;
+        value.source.span(
+            if phrase_first {
+                Range::new(0, 5)
+            } else {
+                Range::new(6, 11)
+            },
+            phrase,
+        );
+        let p = prepare(&mut system(), value);
+        let at = |offset| {
+            p.boundary_views()
+                .find(|row| row.source_after().get() == offset)
+                .unwrap()
+                .handle()
+        };
+        let normal_start = at(if phrase_first { 6 } else { 0 });
+        let normal_ceiling = first_after(&p, &normal_start);
+        let search = p
+            .conditional_search(
+                &normal_start,
+                None,
+                &normal_ceiling,
+                ConditionalPurpose::Overflow,
+                &[],
+                None,
+            )
+            .expect("only actual interval owners require AutoPhrase finite stages");
+        assert!(search.phrase_portions().is_empty());
+        let batch = search.begin(&[]).unwrap();
+        assert_eq!(batch.stage(), crate::ConditionalStage::Arbitrary);
+        assert_eq!(
+            sources(batch.opportunities()),
+            if phrase_first {
+                vec![7, 8, 9, 10]
+            } else {
+                vec![1, 2, 3, 4]
+            }
+        );
+        let affected_start = at(if phrase_first { 0 } else { 6 });
+        assert!(
+            p.conditional_search(
+                &affected_start,
+                None,
+                &first_after(&p, &affected_start),
+                ConditionalPurpose::Overflow,
+                &[],
+                None
+            )
+            .is_err(),
+            "the actual AutoPhrase interval still requires its finite frame"
+        );
+    }
 }

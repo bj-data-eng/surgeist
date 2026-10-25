@@ -7,6 +7,7 @@ pub(crate) mod cluster;
 pub(crate) mod hyphenation;
 mod lexical_fallback;
 mod line_break;
+pub(crate) mod phrase;
 pub(crate) mod wrapping;
 
 use std::ops::Range;
@@ -83,6 +84,37 @@ pub(crate) enum Boundary {
     Mandatory,
 }
 
+/// Actual pre-preference line causes; prepared authenticates mixed custody and
+/// suppresses only the eligible implicit owner's cause, never a merged bit.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) enum LineCause {
+    Implicit,
+    RequiredLineBreak,
+    SourceZwsp { atom: usize },
+    Whitespace { atom: usize },
+    LexicalFallback,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct LineCandidate {
+    pub(crate) atom: usize,
+    pub(crate) style: usize,
+    pub(crate) cause: LineCause,
+}
+
+pub(super) fn capacity() -> crate::Error {
+    crate::Error::new(
+        crate::ErrorCode::TextAnalysisCapacity,
+        "text analysis could not retain its complete result",
+    )
+}
+
+fn issue_candidate(rows: &mut Vec<LineCandidate>, row: LineCandidate) -> Result<()> {
+    rows.try_reserve(1).map_err(|_| capacity())?;
+    rows.push(row);
+    Ok(())
+}
+
 /// The hard-break role of the actual semantic code point at this phase.
 /// Native callers pass the executed processed atom, so a collapsed document
 /// LF that became SPACE is not mistaken for an untouched hard separator.
@@ -144,6 +176,8 @@ pub(crate) struct Analysis {
     pub(crate) base_level: u8,
     /// Actual segmentation boundaries expressed as half-open atom intervals.
     pub(crate) graphemes: Vec<Range<usize>>,
+    pub(crate) line_candidates: Vec<LineCandidate>,
+    pub(crate) phrases: phrase::PhraseCatalog,
 }
 
 pub(crate) fn analyze(
@@ -227,6 +261,7 @@ pub(crate) fn analyze(
         .collect();
     let mut boundaries = vec![Boundary::None; projection.atoms.len() + 1];
     let mut word_ranges = Vec::new();
+    let mut line_candidates = Vec::new();
     let line_policies = line_break::policies(styles)?;
     let mut lexical_fallbacks = vec![false; projection.atoms.len()];
     let mut grapheme_cursor = 0;
@@ -259,7 +294,8 @@ pub(crate) fn analyze(
             &offsets,
             component_start..component_end,
             &mut boundaries,
-        );
+            &mut line_candidates,
+        )?;
         let mut grapheme_end = grapheme_cursor;
         while grapheme_end < graphemes.len() && graphemes[grapheme_end].end <= component_end {
             grapheme_end += 1;
@@ -273,6 +309,21 @@ pub(crate) fn analyze(
         );
         grapheme_cursor = grapheme_end;
     }
+    for (atom, fallback) in lexical_fallbacks.iter().copied().enumerate() {
+        if fallback {
+            issue_candidate(
+                &mut line_candidates,
+                LineCandidate {
+                    atom,
+                    style: style_at(projection, styles, atom),
+                    cause: LineCause::LexicalFallback,
+                },
+            )?;
+        }
+    }
+    line_candidates.sort_unstable_by_key(|row| (row.atom, row.style, row.cause));
+    line_candidates.dedup();
+    let phrases = phrase::analyze(projection, styles, boxes, paragraph, &graphemes)?;
     let mut infos = Vec::with_capacity(projection.atoms.len());
     let mut mandatory = false;
     for (index, atom) in projection.atoms.iter().enumerate() {
@@ -396,6 +447,8 @@ pub(crate) fn analyze(
             control_levels,
             base_level: bidi.base_level(),
             graphemes,
+            line_candidates,
+            phrases,
         },
         word_ranges,
     ))

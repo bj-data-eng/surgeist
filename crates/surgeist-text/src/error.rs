@@ -53,6 +53,10 @@ impl error::Error for Error {
 pub enum ErrorCode {
     /// Invalid complete contextual source-processing capture.
     InvalidSourceProcessing,
+    /// Final semantic phrase analysis received invalid retained model data.
+    InvalidPhraseAnalysis,
+    /// Font-independent text analysis could not retain its complete result.
+    TextAnalysisCapacity,
     FontSystemUnavailable,
     /// Font resolution found no usable face for required shaping or metrics.
     NoUsableFontFace,

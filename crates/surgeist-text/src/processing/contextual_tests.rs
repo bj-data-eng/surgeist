@@ -1080,7 +1080,7 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
     let result = Arc::new(process_contextual_source(capture).unwrap());
     let prepared = prepare(&mut system(), result.paragraphs().next().unwrap());
     let alternative = prepared.alternative_views().next().unwrap().handle();
-    let termination = alternative.view().opportunity();
+    let termination = alternative.view().opportunity().unwrap();
     let selected = prepared
         .select(LineSelectionRequest {
             boundary_context: Vec::new(),

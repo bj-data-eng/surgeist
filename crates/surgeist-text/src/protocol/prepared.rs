@@ -32,8 +32,21 @@ pub(crate) struct PreparedTables {
     pub(crate) boundaries: Vec<BoundaryData>,
     pub(crate) opportunities: Vec<OpportunityData>,
     pub(crate) alternatives: Vec<AlternativeData>,
+    pub(crate) ordinary_alternatives: Vec<usize>,
+    pub(crate) suppressed: Vec<SuppressedOpportunityData>,
+    pub(crate) raw_conditional: Vec<usize>,
+    pub(crate) latent_alternatives: Vec<usize>,
+    /// Counts actual text and discretionary-control owners, in participant order.
+    auto_phrase_prefix: Vec<usize>,
     /// Derived index of actual soft opportunities for the private raw chooser.
     pub(crate) soft_preliminary_items: std::collections::BTreeSet<usize>,
+}
+
+impl PreparedTables {
+    pub(crate) fn auto_phrase_between(&self, start: usize, end: usize) -> bool {
+        self.auto_phrase_prefix[self.boundaries[start].participant]
+            != self.auto_phrase_prefix[self.boundaries[end].participant]
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -112,13 +125,20 @@ pub(crate) struct OpportunityData {
     pub(crate) alternatives: Vec<usize>,
 }
 
+#[derive(Debug)]
+pub(crate) struct SuppressedOpportunityData {
+    pub(crate) boundary: usize,
+    pub(crate) phrase: usize,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct AlternativeData {
     pub(crate) text: crate::Text,
     pub(crate) placement: crate::HyphenationPlacement,
     pub(crate) resolution: IndicationResolution,
     pub(crate) style: usize,
-    pub(crate) opportunity: usize,
+    pub(crate) opportunity: Option<usize>,
+    pub(crate) boundary: usize,
     pub(crate) definition: AlternativeDefinition,
     pub(crate) hyphenation_cut: usize,
     pub(crate) insertion_anchor: usize,
@@ -318,6 +338,11 @@ pub(crate) fn prepare_tables(
         boundaries: Vec::new(),
         opportunities: Vec::new(),
         alternatives: Vec::new(),
+        ordinary_alternatives: Vec::new(),
+        suppressed: Vec::new(),
+        raw_conditional: Vec::new(),
+        latent_alternatives: Vec::new(),
+        auto_phrase_prefix: vec![0],
         soft_preliminary_items: std::collections::BTreeSet::new(),
     };
     // Every genuine control retains an observation, including a Wbr consumed
@@ -552,7 +577,43 @@ pub(crate) fn prepare_tables(
             });
         }
     }
+    for participant in &tables.participants {
+        let owns = match *participant {
+            ParticipantData::Text(index) => tables.units[index].atoms.clone().any(|atom| {
+                analyzed.styles[analyzed.analysis.infos[atom].1]
+                    .style
+                    .authored()
+                    .effective_breaking()
+                    .auto_phrase
+            }),
+            ParticipantData::Control(index) => {
+                matches!(&paragraph.controls[tables.controls[index].occurrence].kind,
+                ParagraphControlKind::DiscretionaryBreak {style} if style.effective_breaking().auto_phrase)
+            }
+            ParticipantData::Atomic(_) => false,
+        };
+        tables
+            .auto_phrase_prefix
+            .push(tables.auto_phrase_prefix.last().copied().unwrap() + usize::from(owns));
+    }
     issue_opportunities(catalogue, analyzed, styles, &mut tables)?;
+    tables
+        .suppressed
+        .sort_unstable_by_key(|row| (row.boundary, row.phrase));
+    tables
+        .suppressed
+        .dedup_by_key(|row| (row.boundary, row.phrase));
+    tables.raw_conditional.sort_unstable();
+    tables.raw_conditional.dedup();
+    tables.latent_alternatives = tables
+        .alternatives
+        .iter()
+        .enumerate()
+        .filter_map(|(index, row)| row.opportunity.is_none().then_some(index))
+        .collect();
+    tables
+        .latent_alternatives
+        .sort_by_key(|index| tables.alternatives[*index].boundary);
     if paragraph.base_direction.is_none() {
         tables.soft_preliminary_items = tables
             .opportunities
@@ -711,7 +772,8 @@ fn issue_opportunities(
                         placement: used_placement(authored, &resolution),
                         resolution: resolution.clone(),
                         style,
-                        opportunity: tables.opportunities.len(),
+                        opportunity: None,
+                        boundary: index,
                         definition: AlternativeDefinition::manual(definition),
                         hyphenation_cut: cut.expect("manual owner issued a cut"),
                         insertion_anchor: anchor,
@@ -734,7 +796,8 @@ fn issue_opportunities(
                 placement: used_placement(authored, &resolution),
                 resolution: resolution.clone(),
                 style,
-                opportunity: tables.opportunities.len(),
+                opportunity: None,
+                boundary: index,
                 definition: AlternativeDefinition::Automatic {
                     cut: automatic_cut,
                     atom: boundary.atom,
@@ -820,44 +883,100 @@ fn issue_opportunities(
         } else {
             None
         };
-        let kind =
-            kind.or_else(|| (!alternatives.is_empty()).then_some(PreparedBreakKind::Discretionary));
+        let attached = soft_boundary(tables, analyzed, index)?;
+        let raw_conditional = analyzed.paragraph.base_direction.is_none()
+            && kind == Some(PreparedBreakKind::Allowed)
+            && control.is_none()
+            && !standalone_atomic_opportunity(analyzed, tables, boundary)
+            && analyzed
+                .analysis
+                .infos
+                .get(boundary.atom)
+                .is_some_and(|(info, style)| {
+                    !info.has_ordinary_line_candidate()
+                        && analyzed.styles[*style]
+                            .style
+                            .authored()
+                            .effective_breaking()
+                            .auto_phrase
+                });
+        if raw_conditional {
+            tables.raw_conditional.push(attached);
+        }
+        let suppressed = if kind == Some(PreparedBreakKind::Allowed) && !raw_conditional {
+            suppressed_phrase(analyzed, tables, boundary, control)?
+        } else {
+            None
+        };
+        let mut visible_alternatives = Vec::new();
+        for mut row in alternatives {
+            row.boundary = attached;
+            let ordinary = !analyzed.styles[row.style]
+                .style
+                .authored()
+                .effective_breaking()
+                .auto_phrase;
+            let alternative = tables.alternatives.len();
+            tables.alternatives.push(row);
+            if ordinary {
+                visible_alternatives.push(alternative);
+            }
+        }
+        if let Some(phrase) = suppressed {
+            tables.suppressed.push(SuppressedOpportunityData {
+                boundary: attached,
+                phrase,
+            });
+        }
+        let kind = kind
+            .filter(|kind| {
+                *kind != PreparedBreakKind::Allowed || (suppressed.is_none() && !raw_conditional)
+            })
+            .filter(|kind| {
+                *kind != PreparedBreakKind::Discretionary || !visible_alternatives.is_empty()
+            })
+            .or_else(|| {
+                (!visible_alternatives.is_empty()).then_some(PreparedBreakKind::Discretionary)
+            });
         if let Some(kind) = kind {
             let attached = if matches!(
                 kind,
                 PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary
             ) {
-                soft_boundary(tables, analyzed, index)?
+                attached
             } else {
                 index
             };
-            if kind == PreparedBreakKind::Allowed
-                && tables
-                    .opportunities
-                    .iter()
-                    .any(|row| row.kind == kind && row.boundary == attached)
-            {
-                continue;
-            }
-            let opportunity = tables.opportunities.len();
+            let duplicate = (kind == PreparedBreakKind::Allowed)
+                .then(|| {
+                    tables
+                        .opportunities
+                        .iter()
+                        .position(|row| row.kind == kind && row.boundary == attached)
+                })
+                .flatten();
+            let opportunity = duplicate.unwrap_or(tables.opportunities.len());
             if let Some(cut) = cut {
                 tables.hyphenation_cuts[cut].opportunity = Some(opportunity);
                 tables.hyphenation_cuts[cut].boundary = attached;
             }
-            let alternatives = alternatives
-                .into_iter()
-                .map(|mut row| {
-                    row.opportunity = opportunity;
-                    let index = tables.alternatives.len();
-                    tables.alternatives.push(row);
-                    index
-                })
-                .collect();
-            tables.opportunities.push(OpportunityData {
-                boundary: attached,
-                kind,
-                alternatives,
-            });
+            for &alternative in &visible_alternatives {
+                tables.alternatives[alternative].opportunity = Some(opportunity);
+                tables.ordinary_alternatives.push(alternative);
+            }
+            if let Some(existing) = duplicate {
+                tables.opportunities[existing]
+                    .alternatives
+                    .extend(visible_alternatives);
+            } else {
+                tables.opportunities.push(OpportunityData {
+                    boundary: attached,
+                    kind,
+                    alternatives: visible_alternatives,
+                });
+            }
+        } else if let Some(cut) = cut {
+            tables.hyphenation_cuts[cut].boundary = attached;
         }
     }
     let boundary = tables.boundaries.len() - 1;
@@ -867,6 +986,83 @@ fn issue_opportunities(
         alternatives: Vec::new(),
     });
     Ok(())
+}
+
+fn suppressed_phrase(
+    analyzed: &AnalyzedData,
+    tables: &PreparedTables,
+    boundary: &BoundaryData,
+    control: Option<&ParagraphControlKind>,
+) -> crate::Result<Option<usize>> {
+    use crate::engine::analysis::{LineCause, wrapping::Influence};
+    if control.is_some() || atomic_permission(analyzed, boundary)?.is_some() {
+        return Ok(None);
+    }
+    let relation = &analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]];
+    if let (Some(Influence::Text { atom: before, .. }), Some(Influence::Text { atom: after, .. })) =
+        (relation.before, relation.after)
+        && [before, after].into_iter().any(|atom| {
+            analyzed.styles[analyzed.analysis.infos[atom].1]
+                .style
+                .authored()
+                .line_break
+                == crate::LineBreak::Anywhere
+        })
+    {
+        return Ok(None);
+    }
+    let Some(phrase) = analyzed
+        .analysis
+        .phrases
+        .phrase_containing_cut(boundary.atom)
+    else {
+        return Ok(None);
+    };
+    let candidates = &analyzed.analysis.line_candidates;
+    let first = candidates.partition_point(|row| row.atom < boundary.atom);
+    let mut suppressible = false;
+    for row in candidates[first..]
+        .iter()
+        .take_while(|row| row.atom == boundary.atom)
+    {
+        if matches!(
+            row.cause,
+            LineCause::RequiredLineBreak | LineCause::SourceZwsp { .. }
+        ) {
+            return Ok(None);
+        }
+        let owner = match row.cause {
+            LineCause::Whitespace { atom } if disappearing_space_wrap(analyzed, atom).is_some() => {
+                analyzed.analysis.infos[atom].1
+            }
+            _ => row.style,
+        };
+        if !analyzed.styles[owner]
+            .style
+            .authored()
+            .effective_breaking()
+            .auto_phrase
+        {
+            return Ok(None);
+        }
+        suppressible = true;
+    }
+    // Prepared BreakSpaces/disappearing-SPACE can supply an independent cause.
+    if (boundary.collapsed_space_wrap.is_some()
+        || break_spaces_opportunity(analyzed, tables, boundary))
+        && let Some(atom) = boundary.atom.checked_sub(1)
+    {
+        if !analyzed.styles[analyzed.analysis.infos[atom].1]
+            .style
+            .authored()
+            .effective_breaking()
+            .auto_phrase
+        {
+            return Ok(None);
+        }
+        suppressible = true;
+    }
+    Ok(suppressible.then_some(phrase))
 }
 
 /// Attach authentic endpoint sequences through source-free neutral anchors.
@@ -1320,9 +1516,35 @@ pub(crate) fn conditional_boundaries(
 ) -> crate::Result<Vec<usize>> {
     use crate::engine::analysis::wrapping::Influence;
     if analyzed.paragraph.base_direction.is_none() {
-        // Raw analysis has its own characterized ordinary inventory. This
-        // native operation adds no cuts to that distinct producer model.
-        return Ok(Vec::new());
+        // AutoPhrase moves the raw profile's genuine emergency cuts out of
+        // ordinary inventory and into the same authenticated final tier.
+        let first = tables
+            .raw_conditional
+            .partition_point(|index| *index <= start);
+        let last = tables
+            .raw_conditional
+            .partition_point(|index| *index < ceiling);
+        return Ok(tables.raw_conditional[first.min(last)..last]
+            .iter()
+            .copied()
+            .filter(|index| {
+                if *index <= start || *index >= ceiling {
+                    return false;
+                }
+                let atom = tables.boundaries[*index].atom;
+                let style = analyzed.styles[analyzed.analysis.infos[atom].1]
+                    .style
+                    .authored();
+                matches!(
+                    (style.effective_breaking().overflow, purpose),
+                    (crate::OverflowWrap::Anywhere, _)
+                        | (
+                            crate::OverflowWrap::BreakWord,
+                            super::ConditionalPurpose::Overflow
+                        )
+                )
+            })
+            .collect());
     }
     let mut result = Vec::new();
     for index in start + 1..ceiling {
@@ -1582,6 +1804,8 @@ pub(crate) fn prepare_indication_fonts(
                 })
                 .collect();
             let mut analysis = Analysis {
+                line_candidates: Vec::new(),
+                phrases: crate::engine::analysis::phrase::PhraseCatalog::default(),
                 infos: analysis.infos[side.clone()].to_vec(),
                 levels: analysis.levels[side].to_vec(),
                 base_level: analysis.base_level,

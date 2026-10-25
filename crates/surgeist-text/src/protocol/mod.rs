@@ -16,6 +16,11 @@ mod continuation;
 pub(crate) mod finalized;
 mod hyphenation;
 pub(crate) mod measurements;
+mod phrase;
+pub use phrase::{
+    PreparedPhrase, PreparedPhrasePiece, PreparedPhrasePieceOwner, PreparedPhrasePortion,
+    PreparedPhraseProvenance,
+};
 pub(crate) mod paragraph;
 pub(crate) mod placement;
 pub(crate) mod prefix;
@@ -24,7 +29,10 @@ pub(crate) mod readback;
 pub(crate) mod selection;
 pub use continuation::HyphenationContinuation;
 
-pub use conditional::{ConditionalDisposition, ConditionalPurpose, PreparedConditionalOpportunity};
+pub use conditional::{
+    ConditionalDisposition, ConditionalPurpose, ConditionalStage, PhraseOverflowDecision,
+    PreparedConditionalBatch, PreparedConditionalOpportunity, PreparedConditionalSearch,
+};
 pub use hyphenation::{
     HyphenationCounts, HyphenationProvenance, HyphenationResource, HyphenationSourcePieceView,
     PreparedHyphenationCutView, PreparedWordPortion, PreparedWordView,
@@ -344,6 +352,13 @@ pub struct LineStrut {
     pub line_extent: f64,
 }
 
+/// Whether an indication is an ordinary offer or only staged restoration data.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum PreparedAlternativeAvailability {
+    Ordinary,
+    AutoPhraseSuppressed,
+}
+
 /// An actual ordinary opportunity or an interval-bound conditional capability.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PreparedTermination {
@@ -351,6 +366,8 @@ pub enum PreparedTermination {
     Conditional(PreparedConditionalOpportunity),
     /// Exact lexical portion trial through the shared finalizer; never placeable.
     Measurement(PreparedWordPortion),
+    /// Authentic whole remaining phrase trial; never a placeable termination.
+    PhraseMeasurement(PreparedPhrasePortion),
 }
 
 /// Complete request; all capabilities and numerical/context facts are checked
@@ -573,6 +590,8 @@ pub enum ProtocolContextField {
 pub enum ProtocolError {
     InvalidWordPortion,
     MeasurementNotPlaceable,
+    InvalidPhrasePortion,
+    InvalidConditionalStage,
     /// Missing actual context for CSS Text Phase II: Trimming and Positioning.
     MissingPhaseTwoContext(PhaseTwoContext),
     /// The occurrence-qualified original seam is not represented by this line.

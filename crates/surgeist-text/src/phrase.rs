@@ -13,6 +13,7 @@
 //! model proposals alone establish neither.
 
 mod data;
+pub(crate) mod qualification;
 
 /// The qualified model selected from actual validated content language.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

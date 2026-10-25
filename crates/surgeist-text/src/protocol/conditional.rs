@@ -25,6 +25,8 @@ pub enum ConditionalPurpose {
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConditionalDisposition {
     Phantom(FinalizedLine),
+    /// Actual exhausted staged candidate; numerical fit remains consumer-owned.
+    Exhausted(FinalizedLine),
     /// Consumer-owned successive-line policy suppresses this exact automatic
     /// variant before attempting it. Overflow means exhausted finite capacity;
     /// MinContent permits only the static zero limit. This does not suppress
@@ -68,6 +70,7 @@ impl ConditionalDisposition {
     fn receipt(&self) -> Option<&FinalizedLine> {
         match self {
             Self::Phantom(line)
+            | Self::Exhausted(line)
             | Self::AutoFitExhausted(line)
             | Self::ConsumerHyphenationPolicy(line)
             | Self::AutoManualPriority { portion: line, .. } => Some(line),
@@ -88,6 +91,11 @@ pub struct PreparedConditionalOpportunity {
     end: usize,
     skipped: Arc<[ConditionalDisposition]>,
     identities: Arc<[DispositionIdentity]>,
+    stage: ConditionalStage,
+    alternative: Option<usize>,
+    search: Option<SearchIdentity>,
+    decisions: Vec<PhraseDecisionIdentity>,
+    history: Vec<DispositionIdentity>,
 }
 
 impl PartialEq for PreparedConditionalOpportunity {
@@ -99,6 +107,11 @@ impl PartialEq for PreparedConditionalOpportunity {
             && self.purpose == other.purpose
             && self.end == other.end
             && self.identities == other.identities
+            && self.stage == other.stage
+            && self.alternative == other.alternative
+            && self.search == other.search
+            && self.decisions == other.decisions
+            && self.history == other.history
     }
 }
 impl Eq for PreparedConditionalOpportunity {}
@@ -111,6 +124,11 @@ impl Hash for PreparedConditionalOpportunity {
         self.purpose.hash(state);
         self.end.hash(state);
         self.identities.hash(state);
+        self.stage.hash(state);
+        self.alternative.hash(state);
+        self.search.hash(state);
+        self.decisions.hash(state);
+        self.history.hash(state);
     }
 }
 
@@ -143,7 +161,9 @@ impl PreparedConditionalOpportunity {
         self.purpose
     }
 
-    /// Actual terminating mixed boundary, strictly before the ceiling.
+    /// Actual terminating mixed boundary, before the ordinary ceiling.
+    /// A Hyphens-stage capability may authorize its exact latent alternative at
+    /// the ceiling; no same-ceiling nonhyphenating cut is introduced.
     #[must_use]
     pub fn boundary(&self) -> PreparedBoundary {
         PreparedBoundary {
@@ -172,7 +192,15 @@ impl PreparedConditionalOpportunity {
         if request.incoming != self.incoming
             || request.start.index != self.start
             || request.end.index != self.end
-            || request.alternative.is_some()
+            || request
+                .alternative
+                .as_ref()
+                .map(|alternative| alternative.index)
+                != self.alternative
+            || request
+                .alternative
+                .as_ref()
+                .is_some_and(|alternative| !Arc::ptr_eq(&prepared.inner, &alternative.prepared))
         {
             return Err(invalid());
         }
@@ -182,6 +210,12 @@ impl PreparedConditionalOpportunity {
             return Err(protocol_error(ProtocolError::InvalidConditionalContext {
                 purpose: self.purpose,
             }));
+        }
+        if let Some(search) = &self.search
+            && !search.selection_context.is_empty()
+            && selection_context(&request.context) != search.selection_context
+        {
+            return Err(invalid());
         }
         // Geometry can converge differently, but a proof without retained
         // participation cannot authorize a changed semantic allocation role.
@@ -254,7 +288,7 @@ impl PreparedText {
     /// Raw source analysis has its separately characterized ordinary inventory
     /// and receives no additional cuts from this native operation. Common owner,
     /// interval and disposition validation still applies.
-    pub fn conditional_opportunities(
+    fn arbitrary_opportunities(
         &self,
         start: &PreparedBoundary,
         incoming: Option<&super::HyphenationContinuation>,
@@ -263,38 +297,9 @@ impl PreparedText {
         skipped_ordinary: &[ConditionalDisposition],
     ) -> crate::Result<Vec<PreparedConditionalOpportunity>> {
         super::continuation::validate(self, start, incoming)?;
-        for (owner, kind, occurrence) in [
-            (&start.prepared, ProtocolHandleKind::Boundary, start.index),
-            (
-                &ceiling.prepared,
-                ProtocolHandleKind::Opportunity,
-                ceiling.index,
-            ),
-        ] {
-            if !Arc::ptr_eq(&self.inner, owner) {
-                return Err(protocol_error(ProtocolError::ForeignPreparation {
-                    kind,
-                    occurrence,
-                }));
-            }
-        }
-        let tables = &self.inner.tables;
-        let invalid = || {
-            protocol_error(ProtocolError::InvalidConditionalQuery {
-                start: start.index,
-                ceiling: ceiling.index,
-            })
-        };
-        let from = tables.boundaries.get(start.index).ok_or_else(invalid)?;
-        if tables
-            .opportunities
-            .get(ceiling.index)
-            .is_none_or(|row| tables.boundaries[row.boundary].participant <= from.participant)
-        {
-            return Err(invalid());
-        }
         let (frontier, identities) =
-            validate_frontier(self, start, incoming, ceiling, purpose, skipped_ordinary)?;
+            validate_query(self, start, incoming, ceiling, purpose, skipped_ordinary)?;
+        let tables = &self.inner.tables;
         let end = tables.opportunities[ceiling.index].boundary;
         let boundaries = super::prepared::conditional_boundaries(
             &self.inner.analyzed,
@@ -317,9 +322,62 @@ impl PreparedText {
                 end,
                 skipped: Arc::clone(&skipped),
                 identities: Arc::clone(&identities),
+                stage: ConditionalStage::Arbitrary,
+                alternative: None,
+                search: None,
+                decisions: Vec::new(),
+                history: Vec::new(),
             })
             .collect())
     }
+}
+
+fn validate_query(
+    prepared: &PreparedText,
+    start: &PreparedBoundary,
+    incoming: Option<&super::HyphenationContinuation>,
+    ceiling: &PreparedOpportunity,
+    purpose: ConditionalPurpose,
+    skipped_ordinary: &[ConditionalDisposition],
+) -> crate::Result<(usize, Vec<DispositionIdentity>)> {
+    for (owner, kind, occurrence) in [
+        (&start.prepared, ProtocolHandleKind::Boundary, start.index),
+        (
+            &ceiling.prepared,
+            ProtocolHandleKind::Opportunity,
+            ceiling.index,
+        ),
+    ] {
+        if !Arc::ptr_eq(&prepared.inner, owner) {
+            return Err(protocol_error(ProtocolError::ForeignPreparation {
+                kind,
+                occurrence,
+            }));
+        }
+    }
+    let tables = &prepared.inner.tables;
+    let invalid = || {
+        protocol_error(ProtocolError::InvalidConditionalQuery {
+            start: start.index,
+            ceiling: ceiling.index,
+        })
+    };
+    let from = tables.boundaries.get(start.index).ok_or_else(invalid)?;
+    if tables
+        .opportunities
+        .get(ceiling.index)
+        .is_none_or(|row| tables.boundaries[row.boundary].participant <= from.participant)
+    {
+        return Err(invalid());
+    }
+    validate_frontier(
+        prepared,
+        start,
+        incoming,
+        ceiling,
+        purpose,
+        skipped_ordinary,
+    )
 }
 
 fn validate_frontier(
@@ -340,9 +398,10 @@ fn validate_frontier(
         .iter()
         .enumerate()
         .take(ceiling.index)
-        .filter(|(_, row)| {
-            tables.boundaries[row.boundary].participant > tables.boundaries[start.index].participant
-        })
+        .skip(tables.opportunities.partition_point(|row| {
+            tables.boundaries[row.boundary].participant
+                <= tables.boundaries[start.index].participant
+        }))
     {
         if matches!(
             row.kind,
@@ -507,6 +566,7 @@ fn validate_frontier(
                     identity.line_limit = Some(*limit);
                     all_phantom = false;
                 }
+                ConditionalDisposition::Exhausted(_) => return Err(invalid()),
                 ConditionalDisposition::AutoIntrinsicRefinement(alternative) => {
                     if automatic.is_none()
                         || purpose != ConditionalPurpose::MinContent
@@ -550,7 +610,6 @@ fn policy_context(line: &FinalizedLine) -> Vec<u64> {
         context.orientation as u64,
         context.start as u64,
         context.end as u64,
-        context.alignment as u64,
         context.spacing as u64,
     ];
     number(
@@ -630,4 +689,527 @@ fn policy_context(line: &FinalizedLine) -> Vec<u64> {
         number(&mut values, slot.advance);
     }
     values
+}
+
+/// Ordered finite relaxation tiers; intrinsic queries use only Arbitrary.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ConditionalStage {
+    Normal,
+    Hyphens,
+    Arbitrary,
+}
+
+/// Consumer-owned fit decision backed by an authentic otherwise-empty trial.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PhraseOverflowDecision {
+    Fits(FinalizedLine),
+    Overflows(FinalizedLine),
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct PhraseDecisionIdentity {
+    portion: super::PreparedPhrasePortion,
+    overflows: bool,
+    context: Vec<u64>,
+}
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(super) struct SearchIdentity {
+    prepared: PreparedText,
+    start: usize,
+    incoming: Option<super::HyphenationContinuation>,
+    ceiling: usize,
+    purpose: ConditionalPurpose,
+    ordinary: Vec<DispositionIdentity>,
+    frame: Vec<u64>,
+    selection_context: Vec<u64>,
+    auto_phrase: bool,
+}
+/// Same-preparation query semantics; repeated equal queries have equal identity.
+#[derive(Clone, Debug)]
+pub struct PreparedConditionalSearch {
+    identity: SearchIdentity,
+    skipped: Arc<[ConditionalDisposition]>,
+    frontier: usize,
+}
+impl PartialEq for PreparedConditionalSearch {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity == other.identity
+    }
+}
+impl Eq for PreparedConditionalSearch {}
+impl Hash for PreparedConditionalSearch {
+    fn hash<H: Hasher>(&self, h: &mut H) {
+        self.identity.hash(h)
+    }
+}
+
+/// One issued tier's complete ordered candidate variants.
+#[derive(Clone, Debug)]
+pub struct PreparedConditionalBatch {
+    search: PreparedConditionalSearch,
+    stage: ConditionalStage,
+    decisions: Vec<PhraseDecisionIdentity>,
+    history: Vec<DispositionIdentity>,
+    opportunities: Vec<PreparedConditionalOpportunity>,
+    receipts: Arc<[ConditionalDisposition]>,
+}
+impl PartialEq for PreparedConditionalBatch {
+    fn eq(&self, other: &Self) -> bool {
+        self.search == other.search
+            && self.stage == other.stage
+            && self.decisions == other.decisions
+            && self.history == other.history
+            && self.opportunities == other.opportunities
+    }
+}
+impl Eq for PreparedConditionalBatch {}
+impl Hash for PreparedConditionalBatch {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.search.hash(state);
+        self.stage.hash(state);
+        self.decisions.hash(state);
+        self.history.hash(state);
+        self.opportunities.hash(state);
+    }
+}
+impl PreparedText {
+    /// Captures one ordinary interval and its complete earlier variant dispositions.
+    /// Finite AutoPhrase searches require an actual failed ordinary `frame` from
+    /// this preparation/start/incoming. Consumers own fit and frame freshness;
+    /// Text retains its visible context and authenticates all issued capabilities.
+    /// Min-content requires no finite frame and independently issues only the
+    /// arbitrary opportunities permitted by overflow-wrap:anywhere.
+    pub fn conditional_search(
+        &self,
+        start: &PreparedBoundary,
+        incoming: Option<&super::HyphenationContinuation>,
+        ceiling: &PreparedOpportunity,
+        purpose: ConditionalPurpose,
+        skipped: &[ConditionalDisposition],
+        frame: Option<&FinalizedLine>,
+    ) -> crate::Result<PreparedConditionalSearch> {
+        let (frontier, ordinary) =
+            validate_query(self, start, incoming, ceiling, purpose, skipped)?;
+        let auto_phrase = self.inner.tables.auto_phrase_between(
+            start.index,
+            self.inner.tables.opportunities[ceiling.index].boundary,
+        );
+        if purpose == ConditionalPurpose::Overflow && auto_phrase && frame.is_none() {
+            return Err(protocol_error(ProtocolError::InvalidConditionalStage));
+        }
+        let mut selection = Vec::new();
+        let context = if let Some(frame) = frame {
+            let selected = frame.selected_line();
+            let request = selected.request();
+            if frame.prepared_text() != *self
+                || request.start != *start
+                || request.incoming.as_ref() != incoming
+                || request.context.available_inline.is_none()
+                || purpose != ConditionalPurpose::Overflow
+                || !matches!(request.termination, super::PreparedTermination::Ordinary(_))
+            {
+                return Err(protocol_error(ProtocolError::InvalidConditionalStage));
+            }
+            selection = selection_context(&request.context);
+            policy_context(frame)
+        } else {
+            Vec::new()
+        };
+        Ok(PreparedConditionalSearch {
+            identity: SearchIdentity {
+                prepared: self.clone(),
+                start: start.index,
+                incoming: incoming.cloned(),
+                ceiling: ceiling.index,
+                purpose,
+                ordinary,
+                frame: context,
+                selection_context: selection,
+                auto_phrase,
+            },
+            skipped: skipped.to_vec().into(),
+            frontier,
+        })
+    }
+}
+impl PreparedConditionalSearch {
+    /// Whole remaining affected phrase pieces, clipped to the queried start.
+    /// Measure each through `PhraseMeasurement`, including its exact incoming
+    /// continuation. A fresh-line measurement may use a different numerical
+    /// frame from the failed ordinary trial; its actual context is retained.
+    pub fn phrase_portions(&self) -> Vec<super::PreparedPhrasePortion> {
+        if self.identity.purpose != ConditionalPurpose::Overflow || !self.identity.auto_phrase {
+            return Vec::new();
+        }
+        let prepared = &self.identity.prepared;
+        let tables = &prepared.inner.tables;
+        let ceiling = tables.opportunities[self.identity.ceiling].boundary;
+        let mut result = Vec::new();
+        let start_atom = tables.boundaries[self.identity.start].atom;
+        let ceiling_atom = tables.boundaries[ceiling].atom;
+        let phrases = &prepared.inner.analyzed.analysis.phrases.phrases;
+        let first = phrases.partition_point(|phrase| phrase.atoms.end <= start_atom);
+        let last = phrases.partition_point(|phrase| phrase.atoms.start < ceiling_atom);
+        for (offset, phrase) in phrases[first..last].iter().enumerate() {
+            let index = first + offset;
+            let start = tables
+                .boundaries
+                .partition_point(|boundary| boundary.atom < phrase.atoms.start)
+                .max(self.identity.start);
+            let mut end = tables
+                .boundaries
+                .partition_point(|boundary| boundary.atom <= phrase.atoms.end)
+                .saturating_sub(1);
+            // Independent surviving offers divide the affected phrase, while the
+            // original phrase identity remains whole across a restored line end.
+            let next = tables
+                .opportunities
+                .partition_point(|row| row.boundary <= start);
+            if let Some(ordinary) = tables.opportunities.get(next) {
+                end = end.min(ordinary.boundary);
+            }
+            if start < end {
+                result.push(super::PreparedPhrasePortion {
+                    phrase: super::PreparedPhrase {
+                        prepared: prepared.clone(),
+                        index,
+                    },
+                    start,
+                    end,
+                    incoming: if start == self.identity.start {
+                        self.identity.incoming.clone()
+                    } else {
+                        None
+                    },
+                    query: self.clone(),
+                });
+            }
+        }
+        result
+    }
+    /// Starts with exactly one decision per issued phrase portion, in order.
+    /// Supported overflowing pieces unlock their suppressed Normal cuts;
+    /// subsequent finite tiers restore eligible hyphens, then arbitrary cuts.
+    /// Receipt identity uses normalized values rather than allocation identity.
+    pub fn begin(
+        &self,
+        decisions: &[PhraseOverflowDecision],
+    ) -> crate::Result<PreparedConditionalBatch> {
+        let portions = self.phrase_portions();
+        if portions.len() != decisions.len() {
+            return Err(protocol_error(ProtocolError::InvalidConditionalStage));
+        }
+        let mut identities = Vec::new();
+        for (expected, decision) in portions.into_iter().zip(decisions) {
+            let (trial, overflows) = match decision {
+                PhraseOverflowDecision::Fits(line) => (line, false),
+                PhraseOverflowDecision::Overflows(line) => (line, true),
+            };
+            let selected = trial.selected_line();
+            let super::PreparedTermination::PhraseMeasurement(portion) =
+                &selected.request().termination
+            else {
+                return Err(protocol_error(ProtocolError::InvalidPhrasePortion));
+            };
+            if portion != &expected {
+                return Err(protocol_error(ProtocolError::InvalidPhrasePortion));
+            }
+            portion.validate(&self.identity.prepared, selected.request())?;
+            identities.push(PhraseDecisionIdentity {
+                portion: portion.clone(),
+                overflows,
+                context: policy_context(trial),
+            });
+        }
+        let stage =
+            if self.identity.purpose == ConditionalPurpose::Overflow && self.identity.auto_phrase {
+                ConditionalStage::Normal
+            } else {
+                ConditionalStage::Arbitrary
+            };
+        self.batch(stage, identities, Vec::new(), Arc::from([]))
+    }
+    fn batch(
+        &self,
+        stage: ConditionalStage,
+        decisions: Vec<PhraseDecisionIdentity>,
+        history: Vec<DispositionIdentity>,
+        receipts: Arc<[ConditionalDisposition]>,
+    ) -> crate::Result<PreparedConditionalBatch> {
+        let prepared = &self.identity.prepared;
+        let tables = &prepared.inner.tables;
+        let ceiling = tables.opportunities[self.identity.ceiling].boundary;
+        let mut candidates = Vec::new();
+        match stage {
+            ConditionalStage::Normal => {
+                let first = tables
+                    .suppressed
+                    .partition_point(|row| row.boundary <= self.frontier);
+                let last = tables
+                    .suppressed
+                    .partition_point(|row| row.boundary < ceiling);
+                for row in &tables.suppressed[first.min(last)..last] {
+                    if decisions
+                        .binary_search_by_key(&row.phrase, |decision| decision.portion.phrase.index)
+                        .ok()
+                        .is_some_and(|index| {
+                            let decision = &decisions[index];
+                            decision.overflows
+                                && decision.portion.start < row.boundary
+                                && row.boundary < decision.portion.end
+                        })
+                    {
+                        candidates.push((row.boundary, None));
+                    }
+                }
+            }
+            ConditionalStage::Hyphens => {
+                let rows = &tables.latent_alternatives;
+                let first = rows
+                    .partition_point(|index| tables.alternatives[*index].boundary <= self.frontier);
+                let last =
+                    rows.partition_point(|index| tables.alternatives[*index].boundary <= ceiling);
+                candidates.extend(
+                    rows[first.min(last)..last]
+                        .iter()
+                        .map(|index| (tables.alternatives[*index].boundary, Some(*index))),
+                );
+            }
+            ConditionalStage::Arbitrary => {
+                let start = PreparedBoundary {
+                    prepared: Arc::clone(&prepared.inner),
+                    index: self.identity.start,
+                };
+                let ceiling = PreparedOpportunity {
+                    prepared: Arc::clone(&prepared.inner),
+                    index: self.identity.ceiling,
+                };
+                candidates.extend(
+                    prepared
+                        .arbitrary_opportunities(
+                            &start,
+                            self.identity.incoming.as_ref(),
+                            &ceiling,
+                            self.identity.purpose,
+                            &self.skipped,
+                        )?
+                        .into_iter()
+                        .map(|cut| (cut.end, None)),
+                );
+            }
+        }
+        candidates.sort_unstable();
+        candidates.dedup();
+        let retained: Arc<[ConditionalDisposition]> = self
+            .skipped
+            .iter()
+            .chain(receipts.iter())
+            .cloned()
+            .collect::<Vec<_>>()
+            .into();
+        let opportunities = candidates
+            .into_iter()
+            .map(|(end, alternative)| PreparedConditionalOpportunity {
+                prepared: prepared.clone(),
+                start: self.identity.start,
+                incoming: self.identity.incoming.clone(),
+                ceiling: self.identity.ceiling,
+                purpose: self.identity.purpose,
+                end,
+                skipped: Arc::clone(&retained),
+                identities: self.identity.ordinary.clone().into(),
+                stage,
+                alternative,
+                search: Some(self.identity.clone()),
+                decisions: decisions.clone(),
+                history: history.clone(),
+            })
+            .collect();
+        Ok(PreparedConditionalBatch {
+            search: self.clone(),
+            stage,
+            decisions,
+            history,
+            opportunities,
+            receipts,
+        })
+    }
+}
+impl PreparedConditionalBatch {
+    pub fn stage(&self) -> ConditionalStage {
+        self.stage
+    }
+    pub fn opportunities(&self) -> &[PreparedConditionalOpportunity] {
+        &self.opportunities
+    }
+    /// Discharges every variant of this tier in issuance order and returns the
+    /// next tier. Actual finalized receipts retain context and allocation roles;
+    /// numerical fit and consumer hyphen policies remain consumer decisions.
+    /// Arbitrary is terminal and returns `None`.
+    pub fn advance(&self, dispositions: &[ConditionalDisposition]) -> crate::Result<Option<Self>> {
+        if self.stage == ConditionalStage::Arbitrary {
+            return Ok(None);
+        }
+        if dispositions.len() != self.opportunities.len() {
+            return Err(protocol_error(ProtocolError::InvalidConditionalStage));
+        }
+        let mut history = self.history.clone();
+        for (index, (candidate, disposition)) in
+            self.opportunities.iter().zip(dispositions).enumerate()
+        {
+            let mut identity = DispositionIdentity {
+                kind: 6,
+                opportunity: index,
+                alternative: candidate.alternative,
+                portion: None,
+                line_limit: None,
+                policy_context: Vec::new(),
+                controls: Vec::new(),
+                atomics: Vec::new(),
+            };
+            let automatic = candidate.alternative.is_some_and(|index| {
+                matches!(
+                    self.search.identity.prepared.inner.tables.alternatives[index].definition,
+                    super::prepared::AlternativeDefinition::Automatic { .. }
+                )
+            });
+            if let Some(receipt) = disposition.receipt().filter(|_| {
+                !matches!(
+                    disposition,
+                    ConditionalDisposition::AutoManualPriority { .. }
+                )
+            }) {
+                let selected = receipt.selected_line();
+                let request = selected.request();
+                if receipt.prepared_text() != self.search.identity.prepared
+                    || !matches!(&request.termination,super::PreparedTermination::Conditional(cut) if cut==candidate)
+                {
+                    return Err(protocol_error(ProtocolError::InvalidConditionalStage));
+                }
+                if matches!(
+                    disposition,
+                    ConditionalDisposition::ConsumerHyphenationPolicy(_)
+                ) && candidate.alternative.is_none()
+                {
+                    return Err(protocol_error(ProtocolError::InvalidConditionalStage));
+                }
+                match disposition {
+                    ConditionalDisposition::Phantom(_) => {
+                        let last = request.participants.last().ok_or_else(|| {
+                            protocol_error(ProtocolError::InvalidConditionalStage)
+                        })?;
+                        if receipt
+                            .prefix_at(&crate::TextSeam::AfterParticipant(last.clone()))?
+                            .has_retained_flow_participation()
+                        {
+                            return Err(protocol_error(ProtocolError::InvalidConditionalStage));
+                        }
+                        identity.kind = 0;
+                    }
+                    ConditionalDisposition::AutoFitExhausted(_) if !automatic => {
+                        return Err(protocol_error(ProtocolError::InvalidConditionalStage));
+                    }
+                    ConditionalDisposition::AutoFitExhausted(_) => identity.kind = 2,
+                    ConditionalDisposition::ConsumerHyphenationPolicy(_) => identity.kind = 5,
+                    ConditionalDisposition::Exhausted(_) => {}
+                    _ => return Err(protocol_error(ProtocolError::InvalidConditionalStage)),
+                }
+                identity.policy_context = policy_context(receipt);
+            } else {
+                match disposition {
+                    ConditionalDisposition::AutoManualPriority {
+                        alternative,
+                        portion,
+                    } if automatic
+                        && candidate.alternative == Some(alternative.index)
+                        && Arc::ptr_eq(
+                            &alternative.prepared,
+                            &self.search.identity.prepared.inner,
+                        ) =>
+                    {
+                        let selected = portion.selected_line();
+                        let super::PreparedTermination::Measurement(part) =
+                            &selected.request().termination
+                        else {
+                            return Err(protocol_error(ProtocolError::InvalidConditionalStage));
+                        };
+                        part.validate(&self.search.identity.prepared, selected.request())?;
+                        if selected.request().context.available_inline.is_none()
+                            || !part.has_manual_partition()
+                            || candidate.end <= part.start
+                            || candidate.end > part.end
+                            || !candidate.manual_portions()?.contains(part)
+                        {
+                            return Err(protocol_error(ProtocolError::InvalidConditionalStage));
+                        }
+                        identity.kind = 1;
+                        identity.portion = Some(part.clone());
+                        identity.policy_context = policy_context(portion);
+                    }
+                    ConditionalDisposition::AutoLineLimit { alternative, limit }
+                        if automatic
+                            && candidate.alternative == Some(alternative.index)
+                            && Arc::ptr_eq(
+                                &alternative.prepared,
+                                &self.search.identity.prepared.inner,
+                            ) =>
+                    {
+                        identity.kind = 4;
+                        identity.line_limit = Some(*limit)
+                    }
+                    _ => return Err(protocol_error(ProtocolError::InvalidConditionalStage)),
+                }
+            }
+            history.push(identity);
+        }
+        let next = match self.stage {
+            ConditionalStage::Normal => ConditionalStage::Hyphens,
+            ConditionalStage::Hyphens => ConditionalStage::Arbitrary,
+            ConditionalStage::Arbitrary => unreachable!(),
+        };
+        let receipts = self
+            .receipts
+            .iter()
+            .chain(dispositions)
+            .cloned()
+            .collect::<Vec<_>>()
+            .into();
+        self.search
+            .batch(next, self.decisions.clone(), history, receipts)
+            .map(Some)
+    }
+}
+impl PreparedConditionalOpportunity {
+    pub fn stage(&self) -> ConditionalStage {
+        self.stage
+    }
+    pub fn alternative(&self) -> Option<super::PreparedAlternative> {
+        self.alternative.map(|index| super::PreparedAlternative {
+            prepared: Arc::clone(&self.prepared.inner),
+            index,
+        })
+    }
+    /// Same-preparation admitted manual partitions for this restored variant's
+    /// lexical word. These measurement capabilities do not create ordinary cuts.
+    pub fn manual_portions(&self) -> crate::Result<Vec<super::PreparedWordPortion>> {
+        let Some(alternative) = self.alternative else {
+            return Ok(Vec::new());
+        };
+        let cut = self.prepared.inner.tables.alternatives[alternative].hyphenation_cut;
+        let Some(word) = self.prepared.inner.tables.hyphenation_cuts[cut].word else {
+            return Ok(Vec::new());
+        };
+        super::hyphenation::restored_portions(&self.prepared, word)
+    }
+}
+
+// These semantic line choices stay stable across candidate evaluation. Width,
+// indent, effective alignment and tab coordinates come from each converged frame;
+// the query retains its own frame identity without certifying Layout staleness.
+fn selection_context(context: &super::LineContext) -> Vec<u64> {
+    vec![
+        context.base_direction as u64,
+        context.orientation as u64,
+        context.spacing as u64,
+    ]
 }

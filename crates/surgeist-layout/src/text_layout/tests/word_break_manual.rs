@@ -185,7 +185,8 @@ fn observe<S: LayoutScalar>(
                         _ => panic!("this source has no forced or hyphenation owner"),
                     }
                 }
-                text::PreparedTermination::Measurement(_) => {
+                text::PreparedTermination::Measurement(_)
+                | text::PreparedTermination::PhraseMeasurement(_) => {
                     panic!("measurement-only trials cannot be placed")
                 }
             };

@@ -176,7 +176,7 @@ fn genuine_atomic_and_forced_barriers_cannot_supply_letters_to_a_discretionary_c
                         origin: None
                     }
                 );
-                let end = alt.opportunity().view().boundary();
+                let end = alt.opportunity().unwrap().view().boundary();
                 let actual: Vec<_> = p
                     .participants()
                     .take(end.view().participant_offset())

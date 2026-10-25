@@ -2,6 +2,7 @@
 
 mod after_continuation;
 mod after_standalone;
+mod auto_phrase;
 mod automatic_model;
 mod automatic_opportunities;
 mod casing;

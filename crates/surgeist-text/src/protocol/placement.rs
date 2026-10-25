@@ -146,6 +146,7 @@ pub(crate) fn place_request(
         if matches!(
             selected.request.termination,
             super::PreparedTermination::Measurement(_)
+                | super::PreparedTermination::PhraseMeasurement(_)
         ) {
             return Err(protocol_error(ProtocolError::MeasurementNotPlaceable));
         }

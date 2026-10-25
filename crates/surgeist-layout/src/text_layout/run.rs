@@ -549,6 +549,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     let mut amounts = Vec::new();
     let mut encounters = Vec::new();
     let mut zones = Vec::new();
+    let mut phrases = Vec::new();
     let mut line_bounds = Vec::new();
     let mut fragments = Vec::new();
     let mut atomic_origins = Vec::new();
@@ -796,6 +797,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         amounts.push(line.amounts);
         encounters.push(line.encounters);
         zones.push(line.zone_basis);
+        phrases.push(line.phrase_basis);
         placements.push(LinePlacement {
             line: line.finalized,
             anchor,
@@ -821,6 +823,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             amounts,
             encounters,
             zones,
+            phrases,
             outflows,
             indent: context.indent.widened(),
             indent_start: context.indent_state,

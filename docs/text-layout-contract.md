@@ -122,8 +122,8 @@ unit containing an eligible authored contribution; exact placed positions can
 select generated-only geometry while extracting no invented source or plaintext.
 Accessibility retains authored-text descriptors independently of that geometry.
 
-Automatic phrase detection belongs to Text and runs on the connected post-Phase-I
-semantic input before any separator replacement. Its native Japanese provider
+For automatic separator insertion, Text detects phrases on the connected
+post-Phase-I semantic input before any separator replacement. Its native Japanese provider
 uses the pinned BudouX model; CSS eligibility, actual declared language and scope
 custody remain Text-owned. Unknown language produces no proposal. Operational
 failure in supported analysis cannot masquerade as unsupported language or a
@@ -366,6 +366,50 @@ own rules. Hyphenation also retains its actual owner and policy: Manual is not
 Hyphens None or KeepAll. The declared values remain visible in captured styles
 and cache identity; editing, accessibility and other word metadata do not change.
 
+`WordBreak::AutoPhrase` retains its declaration and overflow policy. It requests
+Normal ordinary rules with phrase preference and suppresses actual-owner
+hyphenation during ordinary selection, including empty indications, even when
+its language has no phrase model. A neighboring Normal owner retains its own
+eligible alternatives. Observed words, resource cuts, editing and source text
+remain independent facts.
+
+For supported Japanese, phrase detection runs on the complete connected **final
+transformed** semantic input. It shares the qualified raw provider and validated
+ja/absent-or-Jpan admission with separator insertion, while each phase retains
+its own input identity and CSS/custody decisions. Font, source and ordinary
+style fragmentation do not truncate that input. Phrase preference adds no
+separator or source character. Unknown/unsupported language retains Normal's
+ordinary opportunities; a supported no-cut result remains a whole phrase.
+
+Prepared Text retains independent causes at each actual mixed boundary. It
+suppresses only phrase-interior implicit Normal causes controlled by the
+requesting owner. Explicit Wbr/ZWSP, required LineBreak and atomic causes keep
+their independent authority, with actual TCU and wrapping/NCA constraints.
+Suppressed Normal causes and otherwise eligible owner hyphens remain in the
+same immutable preparation, available only through authenticated restoration.
+They are excluded from ordinary enumeration and unqualified selection.
+
+Finite selection first exhausts ordinary choices. Only a real measurement of
+the affected phrase piece overflowing an otherwise-empty eligible line permits
+its Normal restoration; if insufficient, try eligible owner hyphenation before
+arbitrary overflow. Measurements use the shared finalizer and cannot be placed.
+After a restored internal cut, a new query issues the whole remaining piece at
+its authenticated start and incoming continuation, retaining full phrase
+provenance. Measure only unconsumed participation in the new frame, and first
+try its ordinary residual ending. Prior-line or intrinsic measurements grant no
+finite authority. Unsupported language needs no invented phrase measurement to
+reach its eligible hyphen restoration stage after actual ordinary exhaustion.
+
+The [intrinsic determination](../references/text-auto-phrase-intrinsic--determination-20261025.md)
+retains genuine Anywhere intrinsic opportunities independently of finite stages;
+Normal/hyphen restoration cuts are excluded from min-content. Max-content opens
+no restoration stage. Text validates its issued handles and visible request
+context; each candidate may converge to its own numerical width, height, tabs
+and allocations. Layout owns numerical fit, the full private empty-line/float/
+replay basis and restarting on material external changes. Equivalent queries
+retain semantic identity for cache and pass convergence. Standalone consumes the same prepared
+AutoPhrase stages through its own fit context and shared finalizer.
+
 ### Native line-break policies
 
 Text owns `Style::line_break` and its `LineBreak` values Auto, Loose, Normal,
@@ -511,16 +555,16 @@ Hard-break precedence belongs to Text’s opportunity inventory under the [pinne
 5. Layout evaluates the returned metrics against its candidate span, including changes to float intersection caused by actual line height. It can choose another candidate/context and finalize again. After choosing a fitting line it supplies its space allocation and obtains the final geometry; it rechecks any resulting width/height feedback before committing. Preliminary metrics are never silently treated as final.
 6. Layout supplies validated placement of those exact finalized lines, including line/fragment IDs, physical origin, writing-mode basis, baseline and atomic box rectangles, to text's placed-layout constructor. The constructor validates identities, completeness and geometry before returning a placed `Layout`. Painting, hit testing, movement, selection and accessibility consume this placed result. They cannot call a separate paragraph wrapper to recreate it.
 
-An ordinary opportunity and a conditional opportunity are distinct terminating
-capabilities. Conditional enumeration binds the exact preparation, unchanged line
-start, first genuinely formatted ordinary ceiling and purpose. Finite overflow
-fitting uses `Overflow`; unconstrained minimum-content pieces use `MinContent`.
-Maximum-content does not request conditional cuts. Enumeration supplies legal
-cuts, without proving ordinary-search exhaustion or any candidate's actual fit.
-Raw analyses retain their separately characterized ordinary opportunity inventory;
-this operation adds no raw conditional cuts. Common owner and interval validation
-still applies. A consumer does not catch an unsupported-profile error or inspect
-private preparation state to choose a different algorithm.
+Ordinary, conditional and non-placeable measurement terminations have distinct
+issued authority. Conditional search binds the exact preparation, unchanged line
+start/incoming, first genuinely formatted ordinary ceiling and purpose. Finite
+overflow fitting uses `Overflow`; unconstrained minimum-content pieces use
+`MinContent`. Maximum-content opens no search. Stages supply legal endpoint and
+variant capabilities; the consumer owns actual search exhaustion and fit.
+AutoPhrase's ordered restoration uses this same protocol and finalizer in native
+and Standalone selection. Existing raw modes retain their characterized ordinary
+inventory. Common owner, interval and phase validation applies without private
+preparation inspection or alternate preparation.
 
 If earlier ordinary Soft endpoints finalize without retained flow participation,
 Layout may supply their actual `FinalizedLine` receipts to conditional enumeration.
