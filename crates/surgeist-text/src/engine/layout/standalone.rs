@@ -105,6 +105,7 @@ impl RawRoleBasis<'_> {
                     segment.end().index,
                 )?,
                 controls: Vec::new(),
+                line_box_struts: Vec::new(),
                 line_strut: None,
                 boundary_context: Vec::new(),
             };

@@ -47,6 +47,7 @@ pub struct FlowObservationRequest {
     pub atomics: Vec<AtomicAllocation>,
     pub controls: Vec<ControlAllocation>,
     pub line_strut: Option<LineStrut>,
+    pub line_box_struts: Vec<LineBoxStrut>,
     pub boundary_context: Vec<InlineBoundaryContextAllocation>,
 }
 #[derive(Clone, Debug)]
@@ -211,6 +212,7 @@ impl PreparedFlowSegment {
             controls: &request.controls,
             boundary_context: &request.boundary_context,
             line_strut: request.line_strut,
+            line_box_struts: &request.line_box_struts,
         };
         selection::admit_range(prepared, input)?;
         Ok(input)
@@ -546,6 +548,7 @@ mod tests {
             },
             atomics: vec![],
             controls: vec![],
+            line_box_struts: Vec::new(),
             line_strut: None,
             boundary_context: vec![],
         }
@@ -699,6 +702,7 @@ mod tests {
             atomics: vec![],
             controls: vec![],
             boundary_context: vec![],
+            line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
                 formatted_line: FormattedLineContext::default(),

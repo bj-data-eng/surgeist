@@ -1885,6 +1885,7 @@ mod tests {
                 },
                 atomics: vec![],
                 controls: vec![],
+                line_box_struts: Vec::new(),
                 line_strut: None,
             })
             .unwrap();

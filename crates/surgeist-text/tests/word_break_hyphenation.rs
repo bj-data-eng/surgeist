@@ -153,6 +153,7 @@ fn finish(
         atomics: vec![],
         controls,
         boundary_context: vec![],
+        line_box_struts: Vec::new(),
         line_strut: None,
         context: t::LineContext {
             formatted_line: surgeist_text::FormattedLineContext::default(),
@@ -858,6 +859,7 @@ fn suppressed_source_shy_retains_whole_word_portion_and_measurement_tail() {
             atomics: vec![],
             controls: vec![],
             boundary_context: vec![],
+            line_box_struts: Vec::new(),
             line_strut: None,
             context: t::LineContext {
                 formatted_line: surgeist_text::FormattedLineContext::default(),

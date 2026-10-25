@@ -16,7 +16,9 @@ pub(crate) use conditional::request_context;
 mod continuation;
 mod direction;
 mod wrapping_scope;
-pub use wrapping_scope::WrappingScopeQueryError;
+pub use wrapping_scope::{
+    CapturedScopeIncidence, PreparedBoundaryIncidence, WrappingScopeQueryError,
+};
 pub(crate) mod flow;
 pub(crate) mod input;
 pub use direction::LineDirectionFacts;
@@ -411,6 +413,13 @@ pub struct LineStrut {
     pub line_extent: f64,
 }
 
+/// One actual allocated line-box contribution, independent of a control.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LineBoxStrut {
+    pub metrics: LineStrut,
+    pub alignment: LineBoxAlignment,
+}
+
 /// Whether an indication is an ordinary offer or only staged restoration data.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum PreparedAlternativeAvailability {
@@ -445,6 +454,8 @@ pub struct LineSelectionRequest {
     pub controls: Vec<ControlAllocation>,
     pub boundary_context: Vec<InlineBoundaryContextAllocation>,
     pub line_strut: Option<LineStrut>,
+    /// Actual additional box contributions; empty means none are allocated.
+    pub line_box_struts: Vec<LineBoxStrut>,
 }
 
 #[derive(Clone)]
@@ -627,6 +638,7 @@ pub enum ProtocolHandleKind {
     Control,
     ComputedLineBoundary,
     Boundary,
+    BoundaryIncidence,
     Opportunity,
     ConditionalOpportunity,
     Alternative,

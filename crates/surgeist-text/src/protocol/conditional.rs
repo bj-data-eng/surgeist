@@ -687,6 +687,12 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
         values.push(allocation.occurrence.index as u64);
         number(&mut values, allocation.boundary.advance());
     }
+    values.push(request.line_box_struts.len() as u64);
+    for allocation in request.line_box_struts {
+        values.push(allocation.alignment as u64);
+        number(&mut values, allocation.metrics.baseline);
+        number(&mut values, allocation.metrics.line_extent);
+    }
     values.push(u64::from(request.line_strut.is_some()));
     if let Some(strut) = request.line_strut {
         number(&mut values, strut.baseline);

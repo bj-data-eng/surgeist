@@ -125,6 +125,7 @@ fn select(
                 })
                 .collect(),
             controls,
+            line_box_struts: Vec::new(),
             line_strut: (prepared.inner.analyzed.paragraph.paragraph_strut
                 == ParagraphStrut::AllocatedContributions)
                 .then_some(LineStrut {

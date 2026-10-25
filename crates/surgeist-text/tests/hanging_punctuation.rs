@@ -121,6 +121,7 @@ fn request(
         atomics: vec![],
         controls,
         boundary_context: vec![],
+        line_box_struts: Vec::new(),
         line_strut: None,
         context: t::LineContext {
             base_direction: if p.analyzed_source().direction() == t::Direction::RightToLeft {

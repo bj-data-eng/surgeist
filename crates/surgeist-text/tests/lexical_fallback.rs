@@ -546,6 +546,7 @@ fn assumed_line_opportunities_do_not_become_detected_word_movement_stops() {
                 atomics: vec![],
                 controls: vec![],
                 boundary_context: vec![],
+                line_box_struts: Vec::new(),
                 line_strut: None,
                 context: t::LineContext {
                     formatted_line: surgeist_text::FormattedLineContext::default(),

@@ -1372,6 +1372,13 @@ fn native_metrics(
             strut.alignment,
         )?;
     }
+    for allocation in &selected.request.line_box_struts {
+        groups.include(
+            allocation.metrics.baseline,
+            allocation.metrics.line_extent - allocation.metrics.baseline,
+            allocation.alignment,
+        )?;
+    }
     if let Some(strut) = selected.request.line_strut {
         groups.include(
             strut.baseline,
@@ -2091,6 +2098,7 @@ mod tests {
                 },
                 atomics,
                 controls,
+                line_box_struts: Vec::new(),
                 line_strut: None,
             })
             .unwrap()
@@ -2477,6 +2485,7 @@ mod tests {
                     },
                 }],
                 controls: vec![],
+                line_box_struts: Vec::new(),
                 line_strut: None,
                 context: LineContext {
                     base_direction: ParagraphBaseDirection::LeftToRight,
@@ -2957,6 +2966,7 @@ mod tests {
                     },
                     atomics: vec![],
                     controls,
+                    line_box_struts: Vec::new(),
                     line_strut: None,
                 },
             )

@@ -9,6 +9,31 @@ use super::{
 use crate::engine::analysis::scope::ScopeCutIndex;
 use crate::{CapturedScope, Result};
 
+/// One authenticated original placement of an existing prepared boundary.
+/// It grants no additional break opportunity, selection or placement authority.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct PreparedBoundaryIncidence {
+    boundary: PreparedBoundary,
+    placement: crate::engine::analysis::scope::Placement,
+}
+
+impl PreparedBoundaryIncidence {
+    /// The unchanged executed mixed-prefix boundary observed by this incidence.
+    pub fn boundary(&self) -> PreparedBoundary {
+        self.boundary.clone()
+    }
+}
+
+/// Relation of one consistent original placement to an authentic inline box.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum CapturedScopeIncidence {
+    Before,
+    AtBefore,
+    Inside,
+    AtAfter,
+    After,
+}
+
 /// Why canonical scope incidence cannot be established for this request.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WrappingScopeQueryError {
@@ -29,6 +54,87 @@ fn refusal(reason: WrappingScopeQueryError) -> crate::Error {
 }
 
 impl PreparedText {
+    /// Observe ordered original box placements of this exact executed prefix.
+    /// Transparent Connection bookkeeping cannot produce separate placements.
+    /// All scope relations of a choice refer to the same original placement;
+    /// a consumer must still supply actual generated-box/order evidence and an
+    /// already issued termination before using one for line selection.
+    pub fn boundary_incidences(
+        &self,
+        boundary: &PreparedBoundary,
+    ) -> Result<Vec<PreparedBoundaryIncidence>> {
+        require_prepared(
+            self,
+            &boundary.prepared,
+            ProtocolHandleKind::Boundary,
+            boundary.index,
+        )?;
+        let index = self.incidence_index()?;
+        let cut = self.inner.tables.boundaries[boundary.index].relation_cut;
+        let placements = index
+            .placements(cut)
+            .ok_or_else(|| refusal(WrappingScopeQueryError::UnrepresentedIncidence))?;
+        Ok(placements
+            .into_iter()
+            .map(|placement| PreparedBoundaryIncidence {
+                boundary: boundary.clone(),
+                placement,
+            })
+            .collect())
+    }
+
+    /// Classify one issued original placement against another scope from the
+    /// same canonical domain. This never chooses a different per-scope side.
+    pub fn incidence_scope_relation(
+        &self,
+        incidence: &PreparedBoundaryIncidence,
+        scope: &CapturedScope,
+    ) -> Result<CapturedScopeIncidence> {
+        require_prepared(
+            self,
+            &incidence.boundary.prepared,
+            ProtocolHandleKind::BoundaryIncidence,
+            incidence.boundary.index,
+        )?;
+        let topology = self
+            .inner
+            .analyzed
+            .paragraph
+            .scope_topology
+            .as_ref()
+            .ok_or_else(|| refusal(WrappingScopeQueryError::MissingCapture))?;
+        if !Arc::ptr_eq(&topology.capture, &scope.capture) {
+            return Err(refusal(WrappingScopeQueryError::ForeignCapture));
+        }
+        let fact = &scope.capture.scopes[scope.index];
+        if fact.definition.is_some() {
+            return Err(refusal(WrappingScopeQueryError::NonInlineScope));
+        }
+        if fact.domain != topology.domain {
+            return Err(refusal(WrappingScopeQueryError::WrongDomain));
+        }
+        self.incidence_index()?
+            .relation(incidence.placement, scope.index)
+            .ok_or_else(|| refusal(WrappingScopeQueryError::UnrepresentedIncidence))
+    }
+
+    fn incidence_index(&self) -> Result<&crate::engine::analysis::scope::IncidenceIndex> {
+        let analyzed = &self.inner.analyzed;
+        if analyzed.paragraph.scope_topology.is_none() {
+            return Err(refusal(WrappingScopeQueryError::MissingCapture));
+        }
+        let index = analyzed
+            .scope_cuts
+            .get_or_init(|| ScopeCutIndex::new(&analyzed.core))
+            .as_ref()
+            .map_err(|error| error.error())?;
+        index
+            .incidences
+            .get_or_init(|| crate::engine::analysis::scope::IncidenceIndex::new(&analyzed.core))
+            .as_ref()
+            .map_err(|error| error.error())
+    }
+
     /// Whether this exact issued mixed prefix has consumed the actual control.
     /// All representable control kinds participate, including a Wbr transformed
     /// into real text. This observation grants no break or placement authority.

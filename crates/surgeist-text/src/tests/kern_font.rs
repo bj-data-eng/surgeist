@@ -112,6 +112,7 @@ fn finalize(prepared: &PreparedText) -> FinalizedLine {
             participants: prepared.participants().collect(),
             atomics: vec![],
             controls: vec![],
+            line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
                 formatted_line: crate::FormattedLineContext::default(),

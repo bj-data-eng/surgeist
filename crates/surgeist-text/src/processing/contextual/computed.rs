@@ -52,22 +52,7 @@ pub(super) fn admit(
     if input.computed_line_boundaries.is_empty() {
         return Ok(());
     }
-    // Original flow incidence includes real empty boxes/occurrences. Connections
-    // and opaque child-domain scheduling cannot manufacture a second boundary.
-    let mut orders: Vec<Vec<usize>> = (0..context.domains.len()).map(|_| Vec::new()).collect();
-    for (index, event) in topology.events.iter().enumerate() {
-        let domain = match event.event {
-            SourceProcessingEvent::EnterScope(i) | SourceProcessingEvent::ExitScope(i) => {
-                Some(topology.scopes[i].domain)
-            }
-            SourceProcessingEvent::Connection(_) => None,
-            _ => event.paragraph.map(|p| topology.paragraphs[p].domain),
-        };
-        if let Some(domain) = domain {
-            super::super::reserve(&mut orders[domain], 1)?;
-            orders[domain].push(index);
-        }
-    }
+    let flow = super::canonical::CanonicalFlow::new(topology)?;
     let mut endpoint_scopes = Vec::new();
     super::super::reserve(&mut endpoint_scopes, topology.controls.len())?;
     endpoint_scopes.resize(topology.controls.len(), None);
@@ -76,15 +61,6 @@ pub(super) fn admit(
             endpoint_scopes[pair.start] = Some((i, SourceBoxSide::Before));
             endpoint_scopes[pair.end] = Some((i, SourceBoxSide::After));
         }
-    }
-    let mut domain_paragraphs: Vec<Vec<(usize, usize, usize)>> =
-        (0..context.domains.len()).map(|_| Vec::new()).collect();
-    for (index, paragraph) in topology.paragraphs.iter().enumerate() {
-        super::super::reserve(&mut domain_paragraphs[paragraph.domain], 1)?;
-        domain_paragraphs[paragraph.domain].push((paragraph.enter, paragraph.exit, index));
-    }
-    for paragraphs in &mut domain_paragraphs {
-        paragraphs.sort_unstable_by_key(|p| p.0);
     }
     let mut groups: BTreeMap<(usize, usize), (usize, Vec<usize>)> = BTreeMap::new();
     let mut identities = BTreeMap::new();
@@ -108,33 +84,9 @@ pub(super) fn admit(
                     SourceBoxSide::Before => fact.enter,
                     SourceBoxSide::After => fact.exit,
                 };
-                let paragraph = topology.events[event]
-                    .paragraph
-                    .or_else(|| {
-                        let paragraphs = &domain_paragraphs[fact.domain];
-                        let candidate = match side {
-                            SourceBoxSide::Before => {
-                                paragraphs.get(paragraphs.partition_point(|p| p.0 <= fact.enter))
-                            }
-                            SourceBoxSide::After => paragraphs
-                                .partition_point(|p| p.1 < fact.exit)
-                                .checked_sub(1)
-                                .and_then(|i| paragraphs.get(i)),
-                        }?;
-                        (fact.enter < candidate.0 && candidate.1 < fact.exit).then_some(candidate.2)
-                    })
+                let paragraph = flow
+                    .scope_paragraph(topology, scope, side)
                     .ok_or_else(|| err(ComputedLineBoundaryError::MissingParagraph))?;
-                let p = topology.paragraphs[paragraph];
-                if topology.events[event].paragraph.is_none()
-                    && topology.events[event].at
-                        != topology.events[match side {
-                            SourceBoxSide::Before => p.enter,
-                            SourceBoxSide::After => p.exit,
-                        }]
-                        .at
-                {
-                    return Err(err(ComputedLineBoundaryError::MissingParagraph));
-                }
                 (
                     event + usize::from(side == SourceBoxSide::After),
                     topology.events[event].at,
@@ -211,7 +163,7 @@ pub(super) fn admit(
             paragraph,
             domain,
         });
-        let rank = orders[domain].partition_point(|&event| event < cut);
+        let rank = flow.rank(domain, cut);
         let group = groups
             .entry((paragraph, rank))
             .or_insert_with(|| (cut, Vec::new()));

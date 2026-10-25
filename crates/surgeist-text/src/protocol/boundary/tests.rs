@@ -81,6 +81,7 @@ fn first_request(prepared: &PreparedText) -> LineSelectionRequest {
         atomics: vec![],
         controls: vec![],
         boundary_context: vec![],
+        line_box_struts: Vec::new(),
         line_strut: None,
         context: LineContext {
             formatted_line: crate::FormattedLineContext::default(),

@@ -11,6 +11,7 @@ use crate::{
 };
 use std::sync::Arc;
 
+pub(crate) mod canonical;
 mod capture;
 mod computed;
 pub use capture::*;

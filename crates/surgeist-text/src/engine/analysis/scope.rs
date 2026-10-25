@@ -8,6 +8,9 @@ use crate::engine::AnalyzedCore;
 use crate::protocol::paragraph::{ParagraphControlKind, SemanticAnchorItem};
 use crate::transform::relation::{ComponentOwner, RelationEvent};
 
+mod incidence;
+pub(crate) use incidence::{IncidenceIndex, Placement};
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ScopeIndexCapacity;
 
@@ -36,6 +39,7 @@ enum EventWitness {
 pub(crate) struct ScopeCutIndex {
     left: Vec<Option<Position>>,
     right: Vec<Option<Position>>,
+    pub(crate) incidences: std::sync::OnceLock<Result<IncidenceIndex, ScopeIndexCapacity>>,
 }
 
 impl ScopeCutIndex {
@@ -141,7 +145,11 @@ impl ScopeCutIndex {
             }
             right[index] = value;
         }
-        Ok(Self { left, right })
+        Ok(Self {
+            left,
+            right,
+            incidences: std::sync::OnceLock::new(),
+        })
     }
 
     /// Both actual incident contributions must be inside. At a genuine box

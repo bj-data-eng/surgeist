@@ -132,6 +132,7 @@ fn whole(p: &PreparedText) -> FinalizedLine {
         participants,
         atomics: vec![],
         controls,
+        line_box_struts: Vec::new(),
         line_strut: None,
         context: LineContext {
             formatted_line: crate::FormattedLineContext::default(),

@@ -2,6 +2,7 @@
 
 mod after_continuation;
 mod after_standalone;
+mod allocated_box_metrics;
 mod auto_phrase;
 mod automatic_model;
 mod automatic_opportunities;
@@ -22,6 +23,7 @@ mod metric_heights;
 mod negative_tabs;
 mod phase_two;
 mod raw_automatic_hyphenation;
+mod scope_incidence_locality;
 mod separators;
 mod tab_stops;
 mod wbr;
@@ -111,6 +113,7 @@ fn request(prepared: &PreparedText) -> LineSelectionRequest {
         participants: prepared.participants().collect(),
         atomics: vec![],
         controls: vec![],
+        line_box_struts: Vec::new(),
         line_strut: None,
         context: LineContext {
             formatted_line: crate::FormattedLineContext::default(),
@@ -474,6 +477,7 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
         participants,
         atomics: vec![],
         controls,
+        line_box_struts: Vec::new(),
         line_strut: None,
         context: LineContext {
             end: LineEnd::Forced,
@@ -726,3 +730,5 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
         ]
     );
 }
+
+mod line_box_struts;

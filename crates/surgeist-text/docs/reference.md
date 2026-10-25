@@ -293,6 +293,23 @@ before later content. `CapturedFlowEvent` continues to describe original input.
 Layout owns declaration applicability, propagation and native flow association;
 Text does not infer those facts from a UTF-16 offset.
 
+`PreparedText::boundary_incidences` observes ordered original box-cut choices
+under an existing prepared boundary. Each `PreparedBoundaryIncidence` retains
+that boundary and supplies one consistent `CapturedScopeIncidence` relation for
+every queried scope. Transparent connections alias shared edges; genuine empty
+boxes can retain distinct before/after choices. Capture, domain, endpoint pins,
+removed contributions and indivisible units constrain those choices. The
+consumer supplies actual generated-box/order evidence and an issued termination
+before selecting one; the observation creates no opportunity.
+
+`LineSelectionRequest::line_box_struts` and the corresponding flow-observation
+field carry actual `LineBoxStrut` allocations independently of controls. Each
+pairs `LineStrut` geometry with baseline/top/bottom alignment. Text validates and
+combines them with the existing metric groups, including allocation-only empty
+lines. Consuming adapters own box attribution and selected placement; that
+Layout integration remains separate from these Text operations. See the
+[selection contract](../../../docs/text-layout-contract.md).
+
 Paragraph coordinates remain original UTF-16 positions. `source_range()` is the
 minimal envelope of original owned pieces and genuine empty/control/atomic
 occurrences, including text subsequently deleted by trimming or collapse.

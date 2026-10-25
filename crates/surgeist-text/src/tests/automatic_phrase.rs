@@ -263,6 +263,7 @@ fn whole(prepared: &PreparedText) -> FinalizedLine {
                     }
                 })
                 .collect(),
+            line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
                 formatted_line: crate::FormattedLineContext::default(),

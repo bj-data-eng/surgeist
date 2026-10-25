@@ -283,6 +283,7 @@ fn real_native_finalization_consumes_computed_forces_without_host_control_or_fra
                     atomics: Vec::new(),
                     controls: Vec::new(),
                     boundary_context: Vec::new(),
+                    line_box_struts: Vec::new(),
                     line_strut: None,
                     context: LineContext {
                         formatted_line: FormattedLineContext::default(),

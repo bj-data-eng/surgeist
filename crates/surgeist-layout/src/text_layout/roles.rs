@@ -325,6 +325,7 @@ fn observe(
         atomics: input.atomics.iter().filter(|row| participants.iter().any(|p| matches!(p,text::PreparedParticipant::Atomic(value) if value==&row.occurrence))).map(|row| target.atomics.iter().find(|actual|actual.occurrence==row.occurrence).unwrap_or(row).clone()).collect(),
         controls: input.controls.iter().filter(|row| participants.iter().any(|p| matches!(p,text::PreparedParticipant::Control(value) if value==&row.occurrence))).map(|row| target.controls.iter().find(|actual|actual.occurrence==row.occurrence).unwrap_or(row).clone()).collect(),
         line_strut: target.line_strut,
+        line_box_struts: target.line_box_struts.clone(),
         boundary_context: Vec::new(),
     };
     while let Some(occurrence) = input

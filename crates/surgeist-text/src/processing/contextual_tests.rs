@@ -288,6 +288,7 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
             participants: prepared.participants().collect(),
             atomics,
             controls,
+            line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
                 formatted_line: crate::FormattedLineContext::default(),
@@ -1102,6 +1103,7 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
             participants: prepared.participants().take(3).collect(),
             atomics: vec![],
             controls: vec![],
+            line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
                 formatted_line: crate::FormattedLineContext::default(),
@@ -1526,6 +1528,7 @@ fn selected_soft_wrap_does_not_reset_plaintext_context_or_copy_line_edge_deletio
             participants: prepared.participants().take(count).collect(),
             atomics: vec![],
             controls: vec![],
+            line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
                 formatted_line: crate::FormattedLineContext::default(),
@@ -1890,6 +1893,7 @@ fn right_line(prepared: &PreparedText) -> FinalizedLine {
             participants: prepared.participants().skip(2).collect(),
             atomics: vec![],
             controls: vec![],
+            line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
                 formatted_line: crate::FormattedLineContext::default(),

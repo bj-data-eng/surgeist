@@ -1272,6 +1272,7 @@ fn selection_request(
         controls,
         boundary_context: Vec::new(),
         line_strut: input.line_strut,
+        line_box_struts: Vec::new(),
     })
 }
 

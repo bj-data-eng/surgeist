@@ -13,6 +13,7 @@ pub(crate) struct RequestInput<'a> {
     pub(crate) controls: &'a [ControlAllocation],
     pub(crate) boundary_context: &'a [InlineBoundaryContextAllocation],
     pub(crate) line_strut: Option<LineStrut>,
+    pub(crate) line_box_struts: &'a [LineBoxStrut],
 }
 impl<'a> From<&'a LineSelectionRequest> for RequestInput<'a> {
     fn from(value: &'a LineSelectionRequest) -> Self {
@@ -27,6 +28,7 @@ impl<'a> From<&'a LineSelectionRequest> for RequestInput<'a> {
             controls: &value.controls,
             boundary_context: &value.boundary_context,
             line_strut: value.line_strut,
+            line_box_struts: &value.line_box_struts,
         }
     }
 }

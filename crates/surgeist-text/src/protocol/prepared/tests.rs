@@ -931,6 +931,7 @@ fn select_whole(prepared: &PreparedText) -> SelectedLine {
             alternative: None,
             context: context(LineEnd::Paragraph),
             atomics: Vec::new(),
+            line_box_struts: Vec::new(),
             line_strut: None,
             controls: prepared
                 .control_views()
@@ -1163,6 +1164,7 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
             alternative: Some(alternative),
             context: context(LineEnd::Soft),
             atomics: Vec::new(),
+            line_box_struts: Vec::new(),
             line_strut: None,
             controls: prepared
                 .control_views()
@@ -1271,6 +1273,7 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
             alternative: Some(alternative),
             context: context(LineEnd::Soft),
             atomics: Vec::new(),
+            line_box_struts: Vec::new(),
             line_strut: None,
             controls: prepared
                 .control_views()

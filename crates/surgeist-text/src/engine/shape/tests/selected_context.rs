@@ -103,6 +103,7 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
         participants,
         controls,
         atomics: vec![],
+        line_box_struts: Vec::new(),
         line_strut: None,
         context: LineContext {
             formatted_line: crate::FormattedLineContext::default(),

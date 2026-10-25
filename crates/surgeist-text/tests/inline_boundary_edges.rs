@@ -278,6 +278,7 @@ fn finish(
         atomics: vec![],
         controls,
         boundary_context: vec![],
+        line_box_struts: Vec::new(),
         line_strut: None,
         context: t::LineContext {
             formatted_line: surgeist_text::FormattedLineContext::default(),
@@ -767,3 +768,6 @@ fn source_free_bidi_after_start_cannot_select_the_captured_opening_endpoint_outg
         "opening Start must be receiving at every genuine owner2 cut; {actual:?}"
     );
 }
+
+#[path = "inline_boundary_edges/boundary_incidences.rs"]
+mod boundary_incidences;

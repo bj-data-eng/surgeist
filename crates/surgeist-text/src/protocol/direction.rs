@@ -426,6 +426,7 @@ mod tests {
             atomics: vec![],
             controls: vec![],
             boundary_context: vec![],
+            line_box_struts: Vec::new(),
             line_strut: None,
             context: crate::LineContext {
                 formatted_line: crate::FormattedLineContext::default(),

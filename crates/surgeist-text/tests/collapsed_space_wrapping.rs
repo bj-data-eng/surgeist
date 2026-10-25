@@ -375,6 +375,7 @@ fn finish(
             alternative: None,
             atomics: vec![],
             controls: vec![],
+            line_box_struts: Vec::new(),
             line_strut: None,
             context: text::LineContext {
                 formatted_line: surgeist_text::FormattedLineContext::default(),

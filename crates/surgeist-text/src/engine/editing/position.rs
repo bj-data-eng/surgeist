@@ -1052,6 +1052,7 @@ mod tests {
                         _ => None,
                     })
                     .collect(),
+                line_box_struts: Vec::new(),
                 line_strut: None,
             })
             .unwrap()
@@ -1616,6 +1617,7 @@ mod tests {
                         spacing: SpacingPolicy::None,
                     },
                     atomics: Vec::new(),
+                    line_box_struts: Vec::new(),
                     line_strut: None,
                     controls: participants[from..to]
                         .iter()
@@ -1852,6 +1854,7 @@ mod tests {
                 },
                 atomics: vec![],
                 controls,
+                line_box_struts: Vec::new(),
                 line_strut: None,
             })
             .unwrap();
@@ -2098,6 +2101,7 @@ mod tests {
                 },
                 atomics: vec![],
                 controls: vec![],
+                line_box_struts: Vec::new(),
                 line_strut: None,
             })
             .unwrap();
@@ -2480,6 +2484,7 @@ mod tests {
                     },
                     atomics: vec![],
                     controls: vec![],
+                    line_box_struts: Vec::new(),
                     line_strut: None,
                 })
                 .unwrap();

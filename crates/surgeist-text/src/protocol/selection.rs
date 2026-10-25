@@ -470,6 +470,15 @@ pub(crate) fn admit_geometry(
             occurrence: *occurrence,
         }));
     }
+    for allocation in request.line_box_struts {
+        finite("line box baseline", allocation.metrics.baseline)?;
+        finite("line box extent", allocation.metrics.line_extent)?;
+        if allocation.metrics.baseline < 0.0
+            || allocation.metrics.line_extent < allocation.metrics.baseline
+        {
+            return Err(protocol_error(ProtocolError::InvalidLineStrut));
+        }
+    }
     if let Some(strut) = request.line_strut {
         finite("empty line baseline", strut.baseline)?;
         finite("empty line extent", strut.line_extent)?;
@@ -706,6 +715,7 @@ pub(crate) fn standalone_request(
         },
         atomics,
         controls: Vec::new(),
+        line_box_struts: Vec::new(),
         line_strut: None,
     };
     Ok(request)
