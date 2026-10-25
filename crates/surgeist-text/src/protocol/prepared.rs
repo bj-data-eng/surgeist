@@ -696,6 +696,7 @@ fn issue_opportunities(
                 && !before_hard
                 && authored.hyphens != crate::Hyphens::None
                 && authored.word_break != crate::WordBreak::BreakAll
+                && authored.line_break != crate::LineBreak::Anywhere
                 && authored.wrap == crate::Wrap::Word
                 && (control.is_some() || wrapping_allowed(analyzed, boundary)?);
             if eligible {
@@ -758,18 +759,24 @@ fn issue_opportunities(
                 analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]].atomic
                     && standalone_atomic_opportunity(analyzed, tables, boundary)
             });
-            if atomic || ordinary_after_source_shy(analyzed, tables, boundary)? {
+            if atomic
+                || ordinary_after_source_shy(analyzed, tables, boundary)?
+                || anywhere_opportunity(analyzed, boundary)?
+            {
                 Some(PreparedBreakKind::Allowed)
             } else {
                 (!alternatives.is_empty()).then_some(PreparedBreakKind::Discretionary)
             }
-        } else if matches!(
-            control,
-            Some(ParagraphControlKind::OptionalBreak {
-                wrap: crate::Wrap::Word
-            })
-        ) || matches!(control, Some(ParagraphControlKind::Wbr {style}) if style.wrap==crate::Wrap::Word
-        ) {
+        } else if anywhere_opportunity(analyzed, boundary)?
+            || matches!(
+                control,
+                Some(ParagraphControlKind::OptionalBreak {
+                    wrap: crate::Wrap::Word
+                })
+            )
+            || matches!(control, Some(ParagraphControlKind::Wbr {style}) if style.wrap==crate::Wrap::Word
+            )
+        {
             Some(PreparedBreakKind::Allowed)
         } else if matches!(
             control,
@@ -803,7 +810,9 @@ fn issue_opportunities(
                     .analysis
                     .infos
                     .get(boundary.atom)
-                    .is_some_and(|info| info.0.boundary >= Boundary::Line)
+                    .is_some_and(|info| {
+                        matches!(info.0.boundary, Boundary::Line | Boundary::Mandatory)
+                    })
                 && wrapping_allowed(analyzed, boundary)?)
         {
             Some(PreparedBreakKind::Allowed)
@@ -1096,6 +1105,7 @@ fn automatic_cut(
     if !count_admitted
         || authored.hyphens != crate::Hyphens::Auto
         || authored.word_break == crate::WordBreak::BreakAll
+        || authored.line_break == crate::LineBreak::Anywhere
         || authored.wrap != crate::Wrap::Word
         || analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]]
             .before_hard_separator
@@ -1215,6 +1225,51 @@ fn native_permission(analyzed: &AnalyzedData, boundary: &BoundaryData) -> crate:
         .ok_or_else(|| {
             super::protocol_error(super::ProtocolError::MissingWrappingPolicy { relation })
         })
+}
+
+/// Either actual adjacent text owner can supply an ordinary TCU opportunity.
+/// Controls, atomics and transparent metadata never lend their captured Style.
+fn anywhere_opportunity(analyzed: &AnalyzedData, boundary: &BoundaryData) -> crate::Result<bool> {
+    use crate::engine::analysis::wrapping::Influence;
+    let relation = &analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]];
+    let (
+        Some(Influence::Text {
+            participant,
+            atom: before,
+        }),
+        Some(Influence::Text { atom: after, .. }),
+    ) = (relation.before, relation.after)
+    else {
+        return Ok(false);
+    };
+    // One real defining cut; later source-free custody does not clone it.
+    if boundary.participant != participant + 1
+        || boundary.atom != after
+        || is_hard_separator(analyzed.projection.atoms[before].code_point)
+        || is_hard_separator(analyzed.projection.atoms[after].code_point)
+        || analyzed
+            .projection
+            .barrier_atoms
+            .iter()
+            .any(|at| *at > before && *at <= after)
+    {
+        return Ok(false);
+    }
+    let anywhere = [before, after].into_iter().any(|atom| {
+        analyzed.styles[analyzed.analysis.infos[atom].1]
+            .style
+            .authored()
+            .line_break
+            == crate::LineBreak::Anywhere
+    });
+    if !anywhere {
+        return Ok(false);
+    }
+    if analyzed.paragraph.base_direction.is_some() {
+        native_permission(analyzed, boundary)
+    } else {
+        wrapping_allowed(analyzed, boundary)
+    }
 }
 
 fn atomic_permission(

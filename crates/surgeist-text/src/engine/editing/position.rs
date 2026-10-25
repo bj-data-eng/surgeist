@@ -2296,15 +2296,10 @@ mod tests {
             .find(|cluster| cluster.range() == Range::new(1, 2))
             .unwrap();
         assert_eq!(b.bounds(), Rect::new(0.0, 20.0, 20.0, 20.0));
-        let prepared_b = layout
-            .inner
-            .prepared
-            .shaped
-            .clusters
-            .iter()
-            .find(|cluster| cluster.source == Range::new(1, 2))
-            .unwrap();
-        assert_eq!(prepared_b.boundary, crate::engine::analysis::Boundary::Line);
+        assert_eq!(
+            layout.inner.lines[0].finalized.selected.request.context.end,
+            crate::LineEnd::Forced
+        );
         let start = layout
             .positions()
             .find(|position| position.source_cursor() == Cursor::new(0, Affinity::After))

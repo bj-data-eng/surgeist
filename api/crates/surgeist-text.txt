@@ -387,6 +387,12 @@ pub enum surgeist_text::LineBoxAlignment
 pub surgeist_text::LineBoxAlignment::Baseline
 pub surgeist_text::LineBoxAlignment::Bottom
 pub surgeist_text::LineBoxAlignment::Top
+pub enum surgeist_text::LineBreak
+pub surgeist_text::LineBreak::Anywhere
+pub surgeist_text::LineBreak::Auto
+pub surgeist_text::LineBreak::Loose
+pub surgeist_text::LineBreak::Normal
+pub surgeist_text::LineBreak::Strict
 pub enum surgeist_text::LineEdgeDisposition
 pub surgeist_text::LineEdgeDisposition::Conditional
 pub surgeist_text::LineEdgeDisposition::Conditional::eligible: bool
@@ -877,6 +883,7 @@ pub surgeist_text::TextStyleFeature::FullSizeKana
 pub surgeist_text::TextStyleFeature::FullWidth
 pub surgeist_text::TextStyleFeature::InlineBoxVerticalAlign
 pub surgeist_text::TextStyleFeature::LetterSpacing
+pub surgeist_text::TextStyleFeature::LineBreak
 pub surgeist_text::TextStyleFeature::LineHeight
 pub surgeist_text::TextStyleFeature::Locale
 pub surgeist_text::TextStyleFeature::Lowercase
@@ -2419,6 +2426,7 @@ pub surgeist_text::Style::hyphenate_character: surgeist_text::HyphenateCharacter
 pub surgeist_text::Style::hyphenate_limit_chars: surgeist_text::HyphenateLimitChars
 pub surgeist_text::Style::hyphens: surgeist_text::Hyphens
 pub surgeist_text::Style::letter_spacing: f64
+pub surgeist_text::Style::line_break: surgeist_text::LineBreak
 pub surgeist_text::Style::line_height: surgeist_text::LineHeight
 pub surgeist_text::Style::locale: core::option::Option<alloc::string::String>
 pub surgeist_text::Style::native_hyphenation_convention: core::option::Option<surgeist_text::NativeHyphenationConvention>

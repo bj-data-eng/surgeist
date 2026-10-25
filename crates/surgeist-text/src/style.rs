@@ -251,6 +251,7 @@ pub struct Style {
     pub direction: Direction,
     pub white_space: WhiteSpace,
     pub word_break: WordBreak,
+    pub line_break: LineBreak,
     pub wrap: Wrap,
     pub overflow_wrap: OverflowWrap,
     pub text_transform: TextTransform,
@@ -288,6 +289,7 @@ impl Default for Style {
             direction: Direction::Auto,
             white_space: WhiteSpace::Preserve,
             word_break: WordBreak::Normal,
+            line_break: LineBreak::Auto,
             wrap: Wrap::Word,
             overflow_wrap: OverflowWrap::Normal,
             text_transform: TextTransform::none(),
@@ -341,6 +343,18 @@ pub enum WordBreak {
     Normal,
     BreakAll,
     KeepAll,
+}
+
+/// Line-breaking restrictions; Auto uses Text's deterministic Strict policy.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum LineBreak {
+    #[default]
+    Auto,
+    Loose,
+    Normal,
+    Strict,
+    /// Ordinary opportunities at actual text typographic-unit edges.
+    Anywhere,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

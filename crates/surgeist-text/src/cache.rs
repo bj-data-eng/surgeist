@@ -394,6 +394,7 @@ fn hash_style<H: Hasher>(style: &Style, hasher: &mut H) {
     style.direction.hash(hasher);
     style.white_space.hash(hasher);
     style.word_break.hash(hasher);
+    style.line_break.hash(hasher);
     style.wrap.hash(hasher);
     style.overflow_wrap.hash(hasher);
     style.text_transform.hash(hasher);

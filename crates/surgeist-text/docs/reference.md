@@ -46,6 +46,16 @@ private implementation organization.
 | Cache identity | `Key`, `SourceKey`, `StyleKey`, `OptionsKey`, `FontGeneration`, `Stats` | [cache.rs](../src/cache.rs) |
 | Errors | `Error`, `ErrorCode`, `ErrorDetail`, `Result` | [error.rs](../src/error.rs) |
 
+## Native line breaking
+
+`Style::line_break` selects `LineBreak::{Auto, Loose, Normal, Strict, Anywhere}`.
+Auto uses Strict's ordinary restrictions. The
+[native line-break contract](../../../docs/text-layout-contract.md#native-line-break-policies)
+defines content writing-system and following-owner selection, equally ranked
+Anywhere opportunities, actual-owner hyphenation exclusion and atomic glue
+precedence. These ordinary opportunities are distinct from emergency overflow
+wrapping; typography and captured ancestor wrapping still govern admission.
+
 ## Prepared hyphenation
 
 `PreparedText::word_views` and `hyphenation_cut_views` expose preparation-owned

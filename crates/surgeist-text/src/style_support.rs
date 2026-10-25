@@ -30,6 +30,7 @@ pub enum TextStyleFeature {
     /// BreakSpaces executes in the processed-paragraph phase.
     WhiteSpaceBreakSpaces,
     WordBreak,
+    LineBreak,
     TextWrap,
     OverflowWrap,
     TextOverflow,
@@ -95,6 +96,7 @@ impl TextStyleFeature {
         Self::WhiteSpacePreserveBreaks,
         Self::WhiteSpaceBreakSpaces,
         Self::WordBreak,
+        Self::LineBreak,
         Self::TextWrap,
         Self::OverflowWrap,
         Self::TextOverflow,
@@ -164,6 +166,7 @@ impl TextStyleFeature {
             | Self::Locale
             | Self::WhiteSpacePreserve
             | Self::WordBreak
+            | Self::LineBreak
             | Self::TextWrap
             | Self::OverflowWrap
             | Self::TextAlignment

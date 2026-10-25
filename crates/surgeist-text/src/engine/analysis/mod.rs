@@ -5,6 +5,7 @@
 
 pub(crate) mod cluster;
 pub(crate) mod hyphenation;
+mod line_break;
 pub(crate) mod wrapping;
 
 use std::ops::Range;
@@ -19,13 +20,13 @@ use icu_properties::props::{
 use icu_properties::{
     CodePointMapData, CodePointMapDataBorrowed, PropertyNamesShort, PropertyNamesShortBorrowed,
 };
-use icu_segmenter::options::{LineBreakOptions, LineBreakWordOption, WordBreakInvariantOptions};
-use icu_segmenter::{LineSegmenter, WordSegmenter};
+use icu_segmenter::WordSegmenter;
+use icu_segmenter::options::WordBreakInvariantOptions;
 use parley_data::Properties;
 
 use super::{bidi::BidiResolver, resolve::AnalyzedStyleRun};
 use crate::protocol::paragraph::{ParagraphAnchorItem, ParagraphData};
-use crate::{InlineBox, InlineBoxKind, Result, WordBreak, projection::SourceProjection};
+use crate::{InlineBox, InlineBoxKind, Result, projection::SourceProjection};
 
 #[derive(Default)]
 pub(crate) struct AnalysisDataSources;
@@ -76,6 +77,8 @@ pub(crate) enum Boundary {
     None,
     Word,
     Line,
+    /// Text-owned ordinary candidate that still requires an actual mixed pair.
+    Anywhere,
     Mandatory,
 }
 
@@ -215,6 +218,7 @@ pub(crate) fn analyze(
         .collect();
     let mut boundaries = vec![Boundary::None; projection.atoms.len() + 1];
     let mut word_ranges = Vec::new();
+    let line_policies = line_break::policies(styles)?;
     let mut component_stops = projection.barrier_atoms.clone();
     component_stops.extend([0, projection.atoms.len()]);
     component_stops.sort_unstable();
@@ -231,40 +235,20 @@ pub(crate) fn analyze(
                 .iter_with_word_type()
         {
             let atom = atom_at(byte + start_byte);
-            boundaries[atom] = Boundary::Word;
+            boundaries[atom] = boundaries[atom].max(Boundary::Word);
             if previous < atom && kind.is_word_like() {
                 word_ranges.push(previous..atom);
             }
             previous = atom;
         }
-        // Unicode context spans every style run in a semantic component. Each
-        // present mode scans that complete context; the following atom owns
-        // candidate admission. Real disconnected/in-flow edges still stop it.
-        let word_break_at = |atom| {
-            styles[style_at(projection, styles, atom)]
-                .style
-                .authored()
-                .word_break
-        };
-        for mode in [WordBreak::Normal, WordBreak::BreakAll, WordBreak::KeepAll] {
-            if !(component_start..component_end).any(|atom| word_break_at(atom) == mode) {
-                continue;
-            }
-            let mut options = LineBreakOptions::default();
-            options.word_option = Some(match mode {
-                WordBreak::Normal => LineBreakWordOption::Normal,
-                WordBreak::BreakAll => LineBreakWordOption::BreakAll,
-                WordBreak::KeepAll => LineBreakWordOption::KeepAll,
-            });
-            for byte in LineSegmenter::new_for_non_complex_scripts(options)
-                .segment_str(&projection.segmentation[start_byte..end_byte])
-            {
-                let atom = atom_at(byte + start_byte);
-                if atom > 0 && atom < component_end && word_break_at(atom) == mode {
-                    boundaries[atom] = Boundary::Line;
-                }
-            }
-        }
+        line_break::apply(
+            projection,
+            styles,
+            &line_policies,
+            &offsets,
+            component_start..component_end,
+            &mut boundaries,
+        );
     }
     let mut infos = Vec::with_capacity(projection.atoms.len());
     let mut mandatory = false;

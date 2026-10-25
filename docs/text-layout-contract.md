@@ -335,6 +335,55 @@ Source-only accessibility takes no placement point. It reports source values, un
 
 Accessibility state binds to the exact analyzed allocation and an explicit source-only or placed phase; placed state additionally binds to the exact placement identity. Source-only reads require the source-only binding, and layout reads require the matching placed binding. Updates may coherently replace or enrich the binding, rebuilding optional fields so previous geometry cannot survive a source-only replacement. Preserve checked node-ID issuance, source affinity, focus rules and atomic failure. Verify selectable fontless graphemes, explicit layout refusal, ordinary registered-font enrichment, mismatched analysis/placement rejection, absent fabricated geometry and preservation of the previous accessibility state after failure.
 
+### Native line-break policies
+
+Text owns `Style::line_break` and its `LineBreak` values Auto, Loose, Normal,
+Strict and Anywhere. The captured value remains visible in validated styles
+and participates in cache identity. Auto uses Strict's ordinary restrictions
+as a deterministic native policy; it does not change with the available width.
+Ordinary restrictions use the following logical text contribution's value and
+content writing system, retaining the complete connected analysis context.
+
+Loose, Normal and Strict apply the required CJK distinctions in the
+[pinned Text 4 line-break clause](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#line-break-property).
+BreakAll's CJ-letter-to-ID conversion precedes the class-based CJ restriction;
+named iteration marks retain their specific restrictions. The
+[small-kana determination](../references/text-small-kana-precedence--determination-20261025.md)
+defines this precedence and the full-size-kana contrast.
+Explicit script subtags take precedence over the language: ja-Latn and zh-Latn
+do not select CJK conventions, while ko-Hani and en-Hira do. An omitted language
+does not become an inferred language from the text. Independent whitespace,
+Wbr, ZWSP, forced-break and atomic permissions retain their own authority;
+KeepAll does not erase a required line-break permission.
+
+Anywhere creates equally ranked ordinary opportunities at admitted text/text
+typographic-unit edges when either actual adjacent text contribution requests
+it. It overrides the specified text glue and word-break prohibitions without
+using overflow-wrap's emergency proof or priority. Typography, actual ancestor
+wrapping, semantic barriers and hard-break precedence still apply. Empty and
+out-of-flow metadata supply no style authority, and a source-free control does
+not become a text unit or an Anywhere donor. All consumers, including intrinsic
+sizing, see the same ordinary opportunity inventory.
+
+The [Anywhere owner determination](../references/text-anywhere-owner-precedence--determination-20261025.md)
+keeps hyphenation eligibility with its actual source-SHY, discretionary-control
+or logical-preceding Auto owner. An Anywhere owner excludes empty and nonempty
+hyphenation alternatives while retaining truthful cut/resource observations.
+A Normal-owned alternative can coexist with an independently eligible ordinary
+None variant supplied by following Anywhere text. An ordinary neighbor does
+not take over the indication's style or identity.
+
+At actual text/atomic relations, Anywhere preserves the specific prohibition
+against an atomic-created cut adjacent to non-NBSP GL, WJ or ZWJ. NBSP retains
+its atomic compatibility exception, subject to actual ancestor wrapping. This
+does not change the atomic's geometry or margin-edge custody. A genuine Wbr or
+forced occurrence retains its independent authority at its exact mixed cut.
+
+The current typography boundary is the retained extended-grapheme analysis.
+These operations do not establish additional syllabic tailoring or complete
+lexical/orthographic support for every writing system. Those capabilities remain
+separate from accepting a native LineBreak value.
+
 ### Empty text and font struts
 
 For genuinely empty source with no inline participants, intrinsic text advance and `Metrics::full_width` are zero. Retain the actual admitted-font empty-line strut, baseline and height, one `0..0` line and the original endpoint zero. No source character, glyph or phantom space advance is introduced. In the registered Ahem size-20, unconstrained, unquantized profile, the result is size `(0, 20)`, full width zero, baseline 16 and no clusters or glyphs. A real authored space retains its actual advance.

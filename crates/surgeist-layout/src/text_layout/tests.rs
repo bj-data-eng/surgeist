@@ -28,6 +28,8 @@ mod float_fit;
 mod indent;
 #[path = "tests/inline_boundary_edges.rs"]
 mod inline_boundary_edges;
+#[path = "tests/line_break.rs"]
+mod line_break;
 #[path = "tests/line_limit_composition.rs"]
 mod line_limit_composition;
 #[path = "tests/line_limits.rs"]
