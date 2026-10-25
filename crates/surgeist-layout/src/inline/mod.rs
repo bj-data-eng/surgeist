@@ -15,6 +15,9 @@ use surgeist_text::{BidiLevel, SuppliedInlineParticipant, SuppliedLine};
 
 mod input;
 
+#[cfg(test)]
+mod wrap_inside_auto_tests;
+
 pub(crate) use input::{
     InlineParticipantKindOf, InlineParticipantProjection, continues_run, run_ranges, starts_run,
 };
