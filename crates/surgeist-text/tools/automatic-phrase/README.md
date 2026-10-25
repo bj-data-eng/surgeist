@@ -3,9 +3,10 @@
 Text adapts the plain character-indexed inference of
 [Google BudouX 0.9.3](https://github.com/google/budoux/tree/25946bbbb271dc8a53bb5b04082c6859abc5c847),
 commit `25946bbbb271dc8a53bb5b04082c6859abc5c847`. The
-[private adapter](../../src/transform/phrase.rs) returns raw internal cut
-positions; the consuming Text transformation owns declared-language admission,
-CSS Appendix H admissibility, contextual ownership and source correspondence.
+[private adapter](../../src/phrase.rs) returns raw internal cut
+positions. Its shared selector owns admission from the actual validated content
+language; each consuming Text phase owns CSS Appendix H admissibility,
+contextual ownership and source correspondence.
 The model is not an HTML parser, dictionary service or browser-equivalence claim.
 
 ## Retained inputs and attribution
@@ -68,12 +69,13 @@ The qualified bounds `[-84136,82152]` cover scores and partial accumulation;
 the sum of absolute model weights is 1383462. Overflow is an invalid-data
 failure, and allocation failure is a capacity failure, never a no-cut fallback.
 
-The raw provider has no locale argument. The native admission policy selected
-for consuming integration requires actual validated primary language `ja` with
+Raw inference has no locale argument. The shared native model selector
+requires actual validated primary language `ja` with
 absent script or `Jpan`; other explicit scripts are initially unsupported.
 It never guesses Japanese from glyphs,
 region, an undefined language, or neighboring content. That native admission
-policy and all CSS filtering belong to the consuming transformation phase.
+policy belongs to the shared provider; CSS filtering remains with each
+consuming Text phase.
 
 ## Generate and verify
 
@@ -86,7 +88,7 @@ pisct run --timeout-seconds 30 -- python3 -B -m unittest discover -s crates/surg
 ```
 
 The [stdlib generator](generate.py) owns
-[phrase_data.rs](../../src/transform/phrase_data.rs). It pins the exact input
+[data.rs](../../src/phrase/data.rs). It pins the exact input
 bytes, rejects malformed or ambiguous schema, validates 13 group sizes and
 1619 weights, and emits numeric keys in stable lexical order. One-, two- and
 three-position keys have distinct fixed array lengths. `--check` compares exact

@@ -2,6 +2,7 @@
 use super::super::relation::{ScopeData, TransformMap, VirtualSeparatorData};
 use crate::engine::analysis::wrapping::{Event, LogicalEvent};
 use crate::engine::resolve::{AnalyzedStyleOwner, AnalyzedStyleRun};
+use crate::phrase::{PhraseError, PhraseModel};
 use crate::processing::contextual::ParagraphTopology;
 use crate::projection::SourceProjection;
 use crate::protocol::paragraph::{ParagraphAnchorItem, ParagraphControlKind, ParagraphData};
@@ -18,11 +19,6 @@ pub(crate) struct Proposal {
     pub(super) occurrence: usize,
     pub(super) code_point: u32,
     pub(super) style: usize,
-}
-
-#[derive(Clone, Copy, Debug)]
-enum PhraseModel {
-    BudouXJapanese093,
 }
 
 /// The retained pre-replacement semantic analysis belongs to this exact map,
@@ -42,12 +38,6 @@ fn refusal(reason: TextTransformError) -> Error {
         "automatic phrase separator lacks captured context",
     )
     .with_detail(ErrorDetail::TextTransform { reason })
-}
-
-fn supported(style: &crate::ValidatedStyle) -> bool {
-    style.font_locale().is_some_and(|language| {
-        language.language() == "ja" && language.script().is_none_or(|script| script == "Jpan")
-    })
 }
 
 /// Native recognized repertoire, not an exhaustive CSS word-separator property.
@@ -271,7 +261,7 @@ pub(crate) fn proposals(
     map: &mut TransformMap,
 ) -> Result<Vec<Proposal>> {
     if !styles.iter().any(|style| {
-        supported(&style.style)
+        PhraseModel::for_language(style.style.font_locale()).is_some()
             && style
                 .style
                 .authored()
@@ -286,7 +276,9 @@ pub(crate) fn proposals(
     stops.extend([0, input.atoms.len()]);
     for (atom, value) in input.atoms.iter().enumerate() {
         let style = &styles[map.rows[atom].style].style;
-        if !supported(style) || crate::engine::analysis::is_hard_separator(value.code_point) {
+        if PhraseModel::for_language(style.font_locale()).is_none()
+            || crate::engine::analysis::is_hard_separator(value.code_point)
+        {
             stops.extend([atom, atom + 1]);
         }
     }
@@ -315,7 +307,10 @@ pub(crate) fn proposals(
     let mut output = Vec::new();
     for pair in stops.windows(2) {
         let (start, end) = (pair[0], pair[1]);
-        if end - start < 2 || !supported(&styles[map.rows[start].style].style) {
+        if end - start < 2
+            || PhraseModel::for_language(styles[map.rows[start].style].style.font_locale())
+                .is_none()
+        {
             continue;
         }
         if !(start..end).any(|atom| {
@@ -338,7 +333,8 @@ pub(crate) fn proposals(
             .map_err(|_| super::capacity())?;
         coverage.extend(input.atoms[start..end].iter().map(|atom| atom.source));
         let mut analysis = PhraseAnalysis {
-            model: PhraseModel::BudouXJapanese093,
+            model: PhraseModel::for_language(styles[map.rows[start].style].style.font_locale())
+                .expect("supported actual locale selects its model"),
             language: styles[map.rows[start].style]
                 .style
                 .font_locale()
@@ -348,14 +344,12 @@ pub(crate) fn proposals(
             cuts: Vec::new(),
         };
         analysis.cuts = match (analysis.model, analysis.language.language()) {
-            (PhraseModel::BudouXJapanese093, "ja") => {
-                super::super::phrase::boundaries(&analysis.input)
-            }
+            (PhraseModel::BudouXJapanese093, "ja") => analysis.model.boundaries(&analysis.input),
             _ => unreachable!("supported language selects its declared model"),
         }
         .map_err(|error| match error {
-            super::super::phrase::PhraseError::Capacity => super::capacity(),
-            super::super::phrase::PhraseError::InvalidData => Error::new(
+            PhraseError::Capacity => super::capacity(),
+            PhraseError::InvalidData => Error::new(
                 ErrorCode::InvalidSourceProcessing,
                 "invalid automatic phrase model",
             )

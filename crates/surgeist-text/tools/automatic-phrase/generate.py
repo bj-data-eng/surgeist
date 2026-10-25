@@ -9,7 +9,7 @@ import sys
 
 CRATE = Path(__file__).resolve().parents[2]
 INPUT = CRATE / "data/budoux/0.9.3/ja.json"
-OUTPUT = CRATE / "src/transform/phrase_data.rs"
+OUTPUT = CRATE / "src/phrase/data.rs"
 COMMIT = "25946bbbb271dc8a53bb5b04082c6859abc5c847"
 SOURCE_SHA256 = "580db00a5e3e4a5b99b72cdea0db7ea70dac79599ce9d356d16bfdf0d92e7798"
 GROUPS = [

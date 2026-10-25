@@ -21,6 +21,7 @@ mod hyphenation;
 mod id;
 mod layout;
 mod options;
+mod phrase;
 mod processing;
 mod projection;
 mod protocol;

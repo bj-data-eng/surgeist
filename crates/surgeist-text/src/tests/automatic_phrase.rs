@@ -766,7 +766,8 @@ fn real_model_proposals_incident_to_existing_separators_and_glue_are_excluded() 
             (format!("今日は{scalar}天気です。"), 3),
             (format!("これ以{scalar}上利用する場合は教えてください。"), 4),
         ] {
-            let raw = super::phrase::boundaries(&text.chars().map(u32::from).collect::<Vec<_>>())
+            let raw = crate::phrase::PhraseModel::BudouXJapanese093
+                .boundaries(&text.chars().map(u32::from).collect::<Vec<_>>())
                 .unwrap();
             assert!(
                 raw.contains(&raw_cut),
@@ -791,7 +792,9 @@ fn real_model_proposals_incident_to_existing_separators_and_glue_are_excluded() 
 #[test]
 fn typographic_unit_interior_is_excluded_before_uncaptured_style_is_demanded() {
     let text = "今日は\u{3099}天気です。";
-    let raw = super::phrase::boundaries(&text.chars().map(u32::from).collect::<Vec<_>>()).unwrap();
+    let raw = crate::phrase::PhraseModel::BudouXJapanese093
+        .boundaries(&text.chars().map(u32::from).collect::<Vec<_>>())
+        .unwrap();
     assert_eq!(
         raw,
         [3],
@@ -810,8 +813,9 @@ fn punctuation_attachment_filters_genuine_proposals_without_relocating_them() {
         ("今日は?今日は天気です。", 4, "今日は? 今日は 天気です。"),
         ("今日は/天気です。", 3, "今日は/天気です。"),
     ] {
-        let raw =
-            super::phrase::boundaries(&text.chars().map(u32::from).collect::<Vec<_>>()).unwrap();
+        let raw = crate::phrase::PhraseModel::BudouXJapanese093
+            .boundaries(&text.chars().map(u32::from).collect::<Vec<_>>())
+            .unwrap();
         assert!(raw.contains(&raw_cut), "actual model trigger for {text}");
         assert_eq!(
             analyze(input(text, WordSpaceTransform::SpaceAutoPhrase, &[]))

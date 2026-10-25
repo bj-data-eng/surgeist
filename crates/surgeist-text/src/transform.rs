@@ -17,8 +17,6 @@ mod greek;
 mod irish;
 mod math;
 mod math_data;
-mod phrase;
-mod phrase_data;
 pub(crate) mod relation;
 pub(crate) mod separators;
 mod width;
