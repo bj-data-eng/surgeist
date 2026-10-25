@@ -1,6 +1,6 @@
 ---
 name: surgeist-admin
-description: Coordinate Surgeist issues and Project state, local working material, and pause/resume handoffs. Use for repository administration during authorized work; PISCT owns implementation and review methods.
+description: Coordinate Surgeist issues and Project state, pull requests, local working material, and pause/resume handoffs. Use for repository administration during authorized work; PISCT owns implementation and review methods.
 ---
 
 # Surgeist Administration
@@ -47,11 +47,12 @@ database in local files, field values, or comments.
 
 ## Project State
 
-Surgeist uses issues and direct commits; no PR workflow is required. Planned
-issues are managed through the Project. Authorized API creation can attach an
-issue in one `createIssue` call using the explicit Surgeist `repositoryId` and
-Project node ID in `projectV2Ids`; the UI's default repository does not supply
-the API argument. Read the existing identities instead of guessing them.
+Surgeist tracks work in issues and lands changes on `main` through
+[pull requests](#pull-requests). Planned issues are managed through the
+Project. Authorized API creation can attach an issue in one `createIssue`
+call using the explicit Surgeist `repositoryId` and Project node ID in
+`projectV2Ids`; the UI's default repository does not supply the API argument.
+Read the existing identities instead of guessing them.
 
 Status choices are Backlog, Ready, In Progress, In Review, Blocked, and Done.
 The enabled built-in workflows own these effects:
@@ -77,6 +78,41 @@ transitions with synchronization scripts or assume an event order. Archive timin
 follows the last update, not simply the closure date. Workflow settings are
 user-owned; inspect saved configuration when changing or troubleshooting it
 within authorized scope.
+
+## Pull Requests
+
+A pull request publishes one cohesive outcome for integration into `main`. It
+is not a progress record, review record, or decision home. Opening, updating,
+and merging one require publication authority for that branch and target. Pull
+requests leave PISCT's commit, publication, and review requirements unchanged.
+
+Unless the assignment names a branch, branch from current `origin/main` as
+`branch/<topic>`, where the topic is a short kebab-case name for the outcome. A
+pull request may carry several logical commits that share one outcome and
+verification; do not batch unrelated outcomes.
+
+The body states the change, public impact, and verification evidence. Keep
+decisions and judgement calls on the owning issue; the body may link them.
+
+A closing keyword in the body or a `Closes:` commit trailer closes its issue
+when the change reaches `main`, and the built-in workflow sets Done. Use one
+only where closure authority covers that issue and its required review is
+satisfied, with Review CLEAN recorded by the coordinator no later than the
+merge. Give each such issue its own `Closes #N` line in the body, because
+GitHub links only the first issue of a list. Use `Refs #N` for every other
+issue the pull request concerns.
+
+A pushed branch is published history: do not rebase, amend, or force-push it.
+Bring it up to date by merging `origin/main` into it, and correct defects with
+new commits.
+
+Every merge, into the branch or into `main`, is a `git merge --no-ff` whose
+authored message passes `pisct commit validate` before the merge and again on
+readback. Never squash, rebase-merge, or keep a Git- or GitHub-generated merge
+subject. To land, verify the merge result, push `main`, and read it back. If
+the push is rejected because `origin/main` moved, merge it into the branch
+again and repeat the landing. Delete merged branches, worktrees, and Cargo
+targets only with cleanup authority.
 
 ## Review And Working Material
 
