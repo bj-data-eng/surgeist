@@ -111,7 +111,9 @@ authored message passes `pisct commit validate` before the merge and again on
 readback. Never squash, rebase-merge, or keep a Git- or GitHub-generated merge
 subject. To land, verify the merge result, push `main`, and read it back. If
 the push is rejected because `origin/main` moved, merge it into the branch
-again and repeat the landing. Delete merged branches, worktrees, and Cargo
+again and repeat the landing. Delete a pull request's head branch once it
+merges: the repository setting does so when GitHub records the merge, and the
+branch stays restorable from the pull request. Remove local worktrees and Cargo
 targets only with cleanup authority.
 
 ## Review And Working Material
