@@ -18,6 +18,8 @@ mod automatic_priority;
 mod before_indication_bidi;
 #[path = "tests/both_sides.rs"]
 mod both_sides;
+#[path = "tests/boundary_owner_composition.rs"]
+mod boundary_owner_composition;
 #[path = "tests/break_all_hyphenation.rs"]
 mod break_all_hyphenation;
 #[path = "tests/canonical.rs"]
