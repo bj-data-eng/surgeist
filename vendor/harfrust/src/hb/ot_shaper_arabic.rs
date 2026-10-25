@@ -640,7 +640,11 @@ fn apply_stch(face: &hb_font_t, buffer: &mut hb_buffer_t) {
         }
 
         if step == MEASURE {
-            if !buffer.ensure(buffer.len + extra_glyphs_needed) {
+            if !crate::hb::default_ignorable::copy_work(
+                buffer,
+                buffer.len.saturating_add(extra_glyphs_needed),
+            ) || !buffer.ensure(buffer.len + extra_glyphs_needed)
+            {
                 break;
             }
         } else {

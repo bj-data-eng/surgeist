@@ -1012,11 +1012,19 @@ pub mod OT {
         }
 
         pub fn replace_glyph(&mut self, glyph_id: GlyphId) {
+            if !super::super::default_ignorable::output_room(self.buffer, 1, 1, 1) {
+                return;
+            }
+            self.buffer.cur_mut(0).di_normal();
             self.set_glyph_class(glyph_id, GlyphPropsFlags::empty(), false, false);
             self.buffer.replace_glyph(u32::from(glyph_id));
         }
 
         pub fn replace_glyph_inplace(&mut self, glyph_id: GlyphId) {
+            if !super::super::default_ignorable::copy_work(self.buffer, 1) {
+                return;
+            }
+            self.buffer.cur_mut(0).di_normal();
             self.set_glyph_class(glyph_id, GlyphPropsFlags::empty(), false, false);
             self.buffer.cur_mut(0).glyph_id = u32::from(glyph_id);
         }
@@ -1026,6 +1034,10 @@ pub mod OT {
             glyph_id: GlyphId,
             class_guess: GlyphPropsFlags,
         ) {
+            if !super::super::default_ignorable::output_room(self.buffer, 1, 1, 1) {
+                return;
+            }
+            self.buffer.cur_mut(0).di_normal();
             self.set_glyph_class(glyph_id, class_guess, true, false);
             self.buffer.replace_glyph(u32::from(glyph_id));
         }
@@ -1035,6 +1047,12 @@ pub mod OT {
             glyph_id: GlyphId,
             class_guess: GlyphPropsFlags,
         ) {
+            if !super::super::default_ignorable::output_room(self.buffer, 0, 1, 1)
+                || !super::super::default_ignorable::copy_work(self.buffer, 1)
+            {
+                return;
+            }
+            self.buffer.cur_mut(0).di_normal();
             self.set_glyph_class(glyph_id, class_guess, false, true);
             self.buffer.output_glyph(u32::from(glyph_id));
         }
@@ -1084,7 +1102,26 @@ pub fn ligate_input(
     //   https://bugzilla.gnome.org/show_bug.cgi?id=437633
     //
 
+    let mut di = ctx.buffer.cur(0).default_ignorable;
+    for i in 1..count {
+        let Some(combined) = super::default_ignorable::union(
+            ctx.buffer,
+            di,
+            ctx.buffer.info[ctx.match_positions[i] as usize].default_ignorable,
+        ) else {
+            return;
+        };
+        di = combined;
+    }
     ctx.buffer.merge_clusters(ctx.buffer.idx, match_end);
+    if !ctx.buffer.successful
+        || !super::default_ignorable::output_room(ctx.buffer, 1, 1, 1)
+        || !super::default_ignorable::can_copy(ctx.buffer, match_end - ctx.buffer.idx)
+        || !super::default_ignorable::copy_work(ctx.buffer, count.saturating_sub(1))
+    {
+        return;
+    }
+    ctx.buffer.cur_mut(0).default_ignorable = di;
 
     let mut is_base_ligature = ctx.buffer.info[ctx.match_positions[0] as usize].is_base_glyph();
     let mut is_mark_ligature = ctx.buffer.info[ctx.match_positions[0] as usize].is_mark();

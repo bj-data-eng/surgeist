@@ -94,7 +94,7 @@ impl JoiningSource {
         let limit = count
             .checked_mul(hb_buffer_t::MAX_LEN_FACTOR)
             .map(|n| n.max(hb_buffer_t::MAX_LEN_MIN))
-            .and_then(|n| n.checked_mul(row_bytes()));
+            .and_then(|n| n.checked_mul(allowance_row_bytes()));
         let overlap = count
             .checked_mul(row_bytes() + size_of::<SourceScalar>())
             .and_then(|n| n.checked_add(source_header_bytes()));
@@ -190,6 +190,11 @@ impl JoiningSource {
     }
 }
 
+// Frozen pre-DI logical allowance; actual row storage still uses size_of.
+fn allowance_row_bytes() -> usize {
+    48
+}
+
 fn row_bytes() -> usize {
     size_of::<GlyphInfo>() + size_of::<GlyphPosition>()
 }
@@ -259,7 +264,7 @@ impl JoiningRequest {
             .len
             .checked_mul(hb_buffer_t::MAX_LEN_FACTOR)
             .map(|n| n.max(hb_buffer_t::MAX_LEN_MIN))
-            .and_then(|n| n.checked_mul(row_bytes()));
+            .and_then(|n| n.checked_mul(allowance_row_bytes()));
         let bytes = buffer
             .len
             .checked_mul(
@@ -479,15 +484,27 @@ pub(crate) fn work(buffer: &mut hb_buffer_t, count: usize) -> bool {
 }
 
 pub(crate) fn room(buffer: &mut hb_buffer_t, length: usize, extra: usize) -> bool {
-    if buffer.joining.request.is_none() {
+    if buffer.joining.request.is_none() && !buffer.default_ignorables.active {
         return true;
     }
+    let joining_limit = if buffer.joining.request.is_some() {
+        buffer.joining.allocation_limit
+    } else {
+        buffer.max_len
+    };
     let limit = buffer
         .max_len
-        .min(buffer.joining.allocation_limit)
-        .checked_mul(row_bytes());
+        .min(joining_limit)
+        .checked_mul(allowance_row_bytes());
     let bytes = storage_bytes(buffer, length)
         .and_then(|n| n.checked_add(buffer.joining.bytes))
+        .and_then(|n| {
+            buffer
+                .default_ignorables
+                .bytes()
+                .and_then(|d| n.checked_add(d))
+        })
+        .and_then(|n| n.checked_add(buffer.default_ignorables_temporary))
         .and_then(|n| n.checked_add(extra));
     if !matches!((limit, bytes), (Some(limit), Some(bytes)) if bytes <= limit) {
         buffer.refuse(ShapingRefusal::GrowthLimit);

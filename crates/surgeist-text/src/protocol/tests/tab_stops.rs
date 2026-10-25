@@ -1554,33 +1554,17 @@ fn mixed_isolate_order_keeps_tab_at_its_post_l1_l2_slot() {
             .advance(),
         80.0
     );
-    // The maintained provider zeroes default-ignorable positions, then maps
-    // their glyphs to nominal SPACE. Ahem SPACE is glyph3 with proven empty
-    // outline; zero advance alone would not prove that paint fact.
+    // Isolate controls retain bidi effects and exact source, but their residual
+    // provider slots publish no paint glyph. The tab still uses the post-L1/L2 pen.
     let glyphs: Vec<_> = line
         .run_views()
         .flat_map(|run| {
-            let instance = run.effective_instance().unwrap();
             run.glyphs()
-                .map(|glyph| {
-                    if glyph.id() == 3 {
-                        assert_eq!(
-                            instance
-                                .glyph_outline(3, run.face().catalogue_identity())
-                                .unwrap()
-                                .bounds(),
-                            None
-                        );
-                    }
-                    (glyph.id(), glyph.advance())
-                })
+                .map(|glyph| (glyph.id(), glyph.advance()))
                 .collect::<Vec<_>>()
         })
         .collect();
-    assert_eq!(
-        glyphs,
-        [(35, 20.0), (3, 0.0), (36, 20.0), (3, 0.0), (37, 20.0)]
-    );
+    assert_eq!(glyphs, [(35, 20.0), (36, 20.0), (37, 20.0)]);
     assert_eq!(
         p.analyzed_source().source().text().code_units(),
         [65, 8295, 66, 8297, 9, 67]

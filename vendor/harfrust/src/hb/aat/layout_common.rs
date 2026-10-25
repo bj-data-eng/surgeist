@@ -102,52 +102,82 @@ impl<'a> AatApplyContext<'a> {
     }
 
     pub fn output_glyph(&mut self, glyph: u32) {
+        if !crate::hb::default_ignorable::output_room(self.buffer, 0, 1, 0) {
+            return;
+        }
+        let carrier = if self.buffer.idx < self.buffer.len {
+            self.buffer.cur(0).default_ignorable
+        } else {
+            0
+        };
+        let before = self.buffer.out_len;
+        self.buffer.output_glyph(glyph);
+        if self.buffer.out_len == before {
+            return;
+        }
         if self.using_buffer_glyph_set {
             self.buffer.glyph_set.insert(glyph);
         }
+        let out = self.buffer.prev_mut();
+        out.default_ignorable = carrier;
         if glyph == DELETED_GLYPH {
+            out.default_ignorable = 0;
+            out.set_aat_deleted();
             self.buffer.scratch_flags |= HB_BUFFER_SCRATCH_FLAG_AAT_HAS_DELETED;
-            self.buffer.cur_mut(0).set_aat_deleted();
         } else {
+            out.di_normal();
             if self.has_glyph_classes {
-                self.buffer
-                    .cur_mut(0)
-                    .set_glyph_props(self.face.ot_tables.glyph_props(glyph.into()));
+                out.set_glyph_props(self.face.ot_tables.glyph_props(glyph.into()));
             }
         }
-        self.buffer.output_glyph(glyph);
     }
 
     pub fn replace_glyph(&mut self, glyph: u32) {
-        if glyph == DELETED_GLYPH {
-            self.buffer.scratch_flags |= HB_BUFFER_SCRATCH_FLAG_AAT_HAS_DELETED;
-            self.buffer.cur_mut(0).set_aat_deleted();
+        if !crate::hb::default_ignorable::output_room(self.buffer, 1, 1, 1) {
+            return;
         }
-
+        let before = self.buffer.out_len;
+        self.buffer.replace_glyph(glyph);
+        if self.buffer.out_len == before {
+            return;
+        }
         if self.using_buffer_glyph_set {
             self.buffer.glyph_set.insert(glyph);
         }
-        if self.has_glyph_classes {
-            self.buffer
-                .cur_mut(0)
-                .set_glyph_props(self.face.ot_tables.glyph_props(glyph.into()));
+        let out = self.buffer.prev_mut();
+        if glyph == DELETED_GLYPH {
+            out.default_ignorable = 0;
+            out.set_aat_deleted();
+            self.buffer.scratch_flags |= HB_BUFFER_SCRATCH_FLAG_AAT_HAS_DELETED;
+        } else {
+            out.di_normal();
+            if self.has_glyph_classes {
+                out.set_glyph_props(self.face.ot_tables.glyph_props(glyph.into()));
+            }
         }
-        self.buffer.replace_glyph(glyph);
     }
 
     pub fn delete_glyph(&mut self) {
-        self.buffer.scratch_flags |= HB_BUFFER_SCRATCH_FLAG_AAT_HAS_DELETED;
-        self.buffer.cur_mut(0).set_aat_deleted();
-        self.buffer.replace_glyph(DELETED_GLYPH);
+        self.replace_glyph(DELETED_GLYPH);
     }
 
     pub fn replace_glyph_inplace(&mut self, i: usize, glyph: u32) {
+        if !crate::hb::default_ignorable::copy_work(self.buffer, 1) {
+            return;
+        }
         self.buffer.info[i].glyph_id = glyph;
         if self.using_buffer_glyph_set {
             self.buffer.glyph_set.insert(glyph);
         }
-        if self.has_glyph_classes {
-            self.buffer.info[i].set_glyph_props(self.face.ot_tables.glyph_props(glyph.into()));
+        if glyph == DELETED_GLYPH {
+            self.buffer.info[i].default_ignorable = 0;
+            self.buffer.info[i].set_aat_deleted();
+            self.buffer.scratch_flags |= HB_BUFFER_SCRATCH_FLAG_AAT_HAS_DELETED;
+        } else {
+            self.buffer.info[i].di_normal();
+            if self.has_glyph_classes {
+                self.buffer.info[i].set_glyph_props(self.face.ot_tables.glyph_props(glyph.into()));
+            }
         }
     }
 }

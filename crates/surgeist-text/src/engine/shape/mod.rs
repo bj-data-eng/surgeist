@@ -1522,6 +1522,12 @@ fn extract_run(
     coords: &[harfrust::NormalizedCoord],
     output: &mut ShapedData,
 ) -> Result<()> {
+    // Receipt admission is part of the same invocation fence, including empty
+    // glyph output. Each buffer.add above emits exactly one scalar per atom,
+    // so these input ordinals map directly to this request's local atom range.
+    let receipt = glyph_buffer
+        .default_ignorable_receipt()
+        .map_err(super::shaping_refused)?;
     let input = request.input;
     let (run, scale, leading) = resolved_run(request, coords)?;
     let font_ref = skrifa::FontRef::from_index(request.font.bytes(), request.font.index())
@@ -1547,6 +1553,17 @@ fn extract_run(
         .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "font lacks valid glyph bounds"))?
         .num_glyphs();
     let count = request.atoms.len();
+    let zero_input = |local: usize| {
+        let ordinal = u32::try_from(local).expect("invocation scalar indices were admitted");
+        receipt
+            .residual_input_positions()
+            .binary_search(&ordinal)
+            .is_ok()
+            || receipt
+                .deleted_input_positions()
+                .binary_search(&ordinal)
+                .is_ok()
+    };
     let mut groups = BTreeMap::new();
     let mut next = 0;
     while next < infos.len() {
@@ -1580,10 +1597,22 @@ fn extract_run(
         let first_glyph = output.glyphs.len();
         let mut advance = 0.0_f64;
         let provider_glyphs = groups.get(&start).cloned().unwrap_or(0..0);
-        for (info, position) in infos[provider_glyphs.clone()]
-            .iter()
-            .zip(&positions[provider_glyphs])
-        {
+        for glyph_index in provider_glyphs {
+            let ordinal = u32::try_from(glyph_index).map_err(|_| {
+                Error::new(
+                    ErrorCode::LayoutFailed,
+                    "provider glyph index exceeds receipt range",
+                )
+            })?;
+            if receipt
+                .residual_glyph_positions()
+                .binary_search(&ordinal)
+                .is_ok()
+            {
+                continue;
+            }
+            let info = &infos[glyph_index];
+            let position = &positions[glyph_index];
             if info.glyph_id >= u32::from(max_glyph) {
                 return Err(Error::new(
                     ErrorCode::LayoutFailed,
@@ -1607,26 +1636,43 @@ fn extract_run(
         }
         let glyphs = first_glyph..output.glyphs.len();
         let components = end - start;
-        let component_advance = advance / components as f64;
+        let eligible_components = (start..end).filter(|local| !zero_input(*local)).count();
+        let last_eligible = (start..end).rfind(|local| !zero_input(*local));
+        if eligible_components == 0 && advance != 0.0 {
+            return Err(Error::new(
+                ErrorCode::LayoutFailed,
+                "provider normal advance has no eligible original input",
+            ));
+        }
+        let component_advance = if eligible_components == 0 {
+            0.0
+        } else {
+            advance / eligible_components as f64
+        };
         let mut distributed_base = 0.0;
         for atom in atom_start..atom_end {
             let original = &input.projection.atoms[atom];
             let (info, style_index) = input.analysis.infos[atom];
             let whitespace = whitespace(original.code_point);
-            let base_advance = if atom + 1 == atom_end {
+            let local = atom - request.atoms.start;
+            let excluded = zero_input(local);
+            let base_advance = if excluded {
+                0.0
+            } else if Some(local) == last_eligible {
                 advance - distributed_base
             } else {
                 component_advance
             };
             distributed_base += base_advance;
             let style = &input.styles[style_index].style;
-            let with_letter_spacing =
-                logical_add("letter spacing", base_advance, style.letter_spacing)?;
-            let cluster_advance = if whitespace.is_space_or_nbsp() {
-                logical_add("word spacing", with_letter_spacing, style.word_spacing)?
+            let letter_spacing = if excluded { 0.0 } else { style.letter_spacing };
+            let word_spacing = if !excluded && whitespace.is_space_or_nbsp() {
+                style.word_spacing
             } else {
-                with_letter_spacing
+                0.0
             };
+            let with_letter_spacing = logical_add("letter spacing", base_advance, letter_spacing)?;
+            let cluster_advance = logical_add("word spacing", with_letter_spacing, word_spacing)?;
             output.clusters.push(PreparedCluster {
                 line_height: resolved_line_height(
                     style,
@@ -1635,15 +1681,7 @@ fn extract_run(
                     leading,
                 )?,
                 shaped_advance: base_advance,
-                logical_adjustments: [
-                    style.letter_spacing,
-                    if whitespace.is_space_or_nbsp() {
-                        style.word_spacing
-                    } else {
-                        0.0
-                    },
-                    0.0,
-                ],
+                logical_adjustments: [letter_spacing, word_spacing, 0.0],
                 source: original.source,
                 atoms: atom..atom + 1,
                 provider_group: atom_start..atom_end,

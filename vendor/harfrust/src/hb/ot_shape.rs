@@ -342,6 +342,14 @@ pub fn shape_internal(ctx: &mut hb_ot_shape_context_t) {
     ensure_native_direction(ctx.buffer);
 
     if let Some(func) = ctx.plan.shaper.preprocess_text {
+        // At most one synthetic repair output per original scalar. Admit its
+        // carrier work before generated vowel-constraint helpers run; ordinary
+        // moves and real normalization outputs retain their own work charges.
+        if !default_ignorable::copy_work(ctx.buffer, ctx.buffer.len) {
+            ctx.buffer.allocated_var_bits = initial_vars;
+            ctx.buffer.direction = ctx.target_direction;
+            return;
+        }
         func(ctx.plan, ctx.face, ctx.buffer);
     }
 
@@ -871,7 +879,7 @@ fn hb_synthesize_glyph_classes(buffer: &mut hb_buffer_t) {
 }
 
 fn zero_width_default_ignorables(buffer: &mut hb_buffer_t) {
-    if buffer.scratch_flags & HB_BUFFER_SCRATCH_FLAG_HAS_DEFAULT_IGNORABLES != 0
+    if buffer.default_ignorables.has_candidates()
         && !buffer
             .flags
             .contains(BufferFlags::PRESERVE_DEFAULT_IGNORABLES)
@@ -880,8 +888,11 @@ fn zero_width_default_ignorables(buffer: &mut hb_buffer_t) {
             .contains(BufferFlags::REMOVE_DEFAULT_IGNORABLES)
     {
         let len = buffer.len;
+        if !default_ignorable::copy_work(buffer, len) {
+            return;
+        }
         for (info, pos) in buffer.info[..len].iter().zip(&mut buffer.pos[..len]) {
-            if info.is_default_ignorable() {
+            if info.di_residual() {
                 pos.x_advance = 0;
                 pos.y_advance = 0;
                 if buffer.direction.is_horizontal() {
@@ -937,7 +948,7 @@ fn zero_mark_widths_by_gdef(buffer: &mut hb_buffer_t, adjust_offsets: bool) {
 }
 
 fn hide_default_ignorables(buffer: &mut hb_buffer_t, face: &hb_font_t) {
-    if buffer.scratch_flags & HB_BUFFER_SCRATCH_FLAG_HAS_DEFAULT_IGNORABLES != 0
+    if buffer.default_ignorables.has_candidates()
         && !buffer
             .flags
             .contains(BufferFlags::PRESERVE_DEFAULT_IGNORABLES)
@@ -951,8 +962,11 @@ fn hide_default_ignorables(buffer: &mut hb_buffer_t, face: &hb_font_t) {
                 .or_else(|| face.get_nominal_glyph(u32::from(' ')))
             {
                 let len = buffer.len;
+                if !default_ignorable::copy_work(buffer, len) {
+                    return;
+                }
                 for info in &mut buffer.info[..len] {
-                    if info.is_default_ignorable() {
+                    if info.di_residual() {
                         info.glyph_id = invisible.to_u32();
                     }
                 }
@@ -960,7 +974,12 @@ fn hide_default_ignorables(buffer: &mut hb_buffer_t, face: &hb_font_t) {
             }
         }
 
-        buffer.delete_glyphs_inplace(GlyphInfo::is_default_ignorable);
+        if buffer
+            .flags
+            .contains(BufferFlags::REMOVE_DEFAULT_IGNORABLES)
+        {
+            buffer.delete_glyphs_inplace(GlyphInfo::di_residual);
+        }
     }
 }
 

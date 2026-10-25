@@ -239,9 +239,8 @@ fn latin_replacement(source_shy: bool, origin: Option<usize>) {
             .map(|i| (Range::new(i, i + 1), 58, 20.0))
             .collect();
         let mut expected = prefix.clone();
-        if source_shy {
-            expected.push((Range::new(a + 1, a + 2), 3, 0.0));
-        }
+        // Unselected SHY retains source custody and joining context without a
+        // residual SPACE paint row; a selected visible replacement is separate.
         expected.extend_from_slice(&suffix);
         assert_eq!(glyphs(&unchanged, &fixture), expected);
         assert_eq!(
@@ -353,9 +352,7 @@ fn arabic_replacement(source_shy: bool) {
             suffix.push((Range::new(anchor + 1, anchor + 2), 36, 20.0));
         }
         let mut expected = prefix.clone();
-        if source_shy {
-            expected.push((Range::new(start + 2, start + 3), 3, 0.0));
-        }
+        // Original SHY keeps joining effects, but publishes no residual glyph.
         expected.extend_from_slice(&suffix);
         assert_eq!(glyphs(&unchanged, &fixture), expected);
         assert_eq!(

@@ -378,8 +378,8 @@ fn dag_relocation_refuses_a_peak_that_exceeds_allowance_even_when_retained_capac
     let current = storage_bytes(&value.0, value.0.len).unwrap() + value.0.joining.bytes;
     let retained = current + old * size_of::<Lineage>();
     let peak = current + old * 2 * size_of::<Lineage>();
-    value.0.max_len = retained.div_ceil(row_bytes());
-    let allowance = value.0.max_len * row_bytes();
+    value.0.max_len = retained.div_ceil(allowance_row_bytes());
+    let allowance = value.0.max_len * allowance_row_bytes();
     assert!(retained <= allowance && allowance < peak);
     assert_eq!(union(&mut value.0, 1, 2), 0);
     assert_eq!(
@@ -405,8 +405,8 @@ fn normalization_row_relocation_accounts_binding_and_old_plus_new_capacity() {
     let retained = storage_bytes(&value.0, 8).unwrap() + value.0.joining.bytes;
     let overlap =
         (info_capacity * size_of::<GlyphInfo>()).max(pos_capacity * size_of::<GlyphPosition>());
-    value.0.max_len = retained.div_ceil(row_bytes());
-    let allowance = value.0.max_len * row_bytes();
+    value.0.max_len = retained.div_ceil(allowance_row_bytes());
+    let allowance = value.0.max_len * allowance_row_bytes();
     assert!(retained <= allowance && allowance < retained + overlap);
     assert!(!value.0.ensure(8));
     assert_eq!(
@@ -439,7 +439,7 @@ fn public_bound_reserve_uses_binding_allowance_before_shape_entry() {
 fn binding_admission_includes_borrowed_correspondence_overlap() {
     let original = source("AAAA", script::LATIN);
     let mut value = input("AAAA", script::LATIN);
-    let allowance = hb_buffer_t::MAX_LEN_MIN * row_bytes();
+    let allowance = hb_buffer_t::MAX_LEN_MIN * allowance_row_bytes();
     let owned = retained_bytes(&original, &original).unwrap() + 4 * size_of::<InputMapping>();
     let capacity = (allowance - owned) / row_bytes();
     assert!(value.reserve(capacity));

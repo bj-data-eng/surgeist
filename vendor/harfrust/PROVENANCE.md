@@ -140,9 +140,10 @@ completion reporting. Checked aggregate allowances cover the retained domains,
 input mappings, lineage, proof temporaries and their overlapping allocations and
 work. Borrowed correspondence spans contribute their logical sizes; spare
 caller-owned capacity and allocator overhead are outside this provider-owned
-storage guarantee. The independent lineage field grows both `GlyphInfo` and `GlyphPosition`
-from 20 to 24 bytes, including ordinary buffers; their equal layouts preserve
-the existing safe buffer casts.
+storage guarantee. At introduction, the independent lineage field grew both
+`GlyphInfo` and `GlyphPosition` from 20 to 24 bytes, including ordinary buffers.
+The DI extension below adds another independent word; their equal layouts
+preserve the existing safe buffer casts.
 
 ## Closed ordinary-symbol presentation
 
@@ -169,9 +170,9 @@ The high bit of the existing independent scalar-lineage word carries the
 presentation through real scalar normalization; low 31 bits carry lineage-node
 identity. Accessors mask and preserve the independent fields. Node issuance
 refuses `GrowthLimit` before a lineage ID exceeds its representable low-bit
-range. Row sizes remain 24 bytes for both GlyphInfo and GlyphPosition, preserving
-the existing interchangeable safe buffer layouts and row-based work/storage
-allowances. Cc does not decompose or compose into another scalar under the closed
+range. This Cc presentation adds no row storage beyond the joining-era 24-byte
+rows; the independent DI extension below documents the current 28-byte rows
+and unchanged allowance. Cc does not decompose or compose into another scalar under the closed
 profile; ordinary neighboring Unicode normalization and its lineage proof remain
 active. The normalized correspondence proof checks presentation as well as
 joining class and code point.
@@ -192,3 +193,80 @@ scans with neighboring BEH are qualified in both directions. No separate
 external-context presentation representation is needed for this closed inventory.
 Existing completion and joining tests remain in force. No generated Unicode or
 machine table, dependency version, downloaded source or font fixture was changed.
+
+
+## Original default-ignorable custody
+
+The maintained wiring is in `src/lib.rs`, `src/hb/{buffer,face,mod,
+original_joining,ot_layout_gsubgpos,ot_shape,ot_shape_normalize,
+ot_shaper_arabic,ot_shaper_hangul,ot_shaper_syllabic,ot_shaper_thai}.rs`,
+`src/hb/ot/gsub/multiple.rs`, and
+`src/hb/aat/{layout_common,layout_morx_table}.rs`. The existing joining budget
+tests distinguish the frozen allowance from the actual enlarged rows.
+
+The repository-authored `src/hb/default_ignorable.rs` owns a narrow receipt for
+original Unicode-17 Default_Ignorable_Code_Point inputs. Its immutable range
+fact is independent from the retained lookup-skipping predicate: the full fact
+includes U180F, the four Hangul fillers and U1BCA0..3 without removing their
+native matching opportunities. The property is the retained Unicode-17
+DerivedCoreProperties repertoire (4174 members); no Unicode edition, generated
+Unicode data, dependency or archive source was upgraded.
+
+`GlyphBuffer::default_ignorable_receipt()` admits three borrowed immutable
+slices only for a complete result: residual and deleted original body scalar
+ordinals, and final residual glyph-array positions. Context, UTF16, caller
+clusters and joining-domain ordinals do not identify these inputs. The owner
+snapshots original DI candidates before shaping and follows their sparse sets
+through real normalization, UVS, GSUB, AAT insertion/ligatures/deletion and native
+postprocessing. A genuine nondeleted replacement, consumed sequence or qualified
+nonzero four-filler resource establishes Normal output. Nominal DI coverage,
+cluster merging, GDEF class, private substituted bits, synthetic repair, ink and
+advance alone do not. Sets remain until finalization, so later deletion of an
+earlier replacement is reflected and partial surviving descendants remain Normal.
+
+Residual output suppression is separate from terminal input classification:
+AAT insertion can give one DI input a Normal inserted descendant while its
+unchanged unresolved anchor remains a residual glyph slot. Default presentation
+retains zero-advance residual slots, replacing their glyph with the ordinary
+invisible/SPACE placeholder when available; consumers must omit the receipt's
+residual slots from paint. REMOVE removes those carriers and PRESERVE keeps the
+selected diagnostic glyph behavior; neither flag establishes native support.
+The consuming Text adapter owns zero independent allocation and paint admission.
+
+The independent DI carrier word increases each interchangeable GlyphInfo and
+GlyphPosition row from 24 to 28 bytes. Their POD layouts remain equal and the
+joining lineage word's Cc high bit remains independent. Ordinary buffers also
+carry this row overhead. Actual 56-byte row-pair storage, DI sets/members,
+terminal slices, joining retained data, temporaries and overlapping old/new
+capacities share the unchanged logical allowance of 48 bytes per permitted row
+pair and the existing operation budget. No limit is enlarged. Checked logical
+failures latch GrowthLimit or WorkLimit and refuse receipt admission; physical
+allocator failure keeps the existing provider semantics. Finalization precedes
+leave's budget reset and covers empty/all-deleted output; both clear paths
+remove identity and receipt state.
+
+Carrier copies and fallback/final scans charge the shared work allowance.
+Owning expansion operations preflight their output; native input traversal
+still makes bounded progress after a latched refusal, including generated
+Unicode repair loops. Handwritten preparation loops stop on failure, and the
+Thai two-output expansion admits both outputs before indexing them. These
+refusal paths neither publish an admitted receipt nor alter generated sources.
+
+Buffer-mode switches debit the exact existing output prefix copied into the
+alternate row buffer. Forward and rewound moves debit their exact copied
+ranges; a rewind needing input-tail relocation admits the tail and rewind
+together. Allocation-free cursor/work preflight covers complete known output,
+insertion and ligature-store sequences before changing carrier/output state,
+including morx marked-anchor rewind and return. Existing native insertion and
+input-tail charges remain single debits, with no separate allowance. Hangul
+decomposition stops immediately after a refused replacement or following input
+copy, before indexing its expected Jamo output rows. Complete-font controls and
+existing-capacity resource tests qualify these paths and GDEF-class-only DI
+inputs independently of native substitution support.
+
+The repository-owned `default_ignorable_tests.rs` and
+`default_ignorable_fixture.rs` supply real complete-font/table behavioral
+qualification, using the retained licensed Ahem source through the existing
+relative include. They author bounded cmap/hmtx/GSUB/morx tables in safe Rust;
+private action proxies do not replace the complete Shaper witnesses. No new
+font copy or package is introduced.

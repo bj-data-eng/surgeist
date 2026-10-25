@@ -374,7 +374,7 @@ fn preprocess_text(plan: &hb_ot_shape_plan_t, face: &hb_font_t, buffer: &mut hb_
 
     buffer.clear_output();
     buffer.idx = 0;
-    while buffer.idx < buffer.len {
+    while buffer.idx < buffer.len && buffer.successful {
         let u = buffer.cur(0).glyph_id;
         if !is_sara_am(u) {
             buffer.next_glyph();
@@ -382,6 +382,9 @@ fn preprocess_text(plan: &hb_ot_shape_plan_t, face: &hb_font_t, buffer: &mut hb_
         }
 
         // Is SARA AM. Decompose and reorder.
+        if !super::default_ignorable::series_room(buffer, 2, 1) {
+            break;
+        }
         buffer.output_glyph(nikhahit_from_sara_am(u));
         {
             let out_idx = buffer.out_len - 1;

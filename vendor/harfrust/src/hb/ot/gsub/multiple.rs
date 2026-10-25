@@ -27,6 +27,13 @@ impl Apply for MultipleSubstFormat1<'_> {
             1 => ctx.replace_glyph(substs.first()?.get().into()),
 
             _ => {
+                if !crate::hb::default_ignorable::series_room(
+                    ctx.buffer,
+                    substs.len(),
+                    substs.len().saturating_add(1),
+                ) {
+                    return None;
+                }
                 let class = if ctx.buffer.cur(0).is_ligature() {
                     GlyphPropsFlags::BASE_GLYPH
                 } else {

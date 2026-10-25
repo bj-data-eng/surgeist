@@ -17,7 +17,10 @@ fn checksum(bytes: &[u8]) -> u32 {
 fn blank_control_ahem() -> Vec<u8> {
     // Only the cmap changes: real licensed glyph3 is empty SPACE, while
     // glyph58 is the unchanged positive-area X. Both Cc map to glyph3.
-    let entries = [(0_u32, 3_u32), (1, 3), (32, 3), (88, 58)];
+    cmap_ahem(&[(0, 3), (1, 3), (32, 3), (88, 58)])
+}
+
+fn cmap_ahem(entries: &[(u32, u32)]) -> Vec<u8> {
     let mut cmap = Vec::new();
     for word in [0_u16, 1, 3, 10] {
         cmap.extend(word.to_be_bytes());
@@ -28,7 +31,7 @@ fn blank_control_ahem() -> Vec<u8> {
     cmap.extend((16 + entries.len() as u32 * 12).to_be_bytes());
     cmap.extend(0_u32.to_be_bytes());
     cmap.extend((entries.len() as u32).to_be_bytes());
-    for (cp, gid) in entries {
+    for &(cp, gid) in entries {
         for word in [cp, cp, gid] {
             cmap.extend(word.to_be_bytes());
         }
@@ -53,6 +56,179 @@ fn blank_control_ahem() -> Vec<u8> {
     bytes[head + 8..head + 12].copy_from_slice(&adjustment.to_be_bytes());
     assert_eq!(checksum(&bytes), 0xb1b0_afba);
     bytes
+}
+
+#[test]
+fn retained_native_default_ignorables_paint_no_pixels_with_absent_or_visible_nominal_glyphs() {
+    let mut cases = Vec::new();
+    for (label, entries) in [
+        ("absent", vec![(32, 58), (88, 58)]),
+        ("visible nominal", vec![(32, 58), (88, 58), (0x2065, 58)]),
+    ] {
+        let bytes = cmap_ahem(&entries);
+        let font = skrifa::FontRef::new(&bytes).unwrap();
+        assert_eq!(font.charmap().map(' ').unwrap().to_u32(), 58);
+        assert_eq!(font.charmap().map('X').unwrap().to_u32(), 58);
+        assert_eq!(
+            font.charmap().map(0x2065_u32).map(|gid| gid.to_u32()),
+            if label == "absent" { None } else { Some(58) }
+        );
+        let mut system = system(bytes.clone());
+        let registered = system.registered_font_faces().next().unwrap().to_owned();
+        let instance = registered.unsynthesized_instance(FONT_SIZE, &[]).unwrap();
+        let ink = instance
+            .glyph_outline(58, registered.catalogue_identity())
+            .unwrap();
+        let bounds = ink.bounds().expect("real X outline must have ink");
+        assert!(bounds.size.width > 0.0 && bounds.size.height > 0.0);
+        assert_eq!(instance.font_size(), FONT_SIZE);
+        assert_eq!(instance.face().bytes(), bytes);
+
+        let layouts: Vec<_> = ["X", " ", "\u{2065}"]
+            .into_iter()
+            .map(|value| (value, selected_placed(&mut system, value)))
+            .collect();
+        let historical = layouts[0].1.run_views().next().unwrap().face().to_owned();
+        let publication = historical.catalogue_identity().clone();
+        system.refresh_fonts().unwrap();
+        let refreshed = selected_placed(&mut system, "X");
+        let refreshed_run = refreshed.run_views().next().unwrap();
+        let refreshed_face = refreshed_run.face();
+        assert!(historical.face().is_same_face(&refreshed_face));
+        assert_ne!(publication, *refreshed_face.catalogue_identity());
+        drop(refreshed);
+        drop(historical);
+        drop(registered);
+        drop(system);
+        eprintln!(
+            "DI paint font {label}: {} bytes, checksum {:08x}, SPACE/X glyph58, U+2065 {:?}",
+            bytes.len(),
+            checksum(&bytes),
+            font.charmap().map(0x2065_u32).map(|gid| gid.to_u32())
+        );
+        cases.push((label, bytes, publication, layouts));
+    }
+
+    let mut renderer = pollster::block_on(Renderer::new(Options::default()))
+        .expect("DI paint qualification requires a real GPU adapter");
+    assert!(renderer.default_wgpu_device_queue().is_some());
+    let mut surface = pollster::block_on(renderer.create_headless(Size::new(32.0, 32.0), 1.0))
+        .expect("DI paint qualification requires a real headless surface");
+    for (label, bytes, publication, layouts) in cases {
+        let mut positive_pixels = None;
+        for (value, layout) in layouts {
+            let expected_units: Vec<_> = value.encode_utf16().collect();
+            assert_eq!(layout.source().text().code_units(), expected_units);
+            assert_eq!(
+                layout
+                    .analyzed_source()
+                    .processed_source()
+                    .processed_text()
+                    .code_units(),
+                expected_units
+            );
+            assert_eq!(layout.lines()[0].range(), text::Range::new(0, 1));
+            let positions: Vec<_> = layout.positions().collect();
+            let before = positions
+                .iter()
+                .find(|p| p.source_cursor() == text::Cursor::new(0, text::Affinity::After))
+                .unwrap();
+            let after = positions
+                .iter()
+                .find(|p| p.source_cursor() == text::Cursor::new(1, text::Affinity::Before))
+                .unwrap();
+            let selection = layout.position_selection(before, after).unwrap();
+            assert_eq!(selection.source_text().code_units(), expected_units);
+            assert_eq!(selection.plaintext().code_units(), expected_units);
+
+            let prepared = prepare_text_layout(&layout, Transform::identity(), limits()).unwrap();
+            assert!(std::ptr::eq(prepared.layout(), &layout));
+            let glyphs: Vec<_> = layout
+                .run_views()
+                .flat_map(|run| run.glyphs().collect::<Vec<_>>())
+                .collect();
+            if value == "\u{2065}" {
+                assert!(glyphs.is_empty(), "unsupported DI publishes no glyphs");
+                assert_eq!(layout.metrics().full_width(), 0.0);
+                assert_eq!(
+                    layout
+                        .cursor(before.source_cursor())
+                        .unwrap()
+                        .rect()
+                        .origin
+                        .x,
+                    layout
+                        .cursor(after.source_cursor())
+                        .unwrap()
+                        .rect()
+                        .origin
+                        .x
+                );
+                assert!(
+                    prepared.scene().commands.is_empty(),
+                    "actual DI Text scene must be empty"
+                );
+            } else {
+                assert_eq!(glyphs.len(), 1);
+                assert_eq!(glyphs[0].id(), 58);
+                assert_eq!(glyphs[0].advance(), FONT_SIZE);
+                assert_eq!(layout.metrics().full_width(), f64::from(FONT_SIZE));
+                assert_eq!(prepared.scene().commands.len(), 1);
+                let (run, transform) = outline(&prepared.scene().commands[0]);
+                assert_eq!(run.font().bytes(), bytes);
+                assert_eq!(run.glyphs()[0].id(), 58);
+                assert_eq!(run.instance().size(), FONT_SIZE);
+                assert!(run.bounds().ink_rect().is_some());
+                assert!(run.path_elements().count() > 0);
+                assert_eq!(transform, Transform::translation(2.0, 26.0).unwrap());
+                let source_run = layout.run_views().next().unwrap();
+                assert_eq!(source_run.face().catalogue_identity(), &publication);
+                let instance = source_run.effective_instance().unwrap();
+                assert_eq!(instance.face().bytes(), bytes);
+                let outline = instance
+                    .glyph_outline(glyphs[0].id(), source_run.face().catalogue_identity())
+                    .unwrap();
+                let bounds = outline
+                    .bounds()
+                    .expect("literal SPACE/X uses the real visible outline");
+                assert!(bounds.size.width > 0.0 && bounds.size.height > 0.0);
+            }
+            let stats = pollster::block_on(renderer.render(
+                &mut surface,
+                prepared.scene(),
+                Parameters::default(),
+            ))
+            .expect("actual retained DI/control scene must use the production GPU path");
+            assert_eq!(stats.route, Some(RenderRoute::DirectVello));
+            let image = pollster::block_on(renderer.read_headless(&surface))
+                .expect("completed DI/control frame must support explicit readback");
+            assert_eq!((image.size().width(), image.size().height()), (32, 32));
+            let painted = image
+                .rgba()
+                .chunks_exact(4)
+                .filter(|rgba| rgba[3] > 0)
+                .count();
+            if value == "\u{2065}" {
+                assert_eq!(painted, 0, "{label} unsupported DI must paint no pixels");
+            } else {
+                assert!(
+                    painted > 0,
+                    "{label} literal {value:?} must paint real outline pixels"
+                );
+                if let Some(expected) = &positive_pixels {
+                    assert_eq!(
+                        image.rgba(),
+                        expected,
+                        "same actual SPACE/X glyph must paint identically"
+                    );
+                } else {
+                    positive_pixels = Some(image.rgba().to_vec());
+                }
+            }
+            eprintln!("DI paint {label}/{value:?}: {painted} nontransparent pixels");
+        }
+    }
+    assert!(renderer.default_device_has_no_terminal_signal_for_test());
 }
 
 fn selected_placed(system: &mut text::System, value: &str) -> text::Layout {

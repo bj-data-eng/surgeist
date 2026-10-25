@@ -619,7 +619,8 @@ fn intrinsic_first_refinement_is_not_filtered_by_a_later_fitting_none() {
         style.locale = Some("en-US".into());
         style.white_space = WhiteSpace::Collapse;
         style.letter_spacing = -10.0;
-        style.hyphenate_character = HyphenateCharacter::String(Text::from("A\u{200b}"));
+        style.word_spacing = -10.0;
+        style.hyphenate_character = HyphenateCharacter::String(Text::from("A\u{a0}"));
         let p = PreparedParagraph::plain(1, Source::new("associate"), style);
         assert_eq!(
             p.prepared.analyzed_source().source().text().code_units(),
@@ -646,7 +647,7 @@ fn intrinsic_first_refinement_is_not_filtered_by_a_later_fitting_none() {
         let offer = cut.opportunity().unwrap();
         let view = offer.view();
         let alternative = view.alternatives().next().unwrap().handle();
-        assert_eq!(alternative.view().text().code_units(), [65, 0x200b]);
+        assert_eq!(alternative.view().text().code_units(), [65, 0xa0]);
         let whole = crate::test_support::text_fragment::fragment_for(&p.prepared).finalized_line();
         let measure = whole.measurements().min_content_contribution();
         assert_eq!(
@@ -676,9 +677,21 @@ fn intrinsic_first_refinement_is_not_filtered_by_a_later_fitting_none() {
             .finalize(surgeist_text::SpacingAllocations::None)
             .unwrap();
         let measure = first.measurements().min_content_contribution();
-        // Every original/Ahem A advance10 is cancelled by its own spacing−10.
-        // The retained U+200B indication row adds signed spacing−10, with no
-        // positive glyph width: the genuine first refinement occupies[−10,0].
+        // Letter spacing cancels every actual Ahem advance10. The ordinary
+        // retained NBSP additionally receives word spacing−10; it is neither
+        // a residual DI nor a collapsible trailing SPACE. The genuine first
+        // refinement therefore occupies[−10,0], while the source word stays0.
+        let glyphs: Vec<_> = first
+            .run_views()
+            .flat_map(|run| {
+                run.glyphs()
+                    .map(|glyph| (glyph.id(), glyph.advance()))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        assert!(glyphs.iter().all(|(_, advance)| *advance == 10.0));
+        // Retained Ahem's cmap maps U+00A0 to153; hmtx gives1000/UPEM1000.
+        assert_eq!(glyphs.last(), Some(&(153, 10.0)));
         assert_eq!(
             (
                 measure.advance(),

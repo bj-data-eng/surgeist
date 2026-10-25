@@ -91,13 +91,23 @@ fn compose_unicode(
 fn set_glyph(info: &mut GlyphInfo, font: &hb_font_t) {
     if let Some(glyph_id) = font.get_nominal_glyph(info.glyph_id) {
         info.set_normalizer_glyph_index(u32::from(glyph_id));
+        if super::default_ignorable::filler(info.glyph_id) && glyph_id.to_u32() != 0 {
+            info.di_normal();
+        }
     }
 }
 
 fn output_char(buffer: &mut hb_buffer_t, unichar: u32, glyph: u32) {
+    if !super::default_ignorable::copy_work(buffer, 1) {
+        return;
+    }
     // This is very confusing indeed.
     buffer.cur_mut(0).set_normalizer_glyph_index(glyph);
+    let previous = buffer.out_len;
     buffer.output_glyph(unichar);
+    if buffer.out_len == previous {
+        return;
+    }
     // TODO: should be _hb_glyph_info_set_unicode_props (&buffer->prev(), buffer);
     let mut flags = buffer.scratch_flags;
     buffer.prev_mut().init_unicode_props(&mut flags);
@@ -105,6 +115,9 @@ fn output_char(buffer: &mut hb_buffer_t, unichar: u32, glyph: u32) {
 }
 
 fn next_char(buffer: &mut hb_buffer_t, glyph: u32) {
+    if super::default_ignorable::filler(buffer.cur(0).glyph_id) && glyph != 0 {
+        buffer.cur_mut(0).di_normal();
+    }
     buffer.cur_mut(0).set_normalizer_glyph_index(glyph);
     buffer.next_glyph();
 }
@@ -240,6 +253,9 @@ fn handle_variation_selector_cluster(
                     .set_normalizer_glyph_index(u32::from(glyph_id));
                 let unicode = buffer.cur(0).glyph_id;
                 buffer.replace_glyphs(2, 1, &[unicode]);
+                if buffer.successful {
+                    buffer.prev_mut().di_normal();
+                }
             } else {
                 // Just pass on the two characters separately, let GSUB do its magic.
                 set_glyph(buffer.cur_mut(0), face);
@@ -258,7 +274,10 @@ fn handle_variation_selector_cluster(
             }
 
             // Skip any further variation selectors.
-            while buffer.idx < end && buffer.cur(0).as_codepoint().is_variation_selector() {
+            while buffer.idx < end
+                && buffer.successful
+                && buffer.cur(0).as_codepoint().is_variation_selector()
+            {
                 set_glyph(buffer.cur_mut(0), face);
                 buffer.next_glyph();
             }
@@ -367,6 +386,11 @@ pub fn _hb_ot_shape_normalize(
                         Some(glyph_id) => u32::from(glyph_id),
                         None => break,
                     });
+                    if super::default_ignorable::filler(cur.glyph_id)
+                        && cur.normalizer_glyph_index() != 0
+                    {
+                        cur.di_normal();
+                    }
                     done += 1;
                 }
                 ctx.buffer.next_glyphs(done);
@@ -476,6 +500,16 @@ pub fn _hb_ot_shape_normalize(
                     || ctx.buffer.cur(0).is_ordinary_symbol();
                 if let Some(composed) = (!symbol).then(|| (ctx.compose)(&ctx, a, b)).flatten() {
                     if let Some(glyph_id) = face.get_nominal_glyph(composed) {
+                        let Some(di) = super::default_ignorable::union(
+                            ctx.buffer,
+                            ctx.buffer.out_info()[starter].default_ignorable,
+                            ctx.buffer.cur(0).default_ignorable,
+                        ) else {
+                            return;
+                        };
+                        if !super::default_ignorable::output_room(ctx.buffer, 1, 1, 1) {
+                            return;
+                        }
                         // Copy to out-ctx.buffer.
                         ctx.buffer.next_glyph();
                         if !ctx.buffer.successful {
@@ -495,6 +529,8 @@ pub fn _hb_ot_shape_normalize(
                         let mut flags = ctx.buffer.scratch_flags;
                         let info = &mut ctx.buffer.out_info_mut()[starter];
                         info.set_joining_lineage(lineage);
+                        info.default_ignorable = di;
+                        info.di_normal();
                         info.glyph_id = composed;
                         info.set_normalizer_glyph_index(u32::from(glyph_id));
                         info.init_unicode_props(&mut flags);

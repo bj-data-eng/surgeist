@@ -474,10 +474,74 @@ create a segmentation boundary or replace usable marks with missing glyphs.
 AL participates in normal line-breaking and word-breaking rules without
 introducing unconditional opportunities or an indivisible whole-word rule.
 
-Unsupported default-ignorables use a separate rendering suppression operation.
-Keep source ownership and meaningful shaping context, including joining,
-variation selectors and explicit separator semantics. A zero advance alone does
-not prove invisibility; final glyphs and paint must not expose unsupported ink.
+### Native default-ignorable fallback
+
+This selected #64 contract distinguishes genuine native shaping from fallback
+display. The pinned [Text 4 whitespace rules](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#white-space-processing)
+require unsupported Default_Ignorable characters to be ignored for rendering.
+The [Unicode rendering guidance](https://www.unicode.org/versions/Unicode17.0.0/core-spec/chapter-5/)
+and [unsupported-character FAQ](https://www.unicode.org/faq/unsup_char.html)
+distinguish normal rendering, including effects on neighbors, from invisible,
+nonadvancing fallback. They do not prescribe a provider receipt or a universal
+test of font intent. The following support boundary is native policy;
+implementation qualification remains with the open issue.
+
+Retain original characters and meaningful joining, variation, bidi, break,
+SHY and ZWSP effects through native shaping. A completed UVS, normalization
+composition or actual GSUB/AAT action is a native participation witness,
+including an identity substitution; nominal cmap coverage or GDEF glyph class
+alone is not. Preserve actual surviving joint glyphs and their metrics.
+An earlier participation witness cannot authorize an output that a later
+native action deletes.
+
+Use the selected Unicode 17 full Default_Ignorable property independently of
+the provider's lookup-skipping predicate. Unsupported residuals have no paint,
+shaped advance or independent letter/word spacing, including U+180F, U+1BCA0–3,
+reserved members and nominally visible glyphs. Zero advance alone does not prove
+invisibility, and replacing a residual with the selected font's SPACE is not a
+paint guarantee. Failed variation sequences retain their ordinary base without
+independent selector display.
+
+Exactly U+115F, U+1160, U+3164 and U+FFA0 retain the provider's recognized
+spacing-filler role when the actual selected face supplies a nonzero nominal
+glyph. This narrow resource exception does not validate arbitrary font ink or
+extend to other mapped default-ignorables. Missing, unsubstituted fillers fall
+back invisibly; genuine native filler consumption retains its actual joint
+result. Keep lookup participation independent from fallback suppression.
+
+The maintained provider tracks only original default-ignorable input ordinals
+and their actual descendants through normalization, substitution, insertion,
+ligature transfer and deletion. Ordinals count invocation-body scalars,
+excluding pre/post context; they are neither UTF-16 offsets nor caller cluster
+integers. Cluster merging does not transfer ancestry. Synthetic repair output
+does not inherit an anchor's ancestry merely through a low-level row copy.
+An actual AAT insertion inherits its selected anchor as normal output while an
+unchanged unresolved anchor remains independently residual.
+
+Classify each original candidate from final surviving descendants: Normal when
+any normal descendant survives, Residual when only unresolved descendants
+survive, and Deleted when none survive. Retain ancestry after substitution so
+later partial or total deletion is observable. Separately identify every final
+unresolved output slot; an input can have both a normal descendant and a
+residual slot. Suppress the latter without erasing the former.
+
+The provider publishes one immutable, status-gated borrowed receipt containing
+sorted, duplicate-free residual-input ordinals, deleted-input ordinals and
+residual final-glyph indices. Finalization precedes Complete and charges all
+discovery, carrier, union, deletion, relocation and receipt work/storage to the
+existing aggregate invocation limits, alongside joining and control metadata.
+No partial receipt is admitted after refusal. Empty and all-deleted output
+still cross this fence. Clear/reuse resets input identity and receipt contents;
+readback performs no allocation or shaping work.
+
+Text maps admitted input ordinals through the exact emitted presentation atoms.
+It omits only residual output slots from paint and excludes Residual/Deleted
+inputs from advance division and independent spacing. The last eligible
+component receives the exact advance remainder. A group with no eligible input
+cannot receive surviving normal advance; inconsistent provider output fails
+admission. Preserve authentic provider groups, semantic graphemes, source-only
+pieces, affinities, exact original UTF-16, copy and plaintext. A computed visible
+hyphen is classified by its actual emitted atom, not its authored SHY source.
 
 ### Native whitespace edges and hanging
 

@@ -278,15 +278,17 @@ fn finalized_prefix_provider_groups_survive_actual_resource_instance_and_plan_ca
 }
 #[test]
 fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries() {
-    // Default-ignorable glyphs have genuine zero provider advances. Paint
-    // styles split only the finalized runs; the two ZWJs remain one actual
-    // grapheme while their provider clusters are individually retained.
-    let mut source = Source::new("\u{200B}\u{200D}\u{200D}");
+    // Real eligible A/B/acute glyphs have authored zero advances. B+acute is
+    // one semantic grapheme, but distinct font sizes split the provider runs. Its
+    // two positive spacing contributions overflow only the optional unit query,
+    // while the preceding negative contribution keeps the complete line finite.
+    let mut source = Source::new("AB\u{301}");
     let mut leading = style();
     leading.letter_spacing = -f64::MAX;
     let mut joined = style();
     joined.letter_spacing = f64::MAX;
     let mut last = joined.clone();
+    last.size = 13.0;
     last.brush = Brush::color(1.0, 0.0, 0.0, 1.0);
     source.span(Range::new(0, 1), leading);
     source.span(Range::new(1, 2), joined);
@@ -296,17 +298,29 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
         font_catalogue: FontCatalogueMode::RegisteredOnly,
     })
     .unwrap();
+    let font = crate::shaping_test_fonts::mark_ahem();
+    let mut hmtx = crate::test_fonts::table(&font, *b"hmtx").to_vec();
+    for glyph in [35, 36, 100] {
+        hmtx[glyph * 4..glyph * 4 + 2].copy_from_slice(&0_u16.to_be_bytes());
+    }
     system
-        .register_fonts(crate::shaping_test_fonts::mark_ahem())
+        .register_fonts(crate::test_fonts::replace_tables(
+            &font,
+            vec![(*b"hmtx", hmtx)],
+        ))
         .unwrap();
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();
     let line = whole(&prepared);
-    assert!(
+    assert_eq!(
         line.run_views()
-            .flat_map(|r| r.glyphs().map(|g| g.advance()).collect::<Vec<_>>())
-            .all(|advance| advance == 0.0)
+            .flat_map(|r| r
+                .glyphs()
+                .map(|g| (g.id(), g.advance()))
+                .collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+        [(35, 0.0), (36, 0.0), (100, 0.0)]
     );
     assert!(
         line.inner
