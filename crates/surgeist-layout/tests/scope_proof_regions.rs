@@ -306,6 +306,7 @@ fn fixture_with_child_topology(
     let control_facts = controls.clone();
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
             envelope: text::SourceProcessingEnvelope::Complete,
@@ -784,6 +785,7 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            computed_line_boundaries: vec![],
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
             envelope: text::SourceProcessingEnvelope::Complete,

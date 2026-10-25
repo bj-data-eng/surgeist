@@ -156,6 +156,7 @@ fn capture(
         .collect();
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            computed_line_boundaries: vec![],
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
             envelope: text::SourceProcessingEnvelope::Complete,

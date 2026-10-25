@@ -161,6 +161,7 @@ fn input(text: impl Into<Text>, mode: WhiteSpace) -> ContextualSourceInput {
     let source = Source::new(text);
     let len = source.text().len();
     ContextualSourceInput {
+        computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
         envelope: SourceProcessingEnvelope::Complete,

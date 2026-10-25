@@ -3,8 +3,8 @@
 use crate::engine::{OriginalAtom, resolve::AnalyzedStyleRun};
 use crate::projection::SourceProjection;
 use crate::protocol::paragraph::{
-    ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition, ParagraphControlKind,
-    ParagraphData,
+    ParagraphBoundaryDefinition, ParagraphControlKind, ParagraphData, SemanticAnchor,
+    SemanticAnchorItem,
 };
 use crate::{InlineBoxKind, ProcessedSource, Range, Wrap, WrappingNeighbor};
 
@@ -14,7 +14,7 @@ use super::{Analysis, anchor_atom, anchor_position, is_hard_separator};
 pub(crate) enum Event {
     Text(usize),
     Deleted(Range, usize),
-    Anchor(ParagraphAnchor),
+    Anchor(SemanticAnchor),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -26,6 +26,9 @@ pub(crate) struct LogicalEvent {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Influence {
+    ComputedLineBoundary {
+        participant: usize,
+    },
     Text {
         participant: usize,
         atom: usize,
@@ -45,7 +48,8 @@ impl Influence {
         match self {
             Self::Text { participant, .. }
             | Self::Atomic { participant, .. }
-            | Self::Control { participant, .. } => participant,
+            | Self::Control { participant, .. }
+            | Self::ComputedLineBoundary { participant } => participant,
         }
     }
 
@@ -63,6 +67,7 @@ impl Influence {
                 paragraph.controls[occurrence].kind == ParagraphControlKind::ForcedBreak
             }
             Self::Atomic { .. } => false,
+            Self::ComputedLineBoundary { .. } => true,
         }
     }
 }
@@ -106,8 +111,8 @@ impl LogicalParagraph {
             .enumerate()
             .filter_map(|(participant, event)| match event.kind {
                 Event::Text(atom) => Some(Influence::Text { participant, atom }),
-                Event::Anchor(ParagraphAnchor {
-                    item: ParagraphAnchorItem::Atomic(occurrence),
+                Event::Anchor(SemanticAnchor {
+                    item: SemanticAnchorItem::Atomic(occurrence),
                     ..
                 }) if processed.source().boxes()[occurrence].kind() == InlineBoxKind::InFlow => {
                     Some(Influence::Atomic {
@@ -115,8 +120,8 @@ impl LogicalParagraph {
                         occurrence,
                     })
                 }
-                Event::Anchor(ParagraphAnchor {
-                    item: ParagraphAnchorItem::Control(control),
+                Event::Anchor(SemanticAnchor {
+                    item: SemanticAnchorItem::Control(control),
                     ..
                 }) => {
                     let kind = &paragraph.controls[control].kind;
@@ -132,6 +137,10 @@ impl LogicalParagraph {
                         _ => None,
                     }
                 }
+                Event::Anchor(SemanticAnchor {
+                    item: SemanticAnchorItem::ComputedLineBoundary(_),
+                    ..
+                }) => Some(Influence::ComputedLineBoundary { participant }),
                 _ => None,
             })
             .collect();
@@ -205,12 +214,12 @@ impl LogicalParagraph {
                     events.iter().enumerate().filter(|(_, event)| match event.kind {
                         Event::Text(atom) => projection.atoms[atom].source.end == origin.aggregate.end,
                         Event::Deleted(range, _) => range.end == origin.aggregate.end,
-                        Event::Anchor(ParagraphAnchor { item: ParagraphAnchorItem::EmptyOrigin(index), .. }) => index == connection,
+                        Event::Anchor(SemanticAnchor { item: SemanticAnchorItem::EmptyOrigin(index), .. }) => index == connection,
                         _ => false,
                     }).map(|(index, _)| index + 1).next_back()
                 }
-                ParagraphBoundaryDefinition::AtomicBefore(occurrence) => events.iter().position(|event| matches!(event.kind, Event::Anchor(ParagraphAnchor { item: ParagraphAnchorItem::Atomic(index), .. }) if index == occurrence)),
-                ParagraphBoundaryDefinition::AtomicAfter(occurrence) => events.iter().position(|event| matches!(event.kind, Event::Anchor(ParagraphAnchor { item: ParagraphAnchorItem::Atomic(index), .. }) if index == occurrence)).map(|index| index + 1),
+                ParagraphBoundaryDefinition::AtomicBefore(occurrence) => events.iter().position(|event| matches!(event.kind, Event::Anchor(SemanticAnchor { item: SemanticAnchorItem::Atomic(index), .. }) if index == occurrence)),
+                ParagraphBoundaryDefinition::AtomicAfter(occurrence) => events.iter().position(|event| matches!(event.kind, Event::Anchor(SemanticAnchor { item: SemanticAnchorItem::Atomic(index), .. }) if index == occurrence)).map(|index| index + 1),
             };
             let Some(cut) = cut else {
                 continue;
@@ -291,7 +300,7 @@ fn neighbor(
                 local: piece.local,
             })
         }
-        Influence::Control { .. } => None,
+        Influence::Control { .. } | Influence::ComputedLineBoundary { .. } => None,
     }
 }
 

@@ -466,7 +466,8 @@ pub(super) fn apply(
                         .anchor_order
                         .iter()
                         .position(|anchor| {
-                            anchor.item == crate::ParagraphAnchorItem::Control(control)
+                            anchor.item
+                                == crate::protocol::paragraph::SemanticAnchorItem::Control(control)
                         })
                         .expect("actual wbr anchor");
                     projection.anchor_atoms[order] = Some(at);

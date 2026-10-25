@@ -198,6 +198,38 @@ pub struct ParagraphAnchor {
     pub affinity: Affinity,
 }
 
+/// Executed semantic anchors; computed causes are not authored input controls.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SemanticAnchorItem {
+    EmptyOrigin(usize),
+    Atomic(usize),
+    Control(usize),
+    ComputedLineBoundary(usize),
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct SemanticAnchor {
+    pub(crate) item: SemanticAnchorItem,
+    pub(crate) affinity: Affinity,
+}
+impl From<ParagraphAnchor> for SemanticAnchor {
+    fn from(value: ParagraphAnchor) -> Self {
+        Self {
+            item: match value.item {
+                ParagraphAnchorItem::EmptyOrigin(i) => SemanticAnchorItem::EmptyOrigin(i),
+                ParagraphAnchorItem::Atomic(i) => SemanticAnchorItem::Atomic(i),
+                ParagraphAnchorItem::Control(i) => SemanticAnchorItem::Control(i),
+            },
+            affinity: value.affinity,
+        }
+    }
+}
+#[derive(Clone, Debug)]
+pub(crate) struct ComputedBoundaryData {
+    pub(crate) at: usize,
+    pub(crate) capture_cut: usize,
+    pub(crate) causes: Vec<usize>,
+}
+
 /// The actual occurrence whose incident boundary owns these wrapping facts.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum ParagraphBoundaryDefinition {
@@ -408,7 +440,8 @@ pub(crate) struct ParagraphData {
     pub(crate) controls: Vec<ParagraphControl>,
     pub(crate) boundary_policies: Vec<ParagraphBoundaryPolicy>,
     pub(crate) replacements: Vec<ParagraphReplacement>,
-    pub(crate) anchor_order: Vec<ParagraphAnchor>,
+    pub(crate) anchor_order: Vec<SemanticAnchor>,
+    pub(crate) computed_boundaries: Vec<ComputedBoundaryData>,
     /// None is the standalone front's genuine Auto policy.
     pub(crate) base_direction: Option<ParagraphBaseDirection>,
     pub(crate) paragraph_strut: ParagraphStrut,
@@ -448,11 +481,14 @@ impl ParagraphData {
                     .is_some_and(|extent| range.start == extent.start || range.start == extent.end)
                     || self.anchor_order.iter().any(|anchor| {
                         let at = match anchor.item {
-                            ParagraphAnchorItem::EmptyOrigin(origin) => {
+                            SemanticAnchorItem::EmptyOrigin(origin) => {
                                 self.origins[origin].aggregate.start
                             }
-                            ParagraphAnchorItem::Control(control) => self.controls[control].at,
-                            ParagraphAnchorItem::Atomic(atomic) => source.boxes()[atomic].index(),
+                            SemanticAnchorItem::Control(control) => self.controls[control].at,
+                            SemanticAnchorItem::ComputedLineBoundary(i) => {
+                                self.computed_boundaries[i].at
+                            }
+                            SemanticAnchorItem::Atomic(atomic) => source.boxes()[atomic].index(),
                         };
                         at == range.start
                     }))
@@ -512,22 +548,23 @@ impl ParagraphData {
         anchors.sort_unstable();
         let mut anchor_order: Vec<_> = anchors
             .into_iter()
-            .map(|(_, i)| ParagraphAnchor {
-                item: ParagraphAnchorItem::Atomic(i),
+            .map(|(_, i)| SemanticAnchor {
+                item: SemanticAnchorItem::Atomic(i),
                 affinity: Affinity::After,
             })
             .collect();
         if source_len == 0 {
             anchor_order.insert(
                 0,
-                ParagraphAnchor {
-                    item: ParagraphAnchorItem::EmptyOrigin(0),
+                SemanticAnchor {
+                    item: SemanticAnchorItem::EmptyOrigin(0),
                     affinity: Affinity::Before,
                 },
             );
         }
         Self {
             scope_topology: None,
+            computed_boundaries: Vec::new(),
             terminal_edge: ParagraphTerminalEdge::Unknown,
             origins: vec![OriginData {
                 source: OriginSource::Canonical,
@@ -647,6 +684,7 @@ impl AnalyzedSource {
         } = input;
         let paragraph = ParagraphData {
             scope_topology: None,
+            computed_boundaries: Vec::new(),
             terminal_edge,
             origins: origins
                 .into_iter()
@@ -664,7 +702,7 @@ impl AnalyzedSource {
             controls,
             boundary_policies,
             replacements,
-            anchor_order,
+            anchor_order: anchor_order.into_iter().map(SemanticAnchor::from).collect(),
             base_direction: Some(base_direction),
             paragraph_strut,
             tab_reference,
@@ -693,7 +731,12 @@ fn validate(input: &ParagraphInput) -> Result<()> {
     validate_boundaries(
         &input.source,
         &input.connections,
-        &input.anchor_order,
+        |i| {
+            input
+                .anchor_order
+                .iter()
+                .any(|a| a.item == ParagraphAnchorItem::Atomic(i))
+        },
         &input.boundary_policies,
     )?;
     validate_replacements(
@@ -878,7 +921,7 @@ fn validate_controls(source: &Source, controls: &[ParagraphControl]) -> Result<(
 fn validate_boundaries(
     source: &Source,
     connections: &[ParagraphConnection],
-    anchors: &[ParagraphAnchor],
+    contains_atomic: impl Fn(usize) -> bool,
     policies: &[ParagraphBoundaryPolicy],
 ) -> Result<()> {
     let mut definitions = std::collections::BTreeSet::new();
@@ -907,11 +950,12 @@ fn validate_boundaries(
             }));
         }
     }
-    for (i, box_) in source.boxes().iter().enumerate().filter(|(i, _)| {
-        anchors
-            .iter()
-            .any(|anchor| anchor.item == ParagraphAnchorItem::Atomic(*i))
-    }) {
+    for (i, box_) in source
+        .boxes()
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| contains_atomic(*i))
+    {
         if box_.kind() == crate::InlineBoxKind::InFlow {
             for definition in [
                 ParagraphBoundaryDefinition::AtomicBefore(i),
@@ -1000,7 +1044,11 @@ pub(crate) fn validate_contextual_facts(source: &Source, data: &ParagraphData) -
     validate_boundaries(
         source,
         &data.connections,
-        &data.anchor_order,
+        |i| {
+            data.anchor_order
+                .iter()
+                .any(|a| a.item == SemanticAnchorItem::Atomic(i))
+        },
         &data.boundary_policies,
     )?;
     validate_replacements(

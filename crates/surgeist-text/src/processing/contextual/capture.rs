@@ -410,3 +410,161 @@ impl CapturedControl {
         }
     }
 }
+
+captured_handle!(CapturedComputedLineBoundary);
+
+/// Canonical target of one input computed mandatory cause.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CapturedComputedLineBoundaryTarget {
+    Scope {
+        scope: CapturedScope,
+        side: super::SourceBoxSide,
+    },
+    Endpoint(CapturedControl),
+    Atomic {
+        position: CapturedEventPosition,
+        side: super::SourceBoxSide,
+    },
+}
+
+impl CapturedComputedLineBoundary {
+    /// The actual requested occurrence, preserving computed-cause provenance.
+    #[must_use]
+    pub fn target(&self) -> CapturedComputedLineBoundaryTarget {
+        use super::ComputedLineBoundaryInput;
+        match self.capture.computed[self.index].target {
+            ComputedLineBoundaryInput::Scope { scope, side } => {
+                CapturedComputedLineBoundaryTarget::Scope {
+                    scope: CapturedScope {
+                        capture: Arc::clone(&self.capture),
+                        index: scope,
+                    },
+                    side,
+                }
+            }
+            ComputedLineBoundaryInput::Endpoint { control } => {
+                CapturedComputedLineBoundaryTarget::Endpoint(CapturedControl {
+                    capture: Arc::clone(&self.capture),
+                    index: control,
+                })
+            }
+            ComputedLineBoundaryInput::Atomic { atomic, side } => {
+                CapturedComputedLineBoundaryTarget::Atomic {
+                    position: CapturedEventPosition {
+                        capture: Arc::clone(&self.capture),
+                        index: self.capture.atomic_orders[atomic],
+                    },
+                    side,
+                }
+            }
+        }
+    }
+    /// The canonical formatting domain owning this cause.
+    #[must_use]
+    pub fn domain(&self) -> CapturedScope {
+        CapturedScope {
+            capture: Arc::clone(&self.capture),
+            index: self.capture.domain_scopes[self.capture.computed[self.index].domain],
+        }
+    }
+    #[must_use]
+    pub fn paragraph(&self) -> CapturedParagraph {
+        CapturedParagraph {
+            capture: Arc::clone(&self.capture),
+            index: self.capture.computed[self.index].paragraph,
+        }
+    }
+    /// Exact original target anchor; this inserts no source character.
+    #[must_use]
+    pub fn source_position(&self) -> SourcePosition {
+        SourcePosition::from_unchecked(self.capture.computed[self.index].source)
+    }
+    /// Original event immediately preceding this authenticated canonical cut.
+    #[must_use]
+    pub fn preceding_event(&self) -> Option<CapturedEventPosition> {
+        self.capture.computed[self.index]
+            .capture_cut
+            .checked_sub(1)
+            .map(|index| CapturedEventPosition {
+                capture: Arc::clone(&self.capture),
+                index,
+            })
+    }
+    /// Original event immediately following this authenticated canonical cut.
+    #[must_use]
+    pub fn following_event(&self) -> Option<CapturedEventPosition> {
+        let index = self.capture.computed[self.index].capture_cut;
+        (index < self.capture.events.len()).then(|| CapturedEventPosition {
+            capture: Arc::clone(&self.capture),
+            index,
+        })
+    }
+}
+
+impl crate::ProcessedSource {
+    fn contextual_capture(&self) -> Option<&Arc<ScopeCapture>> {
+        self.paragraphs
+            .first()?
+            .data
+            .scope_topology
+            .as_ref()
+            .map(|topology| &topology.capture)
+    }
+    /// Resolves an ordinal from this operation's actual source-scope inventory.
+    /// The returned handle, rather than the ordinal, carries capture identity.
+    #[must_use]
+    pub fn captured_scope(&self, input_ordinal: usize) -> Option<CapturedScope> {
+        let capture = self.contextual_capture()?;
+        capture.scopes.get(input_ordinal)?;
+        Some(CapturedScope {
+            capture: Arc::clone(capture),
+            index: input_ordinal,
+        })
+    }
+    #[must_use]
+    pub fn captured_control(&self, input_ordinal: usize) -> Option<CapturedControl> {
+        let capture = self.contextual_capture()?;
+        capture.controls.get(input_ordinal)?;
+        Some(CapturedControl {
+            capture: Arc::clone(capture),
+            index: input_ordinal,
+        })
+    }
+    #[must_use]
+    pub fn captured_origin(&self, input_ordinal: usize) -> Option<CapturedEventPosition> {
+        let capture = self.contextual_capture()?;
+        Some(CapturedEventPosition {
+            capture: Arc::clone(capture),
+            index: *capture.origin_orders.get(input_ordinal)?,
+        })
+    }
+    #[must_use]
+    pub fn captured_atomic(&self, input_ordinal: usize) -> Option<CapturedEventPosition> {
+        let capture = self.contextual_capture()?;
+        Some(CapturedEventPosition {
+            capture: Arc::clone(capture),
+            index: *capture.atomic_orders.get(input_ordinal)?,
+        })
+    }
+    #[must_use]
+    pub fn captured_paragraph(&self, input_ordinal: usize) -> Option<CapturedParagraph> {
+        let capture = self.contextual_capture()?;
+        capture.paragraphs.get(input_ordinal)?;
+        Some(CapturedParagraph {
+            capture: Arc::clone(capture),
+            index: input_ordinal,
+        })
+    }
+    #[must_use]
+    pub fn captured_computed_line_boundary(
+        &self,
+        input_ordinal: usize,
+    ) -> Option<CapturedComputedLineBoundary> {
+        let capture = self.contextual_capture()?;
+        let index = *capture.computed_input_rows.get(input_ordinal)?;
+        Some(CapturedComputedLineBoundary {
+            capture: Arc::clone(capture),
+            index,
+        })
+    }
+}

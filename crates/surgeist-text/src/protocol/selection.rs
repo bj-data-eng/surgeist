@@ -310,6 +310,15 @@ pub(crate) fn admit_range<'a>(
                 ProtocolHandleKind::Atomic,
                 value.index == *index,
             ),
+            (
+                PreparedParticipant::ComputedLineBoundary(value),
+                ParticipantData::ComputedLineBoundary(index),
+            ) => (
+                &value.prepared,
+                value.index,
+                ProtocolHandleKind::ComputedLineBoundary,
+                value.index == *index,
+            ),
             (PreparedParticipant::Control(value), ParticipantData::Control(index)) => (
                 &value.prepared,
                 value.index,

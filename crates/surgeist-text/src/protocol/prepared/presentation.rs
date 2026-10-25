@@ -103,6 +103,7 @@ pub(super) fn before_attachment(
                         return Err(composition_error());
                     }
                 }
+                ParticipantData::ComputedLineBoundary(_) => return Err(composition_error()),
                 ParticipantData::Atomic(i) => {
                     if analyzed.processed.source().boxes()[tables.atomics[i].occurrence].kind()
                         == crate::InlineBoxKind::InFlow
@@ -388,6 +389,23 @@ pub(super) fn select(
                     true,
                 )?;
             }
+            ParticipantData::ComputedLineBoundary(i) => {
+                let row = tables.computed_boundaries[i];
+                output.emit(
+                    projection,
+                    analysis,
+                    &[],
+                    UnitCapture {
+                        source: Range::new(row.source, row.source),
+                        processed: Range::new(row.processed, row.processed),
+                        participant: Some(local),
+                        kind: PresentationUnitKind::ComputedLineBoundary { boundary: i },
+                        level: row.level,
+                        bidi_class: Some(BidiClass::ParagraphSeparator),
+                    },
+                    true,
+                )?;
+            }
             ParticipantData::Control(i) => {
                 let row = tables.controls[i];
                 let kind = &prepared.analyzed.paragraph.controls[row.occurrence].kind;
@@ -574,6 +592,7 @@ pub(super) fn select(
         base_level: analysis.base_level,
         box_levels: analysis.box_levels.clone(),
         control_levels: analysis.control_levels.clone(),
+        computed_levels: analysis.computed_levels.clone(),
     };
     let mut scopes = vec![DirectionalScope::Outer(0); projection.atoms.len()];
     for unit in &output.output.units {

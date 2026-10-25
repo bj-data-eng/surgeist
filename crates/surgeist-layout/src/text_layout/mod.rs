@@ -126,6 +126,7 @@ pub enum TextBindingError {
     RootMismatch,
     TabReferenceDirection,
     TerminalBlockEdge,
+    ComputedBoundaryAssociation,
 }
 
 /// Complete, checked inline flow over one borrowed tree.
@@ -430,6 +431,12 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                             .expect("complete control inventory")
                             .node,
                     )],
+                    surgeist_text::PreparedParticipant::ComputedLineBoundary(_) => {
+                        // This semantic incidence has no host node. The source
+                        // registry authenticates its actual group/targets/cut
+                        // after graph validation, before this input is issued.
+                        Vec::new()
+                    }
                 };
                 if let (Some(minimum), Some(maximum)) =
                     (positions.iter().min(), positions.iter().max())

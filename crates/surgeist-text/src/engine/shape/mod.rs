@@ -991,7 +991,7 @@ fn install_mixed_order(data: &mut ShapedData, input: &ShapingInput<'_>) {
         .extend((0..data.clusters.len()).map(ShapedItem::TextCluster));
     let mut positions = vec![(0, 0); input.boxes.len()];
     for (order, anchor) in input.paragraph.anchor_order.iter().enumerate() {
-        if let crate::protocol::paragraph::ParagraphAnchorItem::Atomic(occurrence) = anchor.item {
+        if let crate::protocol::paragraph::SemanticAnchorItem::Atomic(occurrence) = anchor.item {
             positions[occurrence] = (
                 super::analysis::anchor_atom(order, input.paragraph, input.boxes, input.projection),
                 order,

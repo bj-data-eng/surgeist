@@ -8,7 +8,7 @@ use super::{
 };
 use crate::Result;
 use crate::engine::bidi::EligibleStrong;
-use crate::protocol::paragraph::ParagraphAnchorItem;
+use crate::protocol::paragraph::SemanticAnchorItem;
 
 struct BodyContext {
     end: usize,
@@ -90,11 +90,12 @@ impl DirectionBody {
             let owner = match event.kind {
                 Event::Text(atom) => Some(BidiOwner::Atom(atom)),
                 Event::Anchor(anchor) => match anchor.item {
-                    ParagraphAnchorItem::Atomic(occurrence) => Some(BidiOwner::Atomic(occurrence)),
-                    ParagraphAnchorItem::Control(occurrence) => {
-                        Some(BidiOwner::Control(occurrence))
+                    SemanticAnchorItem::Atomic(occurrence) => Some(BidiOwner::Atomic(occurrence)),
+                    SemanticAnchorItem::Control(occurrence) => Some(BidiOwner::Control(occurrence)),
+                    SemanticAnchorItem::EmptyOrigin(_) => None,
+                    SemanticAnchorItem::ComputedLineBoundary(i) => {
+                        Some(BidiOwner::ComputedLineBoundary(i))
                     }
-                    ParagraphAnchorItem::EmptyOrigin(_) => None,
                 },
                 Event::Deleted(..) => None,
             };
@@ -269,10 +270,13 @@ mod tests {
     fn real_owner_binding_preserves_control_empty_deleted_and_source_zero_custody() {
         use BidiClass as B;
         let anchor = |item| {
-            Event::Anchor(ParagraphAnchor {
-                item,
-                affinity: crate::Affinity::After,
-            })
+            Event::Anchor(
+                ParagraphAnchor {
+                    item,
+                    affinity: crate::Affinity::After,
+                }
+                .into(),
+            )
         };
         let events = [
             anchor(ParagraphAnchorItem::EmptyOrigin(0)),

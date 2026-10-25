@@ -1,17 +1,20 @@
 //! Complete producer captures. The stream supplies order; tables supply facts.
 use super::{DocumentSegmentBreaks, ProcessedSource};
-use crate::protocol::paragraph::{OriginData, OriginSource, ParagraphData};
+use crate::protocol::paragraph::{
+    OriginData, OriginSource, ParagraphData, SemanticAnchor, SemanticAnchorItem,
+};
 use crate::{
-    Affinity, AnalyzedSource, InlineBoxKind, ParagraphAnchor, ParagraphAnchorItem,
-    ParagraphBaseDirection, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
-    ParagraphConnection, ParagraphConnectionKind, ParagraphControl, ParagraphControlKind,
-    ParagraphOrigin, ParagraphReplacement, ParagraphReplacementDefinition, ParagraphStrut, Range,
-    Result, Source, Style,
+    Affinity, AnalyzedSource, InlineBoxKind, ParagraphBaseDirection, ParagraphBoundaryDefinition,
+    ParagraphBoundaryPolicy, ParagraphConnection, ParagraphConnectionKind, ParagraphControl,
+    ParagraphControlKind, ParagraphOrigin, ParagraphReplacement, ParagraphReplacementDefinition,
+    ParagraphStrut, Range, Result, Source, Style,
 };
 use std::sync::Arc;
 
 mod capture;
+mod computed;
 pub use capture::*;
+pub use computed::{ComputedLineBoundaryError, ComputedLineBoundaryInput, SourceBoxSide};
 
 /// Computed non-inherited trim facts for one actual inline or block box.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -124,6 +127,8 @@ pub enum SourceProcessingEnvelope {
 /// once in `events`; ranges and nesting are not repeated in scope/paragraph facts.
 #[derive(Clone, Debug)]
 pub struct ContextualSourceInput {
+    /// Computed mandatory causes at actual input-local box edges.
+    pub computed_line_boundaries: Vec<ComputedLineBoundaryInput>,
     pub source: Source,
     pub segment_breaks: DocumentSegmentBreaks,
     pub envelope: SourceProcessingEnvelope,
@@ -140,6 +145,10 @@ pub struct ContextualSourceInput {
 /// Typed atomic capture/view rejection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceProcessingError {
+    ComputedLineBoundary {
+        request: usize,
+        reason: ComputedLineBoundaryError,
+    },
     ScopeBoundaries,
     IncompleteExterior,
     Nesting,
@@ -197,6 +206,9 @@ pub(crate) struct ScopedEvent {
 
 #[derive(Clone, Debug)]
 pub(crate) struct ScopeCapture {
+    pub(crate) computed_input_rows: Vec<usize>,
+    pub(crate) computed: Vec<computed::CapturedComputedBoundaryData>,
+    pub(crate) origin_orders: Vec<usize>,
     pub(crate) scopes: Vec<CapturedScopeData>,
     pub(crate) events: Vec<ScopedEvent>,
     pub(crate) complete: Vec<bool>,
@@ -266,7 +278,7 @@ impl ProcessedParagraph {
                         .data()
                         .anchor_order
                         .iter()
-                        .any(|anchor| anchor.item == ParagraphAnchorItem::Atomic(box_.ordinal()))
+                        .any(|anchor| anchor.item == SemanticAnchorItem::Atomic(box_.ordinal()))
                     {
                         items.push(item);
                     }
@@ -336,7 +348,8 @@ struct Capture {
     origins: Vec<usize>,
     origin_orders: Vec<usize>,
     connections: Vec<usize>,
-    anchors: Vec<ParagraphAnchor>,
+    anchors: Vec<SemanticAnchor>,
+    computed_boundaries: Vec<crate::protocol::paragraph::ComputedBoundaryData>,
     controls: Vec<usize>,
     connection_orders: Vec<usize>,
     connection_anchor_cuts: Vec<usize>,
@@ -415,6 +428,9 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
     };
     let mut cursor = 0;
     let mut topology = ScopeCapture {
+        computed_input_rows: Vec::new(),
+        computed: Vec::new(),
+        origin_orders: vec![0; input.origins.len()],
         scopes: input
             .scopes
             .iter()
@@ -640,6 +656,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             }
             SourceProcessingEvent::Origin { origin, affinity } => {
                 take(&mut origins, origin)?;
+                topology.origin_orders[origin] = order;
                 let p = paragraph.ok_or_else(|| invalid(SourceProcessingError::Domain))?;
                 let row = &input.origins[origin];
                 if row.aggregate.start != cursor
@@ -668,8 +685,8 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 captures[p].origins.push(origin);
                 captures[p].origin_orders.push(order);
                 if row.aggregate.is_empty() {
-                    captures[p].anchors.push(ParagraphAnchor {
-                        item: ParagraphAnchorItem::EmptyOrigin(local),
+                    captures[p].anchors.push(SemanticAnchor {
+                        item: SemanticAnchorItem::EmptyOrigin(local),
                         affinity,
                     });
                 } else {
@@ -705,8 +722,8 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 if box_.index() != cursor {
                     return Err(invalid(SourceProcessingError::Occurrence));
                 }
-                captures[p].anchors.push(ParagraphAnchor {
-                    item: ParagraphAnchorItem::Atomic(atomic),
+                captures[p].anchors.push(SemanticAnchor {
+                    item: SemanticAnchorItem::Atomic(atomic),
                     affinity,
                 });
                 if box_.kind() == InlineBoxKind::InFlow {
@@ -731,8 +748,8 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 topology.controls[control].order = order;
                 let local = captures[p].controls.len();
                 captures[p].controls.push(control);
-                captures[p].anchors.push(ParagraphAnchor {
-                    item: ParagraphAnchorItem::Control(local),
+                captures[p].anchors.push(SemanticAnchor {
+                    item: SemanticAnchorItem::Control(local),
                     affinity,
                 });
                 if matches!(
@@ -826,6 +843,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             boundary_controls[boundaries.end] = true;
         }
     }
+    computed::admit(&input, &mut topology, &mut captures, &mut context)?;
     let topology = Arc::new(topology);
     for barrier in &context.barriers {
         if super::delimiter_crosses(&input.segment_breaks, barrier.at) {
@@ -922,7 +940,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 | ParagraphBoundaryDefinition::AtomicAfter(i) => capture
                     .anchors
                     .iter()
-                    .any(|a| a.item == ParagraphAnchorItem::Atomic(i))
+                    .any(|a| a.item == SemanticAnchorItem::Atomic(i))
                     .then_some(row.definition),
             };
             if let Some(definition) = definition {
@@ -981,13 +999,14 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         let mut owned = coverage.clone();
         owned.extend(capture.anchors.iter().map(|anchor| {
             let at = match anchor.item {
-                ParagraphAnchorItem::EmptyOrigin(local) => {
+                SemanticAnchorItem::EmptyOrigin(local) => {
                     input.origins[capture.origins[local]].aggregate.start
                 }
-                ParagraphAnchorItem::Atomic(atomic) => input.source.boxes()[atomic].index(),
-                ParagraphAnchorItem::Control(control) => {
+                SemanticAnchorItem::Atomic(atomic) => input.source.boxes()[atomic].index(),
+                SemanticAnchorItem::Control(control) => {
                     input.controls[capture.controls[control]].at
                 }
+                SemanticAnchorItem::ComputedLineBoundary(i) => capture.computed_boundaries[i].at,
             };
             Range::new(at, at)
         }));
@@ -1021,6 +1040,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 _ => false,
             });
         let data = ParagraphData {
+            computed_boundaries: capture.computed_boundaries,
             scope_topology: Some(ParagraphTopology {
                 capture: Arc::clone(&topology),
                 paragraph: index,

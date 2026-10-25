@@ -1541,6 +1541,7 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
         Size::new(5.0, 10.0),
     ));
     let capture = ContextualSourceInput {
+        computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
         envelope: SourceProcessingEnvelope::Complete,

@@ -268,6 +268,7 @@ fn child_domain_hole_cannot_supply_or_remove_the_parent_words_counting_units() {
             })
             .collect();
         let capture = ContextualSourceInput {
+            computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,

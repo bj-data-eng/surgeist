@@ -82,6 +82,7 @@ fn prepare() -> Vec<text::PreparedText> {
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
             envelope: text::SourceProcessingEnvelope::Complete,
@@ -358,6 +359,7 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
     use text::SourceProcessingEvent as E;
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
             envelope: text::SourceProcessingEnvelope::Complete,

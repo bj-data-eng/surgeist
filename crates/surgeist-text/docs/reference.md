@@ -281,6 +281,18 @@ Retain the result in `Arc<ProcessedSource>` and obtain views from `paragraphs()`
 style and coverage; no later range or replacement style can rebind it.
 `admit_paragraph` checks the actual processing owner, not equal input values.
 
+`computed_line_boundaries` supplies mandatory box-edge requests before processing.
+Each `ComputedLineBoundaryInput` names an actual input scope side, endpoint or
+atomic side; scalar interiors, document-delimiter interiors and invalid target
+roles are refused. Processing preserves distinct causes and coalesces only their
+effective semantic cut. The returned capture and preparation expose those causes
+and original event neighbors. They create no source character, authored control,
+glyph, allocation or host node. The hard boundary stops contextual transforms,
+typographic-unit formation and shaping; its Forced opportunity must be consumed
+before later content. `CapturedFlowEvent` continues to describe original input.
+Layout owns declaration applicability, propagation and native flow association;
+Text does not infer those facts from a UTF-16 offset.
+
 Paragraph coordinates remain original UTF-16 positions. `source_range()` is the
 minimal envelope of original owned pieces and genuine empty/control/atomic
 occurrences, including text subsequently deleted by trimming or collapse.
@@ -492,6 +504,12 @@ the empty family list maps to generic sans-serif. It uses metric-relative line
 height `1.0`, zero letter/word spacing, opaque black, no decorations, automatic
 direction, preserved whitespace, word wrapping, normal word-break and
 overflow-wrap, and no text transform.
+
+The raw standalone front resolves one source-wide automatic base direction and
+retains it across paragraph separators. Explicit composed paragraphs instead
+capture their supplied base direction. B-class separators isolate bidi resolution
+context in either front; the raw profile does not provide CSS `plaintext`'s
+per-paragraph automatic base selection.
 
 `Text` owns immutable exact UTF-16 units, including isolated surrogates.
 `Text::from_code_units` takes owned units; string conversions encode them

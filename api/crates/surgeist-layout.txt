@@ -332,6 +332,7 @@ pub surgeist_layout::LayoutInvalidInputOf::TreeTopologyCycle
 pub surgeist_layout::LayoutInvalidInputOf::WrappingScope(surgeist_layout::WrappingScopeError)
 #[non_exhaustive] pub enum surgeist_layout::LayoutMissingContext
 pub surgeist_layout::LayoutMissingContext::AnonymousGeneratingBlock
+pub surgeist_layout::LayoutMissingContext::ComputedLineBoundaryIncidence
 pub surgeist_layout::LayoutMissingContext::FloatExclusionProvider
 pub surgeist_layout::LayoutMissingContext::InlineWrapping
 pub surgeist_layout::LayoutMissingContext::RequiredBasis
@@ -734,6 +735,7 @@ pub surgeist_layout::TextAlignLast::Right
 pub surgeist_layout::TextAlignLast::Start
 #[non_exhaustive] pub enum surgeist_layout::TextBindingError
 pub surgeist_layout::TextBindingError::AtomicCoverage
+pub surgeist_layout::TextBindingError::ComputedBoundaryAssociation
 pub surgeist_layout::TextBindingError::ControlCoverage
 pub surgeist_layout::TextBindingError::DuplicateRunNode
 pub surgeist_layout::TextBindingError::EmptyRun

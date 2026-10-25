@@ -452,6 +452,7 @@ fn original_separator_at_disconnected_join(
         SourceProcessingEvent::ExitScope(0),
     ]);
     let input = ContextualSourceInput {
+        computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
         envelope: SourceProcessingEnvelope::Complete,

@@ -32,6 +32,9 @@ mod phrase_continuation;
 #[path = "placed_text_render/hanging.rs"]
 mod hanging_punctuation;
 
+#[path = "placed_text_render/computed_boundaries.rs"]
+mod computed_boundaries;
+
 struct Tree {
     inputs: [layout::LayoutInput; 2],
     non_box: layout::NodeInput,
@@ -296,6 +299,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
     let analyzed = if contextual {
         let processed = std::sync::Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                computed_line_boundaries: vec![],
                 source: source.clone(),
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
                 envelope: text::SourceProcessingEnvelope::Complete,

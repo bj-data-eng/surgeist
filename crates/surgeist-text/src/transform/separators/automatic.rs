@@ -6,7 +6,7 @@ use crate::phrase::qualification::{Punctuation, punctuation, separator};
 use crate::phrase::{PhraseError, PhraseModel};
 use crate::processing::contextual::ParagraphTopology;
 use crate::projection::SourceProjection;
-use crate::protocol::paragraph::{ParagraphAnchorItem, ParagraphControlKind, ParagraphData};
+use crate::protocol::paragraph::{ParagraphControlKind, ParagraphData, SemanticAnchorItem};
 use crate::{
     Error, ErrorCode, ErrorDetail, InlineBoxKind, Result, SourceProcessingEvent, TextTransformError,
 };
@@ -95,11 +95,16 @@ fn depth(topology: &ParagraphTopology, mut scope: usize) -> usize {
     depth
 }
 
-fn anchor_order(topology: &ParagraphTopology, item: ParagraphAnchorItem) -> usize {
+fn anchor_order(
+    topology: &ParagraphTopology,
+    paragraph: &ParagraphData,
+    item: SemanticAnchorItem,
+) -> usize {
     match item {
-        ParagraphAnchorItem::Control(index) => topology.control_orders[index],
-        ParagraphAnchorItem::EmptyOrigin(index) => topology.origin_orders[index],
-        ParagraphAnchorItem::Atomic(index) => topology.capture.events.iter().position(|event| matches!(event.event, SourceProcessingEvent::Atomic { atomic, .. } if atomic == index)).expect("admitted atomic occurrence"),
+        SemanticAnchorItem::Control(index) => topology.control_orders[index],
+        SemanticAnchorItem::ComputedLineBoundary(index) => paragraph.computed_boundaries[index].capture_cut,
+        SemanticAnchorItem::EmptyOrigin(index) => topology.origin_orders[index],
+        SemanticAnchorItem::Atomic(index) => topology.capture.events.iter().position(|event| matches!(event.event, SourceProcessingEvent::Atomic { atomic, .. } if atomic == index)).expect("admitted atomic occurrence"),
     }
 }
 
@@ -159,7 +164,7 @@ fn custody(
     let mut cut = left_event + 1;
     while cut < right_event {
         let before = match events[cut].kind {
-            Event::Anchor(anchor) => anchor_order(topology, anchor.item) < seam,
+            Event::Anchor(anchor) => anchor_order(topology, paragraph, anchor.item) < seam,
             Event::Deleted(range, _) => range.end <= at,
             Event::Text(_) => false,
         };
@@ -203,10 +208,10 @@ pub(crate) fn proposals(
     for event in &events {
         if let Event::Anchor(anchor) = event.kind {
             let barrier = match anchor.item {
-                ParagraphAnchorItem::Atomic(index) => {
+                SemanticAnchorItem::Atomic(index) => {
                     processed.source().boxes()[index].kind() == InlineBoxKind::InFlow
                 }
-                ParagraphAnchorItem::Control(index) => {
+                SemanticAnchorItem::Control(index) => {
                     paragraph.controls[index].kind == ParagraphControlKind::ForcedBreak
                 }
                 _ => false,
@@ -371,7 +376,7 @@ pub(crate) fn proposals(
                 };
             let occurrence = map.virtuals.len();
             map.virtuals.try_reserve(1).map_err(|_| super::capacity())?;
-            let control_cut = events[..event_cut].iter().filter(|event| matches!(event.kind, Event::Anchor(anchor) if matches!(anchor.item, ParagraphAnchorItem::Control(_)))).count();
+            let control_cut = events[..event_cut].iter().filter(|event| matches!(event.kind, Event::Anchor(anchor) if matches!(anchor.item, SemanticAnchorItem::Control(_)))).count();
             map.virtuals.push(VirtualSeparatorData {
                 capture_cut,
                 scope: issued_scope,

@@ -318,7 +318,7 @@ fn raw_soft_admitted(prepared: &PreparedData, start: usize, end: usize) -> bool 
                         .kind()
                         == crate::InlineBoxKind::InFlow
                 }
-                ParticipantData::Control(_) => false,
+                ParticipantData::Control(_) | ParticipantData::ComputedLineBoundary(_) => false,
             })
 }
 

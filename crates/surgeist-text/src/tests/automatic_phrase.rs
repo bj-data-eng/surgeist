@@ -70,6 +70,7 @@ fn input(text: &str, operation: WordSpaceTransform, cuts: &[usize]) -> Contextua
         SourceProcessingEvent::ExitScope(0),
     ]);
     ContextualSourceInput {
+        computed_line_boundaries: vec![],
         source,
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
         envelope: SourceProcessingEnvelope::Complete,

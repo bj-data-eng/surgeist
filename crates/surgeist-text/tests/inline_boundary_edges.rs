@@ -78,6 +78,7 @@ fn prepare_capture(
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let processed = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,

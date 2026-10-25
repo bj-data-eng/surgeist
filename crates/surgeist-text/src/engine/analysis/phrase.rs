@@ -14,7 +14,7 @@ use crate::phrase::{
     qualification::{Punctuation, punctuation, separator},
 };
 use crate::projection::SourceProjection;
-use crate::protocol::paragraph::{ParagraphAnchorItem, ParagraphControlKind, ParagraphData};
+use crate::protocol::paragraph::{ParagraphControlKind, ParagraphData, SemanticAnchorItem};
 use crate::{InlineBox, InlineBoxKind, Result};
 
 #[derive(Clone, Debug)]
@@ -113,9 +113,9 @@ pub(super) fn analyze(
         previous_model = model;
     }
     for (occurrence, anchor) in paragraph.anchor_order.iter().enumerate() {
-        if matches!(anchor.item, ParagraphAnchorItem::Atomic(i)
+        if matches!(anchor.item, SemanticAnchorItem::Atomic(i)
             if boxes[i].kind() == InlineBoxKind::InFlow)
-            || matches!(anchor.item, ParagraphAnchorItem::Control(i)
+            || matches!(anchor.item, SemanticAnchorItem::Control(i)
                 if paragraph.controls[i].kind == ParagraphControlKind::ForcedBreak)
         {
             stops.push(anchor_atom(occurrence, paragraph, boxes, projection));

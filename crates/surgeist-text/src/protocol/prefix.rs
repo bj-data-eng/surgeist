@@ -427,6 +427,7 @@ impl FinalizedLine {
                     PreparedParticipant::Text(p) => p.prepared_text(),
                     PreparedParticipant::Atomic(p) => p.prepared_text(),
                     PreparedParticipant::Control(p) => p.prepared_text(),
+                    PreparedParticipant::ComputedLineBoundary(p) => p.prepared_text(),
                 } != self.prepared_text()
                 {
                     return Err(protocol_error(ProtocolError::ForeignSelectedLine));
@@ -522,6 +523,7 @@ fn participant_key(participant: &PreparedParticipant) -> (u8, usize) {
         PreparedParticipant::Text(value) => (0, value.index),
         PreparedParticipant::Atomic(value) => (1, value.index),
         PreparedParticipant::Control(value) => (2, value.index),
+        PreparedParticipant::ComputedLineBoundary(value) => (3, value.index),
     }
 }
 

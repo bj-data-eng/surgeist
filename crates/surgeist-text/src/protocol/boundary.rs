@@ -1,5 +1,5 @@
 //! Selection-local endpoint incidence, consumed context and numeric authority.
-use super::paragraph::{ParagraphAnchor, ParagraphAnchorItem, ParagraphControlKind};
+use super::paragraph::{ParagraphControlKind, SemanticAnchor, SemanticAnchorItem};
 use super::prepared::{
     PresentationUnitKind, RetainedAssignment, SelectedPresentation, presentation::Attachment,
 };
@@ -51,8 +51,8 @@ fn incidences(prepared: &PreparedData) -> Vec<Incidence> {
         .iter()
         .enumerate()
         .filter_map(|(participant, event)| {
-            let Event::Anchor(ParagraphAnchor {
-                item: ParagraphAnchorItem::Control(occurrence),
+            let Event::Anchor(SemanticAnchor {
+                item: SemanticAnchorItem::Control(occurrence),
                 ..
             }) = event.kind
             else {
@@ -390,14 +390,18 @@ pub(crate) fn resolve(
     .collect();
     for (participant, event) in data.analyzed.logical.events.iter().enumerate() {
         let barrier = match event.kind {
-            Event::Anchor(ParagraphAnchor {
-                item: ParagraphAnchorItem::Control(control),
+            Event::Anchor(SemanticAnchor {
+                item: SemanticAnchorItem::ComputedLineBoundary(_),
+                ..
+            }) => true,
+            Event::Anchor(SemanticAnchor {
+                item: SemanticAnchorItem::Control(control),
                 ..
             }) => {
                 data.analyzed.paragraph.controls[control].kind == ParagraphControlKind::ForcedBreak
             }
-            Event::Anchor(ParagraphAnchor {
-                item: ParagraphAnchorItem::Atomic(atomic),
+            Event::Anchor(SemanticAnchor {
+                item: SemanticAnchorItem::Atomic(atomic),
                 ..
             }) => {
                 data.analyzed.processed.source().boxes()[atomic].kind()

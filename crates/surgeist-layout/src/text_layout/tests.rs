@@ -24,6 +24,8 @@ mod boundary_owner_composition;
 mod break_all_hyphenation;
 #[path = "tests/canonical.rs"]
 mod canonical;
+#[path = "tests/computed_line_boundaries.rs"]
+mod computed_line_boundaries;
 #[path = "tests/conditional_overflow.rs"]
 mod conditional_overflow;
 #[path = "tests/float_fit.rs"]

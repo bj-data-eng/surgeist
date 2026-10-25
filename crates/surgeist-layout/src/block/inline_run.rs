@@ -615,6 +615,10 @@ where
                     pending,
                     packet,
                     text_binding.expect("actual float is in captured paragraph"),
+                    &tree
+                        .text_computation()
+                        .expect("captured float keeps source registry")
+                        .associations,
                     offset,
                     child_request,
                 )
@@ -1474,6 +1478,11 @@ pub(super) fn text_run_error<Node: Copy, S: LayoutScalar, M>(
         ),
         crate::text_layout::fit::FitError::MissingBlockTail => {
             LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::TextBlockTail)
+        }
+        crate::text_layout::fit::FitError::MissingComputedBoundaryIncidence => {
+            LayoutErrorKindOf::MissingContext(
+                crate::LayoutMissingContext::ComputedLineBoundaryIncidence,
+            )
         }
         crate::text_layout::fit::FitError::MissingZoneBasis => {
             LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis)

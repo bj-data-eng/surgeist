@@ -114,6 +114,7 @@ fn deferred(kind: InlineBoxKind, closed_parent: bool) -> Arc<ProcessedSource> {
     };
     Arc::new(
         process_contextual_source(ContextualSourceInput {
+            computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,
@@ -266,6 +267,7 @@ fn deferred_atomic_and_out_of_flow_contents_have_independent_complete_sequences(
 fn zero_source_nested_blocks_retain_all_empty_paragraphs_and_parent_markers() {
     let processed = Arc::new(
         process_contextual_source(ContextualSourceInput {
+            computed_line_boundaries: vec![],
             source: Source::new(""),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,
@@ -346,6 +348,7 @@ fn inline_and_connection_facts_do_not_add_flow_events_or_hide_originals() {
     let source = Source::new("AB");
     let processed = Arc::new(
         process_contextual_source(ContextualSourceInput {
+            computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,

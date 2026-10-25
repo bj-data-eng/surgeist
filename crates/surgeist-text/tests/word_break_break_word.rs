@@ -557,6 +557,7 @@ fn declared_tuple_survives_validation_source_spans_and_contextual_capture() {
             use t::SourceProcessingEvent as E;
             let processed = Arc::new(
                 t::process_contextual_source(t::ContextualSourceInput {
+                    computed_line_boundaries: vec![],
                     source: request.source,
                     segment_breaks: request.segment_breaks,
                     envelope: t::SourceProcessingEnvelope::Complete,

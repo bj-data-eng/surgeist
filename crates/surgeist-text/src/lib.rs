@@ -65,14 +65,15 @@ pub use layout::{
 };
 pub use options::{Alignment, Indent, Options, TextAlignLast, TextOverflow, ValidatedOptions};
 pub use processing::{
-    CapturedControl, CapturedDomainDefinition, CapturedEventPosition, CapturedFlowEvent,
-    CapturedParagraph, CapturedScope, CapturedScopeIntersection, ContextualSourceInput,
-    DocumentSegmentBreaks, PlaintextItem, PlaintextItems, ProcessedInlineBox, ProcessedParagraph,
-    ProcessedPosition, ProcessedRange, ProcessedSource, ProcessedSpan, ProcessedText, ScopeRole,
-    SourceProcessingConnection, SourceProcessingEnvelope, SourceProcessingError,
-    SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
-    SourceProcessingScopeBoundaries, SourceProcessingTopology, WhiteSpaceTrim,
-    process_contextual_source, process_source_whitespace,
+    CapturedComputedLineBoundary, CapturedComputedLineBoundaryTarget, CapturedControl,
+    CapturedDomainDefinition, CapturedEventPosition, CapturedFlowEvent, CapturedParagraph,
+    CapturedScope, CapturedScopeIntersection, ComputedLineBoundaryError, ComputedLineBoundaryInput,
+    ContextualSourceInput, DocumentSegmentBreaks, PlaintextItem, PlaintextItems,
+    ProcessedInlineBox, ProcessedParagraph, ProcessedPosition, ProcessedRange, ProcessedSource,
+    ProcessedSpan, ProcessedText, ScopeRole, SourceBoxSide, SourceProcessingConnection,
+    SourceProcessingEnvelope, SourceProcessingError, SourceProcessingEvent,
+    SourceProcessingParagraph, SourceProcessingScope, SourceProcessingScopeBoundaries,
+    SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source, process_source_whitespace,
 };
 pub use protocol::paragraph::{
     CompleteTextNodeContribution, ParagraphAnchor, ParagraphAnchorItem,
@@ -84,9 +85,10 @@ pub use protocol::prefix::{FinalizedPrefixView, FinalizedSharedUnitView, TextSea
 pub use protocol::readback::{
     FinalizedControlView, FinalizedFragmentOwner, FinalizedFragmentView, FinalizedGlyphView,
     FinalizedRunView, LineOutlineInk, PreparedAlternativeDefinition, PreparedAlternativeView,
-    PreparedAtomicView, PreparedBoundaryView, PreparedControlView, PreparedOpportunityView,
-    PreparedOriginIntersectionView, PreparedOriginView, PreparedScopeView, PreparedUnitView,
-    PreparedVirtualSeparatorView, PresentationMappingKind, SelectedMappingView,
+    PreparedAtomicView, PreparedBoundaryView, PreparedComputedLineBoundaryView,
+    PreparedControlView, PreparedOpportunityView, PreparedOriginIntersectionView,
+    PreparedOriginView, PreparedScopeView, PreparedUnitView, PreparedVirtualSeparatorView,
+    PresentationMappingKind, SelectedMappingView,
 };
 pub use protocol::{
     AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
@@ -101,9 +103,9 @@ pub use protocol::{
     LineSelectionRequest, LineStart, LineStrut, ParagraphBaseDirection, ParagraphInput,
     ParagraphTerminalEdge, PhaseTwoContext, PhraseOverflowDecision, PlacementCoverage,
     PlacementRequest, PreparationOptions, PreparedAlternative, PreparedAlternativeAvailability,
-    PreparedAtomic, PreparedBoundary, PreparedBreakKind, PreparedConditionalBatch,
-    PreparedConditionalOpportunity, PreparedConditionalSearch, PreparedControl,
-    PreparedFlowSegment, PreparedHyphenationCut, PreparedHyphenationCutView,
+    PreparedAtomic, PreparedBoundary, PreparedBreakKind, PreparedComputedLineBoundary,
+    PreparedConditionalBatch, PreparedConditionalOpportunity, PreparedConditionalSearch,
+    PreparedControl, PreparedFlowSegment, PreparedHyphenationCut, PreparedHyphenationCutView,
     PreparedMeasurementFlow, PreparedOpportunity, PreparedOrigin, PreparedParticipant,
     PreparedPhrase, PreparedPhrasePiece, PreparedPhrasePieceOwner, PreparedPhrasePortion,
     PreparedPhraseProvenance, PreparedScope, PreparedTermination, PreparedText, PreparedUnit,

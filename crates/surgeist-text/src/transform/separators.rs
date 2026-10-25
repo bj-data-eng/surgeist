@@ -6,7 +6,7 @@ use crate::engine::{
     resolve::AnalyzedStyleRun,
 };
 use crate::projection::SourceProjection;
-use crate::protocol::paragraph::{ParagraphAnchorItem, ParagraphControlKind, ParagraphData};
+use crate::protocol::paragraph::{ParagraphControlKind, ParagraphData, SemanticAnchorItem};
 use crate::{
     Error, ErrorCode, ErrorDetail, InlineBoxKind, Result, TextTransformError, WordSpaceTransform,
 };
@@ -24,11 +24,12 @@ fn forced(
         )),
         Event::Deleted(..) => None,
         Event::Anchor(anchor) => match anchor.item {
-            ParagraphAnchorItem::EmptyOrigin(_) => None,
-            ParagraphAnchorItem::Atomic(i) => {
+            SemanticAnchorItem::EmptyOrigin(_) => None,
+            SemanticAnchorItem::ComputedLineBoundary(_) => Some(true),
+            SemanticAnchorItem::Atomic(i) => {
                 (source.boxes()[i].kind() == InlineBoxKind::InFlow).then_some(false)
             }
-            ParagraphAnchorItem::Control(i) => match paragraph.controls[i].kind {
+            SemanticAnchorItem::Control(i) => match paragraph.controls[i].kind {
                 ParagraphControlKind::InlineBoundaryStart
                 | ParagraphControlKind::InlineBoundaryEnd => None,
                 ParagraphControlKind::ForcedBreak => Some(true),
@@ -148,7 +149,7 @@ pub(crate) fn connection_seams(
         .anchor_order
         .iter()
         .filter_map(|a| match a.item {
-            ParagraphAnchorItem::Atomic(i) => Some(i),
+            SemanticAnchorItem::Atomic(i) => Some(i),
             _ => None,
         })
         .max()
@@ -163,6 +164,7 @@ pub(crate) fn connection_seams(
         .try_reserve_exact(paragraph.origins.len())
         .map_err(|_| capacity())?;
     empty_events.resize(paragraph.origins.len(), 0);
+    let mut computed_events = vec![0; paragraph.computed_boundaries.len()];
     let mut text_edges = Vec::new();
     text_edges
         .try_reserve_exact(events.len())
@@ -170,9 +172,10 @@ pub(crate) fn connection_seams(
     for (index, event) in events.iter().enumerate() {
         match event.kind {
             Event::Anchor(anchor) => match anchor.item {
-                ParagraphAnchorItem::Control(i) => control_events[i] = index + 1,
-                ParagraphAnchorItem::Atomic(i) => atomic_events[i] = index + 1,
-                ParagraphAnchorItem::EmptyOrigin(i) => empty_events[i] = index + 1,
+                SemanticAnchorItem::Control(i) => control_events[i] = index + 1,
+                SemanticAnchorItem::Atomic(i) => atomic_events[i] = index + 1,
+                SemanticAnchorItem::EmptyOrigin(i) => empty_events[i] = index + 1,
+                SemanticAnchorItem::ComputedLineBoundary(i) => computed_events[i] = index + 1,
             },
             Event::Text(i) => text_edges.push((input.atoms[i].source.end, index + 1, index)),
             Event::Deleted(range, _) => text_edges.push((range.end, index + 1, index)),
@@ -202,9 +205,10 @@ pub(crate) fn connection_seams(
     anchor_cuts.push(0);
     for anchor in &paragraph.anchor_order {
         let event = match anchor.item {
-            ParagraphAnchorItem::Control(i) => control_events[i],
-            ParagraphAnchorItem::Atomic(i) => atomic_events[i],
-            ParagraphAnchorItem::EmptyOrigin(i) => empty_events[i],
+            SemanticAnchorItem::Control(i) => control_events[i],
+            SemanticAnchorItem::Atomic(i) => atomic_events[i],
+            SemanticAnchorItem::EmptyOrigin(i) => empty_events[i],
+            SemanticAnchorItem::ComputedLineBoundary(i) => computed_events[i],
         };
         anchor_cuts.push(anchor_cuts.last().copied().unwrap().max(event));
     }
@@ -501,7 +505,7 @@ pub(super) fn wbr(
         match event.kind {
             Event::Text(row) => component = Some((original[row].clone(), input.atoms[row].clone())),
             Event::Anchor(anchor) => {
-                if let ParagraphAnchorItem::Control(control) = anchor.item
+                if let SemanticAnchorItem::Control(control) = anchor.item
                     && let ParagraphControlKind::Wbr { style } = &paragraph.controls[control].kind
                     && style.word_space_transform != WordSpaceTransform::None
                 {
@@ -663,12 +667,13 @@ pub(super) fn wbr(
         .iter()
         .filter_map(|event| match event.kind {
             Event::Anchor(anchor) => match anchor.item {
-                ParagraphAnchorItem::Atomic(i)
+                SemanticAnchorItem::ComputedLineBoundary(_) => Some(event.atom),
+                SemanticAnchorItem::Atomic(i)
                     if processed.source().boxes()[i].kind() == InlineBoxKind::InFlow =>
                 {
                     Some(event.atom)
                 }
-                ParagraphAnchorItem::Control(i)
+                SemanticAnchorItem::Control(i)
                     if paragraph.controls[i].kind == ParagraphControlKind::ForcedBreak =>
                 {
                     Some(event.atom)
@@ -715,7 +720,7 @@ pub(super) fn wbr(
                 ComponentOwner::Wbr(control) => {
                     debug_assert_eq!(
                         paragraph.anchor_order[order].item,
-                        ParagraphAnchorItem::Control(control)
+                        SemanticAnchorItem::Control(control)
                     );
                     event.atom
                 }

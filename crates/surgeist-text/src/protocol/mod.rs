@@ -187,6 +187,7 @@ prepared_handle!(
     PreparedUnit,
     PreparedAtomic,
     PreparedControl,
+    PreparedComputedLineBoundary,
     PreparedBoundary,
     PreparedOpportunity,
     PreparedAlternative,
@@ -200,6 +201,7 @@ pub enum PreparedParticipant {
     Text(PreparedUnit),
     Atomic(PreparedAtomic),
     Control(PreparedControl),
+    ComputedLineBoundary(PreparedComputedLineBoundary),
 }
 
 /// Supported physical shaping basis. Other requested bases refuse explicitly.
@@ -623,6 +625,7 @@ pub enum ProtocolHandleKind {
     Unit,
     Atomic,
     Control,
+    ComputedLineBoundary,
     Boundary,
     Opportunity,
     ConditionalOpportunity,

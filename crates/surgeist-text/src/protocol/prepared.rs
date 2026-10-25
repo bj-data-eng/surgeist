@@ -15,7 +15,7 @@ use crate::engine::{
 use crate::style::OrdinaryWordBreak;
 use crate::{Range, projection::SourceProjection, transform::relation::GeneratedSeparatorOwner};
 
-use super::paragraph::{ParagraphAnchor, ParagraphAnchorItem, ParagraphControlKind};
+use super::paragraph::{ParagraphControlKind, SemanticAnchor, SemanticAnchorItem};
 
 /// Immutable logical participants and their exact occurrence/boundary tables.
 #[derive(Debug)]
@@ -27,6 +27,7 @@ pub(crate) struct PreparedTables {
     pub(crate) units: Vec<UnitData>,
     pub(crate) atomics: Vec<AtomicData>,
     pub(crate) controls: Vec<ControlData>,
+    pub(crate) computed_boundaries: Vec<ComputedBoundaryData>,
     /// Exact captured control occurrence to its actual issued table row.
     pub(crate) control_rows: Vec<usize>,
     pub(crate) boundaries: Vec<BoundaryData>,
@@ -54,6 +55,7 @@ pub(crate) enum ParticipantData {
     Text(usize),
     Atomic(usize),
     Control(usize),
+    ComputedLineBoundary(usize),
 }
 
 /// One original-owned logical unit; only issued boundaries permit selection.
@@ -91,6 +93,14 @@ pub(crate) struct ControlData {
     pub(crate) semantic_atom: Option<usize>,
     /// Actual owning mixed participant, including a transformed Wbr text row.
     pub(crate) participant: Option<usize>,
+    pub(crate) occurrence: usize,
+    pub(crate) source: usize,
+    pub(crate) processed: usize,
+    pub(crate) level: u8,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ComputedBoundaryData {
     pub(crate) occurrence: usize,
     pub(crate) source: usize,
     pub(crate) processed: usize,
@@ -274,6 +284,7 @@ pub(crate) enum PresentationUnitKind {
     EmptyOrigin { origin: usize },
     Atomic { occurrence: usize },
     Control { occurrence: usize },
+    ComputedLineBoundary { boundary: usize },
     Replacement { alternative: usize },
     GeneratedSeparator { owner: GeneratedSeparatorOwner },
 }
@@ -297,6 +308,7 @@ pub(crate) struct SelectedMappingPiece {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SelectedMappingKind {
     Source,
+    ComputedLineBoundary { boundary: usize },
     Deleted,
     Replacement { alternative: usize, anchor: usize },
     GeneratedSeparator { owner: GeneratedSeparatorOwner },
@@ -338,6 +350,7 @@ pub(crate) fn prepare_tables(
         units: Vec::new(),
         atomics: Vec::new(),
         controls: Vec::new(),
+        computed_boundaries: Vec::new(),
         control_rows: Vec::new(),
         boundaries: Vec::new(),
         opportunities: Vec::new(),
@@ -353,7 +366,7 @@ pub(crate) fn prepare_tables(
     // by one text-bearing participant. Inventory order remains anchor order.
     tables.control_rows = vec![usize::MAX; paragraph.controls.len()];
     for (order, anchor) in paragraph.anchor_order.iter().enumerate() {
-        if let ParagraphAnchorItem::Control(occurrence) = anchor.item {
+        if let SemanticAnchorItem::Control(occurrence) = anchor.item {
             tables.control_rows[occurrence] = tables.controls.len();
             let control = &paragraph.controls[occurrence];
             tables.controls.push(ControlData {
@@ -471,8 +484,8 @@ pub(crate) fn prepare_tables(
                 tables.participants.push(ParticipantData::Text(unit));
                 owned_source = owned_source.max(range.end);
             }
-            Event::Anchor(ParagraphAnchor {
-                item: ParagraphAnchorItem::EmptyOrigin(origin),
+            Event::Anchor(SemanticAnchor {
+                item: SemanticAnchorItem::EmptyOrigin(origin),
                 ..
             }) => {
                 let unit = tables.units.len();
@@ -497,8 +510,8 @@ pub(crate) fn prepare_tables(
                 });
                 tables.participants.push(ParticipantData::Text(unit));
             }
-            Event::Anchor(ParagraphAnchor {
-                item: ParagraphAnchorItem::Atomic(occurrence),
+            Event::Anchor(SemanticAnchor {
+                item: SemanticAnchorItem::Atomic(occurrence),
                 affinity,
             }) => {
                 if source.boxes()[occurrence].kind() == crate::InlineBoxKind::InFlow {
@@ -516,8 +529,24 @@ pub(crate) fn prepare_tables(
                 tables.participants.push(ParticipantData::Atomic(row));
                 preliminary = item_for_box[occurrence];
             }
-            Event::Anchor(ParagraphAnchor {
-                item: ParagraphAnchorItem::Control(occurrence),
+            Event::Anchor(SemanticAnchor {
+                item: SemanticAnchorItem::ComputedLineBoundary(occurrence),
+                ..
+            }) => {
+                collapsed_space_wrap = None;
+                let row = tables.computed_boundaries.len();
+                tables.computed_boundaries.push(ComputedBoundaryData {
+                    occurrence,
+                    source: paragraph.computed_boundaries[occurrence].at,
+                    processed: processed_at,
+                    level: analyzed.analysis.computed_levels[occurrence],
+                });
+                tables
+                    .participants
+                    .push(ParticipantData::ComputedLineBoundary(row));
+            }
+            Event::Anchor(SemanticAnchor {
+                item: SemanticAnchorItem::Control(occurrence),
                 ..
             }) => {
                 let row = tables.control_rows[occurrence];
@@ -607,7 +636,7 @@ pub(crate) fn prepare_tables(
                 matches!(&paragraph.controls[tables.controls[index].occurrence].kind,
                 ParagraphControlKind::DiscretionaryBreak {style} if style.effective_breaking().auto_phrase)
             }
-            ParticipantData::Atomic(_) => false,
+            ParticipantData::Atomic(_) | ParticipantData::ComputedLineBoundary(_) => false,
         };
         tables
             .auto_phrase_prefix
@@ -671,6 +700,10 @@ fn issue_opportunities(
     for index in 1..tables.boundaries.len() {
         let boundary_value = tables.boundaries[index];
         let boundary = &boundary_value;
+        let computed_break = matches!(
+            tables.participants.get(boundary.participant - 1),
+            Some(ParticipantData::ComputedLineBoundary(_))
+        );
         let previous = tables.participants.get(boundary.participant - 1);
         let control = previous.and_then(|item| match *item {
             ParticipantData::Control(i) => {
@@ -800,7 +833,7 @@ fn issue_opportunities(
         }
         // Resource cuts and authored cuts remain different provenance. Omitted
         // SHY leaves two query endpoints; its authored identity wins that gap.
-        let automatic = if !hyphenation && !source_break {
+        let automatic = if !hyphenation && !source_break && !computed_break {
             automatic_cut(analyzed, tables, index)?
         } else {
             None
@@ -825,7 +858,10 @@ fn issue_opportunities(
             }));
             cut = Some(automatic_cut);
         }
-        let kind = if control == Some(&ParagraphControlKind::ForcedBreak) || source_break {
+        let kind = if computed_break
+            || control == Some(&ParagraphControlKind::ForcedBreak)
+            || source_break
+        {
             Some(PreparedBreakKind::Forced)
         } else if analyzed.paragraph.base_direction.is_some()
             && analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]]
@@ -1138,7 +1174,7 @@ fn soft_boundary(
             .code_point()
             .is_some(),
         ParticipantData::Text(unit) => tables.units[unit].empty_origin.is_some(),
-        ParticipantData::Atomic(_) => false,
+        ParticipantData::Atomic(_) | ParticipantData::ComputedLineBoundary(_) => false,
     };
     let mut scan = participant;
     while scan > lower && analyzed.logical.cuts[scan - 1] == owner {
@@ -1828,6 +1864,7 @@ pub(crate) fn prepare_indication_fonts(
                 base_level: analysis.base_level,
                 box_levels: analysis.box_levels.clone(),
                 control_levels: analysis.control_levels.clone(),
+                computed_levels: analysis.computed_levels.clone(),
                 graphemes,
             };
             let inserted_atoms = inserted_atoms.start - offset..inserted_atoms.end - offset;
@@ -1912,7 +1949,7 @@ fn replacement_projection(
             .paragraph
             .anchor_order
             .iter()
-            .position(|anchor| anchor.item == ParagraphAnchorItem::Control(control))
+            .position(|anchor| anchor.item == SemanticAnchorItem::Control(control))
             .expect("validated defining control");
         anchor_atom(
             anchor,
@@ -2014,7 +2051,7 @@ fn replacement_projection(
             .paragraph
             .anchor_order
             .iter()
-            .position(|anchor| anchor.item == ParagraphAnchorItem::Control(control))
+            .position(|anchor| anchor.item == SemanticAnchorItem::Control(control))
             .expect("validated defining control");
         for (order, anchor) in analyzed.paragraph.anchor_order.iter().enumerate() {
             if anchor_position(
@@ -2129,6 +2166,9 @@ fn push_presentation_unit(
         presentation,
         kind: match kind {
             PresentationUnitKind::Deleted => SelectedMappingKind::Deleted,
+            PresentationUnitKind::ComputedLineBoundary { boundary } => {
+                SelectedMappingKind::ComputedLineBoundary { boundary }
+            }
             PresentationUnitKind::GeneratedSeparator { owner } => {
                 SelectedMappingKind::GeneratedSeparator { owner }
             }
@@ -2219,7 +2259,8 @@ pub(crate) fn selected_origin_intersections(
                         }),
                 );
             }
-            PresentationUnitKind::Atomic { .. } => {}
+            PresentationUnitKind::Atomic { .. }
+            | PresentationUnitKind::ComputedLineBoundary { .. } => {}
         }
     }
     fragments

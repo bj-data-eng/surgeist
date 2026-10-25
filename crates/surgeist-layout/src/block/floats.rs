@@ -83,6 +83,9 @@ impl AcceptedFloatPrefix {
                         surgeist_text::PreparedParticipant::Text(p) => p.prepared_text(),
                         surgeist_text::PreparedParticipant::Atomic(p) => p.prepared_text(),
                         surgeist_text::PreparedParticipant::Control(p) => p.prepared_text(),
+                        surgeist_text::PreparedParticipant::ComputedLineBoundary(p) => {
+                            p.prepared_text()
+                        }
                     },
                 };
                 if owner != line.prepared_text()

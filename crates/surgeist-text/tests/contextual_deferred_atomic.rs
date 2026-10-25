@@ -83,6 +83,7 @@ fn capture(
     }
     events.push(E::ExitScope(0));
     text::ContextualSourceInput {
+        computed_line_boundaries: vec![],
         source,
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
         envelope: text::SourceProcessingEnvelope::Complete,

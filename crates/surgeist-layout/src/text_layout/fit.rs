@@ -180,6 +180,7 @@ pub(crate) enum FitError {
     Dependency,
     MissingZoneBasis,
     MissingBlockTail,
+    MissingComputedBoundaryIncidence,
 }
 
 impl From<surgeist_text::Error> for FitError {

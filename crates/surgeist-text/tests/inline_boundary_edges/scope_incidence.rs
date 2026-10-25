@@ -79,6 +79,7 @@ fn input(value: &str, base: t::Style, ranges: &[(usize, usize)]) -> t::Contextua
     }
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     t::ContextualSourceInput {
+        computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
         envelope: t::SourceProcessingEnvelope::Complete,

@@ -45,6 +45,7 @@ fn collapsed_space_cuts(first: text::Wrap, second: text::Wrap, ancestor: text::W
     use text::SourceProcessingEvent as E;
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
             envelope: text::SourceProcessingEnvelope::Complete,

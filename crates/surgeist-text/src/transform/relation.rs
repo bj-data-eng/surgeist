@@ -4,7 +4,7 @@
 use std::ops::Range as IndexRange;
 
 use crate::engine::analysis::wrapping::{Event, LogicalEvent};
-use crate::protocol::paragraph::{ParagraphAnchorItem, ParagraphData};
+use crate::protocol::paragraph::{ParagraphData, SemanticAnchorItem};
 use crate::{ProcessedSource, Range, Source};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -251,11 +251,14 @@ impl TransformMap {
             RelationEvent::PhaseIDeleted { source, .. } => source,
             RelationEvent::Anchor { order } => {
                 let at = match paragraph.anchor_order[order].item {
-                    ParagraphAnchorItem::EmptyOrigin(index) => {
+                    SemanticAnchorItem::EmptyOrigin(index) => {
                         paragraph.origins[index].aggregate.start
                     }
-                    ParagraphAnchorItem::Control(index) => paragraph.controls[index].at,
-                    ParagraphAnchorItem::Atomic(index) => source.boxes()[index].index(),
+                    SemanticAnchorItem::Control(index) => paragraph.controls[index].at,
+                    SemanticAnchorItem::ComputedLineBoundary(index) => {
+                        paragraph.computed_boundaries[index].at
+                    }
+                    SemanticAnchorItem::Atomic(index) => source.boxes()[index].index(),
                 };
                 Range::new(at, at)
             }
@@ -290,11 +293,14 @@ impl TransformMap {
                     Event::Text(index) => self.component_for_atom(index).source.start,
                     Event::Deleted(source, _) => source.start,
                     Event::Anchor(anchor) => match anchor.item {
-                        ParagraphAnchorItem::EmptyOrigin(index) => {
+                        SemanticAnchorItem::EmptyOrigin(index) => {
                             paragraph.origins[index].aggregate.start
                         }
-                        ParagraphAnchorItem::Control(index) => paragraph.controls[index].at,
-                        ParagraphAnchorItem::Atomic(index) => source.boxes()[index].index(),
+                        SemanticAnchorItem::Control(index) => paragraph.controls[index].at,
+                        SemanticAnchorItem::ComputedLineBoundary(index) => {
+                            paragraph.computed_boundaries[index].at
+                        }
+                        SemanticAnchorItem::Atomic(index) => source.boxes()[index].index(),
                     },
                 };
                 let event = LogicalEvent { atom, source, kind };

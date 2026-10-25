@@ -6,6 +6,7 @@ mod auto_phrase;
 mod automatic_model;
 mod automatic_opportunities;
 mod casing;
+mod computed_boundaries;
 mod conditional;
 mod count_admission;
 mod hyphenation_limits;

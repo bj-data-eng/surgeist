@@ -180,6 +180,7 @@ fn many_disjoint_owners_keep_their_own_geometry_without_requiring_empty_gaps() {
     }
     events.push(E::ExitScope(0));
     let all = prepare(text::ContextualSourceInput {
+        computed_line_boundaries: vec![],
         source,
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
         envelope: text::SourceProcessingEnvelope::Complete,
@@ -273,6 +274,7 @@ fn local_emitter_does_not_require_unique_paths_for_dormant_same_domain_text() {
         .collect();
     use text::SourceProcessingEvent as E;
     let all = prepare(text::ContextualSourceInput {
+        computed_line_boundaries: vec![],
         source,
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
         envelope: text::SourceProcessingEnvelope::Complete,

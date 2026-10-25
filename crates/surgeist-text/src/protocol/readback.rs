@@ -23,13 +23,14 @@ use crate::{
 
 use super::{
     FinalizedFragment, FinalizedLine, LineSelectionRequest, PreparedAlternative, PreparedAtomic,
-    PreparedBoundary, PreparedControl, PreparedOpportunity, PreparedOrigin, PreparedParticipant,
-    PreparedScope, PreparedText, PreparedUnit, PreparedVirtualSeparator, PresentationRange,
-    SelectedLine, SpacingSlot, SpacingSlotFeedback, SpacingSlotOwner,
+    PreparedBoundary, PreparedComputedLineBoundary, PreparedControl, PreparedOpportunity,
+    PreparedOrigin, PreparedParticipant, PreparedScope, PreparedText, PreparedUnit,
+    PreparedVirtualSeparator, PresentationRange, SelectedLine, SpacingSlot, SpacingSlotFeedback,
+    SpacingSlotOwner,
     paragraph::{FragmentOwner, OriginIntersection, ParagraphControlKind, ParagraphOriginKind},
     prepared::{
-        AlternativeData, AlternativeDefinition, AtomicData, BoundaryData, ControlData,
-        OpportunityData, ParticipantData, PreparedBreakKind, SelectedMappingKind,
+        AlternativeData, AlternativeDefinition, AtomicData, BoundaryData, ComputedBoundaryData,
+        ControlData, OpportunityData, ParticipantData, PreparedBreakKind, SelectedMappingKind,
         SelectedMappingPiece, UnitData,
     },
 };
@@ -164,6 +165,12 @@ macro_rules! prepared_view {
 prepared_view!(PreparedUnitView, PreparedUnit, units, UnitData);
 prepared_view!(PreparedAtomicView, PreparedAtomic, atomics, AtomicData);
 prepared_view!(PreparedControlView, PreparedControl, controls, ControlData);
+prepared_view!(
+    PreparedComputedLineBoundaryView,
+    PreparedComputedLineBoundary,
+    computed_boundaries,
+    ComputedBoundaryData
+);
 prepared_view!(
     PreparedBoundaryView,
     PreparedBoundary,
@@ -360,7 +367,7 @@ impl PreparedVirtualSeparatorView<'_> {
             .anchor_order
             .iter()
             .filter_map(|anchor| {
-                let super::paragraph::ParagraphAnchorItem::Control(occurrence) = anchor.item else {
+                let super::paragraph::SemanticAnchorItem::Control(occurrence) = anchor.item else {
                     return None;
                 };
                 Some(PreparedControl {
@@ -488,6 +495,12 @@ impl PreparedText {
                     prepared: Arc::clone(&self.inner),
                     index,
                 }),
+                ParticipantData::ComputedLineBoundary(index) => {
+                    PreparedParticipant::ComputedLineBoundary(PreparedComputedLineBoundary {
+                        prepared: Arc::clone(&self.inner),
+                        index,
+                    })
+                }
                 ParticipantData::Control(index) => PreparedParticipant::Control(PreparedControl {
                     prepared: Arc::clone(&self.inner),
                     index,
@@ -1325,6 +1338,7 @@ impl SelectedLine {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PresentationMappingKind {
     Source,
+    ComputedLineBoundary,
     Deleted,
     Replacement,
     GeneratedSeparator,
@@ -1373,6 +1387,9 @@ impl SelectedMappingView<'_> {
     pub const fn kind(&self) -> PresentationMappingKind {
         match self.piece.kind {
             SelectedMappingKind::Source => PresentationMappingKind::Source,
+            SelectedMappingKind::ComputedLineBoundary { .. } => {
+                PresentationMappingKind::ComputedLineBoundary
+            }
             SelectedMappingKind::Deleted => PresentationMappingKind::Deleted,
             SelectedMappingKind::Replacement { .. } => PresentationMappingKind::Replacement,
             SelectedMappingKind::GeneratedSeparator { .. } => {
@@ -1547,6 +1564,122 @@ impl FinalizedGlyphView<'_> {
     #[must_use]
     pub const fn range(self) -> Range {
         self.glyph.glyph.source
+    }
+}
+
+impl PreparedComputedLineBoundaryView<'_> {
+    /// Original event immediately before the effective group's canonical cut.
+    /// This observes the group, not an arbitrary member cause's target.
+    #[must_use]
+    pub fn preceding_event(&self) -> Option<CapturedEventPosition> {
+        let analyzed = &self.prepared.analyzed;
+        let topology = analyzed
+            .paragraph
+            .scope_topology
+            .as_ref()
+            .expect("computed capture");
+        let index = analyzed.paragraph.computed_boundaries[self.data().occurrence]
+            .capture_cut
+            .checked_sub(1)?;
+        Some(CapturedEventPosition {
+            capture: Arc::clone(&topology.capture),
+            index,
+        })
+    }
+    /// Original event immediately after the effective group's canonical cut.
+    #[must_use]
+    pub fn following_event(&self) -> Option<CapturedEventPosition> {
+        let analyzed = &self.prepared.analyzed;
+        let topology = analyzed
+            .paragraph
+            .scope_topology
+            .as_ref()
+            .expect("computed capture");
+        let index = analyzed.paragraph.computed_boundaries[self.data().occurrence].capture_cut;
+        (index < topology.capture.events.len()).then(|| CapturedEventPosition {
+            capture: Arc::clone(&topology.capture),
+            index,
+        })
+    }
+    #[must_use]
+    pub fn domain(&self) -> CapturedScope {
+        let topology = self
+            .prepared
+            .analyzed
+            .paragraph
+            .scope_topology
+            .as_ref()
+            .expect("computed capture");
+        CapturedScope {
+            capture: Arc::clone(&topology.capture),
+            index: topology.capture.domain_scopes[topology.domain],
+        }
+    }
+    #[must_use]
+    pub fn paragraph(&self) -> CapturedParagraph {
+        let topology = self
+            .prepared
+            .analyzed
+            .paragraph
+            .scope_topology
+            .as_ref()
+            .expect("computed capture");
+        CapturedParagraph {
+            capture: Arc::clone(&topology.capture),
+            index: topology.paragraph,
+        }
+    }
+    /// Genuine computed causes at this one effective mandatory incidence.
+    pub fn causes(
+        &self,
+    ) -> impl ExactSizeIterator<Item = crate::CapturedComputedLineBoundary> + '_ {
+        let analyzed = &self.prepared.analyzed;
+        let topology = analyzed
+            .paragraph
+            .scope_topology
+            .as_ref()
+            .expect("computed admission retains capture");
+        analyzed.paragraph.computed_boundaries[self.data().occurrence]
+            .causes
+            .iter()
+            .map(|&index| crate::CapturedComputedLineBoundary {
+                capture: Arc::clone(&topology.capture),
+                index,
+            })
+    }
+    #[must_use]
+    pub fn source_position(&self) -> SourcePosition {
+        SourcePosition::from_unchecked(self.data().source)
+    }
+    #[must_use]
+    pub fn processed_position(&self) -> ProcessedPosition {
+        processed_position(self.prepared, self.data().processed)
+    }
+    #[must_use]
+    pub fn level(&self) -> BidiLevel {
+        resolved_level(self.data().level)
+    }
+}
+impl PreparedOpportunityView<'_> {
+    /// Computed mandatory cause group terminating this actual opportunity.
+    #[must_use]
+    pub fn computed_line_boundary(&self) -> Option<PreparedComputedLineBoundary> {
+        if self.data().kind != PreparedBreakKind::Forced {
+            return None;
+        }
+        let boundary = self.prepared.tables.boundaries[self.data().boundary];
+        let ParticipantData::ComputedLineBoundary(index) = *self
+            .prepared
+            .tables
+            .participants
+            .get(boundary.participant.checked_sub(1)?)?
+        else {
+            return None;
+        };
+        Some(PreparedComputedLineBoundary {
+            prepared: Arc::clone(self.prepared),
+            index,
+        })
     }
 }
 

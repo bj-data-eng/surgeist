@@ -30,7 +30,7 @@ use icu_segmenter::options::WordBreakInvariantOptions;
 use parley_data::Properties;
 
 use super::{bidi::BidiResolver, resolve::AnalyzedStyleRun};
-use crate::protocol::paragraph::{ParagraphAnchorItem, ParagraphData};
+use crate::protocol::paragraph::{ParagraphData, SemanticAnchorItem};
 use crate::{InlineBox, InlineBoxKind, Result, projection::SourceProjection};
 
 #[derive(Default)]
@@ -176,6 +176,7 @@ pub(crate) struct Analysis {
     pub(crate) levels: Vec<u8>,
     pub(crate) box_levels: Vec<u8>,
     pub(crate) control_levels: Vec<u8>,
+    pub(crate) computed_levels: Vec<u8>,
     pub(crate) base_level: u8,
     /// Actual segmentation boundaries expressed as half-open atom intervals.
     pub(crate) graphemes: Vec<Range<usize>>,
@@ -417,6 +418,7 @@ pub(crate) fn analyze(
     let mut levels = vec![base_level; infos.len()];
     let mut box_levels = vec![base_level; boxes.len()];
     let mut control_levels = vec![base_level; paragraph.controls.len()];
+    let mut computed_levels = vec![base_level; paragraph.computed_boundaries.len()];
     let mut bidi = BidiResolver::new();
     let mut owner_start = 0;
     for body in original.split_inclusive(|(_, (class, _))| *class == BidiClass::ParagraphSeparator)
@@ -434,6 +436,7 @@ pub(crate) fn analyze(
                 BidiOwner::Atom(index) => levels[index] = level,
                 BidiOwner::Atomic(index) => box_levels[index] = level,
                 BidiOwner::Control(index) => control_levels[index] = level,
+                BidiOwner::ComputedLineBoundary(index) => computed_levels[index] = level,
             }
         }
         owner_start = owner_end;
@@ -446,10 +449,10 @@ pub(crate) fn analyze(
         .copied()
         .unwrap_or(base_level);
         match anchor.item {
-            ParagraphAnchorItem::Atomic(i) if boxes[i].kind() == InlineBoxKind::OutOfFlow => {
+            SemanticAnchorItem::Atomic(i) if boxes[i].kind() == InlineBoxKind::OutOfFlow => {
                 box_levels[i] = inherited
             }
-            ParagraphAnchorItem::Control(i)
+            SemanticAnchorItem::Control(i)
                 if paragraph.controls[i].kind.code_point().is_none()
                     && paragraph.controls[i].kind
                         != crate::protocol::paragraph::ParagraphControlKind::ForcedBreak =>
@@ -465,6 +468,7 @@ pub(crate) fn analyze(
             levels,
             box_levels,
             control_levels,
+            computed_levels,
             base_level,
             graphemes,
             line_candidates,
@@ -490,17 +494,19 @@ pub(crate) enum BidiOwner {
     Atom(usize),
     Atomic(usize),
     Control(usize),
+    ComputedLineBoundary(usize),
 }
 
 pub(crate) fn anchor_position(
-    item: ParagraphAnchorItem,
+    item: SemanticAnchorItem,
     paragraph: &ParagraphData,
     boxes: &[InlineBox],
 ) -> usize {
     match item {
-        ParagraphAnchorItem::EmptyOrigin(index) => paragraph.origins[index].aggregate.start,
-        ParagraphAnchorItem::Atomic(index) => boxes[index].index(),
-        ParagraphAnchorItem::Control(index) => paragraph.controls[index].at,
+        SemanticAnchorItem::EmptyOrigin(index) => paragraph.origins[index].aggregate.start,
+        SemanticAnchorItem::Atomic(index) => boxes[index].index(),
+        SemanticAnchorItem::Control(index) => paragraph.controls[index].at,
+        SemanticAnchorItem::ComputedLineBoundary(index) => paragraph.computed_boundaries[index].at,
     }
 }
 
@@ -539,15 +545,15 @@ pub(crate) fn project_anchor_atom(
     {
         index += 1;
     }
-    if matches!(anchor.item, ParagraphAnchorItem::Atomic(i) if boxes[i].kind() == InlineBoxKind::InFlow)
+    if matches!(anchor.item, SemanticAnchorItem::Atomic(i) if boxes[i].kind() == InlineBoxKind::InFlow)
     {
         return index;
     }
     // The raw standalone Source front historically orders transparent boxes at
     // its admitted scalar endpoint, even inside a CRLF/combining grapheme.
-    // Explicit native ParagraphAnchor affinity still projects typography stops.
+    // Explicit native SemanticAnchor affinity still projects typography stops.
     if paragraph.base_direction.is_none()
-        && matches!(anchor.item,ParagraphAnchorItem::Atomic(i) if boxes[i].kind()==InlineBoxKind::OutOfFlow)
+        && matches!(anchor.item,SemanticAnchorItem::Atomic(i) if boxes[i].kind()==InlineBoxKind::OutOfFlow)
     {
         return index;
     }
@@ -574,16 +580,19 @@ pub(crate) fn project_anchor_atom(
     }
 }
 
-fn anchor_kind(item: ParagraphAnchorItem) -> (crate::protocol::ProtocolHandleKind, usize) {
+fn anchor_kind(item: SemanticAnchorItem) -> (crate::protocol::ProtocolHandleKind, usize) {
     match item {
-        ParagraphAnchorItem::EmptyOrigin(i) => (crate::protocol::ProtocolHandleKind::Origin, i),
-        ParagraphAnchorItem::Atomic(i) => (crate::protocol::ProtocolHandleKind::Atomic, i),
-        ParagraphAnchorItem::Control(i) => (crate::protocol::ProtocolHandleKind::Control, i),
+        SemanticAnchorItem::EmptyOrigin(i) => (crate::protocol::ProtocolHandleKind::Origin, i),
+        SemanticAnchorItem::Atomic(i) => (crate::protocol::ProtocolHandleKind::Atomic, i),
+        SemanticAnchorItem::Control(i) => (crate::protocol::ProtocolHandleKind::Control, i),
+        SemanticAnchorItem::ComputedLineBoundary(i) => {
+            (crate::protocol::ProtocolHandleKind::ComputedLineBoundary, i)
+        }
     }
 }
 
 fn push_bidi_anchor(
-    item: ParagraphAnchorItem,
+    item: SemanticAnchorItem,
     paragraph: &ParagraphData,
     boxes: &[InlineBox],
     sources: &AnalysisDataSources,
@@ -591,10 +600,13 @@ fn push_bidi_anchor(
     owners: &mut Vec<BidiOwner>,
 ) {
     let (cp, owner) = match item {
-        ParagraphAnchorItem::Atomic(index) if boxes[index].kind() == InlineBoxKind::InFlow => {
+        SemanticAnchorItem::Atomic(index) if boxes[index].kind() == InlineBoxKind::InFlow => {
             (0xfffc, BidiOwner::Atomic(index))
         }
-        ParagraphAnchorItem::Control(index) => {
+        SemanticAnchorItem::ComputedLineBoundary(index) => {
+            (0xa, BidiOwner::ComputedLineBoundary(index))
+        }
+        SemanticAnchorItem::Control(index) => {
             let control = &paragraph.controls[index];
             let cp =
                 if control.kind == crate::protocol::paragraph::ParagraphControlKind::ForcedBreak {

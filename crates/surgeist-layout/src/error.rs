@@ -188,6 +188,8 @@ pub enum LayoutMissingContext {
     /// The selected hyphenation needs an owning completed-block continuation.
     TextBlockTail,
     TextOutOfFlowGeometry,
+    /// A computed semantic cut has no proved side in the actual native flow.
+    ComputedLineBoundaryIncidence,
     AnonymousGeneratingBlock,
 }
 

@@ -302,6 +302,7 @@ fn contextual_event_order_retains_the_same_genuine_wbr_cut() {
     let source = Source::identified("AA", Id::from_u64(6308), 12);
     let processed = std::sync::Arc::new(
         process_contextual_source(ContextualSourceInput {
+            computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,

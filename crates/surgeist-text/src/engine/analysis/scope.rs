@@ -5,7 +5,7 @@
 //! mixed-prefix ownership; a snapped marker cannot move a logical scope edge.
 
 use crate::engine::AnalyzedCore;
-use crate::protocol::paragraph::{ParagraphAnchorItem, ParagraphControlKind};
+use crate::protocol::paragraph::{ParagraphControlKind, SemanticAnchorItem};
 use crate::transform::relation::{ComponentOwner, RelationEvent};
 
 #[derive(Clone, Copy, Debug)]
@@ -83,13 +83,21 @@ impl ScopeCutIndex {
                     witness_orders(&mut orders)
                 }
                 RelationEvent::Anchor { order } => match core.paragraph.anchor_order[order].item {
-                    ParagraphAnchorItem::EmptyOrigin(origin) => {
+                    SemanticAnchorItem::EmptyOrigin(origin) => {
                         known(topology.origin_orders[origin])
                     }
-                    ParagraphAnchorItem::Atomic(atomic) => {
+                    SemanticAnchorItem::Atomic(atomic) => {
                         known(topology.capture.atomic_orders[atomic])
                     }
-                    ParagraphAnchorItem::Control(control) => {
+                    SemanticAnchorItem::ComputedLineBoundary(index) => {
+                        let point =
+                            Position(core.paragraph.computed_boundaries[index].capture_cut, false);
+                        EventWitness::Known(Witness {
+                            first: point,
+                            last: point,
+                        })
+                    }
+                    SemanticAnchorItem::Control(control) => {
                         let endpoint = matches!(
                             core.paragraph.controls[control].kind,
                             ParagraphControlKind::InlineBoundaryStart
@@ -252,6 +260,7 @@ mod tests {
             })
             .collect();
         let input = ContextualSourceInput {
+            computed_line_boundaries: vec![],
             source,
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,

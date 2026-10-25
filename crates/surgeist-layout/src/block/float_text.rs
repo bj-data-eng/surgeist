@@ -25,6 +25,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
         pending: PendingFloat<Node, S>,
         packet: Arc<crate::engine::FloatChildPacket<Node, S>>,
         binding: &crate::TextParagraphBinding<Node>,
+        associations: &crate::text_layout::capture::ScopeAssociations<Node>,
         offset: usize,
         request: crate::ComputeInputOf<S>,
     ) -> Result<Self, FitError> {
@@ -108,14 +109,50 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
         let following = binding.nodes[offset + 1..]
             .iter()
             .find_map(|&node| at_node(node, false));
-        let actual = previous
+        let lower = previous.as_ref().map_or(0, |row| row.1);
+        let upper = following.as_ref().map_or(participants.len(), |row| row.1);
+        let mut actual = previous
             .or_else(|| following.clone())
             .ok_or(FitError::InvalidGeometry)?;
+        let mut next_seam = following.map(|value| value.0);
+        let mut preceding_computed = None;
+        let mut following_computed = None;
+        for (index, participant) in participants.iter().enumerate().take(upper).skip(lower) {
+            let PreparedParticipant::ComputedLineBoundary(boundary) = participant else {
+                continue;
+            };
+            let cut = associations
+                .computed_cut(boundary)
+                .ok_or(FitError::MissingComputedBoundaryIncidence)?;
+            match cut.side_of_node(offset) {
+                Some(std::cmp::Ordering::Less) => {
+                    following_computed.get_or_insert((index, participant.clone()));
+                }
+                Some(std::cmp::Ordering::Greater) => {
+                    preceding_computed = Some((index, participant.clone()))
+                }
+                Some(std::cmp::Ordering::Equal) | None => {
+                    return Err(FitError::MissingComputedBoundaryIncidence);
+                }
+            }
+        }
+        if let Some((index, participant)) = preceding_computed {
+            actual = (TextSeam::AfterParticipant(participant), index + 1, false);
+        } else if let Some((index, participant)) = &following_computed {
+            actual = (
+                TextSeam::BeforeParticipant(participant.clone()),
+                *index,
+                false,
+            );
+        }
+        if let Some((_, participant)) = following_computed {
+            next_seam = Some(TextSeam::BeforeParticipant(participant));
+        }
         Ok(Self {
             pending,
             packet,
             seam: actual.0,
-            following: following.map(|value| value.0),
+            following: next_seam,
             position: actual.1,
             inside: actual.2,
         })

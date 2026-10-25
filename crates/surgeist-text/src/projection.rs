@@ -420,10 +420,9 @@ fn paragraph_barriers(
             .enumerate()
             .filter(|(i, item)| {
                 item.kind() == crate::InlineBoxKind::InFlow
-                    && paragraph
-                        .anchor_order
-                        .iter()
-                        .any(|anchor| anchor.item == crate::ParagraphAnchorItem::Atomic(*i))
+                    && paragraph.anchor_order.iter().any(|anchor| {
+                        anchor.item == crate::protocol::paragraph::SemanticAnchorItem::Atomic(*i)
+                    })
             })
             .map(|(_, item)| item.index()),
     );
@@ -435,6 +434,12 @@ fn paragraph_barriers(
                 control.kind == crate::protocol::paragraph::ParagraphControlKind::ForcedBreak
             })
             .map(|control| control.at),
+    );
+    barriers.extend(
+        paragraph
+            .computed_boundaries
+            .iter()
+            .map(|boundary| boundary.at),
     );
     barriers.sort_unstable();
     barriers.dedup();

@@ -24,6 +24,14 @@ pub surgeist_text::BaselineShiftFact::Requested(surgeist_text::BaselineShift)
 pub enum surgeist_text::BidiLevelError
 pub surgeist_text::BidiLevelError::OutOfRange
 pub surgeist_text::BidiLevelError::OutOfRange::level: u8
+pub enum surgeist_text::CapturedComputedLineBoundaryTarget
+pub surgeist_text::CapturedComputedLineBoundaryTarget::Atomic
+pub surgeist_text::CapturedComputedLineBoundaryTarget::Atomic::position: surgeist_text::CapturedEventPosition
+pub surgeist_text::CapturedComputedLineBoundaryTarget::Atomic::side: surgeist_text::SourceBoxSide
+pub surgeist_text::CapturedComputedLineBoundaryTarget::Endpoint(surgeist_text::CapturedControl)
+pub surgeist_text::CapturedComputedLineBoundaryTarget::Scope
+pub surgeist_text::CapturedComputedLineBoundaryTarget::Scope::scope: surgeist_text::CapturedScope
+pub surgeist_text::CapturedComputedLineBoundaryTarget::Scope::side: surgeist_text::SourceBoxSide
 pub enum surgeist_text::CapturedDomainDefinition
 pub surgeist_text::CapturedDomainDefinition::AtomicBlock
 pub surgeist_text::CapturedDomainDefinition::AtomicBlock::atomic: surgeist_text::CapturedEventPosition
@@ -47,6 +55,22 @@ pub surgeist_text::CaseTransform::Capitalize
 pub surgeist_text::CaseTransform::Lowercase
 pub surgeist_text::CaseTransform::None
 pub surgeist_text::CaseTransform::Uppercase
+pub enum surgeist_text::ComputedLineBoundaryError
+pub surgeist_text::ComputedLineBoundaryError::Domain
+pub surgeist_text::ComputedLineBoundaryError::InsideDelimiter
+pub surgeist_text::ComputedLineBoundaryError::InsideScalar
+pub surgeist_text::ComputedLineBoundaryError::MissingParagraph
+pub surgeist_text::ComputedLineBoundaryError::TargetBounds
+pub surgeist_text::ComputedLineBoundaryError::TargetRole
+pub enum surgeist_text::ComputedLineBoundaryInput
+pub surgeist_text::ComputedLineBoundaryInput::Atomic
+pub surgeist_text::ComputedLineBoundaryInput::Atomic::atomic: usize
+pub surgeist_text::ComputedLineBoundaryInput::Atomic::side: surgeist_text::SourceBoxSide
+pub surgeist_text::ComputedLineBoundaryInput::Endpoint
+pub surgeist_text::ComputedLineBoundaryInput::Endpoint::control: usize
+pub surgeist_text::ComputedLineBoundaryInput::Scope
+pub surgeist_text::ComputedLineBoundaryInput::Scope::scope: usize
+pub surgeist_text::ComputedLineBoundaryInput::Scope::side: surgeist_text::SourceBoxSide
 pub enum surgeist_text::ConditionalDisposition
 pub surgeist_text::ConditionalDisposition::AutoFitExhausted(surgeist_text::FinalizedLine)
 pub surgeist_text::ConditionalDisposition::AutoIntrinsicRefinement(surgeist_text::PreparedAlternative)
@@ -551,6 +575,7 @@ pub surgeist_text::PreparedBreakKind::Forced
 pub surgeist_text::PreparedBreakKind::ParagraphEnd
 pub enum surgeist_text::PreparedParticipant
 pub surgeist_text::PreparedParticipant::Atomic(surgeist_text::PreparedAtomic)
+pub surgeist_text::PreparedParticipant::ComputedLineBoundary(surgeist_text::PreparedComputedLineBoundary)
 pub surgeist_text::PreparedParticipant::Control(surgeist_text::PreparedControl)
 pub surgeist_text::PreparedParticipant::Text(surgeist_text::PreparedUnit)
 pub enum surgeist_text::PreparedPhrasePieceOwner
@@ -568,6 +593,7 @@ pub surgeist_text::PreparedTermination::Measurement(surgeist_text::PreparedWordP
 pub surgeist_text::PreparedTermination::Ordinary(surgeist_text::PreparedOpportunity)
 pub surgeist_text::PreparedTermination::PhraseMeasurement(surgeist_text::PreparedPhrasePortion)
 pub enum surgeist_text::PresentationMappingKind
+pub surgeist_text::PresentationMappingKind::ComputedLineBoundary
 pub surgeist_text::PresentationMappingKind::Deleted
 pub surgeist_text::PresentationMappingKind::GeneratedSeparator
 pub surgeist_text::PresentationMappingKind::Replacement
@@ -735,6 +761,7 @@ pub enum surgeist_text::ProtocolHandleKind
 pub surgeist_text::ProtocolHandleKind::Alternative
 pub surgeist_text::ProtocolHandleKind::Atomic
 pub surgeist_text::ProtocolHandleKind::Boundary
+pub surgeist_text::ProtocolHandleKind::ComputedLineBoundary
 pub surgeist_text::ProtocolHandleKind::ConditionalOpportunity
 pub surgeist_text::ProtocolHandleKind::Control
 pub surgeist_text::ProtocolHandleKind::Fragment
@@ -767,11 +794,17 @@ pub surgeist_text::Slant::Normal
 pub surgeist_text::Slant::Oblique(core::option::Option<f32>)
 impl core::convert::From<surgeist_text::Slant> for parlance::font::FontStyle
 pub fn parlance::font::FontStyle::from(slant: surgeist_text::Slant) -> Self
+pub enum surgeist_text::SourceBoxSide
+pub surgeist_text::SourceBoxSide::After
+pub surgeist_text::SourceBoxSide::Before
 pub enum surgeist_text::SourceProcessingEnvelope
 pub surgeist_text::SourceProcessingEnvelope::Complete
 pub surgeist_text::SourceProcessingEnvelope::IncompleteExterior
 pub enum surgeist_text::SourceProcessingError
 pub surgeist_text::SourceProcessingError::BoundaryPolicy
+pub surgeist_text::SourceProcessingError::ComputedLineBoundary
+pub surgeist_text::SourceProcessingError::ComputedLineBoundary::reason: surgeist_text::ComputedLineBoundaryError
+pub surgeist_text::SourceProcessingError::ComputedLineBoundary::request: usize
 pub surgeist_text::SourceProcessingError::Connection
 pub surgeist_text::SourceProcessingError::DelimiterCrossing
 pub surgeist_text::SourceProcessingError::Domain
@@ -1176,6 +1209,21 @@ pub fn surgeist_text::Builder<'_>::identity(&mut self, id: surgeist_text::Id, re
 pub fn surgeist_text::Builder<'_>::inline_box(&mut self, box_: surgeist_text::InlineBox) -> &mut Self
 pub fn surgeist_text::Builder<'_>::options(&mut self, options: surgeist_text::Options) -> &mut Self
 pub fn surgeist_text::Builder<'_>::span(&mut self, range: surgeist_text::Range, style: surgeist_text::Style) -> &mut Self
+pub struct surgeist_text::CapturedComputedLineBoundary
+impl surgeist_text::CapturedComputedLineBoundary
+pub fn surgeist_text::CapturedComputedLineBoundary::domain(&self) -> surgeist_text::CapturedScope
+pub fn surgeist_text::CapturedComputedLineBoundary::following_event(&self) -> core::option::Option<surgeist_text::CapturedEventPosition>
+pub fn surgeist_text::CapturedComputedLineBoundary::paragraph(&self) -> surgeist_text::CapturedParagraph
+pub fn surgeist_text::CapturedComputedLineBoundary::preceding_event(&self) -> core::option::Option<surgeist_text::CapturedEventPosition>
+pub fn surgeist_text::CapturedComputedLineBoundary::source_position(&self) -> surgeist_text::SourcePosition
+pub fn surgeist_text::CapturedComputedLineBoundary::target(&self) -> surgeist_text::CapturedComputedLineBoundaryTarget
+impl core::cmp::Eq for surgeist_text::CapturedComputedLineBoundary
+impl core::cmp::PartialEq for surgeist_text::CapturedComputedLineBoundary
+pub fn surgeist_text::CapturedComputedLineBoundary::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_text::CapturedComputedLineBoundary
+pub fn surgeist_text::CapturedComputedLineBoundary::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for surgeist_text::CapturedComputedLineBoundary
+pub fn surgeist_text::CapturedComputedLineBoundary::hash<H: core::hash::Hasher>(&self, state: &mut H)
 pub struct surgeist_text::CapturedControl
 impl surgeist_text::CapturedControl
 pub fn surgeist_text::CapturedControl::event_position(&self) -> surgeist_text::CapturedEventPosition
@@ -1266,6 +1314,7 @@ pub fn surgeist_text::Composer::try_span(&mut self, range: surgeist_text::Range,
 pub fn surgeist_text::Composer::with(&mut self, style: surgeist_text::Style, children: impl core::ops::function::FnOnce(&mut surgeist_text::Composer)) -> surgeist_text::Mark
 pub struct surgeist_text::ContextualSourceInput
 pub surgeist_text::ContextualSourceInput::boundary_policies: alloc::vec::Vec<surgeist_text::ParagraphBoundaryPolicy>
+pub surgeist_text::ContextualSourceInput::computed_line_boundaries: alloc::vec::Vec<surgeist_text::ComputedLineBoundaryInput>
 pub surgeist_text::ContextualSourceInput::connections: alloc::vec::Vec<surgeist_text::SourceProcessingConnection>
 pub surgeist_text::ContextualSourceInput::controls: alloc::vec::Vec<surgeist_text::ParagraphControl>
 pub surgeist_text::ContextualSourceInput::envelope: surgeist_text::SourceProcessingEnvelope
@@ -1970,6 +2019,32 @@ pub fn surgeist_text::PreparedBoundaryView<'_>::source_after(&self) -> surgeist_
 pub fn surgeist_text::PreparedBoundaryView<'_>::source_before(&self) -> surgeist_text::SourcePosition
 impl core::fmt::Debug for surgeist_text::PreparedBoundaryView<'_>
 pub fn surgeist_text::PreparedBoundaryView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_text::PreparedComputedLineBoundary
+impl surgeist_text::PreparedComputedLineBoundary
+pub fn surgeist_text::PreparedComputedLineBoundary::prepared_text(&self) -> surgeist_text::PreparedText
+impl surgeist_text::PreparedComputedLineBoundary
+pub fn surgeist_text::PreparedComputedLineBoundary::view(&self) -> surgeist_text::PreparedComputedLineBoundaryView<'_>
+impl core::cmp::Eq for surgeist_text::PreparedComputedLineBoundary
+impl core::cmp::PartialEq for surgeist_text::PreparedComputedLineBoundary
+pub fn surgeist_text::PreparedComputedLineBoundary::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_text::PreparedComputedLineBoundary
+pub fn surgeist_text::PreparedComputedLineBoundary::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for surgeist_text::PreparedComputedLineBoundary
+pub fn surgeist_text::PreparedComputedLineBoundary::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_text::PreparedComputedLineBoundaryView<'a>
+impl surgeist_text::PreparedComputedLineBoundaryView<'_>
+pub fn surgeist_text::PreparedComputedLineBoundaryView<'_>::causes(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::CapturedComputedLineBoundary> + '_
+pub fn surgeist_text::PreparedComputedLineBoundaryView<'_>::domain(&self) -> surgeist_text::CapturedScope
+pub fn surgeist_text::PreparedComputedLineBoundaryView<'_>::following_event(&self) -> core::option::Option<surgeist_text::CapturedEventPosition>
+pub fn surgeist_text::PreparedComputedLineBoundaryView<'_>::level(&self) -> surgeist_text::BidiLevel
+pub fn surgeist_text::PreparedComputedLineBoundaryView<'_>::paragraph(&self) -> surgeist_text::CapturedParagraph
+pub fn surgeist_text::PreparedComputedLineBoundaryView<'_>::preceding_event(&self) -> core::option::Option<surgeist_text::CapturedEventPosition>
+pub fn surgeist_text::PreparedComputedLineBoundaryView<'_>::processed_position(&self) -> surgeist_text::ProcessedPosition
+pub fn surgeist_text::PreparedComputedLineBoundaryView<'_>::source_position(&self) -> surgeist_text::SourcePosition
+impl surgeist_text::PreparedComputedLineBoundaryView<'_>
+pub fn surgeist_text::PreparedComputedLineBoundaryView<'_>::handle(&self) -> surgeist_text::PreparedComputedLineBoundary
+impl core::fmt::Debug for surgeist_text::PreparedComputedLineBoundaryView<'_>
+pub fn surgeist_text::PreparedComputedLineBoundaryView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::PreparedConditionalBatch
 impl surgeist_text::PreparedConditionalBatch
 pub fn surgeist_text::PreparedConditionalBatch::advance(&self, dispositions: &[surgeist_text::ConditionalDisposition]) -> surgeist_text::Result<core::option::Option<Self>>
@@ -2087,6 +2162,8 @@ impl surgeist_text::PreparedOpportunityView<'_>
 pub fn surgeist_text::PreparedOpportunityView<'_>::alternatives(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedAlternativeView<'_>>
 pub fn surgeist_text::PreparedOpportunityView<'_>::boundary(&self) -> surgeist_text::PreparedBoundary
 pub fn surgeist_text::PreparedOpportunityView<'_>::kind(&self) -> surgeist_text::PreparedBreakKind
+impl surgeist_text::PreparedOpportunityView<'_>
+pub fn surgeist_text::PreparedOpportunityView<'_>::computed_line_boundary(&self) -> core::option::Option<surgeist_text::PreparedComputedLineBoundary>
 impl surgeist_text::PreparedOpportunityView<'_>
 pub fn surgeist_text::PreparedOpportunityView<'_>::handle(&self) -> surgeist_text::PreparedOpportunity
 impl core::fmt::Debug for surgeist_text::PreparedOpportunityView<'_>
@@ -2338,6 +2415,13 @@ pub const fn surgeist_text::ProcessedSource::segment_breaks(&self) -> &surgeist_
 pub const fn surgeist_text::ProcessedSource::source(&self) -> &surgeist_text::Source
 pub fn surgeist_text::ProcessedSource::source_to_processed(&self, at: surgeist_text::SourcePosition, affinity: surgeist_text::Affinity) -> surgeist_text::Result<surgeist_text::ProcessedPosition>
 pub fn surgeist_text::ProcessedSource::spans(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::ProcessedSpan<'_>>
+impl surgeist_text::ProcessedSource
+pub fn surgeist_text::ProcessedSource::captured_atomic(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedEventPosition>
+pub fn surgeist_text::ProcessedSource::captured_computed_line_boundary(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedComputedLineBoundary>
+pub fn surgeist_text::ProcessedSource::captured_control(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedControl>
+pub fn surgeist_text::ProcessedSource::captured_origin(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedEventPosition>
+pub fn surgeist_text::ProcessedSource::captured_paragraph(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedParagraph>
+pub fn surgeist_text::ProcessedSource::captured_scope(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedScope>
 pub struct surgeist_text::ProcessedSpan<'a>
 impl<'a> surgeist_text::ProcessedSpan<'a>
 pub const fn surgeist_text::ProcessedSpan<'a>::ordinal(self) -> usize

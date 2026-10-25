@@ -57,6 +57,56 @@ pub(crate) struct ScopeAssociations<Node> {
     domains: Vec<Domain<Node>>,
     regions: Vec<CapturedScope>,
     structural: Vec<CapturedScope>,
+    computed: Vec<ComputedIncidence>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ComputedIncidence {
+    boundary: surgeist_text::PreparedComputedLineBoundary,
+    cut: ComputedNativeCut,
+}
+
+/// Inclusive bounds on possible gaps between actual run nodes. They are not a
+/// computed-group identity; distinct groups can have the same native bounds.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ComputedNativeCut {
+    lower: usize,
+    upper: usize,
+}
+
+impl ComputedNativeCut {
+    pub(crate) fn side_of_node(self, offset: usize) -> Option<std::cmp::Ordering> {
+        if offset < self.lower {
+            Some(std::cmp::Ordering::Less)
+        } else if offset >= self.upper {
+            Some(std::cmp::Ordering::Greater)
+        } else {
+            // In particular, a node ON the lower bound of a nonexact gap is
+            // ambiguous: the cut may be immediately before or after that node.
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+mod computed_cut_tests {
+    use super::ComputedNativeCut;
+    use std::cmp::Ordering::{Greater, Less};
+
+    #[test]
+    fn a_float_on_the_first_possible_gap_has_no_proven_side() {
+        // Native nodes [left, float, right]: after-left gap1 and before-right
+        // gap2 are both possible. The float at node1 is not strictly interior
+        // to those bounds, but its side is still genuinely ambiguous.
+        let uncertain = ComputedNativeCut { lower: 1, upper: 2 };
+        assert_eq!(uncertain.side_of_node(0), Some(Less));
+        assert_eq!(uncertain.side_of_node(1), None);
+        assert_eq!(uncertain.side_of_node(2), Some(Greater));
+        let after_left = ComputedNativeCut { lower: 1, upper: 1 };
+        let before_right = ComputedNativeCut { lower: 2, upper: 2 };
+        assert_eq!(after_left.side_of_node(1), Some(Greater));
+        assert_eq!(before_right.side_of_node(1), Some(Less));
+    }
 }
 #[derive(Clone, Debug, PartialEq)]
 struct InlineScope<Node> {
@@ -90,10 +140,20 @@ impl<Node> Default for ScopeAssociations<Node> {
             domains: Vec::new(),
             regions: Vec::new(),
             structural: Vec::new(),
+            computed: Vec::new(),
         }
     }
 }
 impl<Node: Copy + Eq> ScopeAssociations<Node> {
+    pub(crate) fn computed_cut(
+        &self,
+        boundary: &surgeist_text::PreparedComputedLineBoundary,
+    ) -> Option<ComputedNativeCut> {
+        self.computed
+            .iter()
+            .find(|row| &row.boundary == boundary)
+            .map(|row| row.cut)
+    }
     pub(crate) fn captured_scope_relation(
         &self,
         prepared: &PreparedText,
@@ -245,6 +305,7 @@ struct Proof<'a, Tree: crate::LayoutTree> {
     known: Vec<CapturedScope>,
     wrapping: Vec<CapturedScope>,
     native: Vec<NativeRegion<Tree::Node>>,
+    computed: Vec<(usize, surgeist_text::PreparedComputedLineBoundary)>,
 }
 
 pub(super) fn resolve<Tree: crate::LayoutTree>(
@@ -287,8 +348,10 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
         known: Vec::new(),
         wrapping: Vec::new(),
         native: Vec::new(),
+        computed: Vec::new(),
     };
     proof.index()?;
+    proof.activate_computed()?;
     proof.activate_wrapping(wrapping_scopes)?;
     proof.prepare_observations()?;
     // A is selected from producer topology before resolving its supplied rows.
@@ -342,6 +405,7 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
     for region in &native {
         proof.compare_native_region(region)?;
     }
+    proof.project_computed()?;
     for (index, paragraph) in paragraphs.iter().enumerate() {
         if proof.result.paragraphs[index].class == ParagraphClass::AssociationOnly {
             proof.metadata_slot(index)?;
@@ -375,6 +439,273 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
 }
 
 impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
+    fn computed_error(
+        &self,
+        paragraph: usize,
+    ) -> crate::LayoutErrorOf<Tree::Node, Tree::Scalar, Tree::MeasureError> {
+        binding_error(
+            self.paragraphs[paragraph].container,
+            E::ComputedBoundaryAssociation,
+        )
+    }
+
+    fn activate_computed(&mut self) -> ResultOf<Tree, ()> {
+        for (index, binding) in self.paragraphs.iter().enumerate() {
+            let boundaries = binding
+                .prepared
+                .participants()
+                .filter_map(|part| match part {
+                    surgeist_text::PreparedParticipant::ComputedLineBoundary(boundary) => {
+                        Some(boundary)
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            for boundary in boundaries {
+                let view = boundary.view();
+                let captured = binding
+                    .prepared
+                    .captured_paragraph()
+                    .ok_or_else(|| self.computed_error(index))?;
+                if boundary.prepared_text() != binding.prepared
+                    || view.paragraph() != captured
+                    || view.domain() != captured.domain()
+                    || view.causes().len() == 0
+                {
+                    return Err(self.computed_error(index));
+                }
+                for position in [view.preceding_event(), view.following_event()]
+                    .into_iter()
+                    .flatten()
+                {
+                    if !position.same_capture(&captured.enter_position()) {
+                        return Err(self.computed_error(index));
+                    }
+                }
+                for cause in view.causes() {
+                    if cause.paragraph() != captured || cause.domain() != captured.domain() {
+                        return Err(self.computed_error(index));
+                    }
+                    match cause.target() {
+                        surgeist_text::CapturedComputedLineBoundaryTarget::Scope {
+                            scope, ..
+                        } => {
+                            if scope.role() != ScopeRole::Inline
+                                || scope.domain() != captured.domain()
+                                || !captured
+                                    .scope_intersections()
+                                    .any(|row| row.scope() == scope)
+                            {
+                                return Err(self.computed_error(index));
+                            }
+                            if scope.entry_control().is_some() || scope.exit_control().is_some() {
+                                push_unique(&mut self.scopes, scope.clone());
+                            } else {
+                                push_unique(&mut self.semantic, scope.clone());
+                            }
+                            add_region(&mut self.result.regions, scope);
+                        }
+                        surgeist_text::CapturedComputedLineBoundaryTarget::Endpoint(control) => {
+                            if !self
+                                .controls
+                                .iter()
+                                .any(|row| row.paragraph == index && row.captured == control)
+                            {
+                                return Err(self.computed_error(index));
+                            }
+                        }
+                        surgeist_text::CapturedComputedLineBoundaryTarget::Atomic {
+                            position,
+                            ..
+                        } => {
+                            if !self.atomics.iter().any(|row| {
+                                row.paragraph == index
+                                    && row.position == position
+                                    && row.kind == surgeist_text::InlineBoxKind::InFlow
+                            }) {
+                                return Err(self.computed_error(index));
+                            }
+                        }
+                    }
+                }
+                push_unique(&mut self.domains, captured.domain());
+                self.computed.push((index, boundary));
+            }
+        }
+        Ok(())
+    }
+
+    fn computed_node_gap(
+        &self,
+        paragraph: usize,
+        node: Tree::Node,
+        after: bool,
+    ) -> ResultOf<Tree, usize> {
+        let binding = &self.paragraphs[paragraph];
+        if let Some(index) = binding.nodes.iter().position(|&n| n == node) {
+            return Ok(index + usize::from(after));
+        }
+        let owner = self.require_node(binding.container)?;
+        let mut branch = self.require_node(node)?;
+        while self.graph.parents[branch].first().copied() != Some(owner) {
+            branch = *self.graph.parents[branch]
+                .first()
+                .ok_or_else(|| self.computed_error(paragraph))?;
+        }
+        let rank = self.graph.children[owner]
+            .iter()
+            .position(|&i| i == branch)
+            .ok_or_else(|| self.computed_error(paragraph))?;
+        let first = self.require_node(binding.nodes[0])?;
+        let last = self.require_node(*binding.nodes.last().expect("flow has physical nodes"))?;
+        let a = self.graph.children[owner]
+            .iter()
+            .position(|&i| i == first)
+            .ok_or_else(|| self.computed_error(paragraph))?;
+        let b = self.graph.children[owner]
+            .iter()
+            .position(|&i| i == last)
+            .ok_or_else(|| self.computed_error(paragraph))?;
+        if rank < a {
+            Ok(0)
+        } else if b < rank {
+            Ok(binding.nodes.len())
+        } else {
+            Err(self.computed_error(paragraph))
+        }
+    }
+
+    fn computed_event_gap(
+        &self,
+        paragraph: usize,
+        event: &Event,
+        consumed: bool,
+    ) -> ResultOf<Tree, usize> {
+        let binding = &self.paragraphs[paragraph];
+        match event {
+            Event::ParagraphStart(p) | Event::ParagraphEnd(p) => {
+                let index = self
+                    .paragraph(p)
+                    .ok_or_else(|| self.computed_error(paragraph))?;
+                let nodes = &self.paragraphs[index].nodes;
+                let after = matches!(event, Event::ParagraphEnd(_));
+                let node = if after { nodes.last() } else { nodes.first() }
+                    .copied()
+                    .ok_or_else(|| self.computed_error(paragraph))?;
+                self.computed_node_gap(paragraph, node, after)
+            }
+            Event::BlockStart(scope) | Event::BlockEnd(scope)
+                if scope
+                    == &binding
+                        .prepared
+                        .captured_paragraph()
+                        .expect("computed captured paragraph")
+                        .domain() =>
+            {
+                Ok(if matches!(event, Event::BlockEnd(_)) {
+                    binding.nodes.len()
+                } else {
+                    0
+                })
+            }
+            Event::BlockStart(scope) | Event::BlockEnd(scope) => self.computed_node_gap(
+                paragraph,
+                self.domain(scope)?.container,
+                matches!(event, Event::BlockEnd(_)),
+            ),
+            _ => self.computed_node_gap(paragraph, self.event_node(event)?, consumed),
+        }
+    }
+
+    fn project_computed(&mut self) -> ResultOf<Tree, ()> {
+        for (index, boundary) in &self.computed {
+            let view = boundary.view();
+            let flow = &self.expected[&view.domain()];
+            let before = view.preceding_event();
+            let cut = before.as_ref().map_or(0, |position| {
+                flow.events.partition_point(|row| row.position <= *position)
+            });
+            let previous = cut.checked_sub(1).and_then(|i| {
+                if self.visible(&flow.events[i].event) {
+                    Some(i)
+                } else {
+                    flow.previous[i]
+                }
+            });
+            let next = (cut < flow.events.len()).then_some(cut).and_then(|i| {
+                if self.visible(&flow.events[i].event) {
+                    Some(i)
+                } else {
+                    flow.next[i]
+                }
+            });
+            let mut lower = previous
+                .map(|i| self.computed_event_gap(*index, &flow.events[i].event, true))
+                .transpose()?
+                .unwrap_or(0);
+            let mut upper = next
+                .map(|i| self.computed_event_gap(*index, &flow.events[i].event, false))
+                .transpose()?
+                .unwrap_or(self.paragraphs[*index].nodes.len());
+            // All actual targets constrain the one group cut. Several distinct
+            // groups with coincident bounds remain distinct issued capabilities.
+            for cause in view.causes() {
+                let target = match cause.target() {
+                    surgeist_text::CapturedComputedLineBoundaryTarget::Scope { scope, side } => {
+                        self.result
+                            .inline
+                            .iter()
+                            .find(|row| row.scope == scope)
+                            .map(|row| {
+                                (
+                                    if side == surgeist_text::SourceBoxSide::After {
+                                        row.end
+                                    } else {
+                                        row.start
+                                    },
+                                    side == surgeist_text::SourceBoxSide::After,
+                                )
+                            })
+                    }
+                    surgeist_text::CapturedComputedLineBoundaryTarget::Endpoint(control) => self
+                        .controls
+                        .iter()
+                        .find(|row| row.captured == control)
+                        .map(|row| {
+                            (
+                                row.node,
+                                matches!(
+                                    control.kind(),
+                                    surgeist_text::ParagraphControlKind::InlineBoundaryEnd
+                                ),
+                            )
+                        }),
+                    surgeist_text::CapturedComputedLineBoundaryTarget::Atomic {
+                        position,
+                        side,
+                    } => self
+                        .atomics
+                        .iter()
+                        .find(|row| row.position == position)
+                        .map(|row| (row.node, side == surgeist_text::SourceBoxSide::After)),
+                };
+                if let Some((node, after)) = target {
+                    let exact = self.computed_node_gap(*index, node, after)?;
+                    lower = lower.max(exact);
+                    upper = upper.min(exact);
+                }
+            }
+            if lower > upper {
+                return Err(self.computed_error(*index));
+            }
+            self.result.computed.push(ComputedIncidence {
+                boundary: boundary.clone(),
+                cut: ComputedNativeCut { lower, upper },
+            });
+        }
+        Ok(())
+    }
+
     fn activate_wrapping(
         &mut self,
         inputs: &[WrappingScopeInput<Tree::Node>],
@@ -1639,6 +1970,9 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
             .push(index);
         }
         let mut domains = Vec::new();
+        for (_, boundary) in &self.computed {
+            push_unique(&mut domains, boundary.view().domain());
+        }
         for region in &self.result.regions {
             push_unique(&mut domains, region.domain());
         }
