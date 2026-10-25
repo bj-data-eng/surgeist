@@ -571,3 +571,76 @@ fn forced_break_chronology_does_not_relocate_a_later_closing_endpoint() {
         }
     );
 }
+
+#[test]
+fn source_free_bidi_before_end_cannot_strand_the_captured_closing_endpoint() {
+    let p = capture(
+        "X Y",
+        t::WhiteSpace::Preserve,
+        &[(0, 2), (2, 3)],
+        &[
+            (K::InlineBoundaryStart, 0),
+            (K::RightToLeftEmbedding, 2),
+            (K::InlineBoundaryEnd, 2),
+            (K::PopDirectionalFormat, 2),
+        ],
+        &[(0, 2)],
+        vec![
+            E::EnterScope(1),
+            control(0),
+            origin(0),
+            control(1),
+            control(2),
+            E::ExitScope(1),
+            control(3),
+            E::Connection(0),
+            origin(1),
+        ],
+    );
+    let actual = soft_at(&p, 2)
+        .into_iter()
+        .map(|o| observe(&p, o))
+        .collect::<Vec<_>>();
+    assert!(
+        actual
+            .iter()
+            .all(|cut| cut.outgoing_controls.contains(&2) && cut.outgoing_fragments.contains(&2)),
+        "closing End must be outgoing at every genuine owner2 cut; {actual:?}"
+    );
+}
+#[test]
+fn source_free_bidi_after_start_cannot_select_the_captured_opening_endpoint_outgoing() {
+    let p = capture(
+        "X Y",
+        t::WhiteSpace::Preserve,
+        &[(0, 2), (2, 3)],
+        &[
+            (K::InlineBoundaryStart, 2),
+            (K::RightToLeftEmbedding, 2),
+            (K::PopDirectionalFormat, 3),
+            (K::InlineBoundaryEnd, 3),
+        ],
+        &[(0, 3)],
+        vec![
+            origin(0),
+            E::Connection(0),
+            E::EnterScope(1),
+            control(0),
+            control(1),
+            origin(1),
+            control(2),
+            control(3),
+            E::ExitScope(1),
+        ],
+    );
+    let actual = soft_at(&p, 2)
+        .into_iter()
+        .map(|o| observe(&p, o))
+        .collect::<Vec<_>>();
+    assert!(
+        actual
+            .iter()
+            .all(|cut| !cut.outgoing_controls.contains(&0) && !cut.outgoing_fragments.contains(&0)),
+        "opening Start must be receiving at every genuine owner2 cut; {actual:?}"
+    );
+}
