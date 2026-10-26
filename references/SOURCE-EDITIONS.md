@@ -4,6 +4,14 @@ The reference collection records the full selected source scope of [CSS Snapshot
 
 This mapping describes the repository at `104bff510075d1acb59c23bb9491c7a368b7d05a`. The [catalog](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/specs/catalog.json) selects editions under its existing 2026-09-10 publication-cutoff policy; [conformance metadata](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/src/conformance.rs) records source attribution and declared subsets. They are separate evidence: catalog membership and a registry entry do not prove implementation. The full pinned Snapshot scope remains the target even where the catalog or implementation has no corresponding production. The [source catalog](SOURCE-CATALOG.md) identifies each retained text or metadata-only representation.
 
+## Native named font-baseline measurements
+
+The [named-baseline determination](font-baselines--native-determination.md)
+owns the same-instance, axis-qualified metric contract for #1486/#781. It keeps
+the pinned Writing Modes and Inline editions, distinguishes OpenType 1.9.1
+format rules from native synthesis and fractional CSS-midpoint policy, and
+bounds unhinted measurement separately from vertical shaping and placement.
+
 ## AutoPhrase overflow and intrinsic sizing
 
 The [AutoPhrase intrinsic determination](text-auto-phrase-intrinsic--determination-20261025.md)
