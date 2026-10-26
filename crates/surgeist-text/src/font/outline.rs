@@ -174,11 +174,32 @@ impl<'a> EffectiveFontInstance<'a> {
             bounds,
         })
     }
-    fn outline_bounds(&self, glyph_id: u32) -> Checked<Option<Rect>> {
+    /// BASE format2 consumes a stored glyph/point identity, not its hinted or
+    /// varied outline position. The raw outline qualifier is the same owner.
+    pub(super) fn baseline_point_count(&self, glyph: u16) -> Result<usize> {
+        self.qualify_outline(u32::from(glyph), OutlinePurpose::StoredPoints)
+            .map(|qualified| qualified.summary.points)
+            .map_err(|failure| failure.error(u32::from(glyph)))
+    }
+    fn qualify_outline(
+        &self,
+        glyph_id: u32,
+        purpose: OutlinePurpose,
+    ) -> Checked<QualifiedOutline<'_>> {
         let invalid = || Failure::from(FontOutlineError::InvalidFont);
         let font = skrifa::FontRef::from_index(self.face().bytes(), self.face().index())
             .map_err(|_| invalid())?;
         for (index, record) in font.table_directory().table_records().iter().enumerate() {
+            if purpose == OutlinePurpose::StoredPoints {
+                let tag = record.tag().to_be_bytes();
+                let glyf = font.table_data(Tag::new(b"glyf")).is_some();
+                let consumed = matches!(&tag, b"head" | b"maxp" | b"VARC")
+                    || glyf && matches!(&tag, b"glyf" | b"loca")
+                    || !glyf && matches!(&tag, b"CFF2" | b"CFF ");
+                if !consumed {
+                    continue;
+                }
+            }
             if font.table_directory().table_records()[..index]
                 .iter()
                 .any(|prior| prior.tag() == record.tag())
@@ -204,13 +225,19 @@ impl<'a> EffectiveFontInstance<'a> {
         if glyph_id >= count {
             return Err(FontOutlineError::GlyphRange { count }.into());
         }
-        let mut coordinates = reserved(self.axis_count())?;
-        coordinates.extend(self.normalized_coords().map(NormalizedCoord::from_bits));
+        let mut coordinates = if purpose == OutlinePurpose::Geometry {
+            reserved(self.axis_count())?
+        } else {
+            Vec::new()
+        };
+        if purpose == OutlinePurpose::Geometry {
+            coordinates.extend(self.normalized_coords().map(NormalizedCoord::from_bits));
+        }
         let coordinate_bytes = coordinates
             .capacity()
             .checked_mul(size_of::<NormalizedCoord>())
             .ok_or(FontOutlineError::CapacityOverflow)?;
-        if font.table_data(Tag::new(b"gvar")).is_some() {
+        if purpose == OutlinePurpose::Geometry && font.table_data(Tag::new(b"gvar")).is_some() {
             let gvar = font.gvar().map_err(|_| invalid())?;
             if coordinates.is_empty()
                 || usize::from(gvar.axis_count()) != coordinates.len()
@@ -270,8 +297,29 @@ impl<'a> EffectiveFontInstance<'a> {
             return Err(invalid());
         }
         let glyph = GlyphId::new(glyph_id);
-        glyf::root_metrics(&font, glyph)?;
-        let summary = glyf::qualify(&font, glyph, &coordinates, coordinate_bytes)?;
+        if purpose == OutlinePurpose::Geometry {
+            glyf::root_metrics(&font, glyph)?;
+        }
+        let summary = glyf::qualify(&font, glyph, &coordinates, coordinate_bytes, purpose)?;
+        Ok(QualifiedOutline {
+            font,
+            units,
+            coordinates,
+            coordinate_bytes,
+            glyph,
+            summary,
+        })
+    }
+    fn outline_bounds(&self, glyph_id: u32) -> Checked<Option<Rect>> {
+        let invalid = || Failure::from(FontOutlineError::InvalidFont);
+        let QualifiedOutline {
+            font,
+            units,
+            coordinates,
+            coordinate_bytes,
+            glyph,
+            summary,
+        } = self.qualify_outline(glyph_id, OutlinePurpose::Geometry)?;
         if summary.points == 0 {
             return Ok(None);
         }
@@ -312,6 +360,20 @@ impl<'a> EffectiveFontInstance<'a> {
         }
         pen.finish().map(Some)
     }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum OutlinePurpose {
+    Geometry,
+    StoredPoints,
+}
+struct QualifiedOutline<'a> {
+    font: skrifa::FontRef<'a>,
+    units: u16,
+    coordinates: Vec<NormalizedCoord>,
+    coordinate_bytes: usize,
+    glyph: GlyphId,
+    summary: glyf::Summary,
 }
 
 struct BoundsPen {
@@ -422,6 +484,7 @@ fn qualify_simple_glyf(
     glyph: GlyphId,
     coordinates: &[NormalizedCoord],
     coordinate_bytes: usize,
+    purpose: OutlinePurpose,
 ) -> Checked<glyf::Summary> {
     use skrifa::raw::{
         tables::glyf::{Glyph, PointFlags},
@@ -492,7 +555,7 @@ fn qualify_simple_glyf(
     // The collection caches HVAR with .ok(). Validate its present header,
     // even though this entry consumes no horizontal metric result. A source-
     // proved empty glyph bypasses the provider's metric-only phantom draw.
-    if font.table_data(Tag::new(b"HVAR")).is_some() {
+    if purpose == OutlinePurpose::Geometry && font.table_data(Tag::new(b"HVAR")).is_some() {
         font.hvar()
             .map_err(|_| Failure::from(FontOutlineError::InvalidFont))?;
     }
@@ -510,6 +573,9 @@ fn qualify_simple_glyf(
     } else {
         glyf::Summary::simple(count, contours, bounds)?
     };
+    if purpose == OutlinePurpose::StoredPoints {
+        return Ok(qualified);
+    }
     let Some(_) = font.table_data(Tag::new(b"gvar")) else {
         return Ok(qualified);
     };
@@ -1055,15 +1121,17 @@ mod glyf {
         glyph: GlyphId,
         coordinates: &[NormalizedCoord],
         coordinate_bytes: usize,
+        purpose: super::OutlinePurpose,
     ) -> Checked<Summary> {
         let raw = raw_glyph(font, glyph)?;
         if raw.is_empty() || signed(raw, 0)? >= 0 {
-            return super::qualify_simple_glyf(font, glyph, coordinates, coordinate_bytes);
+            return super::qualify_simple_glyf(font, glyph, coordinates, coordinate_bytes, purpose);
         }
-        if !coordinates.is_empty()
-            || [b"fvar", b"gvar", b"HVAR", b"VARC"]
-                .iter()
-                .any(|tag| font.table_data(Tag::new(tag)).is_some())
+        if purpose == super::OutlinePurpose::Geometry
+            && (!coordinates.is_empty()
+                || [b"fvar", b"gvar", b"HVAR", b"VARC"]
+                    .iter()
+                    .any(|tag| font.table_data(Tag::new(tag)).is_some()))
         {
             return Err(unsupported());
         }
@@ -1113,7 +1181,7 @@ mod glyf {
                     coordinate_bytes,
                     add(vector_bytes(&memos)?, vector_bytes(&frames)?)?,
                 )?;
-                let summary = super::qualify_simple_glyf(font, child, coordinates, live)?;
+                let summary = super::qualify_simple_glyf(font, child, coordinates, live, purpose)?;
                 grow(&mut memos, vector_bytes(&frames)?, coordinate_bytes)?;
                 memos.push(Memo {
                     glyph: child,

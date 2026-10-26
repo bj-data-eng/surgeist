@@ -157,6 +157,15 @@ is invalid; it is not a VariationIndex and cannot be accepted by omitting its
 delta. Unknown adjustment formats or valid unsupported machinery retain precise
 refusals. Never guess ppem from font size or advertise a raster-grid result.
 
+Preserve OpenType's prescribed consumer interpolation for region axes: a zero
+peak, misordered triple or nonzero-peak cross-zero triple has axis scalar one,
+while other axes still participate. Those recoverable cases do not select zero
+delta or a new BASE-only rejection policy. The existing
+[same-instance variation contract](../crates/surgeist-text/docs/reference.md)
+owns that handling. After consumed-store structural qualification, `FFFF/FFFF`
+or an in-range null outer slot means no delta; neither refers to a delta row.
+Do not invent a row or qualify unrelated nonnull subtables for those cases.
+
 ## Failure and capability boundaries
 
 Keep legitimate missing table/axis/script/tag, unavailable coordinate reference,

@@ -1,4 +1,5 @@
-//! Strict used MVAR storage admission and checked integer delta accumulation.
+//! Shared strict used metric variation storage and checked delta accumulation.
+//! MVAR retains whole-unit rounding; BASE retains fractional design units.
 //!
 //! Parsing and region interpolation use the retained safe read-fonts/Skrifa
 //! APIs. Completeness, nullable-index semantics and widening are Text-owned;
@@ -8,7 +9,10 @@ use skrifa::{
     instance::NormalizedCoord,
     raw::{
         FontData, FontRead,
-        tables::{mvar::Mvar, variations::ItemVariationData},
+        tables::{
+            mvar::Mvar,
+            variations::{ItemVariationData, ItemVariationStore, VariationRegionList},
+        },
     },
 };
 
@@ -99,73 +103,9 @@ pub(super) fn resolve(
                 offset: store_offset,
             })
         })?;
-    if store.format() != 1 {
-        return Err(refuse(TableError::VariationStoreFormat {
-            format: store.format(),
-        }));
-    }
-    let store_data = store.offset_data();
-    let data_count = usize::from(store.item_variation_data_count());
-    require_extent(store_data, add(8, mul(data_count, 4)?)?)?;
-    let offsets = store.item_variation_data_offsets();
-    if offsets.len() != data_count {
-        return Err(refuse(TableError::Malformed));
-    }
-    let region_offset = store.variation_region_list_offset().to_u32();
-    if region_offset == 0 {
-        return Err(refuse(TableError::VariationOffset {
-            offset: region_offset,
-        }));
-    }
-    let list = store.variation_region_list().map_err(|_| {
-        refuse(TableError::VariationOffset {
-            offset: region_offset,
-        })
-    })?;
-    let axes = usize::from(list.axis_count());
-    if axes != instance.axis_count() {
-        return Err(refuse(TableError::VariationAxisCount {
-            expected: instance.axis_count(),
-            actual: list.axis_count(),
-        }));
-    }
-    let region_count = usize::from(list.region_count());
-    if region_count >= 32768 {
-        return Err(refuse(TableError::VariationRegionCount {
-            count: list.region_count(),
-        }));
-    }
-    require_extent(
-        list.offset_data(),
-        add(4, mul(mul(region_count, axes)?, 6)?)?,
-    )?;
-    let regions = list.variation_regions();
-    if regions.len() != region_count {
-        return Err(refuse(TableError::Malformed));
-    }
-    for at in 0..region_count {
-        let region = regions.get(at).map_err(|_| refuse(TableError::Malformed))?;
-        if region.region_axes().len() != axes {
-            return Err(refuse(TableError::Malformed));
-        }
-        for (axis, coordinate) in region.region_axes().iter().enumerate() {
-            for value in [
-                coordinate.start_coord(),
-                coordinate.peak_coord(),
-                coordinate.end_coord(),
-            ] {
-                let bits = value.to_bits();
-                if !(-16384..=16384).contains(&bits) {
-                    return Err(refuse(TableError::VariationRegionCoordinate {
-                        region: ordinal(at)?,
-                        axis: ordinal(axis)?,
-                        value: bits,
-                    }));
-                }
-            }
-        }
-    }
-
+    let strict = StrictStore::new(store, instance, Table::Mvar)?;
+    let store_data = strict.source.offset_data();
+    let offsets = strict.source.item_variation_data_offsets();
     let mut requests = Vec::new();
     reserve(&mut requests, count)?;
     for (at, record) in records.iter().enumerate() {
@@ -204,7 +144,12 @@ pub(super) fn resolve(
     // even if many tags/outer slots alias it. No variation executes yet.
     while next < requests.len() {
         let offset = requests[next].offset;
-        let table = read_data(store_data, offset, list.region_count())?;
+        let table = read_data(
+            store_data,
+            offset,
+            strict.regions.region_count(),
+            Table::Mvar,
+        )?;
         while next < requests.len() && requests[next].offset == offset {
             let inner = requests[next].inner;
             if inner >= table.item_count() {
@@ -235,31 +180,7 @@ pub(super) fn resolve(
         tables.push(Data { offset, table });
     }
 
-    let mut coords = Vec::new();
-    reserve(&mut coords, axes)?;
-    coords.extend(instance.normalized_coords().map(NormalizedCoord::from_bits));
-    if coords.len() != axes {
-        return Err(refuse(TableError::VariationAxisCount {
-            expected: axes,
-            actual: ordinal(coords.len())?,
-        }));
-    }
-    let mut scalars = Vec::new();
-    reserve(&mut scalars, region_count)?;
-    for at in 0..region_count {
-        let scalar = regions
-            .get(at)
-            .map_err(|_| refuse(TableError::Malformed))?
-            .compute_scalar(&coords)
-            .to_bits();
-        if !(0..=65536).contains(&scalar) {
-            return Err(refuse(TableError::VariationScalar {
-                region: ordinal(at)?,
-                value: scalar,
-            }));
-        }
-        scalars.push(scalar);
-    }
+    let scalars = strict.scalars(instance)?;
 
     next = 0;
     let mut table_at = 0;
@@ -282,14 +203,7 @@ pub(super) fn resolve(
             continue;
         }
         let table = &tables[table_at].table;
-        let mut sum = 0i64;
-        for (delta, index) in table.delta_set(request.inner).zip(table.region_indexes()) {
-            let scalar = i64::from(scalars[usize::from(index.get())]);
-            sum = i64::from(delta)
-                .checked_mul(scalar)
-                .and_then(|term| sum.checked_add(term))
-                .ok_or_else(|| arithmetic(request.tag))?;
-        }
+        let sum = weighted_sum(table, request.inner, &scalars, request.tag)?;
         let rounded = sum
             .checked_add(0x8000)
             .ok_or_else(|| arithmetic(request.tag))?
@@ -310,7 +224,222 @@ pub(super) fn resolve(
     Ok(result)
 }
 
-fn read_data(store: FontData<'_>, offset: u32, region_count: u16) -> Result<ItemVariationData<'_>> {
+struct StrictStore<'a> {
+    source: ItemVariationStore<'a>,
+    regions: VariationRegionList<'a>,
+    which: Table,
+}
+impl<'a> StrictStore<'a> {
+    fn new(
+        store: ItemVariationStore<'a>,
+        instance: &EffectiveFontInstance<'_>,
+        which: Table,
+    ) -> Result<Self> {
+        let refuse = |reason| table_error(which, reason);
+        if store.format() != 1 {
+            return Err(refuse(TableError::VariationStoreFormat {
+                format: store.format(),
+            }));
+        }
+        let store_data = store.offset_data();
+        let data_count = usize::from(store.item_variation_data_count());
+        require_extent_for(which, store_data, add(8, mul(data_count, 4)?)?)?;
+        let offsets = store.item_variation_data_offsets();
+        if offsets.len() != data_count {
+            return Err(refuse(TableError::Malformed));
+        }
+        let region_offset = store.variation_region_list_offset().to_u32();
+        if region_offset == 0 {
+            return Err(refuse(TableError::VariationOffset {
+                offset: region_offset,
+            }));
+        }
+        let list = store.variation_region_list().map_err(|_| {
+            refuse(TableError::VariationOffset {
+                offset: region_offset,
+            })
+        })?;
+        let axes = usize::from(list.axis_count());
+        if axes != instance.axis_count() {
+            return Err(refuse(TableError::VariationAxisCount {
+                expected: instance.axis_count(),
+                actual: list.axis_count(),
+            }));
+        }
+        let region_count = usize::from(list.region_count());
+        if region_count >= 32768 {
+            return Err(refuse(TableError::VariationRegionCount {
+                count: list.region_count(),
+            }));
+        }
+        require_extent_for(
+            which,
+            list.offset_data(),
+            add(4, mul(mul(region_count, axes)?, 6)?)?,
+        )?;
+        let regions = list.variation_regions();
+        if regions.len() != region_count {
+            return Err(refuse(TableError::Malformed));
+        }
+        for at in 0..region_count {
+            let region = regions.get(at).map_err(|_| refuse(TableError::Malformed))?;
+            if region.region_axes().len() != axes {
+                return Err(refuse(TableError::Malformed));
+            }
+            for (axis, coordinate) in region.region_axes().iter().enumerate() {
+                for value in [
+                    coordinate.start_coord(),
+                    coordinate.peak_coord(),
+                    coordinate.end_coord(),
+                ] {
+                    let bits = value.to_bits();
+                    if !(-16384..=16384).contains(&bits) {
+                        return Err(refuse(TableError::VariationRegionCoordinate {
+                            region: ordinal(at)?,
+                            axis: ordinal(axis)?,
+                            value: bits,
+                        }));
+                    }
+                }
+            }
+        }
+
+        Ok(Self {
+            source: store,
+            regions: list,
+            which,
+        })
+    }
+    fn scalars(&self, instance: &EffectiveFontInstance<'_>) -> Result<Vec<i32>> {
+        let refuse = |reason| table_error(self.which, reason);
+        let axes = usize::from(self.regions.axis_count());
+        let region_count = usize::from(self.regions.region_count());
+        let regions = self.regions.variation_regions();
+        let mut coords = Vec::new();
+        reserve(&mut coords, axes)?;
+        coords.extend(instance.normalized_coords().map(NormalizedCoord::from_bits));
+        if coords.len() != axes {
+            return Err(refuse(TableError::VariationAxisCount {
+                expected: axes,
+                actual: ordinal(coords.len())?,
+            }));
+        }
+        let mut scalars = Vec::new();
+        reserve(&mut scalars, region_count)?;
+        for at in 0..region_count {
+            let scalar = regions
+                .get(at)
+                .map_err(|_| refuse(TableError::Malformed))?
+                .compute_scalar(&coords)
+                .to_bits();
+            if !(0..=65536).contains(&scalar) {
+                return Err(refuse(TableError::VariationScalar {
+                    region: ordinal(at)?,
+                    value: scalar,
+                }));
+            }
+            scalars.push(scalar);
+        }
+
+        Ok(scalars)
+    }
+}
+
+/// BASE retains fractional design-unit deltas rather than MVAR's existing
+/// whole-unit rounding. Storage and scalar admission have one common owner.
+pub(super) fn baseline_delta(
+    store: ItemVariationStore<'_>,
+    instance: &EffectiveFontInstance<'_>,
+    record: u16,
+    outer: u16,
+    inner: u16,
+    tag: [u8; 4],
+) -> Result<f64> {
+    let refuse = |reason| table_error(Table::Base, reason);
+    if instance.axis_count() == 0 {
+        return Err(refuse(TableError::VariationWithoutAxes));
+    }
+    let strict = StrictStore::new(store, instance, Table::Base)?;
+    if outer == u16::MAX && inner == u16::MAX {
+        return Ok(0.0);
+    }
+    let slot = strict
+        .source
+        .item_variation_data_offsets()
+        .get(usize::from(outer))
+        .ok_or_else(|| {
+            refuse(TableError::VariationDeltaIndex {
+                record,
+                outer,
+                inner,
+            })
+        })?
+        .get();
+    if slot.is_null() {
+        return Ok(0.0);
+    }
+    let offset = slot.offset().to_u32();
+    let data = read_data(
+        strict.source.offset_data(),
+        offset,
+        strict.regions.region_count(),
+        Table::Base,
+    )?;
+    if inner >= data.item_count() {
+        return Err(refuse(TableError::VariationDeltaIndex {
+            record,
+            outer,
+            inner,
+        }));
+    }
+    let actual = data.delta_set(inner).count();
+    if actual != usize::from(data.region_index_count()) {
+        return Err(refuse(TableError::VariationRow {
+            offset,
+            inner,
+            expected: data.region_index_count(),
+            actual,
+        }));
+    }
+    let scalars = strict.scalars(instance)?;
+    let result = weighted_sum(&data, inner, &scalars, tag)? as f64 / 65536.0;
+    if !result.is_finite() {
+        return Err(arithmetic(tag));
+    }
+    Ok(result)
+}
+
+fn weighted_sum(
+    table: &ItemVariationData<'_>,
+    inner: u16,
+    scalars: &[i32],
+    tag: [u8; 4],
+) -> Result<i64> {
+    let mut sum = 0i64;
+    for (delta, index) in table.delta_set(inner).zip(table.region_indexes()) {
+        let scalar = i64::from(scalars[usize::from(index.get())]);
+        sum = i64::from(delta)
+            .checked_mul(scalar)
+            .and_then(|term| sum.checked_add(term))
+            .ok_or_else(|| arithmetic(tag))?;
+    }
+    Ok(sum)
+}
+
+fn require_extent_for(which: Table, data: FontData<'_>, len: usize) -> Result<()> {
+    if len > data.len() {
+        return Err(table_error(which, TableError::Malformed));
+    }
+    Ok(())
+}
+
+fn read_data(
+    store: FontData<'_>,
+    offset: u32,
+    region_count: u16,
+    which: Table,
+) -> Result<ItemVariationData<'_>> {
+    let refuse = |reason| table_error(which, reason);
     let at = usize::try_from(offset).map_err(|_| capacity())?;
     let data = store
         .slice(at..)
@@ -337,7 +466,7 @@ fn read_data(store: FontData<'_>, offset: u32, region_count: u16) -> Result<Item
     )?;
     let delta_bytes = mul(usize::from(table.item_count()), row_bytes)?;
     let header_bytes = add(6, mul(usize::from(regions), 2)?)?;
-    require_extent(data, add(header_bytes, delta_bytes)?)?;
+    require_extent_for(which, data, add(header_bytes, delta_bytes)?)?;
     if table.region_indexes().len() != usize::from(regions)
         || table.delta_sets().len() != delta_bytes
     {

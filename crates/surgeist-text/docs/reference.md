@@ -36,7 +36,7 @@ private implementation organization.
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
 | Original analysis and layout | `AnalyzedSource`, `AnalysisIdentity`, `System`, `Builder`, `SystemOptions` | [analyzed.rs](../src/analyzed.rs), [system.rs](../src/system.rs) |
 | Font catalogue | `FontCatalogueMode`, issued `FontCatalogueIdentity`, `System::register_fonts` and `refresh_fonts` | [catalogue.rs](../src/catalogue.rs) |
-| Font resources and metrics | `FontData`, `FontFace`, `EffectiveFontInstance`, `FontMetrics`, `StrikeoutMetrics` | [font.rs](../src/font.rs), [font/metrics.rs](../src/font/metrics.rs) |
+| Font resources and metrics | `FontData`, `FontFace`, `EffectiveFontInstance`, `FontMetrics`, `StrikeoutMetrics`, `FontBaselineMeasurement` | [font.rs](../src/font.rs), [font/metrics.rs](../src/font/metrics.rs), [named baselines](../src/font/metrics/baseline.rs) |
 | Borrowed readback | `RunView`, positioned `GlyphPlacement`, actual decorations | [views.rs](../src/views.rs) |
 | Prepared hyphenation | `PreparedWord`, `PreparedHyphenationCut`, borrowed views, `PreparedWordPortion`, `HyphenationResource`, `HyphenationProvenance` | [hyphenation.rs](../src/protocol/hyphenation.rs), [resource support](hyphenation-resources.md) |
 | Finalized logical prefixes | `TextSeam`, `FinalizedPrefixView`, `FinalizedSharedUnitView`, `FinalizedLine::prefix_at` | [prefix.rs](../src/protocol/prefix.rs), [composition guide](composed-lines.md) |
@@ -516,6 +516,40 @@ resolved `center = ascent / 2`, `thickness = size / 18`. At horizontal baseline
 paragraph decoration policy. The owned engine reads this same instance metric
 owner during shaping; the query itself adds no font matching, glyph coverage,
 outline metrics or complete text-engine guarantee.
+
+## Named font-baseline measurements
+
+`EffectiveFontInstance::baseline(expected_catalogue, script, axis, name)` reads
+one named metric from the same retained instance. `RunView::baseline` derives the
+Unicode script from its actual prepared run. `FontBaselineScript` accepts a
+recognized ISO15924 name; the resolver uses the existing provider's legacy
+OpenType script mapping and exact `DFLT` fallback. It performs no font matching.
+
+`FontBaselineAxis::HorizontalY` uses font-design Y=0 with positive values up;
+`VerticalX` uses design X=0 with positive values right. `Alphabetic` and `Central`
+are independent requests. `FontBaselineMeasurement` retains the instance, script,
+axis and name. Its `Available` outcome provides a finite size-scaled coordinate,
+provenance, selected BASE script and any qualified absence behind synthesis.
+`Unavailable` identifies a missing vertical alphabetic metric or em-box
+reference. Malformed required data and valid unsupported capabilities return
+typed errors rather than an invented coordinate.
+
+The [native determination](../../../references/font-baselines--native-determination.md)
+owns BASE selection, one-edge/em-box derivation, missing-metric synthesis and the
+fractional CSS midpoint policy. BASE1.0/1.1 and supported same-instance variation
+are qualified through the safe parser and shared strict store owner. Format2
+uses its stored coordinate after genuine point validation, including at variable
+instances. Static Device payloads are validated with ppem corrections omitted
+under this unhinted profile; real VariationIndex effects use actual canonical
+coordinates. A Device record in variable BASE is invalid.
+
+Point validation uses the supported TrueType outline qualifier, including static
+translation-only compounds and simple variable outlines. Other valid reference
+kinds can return a precise capability refusal. Broader CJK/vhea synthesis,
+hinted measurement and vertical paragraph shaping/placement remain outside this
+operation. Queries preserve existing line metrics, glyphs, selections and cache
+activity. [Metric provenance](font-metrics-provenance.md) records the parser and
+qualification ownership.
 
 ## Defaults and validation
 

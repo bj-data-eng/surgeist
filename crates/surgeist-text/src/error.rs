@@ -398,6 +398,8 @@ pub enum FontMetricTable {
     Os2,
     /// `MVAR`.
     Mvar,
+    /// `BASE` named design baselines.
+    Base,
 }
 /// Used metric-table refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -412,7 +414,7 @@ pub enum FontMetricTableError {
     Malformed,
     /// Version is outside the admitted domain.
     UnsupportedVersion,
-    /// MVAR is present without a real fvar axis inventory.
+    /// A used metric variation source has no real fvar axis inventory.
     VariationWithoutAxes,
     /// Value-record layout exceeds the supported eight-byte format.
     UnsupportedRecordSize {
@@ -498,6 +500,36 @@ pub enum FontMetricTableError {
         /// Rejected 16.16 scalar bits.
         value: i32,
     },
+    /// BASE baseline tags are duplicated or not strictly sorted.
+    BaselineTagOrder,
+    /// BASE script tags are duplicated or not strictly sorted.
+    BaselineScriptOrder,
+    /// The selected script's coordinates do not cover its tag inventory.
+    BaselineValueCount { expected: u16, actual: u16 },
+    /// A present default index is outside the actual coordinate inventory.
+    BaselineDefaultIndex { index: u16, count: u16 },
+    /// The used coordinate representation is not qualified.
+    BaselineCoordinateFormat { format: u16 },
+    /// The used Device/VariationIndex format is invalid.
+    BaselineDeviceFormat { format: u16 },
+    /// A real Device is forbidden in a variable BASE table.
+    BaselineVariableDevice,
+    /// A used VariationIndex has no actual BASE variation store.
+    BaselineVariationStoreMissing,
+    /// A used stored outline cannot validate the actual point reference.
+    BaselineOutline {
+        glyph: u16,
+        point: u16,
+        reason: super::FontOutlineError,
+    },
+    /// The point is outside the genuine glyph's stored point inventory.
+    BaselinePointRange {
+        glyph: u16,
+        point: u16,
+        count: usize,
+    },
+    /// Actual run script metadata has no canonical Unicode short name.
+    BaselineScriptUnavailable,
     /// OpenType units-per-em is invalid.
     InvalidUnitsPerEm {
         /// Actual rejected value.
@@ -519,11 +551,17 @@ pub enum FontMetricField {
     StrikeoutCenter,
     /// Positive strike thickness.
     StrikeoutThickness,
+    /// Named font-design baseline coordinate.
+    BaselineCoordinate,
+    /// Exact CSS-facing midpoint in one design reference.
+    BaselineMidpoint,
+    /// Vertical ideographic em-box origin, required to be zero.
+    BaselineIdeographicOrigin,
 }
 /// Numeric validation stage.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FontMetricPhase {
-    /// Resolved unscaled provider-selected units.
+    /// Resolved unscaled font-design units.
     Unscaled,
     /// Same-instance f64 scaled values.
     Scaled,
@@ -541,6 +579,8 @@ pub enum FontMetricNumericError {
     Positive,
     /// Positive metric is zero or negative.
     NonPositive,
+    /// A required zero reference is nonzero.
+    NonZero,
 }
 
 /// Actual reason a shaping invocation could not complete.
