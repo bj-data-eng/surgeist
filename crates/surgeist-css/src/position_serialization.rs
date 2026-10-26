@@ -2,7 +2,7 @@
 
 use crate::{
     CssBackgroundPosition, CssBackgroundPositionList, CssBlockPosition, CssHorizontalPosition,
-    CssInlinePosition, CssPhysicalPosition, CssPhysicalPositionList, CssPosition, CssPositionRef,
+    CssInlinePosition, CssPhysicalPosition, CssPosition, CssPositionList, CssPositionRef,
     CssRelativeAxisPosition, CssSerializationError, CssVerticalPosition,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
@@ -75,7 +75,7 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssBackgroundPos
 }
 crate::specified_rule_serialization::specified_serialization!(CssBackgroundPosition);
 
-impl crate::specified_rule_serialization::SpecifiedProvider for CssPhysicalPositionList {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssPositionList {
     fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
@@ -87,7 +87,7 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssPhysicalPosit
         Ok(())
     }
 }
-crate::specified_rule_serialization::specified_serialization!(CssPhysicalPositionList);
+crate::specified_rule_serialization::specified_serialization!(CssPositionList);
 
 impl crate::specified_rule_serialization::SpecifiedProvider for CssBackgroundPositionList {
     fn append_to_rule_writer(

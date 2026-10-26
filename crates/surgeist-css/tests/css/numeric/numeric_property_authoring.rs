@@ -20,7 +20,7 @@ fn numeric_properties_use_property_specific_authored_models() {
     let grow = property_payload!(
         single_declaration(".panel { flex-grow: 2; }"),
         FlexGrow,
-        factor
+        value
     );
     assert_eq!(
         number_spelling(grow.literal().map(|literal| literal.component()).unwrap()),
@@ -30,7 +30,7 @@ fn numeric_properties_use_property_specific_authored_models() {
     let shrink = property_payload!(
         single_declaration(".panel { flex-shrink: 0; }"),
         FlexShrink,
-        factor
+        value
     );
     assert_eq!(
         number_spelling(shrink.literal().map(|literal| literal.component()).unwrap()),
@@ -39,7 +39,7 @@ fn numeric_properties_use_property_specific_authored_models() {
     let ratio = property_payload!(
         single_declaration(".panel { aspect-ratio: 1.5; }"),
         AspectRatio,
-        ratio
+        value
     );
     let CssAspectRatioValue::Ratio(ratio) = ratio else {
         panic!("specified ratio")

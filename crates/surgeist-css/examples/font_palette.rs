@@ -16,7 +16,7 @@ fn main() {
     };
     assert_eq!(
         value
-            .palette()
+            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         "palette-mix(light 30%, dark 70%)"

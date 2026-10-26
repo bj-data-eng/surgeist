@@ -54,7 +54,7 @@ pub enum CssColorProfileRenderingIntent {
 }
 impl CssColorProfileRenderingIntent {
     #[must_use]
-    pub const fn css_name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::RelativeColorimetric => "relative-colorimetric",
             Self::AbsoluteColorimetric => "absolute-colorimetric",
@@ -70,7 +70,7 @@ impl CssColorProfileRenderingIntent {
             Self::Saturation,
         ]
         .into_iter()
-        .find(|intent| intent.css_name().eq_ignore_ascii_case(name))
+        .find(|intent| intent.as_str().eq_ignore_ascii_case(name))
     }
 }
 
@@ -84,7 +84,7 @@ pub enum CssColorProfileDescriptorKind {
 }
 impl CssColorProfileDescriptorKind {
     #[must_use]
-    pub const fn css_name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Src => "src",
             Self::RenderingIntent => "rendering-intent",
@@ -94,7 +94,7 @@ impl CssColorProfileDescriptorKind {
     pub(crate) fn from_css_name(name: &str) -> Option<Self> {
         [Self::Src, Self::RenderingIntent, Self::Components]
             .into_iter()
-            .find(|kind| kind.css_name().eq_ignore_ascii_case(name))
+            .find(|kind| kind.as_str().eq_ignore_ascii_case(name))
     }
 }
 

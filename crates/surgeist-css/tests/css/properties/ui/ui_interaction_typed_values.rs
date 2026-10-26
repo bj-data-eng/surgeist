@@ -25,7 +25,7 @@ fn exact_payload(source: &CssDeclaration, ordinary: &CssLonghandValue) {
             CssKnownPropertyValueRef::CaretColor(expected),
             CssLonghandValueRef::CaretColor(actual),
         ) => {
-            assert_eq!(actual, expected.caret());
+            assert_eq!(actual, expected.value());
         }
         (CssKnownPropertyValueRef::Cursor(expected), CssLonghandValueRef::Cursor(actual)) => {
             assert_eq!(actual, expected.value());
@@ -43,7 +43,7 @@ fn exact_payload(source: &CssDeclaration, ordinary: &CssLonghandValue) {
             assert_eq!(actual, expected.value());
         }
         (CssKnownPropertyValueRef::Resize(expected), CssLonghandValueRef::Resize(actual)) => {
-            assert_eq!(actual, expected.resize());
+            assert_eq!(actual, expected.value());
         }
         _ => panic!("property-specific UI borrowed projection"),
     }
@@ -91,7 +91,7 @@ fn logical_resize_variants_emit_authored_axes_and_enforce_exact_primitive_limits
             else {
                 panic!("logical resize keyword")
             };
-            assert_eq!(*wrapper.resize(), value);
+            assert_eq!(*wrapper.value(), value);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
                 expand_declaration(&source).unwrap()
             else {

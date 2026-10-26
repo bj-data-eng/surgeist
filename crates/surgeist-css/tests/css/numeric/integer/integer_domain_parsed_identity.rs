@@ -65,7 +65,7 @@ fn parsed_steps_spelling_and_shifted_origin_are_ignored() {
         else {
             panic!("easing list");
         };
-        value.timing_functions().values()[0].clone()
+        value.value().values()[0].clone()
     };
     let source = "transition-timing-function: steps(1)";
     lexical_identity(parse, source, "transition-timing-function: steps(+0001)");
@@ -186,7 +186,7 @@ fn parsed_fixed_default_and_steps_position_omission_remain_authored_distinctions
         else {
             panic!("easing list");
         };
-        value.timing_functions().values()[0].clone()
+        value.value().values()[0].clone()
     };
     assert_ne!(
         steps("transition-timing-function: steps(2)"),

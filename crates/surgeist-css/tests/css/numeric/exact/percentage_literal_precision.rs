@@ -1,6 +1,7 @@
 //! Percentage tokens retain exact authored numeric spelling in checked lengths.
 //! Bounded scalar consumers retain their directly authored percentage magnitude.
 
+use crate::css::support::position_view::CartesianPosition as _;
 use crate::css::support::value_assertions::exact_percentage;
 use surgeist_css::*;
 
@@ -15,7 +16,7 @@ fn first_object_position_percent(source: &str) -> String {
     else {
         panic!("expected object-position");
     };
-    let CssHorizontalPosition::Offset(offset) = value.position().horizontal() else {
+    let CssHorizontalPosition::Offset(offset) = value.value().horizontal() else {
         panic!("expected percentage offset");
     };
     let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = offset
@@ -41,8 +42,7 @@ fn parsed_gradient_stop_keeps_authored_thirty_percent() {
     else {
         panic!("expected background-image");
     };
-    let CssImageValue::Gradient(CssGradient::Linear(gradient)) = &images.images().images()[0]
-    else {
+    let CssImageValue::Gradient(CssGradient::Linear(gradient)) = &images.value().images()[0] else {
         panic!("expected linear gradient");
     };
     let CssColorStopListItem::Stop(stop) = &gradient.stops().items()[0] else {
@@ -80,7 +80,7 @@ fn checked_object_position_percent(components: CssComponentValues) -> String {
     else {
         panic!("expected checked object-position");
     };
-    let CssHorizontalPosition::Offset(offset) = value.position().horizontal() else {
+    let CssHorizontalPosition::Offset(offset) = value.value().horizontal() else {
         panic!("expected checked percentage offset");
     };
     let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = offset
@@ -197,7 +197,7 @@ fn border_image_slice_keeps_authored_thirty_percent() {
         panic!("expected border-image-slice");
     };
     assert!(
-        matches!(&slice.slice().values()[0], CssBorderImageSliceComponent::Percentage(number) if exact_percentage(number.literal().map(|literal| literal.component()), "30"))
+        matches!(&slice.value().values()[0], CssBorderImageSliceComponent::Percentage(number) if exact_percentage(number.literal().map(|literal| literal.component()), "30"))
     );
 }
 
@@ -293,7 +293,7 @@ fn huge_finite_decimal_percentage_is_an_exact_authored_position() {
     else {
         panic!("position")
     };
-    let CssHorizontalPosition::Offset(offset) = wrapper.position().horizontal() else {
+    let CssHorizontalPosition::Offset(offset) = wrapper.value().horizontal() else {
         panic!("percentage")
     };
     let CssValueOrigin::Parsed(origin) = offset.origin() else {

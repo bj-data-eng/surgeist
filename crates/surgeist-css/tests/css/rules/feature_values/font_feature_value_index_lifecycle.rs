@@ -61,7 +61,7 @@ fn assert_checked(kind: Kind, authored: &[&str], expected: &[&str]) {
 fn assert_parsed(kind: Kind, authored: &[&str], expected: &[&str]) {
     let source = format!(
         "/*😀*/ @font-feature-values Demo {{ @{} {{ Case: {}; }} }}",
-        kind.css_name(),
+        kind.as_str(),
         authored.join(" "),
     );
     let report = parse_sheet(&source);

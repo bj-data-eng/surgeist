@@ -1,9 +1,10 @@
 //! Bounded specified text for Backgrounds 3 size, repeat, box and attachment layers.
 
+use crate::{CssAutoOr, CssLengthPercentage, CssNonNegative, CssNumeric};
 use crate::{
     CssBackgroundAttachment, CssBackgroundAttachmentList, CssBackgroundBox, CssBackgroundBoxList,
     CssBackgroundRepeat, CssBackgroundRepeatList, CssBackgroundRepeatStyle, CssBackgroundSize,
-    CssBackgroundSizeComponent, CssBackgroundSizeList, CssSerializationError,
+    CssBackgroundSizeList, CssSerializationError,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
@@ -65,9 +66,7 @@ impl CssBackgroundSize {
             Self::Explicit { width, height } => {
                 append_size_component(width, writer)?;
                 match height {
-                    Some(CssBackgroundSizeComponent::Auto)
-                        if matches!(width, CssBackgroundSizeComponent::Auto) =>
-                    {
+                    Some(CssAutoOr::Auto) if matches!(width, CssAutoOr::Auto) => {
                         // Only auto/auto collapses; the authored height still counts.
                         writer.node()?;
                     }
@@ -75,7 +74,7 @@ impl CssBackgroundSize {
                         writer.append(" ")?;
                         append_size_component(height, writer)?;
                     }
-                    None if !matches!(width, CssBackgroundSizeComponent::Auto) => {
+                    None if !matches!(width, CssAutoOr::Auto) => {
                         // The effective default is generated output, not authored input.
                         writer.context.charge_projection(1)?;
                         writer.append(" auto")?;
@@ -89,15 +88,13 @@ impl CssBackgroundSize {
 }
 
 fn append_size_component(
-    value: &CssBackgroundSizeComponent,
+    value: &CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>,
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<()> {
     writer.node()?;
     match value {
-        CssBackgroundSizeComponent::Auto => writer.append("auto"),
-        CssBackgroundSizeComponent::Length(value) => {
-            value.append_specified(&mut writer.context, &mut writer.css)
-        }
+        CssAutoOr::Auto => writer.append("auto"),
+        CssAutoOr::Value(value) => value.append_specified(&mut writer.context, &mut writer.css),
     }
 }
 

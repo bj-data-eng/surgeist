@@ -57,7 +57,7 @@ fn checked_keyframes_names_keep_decoded_case_and_punctuation() {
     else {
         panic!("animation-name");
     };
-    assert_eq!(parsed.names(), &names);
+    assert_eq!(parsed.value(), &names);
 }
 
 #[test]
@@ -86,7 +86,7 @@ fn checked_identifier_has_the_same_identity_in_definitions_and_references() {
     else {
         panic!("animation reference");
     };
-    assert_eq!(parsed.names().names(), &[reference]);
+    assert_eq!(parsed.value().names(), &[reference]);
 }
 
 #[test]

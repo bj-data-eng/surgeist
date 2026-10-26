@@ -15,7 +15,7 @@ fn size(css: &str) -> CssBackgroundSizeList {
     else {
         panic!("size list")
     };
-    value.sizes().clone()
+    value.value().clone()
 }
 
 fn length(css: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
@@ -65,7 +65,7 @@ fn each_intrinsic_initial_has_its_source_defined_typed_single_layer() {
             CssLonghandValueRef::BackgroundSize(v) => assert!(matches!(
                 v.sizes(),
                 [CssBackgroundSize::Explicit {
-                    width: CssBackgroundSizeComponent::Auto,
+                    width: CssAutoOr::Auto,
                     height: None
                 }]
             )),
@@ -138,14 +138,14 @@ fn ordinary_contributions_preserve_typed_list_order_and_parsed_numeric_origin() 
                 let expected = CssBackgroundSizeList::try_new(vec![
                     CssBackgroundSize::Cover,
                     CssBackgroundSize::Explicit {
-                        width: CssBackgroundSizeComponent::Length(length("10px")),
-                        height: Some(CssBackgroundSizeComponent::Auto),
+                        width: CssAutoOr::Value(length("10px")),
+                        height: Some(CssAutoOr::Auto),
                     },
                 ])
                 .unwrap();
                 assert_eq!(v, &expected);
                 let CssBackgroundSize::Explicit {
-                    width: CssBackgroundSizeComponent::Length(width),
+                    width: CssAutoOr::Value(width),
                     ..
                 } = &v.sizes()[1]
                 else {
@@ -242,7 +242,7 @@ fn strict_reentry_retains_programmatic_components_and_expected_typed_values() {
     };
     let [
         CssBackgroundSize::Explicit {
-            width: CssBackgroundSizeComponent::Length(width),
+            width: CssAutoOr::Value(width),
             height: None,
         },
     ] = v.sizes()
@@ -287,7 +287,7 @@ fn specified_sizes_preserve_effective_auto_height_and_symbolic_values() {
     let value = size("calc(10px - 5%)");
     let [
         CssBackgroundSize::Explicit {
-            width: CssBackgroundSizeComponent::Length(width),
+            width: CssAutoOr::Value(width),
             height: None,
         },
     ] = value.sizes()
@@ -370,7 +370,7 @@ fn repeat_aliases_equal_axes_and_directional_pairs_use_shorter_equivalents() {
         };
         assert_eq!(
             reparsed
-                .repeats()
+                .value()
                 .serialize_specified(Default::default())
                 .unwrap(),
             expected
@@ -412,7 +412,7 @@ fn scalar_budgets_account_for_authored_alias_axes_and_omitted_auto_components() 
     for (value, expected, nodes) in [
         (
             CssBackgroundSize::Explicit {
-                width: CssBackgroundSizeComponent::Auto,
+                width: CssAutoOr::Auto,
                 height: None,
             },
             "auto",
@@ -420,16 +420,16 @@ fn scalar_budgets_account_for_authored_alias_axes_and_omitted_auto_components() 
         ),
         (
             CssBackgroundSize::Explicit {
-                width: CssBackgroundSizeComponent::Auto,
-                height: Some(CssBackgroundSizeComponent::Auto),
+                width: CssAutoOr::Auto,
+                height: Some(CssAutoOr::Auto),
             },
             "auto",
             3,
         ),
         (
             CssBackgroundSize::Explicit {
-                width: CssBackgroundSizeComponent::Length(length("10px")),
-                height: Some(CssBackgroundSizeComponent::Auto),
+                width: CssAutoOr::Value(length("10px")),
+                height: Some(CssAutoOr::Auto),
             },
             "10px auto",
             4,

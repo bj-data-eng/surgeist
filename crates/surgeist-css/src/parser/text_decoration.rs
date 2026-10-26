@@ -16,7 +16,7 @@ macro_rules! keyword {
         }
     };
 }
-keyword!(parse_decoration_error, CssTextDecorationError, "spelling-error" => SpellingError, "grammar-error" => GrammarError);
+keyword!(parse_decoration_error, CssTextDecorationErrorLine, "spelling-error" => SpellingError, "grammar-error" => GrammarError);
 keyword!(parse_underline_vertical, CssUnderlinePositionVertical, "from-font" => FromFont, "under" => Under);
 keyword!(parse_text_side, CssTextSide, "left" => Left, "right" => Right);
 keyword!(parse_text_decoration_skip, CssTextDecorationSkip, "none" => None, "auto" => Auto);

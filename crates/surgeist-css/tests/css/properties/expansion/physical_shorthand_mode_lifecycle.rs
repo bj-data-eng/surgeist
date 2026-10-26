@@ -178,7 +178,9 @@ fn scroll_margin_length(value: &CssLonghandValue) -> Option<&CssNumeric<CssLengt
         _ => None,
     }
 }
-fn scroll_padding(value: &CssLonghandValue) -> Option<&CssScrollPaddingValue> {
+fn scroll_padding(
+    value: &CssLonghandValue,
+) -> Option<&CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>> {
     match value.view() {
         CssLonghandValueRef::ScrollPaddingTop(value)
         | CssLonghandValueRef::ScrollPaddingRight(value)
@@ -228,11 +230,8 @@ fn assert_semantic_payload(actual: &CssLonghandValue, expected: &CssLonghandValu
             actual_padding,
             scroll_padding(expected).expect("scroll-padding domain"),
         ) {
-            (CssScrollPaddingValue::Auto, CssScrollPaddingValue::Auto) => {}
-            (
-                CssScrollPaddingValue::LengthPercentage(actual),
-                CssScrollPaddingValue::LengthPercentage(expected),
-            ) => {
+            (CssAutoOr::Auto, CssAutoOr::Auto) => {}
+            (CssAutoOr::Value(actual), CssAutoOr::Value(expected)) => {
                 assert!(actual.calculation().is_none());
                 assert!(expected.calculation().is_none());
                 assert_literal_payload(
@@ -273,8 +272,8 @@ fn scroll_scalar_origin(value: &CssLonghandValue) -> Option<&CssValueOrigin> {
     scroll_margin_length(value)
         .map(CssNumeric::<CssLength>::origin)
         .or_else(|| match scroll_padding(value) {
-            Some(CssScrollPaddingValue::LengthPercentage(value)) => Some(value.origin()),
-            Some(CssScrollPaddingValue::Auto) | None => None,
+            Some(CssAutoOr::Value(value)) => Some(value.origin()),
+            Some(CssAutoOr::Auto) | None => None,
             Some(_) => panic!("unexpected scroll-padding branch"),
         })
 }

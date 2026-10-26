@@ -68,7 +68,7 @@ fn css2_residual_properties_retain_typed_values() {
     else {
         panic!("expected border-collapse");
     };
-    assert_eq!(border_collapse.collapse(), &CssBorderCollapse::Collapse);
+    assert_eq!(border_collapse.value(), &CssBorderCollapse::Collapse);
     assert_eq!(border_collapse.as_css(), "collapse");
 
     let CssKnownPropertyValueRef::BorderSpacing(border_spacing) = report.syntax()[1]
@@ -81,8 +81,8 @@ fn css2_residual_properties_retain_typed_values() {
     };
     assert!(exact_dimension(
         border_spacing
-            .spacing()
-            .horizontal()
+            .value()
+            .first()
             .literal()
             .map(|literal| literal.component()),
         "2",
@@ -90,8 +90,8 @@ fn css2_residual_properties_retain_typed_values() {
     ));
     assert!(exact_dimension(
         border_spacing
-            .spacing()
-            .vertical()
+            .value()
+            .second()
             .literal()
             .map(|literal| literal.component()),
         "3",
@@ -106,7 +106,7 @@ fn css2_residual_properties_retain_typed_values() {
     else {
         panic!("expected caption-side");
     };
-    assert_eq!(caption_side.side(), &CssCaptionSide::Bottom);
+    assert_eq!(caption_side.value(), &CssCaptionSide::Bottom);
 
     let CssKnownPropertyValueRef::Clip(clip) = report.syntax()[3]
         .known()
@@ -116,13 +116,13 @@ fn css2_residual_properties_retain_typed_values() {
     else {
         panic!("expected clip");
     };
-    let CssClip::Rect(rect) = clip.clip() else {
+    let CssClip::Rect(rect) = clip.value() else {
         panic!("expected clipping rectangle");
     };
-    assert!(matches!(rect.top(), CssClipEdge::Auto));
+    assert!(matches!(rect.top(), CssAutoOr::Auto));
     assert!(matches!(
         rect.left(),
-        CssClipEdge::Length(length)
+        CssAutoOr::Value(length)
             if exact_dimension(length.literal().map(|literal| literal.component()), "-1", "px")
     ));
 
@@ -134,7 +134,7 @@ fn css2_residual_properties_retain_typed_values() {
     else {
         panic!("expected empty-cells");
     };
-    assert_eq!(empty_cells.cells(), &CssEmptyCells::Hide);
+    assert_eq!(empty_cells.value(), &CssEmptyCells::Hide);
 
     for index in [5, 11] {
         let value = report.syntax()[index]
@@ -145,19 +145,13 @@ fn css2_residual_properties_retain_typed_values() {
         match value {
             CssKnownPropertyValueRef::Orphans(value) => {
                 assert_eq!(
-                    value
-                        .minimum()
-                        .literal()
-                        .and_then(|literal| literal.value()),
+                    value.value().literal().and_then(|literal| literal.value()),
                     Some(3)
                 );
             }
             CssKnownPropertyValueRef::Widows(value) => {
                 assert_eq!(
-                    value
-                        .minimum()
-                        .literal()
-                        .and_then(|literal| literal.value()),
+                    value.value().literal().and_then(|literal| literal.value()),
                     Some(4)
                 );
             }
@@ -200,7 +194,7 @@ fn css2_residual_properties_retain_typed_values() {
     else {
         panic!("expected quotes");
     };
-    let CssQuotes::Pairs(pairs) = quotes.quotes() else {
+    let CssQuotes::Pairs(pairs) = quotes.value() else {
         panic!("expected quotation pairs");
     };
     assert_eq!(pairs.pairs().len(), 2);
@@ -215,7 +209,7 @@ fn css2_residual_properties_retain_typed_values() {
     else {
         panic!("expected table-layout");
     };
-    assert_eq!(table_layout.layout(), &CssTableLayout::Fixed);
+    assert_eq!(table_layout.value(), &CssTableLayout::Fixed);
 
     let CssKnownPropertyValueRef::WordSpacing(word_spacing) = report.syntax()[12]
         .known()
@@ -227,17 +221,17 @@ fn css2_residual_properties_retain_typed_values() {
     };
     assert_eq!(
         word_spacing
-            .spacing()
+            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         "-0.25em"
     );
     assert!(matches!(
-        word_spacing.spacing(),
+        word_spacing.value(),
         CssTextSpacingAdjustment::LengthPercentage(_)
     ));
     let component = word_spacing
-        .spacing()
+        .value()
         .length_percentage()
         .unwrap()
         .literal()
@@ -476,7 +470,7 @@ fn css2_residual_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
     };
     assert_eq!(
         accepted_spacing
-            .spacing()
+            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         "10%"
@@ -543,7 +537,7 @@ fn box_edge_keyword_value_exposes_every_o_box3_branch_and_rejects_adjacent_gramm
     ] {
         let value = CssBoxEdgeKeyword::from_keyword(authored).expect("known box edge keyword");
         assert_eq!(value, expected);
-        assert_eq!(value.as_css_str(), authored);
+        assert_eq!(value.as_str(), authored);
         assert_eq!(
             CssBoxEdgeKeyword::from_keyword(&authored.to_ascii_uppercase()),
             Some(expected)

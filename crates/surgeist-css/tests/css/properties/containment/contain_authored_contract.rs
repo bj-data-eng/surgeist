@@ -67,7 +67,7 @@ fn containment(source: &CssDeclaration) -> &CssContain {
     else {
         panic!("existing typed contain wrapper")
     };
-    value.containment()
+    value.value()
 }
 fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =

@@ -809,7 +809,7 @@ fn iteration_longhand_and_shorthand_keep_shared_exact_counts_and_authored_omissi
         CssAnimationIterationCount::Infinite,
         CssAnimationIterationCount::Number(huge),
         CssAnimationIterationCount::Number(math),
-    ] = counts.iteration_counts().values()
+    ] = counts.value().values()
     else {
         panic!("ordered counts")
     };
@@ -829,7 +829,7 @@ fn iteration_longhand_and_shorthand_keep_shared_exact_counts_and_authored_omissi
         else {
             panic!("animation shorthand")
         };
-        let [animation] = wrapper.animations().values() else {
+        let [animation] = wrapper.value().values() else {
             panic!("one animation")
         };
         assert!(
@@ -942,7 +942,7 @@ fn border_and_iteration_payloads_keep_exact_source_coordinates_and_kinds() {
         CssBorderImageSliceComponent::Percentage(percentage),
         _,
         _,
-    ] = slice.slice().values()
+    ] = slice.value().values()
     else {
         panic!("number/percentage edges");
     };
@@ -958,7 +958,7 @@ fn border_and_iteration_payloads_keep_exact_source_coordinates_and_kinds() {
     else {
         panic!("width");
     };
-    let CssBorderImageWidthComponent::Number(number) = &width.widths().values()[0] else {
+    let CssBorderImageWidthComponent::Number(number) = &width.value().values()[0] else {
         panic!("number width");
     };
     assert_eq!(number_text(number), "3e2");
@@ -971,7 +971,7 @@ fn border_and_iteration_payloads_keep_exact_source_coordinates_and_kinds() {
     else {
         panic!("outset");
     };
-    let CssBorderImageOutsetComponent::Number(number) = &outset.outsets().values()[0] else {
+    let CssBorderImageOutsetComponent::Number(number) = &outset.value().values()[0] else {
         panic!("number outset");
     };
     assert_eq!(number_text(number), "-0");
@@ -990,7 +990,7 @@ fn border_and_iteration_payloads_keep_exact_source_coordinates_and_kinds() {
     let [
         CssAnimationIterationCount::Number(fraction),
         CssAnimationIterationCount::Number(math),
-    ] = counts.iteration_counts().values()
+    ] = counts.value().values()
     else {
         panic!("ordered scalar counts");
     };

@@ -56,7 +56,7 @@ fn four_box_constructor_excludes_svg_boxes_and_emits_one_bounded_node() {
             CssShapeBox::from_keyword(&keyword.to_ascii_uppercase()),
             Some(value)
         );
-        assert_eq!(value.as_css_str(), keyword);
+        assert_eq!(value.as_str(), keyword);
         budget(keyword, 1, 1, |limits| value.serialize_specified(limits));
         let owner = CssShapeOutside::ShapeBox(value);
         budget(keyword, 1, 1, |limits| owner.serialize_specified(limits));

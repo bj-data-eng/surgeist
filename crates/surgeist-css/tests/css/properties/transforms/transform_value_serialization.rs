@@ -31,7 +31,7 @@ fn angle(text: &str, unit: CssAngleUnit) -> CssAngleOrZero {
 }
 macro_rules! parsed {
     ($source:expr, TransformOrigin) => {
-        parsed!($source, TransformOrigin, origin)
+        parsed!($source, TransformOrigin, value)
     };
     ($source:expr, $variant:ident) => {
         parsed!($source, $variant, value)

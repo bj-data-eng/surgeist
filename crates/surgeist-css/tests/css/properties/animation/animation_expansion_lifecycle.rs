@@ -228,7 +228,7 @@ fn animation(source: &CssDeclaration) -> &CssAnimationList {
     else {
         panic!("animation")
     };
-    value.animations()
+    value.value()
 }
 fn explicit_children(actual: &Lists<'_>, original: &CssAnimationList) {
     for (index, item) in original.values().iter().enumerate() {
@@ -360,12 +360,12 @@ fn direct_children(values: &CssLonghandContributions, source: &CssDeclaration) {
             CssLonghandValueRef::AnimationDuration(a),
             CssKnownPropertyValueRef::AnimationDuration(b),
         ) => {
-            for (a, b) in a.values().iter().zip(b.durations().values()) {
+            for (a, b) in a.values().iter().zip(b.value().values()) {
                 time_clone(a, b);
             }
         }
         (CssLonghandValueRef::AnimationDelay(a), CssKnownPropertyValueRef::AnimationDelay(b)) => {
-            for (a, b) in a.values().iter().zip(b.delays().values()) {
+            for (a, b) in a.values().iter().zip(b.value().values()) {
                 time_clone(a, b);
             }
         }
@@ -373,7 +373,7 @@ fn direct_children(values: &CssLonghandContributions, source: &CssDeclaration) {
             CssLonghandValueRef::AnimationTimingFunction(a),
             CssKnownPropertyValueRef::AnimationTimingFunction(b),
         ) => {
-            for (a, b) in a.values().iter().zip(b.timing_functions().values()) {
+            for (a, b) in a.values().iter().zip(b.value().values()) {
                 easing_clone(a, b);
             }
         }
@@ -381,24 +381,24 @@ fn direct_children(values: &CssLonghandContributions, source: &CssDeclaration) {
             CssLonghandValueRef::AnimationIterationCount(a),
             CssKnownPropertyValueRef::AnimationIterationCount(b),
         ) => {
-            for (a, b) in a.values().iter().zip(b.iteration_counts().values()) {
+            for (a, b) in a.values().iter().zip(b.value().values()) {
                 count_clone(a, b);
             }
         }
         (
             CssLonghandValueRef::AnimationDirection(a),
             CssKnownPropertyValueRef::AnimationDirection(b),
-        ) => assert_eq!(a.directions(), b.directions().directions()),
+        ) => assert_eq!(a.directions(), b.value().directions()),
         (
             CssLonghandValueRef::AnimationFillMode(a),
             CssKnownPropertyValueRef::AnimationFillMode(b),
-        ) => assert_eq!(a.modes(), b.fill_modes().modes()),
+        ) => assert_eq!(a.modes(), b.value().modes()),
         (
             CssLonghandValueRef::AnimationPlayState(a),
             CssKnownPropertyValueRef::AnimationPlayState(b),
-        ) => assert_eq!(a.states(), b.play_states().states()),
+        ) => assert_eq!(a.states(), b.value().states()),
         (CssLonghandValueRef::AnimationName(a), CssKnownPropertyValueRef::AnimationName(b)) => {
-            assert_eq!(a.names(), b.names().names())
+            assert_eq!(a.names(), b.value().names())
         }
         other => panic!("matching original longhand: {other:?}"),
     }
@@ -1076,7 +1076,7 @@ fn quoted_names_and_keyword_priority_remain_independent_of_projection_defaults()
     };
     assert_eq!(
         original
-            .animations()
+            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         "1s \"\", 2s \" \", 3s none, 4s backwards, 5s normal reverse, 6s 2 infinite, 7s paused running, 8s \"none\""

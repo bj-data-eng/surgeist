@@ -144,7 +144,7 @@ fn logical_numeric_origin(item: &CssLonghandContribution) -> &CssValueOrigin {
         | CssLonghandValueRef::BorderInlineStartWidth(v)
         | CssLonghandValueRef::BorderBlockEndWidth(v)
         | CssLonghandValueRef::BorderInlineEndWidth(v) => {
-            let CssBorderWidth::Length(v) = v else {
+            let CssLineWidth::Length(v) = v else {
                 panic!("numeric border width")
             };
             v.origin()
@@ -295,15 +295,15 @@ fn expressly_listed_quads_assign_every_slot_without_complementary_writes() {
             let actual = match source.known().unwrap().property_value().unwrap() {
                 CssKnownPropertyValueRef::Margin(v) => v
                     .value()
-                    .assigned_values()
+                    .assigned()
                     .map(|v| v.serialize_specified(Default::default()).unwrap()),
                 CssKnownPropertyValueRef::Padding(v) => v
                     .value()
-                    .assigned_values()
+                    .assigned()
                     .map(|v| v.serialize_specified(Default::default()).unwrap()),
                 CssKnownPropertyValueRef::BorderWidth(v) => v
                     .value()
-                    .assigned_values()
+                    .assigned()
                     .map(|v| v.serialize_specified(Default::default()).unwrap()),
                 _ => panic!("quad"),
             };
@@ -590,7 +590,7 @@ fn background_and_spacing_offsets_admit_every_length_slot_and_keep_nonlength_par
             "right 3px bottom 4px",
         ),
         ("background-position", "1 2, 3% 4", "1px 2px, 3% 4px"),
-        ("border-spacing", "3", "3px 3px"),
+        ("border-spacing", "3", "3px"),
         ("border-spacing", "3 4px", "3px 4px"),
         ("margin", "auto -1 2% 3px", "auto -1px 2% 3px"),
         (

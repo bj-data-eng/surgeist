@@ -1,4 +1,5 @@
 use super::property_input::Parser;
+use super::side_shapes::parse_auto_or;
 use super::values::{
     parse_length, parse_length_percentage, parse_nonnegative_length,
     parse_nonnegative_length_percentage,
@@ -14,6 +15,7 @@ use super::values::{
     parse_nonnegative_number, parse_nonnegative_percentage, parse_specified_number,
     parse_specified_percentage,
 };
+use crate::CssAutoOr;
 use crate::CssValueOrigin;
 use crate::syntax::*;
 
@@ -150,15 +152,8 @@ fn parse_clip_rect<'i, 't>(
 fn parse_clip_edge<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssClipEdge, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
-        return Ok(CssClipEdge::Auto);
-    }
-    let value = parse_length(input, numeric)?;
-    Ok(CssClipEdge::Length(value))
+) -> std::result::Result<CssAutoOr<CssNumeric<CssLength>>, ParseError<'i, Error>> {
+    parse_auto_or(input, |input| parse_length(input, numeric))
 }
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
@@ -620,15 +615,8 @@ fn parse_rect_shape<'i, 't>(
 fn parse_rect_shape_edge<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<CssRectShapeEdge, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
-        Ok(CssRectShapeEdge::Auto)
-    } else {
-        parse_shape_length_percentage(input, numeric).map(CssRectShapeEdge::LengthPercentage)
-    }
+) -> Result<CssAutoOr<CssNumeric<CssLengthPercentage>>, ParseError<'i, Error>> {
+    parse_auto_or(input, |input| parse_shape_length_percentage(input, numeric))
 }
 
 fn parse_xywh_shape<'i, 't>(

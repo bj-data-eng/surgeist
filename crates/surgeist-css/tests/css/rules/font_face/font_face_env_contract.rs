@@ -34,7 +34,7 @@ fn every_known_descriptor_defers_env_and_reenters_its_ordinary_grammar() {
         let value = checked(kind, "env(selection, fallback)");
         assert_eq!(value.kind(), kind);
         let Authored::Pending(pending) = value else {
-            panic!("{} must defer", kind.css_name());
+            panic!("{} must defer", kind.as_str());
         };
         assert_eq!(pending.kind(), kind);
         assert_eq!(pending.components().items().len(), 1);

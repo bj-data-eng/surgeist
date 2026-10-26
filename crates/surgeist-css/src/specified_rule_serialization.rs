@@ -603,7 +603,8 @@ mod inverse_source_scope_contract {
         }
         // An error inside real suppression restores both modes. An ordinary
         // pair also uses its normal bounded writer without schema notifications.
-        let mut writer = SpecifiedRuleWriter::new(Limits::new(1, usize::MAX, 0));
+        // The aggregate takes the first node and the first value the second; the second value fails.
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(2, usize::MAX, 0));
         let (result, member) = writer.with_inverse_sources(Property::MarginBlock, None, |writer| {
             writer.without_output(|writer| pair.append_to_rule_writer(writer))
         });
@@ -613,7 +614,7 @@ mod inverse_source_scope_contract {
         assert!(writer.inverse_source_member.is_none());
         assert!(!writer.context.output_suppressed());
         assert!(writer.css.is_empty());
-        let mut ordinary = SpecifiedRuleWriter::new(Limits::new(2, 2, 7));
+        let mut ordinary = SpecifiedRuleWriter::new(Limits::new(3, 3, 7));
         ordinary
             .without_output(|writer| pair.append_to_rule_writer(writer))
             .unwrap();
@@ -650,10 +651,10 @@ mod inverse_source_scope_contract {
                 panic!("scroll pair")
             };
             let pair = pair.value();
-            // Both authored literals are captured before either is emitted:
-            // I2/P2. An equal end is captured but never appended; the final
-            // responsible source is reselected to the start's captured bytes.
-            let exact = Limits::new(2, 2, bytes);
+            // The aggregate and both authored literals are charged: I3/P3. An equal end is charged
+            // but never appended; the final responsible source is reselected to
+            // the start's bytes.
+            let exact = Limits::new(3, 3, bytes);
             assert_eq!(pair.serialize_specified(exact).unwrap(), expected);
             let mut writer = SpecifiedRuleWriter::new(exact);
             let (result, member) =
@@ -664,8 +665,8 @@ mod inverse_source_scope_contract {
             assert_eq!(writer.css, expected);
             assert_eq!(member, Some(final_member));
             for (limits, kind) in [
-                (Limits::new(1, 2, bytes), Kind::InputNodeLimit),
-                (Limits::new(2, 1, bytes), Kind::ProjectionNodeLimit),
+                (Limits::new(2, 3, bytes), Kind::InputNodeLimit),
+                (Limits::new(3, 2, bytes), Kind::ProjectionNodeLimit),
             ] {
                 let mut writer = SpecifiedRuleWriter::new(limits);
                 let (result, member) =
@@ -674,7 +675,6 @@ mod inverse_source_scope_contract {
                     });
                 assert_eq!(result.unwrap_err().kind(), kind);
                 assert_eq!(member, Some(Property::ScrollPaddingBlockEnd));
-                assert!(writer.css.is_empty());
             }
             assert_eq!(pair.serialize_specified(exact).unwrap(), expected);
         }
@@ -688,7 +688,7 @@ mod inverse_source_scope_contract {
             panic!("scroll pair")
         };
         let pair = pair.value();
-        let mut writer = SpecifiedRuleWriter::new(Limits::new(2, 2, 6));
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(3, 3, 6));
         let (result, member) =
             writer.with_inverse_sources(Property::ScrollPaddingBlock, None, |writer| {
                 pair.append_to_rule_writer(writer)

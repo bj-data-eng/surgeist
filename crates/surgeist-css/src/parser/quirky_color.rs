@@ -1,6 +1,7 @@
 //! Selected Color4 Appendix B fallback, confined to direct property color slots.
 use super::color::parse_color;
 use super::property_input::Parser;
+use super::side_shapes::parse_four_sides;
 use crate::error::property::{Error, ErrorKind, ParseError, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::*;
@@ -19,29 +20,29 @@ pub(super) fn parse_property_value<'i, 't>(
         return super::parse_known_property_value(property, authored, input, numeric);
     }
     macro_rules! single {
-        ($variant:ident, $wrapper:ident) => {{
+        ($variant:ident) => {{
             let value = direct_color(input, numeric)?;
             Ok(CssKnownDeclaration::from_value(
-                CssKnownDeclarationValue::$variant(CssDeclaredValue::Value($wrapper::new(
+                CssKnownDeclarationValue::$variant(CssDeclaredValue::Value(CssPropertyValue::new(
                     authored, value,
                 ))),
             ))
         }};
     }
     match property {
-        CssKnownProperty::Color => single!(Color, CssColorPropertyValue),
+        CssKnownProperty::Color => single!(Color),
         CssKnownProperty::BackgroundColor => {
-            single!(BackgroundColor, CssBackgroundColorPropertyValue)
+            single!(BackgroundColor)
         }
-        CssKnownProperty::BorderTopColor => single!(BorderTopColor, CssBorderTopColorPropertyValue),
+        CssKnownProperty::BorderTopColor => single!(BorderTopColor),
         CssKnownProperty::BorderRightColor => {
-            single!(BorderRightColor, CssBorderRightColorPropertyValue)
+            single!(BorderRightColor)
         }
         CssKnownProperty::BorderBottomColor => {
-            single!(BorderBottomColor, CssBorderBottomColorPropertyValue)
+            single!(BorderBottomColor)
         }
         CssKnownProperty::BorderLeftColor => {
-            single!(BorderLeftColor, CssBorderLeftColorPropertyValue)
+            single!(BorderLeftColor)
         }
         CssKnownProperty::BorderColor => {
             // Preserve ordinary logical-prefixed grammar; its targets do not grant a quirk.
@@ -53,18 +54,10 @@ pub(super) fn parse_property_value<'i, 't>(
             if logical {
                 return super::parse_known_property_value(property, authored, input, numeric);
             }
-            let mut colors = Vec::new();
-            while !input.is_exhausted() {
-                if colors.len() == 4 {
-                    return Err(unexpected_at(input.current_source_location()));
-                }
-                colors.push(direct_color(input, numeric)?);
-            }
-            let value = CssBorderColorShorthand::try_new(CssBoxSideKind::Physical, colors)
-                .ok_or_else(|| unexpected_at(input.current_source_location()))?;
+            let value = parse_four_sides(input, |input| direct_color(input, numeric))?;
             Ok(CssKnownDeclaration::from_value(
                 CssKnownDeclarationValue::BorderColor(CssDeclaredValue::Value(
-                    CssBorderColorPropertyValue::new(authored, value),
+                    CssPropertyValue::new(authored, value),
                 )),
             ))
         }

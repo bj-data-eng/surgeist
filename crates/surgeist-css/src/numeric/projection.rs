@@ -1517,7 +1517,7 @@ impl Projection<'_> {
                     args,
                     strategy,
                 } => {
-                    next.push(Output::Text(format!("{}(", function.name())));
+                    next.push(Output::Text(format!("{}(", function.as_str())));
                     if *function == Function::Round
                         && let Some(strategy) = strategy
                         && *strategy != CssRoundingStrategy::Nearest

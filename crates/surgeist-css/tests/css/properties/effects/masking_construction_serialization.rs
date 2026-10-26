@@ -41,20 +41,23 @@ fn border() -> CssMaskBorder {
 
 #[test]
 fn narrowed_mask_boxes_and_layer_slots_are_intrinsically_checked() {
-    assert_eq!(CssMaskBox::try_new(CssBoxEdgeKeyword::MarginBox), None);
     assert_eq!(
-        CssMaskBox::try_new(CssBoxEdgeKeyword::ViewBox),
-        Some(CssMaskBox::ViewBox)
+        CssCoordBox::try_from(CssBoxEdgeKeyword::MarginBox).ok(),
+        None
     );
-    assert_eq!(CssMaskBox::FillBox.keyword(), "fill-box");
-    let one = CssMaskLayerBoxes::Box(CssMaskBox::ContentBox);
+    assert_eq!(
+        CssCoordBox::try_from(CssBoxEdgeKeyword::ViewBox).ok(),
+        Some(CssCoordBox::ViewBox)
+    );
+    assert_eq!(CssCoordBox::FillBox.as_str(), "fill-box");
+    let one = CssMaskLayerBoxes::Box(CssCoordBox::ContentBox);
     let pair = CssMaskLayerBoxes::Pair {
-        origin: CssMaskBox::PaddingBox,
+        origin: CssCoordBox::PaddingBox,
         clip: CssMaskClip::NoClip,
     };
-    assert_eq!(one.origin(), Some(CssMaskBox::ContentBox));
-    assert_eq!(one.clip(), CssMaskClip::Box(CssMaskBox::ContentBox));
-    assert_eq!(pair.origin(), Some(CssMaskBox::PaddingBox));
+    assert_eq!(one.origin(), Some(CssCoordBox::ContentBox));
+    assert_eq!(one.clip(), CssMaskClip::Box(CssCoordBox::ContentBox));
+    assert_eq!(pair.origin(), Some(CssCoordBox::PaddingBox));
     assert_eq!(pair.clip(), CssMaskClip::NoClip);
     assert_eq!(CssMaskLayerBoxes::NoClip.origin(), None);
     assert_eq!(CssMaskLayerBoxes::NoClip.clip(), CssMaskClip::NoClip);
@@ -93,8 +96,8 @@ fn narrowed_mask_boxes_and_layer_slots_are_intrinsically_checked() {
         CssMaskLayerBoxes::NoClip.serialize_specified(limits)
     });
     let explicit_pair = CssMaskLayerBoxes::Pair {
-        origin: CssMaskBox::ContentBox,
-        clip: CssMaskClip::Box(CssMaskBox::ContentBox),
+        origin: CssCoordBox::ContentBox,
+        clip: CssMaskClip::Box(CssCoordBox::ContentBox),
     };
     assert_ne!(one, explicit_pair);
     bounds("content-box content-box", 3, 3, |limits| {
@@ -108,22 +111,26 @@ fn nonempty_longhand_lists_preserve_independent_arity_and_exact_work() {
     assert!(CssMaskClipList::try_new(vec![]).is_none());
     assert!(CssMaskModeList::try_new(vec![]).is_none());
     assert!(CssMaskCompositeList::try_new(vec![]).is_none());
-    let boxes = CssMaskBoxList::try_new(vec![CssMaskBox::ContentBox, CssMaskBox::ViewBox]).unwrap();
+    let boxes =
+        CssMaskBoxList::try_new(vec![CssCoordBox::ContentBox, CssCoordBox::ViewBox]).unwrap();
     assert_eq!(
         boxes.boxes(),
-        &[CssMaskBox::ContentBox, CssMaskBox::ViewBox]
+        &[CssCoordBox::ContentBox, CssCoordBox::ViewBox]
     );
     bounds("content-box, view-box", 3, 3, |limits| {
         boxes.serialize_specified(limits)
     });
     let clips = CssMaskClipList::try_new(vec![
         CssMaskClip::NoClip,
-        CssMaskClip::Box(CssMaskBox::StrokeBox),
+        CssMaskClip::Box(CssCoordBox::StrokeBox),
     ])
     .unwrap();
     assert_eq!(
         clips.clips(),
-        &[CssMaskClip::NoClip, CssMaskClip::Box(CssMaskBox::StrokeBox)]
+        &[
+            CssMaskClip::NoClip,
+            CssMaskClip::Box(CssCoordBox::StrokeBox)
+        ]
     );
     bounds("no-clip, stroke-box", 3, 3, |limits| {
         clips.serialize_specified(limits)
@@ -280,7 +287,7 @@ fn source_retained_size_only_projection_and_all_new_children_compose() {
         None,
         Some(CssBackgroundSize::Contain),
         None,
-        Some(CssMaskLayerBoxes::Box(CssMaskBox::ViewBox)),
+        Some(CssMaskLayerBoxes::Box(CssCoordBox::ViewBox)),
         Some(CssMaskComposite::Intersect),
         Some(CssMaskMode::MatchSource),
     )

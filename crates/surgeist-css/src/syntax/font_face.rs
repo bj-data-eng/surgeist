@@ -65,7 +65,7 @@ pub enum CssFontFaceDescriptorKind {
 impl CssFontFaceDescriptorKind {
     /// Returns the canonical CSS descriptor name.
     #[must_use]
-    pub const fn css_name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::FontFamily => "font-family",
             Self::Src => "src",
@@ -109,7 +109,7 @@ impl CssFontFaceDescriptorKind {
         ]
         .into_iter()
         .find(|kind| {
-            kind.css_name().eq_ignore_ascii_case(name)
+            kind.as_str().eq_ignore_ascii_case(name)
                 || (*kind == Self::FontWidth && name.eq_ignore_ascii_case("font-stretch"))
         })
     }

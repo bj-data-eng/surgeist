@@ -51,7 +51,10 @@ impl fmt::Display for CssMotionConstructionError {
 }
 impl Error for CssMotionConstructionError {}
 
-/// The six Box 3 coordinate boxes imported by Motion; margin-box is excluded.
+/// Box 4 `<coord-box>`: the six geometry boxes that exclude `margin-box`.
+///
+/// Motion's `offset-path` and `offset` and Masking's `mask-origin`, `mask-clip` and `mask`
+/// all take this one production.
 ///
 /// # Specified serialization
 ///
@@ -74,32 +77,32 @@ impl CssCoordBox {
     }
     /// Returns the canonical keyword.
     #[must_use]
-    pub const fn as_css_str(self) -> &'static str {
-        self.mask_box().keyword()
+    pub const fn as_str(self) -> &'static str {
+        self.edge().as_str()
     }
-    /// Box 4 defines `<coord-box>` once; the masking box owns its keyword table.
-    const fn mask_box(self) -> crate::CssMaskBox {
+    /// The geometry-box keyword this `<coord-box>` names.
+    const fn edge(self) -> CssBoxEdgeKeyword {
         match self {
-            Self::ContentBox => crate::CssMaskBox::ContentBox,
-            Self::PaddingBox => crate::CssMaskBox::PaddingBox,
-            Self::BorderBox => crate::CssMaskBox::BorderBox,
-            Self::FillBox => crate::CssMaskBox::FillBox,
-            Self::StrokeBox => crate::CssMaskBox::StrokeBox,
-            Self::ViewBox => crate::CssMaskBox::ViewBox,
+            Self::ContentBox => CssBoxEdgeKeyword::ContentBox,
+            Self::PaddingBox => CssBoxEdgeKeyword::PaddingBox,
+            Self::BorderBox => CssBoxEdgeKeyword::BorderBox,
+            Self::FillBox => CssBoxEdgeKeyword::FillBox,
+            Self::StrokeBox => CssBoxEdgeKeyword::StrokeBox,
+            Self::ViewBox => CssBoxEdgeKeyword::ViewBox,
         }
     }
 }
 impl TryFrom<CssBoxEdgeKeyword> for CssCoordBox {
     type Error = CssMotionConstructionError;
     fn try_from(value: CssBoxEdgeKeyword) -> Result<Self, Self::Error> {
-        Ok(match crate::CssMaskBox::try_new(value) {
-            Some(crate::CssMaskBox::ContentBox) => Self::ContentBox,
-            Some(crate::CssMaskBox::PaddingBox) => Self::PaddingBox,
-            Some(crate::CssMaskBox::BorderBox) => Self::BorderBox,
-            Some(crate::CssMaskBox::FillBox) => Self::FillBox,
-            Some(crate::CssMaskBox::StrokeBox) => Self::StrokeBox,
-            Some(crate::CssMaskBox::ViewBox) => Self::ViewBox,
-            None => {
+        Ok(match value {
+            CssBoxEdgeKeyword::ContentBox => Self::ContentBox,
+            CssBoxEdgeKeyword::PaddingBox => Self::PaddingBox,
+            CssBoxEdgeKeyword::BorderBox => Self::BorderBox,
+            CssBoxEdgeKeyword::FillBox => Self::FillBox,
+            CssBoxEdgeKeyword::StrokeBox => Self::StrokeBox,
+            CssBoxEdgeKeyword::ViewBox => Self::ViewBox,
+            CssBoxEdgeKeyword::MarginBox => {
                 return Err(CssMotionConstructionError::from(
                     MotionConstructionKind::InvalidCoordBox,
                 ));
@@ -135,7 +138,7 @@ impl CssRaySize {
         })
     }
     #[must_use]
-    pub const fn as_css_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::ClosestSide => "closest-side",
             Self::ClosestCorner => "closest-corner",

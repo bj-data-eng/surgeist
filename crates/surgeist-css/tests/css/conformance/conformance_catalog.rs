@@ -8,6 +8,7 @@
 //! public parser vectors; the remaining tests pair records with the authored
 //! grammar they claim.
 
+use crate::css::support::position_view::CartesianPosition as _;
 use std::collections::{BTreeMap, BTreeSet};
 
 use surgeist_css::*;
@@ -1166,12 +1167,12 @@ fn official_position_metadata_matches_generic_position_behavior() {
         panic!("expected object-position value");
     };
     assert!(matches!(
-        value.position().horizontal(),
+        value.value().horizontal(),
         CssHorizontalPosition::RightOffset(offset)
             if exact_percentage(offset.literal().map(|literal| literal.component()), "5")
     ));
     assert!(matches!(
-        value.position().vertical(),
+        value.value().vertical(),
         CssVerticalPosition::BottomOffset(offset)
             if exact_dimension(offset.literal().map(|literal| literal.component()), "2", "px")
     ));
@@ -1189,7 +1190,7 @@ fn official_background_position_metadata_matches_three_component_layer_behavior(
     else {
         panic!("expected background-position value");
     };
-    let [layer] = value.positions().positions() else {
+    let [layer] = value.value().positions() else {
         panic!("expected one background-position layer");
     };
     assert!(matches!(
@@ -1214,7 +1215,7 @@ fn background_position_property_metadata_matches_layer_list_behavior() {
     else {
         panic!("expected background-position value");
     };
-    assert_eq!(value.positions().positions().len(), 2);
+    assert_eq!(value.value().positions().len(), 2);
 }
 
 #[test]
@@ -1230,11 +1231,11 @@ fn object_position_property_metadata_matches_semantic_accessor_behavior() {
         panic!("expected object-position value");
     };
     assert!(matches!(
-        value.position().horizontal(),
+        value.value().horizontal(),
         CssHorizontalPosition::Center
     ));
     assert!(matches!(
-        value.position().vertical(),
+        value.value().vertical(),
         CssVerticalPosition::Offset(offset)
             if exact_percentage(offset.literal().map(|literal| literal.component()), "25")
     ));
@@ -1253,14 +1254,11 @@ fn transform_origin_property_metadata_matches_directed_z_behavior() {
         panic!("expected transform-origin value");
     };
     assert!(matches!(
-        value.origin().horizontal(),
+        value.value().horizontal(),
         CssHorizontalPosition::Left
     ));
-    assert!(matches!(
-        value.origin().vertical(),
-        CssVerticalPosition::Top
-    ));
-    assert!(value.origin().z().is_some_and(|z| exact_dimension(
+    assert!(matches!(value.value().vertical(), CssVerticalPosition::Top));
+    assert!(value.value().z().is_some_and(|z| exact_dimension(
         z.literal().map(|literal| literal.component()),
         "50",
         "px"
@@ -1279,7 +1277,7 @@ fn mask_position_property_metadata_matches_generic_layer_behavior() {
     else {
         panic!("expected mask-position value");
     };
-    let [first, second] = value.positions().positions() else {
+    let [first, second] = value.value().positions() else {
         panic!("expected two mask-position layers");
     };
     assert!(matches!(
@@ -2615,7 +2613,7 @@ fn official_easing_metadata_matches_typed_functions() {
         panic!("expected transition timing value");
     };
     assert!(matches!(
-        value.timing_functions().values(),
+        value.value().values(),
         [
             CssEasing::Keyword(_),
             CssEasing::CubicBezier(_),
@@ -2882,7 +2880,7 @@ fn completed_function_property_metadata_matches_public_current_accessors() {
             .property_value()
             .unwrap(),
         CssKnownPropertyValueRef::TransitionTimingFunction(value)
-            if matches!(value.timing_functions().values(), [CssEasing::CubicBezier(_)])
+            if matches!(value.value().values(), [CssEasing::CubicBezier(_)])
     ));
     assert!(matches!(
         report.syntax()[4]
@@ -2891,7 +2889,7 @@ fn completed_function_property_metadata_matches_public_current_accessors() {
             .property_value()
             .unwrap(),
         CssKnownPropertyValueRef::AnimationTimingFunction(value)
-            if matches!(value.timing_functions().values(), [CssEasing::Steps(_)])
+            if matches!(value.value().values(), [CssEasing::Steps(_)])
     ));
 }
 

@@ -482,7 +482,7 @@ fn parsed_conic_second_position_and_from_keep_the_original_source_spans() {
     else {
         panic!("background image")
     };
-    let [CssImageValue::Gradient(CssGradient::Conic(gradient))] = images.images().images() else {
+    let [CssImageValue::Gradient(CssGradient::Conic(gradient))] = images.value().images() else {
         panic!("conic")
     };
     let CssAngularColorStopListItem::Stop(stop) = &gradient.stops().items()[0] else {
@@ -793,7 +793,7 @@ fn missing_rgb_sibling_defaults_follow_the_retained_color_carrier() {
         else {
             panic!("image");
         };
-        let [CssImageValue::Gradient(CssGradient::Conic(gradient))] = images.images().images()
+        let [CssImageValue::Gradient(CssGradient::Conic(gradient))] = images.value().images()
         else {
             panic!("conic");
         };
@@ -873,7 +873,7 @@ fn matching_relative_legacy_function_default_preserves_the_declared_carrier() {
         else {
             panic!("image");
         };
-        let [CssImageValue::Gradient(CssGradient::Conic(gradient))] = images.images().images()
+        let [CssImageValue::Gradient(CssGradient::Conic(gradient))] = images.value().images()
         else {
             panic!("conic");
         };

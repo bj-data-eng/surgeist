@@ -303,8 +303,8 @@ fn counted_repeat_counts_normalize_bare_roots_without_evaluating_functions() {
         let original = integer_calculation(text);
         let component = original.components().items()[0].clone();
         let count = CssNumeric::<CssInteger, CssPositive>::try_from_calculation(original).unwrap();
-        let track = CssGridIntegerTrackRepeat::try_new(count.clone(), track_content()).unwrap();
-        let fixed = CssGridIntegerFixedRepeat::try_new(count.clone(), fixed_content()).unwrap();
+        let track = CssGridIntegerTrackRepeat::new(count.clone(), track_content());
+        let fixed = CssGridIntegerFixedRepeat::new(count.clone(), fixed_content());
         let name = CssGridNameRepeat::try_new(count, vec![names(&[])]).unwrap();
         for value in [track.count(), fixed.count(), name.count().unwrap()] {
             let Some(value) = value.literal() else {
@@ -328,12 +328,10 @@ fn counted_repeat_counts_normalize_bare_roots_without_evaluating_functions() {
             unreachable!();
         };
         for value in [
-            CssGridIntegerTrackRepeat::try_new(count.clone(), track_content())
-                .unwrap()
+            CssGridIntegerTrackRepeat::new(count.clone(), track_content())
                 .count()
                 .clone(),
-            CssGridIntegerFixedRepeat::try_new(count.clone(), fixed_content())
-                .unwrap()
+            CssGridIntegerFixedRepeat::new(count.clone(), fixed_content())
                 .count()
                 .clone(),
             CssGridNameRepeat::try_new(count.clone(), vec![names(&[])])
@@ -378,8 +376,8 @@ fn counted_repeat_counts_normalize_bare_roots_without_evaluating_functions() {
         CssCalculation::<CssInteger>::literal(2),
     )
     .unwrap();
-    let track = CssGridIntegerTrackRepeat::try_new(programmatic.clone(), track_content()).unwrap();
-    let fixed = CssGridIntegerFixedRepeat::try_new(programmatic.clone(), fixed_content()).unwrap();
+    let track = CssGridIntegerTrackRepeat::new(programmatic.clone(), track_content());
+    let fixed = CssGridIntegerFixedRepeat::new(programmatic.clone(), fixed_content());
     let name = CssGridNameRepeat::try_new(programmatic, vec![names(&[])]).unwrap();
     for count in [track.count(), fixed.count(), name.count().unwrap()] {
         let Some(count) = count.literal() else {
@@ -865,11 +863,11 @@ fn recovered_numeric_children_remain_recovered_through_projection_and_typed_comp
     else {
         panic!("integer provider");
     };
-    let CssColumnCount::Count(count) = value.count() else {
+    let CssColumnCount::Count(count) = value.value() else {
         panic!("count");
     };
     original_math(count, count_source.value_components());
-    let repeat = CssGridIntegerTrackRepeat::try_new(count.clone(), track_content()).unwrap();
+    let repeat = CssGridIntegerTrackRepeat::new(count.clone(), track_content());
     original_math(repeat.count(), count_source.value_components());
     let repeated = CssGridTrackList::general(
         CssGridGeneralTrackList::try_new(vec![CssGridGeneralTrackComponent::Repeat(repeat)])
@@ -881,7 +879,7 @@ fn recovered_numeric_children_remain_recovered_through_projection_and_typed_comp
     );
     let name = CssGridNameRepeat::try_new(count.clone(), vec![names(&[])]).unwrap();
     original_math(name.count().unwrap(), count_source.value_components());
-    let fixed = CssGridIntegerFixedRepeat::try_new(count.clone(), fixed_content()).unwrap();
+    let fixed = CssGridIntegerFixedRepeat::new(count.clone(), fixed_content());
     original_math(fixed.count(), count_source.value_components());
     let Some(count) = count.calculation() else {
         panic!("calculation");

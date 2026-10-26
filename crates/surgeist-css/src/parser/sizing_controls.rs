@@ -4,34 +4,24 @@ use super::property_input::Parser;
 use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::match_ignore_ascii_case;
 
+use super::side_shapes::parse_side_pair;
 use super::sizing::{parse_max_size_value, parse_size_value};
 use crate::numeric::NumericInputContext;
-use crate::{CssFrameSizing, CssMaxSizePair, CssMinIntrinsicSizing, CssSizePair};
+use crate::{CssFrameSizing, CssMinIntrinsicSizing, CssSidePair};
+use crate::{CssMaxSizeValue, CssSizeValue};
 
 pub(super) fn parse_size_pair<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssSizePair, ParseError<'i, Error>> {
-    let width = parse_size_value(input, numeric)?;
-    let height = if input.is_exhausted() {
-        None
-    } else {
-        Some(parse_size_value(input, numeric)?)
-    };
-    Ok(CssSizePair::new(width, height))
+) -> Result<CssSidePair<CssSizeValue>, ParseError<'i, Error>> {
+    parse_side_pair(input, |input| parse_size_value(input, numeric))
 }
 
 pub(super) fn parse_max_size_pair<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssMaxSizePair, ParseError<'i, Error>> {
-    let width = parse_max_size_value(input, numeric)?;
-    let height = if input.is_exhausted() {
-        None
-    } else {
-        Some(parse_max_size_value(input, numeric)?)
-    };
-    Ok(CssMaxSizePair::new(width, height))
+) -> Result<CssSidePair<CssMaxSizeValue>, ParseError<'i, Error>> {
+    parse_side_pair(input, |input| parse_max_size_value(input, numeric))
 }
 
 pub(super) fn parse_frame_sizing<'i, 't>(

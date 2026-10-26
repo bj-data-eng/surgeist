@@ -47,7 +47,7 @@ fn feature(value: &str) -> CssAuthoredFontFeatureSettings {
     else {
         panic!("feature wrapper")
     };
-    wrapper.settings().clone()
+    wrapper.value().clone()
 }
 
 fn variation(value: &str) -> CssFontVariationSettings {
@@ -57,7 +57,7 @@ fn variation(value: &str) -> CssFontVariationSettings {
     else {
         panic!("variation wrapper")
     };
-    wrapper.variations().clone()
+    wrapper.value().clone()
 }
 
 fn descriptor(kind: CssFontFaceDescriptorKind, value: &str) -> CssFontFaceDescriptorValue {
@@ -368,7 +368,7 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_and_symbolic_math() {
     else {
         panic!("size adjust")
     };
-    let CssFontSizeAdjust::Number(value) = wrapper.size_adjust() else {
+    let CssFontSizeAdjust::Number(value) = wrapper.value() else {
         panic!("number adjust")
     };
     assert_eq!(
@@ -377,7 +377,7 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_and_symbolic_math() {
     );
     assert_eq!(
         wrapper
-            .size_adjust()
+            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         format!("1{}", "0".repeat(999))
@@ -445,7 +445,7 @@ fn language_override_preserves_general_decoded_string_and_rejects_nul_constructi
         else {
             panic!("language wrapper")
         };
-        let CssFontLanguageOverride::String(value) = wrapper.language_override() else {
+        let CssFontLanguageOverride::String(value) = wrapper.value() else {
             panic!("language string")
         };
         assert_eq!(value.as_str(), decoded);
@@ -760,7 +760,7 @@ fn otherwise_valid_implicitly_closed_math_recovers_only_in_ordinary_parsing() {
             "\"wght\" calc(1)",
         ),
     ] {
-        let source = format!("@font-face{{{}:{incomplete}", kind.css_name());
+        let source = format!("@font-face{{{}:{incomplete}", kind.as_str());
         let report = parse_sheet(&source);
         let [CssRule::FontFace(face)] = report.syntax().rules() else {
             panic!("recovered font face retained")

@@ -184,7 +184,7 @@ fn image(text: &str) -> CssBorderImage {
     else {
         panic!("typed border-image")
     };
-    value.border_image().clone()
+    value.value().clone()
 }
 const UNEQUAL: [&str; 4] = [".12345641", ".12345642", ".12345643", ".12345644"];
 fn unequal_edges(slot: Slot, expected: &str) {

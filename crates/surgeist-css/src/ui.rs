@@ -1,7 +1,8 @@
 //! Authored UI4 values. Contextual caret, widget, focus and timing behavior is downstream.
 use crate::{
     CssCaretColor, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
-    CssComponentValueRef, CssHashFlag, CssNumeric, CssTime, CssValueOrigin, CssValueTokenRef,
+    CssComponentValueRef, CssHashFlag, CssNumeric, CssSidePair, CssTime, CssValueOrigin,
+    CssValueTokenRef,
 };
 
 macro_rules! keywords {
@@ -120,13 +121,19 @@ impl CssInterestDelayValue {
         }
     }
 }
-/// One or two retained values; an omitted end repeats start without erasing presence.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssInterestDelay {
-    start: CssInterestDelayValue,
-    end: Option<CssInterestDelayValue>,
-}
-impl CssInterestDelay {
+crate::common_values::side_element!(
+    CssInterestDelayValue,
+    same = |a, b, _context| Ok(a.specified_value_eq(b))
+);
+crate::common_values::side_pair_serialization!(CssInterestDelayValue);
+
+impl CssSidePair<CssInterestDelayValue> {
+    /// Composes `interest-delay` values, rejecting a time that an implicit close recovered, and
+    /// retains whether the second value was authored.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::CssNumericConstructionError`] when a time was closed implicitly.
     pub fn try_new(
         start: CssInterestDelayValue,
         end: Option<CssInterestDelayValue>,
@@ -136,22 +143,7 @@ impl CssInterestDelay {
                 time.ensure_closed()?;
             }
         }
-        Ok(Self { start, end })
-    }
-    pub(crate) fn from_parser(
-        start: CssInterestDelayValue,
-        end: Option<CssInterestDelayValue>,
-    ) -> Self {
-        Self { start, end }
-    }
-    pub const fn start(&self) -> &CssInterestDelayValue {
-        &self.start
-    }
-    pub const fn authored_end(&self) -> Option<&CssInterestDelayValue> {
-        self.end.as_ref()
-    }
-    pub fn end(&self) -> &CssInterestDelayValue {
-        self.end.as_ref().unwrap_or(&self.start)
+        Ok(Self::from_parts(start, end))
     }
 }
 

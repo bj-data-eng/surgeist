@@ -491,7 +491,7 @@ fn contextual_quirks_and_svg_admission_use_the_owning_grammar() {
     let CssKnownPropertyValueRef::TextOrientation(value) = known.property_value().unwrap() else {
         panic!("legacy Writing Modes mapping")
     };
-    assert_eq!(value.orientation(), &CssTextOrientation::Sideways);
+    assert_eq!(value.value(), &CssTextOrientation::Sideways);
     assert_eq!(
         report.syntax()[1].known().unwrap().property(),
         CssKnownProperty::Width

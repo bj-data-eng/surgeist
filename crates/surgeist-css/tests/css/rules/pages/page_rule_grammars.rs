@@ -142,7 +142,7 @@ fn page_margin_declarations_preserve_css2_physical_literal_semantics() {
     let surgeist_css::CssKnownPropertyValueRef::Margin(margin) = margin else {
         panic!("expected typed margin")
     };
-    let [top, right, bottom, left] = margin.value().assigned_values();
+    let [top, right, bottom, left] = margin.value().assigned();
     assert_eq!(top.serialize_specified(Default::default()).unwrap(), "-1px");
     assert_eq!(right.serialize_specified(Default::default()).unwrap(), "2%");
     assert!(matches!(bottom, CssMarginValue::Auto));

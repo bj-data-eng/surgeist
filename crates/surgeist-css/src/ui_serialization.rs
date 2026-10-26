@@ -1,7 +1,5 @@
 //! Canonical authored UI4 projection with retained optional fields and cumulative providers.
-use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
-use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::ui::*;
 use crate::{CssCaretColor, CssSerializationError};
 type Result<T> = std::result::Result<T, CssSerializationError>;
@@ -24,7 +22,6 @@ keywords!(CssAppearance, { None => "none", Auto => "auto", Base => "base", BaseS
 crate::specified_rule_serialization::specified_serialization!(CssAccentColor);
 crate::specified_rule_serialization::specified_serialization!(CssCaret);
 crate::specified_rule_serialization::specified_serialization!(CssInterestDelayValue);
-crate::specified_rule_serialization::specified_serialization!(CssInterestDelay);
 crate::specified_rule_serialization::specified_serialization!(CssNavigation);
 impl crate::specified_rule_serialization::SpecifiedProvider for CssAccentColor {
     fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
@@ -88,41 +85,6 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssInterestDelay
         }
     }
 }
-impl CssInterestDelay {
-    pub(crate) fn append_to_rule_writer_with_comparison(
-        &self,
-        writer: &mut SpecifiedRuleWriter,
-        equal: &mut impl FnMut(
-            &CssInterestDelayValue,
-            &CssInterestDelayValue,
-            &mut SpecifiedSerializationContext,
-        ) -> Result<bool>,
-        before_value: &mut impl FnMut(usize),
-    ) -> Result<()> {
-        before_value(0);
-        writer.node()?;
-        self.start().append_to_rule_writer(writer)?;
-        if let Some(end) = self.authored_end() {
-            before_value(1);
-            if equal(self.start(), end, &mut writer.context)? {
-                writer.without_output(|writer| end.append_to_rule_writer(writer))?;
-            } else {
-                writer.append(" ")?;
-                end.append_to_rule_writer(writer)?;
-            }
-        }
-        Ok(())
-    }
-}
-impl crate::specified_rule_serialization::SpecifiedProvider for CssInterestDelay {
-    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        self.append_to_rule_writer_with_comparison(
-            writer,
-            &mut |start, end, _| Ok(start.specified_value_eq(end)),
-            &mut |_| {},
-        )
-    }
-}
 impl crate::specified_rule_serialization::SpecifiedProvider for CssNavigation {
     fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self {
@@ -156,6 +118,8 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssNavigation {
 #[cfg(test)]
 pub(crate) mod provider_tests {
     use super::*;
+    use crate::CssSidePair;
+    use crate::specified_rule_serialization::SpecifiedProvider as _;
     use crate::{
         CssKnownPropertyValueRef, CssSerializationLimits as L,
         CssSpecifiedValueSerializationErrorKind as K,
@@ -242,13 +206,13 @@ pub(crate) mod provider_tests {
             assert!(value.animation().is_some());
             assert!(value.shape().is_some());
         }
-        let value = CssInterestDelay::try_new(
+        let value = CssSidePair::<CssInterestDelayValue>::try_new(
             CssInterestDelayValue::Normal,
             Some(CssInterestDelayValue::Normal),
         )
         .unwrap();
         shared("normal", 3, 3, |writer| value.append_to_rule_writer(writer));
-        assert!(value.authored_end().is_some());
+        assert!(value.authored_second().is_some());
         let value = CssNavigation::Id(Box::new(
             CssNavigationReference::try_new(
                 CssNavigationId::try_new("Next").unwrap(),
@@ -279,11 +243,11 @@ pub(crate) mod provider_tests {
             else {
                 panic!("interest-delay")
             };
-            let value = value.delay();
+            let value = value.value();
             shared(expected, input, projection, |writer| {
                 value.append_to_rule_writer(writer)
             });
-            assert!(value.authored_end().is_some());
+            assert!(value.authored_second().is_some());
         }
     }
 }

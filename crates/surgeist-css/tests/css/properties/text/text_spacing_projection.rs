@@ -14,7 +14,7 @@ fn authored(name: &str, value: &str) -> CssTextSpacingAdjustment {
         panic!("one spacing declaration")
     };
     match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::WordSpacing(wrapper) => wrapper.spacing().clone(),
+        CssKnownPropertyValueRef::WordSpacing(wrapper) => wrapper.value().clone(),
         CssKnownPropertyValueRef::LetterSpacing(wrapper) => wrapper.value().clone(),
         _ => panic!("word or letter spacing"),
     }

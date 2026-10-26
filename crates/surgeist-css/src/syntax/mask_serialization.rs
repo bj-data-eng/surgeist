@@ -86,8 +86,8 @@ mod tests {
     use super::*;
     use crate::CssSerializationLimits;
     use crate::{
-        CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize,
-        CssBackgroundSizeComponent, CssImageValue, CssSpecifiedValueSerializationErrorKind as Kind,
+        CssAutoOr, CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize, CssImageValue,
+        CssSpecifiedValueSerializationErrorKind as Kind,
     };
 
     fn sized() -> CssMaskList {
@@ -137,8 +137,8 @@ mod tests {
                 Some(CssImageValue::None),
                 None,
                 Some(CssBackgroundSize::Explicit {
-                    width: CssBackgroundSizeComponent::Auto,
-                    height: Some(CssBackgroundSizeComponent::Auto),
+                    width: CssAutoOr::Auto,
+                    height: Some(CssAutoOr::Auto),
                 }),
                 Some(CssBackgroundRepeat::Axes {
                     x: CssBackgroundRepeatStyle::Repeat,

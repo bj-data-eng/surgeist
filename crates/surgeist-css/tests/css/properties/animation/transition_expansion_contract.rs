@@ -321,8 +321,8 @@ fn recovered_shorthand_time_projects_without_strict_reconstruction() {
         else {
             panic!("retained transition model")
         };
-        assert!(CssTransitionList::try_new(wrapper.transitions().values().to_vec()).is_none());
-        let transition = &wrapper.transitions().values()[0];
+        assert!(CssTransitionList::try_new(wrapper.value().values().to_vec()).is_none());
+        let transition = &wrapper.value().values()[0];
         let time = if member_index == 1 {
             transition.duration().unwrap().clone().into_any_range()
         } else {

@@ -11,8 +11,8 @@ use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::sole_declaration as parsed;
 use surgeist_css::*;
 
-fn edge(value: CssNumeric<CssLength>) -> CssClipEdge {
-    CssClipEdge::Length(value)
+fn edge(value: CssNumeric<CssLength>) -> CssAutoOr<CssNumeric<CssLength>> {
+    CssAutoOr::Value(value)
 }
 
 fn parsed_clip(declaration: &CssDeclaration) -> &CssClip {
@@ -21,7 +21,7 @@ fn parsed_clip(declaration: &CssDeclaration) -> &CssClip {
     else {
         panic!("typed clip")
     };
-    value.clip()
+    value.value()
 }
 
 #[test]
@@ -30,7 +30,7 @@ fn checked_edge_construction_accepts_signed_pure_lengths_and_rejects_other_domai
         let value = signed_length(css);
         assert_eq!(value.serialize_specified(Default::default()).unwrap(), css);
         assert_eq!(
-            CssClipEdge::Length(value)
+            CssAutoOr::Value(value)
                 .serialize_specified(Default::default())
                 .unwrap(),
             css
@@ -53,7 +53,7 @@ fn checked_edge_construction_accepts_signed_pure_lengths_and_rejects_other_domai
         CssValueOrigin::Programmatic
     ));
     assert_eq!(
-        CssClipEdge::Auto
+        CssAutoOr::<CssNumeric<CssLength>>::Auto
             .serialize_specified(Default::default())
             .unwrap(),
         "auto"
@@ -69,20 +69,20 @@ fn checked_edge_construction_accepts_signed_pure_lengths_and_rejects_other_domai
 #[test]
 fn constructed_rectangle_preserves_four_edge_order_and_canonical_commas() {
     let rect = CssClipRect::new(
-        CssClipEdge::Auto,
+        CssAutoOr::Auto,
         edge(signed_length("-1px")),
         edge(signed_length("2em")),
         edge(signed_length("0")),
     );
-    assert!(matches!(rect.top(), CssClipEdge::Auto));
+    assert!(matches!(rect.top(), CssAutoOr::Auto));
     assert!(
-        matches!(rect.right(), CssClipEdge::Length(length) if exact_literal(length.literal().map(|literal| literal.component()), "-1px"))
+        matches!(rect.right(), CssAutoOr::Value(length) if exact_literal(length.literal().map(|literal| literal.component()), "-1px"))
     );
     assert!(
-        matches!(rect.bottom(), CssClipEdge::Length(length) if exact_literal(length.literal().map(|literal| literal.component()), "2em"))
+        matches!(rect.bottom(), CssAutoOr::Value(length) if exact_literal(length.literal().map(|literal| literal.component()), "2em"))
     );
     assert!(
-        matches!(rect.left(), CssClipEdge::Length(length) if exact_literal(length.literal().map(|literal| literal.component()), "0"))
+        matches!(rect.left(), CssAutoOr::Value(length) if exact_literal(length.literal().map(|literal| literal.component()), "0"))
     );
     assert_eq!(
         rect.serialize_specified(Default::default()).unwrap(),
@@ -105,22 +105,22 @@ fn constructed_rectangle_preserves_four_edge_order_and_canonical_commas() {
     let CssClip::Rect(reparsed_rect) = parsed_clip(&reparsed) else {
         panic!("canonical rectangle reparses")
     };
-    assert!(matches!(reparsed_rect.top(), CssClipEdge::Auto));
+    assert!(matches!(reparsed_rect.top(), CssAutoOr::Auto));
     assert!(
-        matches!(reparsed_rect.right(), CssClipEdge::Length(length) if exact_dimension(length.literal().map(|literal| literal.component()), "-1", "px"))
+        matches!(reparsed_rect.right(), CssAutoOr::Value(length) if exact_dimension(length.literal().map(|literal| literal.component()), "-1", "px"))
     );
     assert!(
-        matches!(reparsed_rect.bottom(), CssClipEdge::Length(length) if exact_dimension(length.literal().map(|literal| literal.component()), "2", "em"))
+        matches!(reparsed_rect.bottom(), CssAutoOr::Value(length) if exact_dimension(length.literal().map(|literal| literal.component()), "2", "em"))
     );
     assert!(
-        matches!(reparsed_rect.left(), CssClipEdge::Length(length) if exact_literal(length.literal().map(|literal| literal.component()), "0"))
+        matches!(reparsed_rect.left(), CssAutoOr::Value(length) if exact_literal(length.literal().map(|literal| literal.component()), "0"))
     );
     for edge in [
         reparsed_rect.right(),
         reparsed_rect.bottom(),
         reparsed_rect.left(),
     ] {
-        let CssClipEdge::Length(length) = edge else {
+        let CssAutoOr::Value(length) = edge else {
             panic!("parsed numeric edge")
         };
         let CssValueOrigin::Parsed(origin) = length.origin() else {
@@ -195,7 +195,7 @@ fn checked_calculations_remain_wrapped_and_canonical() {
         edge(literal_math),
         edge(folded),
         edge(mixed),
-        CssClipEdge::Auto,
+        CssAutoOr::Auto,
     ));
     assert_eq!(
         clip.serialize_specified(Default::default()).unwrap(),
@@ -208,9 +208,9 @@ fn checked_calculations_remain_wrapped_and_canonical() {
     let CssClip::Rect(rect) = parsed_clip(&parsed) else {
         panic!("math rectangle")
     };
-    assert!(matches!(rect.top(), CssClipEdge::Length(length) if length.calculation().is_some()));
-    assert!(matches!(rect.right(), CssClipEdge::Length(length) if length.calculation().is_some()));
-    assert!(matches!(rect.bottom(), CssClipEdge::Length(length) if length.calculation().is_some()));
+    assert!(matches!(rect.top(), CssAutoOr::Value(length) if length.calculation().is_some()));
+    assert!(matches!(rect.right(), CssAutoOr::Value(length) if length.calculation().is_some()));
+    assert!(matches!(rect.bottom(), CssAutoOr::Value(length) if length.calculation().is_some()));
 }
 
 #[test]
@@ -255,7 +255,7 @@ fn initial_and_authored_expansion_have_typed_auto_and_rectangle_values() {
 
 #[test]
 fn edge_and_rectangle_limits_share_exact_cumulative_budgets() {
-    let one = CssClipEdge::Auto;
+    let one: CssAutoOr<CssNumeric<CssLength>> = CssAutoOr::Auto;
     assert_eq!(
         one.serialize_specified(CssSerializationLimits::new(1, 1, 4))
             .unwrap(),
@@ -281,7 +281,7 @@ fn edge_and_rectangle_limits_share_exact_cumulative_budgets() {
         );
     }
     let rect = CssClipRect::new(
-        CssClipEdge::Auto,
+        CssAutoOr::Auto,
         edge(signed_length("-1px")),
         edge(signed_length("2em")),
         edge(signed_length("0")),
@@ -332,7 +332,7 @@ fn symbolic_math_edges_obey_one_shared_rectangle_byte_budget() {
             .unwrap(),
         "calc(2em + 1px)"
     );
-    let rect = CssClipRect::new(mixed.clone(), mixed, CssClipEdge::Auto, CssClipEdge::Auto);
+    let rect = CssClipRect::new(mixed.clone(), mixed, CssAutoOr::Auto, CssAutoOr::Auto);
     let expected = "rect(calc(2em + 1px), calc(2em + 1px), auto, auto)";
     assert_eq!(
         rect.serialize_specified(Default::default()).unwrap(),

@@ -46,7 +46,7 @@ fn parsed(source: &str) -> CssLinearEasing {
     else {
         panic!("timing wrapper")
     };
-    let [CssEasing::Linear(value)] = value.timing_functions().values() else {
+    let [CssEasing::Linear(value)] = value.value().values() else {
         panic!("one linear function")
     };
     value.clone()
@@ -136,7 +136,7 @@ fn browser_retains_recovered_numeric_math_but_public_linear_constructors_reject_
         else {
             panic!("timing wrapper")
         };
-        let [CssEasing::Linear(value)] = value.timing_functions().values() else {
+        let [CssEasing::Linear(value)] = value.value().values() else {
             panic!("linear model")
         };
         let last = &value.stops()[1];

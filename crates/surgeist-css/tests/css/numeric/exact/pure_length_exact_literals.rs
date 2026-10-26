@@ -27,7 +27,7 @@ fn specified_spacing(authored: &str) -> String {
         panic!("typed border-spacing: {source}");
     };
     value
-        .spacing()
+        .value()
         .serialize_specified(Default::default())
         .unwrap()
 }
@@ -57,10 +57,8 @@ fn huge_finite_decimal_length_is_accepted_and_serialized_exactly() {
     // Decimal 1e999 is exactly one followed by 999 zeroes. Authored CSS has
     // no f32 representability requirement; no used-value resolution occurs here.
     let expected_length = format!("1{}px", "0".repeat(999));
-    assert_eq!(
-        specified_spacing("1e999px"),
-        format!("{expected_length} {expected_length}")
-    );
+    // Both axes are equal, so the shortest form writes one length.
+    assert_eq!(specified_spacing("1e999px"), expected_length);
 }
 
 #[test]
@@ -76,10 +74,10 @@ fn tiny_negative_length_is_rejected_by_the_nonnegative_property() {
 #[test]
 fn lexical_negative_zero_lengths_remain_valid_zero() {
     for (authored, expected) in [
-        ("-0", "0 0"),
-        ("-0.000e999", "0 0"),
-        ("-0px", "0px 0px"),
-        ("-0.000e-999px", "0px 0px"),
+        ("-0", "0"),
+        ("-0.000e999", "0"),
+        ("-0px", "0px"),
+        ("-0.000e-999px", "0px"),
     ] {
         assert_eq!(specified_spacing(authored), expected, "{authored}");
     }
@@ -88,14 +86,14 @@ fn lexical_negative_zero_lengths_remain_valid_zero() {
 #[test]
 fn only_true_unitless_zero_is_accepted_without_a_length_unit() {
     for authored in ["0", "+0.000e999", "0e-999"] {
-        assert_eq!(specified_spacing(authored), "0 0", "{authored}");
+        assert_eq!(specified_spacing(authored), "0", "{authored}");
     }
     assert_spacing_rejected("1");
 }
 
 #[test]
 fn ordinary_pixel_lengths_serialize_in_horizontal_then_vertical_order() {
-    assert_eq!(specified_spacing("+002.50PX"), "2.5px 2.5px");
+    assert_eq!(specified_spacing("+002.50PX"), "2.5px");
     assert_eq!(specified_spacing("2.5px 3px"), "2.5px 3px");
 }
 
@@ -103,10 +101,7 @@ fn ordinary_pixel_lengths_serialize_in_horizontal_then_vertical_order() {
 fn pure_length_math_keeps_its_deferred_range_and_percentage_cancellation() {
     // A nonnegative property's math range is enforced downstream, so this
     // authored calculation remains valid even though its result is negative.
-    assert_eq!(
-        specified_spacing("calc(1px - 2px)"),
-        "calc(-1px) calc(-1px)"
-    );
+    assert_eq!(specified_spacing("calc(1px - 2px)"), "calc(-1px)");
     // Percentages may appear in pure-length math when their dimensions cancel.
     let report = parse_style_attribute("border-spacing:calc(10% / 10% * 1px)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());

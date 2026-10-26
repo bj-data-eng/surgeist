@@ -33,7 +33,7 @@ fn exact_media_leaf_preserves_boolean_plain_and_directional_range_shapes() {
         let CssWhenMediaFeatureKind::Feature(query) = leaf.kind() else {
             panic!("known width feature");
         };
-        assert_eq!(query.name(), "width");
+        assert_eq!(query.as_str(), "width");
         match source {
             "media(width)" => assert!(matches!(
                 query,

@@ -150,7 +150,7 @@ fn visit_literal<'a>(
             number,
             CssLengthUnit::from_css_unit(unit)
                 .expect("checked length unit")
-                .as_css_str(),
+                .as_str(),
         ),
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) => (number, "%"),
         _ => unreachable!("checked specified numeric literal"),

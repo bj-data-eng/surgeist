@@ -408,9 +408,9 @@ fn background_color_alternative_expands_with_image_and_important_occurrence() {
     else {
         panic!("background")
     };
-    assert!(value.background().layers()[0].image().is_none());
+    assert!(value.value().layers()[0].image().is_none());
     assert_eq!(
-        value.background().layers()[0].color().unwrap().kind_name(),
+        value.value().layers()[0].color().unwrap().kind_name(),
         "device-cmyk"
     );
 }
@@ -688,7 +688,7 @@ fn scalar_channels_and_omitted_mix_weights_exhaust_the_same_typed_resources() {
 
 #[test]
 fn utf8_sibling_and_caller_prefix_share_exact_bytes_with_device_alpha() {
-    let pair = CssBorderColorPair::new(
+    let pair = CssSidePair::new(
         color("color(--é none)"),
         Some(color("device-cmyk(none none none none / none)")),
     );
@@ -713,7 +713,7 @@ fn utf8_sibling_and_caller_prefix_share_exact_bytes_with_device_alpha() {
     else {
         panic!("background")
     };
-    let value = value.background();
+    let value = value.value();
     let before = value.clone();
     let expected = "url(\"café.svg\") device-cmyk(0 0.81 0.81 0.3 / none)";
     assert_eq!(

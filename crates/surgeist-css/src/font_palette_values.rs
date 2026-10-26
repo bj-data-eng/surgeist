@@ -172,7 +172,7 @@ pub enum CssFontPaletteDescriptorKind {
 
 impl CssFontPaletteDescriptorKind {
     #[must_use]
-    pub const fn css_name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::FontFamily => "font-family",
             Self::BasePalette => "base-palette",
@@ -183,7 +183,7 @@ impl CssFontPaletteDescriptorKind {
     pub(crate) fn from_css_name(name: &str) -> Option<Self> {
         [Self::FontFamily, Self::BasePalette, Self::OverrideColors]
             .into_iter()
-            .find(|kind| kind.css_name().eq_ignore_ascii_case(name))
+            .find(|kind| kind.as_str().eq_ignore_ascii_case(name))
     }
 }
 

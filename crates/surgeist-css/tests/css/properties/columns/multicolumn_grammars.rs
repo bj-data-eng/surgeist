@@ -24,22 +24,22 @@ fn multicolumn_properties_retain_typed_structure() {
         panic!("expected column-count");
     };
     assert!(matches!(
-        count.count(),
+        count.value(),
         CssColumnCount::Count(value) if value.literal().is_some_and(|value| value.numeric().representation() == "3")
     ));
 
     let CssKnownPropertyValueRef::ColumnFill(fill) = ordinary(&report.syntax()[1]) else {
         panic!("expected column-fill");
     };
-    assert_eq!(*fill.fill(), CssColumnFill::BalanceAll);
+    assert_eq!(*fill.value(), CssColumnFill::BalanceAll);
 
     let CssKnownPropertyValueRef::ColumnRule(rule) = ordinary(&report.syntax()[2]) else {
         panic!("expected column-rule");
     };
-    assert!(matches!(rule.rule().width(), Some(CssLineWidth::Thick)));
-    assert_eq!(rule.rule().style(), Some(CssLineStyle::Dashed));
+    assert!(matches!(rule.value().width(), Some(CssLineWidth::Thick)));
+    assert_eq!(rule.value().style(), Some(CssLineStyle::Dashed));
     assert_eq!(
-        rule.rule()
+        rule.value()
             .color()
             .and_then(|color| color.named())
             .map(|color| color.name()),
@@ -54,13 +54,13 @@ fn multicolumn_properties_retain_typed_structure() {
     let CssKnownPropertyValueRef::ColumnRuleStyle(style) = ordinary(&report.syntax()[4]) else {
         panic!("expected column-rule-style");
     };
-    assert_eq!(*style.style(), CssLineStyle::Double);
+    assert_eq!(*style.value(), CssLineStyle::Double);
 
     let CssKnownPropertyValueRef::ColumnRuleWidth(width) = ordinary(&report.syntax()[5]) else {
         panic!("expected column-rule-width");
     };
     assert!(matches!(
-        width.width(),
+        width.value(),
         CssLineWidth::Length(value)
             if value.calculation().is_none()
                 && matches!(
@@ -73,14 +73,14 @@ fn multicolumn_properties_retain_typed_structure() {
     let CssKnownPropertyValueRef::ColumnSpan(span) = ordinary(&report.syntax()[6]) else {
         panic!("expected column-span");
     };
-    assert_eq!(*span.span(), CssColumnSpan::All);
+    assert_eq!(*span.value(), CssColumnSpan::All);
 
     let CssKnownPropertyValueRef::ColumnWidth(width) = ordinary(&report.syntax()[7]) else {
         panic!("expected column-width");
     };
     assert!(matches!(
-        width.width(),
-        CssColumnWidth::BoxSize(CssBoxSize::LengthPercentage(value))
+        width.value(),
+        CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(value))
             if value.serialize_specified(Default::default()).unwrap() == "12em"
     ));
 
@@ -88,12 +88,12 @@ fn multicolumn_properties_retain_typed_structure() {
         panic!("expected columns");
     };
     assert!(matches!(
-        columns.columns().count(),
+        columns.value().count(),
         CssColumnCount::Count(value) if value.literal().is_some_and(|value| value.numeric().representation() == "4")
     ));
     assert!(matches!(
-        columns.columns().width(),
-        CssColumnWidth::BoxSize(CssBoxSize::LengthPercentage(value))
+        columns.value().width(),
+        CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(value))
             if value.serialize_specified(Default::default()).unwrap() == "10rem"
     ));
 }
@@ -112,13 +112,13 @@ fn multicolumn_shorthands_accept_permutations_and_preserve_omitted_components() 
         let CssKnownPropertyValueRef::Columns(value) = ordinary(&report.syntax()[index]) else {
             panic!("expected columns");
         };
-        assert!(matches!(value.columns().count(), CssColumnCount::Auto));
+        assert!(matches!(value.value().count(), CssColumnCount::Auto));
     }
     for index in [1, 3] {
         let CssKnownPropertyValueRef::Columns(value) = ordinary(&report.syntax()[index]) else {
             panic!("expected columns");
         };
-        assert!(matches!(value.columns().width(), CssColumnWidth::Auto));
+        assert!(matches!(value.value().width(), CssSizeValue::Auto));
     }
     for index in [4, 5] {
         let CssKnownPropertyValueRef::Columns(value) = ordinary(&report.syntax()[index]) else {
@@ -133,26 +133,26 @@ fn multicolumn_shorthands_accept_permutations_and_preserve_omitted_components() 
     let CssKnownPropertyValueRef::ColumnRule(complete) = ordinary(&report.syntax()[6]) else {
         panic!("expected column-rule");
     };
-    assert!(complete.rule().width().is_some());
-    assert!(complete.rule().style().is_some());
-    assert!(complete.rule().color().is_some());
+    assert!(complete.value().width().is_some());
+    assert!(complete.value().style().is_some());
+    assert!(complete.value().color().is_some());
 
     let CssKnownPropertyValueRef::ColumnRule(style_only) = ordinary(&report.syntax()[7]) else {
         panic!("expected column-rule");
     };
-    assert!(style_only.rule().width().is_none());
-    assert_eq!(style_only.rule().style(), Some(CssLineStyle::Dashed));
-    assert!(style_only.rule().color().is_none());
+    assert!(style_only.value().width().is_none());
+    assert_eq!(style_only.value().style(), Some(CssLineStyle::Dashed));
+    assert!(style_only.value().color().is_none());
 
     let CssKnownPropertyValueRef::ColumnRule(width_color) = ordinary(&report.syntax()[8]) else {
         panic!("expected column-rule");
     };
     assert!(matches!(
-        width_color.rule().width(),
+        width_color.value().width(),
         Some(CssLineWidth::Thin)
     ));
-    assert!(width_color.rule().style().is_none());
-    assert!(width_color.rule().color().is_some());
+    assert!(width_color.value().style().is_none());
+    assert!(width_color.value().color().is_some());
 }
 
 #[test]
@@ -167,20 +167,20 @@ fn multicolumn_calculations_remain_symbolic_and_checked_constructors_reject_lite
     let CssKnownPropertyValueRef::ColumnCount(count) = ordinary(&report.syntax()[0]) else {
         panic!("expected column-count");
     };
-    assert!(matches!(count.count(), CssColumnCount::Count(value) if value.calculation().is_some()));
+    assert!(matches!(count.value(), CssColumnCount::Count(value) if value.calculation().is_some()));
     let CssKnownPropertyValueRef::ColumnWidth(width) = ordinary(&report.syntax()[1]) else {
         panic!("expected column-width");
     };
     assert!(matches!(
-        width.width(),
-        CssColumnWidth::BoxSize(CssBoxSize::LengthPercentage(value))
+        width.value(),
+        CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(value))
             if value.calculation().is_some()
     ));
     let CssKnownPropertyValueRef::ColumnRuleWidth(width) = ordinary(&report.syntax()[2]) else {
         panic!("expected column-rule-width");
     };
     assert!(matches!(
-        width.width(),
+        width.value(),
         CssLineWidth::Length(value) if value.calculation().is_some()
     ));
 

@@ -331,7 +331,6 @@ branch_equality!(CssAbsoluteFontWeight; Number);
 branch_equality!(CssColumnCount; Count);
 branch_equality!(CssLineHeight; Number, HintedNumberCalculation, LengthPercentage);
 branch_equality!(CssTextDecorationThickness; Length);
-branch_equality!(CssOutlineWidth; Length);
 impl BoundedStructuralEquality for CssFontStyle {
     fn bounded_eq(
         &self,
@@ -433,7 +432,7 @@ getter_equality!(CssPhysicalPosition; horizontal: bounded, vertical: bounded);
 getter_equality!(CssBackgroundPosition; horizontal: bounded, vertical: bounded);
 getter_equality!(CssNamedFlowPosition; block: bounded, inline: bounded);
 getter_equality!(CssRelativeFlowPosition; block: bounded, inline: bounded);
-getter_equality!(CssPhysicalPositionList; positions: bounded);
+getter_equality!(CssPositionList; positions: bounded);
 getter_equality!(CssBackgroundPositionList; positions: bounded);
 impl BoundedStructuralEquality for CssPosition {
     fn bounded_eq(
@@ -585,7 +584,18 @@ getter_equality!(CssInsetShape; offsets: bounded, round: bounded);
 getter_equality!(CssPolygonPoint; x: bounded, y: bounded);
 getter_equality!(CssPolygonPointList; points: bounded);
 getter_equality!(CssPolygonShape; round: bounded, fill_rule: raw, points: bounded);
-branch_equality!(CssRectShapeEdge; LengthPercentage);
+impl<T: BoundedStructuralEquality + PartialEq> BoundedStructuralEquality for CssAutoOr<T> {
+    fn bounded_eq(
+        &self,
+        other: &Self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> EqualityResult {
+        match (self, other) {
+            (Self::Value(a), Self::Value(b)) => a.bounded_eq(b, context),
+            _ => Ok(self == other),
+        }
+    }
+}
 getter_equality!(CssRectShape; top: bounded, right: bounded, bottom: bounded, left: bounded, round: bounded);
 getter_equality!(CssXywhShape; x: bounded, y: bounded, width: bounded, height: bounded, round: bounded);
 getter_equality!(CssBorderRadiusShorthand; horizontal_values: bounded, authored_vertical_values: bounded);
@@ -732,7 +742,7 @@ mod linear_equality_tests {
         else {
             panic!("timing wrapper")
         };
-        value.timing_functions().values()[0].clone()
+        value.value().values()[0].clone()
     }
 
     #[test]

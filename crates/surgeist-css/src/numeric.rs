@@ -1005,7 +1005,7 @@ impl CssMathFunction {
             _ => return None,
         })
     }
-    pub fn name(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Calc => "calc",
             Self::Min => "min",
@@ -1501,7 +1501,7 @@ impl CssCalculationExpression {
                 } => {
                     nodes.extend(args.iter().flatten());
                     function
-                        .name()
+                        .as_str()
                         .len()
                         .checked_add(2)?
                         .checked_add(args.len().checked_sub(1)?.checked_mul(2)?)?
@@ -1618,7 +1618,7 @@ impl CssCalculationExpression {
                     args,
                     strategy,
                 } => {
-                    emit(format!("{}(", function.name()), &node.origin);
+                    emit(format!("{}(", function.as_str()), &node.origin);
                     let mut commas = node.syntax_items().iter().filter(|component| {
                         matches!(
                             component.view(),

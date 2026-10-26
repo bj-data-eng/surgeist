@@ -12,11 +12,11 @@
 
 use surgeist_css::{
     CssAuthoredDeclarationValue, CssComponentValue, CssComponentValueRef, CssComponentValues,
-    CssCustomPropertyName, CssDeclaration, CssErrorCode, CssGlobalKeyword, CssImportance,
-    CssKnownProperty, CssKnownPropertyValueRef, CssMarginShorthand, CssMarginValue,
-    CssParsedOrigin, CssPropertyNameRef, CssRule, CssSerializedOrigin, CssValueOrigin,
-    CssValueTokenRef, parse_component_values, parse_property_value, parse_sheet,
-    parse_style_attribute, validate_sheet,
+    CssCustomPropertyName, CssDeclaration, CssErrorCode, CssFourSides, CssGlobalKeyword,
+    CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssMarginValue, CssParsedOrigin,
+    CssPropertyNameRef, CssRule, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+    parse_component_values, parse_property_value, parse_sheet, parse_style_attribute,
+    validate_sheet,
 };
 
 fn known_value(property: CssKnownProperty, value: &str) -> CssDeclaration {
@@ -28,7 +28,7 @@ fn known_value(property: CssKnownProperty, value: &str) -> CssDeclaration {
     .expect("property grammar")
 }
 
-fn margin(declaration: &CssDeclaration) -> &CssMarginShorthand {
+fn margin(declaration: &CssDeclaration) -> &CssFourSides<CssMarginValue> {
     let Some(CssKnownPropertyValueRef::Margin(value)) =
         declaration.known().unwrap().property_value()
     else {
@@ -37,8 +37,8 @@ fn margin(declaration: &CssDeclaration) -> &CssMarginShorthand {
     value.value()
 }
 
-fn assert_edges(actual: &CssMarginShorthand, expected: [f32; 4]) {
-    for (value, expected) in actual.assigned_values().iter().zip(expected) {
+fn assert_edges(actual: &CssFourSides<CssMarginValue>, expected: [f32; 4]) {
+    for (value, expected) in actual.assigned().iter().zip(expected) {
         let CssMarginValue::LengthPercentage(length) = value else {
             panic!("expected authored margin length")
         };
@@ -298,7 +298,7 @@ fn parsed_declaration_coordinates() {
     else {
         panic!("typed padding")
     };
-    assert!(padding_value.value().assigned_values().iter().all(|value| {
+    assert!(padding_value.value().assigned().iter().all(|value| {
         value
             .length_percentage()
             .serialize_specified(Default::default())

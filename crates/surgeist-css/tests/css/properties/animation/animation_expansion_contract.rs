@@ -446,8 +446,8 @@ fn recovered_duration_and_delay_project_without_forging_checked_closure() {
         else {
             panic!("animation recovery")
         };
-        assert_eq!(wrapper.animations().values().len(), 2);
-        assert!(CssAnimationList::try_new(wrapper.animations().values().to_vec()).is_none());
+        assert_eq!(wrapper.value().values().len(), 2);
+        assert!(CssAnimationList::try_new(wrapper.value().values().to_vec()).is_none());
         let values = completed(source);
         assert_eq!(names(&values), MEMBERS);
         for item in values.items() {

@@ -178,7 +178,7 @@ fn keyword_controls_keep_exact_views_and_programmatic_origin() {
             else {
                 panic!("typed keyword")
             };
-            assert_eq!(value.combine(), &expected);
+            assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), text);
         }
     }
@@ -223,7 +223,7 @@ fn invalid_ordinary_counts_and_math_types_are_rejected_and_recovered() {
         else {
             panic!("valid known sibling")
         };
-        assert_eq!(value.combine(), &CssTextCombineUpright::None);
+        assert_eq!(value.value(), &CssTextCombineUpright::None);
     }
 }
 

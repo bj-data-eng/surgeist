@@ -125,7 +125,7 @@ fn sole_semantic_values_preserve_authored_trivia_exact_numbers_and_omission() {
         panic!("factor wrapper");
     };
     let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = value
-        .factor()
+        .value()
         .literal()
         .map(|literal| literal.component())
         .unwrap()

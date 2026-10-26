@@ -1,101 +1,41 @@
 //! Exact authored corner radii before box geometry resolution.
 
+use crate::common_values::{comparison_context, side_element, side_pair_entry};
+use crate::specified_inverse::InverseValueEquality as _;
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
-use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{CssLengthPercentage, CssNonNegative, CssNumeric, CssSerializationError};
+use crate::{
+    CssFourSides, CssLengthPercentage, CssNonNegative, CssNumeric, CssSerializationError,
+    CssSidePair,
+};
 
 type Result<T> = std::result::Result<T, CssSerializationError>;
 
-fn append_scalar(
-    value: &CssNumeric<CssLengthPercentage, CssNonNegative>,
-    context: &mut SpecifiedSerializationContext,
-    output: &mut String,
-) -> Result<()> {
-    let captured = value.capture_specified(context)?;
-    context.append(output, &captured)
-}
-
-/// Checked horizontal and optional authored vertical radii for one corner.
+/// One corner radius length: `<length-percentage [0,∞]>`.
 ///
-/// Missing vertical radius repeats the horizontal radius. Both numeric origins
-/// remain inspectable through the borrowed scalar values. Serialization charges
-/// one aggregate node plus each authored scalar under one cumulative budget.
-///
-/// # Specified serialization
-///
-/// Serializes the authored corner without resolving box geometry.
-#[derive(Clone, Debug)]
-pub struct CssCornerRadiusValue {
-    horizontal: CssNumeric<CssLengthPercentage, CssNonNegative>,
-    authored_vertical: Option<CssNumeric<CssLengthPercentage, CssNonNegative>>,
-}
+/// The schema names each `border-*-radius` pair, `<length-percentage [0,∞]>{1,2}` (Backgrounds 3:
+/// a horizontal radius and a vertical radius that copies it when omitted), through this name.
+pub(crate) type CornerRadiusLength = CssNumeric<CssLengthPercentage, CssNonNegative>;
 
-impl CssCornerRadiusValue {
-    /// Retains the checked horizontal radius and optional authored vertical radius.
-    #[must_use]
-    pub fn new(
-        horizontal: CssNumeric<CssLengthPercentage, CssNonNegative>,
-        authored_vertical: Option<CssNumeric<CssLengthPercentage, CssNonNegative>>,
-    ) -> Self {
-        Self {
-            horizontal,
-            authored_vertical,
-        }
-    }
-
-    /// Borrows the horizontal radius.
-    pub fn horizontal(&self) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
-        &self.horizontal
-    }
-    /// Borrows the explicitly authored vertical radius, if present.
-    pub fn authored_vertical(&self) -> Option<&CssNumeric<CssLengthPercentage, CssNonNegative>> {
-        self.authored_vertical.as_ref()
-    }
-    /// Borrows the effective vertical radius, repeating horizontal when omitted.
-    pub fn vertical(&self) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
-        self.authored_vertical.as_ref().unwrap_or(&self.horizontal)
-    }
-}
-impl crate::specified_rule_serialization::SpecifiedProvider for CssCornerRadiusValue {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-
-        context.charge_nodes(1)?;
-        append_scalar(&self.horizontal, context, output)?;
-        if let Some(vertical) = &self.authored_vertical {
-            context.append(output, " ")?;
-            append_scalar(vertical, context, output)?;
-        }
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(CssCornerRadiusValue);
-
-impl PartialEq for CssCornerRadiusValue {
-    fn eq(&self, other: &Self) -> bool {
-        self.horizontal == other.horizontal
-            && match (&self.authored_vertical, &other.authored_vertical) {
-                (None, None) => true,
-                (Some(left), Some(right)) => left == right,
-                _ => false,
-            }
-    }
-}
-impl Eq for CssCornerRadiusValue {}
+// Equal horizontal and vertical radii are written once, like every other `<T>{1,2}` value.
+side_element!(
+    CornerRadiusLength,
+    same = |a, b, context| a.inverse_equal(b, context)
+);
+side_pair_entry!(CornerRadiusLength);
 
 /// One to four horizontal radii, optionally followed by one to four vertical radii.
 ///
 /// Named corners use top-left, top-right, bottom-right, bottom-left order.
 /// Serialization charges one aggregate node plus each authored scalar; the
 /// slash is a byte separator, not an extra node.
-#[derive(Clone, Debug)]
+///
+/// Each list follows the four-side rule of `margin` (one value for all corners, two for
+/// opposite corner pairs, three, four) and is written in its shortest form; a vertical list
+/// that equals the horizontal list is omitted with its slash.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssBorderRadiusShorthand {
-    horizontal: Box<[CssNumeric<CssLengthPercentage, CssNonNegative>]>,
-    authored_vertical: Option<Box<[CssNumeric<CssLengthPercentage, CssNonNegative>]>>,
+    horizontal: CssFourSides<CornerRadiusLength>,
+    authored_vertical: Option<CssFourSides<CornerRadiusLength>>,
 }
 
 impl CssBorderRadiusShorthand {
@@ -105,96 +45,105 @@ impl CssBorderRadiusShorthand {
         horizontal: Vec<CssNumeric<CssLengthPercentage, CssNonNegative>>,
         authored_vertical: Option<Vec<CssNumeric<CssLengthPercentage, CssNonNegative>>>,
     ) -> Option<Self> {
-        if !(1..=4).contains(&horizontal.len())
-            || authored_vertical
-                .as_ref()
-                .is_some_and(|values| !(1..=4).contains(&values.len()))
-        {
-            return None;
-        }
+        let horizontal = CssFourSides::try_new(crate::CssBoxSideKind::Physical, horizontal)?;
+        let authored_vertical = match authored_vertical {
+            Some(values) => Some(CssFourSides::try_new(
+                crate::CssBoxSideKind::Physical,
+                values,
+            )?),
+            None => None,
+        };
         Some(Self {
-            horizontal: horizontal.into_boxed_slice(),
-            authored_vertical: authored_vertical.map(Vec::into_boxed_slice),
+            horizontal,
+            authored_vertical,
         })
     }
     /// Borrows the one to four authored horizontal values.
     pub fn horizontal_values(&self) -> &[CssNumeric<CssLengthPercentage, CssNonNegative>] {
-        &self.horizontal
+        self.horizontal.authored()
     }
     /// Borrows the explicitly authored vertical list, if a slash appeared.
     pub fn authored_vertical_values(
         &self,
     ) -> Option<&[CssNumeric<CssLengthPercentage, CssNonNegative>]> {
-        self.authored_vertical.as_deref()
+        self.authored_vertical.as_ref().map(CssFourSides::authored)
     }
     /// Borrows the effective vertical list, repeating the horizontal list without a slash.
     pub fn vertical_values(&self) -> &[CssNumeric<CssLengthPercentage, CssNonNegative>] {
         self.authored_vertical
-            .as_deref()
+            .as_ref()
             .unwrap_or(&self.horizontal)
+            .authored()
     }
 
-    fn assigned(
-        values: &[CssNumeric<CssLengthPercentage, CssNonNegative>],
-        corner: usize,
-    ) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
-        let index = match (values.len(), corner) {
-            (1, _) => 0,
-            (2, 0 | 2) => 0,
-            (2, _) => 1,
-            (3, 0) => 0,
-            (3, 2) => 2,
-            (3, _) => 1,
-            (4, index) => index,
-            _ => unreachable!("checked corner and arity"),
-        };
-        &values[index]
-    }
-    fn corner(&self, index: usize) -> CssCornerRadiusValue {
-        CssCornerRadiusValue::new(
-            Self::assigned(&self.horizontal, index).clone(),
+    /// The corner at `index` in top-left, top-right, bottom-right, bottom-left order. The
+    /// four-side assignment of `margin` supplies it: its top, right, bottom and left roles
+    /// are the four corners in that order.
+    fn corner(&self, index: usize) -> CssSidePair<CornerRadiusLength> {
+        CssSidePair::from_parts(
+            self.horizontal.assigned()[index].clone(),
             self.authored_vertical
                 .as_ref()
-                .map(|values| Self::assigned(values, index).clone()),
+                .map(|values| values.assigned()[index].clone()),
         )
     }
     /// Returns the checked top-left corner.
-    pub fn top_left(&self) -> CssCornerRadiusValue {
+    pub fn top_left(&self) -> CssSidePair<CornerRadiusLength> {
         self.corner(0)
     }
     /// Returns the checked top-right corner.
-    pub fn top_right(&self) -> CssCornerRadiusValue {
+    pub fn top_right(&self) -> CssSidePair<CornerRadiusLength> {
         self.corner(1)
     }
     /// Returns the checked bottom-right corner.
-    pub fn bottom_right(&self) -> CssCornerRadiusValue {
+    pub fn bottom_right(&self) -> CssSidePair<CornerRadiusLength> {
         self.corner(2)
     }
     /// Returns the checked bottom-left corner.
-    pub fn bottom_left(&self) -> CssCornerRadiusValue {
+    pub fn bottom_left(&self) -> CssSidePair<CornerRadiusLength> {
         self.corner(3)
     }
 
-    /// Shares the owning shape's cumulative budget without changing authored radii.
+    /// Writes the radii of a shape function exactly as authored, sharing the shape's cumulative
+    /// budget. CSS Shapes 1 §3.3 serializes shape functions "as per their individual grammars"
+    /// and limits omitting components to computed values, so the `round` radii of `inset()`,
+    /// `xywh()` and `rect()` are not shortened.
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
-        for (index, value) in self.horizontal.iter().enumerate() {
-            writer.source_member(index, |writer| {
-                if index > 0 {
-                    writer.append(" ")?;
-                }
-                append_scalar(value, &mut writer.context, &mut writer.css)
-            })?;
-        }
+        self.horizontal
+            .append_values(writer, self.horizontal.authored().len(), "", &mut |_| {})?;
         if let Some(vertical) = &self.authored_vertical {
-            for (index, value) in vertical.iter().enumerate() {
-                writer.source_member(index, |writer| {
-                    writer.append(if index == 0 { " / " } else { " " })?;
-                    append_scalar(value, &mut writer.context, &mut writer.css)
-                })?;
-            }
+            vertical.append_values(writer, vertical.authored().len(), " / ", &mut |_| {})?;
         }
         Ok(())
+    }
+
+    /// Writes the `border-radius` property value in its shortest form: each list follows the
+    /// four-side rule, and a vertical list equal to the horizontal one is omitted with its slash.
+    fn append_shortest(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        writer.node()?;
+        let horizontal = self.horizontal.shortest_count();
+        self.horizontal
+            .append_values(writer, horizontal, "", &mut |_| {})?;
+        let Some(vertical) = &self.authored_vertical else {
+            return Ok(());
+        };
+        let count = vertical.shortest_count();
+        // Equal axes need no vertical list: Backgrounds 3 repeats the horizontal radii.
+        let mut context = comparison_context();
+        let equal_axes = count == horizontal
+            && self.horizontal.authored()[..horizontal]
+                .iter()
+                .zip(&vertical.authored()[..count])
+                .try_fold(true, |equal, (a, b)| -> Result<bool> {
+                    Ok(equal && a.inverse_equal(b, &mut context)?)
+                })?;
+        vertical.append_values(
+            writer,
+            if equal_axes { 0 } else { count },
+            " / ",
+            &mut |_| {},
+        )
     }
 }
 impl crate::specified_rule_serialization::SpecifiedProvider for CssBorderRadiusShorthand {
@@ -202,26 +151,7 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssBorderRadiusS
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSerializationError> {
-        self.append_specified(writer)?;
-        Ok(())
+        self.append_shortest(writer)
     }
 }
 crate::specified_rule_serialization::specified_serialization!(CssBorderRadiusShorthand);
-
-impl PartialEq for CssBorderRadiusShorthand {
-    fn eq(&self, other: &Self) -> bool {
-        fn equal(
-            left: &[CssNumeric<CssLengthPercentage, CssNonNegative>],
-            right: &[CssNumeric<CssLengthPercentage, CssNonNegative>],
-        ) -> bool {
-            left.len() == right.len() && left.iter().zip(right).all(|(a, b)| a == b)
-        }
-        equal(&self.horizontal, &other.horizontal)
-            && match (&self.authored_vertical, &other.authored_vertical) {
-                (None, None) => true,
-                (Some(left), Some(right)) => equal(left, right),
-                _ => false,
-            }
-    }
-}
-impl Eq for CssBorderRadiusShorthand {}

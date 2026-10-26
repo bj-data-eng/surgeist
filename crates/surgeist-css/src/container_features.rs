@@ -14,7 +14,7 @@ pub enum CssContainerSizeFeatureKind {
     Orientation,
 }
 impl CssContainerSizeFeatureKind {
-    pub const fn name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Width => "width",
             Self::Height => "height",

@@ -99,11 +99,11 @@ pub fn ordinary_font_face_descriptor(
     assert!(
         report.is_clean(),
         "{}: {source}: {:?}",
-        kind.css_name(),
+        kind.as_str(),
         report.diagnostics()
     );
     let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(value)) = report.syntax() else {
-        panic!("ordinary {} descriptor: {source}", kind.css_name())
+        panic!("ordinary {} descriptor: {source}", kind.as_str())
     };
     value.clone()
 }

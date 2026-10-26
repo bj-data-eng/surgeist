@@ -7,6 +7,7 @@ use cssparser::match_ignore_ascii_case;
 
 use super::values::{next_is_ident, parse_positive_integer_value};
 use crate::syntax::*;
+use crate::{CssLineWidth, CssSizeValue};
 
 pub(super) fn parse_column_count<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -71,7 +72,7 @@ pub(super) fn parse_column_span<'i, 't>(
 pub(super) fn parse_column_width<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<CssColumnWidth, ParseError<'i, Error>> {
+) -> Result<CssSizeValue, ParseError<'i, Error>> {
     super::sizing::parse_size_value(input, numeric)
 }
 
@@ -81,7 +82,7 @@ pub(super) fn parse_columns<'i, 't>(
 ) -> Result<CssColumns, ParseError<'i, Error>> {
     // `<'column-width'> || <'column-count'>`. Both admit `auto`, so `auto`
     // operands are ambiguous and the group holds at most two components.
-    let (mut width, mut count): (Option<CssColumnWidth>, _) = (None, None);
+    let (mut width, mut count): (Option<CssSizeValue>, _) = (None, None);
     let mut autos = [None; 2];
     parse_group::<4>(
         input,
@@ -108,7 +109,7 @@ pub(super) fn parse_columns<'i, 't>(
     )?;
 
     Ok(CssColumns::new(
-        width.unwrap_or(CssColumnWidth::Auto),
+        width.unwrap_or(CssSizeValue::Auto),
         count.unwrap_or(CssColumnCount::Auto),
     ))
 }

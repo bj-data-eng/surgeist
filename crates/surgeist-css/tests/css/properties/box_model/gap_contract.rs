@@ -53,7 +53,7 @@ fn column_value(declaration: &CssDeclaration) -> CssGapValue {
     wrapper.value().clone()
 }
 
-fn gap_value(declaration: &CssDeclaration) -> CssGapShorthand {
+fn gap_value(declaration: &CssDeclaration) -> CssSidePair<CssGapValue> {
     let CssKnownPropertyValueRef::Gap(wrapper) = declaration
         .known()
         .expect("known gap")
@@ -143,19 +143,19 @@ fn typed_shorthand_preserves_authored_arity_and_independent_row_column_values() 
             let actual = gap_value(&source);
             assert_eq!(
                 actual
-                    .row()
+                    .first()
                     .serialize_specified(Default::default())
                     .unwrap(),
                 row
             );
             assert_eq!(
                 actual
-                    .column()
+                    .second()
                     .serialize_specified(Default::default())
                     .unwrap(),
                 column
             );
-            assert_eq!(actual.authored_column().is_some(), has_authored_column);
+            assert_eq!(actual.authored_second().is_some(), has_authored_column);
             assert_eq!(
                 actual.serialize_specified(Default::default()).unwrap(),
                 text
@@ -163,23 +163,23 @@ fn typed_shorthand_preserves_authored_arity_and_independent_row_column_values() 
         }
     }
 
-    let omitted = CssGapShorthand::new(CssGapValue::LengthPercentage(scalar("1px")), None);
-    let explicit = CssGapShorthand::new(
+    let omitted = CssSidePair::new(CssGapValue::LengthPercentage(scalar("1px")), None);
+    let explicit = CssSidePair::new(
         CssGapValue::LengthPercentage(scalar("1px")),
         Some(CssGapValue::LengthPercentage(scalar("1px"))),
     );
-    assert_eq!(omitted.row(), omitted.column());
-    assert!(omitted.authored_column().is_none());
+    assert_eq!(omitted.first(), omitted.second());
+    assert!(omitted.authored_second().is_none());
     assert_eq!(
         omitted.serialize_specified(Default::default()).unwrap(),
         "1px"
     );
     assert_eq!(
         explicit.serialize_specified(Default::default()).unwrap(),
-        "1px 1px"
+        "1px"
     );
     assert_ne!(omitted, explicit);
-    assert_ne!(omitted, CssGapShorthand::new(CssGapValue::Normal, None));
+    assert_ne!(omitted, CssSidePair::new(CssGapValue::Normal, None));
 }
 
 #[test]
@@ -330,12 +330,12 @@ fn one_value_and_two_value_serializers_charge_actual_authored_structure() {
         );
     }
 
-    let one = CssGapShorthand::new(CssGapValue::Normal, None);
+    let one = CssSidePair::new(CssGapValue::Normal, None);
     assert_eq!(
         one.serialize_specified(Default::default()).unwrap(),
         "normal"
     );
-    let two = CssGapShorthand::new(
+    let two = CssSidePair::new(
         CssGapValue::LengthPercentage(scalar("1px")),
         Some(CssGapValue::LengthPercentage(scalar("2%"))),
     );

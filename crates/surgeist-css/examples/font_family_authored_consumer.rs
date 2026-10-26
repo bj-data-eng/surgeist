@@ -32,7 +32,7 @@ fn parsed_name(authored: &str) -> CssFontFamilyName {
     else {
         panic!("expected font-family");
     };
-    let [name] = value.families().families() else {
+    let [name] = value.value().families() else {
         panic!("expected one family name: {source}");
     };
     name.clone()
@@ -289,7 +289,7 @@ fn system_spellings_in_literal_names_and_whole_shorthands() {
             else {
                 panic!("expected whole system-font shorthand");
             };
-            assert_eq!(value.font(), &CssFontValue::System(system));
+            assert_eq!(value.value(), &CssFontValue::System(system));
         }
     }
     for (authored, tokens) in [
@@ -343,7 +343,7 @@ fn current_property_and_font_values() {
     else {
         panic!("expected current font-family");
     };
-    assert_eq!(family_value.families(), &list);
+    assert_eq!(family_value.value(), &list);
     assert_eq!(family_value.as_css(), authored_family);
     let CssKnownPropertyValueRef::Font(font_value) = report.syntax()[1]
         .known()
@@ -353,7 +353,7 @@ fn current_property_and_font_values() {
     else {
         panic!("expected current font shorthand");
     };
-    assert_eq!(font_value.font(), &CssFontValue::Explicit(font));
+    assert_eq!(font_value.value(), &CssFontValue::Explicit(font));
     assert_eq!(font_value.as_css(), authored_font);
     println!("current property and font values: ok");
 }

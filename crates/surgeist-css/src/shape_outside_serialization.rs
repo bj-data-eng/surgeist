@@ -9,7 +9,7 @@ crate::specified_rule_serialization::specified_serialization!(CssShapeBox);
 impl crate::specified_rule_serialization::SpecifiedProvider for CssShapeBox {
     fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
-        writer.append(self.as_css_str())
+        writer.append(self.as_str())
     }
 }
 

@@ -97,7 +97,7 @@ fn dated_media_feature_cells_preserve_lexical_quantities_and_defined_keywords() 
         ("(SCAN:PROGRESSIVE)", "(scan: progressive)", "scan", 6),
     ] {
         let authored = query(source);
-        assert_eq!(feature(&authored).name(), name);
+        assert_eq!(feature(&authored).as_str(), name);
         assert_eq!(
             authored
                 .serialize_tokens(Default::default())

@@ -1,6 +1,6 @@
 //! Exact authored `column-rule` components and specified shorthand serialization.
 
-use crate::{CssBorder, CssBorderStyle, CssBorderWidth, CssColor};
+use crate::{CssBorder, CssColor, CssLineStyle, CssLineWidth};
 
 /// A nonempty authored column rule with exact width and color components.
 ///
@@ -20,20 +20,20 @@ impl CssColumnRule {
     /// Checks the nonempty `||` shorthand before constructing a value.
     #[must_use]
     pub fn try_new(
-        width: Option<CssBorderWidth>,
-        style: Option<CssBorderStyle>,
+        width: Option<CssLineWidth>,
+        style: Option<CssLineStyle>,
         color: Option<CssColor>,
     ) -> Option<Self> {
         CssBorder::try_new(width, style, color).map(|components| Self { components })
     }
 
     #[must_use]
-    pub const fn width(&self) -> Option<&CssBorderWidth> {
+    pub const fn width(&self) -> Option<&CssLineWidth> {
         self.components.width()
     }
 
     #[must_use]
-    pub const fn style(&self) -> Option<CssBorderStyle> {
+    pub const fn style(&self) -> Option<CssLineStyle> {
         self.components.style()
     }
 
@@ -52,10 +52,10 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssColumnRule {
         writer.node()?;
         let emit_width = self
             .width()
-            .is_some_and(|width| *width != CssBorderWidth::Medium);
+            .is_some_and(|width| *width != CssLineWidth::Medium);
         let emit_style = self
             .style()
-            .is_some_and(|style| style != CssBorderStyle::None);
+            .is_some_and(|style| style != CssLineStyle::None);
         let emit_color = self.color().is_some_and(|color| !color.is_current_color());
         let all_initial = !(emit_width || emit_style || emit_color);
         if let Some(width) = self.width() {

@@ -1,6 +1,7 @@
 //! Page-specific getters and coherent adopted Blink wrappers under one request budget.
+use crate::CssAutoOr;
 use crate::{
-    CssDeclarationBlockError, CssImportance, CssMarginRule, CssPageBleed, CssPageDeclaration,
+    CssDeclarationBlockError, CssImportance, CssMarginRule, CssPageDeclaration,
     CssPageDeclarationBlock, CssPageDescriptorValue, CssPageDescriptorValueRef as V,
     CssPageOrientation, CssPageOutputOrientation, CssPageRule, CssPageSelectorList,
     CssPageSizeValue, CssSerializationError as Error, CssSerializationLimits as Limits,
@@ -35,8 +36,8 @@ impl CssPageDescriptorValue {
                 (true, true) => "crop cross",
             }),
             V::Bleed(v) => match v {
-                CssPageBleed::Auto => writer.append("auto"),
-                CssPageBleed::Length(v) => v.append_specified(&mut writer.context, &mut writer.css),
+                CssAutoOr::Auto => writer.append("auto"),
+                CssAutoOr::Value(v) => v.append_specified(&mut writer.context, &mut writer.css),
             },
             V::Size(v) => match v {
                 CssPageSizeValue::Auto => writer.append("auto"),
@@ -95,7 +96,7 @@ impl SpecifiedRuleWriter {
             for pseudo in selector.pseudos() {
                 self.node()?;
                 self.append(":")?;
-                self.append(pseudo.css_name())?;
+                self.append(pseudo.as_str())?;
             }
         }
         Ok(())
@@ -122,7 +123,7 @@ impl SpecifiedRuleWriter {
                 }
                 CssPageDeclaration::Descriptor(v) => {
                     self.node()?;
-                    self.append(v.value().kind().css_name())?;
+                    self.append(v.value().kind().as_str())?;
                     self.append(": ")?;
                     v.value().append_value(self)?;
                     if v.importance() == CssImportance::Important {
@@ -138,7 +139,7 @@ impl SpecifiedRuleWriter {
         for margin in rule.margin_rules() {
             self.node()?;
             self.append("@")?;
-            self.append(margin.name().css_name())?;
+            self.append(margin.name().as_str())?;
             self.append(" { ")?;
             self.append_authored_declaration_list(margin.declarations().properties())?;
             if !margin.declarations().is_empty() {
@@ -182,7 +183,7 @@ impl SpecifiedRuleWriter {
     ) -> std::result::Result<(), RuleCssomSource> {
         self.node()?;
         self.append("@")?;
-        self.append(margin.name().css_name())?;
+        self.append(margin.name().as_str())?;
         self.append(" { ")?;
         let block = CssSpecifiedDeclarationBlock::from_margin_sources(
             margin.declarations().properties().iter(),
@@ -249,7 +250,7 @@ impl SpecifiedRuleWriter {
                         self.append(" ")?;
                     }
                     self.node()?;
-                    self.append(value.value().kind().css_name())?;
+                    self.append(value.value().kind().as_str())?;
                     self.append(": ")?;
                     value.value().append_value(self)?;
                     if value.importance() == CssImportance::Important {

@@ -22,7 +22,7 @@ fn shared_value_grammars_are_typed_with_feature_provenance() {
         panic!("expected background-image");
     };
     assert!(matches!(
-        background.images().images(),
+        background.value().images(),
         [CssImageValue::Url(url)]
             if url.as_str() == "theme.css"
                 && matches!(
@@ -128,7 +128,7 @@ fn shared_value_grammars_are_typed_with_feature_provenance() {
         panic!("expected animation-name");
     };
     assert!(matches!(
-        names.names().names(),
+        names.value().names(),
         [CssAnimationName::Custom(name)] if name.as_str() == "Main"
     ));
     let CssKnownPropertyValueRef::FontFamily(families) = values.syntax()[2]
@@ -139,7 +139,7 @@ fn shared_value_grammars_are_typed_with_feature_provenance() {
     else {
         panic!("expected font-family");
     };
-    let families = families.families().families();
+    let families = families.value().families();
     assert_eq!(families[0].kind(), CssFontFamilyNameKind::Quoted);
     assert_eq!(families[0].as_str(), "inherit");
     assert_eq!(families[1].kind(), CssFontFamilyNameKind::IdentSequence);

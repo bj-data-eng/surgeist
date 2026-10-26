@@ -260,7 +260,7 @@ fn discrete_feature_domains_accept_each_selected_keyword() {
     ] {
         for keyword in keywords {
             let result = feature(&format!("({name}: {keyword})"));
-            assert_eq!(result.name(), name);
+            assert_eq!(result.as_str(), name);
         }
         // No discrete feature acquires a range domain through prefix spelling.
         let report = parse_media_query(&format!("(min-{name}: {})", keywords[0]));

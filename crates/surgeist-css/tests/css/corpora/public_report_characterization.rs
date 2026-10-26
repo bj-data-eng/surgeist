@@ -21,6 +21,7 @@
 //! to `typed-value` when the file became captured; their values and typed
 //! checks are unchanged.
 
+use crate::css::support::position_view::CartesianPosition as _;
 use std::collections::BTreeSet;
 
 use surgeist_css::{
@@ -1489,7 +1490,7 @@ fn assert_captured_color(color: &surgeist_css::CssColor, expected: &str) {
 }
 
 fn assert_captured_border(border: &surgeist_css::CssBorder, expected: &str) {
-    use surgeist_css::{CssBorderStyle as Style, CssBorderWidth as Width};
+    use surgeist_css::{CssLineStyle as Style, CssLineWidth as Width};
     let (width, style, color) = match expected {
         "solid 2px #fff" => (Some("2px"), Some(Style::Solid), Some("#fff")),
         "#fff" => (None, None, Some("#fff")),
@@ -1784,9 +1785,8 @@ fn assert_known_property_value(
     frozen: &mut FrozenDeclarationCursor<'_>,
 ) {
     use surgeist_css::{
-        CssBoxShadow, CssFilter, CssFilterAmount, CssFilterFunction, CssOutlineStyle,
-        CssOutlineWidth, CssTextDecorationLineComponent, CssTextDecorationStyle,
-        CssTextDecorationThickness,
+        CssBoxShadow, CssFilter, CssFilterAmount, CssFilterFunction, CssLineWidth, CssOutlineStyle,
+        CssTextDecorationLineComponent, CssTextDecorationStyle, CssTextDecorationThickness,
     };
     // Color 4 §4.2 <opacity-value> and Values 4 §5.1 <integer>: each scalar
     // keeps its exact authored numeric representation.
@@ -1860,12 +1860,12 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::BackgroundSize,
             surgeist_css::CssKnownPropertyValueRef::BackgroundSize(value),
         ) => {
-            use surgeist_css::{CssBackgroundSize as Size, CssBackgroundSizeComponent as Part};
+            use surgeist_css::{CssAutoOr as Part, CssBackgroundSize as Size};
             assert_eq!(authored.value, "cover, 10px auto");
-            assert!(matches!(value.sizes().sizes(), [
+            assert!(matches!(value.value().sizes(), [
                 Size::Cover,
                 Size::Explicit {
-                    width: Part::Length(length),
+                    width: Part::Value(length),
                     height: Some(Part::Auto),
                 },
             ] if exact_dimension(length.literal().map(|literal| literal.component()), "10", "px")));
@@ -1877,7 +1877,7 @@ fn assert_known_property_value(
         ) => {
             assert_eq!(authored.value, "contain");
             assert!(matches!(
-                value.sizes().sizes(),
+                value.value().sizes(),
                 [surgeist_css::CssBackgroundSize::Contain]
             ));
             Some(value.as_css())
@@ -1889,7 +1889,7 @@ fn assert_known_property_value(
             use surgeist_css::{CssBackgroundRepeat as Repeat, CssBackgroundRepeatStyle as Style};
             assert_eq!(authored.value, "repeat-x, no-repeat round");
             assert!(matches!(
-                value.repeats().repeats(),
+                value.value().repeats(),
                 [
                     Repeat::RepeatX,
                     Repeat::Axes {
@@ -1906,7 +1906,7 @@ fn assert_known_property_value(
         ) => {
             assert_eq!(authored.value, "repeat");
             assert!(matches!(
-                value.repeats().repeats(),
+                value.value().repeats(),
                 [surgeist_css::CssBackgroundRepeat::Axes {
                     x: surgeist_css::CssBackgroundRepeatStyle::Repeat,
                     y: surgeist_css::CssBackgroundRepeatStyle::Repeat,
@@ -1920,7 +1920,7 @@ fn assert_known_property_value(
         ) => {
             assert_eq!(authored.value, "content-box");
             assert_eq!(
-                value.boxes().boxes(),
+                value.value().boxes(),
                 [surgeist_css::CssBackgroundBox::ContentBox]
             );
             Some(value.as_css())
@@ -1931,7 +1931,7 @@ fn assert_known_property_value(
         ) => {
             assert_eq!(authored.value, "padding-box");
             assert_eq!(
-                value.boxes().boxes(),
+                value.value().boxes(),
                 [surgeist_css::CssBackgroundBox::PaddingBox]
             );
             Some(value.as_css())
@@ -1942,7 +1942,7 @@ fn assert_known_property_value(
         ) => {
             assert_eq!(authored.value, "fixed, local");
             assert_eq!(
-                value.attachments().attachments(),
+                value.value().attachments(),
                 [
                     surgeist_css::CssBackgroundAttachment::Fixed,
                     surgeist_css::CssBackgroundAttachment::Local,
@@ -2012,11 +2012,11 @@ fn assert_known_property_value(
         ) => {
             let colors = value.value();
             assert_eq!(colors.kind(), surgeist_css::CssBoxSideKind::Physical);
-            let [color] = colors.authored_values() else {
+            let [color] = colors.authored() else {
                 panic!("captured one-value border-color shorthand");
             };
             assert_captured_color(color, "black");
-            for color in colors.assigned_values() {
+            for color in colors.assigned() {
                 assert_captured_color(color, "black");
             }
             Some(value.as_css())
@@ -2070,7 +2070,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::Background,
             surgeist_css::CssKnownPropertyValueRef::Background(value),
         ) => {
-            let [layer] = value.background().layers() else {
+            let [layer] = value.value().layers() else {
                 panic!("captured one-layer background");
             };
             assert!(layer.image().is_none());
@@ -2122,7 +2122,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::Outline(value),
         ) => {
             let outline = value.value();
-            assert!(matches!(outline.width(), Some(CssOutlineWidth::Thick)));
+            assert!(matches!(outline.width(), Some(CssLineWidth::Thick)));
             assert_eq!(outline.style(), Some(CssOutlineStyle::Dotted));
             assert_captured_color(
                 outline
@@ -2293,9 +2293,9 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::Gap(value),
         ) => {
             let gap = value.value();
-            assert!(gap.authored_column().is_none());
-            assert_eq!(gap.row(), gap.column());
-            let surgeist_css::CssGapValue::LengthPercentage(length) = gap.row() else {
+            assert!(gap.authored_second().is_none());
+            assert_eq!(gap.first(), gap.second());
+            let surgeist_css::CssGapValue::LengthPercentage(length) = gap.first() else {
                 panic!("captured gap is an exact numeric value")
             };
             assert_spacing_literal(
@@ -2472,7 +2472,7 @@ fn assert_known_property_value(
         ) if authored.value == "calc(1px + 2%)" => {
             let current = value.value();
             assert_captured_sum_calculation(
-                current.horizontal().calculation().unwrap(),
+                current.first().calculation().unwrap(),
                 "calc(1px + 2%)",
                 ("1", false),
                 ("2", true),
@@ -2480,7 +2480,7 @@ fn assert_known_property_value(
                 frozen.input,
             );
             assert_captured_sum_calculation(
-                current.vertical().calculation().unwrap(),
+                current.second().calculation().unwrap(),
                 "calc(1px + 2%)",
                 ("1", false),
                 ("2", true),
@@ -2495,8 +2495,8 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::Padding(value),
         ) if authored.value == "1px 2% calc(3px + 4%) 0" => {
             let current = value.value();
-            assert_eq!(current.authored_values().len(), 4);
-            let [top, right, bottom, left] = current.assigned_values();
+            assert_eq!(current.authored().len(), 4);
+            let [top, right, bottom, left] = current.assigned();
             assert_spacing_literal(
                 top.length_percentage()
                     .literal()
@@ -2538,8 +2538,8 @@ fn assert_known_property_value(
             assert_eq!(authored.value, "auto 10px 5%");
             let current = value.value();
             assert_eq!(current.kind(), surgeist_css::CssBoxSideKind::Physical);
-            assert_eq!(current.authored_values().len(), 3);
-            let [top, right, bottom, left] = current.assigned_values();
+            assert_eq!(current.authored().len(), 3);
+            let [top, right, bottom, left] = current.assigned();
             assert_margin(top, "auto");
             assert_margin(right, "10px");
             assert_margin(bottom, "5%");
@@ -2651,7 +2651,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::FontSize(value),
         ) => {
             assert_eq!(
-                value.size(),
+                value.value(),
                 &surgeist_css::CssFontSize::LengthPercentage(
                     surgeist_css::CssNumeric::<
                         surgeist_css::CssLengthPercentage,
@@ -2669,7 +2669,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::LineHeight,
             surgeist_css::CssKnownPropertyValueRef::LineHeight(value),
         ) => {
-            assert_eq!(value.line_height(), &surgeist_css::CssLineHeight::Normal);
+            assert_eq!(value.value(), &surgeist_css::CssLineHeight::Normal);
             assert_captured_numeric_metadata(property.stable_id(), value.as_css(), authored);
             return;
         }
@@ -2677,7 +2677,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::FontFamily,
             surgeist_css::CssKnownPropertyValueRef::FontFamily(value),
         ) => {
-            assert_captured_font_families(value.families());
+            assert_captured_font_families(value.value());
             assert_captured_font_metadata(
                 "baseline.property.font-family",
                 value.as_css(),
@@ -2718,7 +2718,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::Font,
             surgeist_css::CssKnownPropertyValueRef::Font(value),
         ) => {
-            let surgeist_css::CssFontValue::Explicit(font) = value.font() else {
+            let surgeist_css::CssFontValue::Explicit(font) = value.value() else {
                 panic!("{}: expected captured explicit font", frozen.case_id);
             };
             assert_eq!(
@@ -2791,7 +2791,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::FontVariant,
             surgeist_css::CssKnownPropertyValueRef::FontVariant(value),
         ) => {
-            let surgeist_css::CssFontVariantValue::Values(values) = value.variant() else {
+            let surgeist_css::CssFontVariantValue::Values(values) = value.value() else {
                 panic!("{}: expected captured small-caps variant", frozen.case_id);
             };
             assert_eq!(
@@ -2811,8 +2811,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::FontFeatureSettings,
             surgeist_css::CssKnownPropertyValueRef::FontFeatureSettings(value),
         ) => {
-            let surgeist_css::CssAuthoredFontFeatureSettings::Features(list) = value.settings()
-            else {
+            let surgeist_css::CssAuthoredFontFeatureSettings::Features(list) = value.value() else {
                 panic!("{}: expected captured feature list", frozen.case_id);
             };
             let [kern, liga] = list.features() else {
@@ -2848,7 +2847,7 @@ fn assert_known_property_value(
             let [
                 TransitionPropertyValue::Custom(a),
                 TransitionPropertyValue::Custom(b),
-            ] = value.properties().properties()
+            ] = value.value().properties()
             else {
                 panic!("captured transition properties");
             };
@@ -2860,7 +2859,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::TransitionDuration(value),
         ) => {
             assert!(
-                matches!({ let values = value.durations().values(); if values.len() == 2 { (values[0].literal(),values[1].literal()) } else { (None,None) } }, (Some(a), Some(b))
+                matches!({ let values = value.value().values(); if values.len() == 2 { (values[0].literal(),values[1].literal()) } else { (None,None) } }, (Some(a), Some(b))
                 if a.numeric().representation() == "150" && a.unit() == Unit::Milliseconds
                     && b.numeric().representation() == "2" && b.unit() == Unit::Seconds)
             );
@@ -2871,7 +2870,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::TransitionDelay(value),
         ) => {
             assert!(
-                matches!({ let values = value.delays().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(a)
+                matches!({ let values = value.value().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(a)
                 if a.numeric().representation() == "20" && a.unit() == Unit::Milliseconds)
             );
             Some(value.as_css())
@@ -2883,7 +2882,7 @@ fn assert_known_property_value(
             let [
                 CssEasing::Keyword(Keyword::EaseIn),
                 CssEasing::CubicBezier(bezier),
-            ] = value.timing_functions().values()
+            ] = value.value().values()
             else {
                 panic!("captured transition easings");
             };
@@ -2917,7 +2916,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::Transition,
             surgeist_css::CssKnownPropertyValueRef::Transition(value),
         ) => {
-            let [first, second] = value.transitions().values() else {
+            let [first, second] = value.value().values() else {
                 panic!("two captured transitions");
             };
             assert!(
@@ -2951,7 +2950,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::AnimationName(value),
         ) => {
             assert!(
-                matches!(value.names().names(), [Name::Custom(name), Name::None] if name.as_str() == "fade")
+                matches!(value.value().names(), [Name::Custom(name), Name::None] if name.as_str() == "fade")
             );
             Some(value.as_css())
         }
@@ -2960,7 +2959,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::AnimationDuration(value),
         ) => {
             assert!(
-                matches!({ let values = value.durations().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(t) if t.numeric().representation() == "1" && t.unit() == Unit::Seconds)
+                matches!({ let values = value.value().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(t) if t.numeric().representation() == "1" && t.unit() == Unit::Seconds)
             );
             Some(value.as_css())
         }
@@ -2969,7 +2968,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::AnimationDelay(value),
         ) => {
             assert!(
-                matches!({ let values = value.delays().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(t) if t.numeric().representation() == "200" && t.unit() == Unit::Milliseconds)
+                matches!({ let values = value.value().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(t) if t.numeric().representation() == "200" && t.unit() == Unit::Milliseconds)
             );
             Some(value.as_css())
         }
@@ -2978,7 +2977,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::AnimationTimingFunction(value),
         ) => {
             assert!(matches!(
-                value.timing_functions().values(),
+                value.value().values(),
                 [CssEasing::Keyword(Keyword::EaseOut)]
             ));
             Some(value.as_css())
@@ -2988,7 +2987,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::AnimationIterationCount(value),
         ) => {
             assert!(
-                matches!(value.iteration_counts().values(), [Iteration::Number(n), Iteration::Infinite] if exact_number(n.literal().map(|literal| literal.component()), "2"))
+                matches!(value.value().values(), [Iteration::Number(n), Iteration::Infinite] if exact_number(n.literal().map(|literal| literal.component()), "2"))
             );
             Some(value.as_css())
         }
@@ -2996,28 +2995,28 @@ fn assert_known_property_value(
             surgeist_css::CssKnownProperty::AnimationDirection,
             surgeist_css::CssKnownPropertyValueRef::AnimationDirection(value),
         ) => {
-            assert_eq!(value.directions().directions(), &[Direction::Alternate]);
+            assert_eq!(value.value().directions(), &[Direction::Alternate]);
             Some(value.as_css())
         }
         (
             surgeist_css::CssKnownProperty::AnimationFillMode,
             surgeist_css::CssKnownPropertyValueRef::AnimationFillMode(value),
         ) => {
-            assert_eq!(value.fill_modes().modes(), &[Fill::Both]);
+            assert_eq!(value.value().modes(), &[Fill::Both]);
             Some(value.as_css())
         }
         (
             surgeist_css::CssKnownProperty::AnimationPlayState,
             surgeist_css::CssKnownPropertyValueRef::AnimationPlayState(value),
         ) => {
-            assert_eq!(value.play_states().states(), &[Play::Running, Play::Paused]);
+            assert_eq!(value.value().states(), &[Play::Running, Play::Paused]);
             Some(value.as_css())
         }
         (
             surgeist_css::CssKnownProperty::Animation,
             surgeist_css::CssKnownPropertyValueRef::Animation(value),
         ) => {
-            let [item] = value.animations().values() else {
+            let [item] = value.value().values() else {
                 panic!("one captured animation");
             };
             assert!(matches!(item.name(), Some(Name::Custom(name)) if name.as_str() == "fade"));
@@ -3397,7 +3396,7 @@ fn assert_known_property_value(
             use surgeist_css::{
                 CssHorizontalPosition as Horizontal, CssVerticalPosition as Vertical,
             };
-            let [position] = value.positions().positions() else {
+            let [position] = value.value().positions() else {
                 panic!("captured one background-position layer")
             };
             assert!(
@@ -3415,7 +3414,7 @@ fn assert_known_property_value(
             use surgeist_css::{
                 CssHorizontalPosition as Horizontal, CssVerticalPosition as Vertical,
             };
-            let [position] = value.positions().positions() else {
+            let [position] = value.value().positions() else {
                 panic!("captured one mask-position layer")
             };
             assert!(matches!(position.horizontal(), Horizontal::Center));
@@ -3429,7 +3428,7 @@ fn assert_known_property_value(
             use surgeist_css::{
                 CssHorizontalPosition as Horizontal, CssVerticalPosition as Vertical,
             };
-            let origin = value.origin();
+            let origin = value.value();
             assert!(matches!(origin.horizontal(), Horizontal::Center));
             assert!(matches!(origin.vertical(), Vertical::Top));
             assert!(origin.z().is_none());
@@ -3448,7 +3447,9 @@ fn assert_known_property_value(
                 CssMaskLayer::try_new(
                     Some(CssImageValue::Url(CssUrl::new("mask.png"))),
                     Some(
-                        CssPhysicalPosition::try_new(Horizontal::Center, Vertical::Center).unwrap(),
+                        CssPhysicalPosition::try_new(Horizontal::Center, Vertical::Center)
+                            .unwrap()
+                            .into(),
                     ),
                     Some(CssBackgroundSize::Contain),
                     Some(CssBackgroundRepeat::Axes {
@@ -3485,11 +3486,11 @@ fn assert_known_property_value(
         (
             surgeist_css::CssKnownProperty::BackgroundImage,
             surgeist_css::CssKnownPropertyValueRef::BackgroundImage(value),
-        ) => Some((value.as_css(), value.images())),
+        ) => Some((value.as_css(), value.value())),
         (
             surgeist_css::CssKnownProperty::MaskImage,
             surgeist_css::CssKnownPropertyValueRef::MaskImage(value),
-        ) => Some((value.as_css(), value.images())),
+        ) => Some((value.as_css(), value.value())),
         _ => None,
     };
     if let Some((css, images)) = image_authored {
@@ -4208,8 +4209,8 @@ fn assert_known_property_value(
             );
             let typed = value.value();
             assert_eq!(typed.kind(), CssBoxSideKind::Physical);
-            assert_eq!(typed.authored_values().len(), 3);
-            let [a, b, c, d] = typed.assigned_values();
+            assert_eq!(typed.authored().len(), 3);
+            let [a, b, c, d] = typed.assigned();
             assert_eq!(a, &CssInsetValue::Auto);
             assert_archive_inset(b, "10", Some("px"));
             assert_archive_inset(c, "5", Some("%"));
@@ -4270,12 +4271,8 @@ fn assert_known_property_value(
                 authored.value
             );
             let typed = value.value();
-            assert_eq!(typed.authored_values().len(), 4);
-            for (width, expected) in typed
-                .assigned_values()
-                .into_iter()
-                .zip(["1", "2", "3", "4"])
-            {
+            assert_eq!(typed.authored().len(), 4);
+            for (width, expected) in typed.assigned().into_iter().zip(["1", "2", "3", "4"]) {
                 assert_archive_width(width, expected);
             }
         }
@@ -4331,21 +4328,21 @@ fn assert_known_property_value(
             );
             let typed = value.value();
             assert_eq!(
-                typed.authored_values(),
+                typed.authored(),
                 &[
-                    CssBorderStyle::None,
-                    CssBorderStyle::Hidden,
-                    CssBorderStyle::Dotted,
-                    CssBorderStyle::Dashed
+                    CssLineStyle::None,
+                    CssLineStyle::Hidden,
+                    CssLineStyle::Dotted,
+                    CssLineStyle::Dashed
                 ]
             );
             assert_eq!(
-                typed.assigned_values(),
+                typed.assigned(),
                 [
-                    &CssBorderStyle::None,
-                    &CssBorderStyle::Hidden,
-                    &CssBorderStyle::Dotted,
-                    &CssBorderStyle::Dashed
+                    &CssLineStyle::None,
+                    &CssLineStyle::Hidden,
+                    &CssLineStyle::Dotted,
+                    &CssLineStyle::Dashed
                 ]
             );
         }
@@ -4358,7 +4355,7 @@ fn assert_known_property_value(
             );
             let typed = value.value();
             let decoded = match authored.value {
-                "solid" => CssBorderStyle::Solid,
+                "solid" => CssLineStyle::Solid,
                 _ => panic!("unknown captured keyword"),
             };
             assert_eq!(typed, &decoded);
@@ -4372,7 +4369,7 @@ fn assert_known_property_value(
             );
             let typed = value.value();
             let decoded = match authored.value {
-                "double" => CssBorderStyle::Double,
+                "double" => CssLineStyle::Double,
                 _ => panic!("unknown captured keyword"),
             };
             assert_eq!(typed, &decoded);
@@ -4389,7 +4386,7 @@ fn assert_known_property_value(
             );
             let typed = value.value();
             let decoded = match authored.value {
-                "ridge" => CssBorderStyle::Ridge,
+                "ridge" => CssLineStyle::Ridge,
                 _ => panic!("unknown captured keyword"),
             };
             assert_eq!(typed, &decoded);
@@ -4403,7 +4400,7 @@ fn assert_known_property_value(
             );
             let typed = value.value();
             let decoded = match authored.value {
-                "outset" => CssBorderStyle::Outset,
+                "outset" => CssLineStyle::Outset,
                 _ => panic!("unknown captured keyword"),
             };
             assert_eq!(typed, &decoded);
@@ -4454,7 +4451,7 @@ fn assert_known_property_value(
             {
                 assert_archive_literal(
                     corner
-                        .horizontal()
+                        .first()
                         .literal()
                         .map(|literal| literal.component())
                         .unwrap(),
@@ -4463,7 +4460,7 @@ fn assert_known_property_value(
                 );
                 assert_archive_literal(
                     corner
-                        .vertical()
+                        .second()
                         .literal()
                         .map(|literal| literal.component())
                         .unwrap(),
@@ -4485,7 +4482,7 @@ fn assert_known_property_value(
             let typed = value.value();
             assert_archive_literal(
                 typed
-                    .horizontal()
+                    .first()
                     .literal()
                     .map(|literal| literal.component())
                     .unwrap(),
@@ -4494,7 +4491,7 @@ fn assert_known_property_value(
             );
             assert_archive_literal(
                 typed
-                    .authored_vertical()
+                    .authored_second()
                     .unwrap()
                     .literal()
                     .map(|literal| literal.component())
@@ -4516,15 +4513,15 @@ fn assert_known_property_value(
             let typed = value.value();
             assert_archive_literal(
                 typed
-                    .horizontal()
+                    .first()
                     .literal()
                     .map(|literal| literal.component())
                     .unwrap(),
                 "1",
                 Some("px"),
             );
-            assert!(typed.authored_vertical().is_none());
-            assert_eq!(typed.horizontal(), typed.vertical());
+            assert!(typed.authored_second().is_none());
+            assert_eq!(typed.first(), typed.second());
         }
         (
             CssKnownProperty::BorderBottomRightRadius,
@@ -4539,15 +4536,15 @@ fn assert_known_property_value(
             let typed = value.value();
             assert_archive_literal(
                 typed
-                    .horizontal()
+                    .first()
                     .literal()
                     .map(|literal| literal.component())
                     .unwrap(),
                 "10",
                 Some("%"),
             );
-            assert!(typed.authored_vertical().is_none());
-            assert_eq!(typed.horizontal(), typed.vertical());
+            assert!(typed.authored_second().is_none());
+            assert_eq!(typed.first(), typed.second());
         }
         (CssKnownProperty::FlexGrow, CssKnownPropertyValueRef::FlexGrow(value)) => {
             assert_archive_wrapper(property, value.as_css(), authored);
@@ -4556,7 +4553,7 @@ fn assert_known_property_value(
                 "unexpected {property:?} authored value: {}",
                 authored.value
             );
-            let typed = value.factor();
+            let typed = value.value();
             assert_archive_literal(
                 typed.literal().map(|literal| literal.component()).unwrap(),
                 "2",
@@ -4570,7 +4567,7 @@ fn assert_known_property_value(
                 "unexpected {property:?} authored value: {}",
                 authored.value
             );
-            let typed = value.factor();
+            let typed = value.value();
             assert_archive_literal(
                 typed.literal().map(|literal| literal.component()).unwrap(),
                 "0",
@@ -4617,7 +4614,7 @@ fn assert_known_property_value(
                 "unexpected {property:?} authored value: {}",
                 authored.value
             );
-            let typed = value.ratio();
+            let typed = value.value();
             let CssAspectRatioValue::Ratio(ratio) = typed else {
                 panic!("captured ratio");
             };
@@ -4692,7 +4689,7 @@ fn assert_known_property_value(
                 authored.value
             );
             let typed = value.value();
-            let CssOutlineWidth::Length(length) = typed else {
+            let CssLineWidth::Length(length) = typed else {
                 panic!("captured outline width");
             };
             assert_captured_px(length.literal().map(|literal| literal.component()), "2");
@@ -5108,8 +5105,8 @@ fn assert_archive_literal(
     assert_eq!(number.representation(), expected);
     assert_eq!(unit, expected_unit);
 }
-fn assert_archive_width(width: &surgeist_css::CssBorderWidth, expected: &str) {
-    let surgeist_css::CssBorderWidth::Length(length) = width else {
+fn assert_archive_width(width: &surgeist_css::CssLineWidth, expected: &str) {
+    let surgeist_css::CssLineWidth::Length(length) = width else {
         panic!("captured exact border width");
     };
     assert_archive_literal(

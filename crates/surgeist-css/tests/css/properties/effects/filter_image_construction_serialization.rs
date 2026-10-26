@@ -29,8 +29,8 @@ fn image(text: &str) -> CssImageValue {
     else {
         panic!("image property")
     };
-    assert_eq!(value.images().images().len(), 1);
-    value.images().images()[0].clone()
+    assert_eq!(value.value().images().len(), 1);
+    value.value().images()[0].clone()
 }
 fn payload(text: &str) -> CssFilterImage {
     let CssImageValue::Filter(value) = image(text) else {
@@ -271,11 +271,11 @@ fn typed_importing_views_content_symbols_shapes_and_counter_styles_retain_filter
         let property = CssKnownProperty::from_name(name).unwrap();
         let source = declaration(property, "filter('é',blur())");
         let value = match source.known().unwrap().property_value().unwrap() {
-            CssKnownPropertyValueRef::BackgroundImage(value) => value.images().images()[0].clone(),
-            CssKnownPropertyValueRef::BorderImageSource(value) => value.source().clone(),
+            CssKnownPropertyValueRef::BackgroundImage(value) => value.value().images()[0].clone(),
+            CssKnownPropertyValueRef::BorderImageSource(value) => value.value().clone(),
             CssKnownPropertyValueRef::ListStyleImage(value) => value.value().clone(),
-            CssKnownPropertyValueRef::MaskImage(value) => value.images().images()[0].clone(),
-            CssKnownPropertyValueRef::MaskBorderSource(value) => value.source().clone(),
+            CssKnownPropertyValueRef::MaskImage(value) => value.value().images()[0].clone(),
+            CssKnownPropertyValueRef::MaskBorderSource(value) => value.value().clone(),
             CssKnownPropertyValueRef::Content(value) => {
                 let CssContentValue::Generated(content) = value.value() else {
                     panic!("generated Content")

@@ -14,7 +14,7 @@ fn authored(source: &CssDeclaration) -> &CssBackgroundPositionList {
     else {
         panic!("background position")
     };
-    value.positions()
+    value.value()
 }
 
 fn offset(css: &str) -> CssNumeric<CssLengthPercentage> {

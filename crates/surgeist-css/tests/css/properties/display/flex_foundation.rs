@@ -151,8 +151,8 @@ fn flex_factors_preserve_exact_literals_at_every_magnitude() {
         for text in ["1", "16777217", "1e-100"] {
             let declaration = direct(name, text).unwrap();
             let factor = match declaration.known().unwrap().property_value().unwrap() {
-                CssKnownPropertyValueRef::FlexGrow(value) => value.factor(),
-                CssKnownPropertyValueRef::FlexShrink(value) => value.factor(),
+                CssKnownPropertyValueRef::FlexGrow(value) => value.value(),
+                CssKnownPropertyValueRef::FlexShrink(value) => value.value(),
                 _ => panic!("factor wrapper"),
             };
             let component = factor

@@ -11,6 +11,7 @@ use super::values::{
 use crate::CssOverflowValue;
 use crate::display::*;
 use crate::syntax::*;
+use crate::{BorderSpacingLength, CssSidePair};
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] =
     &[crate::CssFeatureId::new("ext.value.grid-lanes-display")];
@@ -88,14 +89,14 @@ pub(super) fn parse_border_collapse<'i, 't>(
 pub(super) fn parse_border_spacing<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssBorderSpacing, ParseError<'i, Error>> {
+) -> std::result::Result<CssSidePair<BorderSpacingLength>, ParseError<'i, Error>> {
     let horizontal = parse_nonnegative_length(input, numeric)?;
     let vertical = if input.is_exhausted() {
-        horizontal.clone()
+        None
     } else {
-        parse_nonnegative_length(input, numeric)?
+        Some(parse_nonnegative_length(input, numeric)?)
     };
-    Ok(CssBorderSpacing::new(horizontal, vertical))
+    Ok(CssSidePair::new(horizontal, vertical))
 }
 
 pub(super) fn parse_caption_side<'i, 't>(

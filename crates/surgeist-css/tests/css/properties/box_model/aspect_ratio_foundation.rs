@@ -58,7 +58,7 @@ fn assert_authored_ratio(declaration: &surgeist_css::CssDeclaration, value: &str
         panic!("expected aspect-ratio: {value}")
     };
     assert_eq!(authored.as_css(), value);
-    let ratio = match authored.ratio() {
+    let ratio = match authored.value() {
         CssAspectRatioValue::Auto => {
             assert!(value.eq_ignore_ascii_case("auto"));
             return;
@@ -162,7 +162,7 @@ fn ordinary_numbers_keep_their_authored_single_operand() {
             else {
                 panic!("expected aspect-ratio: {value}")
             };
-            let CssAspectRatioValue::Ratio(ratio) = authored.ratio() else {
+            let CssAspectRatioValue::Ratio(ratio) = authored.value() else {
                 panic!("ratio")
             };
             assert!(ratio.denominator().is_none());
@@ -252,7 +252,7 @@ fn specified_serialization_keeps_both_components_and_canonical_auto_order() {
         };
         assert_eq!(
             value
-                .ratio()
+                .value()
                 .serialize_specified(Default::default())
                 .unwrap(),
             expected,
@@ -318,7 +318,7 @@ fn checked_operands_cannot_hide_invalid_literals_in_typed_calculations() {
     else {
         panic!("parsed ratio")
     };
-    let CssAspectRatioValue::Ratio(parsed_ratio) = authored.ratio() else {
+    let CssAspectRatioValue::Ratio(parsed_ratio) = authored.value() else {
         panic!("ratio pair")
     };
     assert!(matches!(
@@ -354,13 +354,13 @@ fn ratio_serialization_charges_one_budget_across_auto_and_both_operands() {
         ),
     ] {
         assert_eq!(
-            serialization_failure(&value.ratio().serialize_specified(limits).unwrap_err()),
+            serialization_failure(&value.value().serialize_specified(limits).unwrap_err()),
             expected
         );
     }
     assert_eq!(
         value
-            .ratio()
+            .value()
             .serialize_specified(CssSerializationLimits::new(3, 3, 11))
             .unwrap(),
         "auto 16 / 9"
@@ -372,12 +372,12 @@ fn ratio_serialization_charges_one_budget_across_auto_and_both_operands() {
         panic!("math ratio")
     };
     let full = math
-        .ratio()
+        .value()
         .serialize_specified(Default::default())
         .unwrap();
     assert_eq!(full, "calc(16) / 9");
     assert!(
-        math.ratio()
+        math.value()
             .serialize_specified(CssSerializationLimits::new(100, 100, full.len() - 1))
             .unwrap_err()
             .is_byte_limit()

@@ -61,7 +61,7 @@ fn historical_weight_style_none_parsing_and_checked_values_remain_controls() {
         else {
             panic!("synthesis")
         };
-        assert_eq!(left.synthesis(), right.synthesis());
+        assert_eq!(left.value(), right.value());
         assert_eq!(left.as_css(), text);
         assert_eq!(constructed.importance(), CssImportance::Important);
     }

@@ -257,7 +257,7 @@ fn clip(text: &str) -> CssClip {
     else {
         panic!("clip property")
     };
-    value.clip().clone()
+    value.value().clone()
 }
 
 #[test]
@@ -341,7 +341,7 @@ fn legacy_rect_children_spend_one_cumulative_budget_and_preserve_edge_origins() 
     let CssClip::Rect(rect) = &value else {
         panic!("rectangle")
     };
-    let CssClipEdge::Length(top) = rect.top() else {
+    let CssAutoOr::Value(top) = rect.top() else {
         panic!("length edge")
     };
     let CssValueOrigin::Parsed(origin) = top.origin() else {

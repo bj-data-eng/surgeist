@@ -1,19 +1,16 @@
 //! Bounded specified serialization for checked CSS2 table border spacing.
 
-use crate::CssBorderSpacing;
+use crate::common_values::{side_element, side_pair_entry};
+use crate::specified_inverse::InverseValueEquality as _;
+use crate::{CssLength, CssNonNegative, CssNumeric};
 
-impl crate::specified_rule_serialization::SpecifiedProvider for CssBorderSpacing {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        context.charge_nodes(1)?;
-        self.horizontal().append_specified(context, output)?;
-        context.append(output, " ")?;
-        self.vertical().append_specified(context, output)?;
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(CssBorderSpacing);
+/// One `border-spacing` length; the schema names the generic pair through this private name.
+pub(crate) type BorderSpacingLength = CssNumeric<CssLength, CssNonNegative>;
+
+// A single authored length leaves the second value unauthored (it is the first); two equal
+// authored lengths are written as one, the shorter form with the same meaning.
+side_element!(
+    BorderSpacingLength,
+    same = |a, b, context| a.inverse_equal(b, context)
+);
+side_pair_entry!(BorderSpacingLength);

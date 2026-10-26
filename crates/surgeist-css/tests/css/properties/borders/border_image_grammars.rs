@@ -23,7 +23,7 @@ fn c13_border_images_retain_typed_structure() {
     else {
         panic!("expected border-image wrapper");
     };
-    let value = value.border_image();
+    let value = value.value();
     assert!(matches!(
         value.source(),
         Some(CssImageValue::Url(url)) if url.as_str() == "frame.png"
@@ -102,33 +102,33 @@ fn border_image_longhands_preserve_domains_and_expanded_arity() {
     let CssKnownPropertyValueRef::BorderImageSource(source) = values[0] else {
         panic!("expected border-image-source");
     };
-    assert!(matches!(source.source(), CssImageValue::Gradient(_)));
+    assert!(matches!(source.value(), CssImageValue::Gradient(_)));
 
     let CssKnownPropertyValueRef::BorderImageSlice(slice) = values[1] else {
         panic!("expected border-image-slice");
     };
-    assert!(slice.slice().fill());
-    assert_eq!(slice.slice().values().len(), 4);
+    assert!(slice.value().fill());
+    assert_eq!(slice.value().values().len(), 4);
 
     let CssKnownPropertyValueRef::BorderImageWidth(width) = values[2] else {
         panic!("expected border-image-width");
     };
-    assert_eq!(width.widths().values().len(), 4);
+    assert_eq!(width.value().values().len(), 4);
 
     let CssKnownPropertyValueRef::BorderImageOutset(outset) = values[3] else {
         panic!("expected border-image-outset");
     };
-    assert_eq!(outset.outsets().values().len(), 4);
+    assert_eq!(outset.value().values().len(), 4);
 
     let CssKnownPropertyValueRef::BorderImageRepeat(repeat) = values[4] else {
         panic!("expected border-image-repeat");
     };
     assert_eq!(
-        repeat.repeat().horizontal(),
+        repeat.value().horizontal(),
         CssBorderImageRepeatKeyword::Repeat
     );
     assert_eq!(
-        repeat.repeat().vertical(),
+        repeat.value().vertical(),
         CssBorderImageRepeatKeyword::Round
     );
 
@@ -165,7 +165,7 @@ fn border_image_one_to_four_arity_expands_by_css_edge_rules() {
                 .unwrap();
             let actual = match value {
                 CssKnownPropertyValueRef::BorderImageSlice(value) => value
-                    .slice()
+                    .value()
                     .values()
                     .iter()
                     .map(|value| match value {
@@ -176,7 +176,7 @@ fn border_image_one_to_four_arity_expands_by_css_edge_rules() {
                     })
                     .collect::<Vec<_>>(),
                 CssKnownPropertyValueRef::BorderImageWidth(value) => value
-                    .widths()
+                    .value()
                     .values()
                     .iter()
                     .map(|value| match value {
@@ -187,7 +187,7 @@ fn border_image_one_to_four_arity_expands_by_css_edge_rules() {
                     })
                     .collect::<Vec<_>>(),
                 CssKnownPropertyValueRef::BorderImageOutset(value) => value
-                    .outsets()
+                    .value()
                     .values()
                     .iter()
                     .map(|value| match value {
@@ -222,7 +222,7 @@ fn border_image_source_distinguishes_none_url_and_image_values() {
         else {
             panic!("expected border-image-source");
         };
-        let actual = match value.source() {
+        let actual = match value.value() {
             CssImageValue::None => "none",
             CssImageValue::Url(_) => "url",
             CssImageValue::Gradient(_) => "gradient",
@@ -245,7 +245,7 @@ fn image_orientation_rendering_and_object_fit_retain_typed_keywords() {
     else {
         panic!("typed smooth rendering keyword")
     };
-    assert_eq!(value.rendering(), &CssImageRendering::Smooth);
+    assert_eq!(value.value(), &CssImageRendering::Smooth);
     assert_eq!(
         smooth.syntax()[0]
             .serialize_specified(Default::default())
@@ -288,13 +288,13 @@ fn image_orientation_rendering_and_object_fit_retain_typed_keywords() {
         let CssKnownPropertyValueRef::ImageOrientation(value) = values[index] else {
             panic!("expected image-orientation");
         };
-        assert_eq!(value.orientation(), &expected);
+        assert_eq!(value.value(), &expected);
     }
     let CssKnownPropertyValueRef::ImageOrientation(flipped) = values[2] else {
         panic!("expected flipped image-orientation");
     };
     assert!(matches!(
-        flipped.orientation(),
+        flipped.value(),
         CssImageOrientation::Flip(Some(value))
             if value.literal().is_some_and(|angle| angle.numeric().representation() == "0.25" && angle.unit() == CssAngleUnit::Turns)
     ));
@@ -302,12 +302,12 @@ fn image_orientation_rendering_and_object_fit_retain_typed_keywords() {
     assert!(matches!(
         values[4],
         CssKnownPropertyValueRef::ImageRendering(value)
-            if value.rendering() == &CssImageRendering::CrispEdges
+            if value.value() == &CssImageRendering::CrispEdges
     ));
     assert!(matches!(
         values[5],
         CssKnownPropertyValueRef::ImageRendering(value)
-            if value.rendering() == &CssImageRendering::Pixelated
+            if value.value() == &CssImageRendering::Pixelated
     ));
     for (index, expected) in [
         (6, CssObjectFit::Fill),
@@ -319,7 +319,7 @@ fn image_orientation_rendering_and_object_fit_retain_typed_keywords() {
         let CssKnownPropertyValueRef::ObjectFit(value) = values[index] else {
             panic!("expected object-fit");
         };
-        assert_eq!(value.fit(), &expected);
+        assert_eq!(value.value(), &expected);
     }
 }
 
@@ -341,7 +341,7 @@ fn unordered_image_orientation_keeps_typed_angle_flip_and_adjacent_declarations(
         else {
             panic!("typed image-orientation")
         };
-        let CssImageOrientation::Flip(Some(angle)) = typed.orientation() else {
+        let CssImageOrientation::Flip(Some(angle)) = typed.value() else {
             panic!("authored angle and flip remain distinct")
         };
         let literal = angle.literal().unwrap();
@@ -373,7 +373,7 @@ fn border_image_numeric_and_orientation_calculations_remain_symbolic() {
         values[0],
         CssKnownPropertyValueRef::BorderImageSlice(value)
             if matches!(
-                &value.slice().values()[0],
+                &value.value().values()[0],
                 CssBorderImageSliceComponent::Percentage(number) if number.calculation().is_some()
             )
     ));
@@ -381,7 +381,7 @@ fn border_image_numeric_and_orientation_calculations_remain_symbolic() {
         values[1],
         CssKnownPropertyValueRef::BorderImageWidth(value)
             if matches!(
-                &value.widths().values()[0],
+                &value.value().values()[0],
                 CssBorderImageWidthComponent::Number(number) if number.calculation().is_some()
             )
     ));
@@ -389,7 +389,7 @@ fn border_image_numeric_and_orientation_calculations_remain_symbolic() {
         values[2],
         CssKnownPropertyValueRef::BorderImageOutset(value)
             if matches!(
-                &value.outsets().values()[0],
+                &value.value().values()[0],
                 CssBorderImageOutsetComponent::Number(number) if number.calculation().is_some()
             )
     ));
@@ -397,7 +397,7 @@ fn border_image_numeric_and_orientation_calculations_remain_symbolic() {
         values[3],
         CssKnownPropertyValueRef::ImageOrientation(value)
             if matches!(
-                value.orientation(),
+                value.value(),
                 CssImageOrientation::Flip(Some(angle)) if angle.calculation().is_some()
             )
     ));

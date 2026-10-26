@@ -26,11 +26,11 @@ fn signed_percentage(text: &str) -> CssNumeric<CssLengthPercentage> {
 #[test]
 fn exclusive_error_lines_are_constructible_without_ordinary_flags() {
     for (kind, expected) in [
-        (CssTextDecorationError::SpellingError, "spelling-error"),
-        (CssTextDecorationError::GrammarError, "grammar-error"),
+        (CssTextDecorationErrorLine::SpellingError, "spelling-error"),
+        (CssTextDecorationErrorLine::GrammarError, "grammar-error"),
     ] {
-        let line = CssTextDecorationLine::error(kind);
-        assert_eq!(line.error_kind(), Some(kind));
+        let line = CssTextDecorationLine::error_line(kind);
+        assert_eq!(line.as_error_line(), Some(kind));
         assert!(!line.is_none());
         assert!(line.components().is_empty());
         assert_eq!(

@@ -574,7 +574,7 @@ mod tests {
         else {
             panic!("delay")
         };
-        let value = value.delays();
+        let value = value.value();
         // List + Calc + Sum + two scalar leaves: 5 input nodes.
         // List + two scalar leaves + their combined scalar: 4 projections.
         shared("calc(3s)", 5, 4, |writer| {

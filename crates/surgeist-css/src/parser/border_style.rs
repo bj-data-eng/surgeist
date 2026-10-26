@@ -4,59 +4,38 @@ use super::property_input::Parser;
 use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::match_ignore_ascii_case;
 
-use crate::{CssBorderStyle, CssBorderStylePair, CssBorderStyleShorthand, CssBoxSideKind};
+use super::side_shapes::{parse_four_sides, parse_side_pair};
+use crate::{CssFourSides, CssLineStyle, CssSidePair};
 
 pub(super) fn parse_border_style<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> Result<CssBorderStyle, ParseError<'i, Error>> {
+) -> Result<CssLineStyle, ParseError<'i, Error>> {
     // The unadmitted keyword itself is responsible, not the token after it.
     let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
-        "none" => Ok(CssBorderStyle::None),
-        "hidden" => Ok(CssBorderStyle::Hidden),
-        "dotted" => Ok(CssBorderStyle::Dotted),
-        "dashed" => Ok(CssBorderStyle::Dashed),
-        "solid" => Ok(CssBorderStyle::Solid),
-        "double" => Ok(CssBorderStyle::Double),
-        "groove" => Ok(CssBorderStyle::Groove),
-        "ridge" => Ok(CssBorderStyle::Ridge),
-        "inset" => Ok(CssBorderStyle::Inset),
-        "outset" => Ok(CssBorderStyle::Outset),
+        "none" => Ok(CssLineStyle::None),
+        "hidden" => Ok(CssLineStyle::Hidden),
+        "dotted" => Ok(CssLineStyle::Dotted),
+        "dashed" => Ok(CssLineStyle::Dashed),
+        "solid" => Ok(CssLineStyle::Solid),
+        "double" => Ok(CssLineStyle::Double),
+        "groove" => Ok(CssLineStyle::Groove),
+        "ridge" => Ok(CssLineStyle::Ridge),
+        "inset" => Ok(CssLineStyle::Inset),
+        "outset" => Ok(CssLineStyle::Outset),
         _ => Err(unexpected_at(location)),
     }
 }
 
 pub(super) fn parse_border_style_pair<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> Result<CssBorderStylePair, ParseError<'i, Error>> {
-    let start = parse_border_style(input)?;
-    let authored_end = if input.is_exhausted() {
-        None
-    } else {
-        Some(parse_border_style(input)?)
-    };
-    Ok(CssBorderStylePair::new(start, authored_end))
+) -> Result<CssSidePair<CssLineStyle>, ParseError<'i, Error>> {
+    parse_side_pair(input, parse_border_style)
 }
 
 pub(super) fn parse_border_style_shorthand<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> Result<CssBorderStyleShorthand, ParseError<'i, Error>> {
-    let kind = if input
-        .try_parse(|input| input.expect_ident_matching("logical"))
-        .is_ok()
-    {
-        CssBoxSideKind::Logical
-    } else {
-        CssBoxSideKind::Physical
-    };
-    let mut values = Vec::new();
-    while !input.is_exhausted() {
-        values.push(parse_border_style(input)?);
-        if values.len() == 4 && !input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
-    CssBorderStyleShorthand::try_new(kind, values)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+) -> Result<CssFourSides<CssLineStyle>, ParseError<'i, Error>> {
+    parse_four_sides(input, parse_border_style)
 }

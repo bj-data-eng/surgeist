@@ -13,8 +13,8 @@ use surgeist_css::*;
 
 fn authored(source: &CssDeclaration) -> &CssImageValueList {
     match source.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::BackgroundImage(value) => value.images(),
-        CssKnownPropertyValueRef::MaskImage(value) => value.images(),
+        CssKnownPropertyValueRef::BackgroundImage(value) => value.value(),
+        CssKnownPropertyValueRef::MaskImage(value) => value.value(),
         _ => panic!("typed image-list longhand"),
     }
 }

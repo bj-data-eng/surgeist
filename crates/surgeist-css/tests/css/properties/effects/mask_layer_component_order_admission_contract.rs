@@ -5,6 +5,7 @@
 //! No future serializer API or additional mask fields are required by these tests.
 
 use crate::css::support::check_property_components;
+use crate::css::support::position_view::CartesianPosition as _;
 use surgeist_css::*;
 
 const ORDERS: &[&str] = &[

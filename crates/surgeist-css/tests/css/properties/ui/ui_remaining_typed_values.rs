@@ -10,16 +10,16 @@ fn caret(text: &str) -> CssCaret {
     else {
         panic!("caret")
     };
-    value.caret().clone()
+    value.value().clone()
 }
-fn interest(text: &str) -> CssInterestDelay {
+fn interest(text: &str) -> CssSidePair<CssInterestDelayValue> {
     let declaration = declaration(CssKnownProperty::InterestDelay, text);
     let CssKnownPropertyValueRef::InterestDelay(value) =
         declaration.known().unwrap().property_value().unwrap()
     else {
         panic!("interest")
     };
-    value.delay().clone()
+    value.value().clone()
 }
 fn time(number: &str, unit: CssTimeUnit) -> CssInterestDelayValue {
     CssInterestDelayValue::Time(
@@ -90,7 +90,7 @@ fn typed_keyword_providers_reparse_each_distinct_ui_identity() {
         else {
             panic!("animation")
         };
-        assert_eq!(*v.animation(), value);
+        assert_eq!(*v.value(), value);
     }
     for (value, text) in [
         (CssCaretShape::Auto, "auto"),
@@ -104,7 +104,7 @@ fn typed_keyword_providers_reparse_each_distinct_ui_identity() {
         else {
             panic!("shape")
         };
-        assert_eq!(*v.shape(), value);
+        assert_eq!(*v.value(), value);
     }
     for (value, text) in [
         (CssInteractivity::Auto, "auto"),
@@ -117,7 +117,7 @@ fn typed_keyword_providers_reparse_each_distinct_ui_identity() {
         else {
             panic!("interactivity")
         };
-        assert_eq!(*v.interactivity(), value);
+        assert_eq!(*v.value(), value);
     }
     for (value, text) in [
         (CssAppearance::None, "none"),
@@ -142,7 +142,7 @@ fn typed_keyword_providers_reparse_each_distinct_ui_identity() {
         else {
             panic!("appearance")
         };
-        assert_eq!(*v.appearance(), value);
+        assert_eq!(*v.value(), value);
     }
     assert!(matches!(CssAccentColor::default(), CssAccentColor::Auto));
     let accent = CssAccentColor::Color(Box::new(CssColor::transparent()));
@@ -164,7 +164,7 @@ fn interest_omission_uses_exact_signed_time_proof_and_preserves_second_presence(
     ] {
         let value = interest(text);
         let before = value.clone();
-        assert!(value.authored_end().is_some());
+        assert!(value.authored_second().is_some());
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
             expected
@@ -179,20 +179,22 @@ fn interest_omission_uses_exact_signed_time_proof_and_preserves_second_presence(
         } else {
             // Rounded text cannot reconstitute the original distinction; omission proof
             // is made before formatting, so both retained original inputs are emitted.
-            assert!(interest(expected).authored_end().is_some());
+            assert!(interest(expected).authored_second().is_some());
         }
         assert_eq!(value, before);
     }
-    let value = CssInterestDelay::try_new(
+    let value = CssSidePair::<CssInterestDelayValue>::try_new(
         time("-1", CssTimeUnit::Seconds),
         Some(time("-1000", CssTimeUnit::Milliseconds)),
     )
     .unwrap();
     assert_node_limits("-1s", 3, |limits| value.serialize_specified(limits));
-    assert!(value.authored_end().is_some());
-    let repeated = CssInterestDelay::try_new(time("-1", CssTimeUnit::Seconds), None).unwrap();
-    assert!(repeated.authored_end().is_none());
-    assert_eq!(repeated.start(), repeated.end());
+    assert!(value.authored_second().is_some());
+    let repeated =
+        CssSidePair::<CssInterestDelayValue>::try_new(time("-1", CssTimeUnit::Seconds), None)
+            .unwrap();
+    assert!(repeated.authored_second().is_none());
+    assert_eq!(repeated.first(), repeated.second());
     assert_node_limits("-1s", 2, |limits| repeated.serialize_specified(limits));
     assert!(
         CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
@@ -231,8 +233,8 @@ fn navigation_checked_models_preserve_original_ids_strings_and_exclude_legacy_ta
         else {
             panic!("nav")
         };
-        assert_eq!(v.navigation().reference().unwrap().id().as_str(), "Next");
-        let Some(CssNavigationTarget::Name(target)) = v.navigation().reference().unwrap().target()
+        assert_eq!(v.value().reference().unwrap().id().as_str(), "Next");
+        let Some(CssNavigationTarget::Name(target)) = v.value().reference().unwrap().target()
         else {
             panic!("name")
         };
@@ -275,7 +277,7 @@ fn legacy_navigation_has_typed_diagnostic_original_string_and_reusable_report_pa
         else {
             panic!("nav")
         };
-        let reference = v.navigation().reference().unwrap();
+        let reference = v.value().reference().unwrap();
         let Some(CssNavigationTarget::LegacyName(target)) = reference.target() else {
             panic!("legacy")
         };
@@ -316,7 +318,7 @@ fn legacy_navigation_has_typed_diagnostic_original_string_and_reusable_report_pa
             panic!("keyframe nav")
         };
         assert_eq!(v.as_css(), expected);
-        let id = v.navigation().reference().unwrap().id();
+        let id = v.value().reference().unwrap().id();
         let CssValueOrigin::Parsed(origin) = id.origin() else {
             panic!("parsed ID")
         };
@@ -562,13 +564,13 @@ fn interest_checked_construction_rejects_recovered_time_from_either_slot() {
     else {
         panic!("delay")
     };
-    let recovered = value.delay().clone();
+    let recovered = value.value().clone();
     for (start, end) in [
         (recovered.clone(), None),
         (CssInterestDelayValue::Normal, Some(recovered)),
     ] {
         assert!(
-            CssInterestDelay::try_new(start, end)
+            CssSidePair::<CssInterestDelayValue>::try_new(start, end)
                 .unwrap_err()
                 .is_recovered_component()
         );

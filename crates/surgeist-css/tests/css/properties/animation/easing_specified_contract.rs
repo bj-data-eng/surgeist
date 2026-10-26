@@ -19,12 +19,8 @@ fn parsed_for(property: CssKnownProperty, source: &str) -> CssEasingList {
     )
     .unwrap();
     match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::TransitionTimingFunction(value) => {
-            value.timing_functions().clone()
-        }
-        CssKnownPropertyValueRef::AnimationTimingFunction(value) => {
-            value.timing_functions().clone()
-        }
+        CssKnownPropertyValueRef::TransitionTimingFunction(value) => value.value().clone(),
+        CssKnownPropertyValueRef::AnimationTimingFunction(value) => value.value().clone(),
         _ => panic!("easing list"),
     }
 }
@@ -504,7 +500,7 @@ fn list_order_and_shorthand_omissions_survive_canonical_output() {
     else {
         panic!("transition")
     };
-    assert!(value.transitions().values()[0].timing_function().is_none());
+    assert!(value.value().values()[0].timing_function().is_none());
     let CssKnownPropertyValueRef::Animation(value) = report.syntax()[1]
         .known()
         .unwrap()
@@ -514,7 +510,7 @@ fn list_order_and_shorthand_omissions_survive_canonical_output() {
         panic!("animation")
     };
     assert_eq!(
-        value.animations().values()[0]
+        value.value().values()[0]
             .timing_function()
             .unwrap()
             .serialize_specified(Default::default())
@@ -522,7 +518,7 @@ fn list_order_and_shorthand_omissions_survive_canonical_output() {
         "steps(1, start)"
     );
     assert!(matches!(
-        value.animations().values()[0].timing_function(),
+        value.value().values()[0].timing_function(),
         Some(CssEasing::Keyword(CssEasingKeyword::StepStart))
     ));
 }

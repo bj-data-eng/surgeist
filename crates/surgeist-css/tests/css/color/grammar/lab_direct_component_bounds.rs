@@ -310,12 +310,12 @@ limit_error!(
     ByteLimit
 );
 
-fn pair() -> CssBorderColorPair {
-    let value = color("lab(1e400 0 0)");
-    CssBorderColorPair::new(value.clone(), Some(value))
+fn pair() -> CssSidePair<CssColor> {
+    // Two different authored values with the same output: an equal second value is not written.
+    CssSidePair::new(color("lab(1e400 0 0)"), Some(color("lab(1e401 0 0)")))
 }
 
-fn assert_pair_result(value: &CssBorderColorPair, limits: Limits, expected: Result<&str, Kind>) {
+fn assert_pair_result(value: &CssSidePair<CssColor>, limits: Limits, expected: Result<&str, Kind>) {
     let before = value.clone();
     let result = value.serialize_specified(limits);
     assert_eq!(result, value.serialize_specified(limits));
@@ -362,7 +362,7 @@ fn sibling_endpoint_colors_one_short_byte_is_typed() {
 }
 #[test]
 fn utf8_prefix_leaves_exact_endpoint_output_budget() {
-    let value = CssBorderColorPair::new(color("color(--é 0)"), Some(color("lab(1e400 0 0)")));
+    let value = CssSidePair::new(color("color(--é 0)"), Some(color("lab(1e400 0 0)")));
     // The actual first sibling + separating space uses14 UTF-8 bytes;12 remain.
     assert_pair_result(
         &value,
@@ -372,7 +372,7 @@ fn utf8_prefix_leaves_exact_endpoint_output_budget() {
 }
 #[test]
 fn utf8_prefix_one_short_endpoint_output_budget_is_typed() {
-    let value = CssBorderColorPair::new(color("color(--é 0)"), Some(color("lab(1e400 0 0)")));
+    let value = CssSidePair::new(color("color(--é 0)"), Some(color("lab(1e400 0 0)")));
     assert_pair_result(
         &value,
         Limits::new(usize::MAX, usize::MAX, 25),
@@ -381,8 +381,7 @@ fn utf8_prefix_one_short_endpoint_output_budget_is_typed() {
 }
 #[test]
 fn unbounded_second_sibling_failure_keeps_entire_pair_unchanged() {
-    let value =
-        CssBorderColorPair::new(color("lab(1e400 0 0)"), Some(color("lab(50 1e2000000 0)")));
+    let value = CssSidePair::new(color("lab(1e400 0 0)"), Some(color("lab(50 1e2000000 0)")));
     assert_pair_result(
         &value,
         Limits::new(usize::MAX, usize::MAX, 64),
@@ -391,7 +390,7 @@ fn unbounded_second_sibling_failure_keeps_entire_pair_unchanged() {
 }
 #[test]
 fn contextual_second_sibling_failure_keeps_entire_pair_unchanged() {
-    let value = CssBorderColorPair::new(
+    let value = CssSidePair::new(
         color("color(--é 0)"),
         Some(color("lab(calc(1em / 1px) 0 0)")),
     );

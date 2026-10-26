@@ -16,7 +16,7 @@ fn background(text: &str) -> CssBackground {
     else {
         panic!("ordinary background")
     };
-    value.background().clone()
+    value.value().clone()
 }
 
 fn layer(color: Option<CssColor>) -> CssBackgroundLayer {

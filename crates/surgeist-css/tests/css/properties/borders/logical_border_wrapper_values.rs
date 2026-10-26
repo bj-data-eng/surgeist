@@ -28,12 +28,12 @@ fn logical_current<'a>(name: &str, value: CssKnownPropertyValueRef<'a>) -> &'a C
 #[test]
 fn six_logical_wrappers_expose_the_shared_checked_triple_and_preserve_omission() {
     let expected = CssBorder::try_new(
-        Some(CssBorderWidth::Thin),
-        Some(CssBorderStyle::Solid),
+        Some(CssLineWidth::Thin),
+        Some(CssLineStyle::Solid),
         Some(checked_color("red")),
     )
     .unwrap();
-    let omitted = CssBorder::try_new(None, Some(CssBorderStyle::Solid), None).unwrap();
+    let omitted = CssBorder::try_new(None, Some(CssLineStyle::Solid), None).unwrap();
     for name in [
         "border-block-start",
         "border-block-end",

@@ -18,15 +18,17 @@ fn main() {
 fn visit(query: &CssContainerScrollQuery) {
     match query.kind() {
         CssContainerScrollQueryKind::Feature(feature) => match feature {
-            CssContainerScrollFeature::Boolean(kind) => println!("boolean {}", kind.name()),
+            CssContainerScrollFeature::Boolean(kind) => println!("boolean {}", kind.as_str()),
             CssContainerScrollFeature::Stuck(value) => match value.view() {
-                CssContainerStuckValueRef::Keyword(keyword) => println!("stuck {}", keyword.name()),
+                CssContainerStuckValueRef::Keyword(keyword) => {
+                    println!("stuck {}", keyword.as_str())
+                }
                 CssContainerStuckValueRef::Pending(value) => pending(value),
                 _ => {}
             },
             CssContainerScrollFeature::Snapped(value) => match value.view() {
                 CssContainerSnappedValueRef::Keyword(keyword) => {
-                    println!("snapped {}", keyword.name())
+                    println!("snapped {}", keyword.as_str())
                 }
                 CssContainerSnappedValueRef::Pending(value) => pending(value),
                 _ => {}
@@ -34,7 +36,7 @@ fn visit(query: &CssContainerScrollQuery) {
             CssContainerScrollFeature::Scrollable(value)
             | CssContainerScrollFeature::Scrolled(value) => match value.view() {
                 CssContainerScrollDirectionValueRef::Keyword(keyword) => {
-                    println!("direction {}", keyword.name())
+                    println!("direction {}", keyword.as_str())
                 }
                 CssContainerScrollDirectionValueRef::Pending(value) => pending(value),
                 _ => {}

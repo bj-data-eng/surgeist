@@ -774,10 +774,13 @@ fn maximum_finite_negative_final_bytes() {
 
 #[test]
 fn sibling_numeric_colors_share_visits_and_output_atomically() {
-    let value = color("rgb(none calc(255) calc(0))");
-    let pair = CssBorderColorPair::new(value.clone(), Some(value));
+    // The second color differs (255 against 0 in the last channel) so that it is written.
+    let pair = CssSidePair::new(
+        color("rgb(none calc(255) calc(0))"),
+        Some(color("rgb(none calc(255) calc(255))")),
+    );
     let before = pair.clone();
-    let expected = "color(srgb none 1 0) color(srgb none 1 0)";
+    let expected = "color(srgb none 1 0) color(srgb none 1 1)";
     // Pair root + two colors: inputs 1 + 2*6 = 13; projections 1 + 2*8 =17.
     for (limits, kind) in [
         (Limits::new(12, 17, usize::MAX), Kind::InputNodeLimit),
@@ -799,7 +802,7 @@ fn sibling_numeric_colors_share_visits_and_output_atomically() {
 
 #[test]
 fn utf8_prefix_spends_bytes_before_shrinking_hsl_scratch() {
-    let pair = CssBorderColorPair::new(
+    let pair = CssSidePair::new(
         color("color(--é 0)"),
         Some(color("hsl(none calc(-10000000000) 50%)")),
     );
@@ -954,11 +957,11 @@ fn composition_text(property: CssKnownProperty, source: &str) -> String {
     let value = declaration.known().unwrap().property_value().unwrap();
     let text = match value {
         CssKnownPropertyValueRef::BackgroundImage(value) => value
-            .images()
+            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         CssKnownPropertyValueRef::Background(value) => value
-            .background()
+            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         CssKnownPropertyValueRef::BorderColor(value) => value

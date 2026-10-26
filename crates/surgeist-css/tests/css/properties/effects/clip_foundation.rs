@@ -11,7 +11,7 @@ fn clip(source: &CssDeclaration) -> &CssClip {
     else {
         panic!("typed clip")
     };
-    value.clip()
+    value.value()
 }
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
@@ -57,15 +57,15 @@ fn rect_edges_retain_order_signed_lengths_and_symbolic_math() {
         let CssClip::Rect(rect) = clip(&declaration) else {
             panic!("rectangle: {source}")
         };
-        assert!(matches!(rect.top(), CssClipEdge::Auto));
+        assert!(matches!(rect.top(), CssAutoOr::Auto));
         assert!(
-            matches!(rect.right(), CssClipEdge::Length(length) if exact_dimension(length.literal().map(|literal| literal.component()), "-1", "px"))
+            matches!(rect.right(), CssAutoOr::Value(length) if exact_dimension(length.literal().map(|literal| literal.component()), "-1", "px"))
         );
         assert!(
-            matches!(rect.bottom(), CssClipEdge::Length(length) if length.calculation().is_some())
+            matches!(rect.bottom(), CssAutoOr::Value(length) if length.calculation().is_some())
         );
         assert!(
-            matches!(rect.left(), CssClipEdge::Length(length) if matches!(length.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation()=="0"))
+            matches!(rect.left(), CssAutoOr::Value(length) if matches!(length.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation()=="0"))
         );
         let [item] = expanded(&declaration)
             .try_into()

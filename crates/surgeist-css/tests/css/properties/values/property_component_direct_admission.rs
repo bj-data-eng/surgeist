@@ -424,7 +424,7 @@ fn separately_owned_tokens_keep_their_lexical_boundaries_and_original_snapshots(
     };
     for (actual, expected) in value
         .value()
-        .assigned_values()
+        .assigned()
         .iter()
         .zip(["1px", "2px", "1px", "2px"])
     {

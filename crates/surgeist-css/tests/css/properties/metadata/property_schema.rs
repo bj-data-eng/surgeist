@@ -1,4 +1,5 @@
 use crate::css::support::parse_report as common;
+use crate::css::support::position_view::CartesianPosition as _;
 use crate::css::support::property_expectations;
 use surgeist_color::{ColorSpace, PredefinedColorSpace};
 
@@ -66,27 +67,27 @@ fn core_font_wrappers_keep_current_global_and_substitution_branches_distinct() {
             .unwrap();
         match value {
             CssKnownPropertyValueRef::FontSize(value) => {
-                let _ = value.size();
+                let _ = value.value();
             }
             CssKnownPropertyValueRef::LineHeight(value) => {
-                let _ = value.line_height();
+                let _ = value.value();
             }
             CssKnownPropertyValueRef::FontFamily(value) => {
-                assert_eq!(value.families().families()[0].as_str(), "Arial");
+                assert_eq!(value.value().families()[0].as_str(), "Arial");
                 assert_eq!(
-                    value.families().families()[1].generic_family(),
+                    value.value().families()[1].generic_family(),
                     Some(surgeist_css::CssGenericFontFamily::Serif)
                 );
             }
             CssKnownPropertyValueRef::Font(value) => {
-                let surgeist_css::CssFontValue::Explicit(font) = value.font() else {
+                let surgeist_css::CssFontValue::Explicit(font) = value.value() else {
                     panic!("expected explicit font");
                 };
                 assert_eq!(font.families().families()[0].as_str(), "Arial");
             }
             CssKnownPropertyValueRef::FontFeatureSettings(value) => {
                 assert!(matches!(
-                    value.settings(),
+                    value.value(),
                     surgeist_css::CssAuthoredFontFeatureSettings::Features(_)
                 ));
             }
@@ -122,7 +123,7 @@ fn font_variant_wrappers_keep_current_global_and_substitution_branches_distinct(
     else {
         panic!("expected font-variant");
     };
-    let CssFontVariantValue::Values(small_caps_values) = small_caps.variant() else {
+    let CssFontVariantValue::Values(small_caps_values) = small_caps.value() else {
         panic!("expected small-caps shorthand value")
     };
     assert_eq!(
@@ -143,7 +144,7 @@ fn font_variant_wrappers_keep_current_global_and_substitution_branches_distinct(
     else {
         panic!("expected font-variant");
     };
-    let CssFontVariantValue::Values(current_values) = current.variant() else {
+    let CssFontVariantValue::Values(current_values) = current.value() else {
         panic!("expected all-small-caps shorthand value")
     };
     assert_eq!(
@@ -452,7 +453,7 @@ fn layered_position_wrappers_keep_current_global_and_substitution_branches_disti
     else {
         panic!("expected background-position value");
     };
-    assert_eq!(value.positions().positions().len(), 2);
+    assert_eq!(value.value().positions().len(), 2);
     assert!(background.global().is_none());
     assert!(background.substitution_dependent().is_none());
 
@@ -462,7 +463,7 @@ fn layered_position_wrappers_keep_current_global_and_substitution_branches_disti
     else {
         panic!("expected mask-position value");
     };
-    assert_eq!(value.positions().positions().len(), 1);
+    assert_eq!(value.value().positions().len(), 1);
     assert!(mask.global().is_none());
     assert!(mask.substitution_dependent().is_none());
 
@@ -498,7 +499,7 @@ fn object_and_transform_origin_wrappers_keep_ordinary_global_and_substitution_br
         panic!("expected object-position value");
     };
     assert!(matches!(
-        value.position().horizontal(),
+        value.value().horizontal(),
         surgeist_css::CssHorizontalPosition::LeftOffset(_)
     ));
     assert!(object.global().is_none());
@@ -513,7 +514,7 @@ fn object_and_transform_origin_wrappers_keep_ordinary_global_and_substitution_br
     else {
         panic!("expected transform-origin value");
     };
-    assert!(value.origin().z().is_some());
+    assert!(value.value().z().is_some());
     assert!(transform.global().is_none());
     assert!(transform.substitution_dependent().is_none());
 
@@ -568,7 +569,7 @@ fn timing_wrappers_expose_exact_property_specific_accessors() {
             CssKnownPropertyValueRef::TransitionDuration(value) => {
                 assert!(
                     ({
-                        let values = value.durations().values();
+                        let values = value.value().values();
                         if values.len() == 1 {
                             values[0].calculation()
                         } else {
@@ -580,14 +581,14 @@ fn timing_wrappers_expose_exact_property_specific_accessors() {
             }
             CssKnownPropertyValueRef::TransitionDelay(value) => {
                 assert!(
-                    matches!({ let values = value.delays().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(t)
+                    matches!({ let values = value.value().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(t)
                     if t.numeric().representation() == "-1" && t.unit() == CssTimeUnit::Seconds)
                 );
             }
             CssKnownPropertyValueRef::AnimationDuration(value) => {
                 assert!(
                     ({
-                        let values = value.durations().values();
+                        let values = value.value().values();
                         if values.len() == 1 {
                             values[0].calculation()
                         } else {
@@ -599,18 +600,18 @@ fn timing_wrappers_expose_exact_property_specific_accessors() {
             }
             CssKnownPropertyValueRef::AnimationDelay(value) => {
                 assert!(
-                    matches!({ let values = value.delays().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(t)
+                    matches!({ let values = value.value().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(t)
                     if t.numeric().representation() == "-4" && t.unit() == CssTimeUnit::Milliseconds)
                 );
             }
             CssKnownPropertyValueRef::AnimationIterationCount(value) => {
                 assert!(matches!(
-                    value.iteration_counts().values(),
+                    value.value().values(),
                     [CssAnimationIterationCount::Number(number)] if number.calculation().is_some()
                 ));
             }
             CssKnownPropertyValueRef::Transition(value) => {
-                let [item] = value.transitions().values() else {
+                let [item] = value.value().values() else {
                     panic!("one transition");
                 };
                 assert!(
@@ -624,7 +625,7 @@ fn timing_wrappers_expose_exact_property_specific_accessors() {
                 );
             }
             CssKnownPropertyValueRef::Animation(value) => {
-                let [item] = value.animations().values() else {
+                let [item] = value.value().values() else {
                     panic!("one animation");
                 };
                 assert!(
@@ -805,7 +806,7 @@ fn timing_function_wrappers_keep_typed_global_and_substitution_branches_distinct
         panic!("expected transition timing wrapper");
     };
     assert!(matches!(
-        value.timing_functions().values(),
+        value.value().values(),
         [CssEasing::CubicBezier(_)]
     ));
 
@@ -818,10 +819,7 @@ fn timing_function_wrappers_keep_typed_global_and_substitution_branches_distinct
     else {
         panic!("expected animation timing wrapper");
     };
-    assert!(matches!(
-        value.timing_functions().values(),
-        [CssEasing::Steps(_)]
-    ));
+    assert!(matches!(value.value().values(), [CssEasing::Steps(_)]));
 
     let global = report.syntax()[2]
         .known()
@@ -987,7 +985,7 @@ fn every_aggregate_color_consumer_retains_typed_color_mix() {
             CssKnownPropertyValueRef::BorderLeft(value) => value.value(),
             _ => panic!("expected border shorthand wrapper"),
         };
-        assert_eq!(border.style(), Some(CssBorderStyle::Solid));
+        assert_eq!(border.style(), Some(CssLineStyle::Solid));
         assert_srgb_mix_with_lab_and_blue(border.color().expect("border color"));
     }
     let border = match report.syntax()[0]

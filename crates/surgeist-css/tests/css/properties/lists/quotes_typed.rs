@@ -99,10 +99,10 @@ fn decoded_keyword_spellings_keep_authored_text_and_serialize_canonically() {
             panic!("decoded quotes keyword")
         };
         assert_eq!(wrapper.as_css(), spelling);
-        assert_eq!(wrapper.quotes(), &expected_value);
+        assert_eq!(wrapper.value(), &expected_value);
         assert_eq!(
             wrapper
-                .quotes()
+                .value()
                 .serialize_specified(Default::default())
                 .unwrap(),
             canonical
@@ -159,7 +159,7 @@ fn string_escaping_is_canonical_and_preserves_decoded_unicode_and_controls() {
     else {
         panic!("parsed quotes")
     };
-    let CssQuotes::Pairs(parsed_pairs) = wrapper.quotes() else {
+    let CssQuotes::Pairs(parsed_pairs) = wrapper.value() else {
         panic!("parsed pair")
     };
     assert_eq!(parsed_pairs.pairs(), &[escaped]);
@@ -175,7 +175,7 @@ fn parsed_and_programmatic_pairs_share_typed_value_and_initial_is_auto() {
     else {
         panic!("parsed quotes wrapper")
     };
-    assert_eq!(wrapper.quotes(), &programmed);
+    assert_eq!(wrapper.value(), &programmed);
     assert_eq!(
         programmed.serialize_specified(Default::default()).unwrap(),
         "\"<\" \">\" \"[\" \"]\""

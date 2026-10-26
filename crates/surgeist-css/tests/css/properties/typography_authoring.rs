@@ -236,7 +236,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
     else {
         panic!("expected authored font-family");
     };
-    let family = value.families();
+    let family = value.value();
     assert_eq!(
         family.families(),
         [
@@ -296,7 +296,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
     else {
         panic!("expected authored font-variant");
     };
-    let CssFontVariantValue::Values(values) = variant.variant() else {
+    let CssFontVariantValue::Values(values) = variant.value() else {
         panic!("expected small-caps subgroup");
     };
     assert_eq!(values.caps(), Some(CssFontVariantCaps::SmallCaps));
@@ -310,7 +310,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
     else {
         panic!("expected authored font-feature-settings");
     };
-    let CssAuthoredFontFeatureSettings::Features(list) = features.settings() else {
+    let CssAuthoredFontFeatureSettings::Features(list) = features.value() else {
         panic!("expected feature list");
     };
     assert_eq!(list.features()[0].tag().as_str(), "kern");
@@ -332,7 +332,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
     else {
         panic!("expected authored font shorthand");
     };
-    let CssFontValue::Explicit(font) = value.font() else {
+    let CssFontValue::Explicit(font) = value.value() else {
         panic!("expected an explicit font");
     };
     assert_eq!(

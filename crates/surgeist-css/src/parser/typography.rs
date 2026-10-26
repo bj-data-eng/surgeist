@@ -759,7 +759,7 @@ fn parse_text_decoration_line_value<'i, 't>(
         return Ok(CssTextDecorationLine::none());
     }
     if let Ok(error) = input.try_parse(super::text_decoration::parse_decoration_error) {
-        return Ok(CssTextDecorationLine::error(error));
+        return Ok(CssTextDecorationLine::error_line(error));
     }
     let mut components = Vec::new();
     parse_group::<4>(

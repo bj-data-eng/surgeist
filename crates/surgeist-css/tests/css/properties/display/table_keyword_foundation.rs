@@ -209,19 +209,19 @@ fn assert_authored_keyword(source: &CssDeclaration, expected: TableKeyword, auth
             TableKeyword::BorderCollapse(expected),
             CssKnownPropertyValueRef::BorderCollapse(value),
         ) => {
-            assert_eq!(value.collapse(), &expected);
+            assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), authored);
         }
         (TableKeyword::CaptionSide(expected), CssKnownPropertyValueRef::CaptionSide(value)) => {
-            assert_eq!(value.side(), &expected);
+            assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), authored);
         }
         (TableKeyword::EmptyCells(expected), CssKnownPropertyValueRef::EmptyCells(value)) => {
-            assert_eq!(value.cells(), &expected);
+            assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), authored);
         }
         (TableKeyword::TableLayout(expected), CssKnownPropertyValueRef::TableLayout(value)) => {
-            assert_eq!(value.layout(), &expected);
+            assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), authored);
         }
         other => panic!("property/value coupling changed: {other:?}"),

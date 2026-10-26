@@ -1,5 +1,7 @@
 //! Checked authored contain-intrinsic sizes before layout and remembered-size resolution.
 
+use crate::common_values::{side_element, side_pair_entry};
+use crate::specified_inverse::InverseValueEquality as _;
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{CssLength, CssNonNegative, CssNumeric, CssSerializationError};
 
@@ -99,57 +101,11 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssContainIntrin
 }
 crate::specified_rule_serialization::specified_serialization!(CssContainIntrinsicSizeValue);
 
-/// The one- or two-value physical contain-intrinsic-size shorthand.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssContainIntrinsicSize {
-    width: CssContainIntrinsicSizeValue,
-    authored_height: Option<CssContainIntrinsicSizeValue>,
-}
-
-impl CssContainIntrinsicSize {
-    /// Retains the authored width and optional height as whole checked values.
-    #[must_use]
-    pub fn new(
-        width: CssContainIntrinsicSizeValue,
-        authored_height: Option<CssContainIntrinsicSizeValue>,
-    ) -> Self {
-        Self {
-            width,
-            authored_height,
-        }
-    }
-
-    /// Borrows the authored first value for width.
-    pub fn width(&self) -> &CssContainIntrinsicSizeValue {
-        &self.width
-    }
-
-    /// Borrows the explicitly authored second value, if any.
-    pub fn authored_height(&self) -> Option<&CssContainIntrinsicSizeValue> {
-        self.authored_height.as_ref()
-    }
-
-    /// Borrows the height assignment, repeating the whole width value if omitted.
-    pub fn height(&self) -> &CssContainIntrinsicSizeValue {
-        self.authored_height.as_ref().unwrap_or(&self.width)
-    }
-}
-impl crate::specified_rule_serialization::SpecifiedProvider for CssContainIntrinsicSize {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        writer.source_member(0, |writer| {
-            self.width
-                .serialize_specified_into(&mut writer.context, &mut writer.css)
-        })?;
-        if let Some(height) = &self.authored_height {
-            writer.source_member(1, |writer| {
-                writer.append(" ")?;
-                height.serialize_specified_into(&mut writer.context, &mut writer.css)
-            })?;
-        }
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(CssContainIntrinsicSize);
+// `contain-intrinsic-size` takes `[ auto? [ none | <length [0,∞]> ] ]{1,2}` and, per Sizing 4,
+// one value applies to both axes: an equal second value is omitted from the specified
+// serialization, while the model keeps whether it was authored.
+side_element!(
+    CssContainIntrinsicSizeValue,
+    same = |a, b, context| a.inverse_equal(b, context)
+);
+side_pair_entry!(CssContainIntrinsicSizeValue);

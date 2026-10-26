@@ -68,8 +68,8 @@ fn authored_color(value: &str) -> CssColor {
     color.value().clone()
 }
 
-fn programmatic_width(number: &str) -> CssBorderWidth {
-    CssBorderWidth::Length(
+fn programmatic_width(number: &str) -> CssLineWidth {
+    CssLineWidth::Length(
         CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension(number, "px").unwrap(),
         )
@@ -385,18 +385,18 @@ fn direct_rule_construction_keeps_exact_width_and_modern_color_without_legacy_pr
     let color = authored_color("color-mix(in srgb, red, green, blue)");
     let rule = CssColumnRule::try_new(
         Some(width.clone()),
-        Some(CssBorderStyle::Dashed),
+        Some(CssLineStyle::Dashed),
         Some(color.clone()),
     )
     .unwrap();
     assert_eq!(rule.width(), Some(&width));
-    assert_eq!(rule.style(), Some(CssBorderStyle::Dashed));
+    assert_eq!(rule.style(), Some(CssLineStyle::Dashed));
     assert_eq!(rule.color(), Some(&color));
     assert!(matches!(
         rule.width().unwrap().origin(),
         Some(CssValueOrigin::Programmatic)
     ));
-    let CssBorderWidth::Length(length) = rule.width().unwrap() else {
+    let CssLineWidth::Length(length) = rule.width().unwrap() else {
         panic!("exact width")
     };
     assert!(matches!(
@@ -414,12 +414,12 @@ fn direct_rule_construction_keeps_exact_width_and_modern_color_without_legacy_pr
     else {
         panic!("typed parsed column rule")
     };
-    assert_eq!(parsed.rule(), &rule);
+    assert_eq!(parsed.value(), &rule);
     assert!(matches!(
-        parsed.rule().width().unwrap().origin(),
+        parsed.value().width().unwrap().origin(),
         Some(CssValueOrigin::Parsed(_))
     ));
-    let CssValueOrigin::Parsed(origin) = parsed.rule().width().unwrap().origin().unwrap() else {
+    let CssValueOrigin::Parsed(origin) = parsed.value().width().unwrap().origin().unwrap() else {
         unreachable!()
     };
     assert_eq!(origin.span().start().byte_offset().value(), 12);
@@ -451,7 +451,7 @@ fn calculated_rule_width_preserves_expression_and_source_origin() {
     else {
         panic!("typed calculated rule")
     };
-    assert_eq!(value.rule().style(), Some(CssBorderStyle::Solid));
+    assert_eq!(value.value().style(), Some(CssLineStyle::Solid));
     let programmatic_calc = CssComponentValue::try_function(
         "calc",
         CssComponentValues::try_new(
@@ -473,15 +473,15 @@ fn calculated_rule_width_preserves_expression_and_source_origin() {
     )
     .unwrap();
     let constructed = CssColumnRule::try_new(
-        Some(CssBorderWidth::Length(
+        Some(CssLineWidth::Length(
             CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(calculation).unwrap(),
         )),
-        Some(CssBorderStyle::Solid),
+        Some(CssLineStyle::Solid),
         None,
     )
     .unwrap();
-    for (rule, parsed_origin) in [(value.rule(), true), (&constructed, false)] {
-        let Some(CssBorderWidth::Length(length)) = rule.width() else {
+    for (rule, parsed_origin) in [(value.value(), true), (&constructed, false)] {
+        let Some(CssLineWidth::Length(length)) = rule.width() else {
             panic!("exact calculated width")
         };
         assert!(
@@ -520,8 +520,8 @@ fn typed_initials_and_shorthand_contributions_are_independent_of_parsed_referenc
         };
         match (name, value.view()) {
             ("column-fill", CssLonghandValueRef::ColumnFill(CssColumnFill::Balance))
-            | ("column-rule-style", CssLonghandValueRef::ColumnRuleStyle(CssBorderStyle::None))
-            | ("column-rule-width", CssLonghandValueRef::ColumnRuleWidth(CssBorderWidth::Medium))
+            | ("column-rule-style", CssLonghandValueRef::ColumnRuleStyle(CssLineStyle::None))
+            | ("column-rule-width", CssLonghandValueRef::ColumnRuleWidth(CssLineWidth::Medium))
             | ("column-span", CssLonghandValueRef::ColumnSpan(CssColumnSpan::None)) => {}
             ("column-rule-color", CssLonghandValueRef::ColumnRuleColor(color))
                 if color.is_current_color() => {}
@@ -536,13 +536,13 @@ fn typed_initials_and_shorthand_contributions_are_independent_of_parsed_referenc
     assert!(matches!(
         width.value(),
         CssContributionValueRef::Ordinary(CssLonghandValueRef::ColumnRuleWidth(
-            CssBorderWidth::Medium
+            CssLineWidth::Medium
         ))
     ));
     assert!(matches!(
         style.value(),
         CssContributionValueRef::Ordinary(CssLonghandValueRef::ColumnRuleStyle(
-            CssBorderStyle::Dashed
+            CssLineStyle::Dashed
         ))
     ));
     assert!(matches!(
@@ -562,15 +562,15 @@ fn column_rule_canonical_output_omits_initials_and_charges_one_cumulative_budget
     };
     assert_eq!(
         reordered
-            .rule()
+            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         "2px solid red"
     );
     let current = authored_color("currentcolor");
     let all_initial = CssColumnRule::try_new(
-        Some(CssBorderWidth::Medium),
-        Some(CssBorderStyle::None),
+        Some(CssLineWidth::Medium),
+        Some(CssLineStyle::None),
         Some(current.clone()),
     )
     .unwrap();
@@ -609,7 +609,7 @@ fn column_rule_canonical_output_omits_initials_and_charges_one_cumulative_budget
     }
     // An authored initial style is the retained member: aggregate and style
     // each cost one input and one projection node, with nothing synthesized.
-    let style_only = CssColumnRule::try_new(None, Some(CssBorderStyle::None), None).unwrap();
+    let style_only = CssColumnRule::try_new(None, Some(CssLineStyle::None), None).unwrap();
     assert_eq!(
         style_only.serialize_specified(Default::default()).unwrap(),
         "none"
@@ -628,7 +628,7 @@ fn column_rule_canonical_output_omits_initials_and_charges_one_cumulative_budget
     );
     // Without an authored style the `none` token is synthesized: it charges
     // one projection node and no input node.
-    let synthetic = CssColumnRule::try_new(Some(CssBorderWidth::Medium), None, None).unwrap();
+    let synthetic = CssColumnRule::try_new(Some(CssLineWidth::Medium), None, None).unwrap();
     assert_eq!(
         synthetic.serialize_specified(Default::default()).unwrap(),
         "none"
@@ -660,7 +660,7 @@ fn column_rule_canonical_output_omits_initials_and_charges_one_cumulative_budget
     }
     let rule = CssColumnRule::try_new(
         Some(programmatic_width("2")),
-        Some(CssBorderStyle::None),
+        Some(CssLineStyle::None),
         Some(authored_color("red")),
     )
     .unwrap();
@@ -740,9 +740,9 @@ fn nested_math_and_modern_color_share_the_rule_budget() {
         panic!("calculated exact width")
     };
     let color = authored_color("color-mix(in srgb, red, green, blue)");
-    let width_only = CssColumnRule::try_new(Some(width.width().clone()), None, None).unwrap();
+    let width_only = CssColumnRule::try_new(Some(width.value().clone()), None, None).unwrap();
     let color_only = CssColumnRule::try_new(None, None, Some(color.clone())).unwrap();
-    let combined = CssColumnRule::try_new(Some(width.width().clone()), None, Some(color)).unwrap();
+    let combined = CssColumnRule::try_new(Some(width.value().clone()), None, Some(color)).unwrap();
     let minimum_nodes = |rule: &CssColumnRule, input: bool| {
         (1..=256)
             .find(|count| {

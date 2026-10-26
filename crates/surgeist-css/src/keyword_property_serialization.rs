@@ -167,8 +167,8 @@ enum_keywords!(CssResize,
 enum_keywords!(CssIsolation, Auto => "auto", Isolate => "isolate");
 enum_keywords!(CssTransformStyle, Flat => "flat", Preserve3d => "preserve-3d");
 enum_keywords!(CssBackfaceVisibility, Visible => "visible", Hidden => "hidden");
-keyword_provider!(CssTransformBox, value => value.edge().as_css_str());
-keyword_provider!(CssBlendMode, value => value.as_css_str());
+keyword_provider!(CssTransformBox, value => value.edge().as_str());
+keyword_provider!(CssBlendMode, value => value.as_str());
 
 #[cfg(test)]
 mod tests {

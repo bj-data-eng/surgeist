@@ -30,7 +30,7 @@ fn parsed(value: &str) -> (CssDeclaration, CssImageOrientation) {
     else {
         panic!("typed orientation")
     };
-    (declaration.clone(), value.orientation().clone())
+    (declaration.clone(), value.value().clone())
 }
 
 fn child(value: &CssImageOrientation) -> &CssNumeric<CssAngle> {
@@ -168,7 +168,7 @@ fn checked_property_and_grammar_reentry_preserve_supplied_angle_origins_during_s
         else {
             panic!("typed orientation")
         };
-        let value = value.orientation();
+        let value = value.value();
         assert_parsed_origin(child(value).origin(), source, "-0.25turn");
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),

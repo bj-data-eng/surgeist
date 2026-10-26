@@ -1071,7 +1071,7 @@ pub fn parse_font_face_descriptor_value(
                 crate::error::with_descriptor_context(
                     error.into(),
                     "font-face",
-                    descriptor.css_name(),
+                    descriptor.as_str(),
                 )
             })?;
             state.retain_component_closures(openings);
@@ -1109,7 +1109,7 @@ pub fn parse_page_descriptor_value(
     source: &str,
     kind: crate::CssPageDescriptorKind,
 ) -> crate::CssParseReport<Option<crate::CssPageDescriptorValue>> {
-    descriptor_value_fragment(source, Some(("page", kind.css_name())), |input, state| {
+    descriptor_value_fragment(source, Some(("page", kind.as_str())), |input, state| {
         let (value, components, origin) =
             collect_declaration_value(input, state.source_snapshot(), |input| {
                 page::parse_descriptor_value(input, kind, state.source_snapshot())
@@ -1206,7 +1206,7 @@ pub fn parse_counter_style_descriptor_value(
 ) -> crate::CssParseReport<Option<crate::CssCounterStyleDescriptorValue>> {
     descriptor_value_fragment(
         source,
-        Some(("counter-style", descriptor.css_name())),
+        Some(("counter-style", descriptor.as_str())),
         |input, state| {
             let (value, components, origin) =
                 collect_declaration_value(input, state.source_snapshot(), |input| {
@@ -1310,7 +1310,7 @@ pub fn parse_font_palette_descriptor_value(
             crate::error::with_descriptor_value_context(
                 error,
                 "font-palette-values",
-                descriptor.css_name(),
+                descriptor.as_str(),
             )
         });
         let (syntax, diagnostics) = match result {
@@ -1343,11 +1343,7 @@ pub fn parse_color_profile_descriptor_value(
             Ok(value)
         })()
         .map_err(|error| {
-            crate::error::with_descriptor_value_context(
-                error,
-                "color-profile",
-                descriptor.css_name(),
-            )
+            crate::error::with_descriptor_value_context(error, "color-profile", descriptor.as_str())
         });
         let (syntax, diagnostics) = match result {
             Ok(value) => (Some(value), state.take_implicit_closure_diagnostics(source)),

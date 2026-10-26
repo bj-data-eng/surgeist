@@ -1,9 +1,11 @@
 //! Exact authored border widths and the physical border triples that contain them.
 
+use crate::common_values::{four_sides_entry, side_element, side_pair_entry};
+use crate::specified_inverse::InverseValueEquality as _;
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssBorderStyle, CssBoxSideKind, CssColor, CssLength, CssNonNegative, CssNumeric,
-    CssSerializationError, CssValueOrigin,
+    CssColor, CssLength, CssLineStyle, CssNonNegative, CssNumeric, CssSerializationError,
+    CssValueOrigin,
 };
 
 type Result<T> = std::result::Result<T, CssSerializationError>;
@@ -11,14 +13,14 @@ type Result<T> = std::result::Result<T, CssSerializationError>;
 /// One exact authored `<line-width>` before border-style-dependent used-value rules.
 #[non_exhaustive]
 #[derive(Clone, Debug)]
-pub enum CssBorderWidth {
+pub enum CssLineWidth {
     Thin,
     Medium,
     Thick,
     Length(CssNumeric<CssLength, CssNonNegative>),
 }
 
-impl CssBorderWidth {
+impl CssLineWidth {
     pub fn length(&self) -> Option<&CssNumeric<CssLength, CssNonNegative>> {
         match self {
             Self::Length(value) => Some(value),
@@ -45,7 +47,7 @@ impl CssBorderWidth {
         }
     }
 }
-impl crate::specified_rule_serialization::SpecifiedProvider for CssBorderWidth {
+impl crate::specified_rule_serialization::SpecifiedProvider for CssLineWidth {
     fn append_to_rule_writer(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
@@ -53,8 +55,8 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssBorderWidth {
         self.append_specified(&mut writer.context, &mut writer.css)
     }
 }
-crate::specified_rule_serialization::specified_serialization!(CssBorderWidth);
-impl PartialEq for CssBorderWidth {
+crate::specified_rule_serialization::specified_serialization!(CssLineWidth);
+impl PartialEq for CssLineWidth {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Thin, Self::Thin)
@@ -65,115 +67,14 @@ impl PartialEq for CssBorderWidth {
         }
     }
 }
-impl Eq for CssBorderWidth {}
+impl Eq for CssLineWidth {}
 
-/// One or two authored widths for a flow-relative axis.
-///
-/// Specified serialization charges one aggregate node plus each authored
-/// width, sharing input, projection, and byte limits across the entire pair.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssBorderWidthPair {
-    start: CssBorderWidth,
-    authored_end: Option<CssBorderWidth>,
-}
-impl CssBorderWidthPair {
-    #[must_use]
-    pub fn new(start: CssBorderWidth, authored_end: Option<CssBorderWidth>) -> Self {
-        Self {
-            start,
-            authored_end,
-        }
-    }
-    pub fn start(&self) -> &CssBorderWidth {
-        &self.start
-    }
-    pub fn authored_end(&self) -> Option<&CssBorderWidth> {
-        self.authored_end.as_ref()
-    }
-    pub fn end(&self) -> &CssBorderWidth {
-        self.authored_end.as_ref().unwrap_or(&self.start)
-    }
-}
-impl crate::specified_rule_serialization::SpecifiedProvider for CssBorderWidthPair {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> Result<()> {
-        let context = &mut writer.context;
-        context.charge_nodes(1)?;
-        writer.source_member(0, |writer| {
-            self.start
-                .append_specified(&mut writer.context, &mut writer.css)
-        })?;
-        if let Some(end) = &self.authored_end {
-            writer.source_member(1, |writer| {
-                writer.append(" ")?;
-                end.append_specified(&mut writer.context, &mut writer.css)
-            })?;
-        }
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(CssBorderWidthPair);
-
-/// One to four authored physical or flow-relative border widths.
-///
-/// `assigned_values()` returns top/right/bottom/left roles in physical mode,
-/// or block-start/inline-start/block-end/inline-end roles in logical mode.
-/// Specified serialization charges one aggregate node plus each authored
-/// width under one cumulative input, projection, and byte budget.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssBorderWidthShorthand {
-    kind: CssBoxSideKind,
-    authored_values: Box<[CssBorderWidth]>,
-}
-impl CssBorderWidthShorthand {
-    #[must_use]
-    pub fn try_new(kind: CssBoxSideKind, values: Vec<CssBorderWidth>) -> Option<Self> {
-        (1..=4).contains(&values.len()).then(|| Self {
-            kind,
-            authored_values: values.into_boxed_slice(),
-        })
-    }
-    pub fn kind(&self) -> CssBoxSideKind {
-        self.kind
-    }
-    pub fn authored_values(&self) -> &[CssBorderWidth] {
-        &self.authored_values
-    }
-    pub fn assigned_values(&self) -> [&CssBorderWidth; 4] {
-        let v = &self.authored_values;
-        match v.len() {
-            1 => [&v[0], &v[0], &v[0], &v[0]],
-            2 => [&v[0], &v[1], &v[0], &v[1]],
-            3 => [&v[0], &v[1], &v[2], &v[1]],
-            4 => [&v[0], &v[1], &v[2], &v[3]],
-            _ => unreachable!("checked arity"),
-        }
-    }
-}
-impl crate::specified_rule_serialization::SpecifiedProvider for CssBorderWidthShorthand {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> Result<()> {
-        let context = &mut writer.context;
-        context.charge_nodes(1)?;
-        if self.kind == CssBoxSideKind::Logical {
-            writer.source_member(0, |writer| writer.append("logical "))?;
-        }
-        for (index, width) in self.authored_values.iter().enumerate() {
-            writer.source_member(index, |writer| {
-                if index > 0 {
-                    writer.append(" ")?;
-                }
-                width.append_specified(&mut writer.context, &mut writer.css)
-            })?;
-        }
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(CssBorderWidthShorthand);
+side_element!(
+    CssLineWidth,
+    same = |a, b, context| a.inverse_equal(b, context)
+);
+four_sides_entry!(CssLineWidth);
+side_pair_entry!(CssLineWidth);
 
 /// Checked authored components of `border` or one physical side border.
 ///
@@ -181,15 +82,15 @@ crate::specified_rule_serialization::specified_serialization!(CssBorderWidthShor
 /// width, style, and color under one cumulative resource budget.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBorder {
-    width: Option<CssBorderWidth>,
-    style: Option<CssBorderStyle>,
+    width: Option<CssLineWidth>,
+    style: Option<CssLineStyle>,
     color: Option<CssColor>,
 }
 impl CssBorder {
     #[must_use]
     pub fn try_new(
-        width: Option<CssBorderWidth>,
-        style: Option<CssBorderStyle>,
+        width: Option<CssLineWidth>,
+        style: Option<CssLineStyle>,
         color: Option<CssColor>,
     ) -> Option<Self> {
         (width.is_some() || style.is_some() || color.is_some()).then_some(Self {
@@ -198,10 +99,10 @@ impl CssBorder {
             color,
         })
     }
-    pub const fn width(&self) -> Option<&CssBorderWidth> {
+    pub const fn width(&self) -> Option<&CssLineWidth> {
         self.width.as_ref()
     }
-    pub const fn style(&self) -> Option<CssBorderStyle> {
+    pub const fn style(&self) -> Option<CssLineStyle> {
         self.style
     }
     /// Borrows the authored color without resolving it.
@@ -248,8 +149,8 @@ mod cumulative_bridge_contract {
     use crate::specified_rule_serialization::SpecifiedProvider as _;
     use crate::specified_rule_serialization::SpecifiedRuleWriter;
     use crate::{
-        CssComponentValue, CssSerializationLimits as Limits,
-        CssSpecifiedValueSerializationErrorKind as Kind,
+        CssBoxSideKind, CssComponentValue, CssFourSides, CssSerializationLimits as Limits,
+        CssSidePair, CssSpecifiedValueSerializationErrorKind as Kind,
     };
 
     fn composition(
@@ -291,7 +192,7 @@ mod cumulative_bridge_contract {
     fn border_separators_depend_on_this_border_components() {
         for (value, expected, nodes) in [
             (
-                CssBorder::try_new(None, Some(CssBorderStyle::Solid), None).unwrap(),
+                CssBorder::try_new(None, Some(CssLineStyle::Solid), None).unwrap(),
                 "solid",
                 2,
             ),
@@ -303,7 +204,7 @@ mod cumulative_bridge_contract {
             (
                 CssBorder::try_new(
                     None,
-                    Some(CssBorderStyle::Solid),
+                    Some(CssLineStyle::Solid),
                     Some(CssColor::current_color()),
                 )
                 .unwrap(),
@@ -312,8 +213,8 @@ mod cumulative_bridge_contract {
             ),
             (
                 CssBorder::try_new(
-                    Some(CssBorderWidth::Thin),
-                    Some(CssBorderStyle::Solid),
+                    Some(CssLineWidth::Thin),
+                    Some(CssLineStyle::Solid),
                     Some(CssColor::current_color()),
                 )
                 .unwrap(),
@@ -333,17 +234,24 @@ mod cumulative_bridge_contract {
 
     #[test]
     fn width_pairs_and_shorthands_keep_authored_slots() {
-        let pair = CssBorderWidthPair::new(CssBorderWidth::Thin, Some(CssBorderWidth::Thin));
+        let pair = CssSidePair::new(CssLineWidth::Thin, Some(CssLineWidth::Thick));
         assert_eq!(
             pair.serialize_specified(Default::default()).unwrap(),
-            "thin thin"
+            "thin thick"
         );
-        composition("thin thin", 3, |writer| pair.append_to_rule_writer(writer));
-        let single = CssBorderWidthPair::new(CssBorderWidth::Medium, None);
+        composition("thin thick", 3, |writer| pair.append_to_rule_writer(writer));
+        // An equal second value is charged but not written.
+        let equal = CssSidePair::new(CssLineWidth::Thin, Some(CssLineWidth::Thin));
+        assert_eq!(
+            equal.serialize_specified(Default::default()).unwrap(),
+            "thin"
+        );
+        composition("thin", 3, |writer| equal.append_to_rule_writer(writer));
+        let single = CssSidePair::new(CssLineWidth::Medium, None);
         composition("medium", 2, |writer| single.append_to_rule_writer(writer));
-        let quad = CssBorderWidthShorthand::try_new(
+        let quad = CssFourSides::try_new(
             CssBoxSideKind::Logical,
-            vec![CssBorderWidth::Thin, CssBorderWidth::Thick],
+            vec![CssLineWidth::Thin, CssLineWidth::Thick],
         )
         .unwrap();
         assert_eq!(
@@ -361,7 +269,7 @@ mod cumulative_bridge_contract {
             CssComponentValue::try_dimension("1e50", "px").unwrap(),
         )
         .unwrap();
-        let value = CssBorderWidthPair::new(CssBorderWidth::Length(width), None);
+        let value = CssSidePair::new(CssLineWidth::Length(width), None);
         let before = value.clone();
         let mut writer = SpecifiedRuleWriter::new(Limits::new(2, 2, 1));
         writer.append("x").unwrap();
@@ -371,7 +279,7 @@ mod cumulative_bridge_contract {
         assert_eq!(writer.css, "x");
         assert_eq!(value, before);
         assert!(matches!(
-            value.start().origin(),
+            value.first().origin(),
             Some(CssValueOrigin::Programmatic)
         ));
         assert_eq!(
@@ -382,7 +290,7 @@ mod cumulative_bridge_contract {
 
     #[test]
     fn suppressed_child_failure_restores_nested_output_mode() {
-        let value = CssBorderWidthPair::new(CssBorderWidth::Thin, Some(CssBorderWidth::Thick));
+        let value = CssSidePair::new(CssLineWidth::Thin, Some(CssLineWidth::Thick));
         let mut writer = SpecifiedRuleWriter::new(Limits::new(2, 100, 1));
         let error = writer
             .without_output(|writer| {

@@ -26,7 +26,7 @@ fn image_css(function: &str, method: &str, colors: &str) -> String {
     else {
         panic!("background image")
     };
-    let [image] = images.images().images() else {
+    let [image] = images.value().images() else {
         panic!("one gradient")
     };
     image.serialize_specified(Default::default()).unwrap()
@@ -56,7 +56,7 @@ fn explicit_oklab_with_legacy_colors_survives_image_and_declaration_serializatio
             else {
                 panic!("background image")
             };
-            let [image] = images.images().images() else {
+            let [image] = images.value().images() else {
                 panic!("one gradient")
             };
             let specified = image.serialize_specified(Default::default()).unwrap();

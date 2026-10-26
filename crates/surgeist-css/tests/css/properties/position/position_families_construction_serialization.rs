@@ -286,17 +286,19 @@ fn restriction_lifting_and_restricted_consumers_keep_one_physical_payload() {
     assert_eq!(view.horizontal(), physical.horizontal());
     assert_eq!(view.vertical(), physical.vertical());
     let layer =
-        CssMaskLayer::try_new(None, Some(physical.clone()), None, None, None, None, None).unwrap();
-    assert_eq!(layer.position(), Some(&physical));
-    let list = CssPhysicalPositionList::try_new(vec![physical.clone()]).unwrap();
-    assert_eq!(list.positions(), std::slice::from_ref(&physical));
-    assert!(CssPhysicalPositionList::try_new(Vec::new()).is_none());
+        CssMaskLayer::try_new(None, Some(lifted.clone()), None, None, None, None, None).unwrap();
+    assert_eq!(layer.position(), Some(&lifted));
+    let list = CssPositionList::try_new(vec![lifted.clone()]).unwrap();
+    assert_eq!(list.positions(), std::slice::from_ref(&lifted));
+    assert!(CssPositionList::try_new(Vec::new()).is_none());
     budget("right bottom", 4, 4, |limits| {
         list.serialize_specified(limits)
     });
-    let layers = CssPhysicalPositionList::try_new(vec![
-        physical.clone(),
-        CssPhysicalPosition::try_new(H::Left, V::Top).unwrap(),
+    let layers = CssPositionList::try_new(vec![
+        lifted.clone(),
+        CssPhysicalPosition::try_new(H::Left, V::Top)
+            .unwrap()
+            .into(),
     ])
     .unwrap();
     budget("right bottom, left top", 7, 7, |limits| {
@@ -669,7 +671,7 @@ fn mixed_math_offsets_keep_family_order_and_original_numeric_provenance() {
 }
 
 #[test]
-fn physical_consumers_reject_logical_families_while_gradients_import_full_position() {
+fn physical_consumers_reject_logical_families_while_full_position_consumers_accept_them() {
     for position in [
         "x-start y-end",
         "block-start inline-end",
@@ -678,10 +680,22 @@ fn physical_consumers_reject_logical_families_while_gradients_import_full_positi
         "block-start 1px inline-end 2%",
         "start 1px end 2%",
     ] {
+        // Values 5 `<position>` consumers (#1379): flow-relative keywords stay unresolved.
         for declaration in [
             format!("object-position:{position}"),
+            format!("perspective-origin:{position}"),
             format!("mask-position:{position}"),
             format!("mask:url(mask.png) {position}"),
+        ] {
+            let source = format!("{declaration};color:blue");
+            let report = parse_style_attribute(&source);
+            assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+            assert_eq!(report.syntax().len(), 2, "{source}");
+            assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
+        }
+        // `background-position` stays physical until csswg-drafts#9690 settles its longhands;
+        // `transform-origin` keeps its older physical grammar.
+        for declaration in [
             format!("background-position:{position}"),
             format!("background:url(bg.png) {position}"),
             format!("transform-origin:{position}"),

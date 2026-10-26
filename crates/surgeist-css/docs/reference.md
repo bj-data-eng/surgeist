@@ -1351,7 +1351,7 @@ feature IDs retain their original identities.
 
 The selected [Grid3 publication](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#placement-tolerance)
 defines `flow-tolerance: normal | <length-percentage> | infinite`, with no
-nonnegative restriction. `CssFlowTolerancePropertyValue::value()` exposes its
+nonnegative restriction. `CssPropertyValue<CssFlowTolerance>::value()` exposes its
 checked `CssFlowTolerance`; `as_ref()` returns `Normal`, `Infinite`, or a borrowed
 `LengthPercentage`. Construct the symbolic keywords with `normal()` and
 `infinite()`, or use `length_percentage(CssSpecifiedLengthPercentage)` for checked numeric values.
@@ -1558,10 +1558,10 @@ expand to one typed longhand each. `border-collapse` accepts `collapse | separat
 `auto | fixed` (initial `auto`). The first four inherit by default; `table-layout`
 does not. The four keyword enums serialize canonically with bounded specified-value
 limits. Checked `CssSpecifiedNonNegativeLength` serializes one axis; the checked
-`CssBorderSpacing` serializes the full effective horizontal-then-vertical pair
-under one cumulative budget, repeating a single authored length without resolving
-relative units or typed math. This specified projection does not select CSSOM's
-minimal one-value spelling. The [selected Logical 1 caption-side definition](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#caption-side)
+`CssSidePair<CssNumeric<CssLength, CssNonNegative>>` retains whether the vertical length was
+authored and serializes the horizontal-then-vertical pair under one cumulative budget, without
+resolving relative units or typed math. Equal lengths are written once, which is CSSOM's
+minimal one-value spelling ("serialize a CSS value" step 2). The [selected Logical 1 caption-side definition](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#caption-side)
 adds `inline-start | inline-end` only with `left | right` support, which this profile has not
 selected. Caption positioning relative to writing mode remains for downstream
 style and layout interpretation; CSS retains the authored `top | bottom` value.
@@ -1670,7 +1670,7 @@ The existing `None` and `All` variants retain their meaning.
 
 Visibility uses the existing `CssVisibility::{Visible, Hidden, Collapse}` values.
 It is inherited by default and its ordinary initial value is `Visible`.
-`CssVisibilityPropertyValue::value()` exposes that typed value while `as_css()`
+`CssPropertyValue<CssVisibility>::value()` exposes that typed value while `as_css()`
 retains authored spelling. Its intrinsic
 expansion emits one longhand contribution; globals and unresolved substitutions
 keep their separate states. Expansion does not resolve inheritance or apply
@@ -1686,7 +1686,7 @@ remain downstream.
 `content-visibility` follows the pinned
 [Containment 2 §4](https://www.w3.org/TR/2022/WD-css-contain-2-20220917/#content-visibility)
 authored grammar: exactly `visible`, `auto`, or `hidden`. It is a non-inherited
-longhand with intrinsic initial `visible`. `CssContentVisibilityPropertyValue`
+longhand with intrinsic initial `visible`. `CssPropertyValue<CssContentVisibility>`
 retains authored spelling through `as_css()` and exposes the checked enum through
 `value()`.
 Ordinary declarations expand to one terminal contribution. CSS-wide keywords
@@ -1708,7 +1708,7 @@ unique `size`, `layout`, `style`, and `paint` components. This dated pin exclude
 uniqueness while retaining authored component order; specified output emits
 components in `size layout style paint` order. `strict` and `content` preserve
 their authored keyword identity rather than emitting computed component aliases.
-`CssContainPropertyValue::containment()` exposes the typed value, and `as_css()`
+`CssPropertyValue<CssContain>::containment()` exposes the typed value, and `as_css()`
 retains authored spelling.
 
 Contain is a noninherited longhand with intrinsic initial `CssContain::None` and
@@ -1780,7 +1780,7 @@ values. Duplicate categories and combinations such as `list-item flex` or
 and produces one contribution. Generic CSS-wide and pending `var()` values use
 the same expansion and strict grammar-reentry boundary.
 
-`CssDisplayPropertyValue::value()` exposes the complete specified model;
+`CssPropertyValue<CssDisplayValue>::value()` exposes the complete specified model;
 `as_css()` retains the authored spelling.
 For example, `block flex` has the same specified value as `flex`, while
 `inline flex` stays distinct from legacy `inline-flex`. CSS Display3 §2.6
@@ -1997,7 +1997,7 @@ is a name alias of the same property and accepts the same values; parsed
 declarations retain the original spelling and source coordinates. The selected
 support record cites the [14 August 2026 CSS Text 3 draft](https://www.w3.org/TR/2026/CRD-css-text-3-20260814/#propdef-overflow-wrap).
 
-`CssOverflowWrapPropertyValue::value()` exposes the exact checked keyword;
+`CssPropertyValue<CssOverflowWrap>::value()` exposes the exact checked keyword;
 Intrinsic
 expansion emits one `OverflowWrap` contribution, preserving importance and source
 occurrence. CSS-wide values remain symbolic, and substitution-dependent values
@@ -2018,10 +2018,10 @@ symbolic percentages and math retain their authored meaning for later contextual
 resolution. Both longhands start at `normal` and are not inherited.
 
 [Alignment 3 §8.2](https://www.w3.org/TR/2026/WD-css-align-3-20260130/#gap-shorthand)
-defines `gap` as one row value and an optional column value. `CssGapShorthand`
-preserves that authored arity: `row()` returns the first value,
-`authored_column()` reports whether a second was supplied, and `column()`
-returns the effective second value, repeating the row value when omitted.
+defines `gap` as one row value and an optional column value. `CssSidePair<CssGapValue>`
+preserves that authored arity: `first()` returns the row value,
+`authored_second()` reports whether a second was supplied, and `second()`
+returns the effective column value, repeating the row value when omitted.
 Intrinsic expansion emits `row-gap` then `column-gap`, with no reset-only
 members. CSS-wide keywords apply to both; a substitution-dependent value
 stays pending until strict reentry checks the same grammar and emits complete
@@ -2036,8 +2036,8 @@ original spelling and source origin. The value serializers are bounded and
 preserve one- versus two-value specified form; they do not serialize an entire
 stylesheet or resolve used gaps in grid, flex, or multicolumn layout.
 
-`CssGapPropertyValue::value()` exposes `CssGapShorthand`; the row and column
-wrappers expose `CssGapValue`. Their checked scalar branches retain exact
+The `gap` value is a `CssSidePair<CssGapValue>`; the `row-gap` and `column-gap` values are
+`CssGapValue`s. Their checked scalar branches retain exact
 literal components and symbolic calculations.
 
 ## Immutable stylesheet normalization
@@ -2455,16 +2455,16 @@ a named edge.
 
 The property grammars and accessors are deliberately distinct:
 
-- `CssObjectPositionPropertyValue::position()` exposes one `CssPhysicalPosition`.
-- `CssMaskPositionPropertyValue::positions()` exposes a nonempty `CssPhysicalPositionList`.
-- `CssMaskPropertyValue::value()` exposes typed mask shorthand layers; each
-  layer exposes its optional physical position through `CssMaskLayer::position()`.
-- `CssBackgroundPositionPropertyValue::positions()` exposes a distinct
-  nonempty layer list that additionally admits the background-only
-  three-component form.
-- `CssTransformOriginPropertyValue::origin()` exposes explicit horizontal and
-  vertical axes plus an optional `CssSpecifiedLength`; the z component is a
-  checked authored length and cannot contain a percentage.
+- The `object-position` and `perspective-origin` values are one `CssPosition`, read through
+  `CssPropertyValue::value()`.
+- The `mask-position` value is a nonempty `CssPositionList` of `CssPosition`s.
+- The `mask` value is a `CssMaskList` of typed layers; each layer exposes its optional
+  `CssPosition` through `CssMaskLayer::position()`.
+- The `background-position` value is a distinct nonempty `CssBackgroundPositionList`
+  that additionally admits the background-only three-component form.
+- The `transform-origin` value is a `CssTransformOrigin`: explicit physical horizontal and
+  vertical axes plus an optional z component, a checked authored length that cannot
+  contain a percentage.
 
 `background-position` keeps the physical grammar
 ([#1379](https://github.com/bj-data-eng/surgeist/issues/1379)). Its Backgrounds 4
@@ -2477,11 +2477,11 @@ in [SOURCE-EDITIONS.md](../../../references/SOURCE-EDITIONS.md#importer-selected
 and revisited when #9690 resolves.
 
 `mask-position`, `object-position`, `perspective-origin` and the `mask`
-shorthand's layer position are decided to accept the shared Values 5
-`<position>` already used by `offset-position`, with flow-relative keywords left
-unresolved. Their current accessors expose `CssPhysicalPosition` and
-`CssPhysicalPositionList`, which cannot represent flow-relative keywords, so
-these consumers still reject them until that public accessor change lands.
+shorthand's layer position accept the shared Values 5 `<position>` already used by
+`offset-position`, with flow-relative keywords left unresolved
+([#1379](https://github.com/bj-data-eng/surgeist/issues/1379)). They hold `CssPosition` and
+`CssPositionList`, which keep the Cartesian, named-flow and relative-flow families apart.
+`transform-origin` keeps its physical grammar through `CssPhysicalPosition`.
 
 `background-position` expands to one noninherited longhand whose intrinsic initial
 is a single `0% 0%` layer. Ordinary contributions preserve the entire ordered
@@ -3147,7 +3147,7 @@ components, including inside pending values, before serialized repair can hide t
 `shape-outside.value()` exposes `CssShapeOutside`: `None`, a standalone
 `ShapeBox(CssShapeBox)`, `BasicShape(CssShapeOutsideShape)`, or `Image(CssImage)`.
 `CssShapeBox` admits only content-box, padding-box, border-box and margin-box;
-`from_keyword()` checks a decoded keyword, and `as_css_str()` emits its canonical
+`from_keyword()` checks a decoded keyword, and `as_str()` emits its canonical
 spelling. It imports the direct Box 4 visual-box production plus margin-box.
 The broader SVG boxes used by clipping are excluded from this Shapes boundary.
 The image branch uses the shared Images 3/selected Images 4 provider, including URL, gradients
@@ -3219,7 +3219,7 @@ rounding length and a nonempty ordered point list. The fill rule must precede
 specified rounding lengths remain authored values. Used rounding geometry and
 its clamp require downstream shape context.
 
-`CssRectShape` stores four independent `CssRectShapeEdge` values in
+`CssRectShape` stores four independent `CssAutoOr<CssNumeric<CssLengthPercentage>>` values in
 top/right/bottom/left order. Each is `Auto` or a checked signed
 length-percentage. Its constructor composes those edges and optional
 `CssBorderRadiusShorthand`; `top()`, `right()`, `bottom()`, `left()` and `round()`
@@ -3391,21 +3391,21 @@ assert_eq!(clip.serialize_specified_with_limits(limits).unwrap(), expected);
 
 ```rust
 use surgeist_css::{
-    CssComponentValue, CssRectShape, CssRectShapeEdge,
+    CssComponentValue, CssRectShape, 
     CssSpecifiedLengthPercentage, CssSerializationLimits,
 };
 
-fn edge(css: &str) -> CssRectShapeEdge {
+fn edge(css: &str) -> CssAutoOr<CssNumeric<CssLengthPercentage>> {
     let value = CssSpecifiedLengthPercentage::try_from_component(
         CssComponentValue::try_token(css).unwrap(),
     ).unwrap();
-    CssRectShapeEdge::LengthPercentage(value)
+    CssAutoOr::Value(value)
 }
 
 let rect = CssRectShape::new(
-    CssRectShapeEdge::Auto, edge("1px"), edge("2%"), edge("0"), None,
+    CssAutoOr::Auto, edge("1px"), edge("2%"), edge("0"), None,
 );
-assert_eq!(rect.top(), &CssRectShapeEdge::Auto);
+assert_eq!(rect.top(), &CssAutoOr::Auto);
 assert!(rect.round().is_none());
 let expected = "rect(auto 1px 2% 0)";
 let limits = CssSerializationLimits::new(5, 5, expected.len());
@@ -3636,8 +3636,8 @@ must still fit before composition. Authored token kinds, coefficients and
 provenance remain unchanged.
 
 `border-color` accepts one to four colors and an optional leading `logical`
-marker. `CssBorderColorShorthand` retains authored arity and role mode;
-`assigned_values()` applies shorthand repetition. Logical axis pairs retain
+marker. `CssFourSides<CssColor>` retains authored arity and role mode;
+`assigned()` applies shorthand repetition. Logical axis pairs retain
 optional end values independently. Expansion follows the
 [mode-selected membership policy](#four-side-shorthand-membership).
 
@@ -4109,7 +4109,7 @@ repeats and auto-fit are not subgrid name-repeat alternatives. `count()`,
 `row dense`, `column`, and `column dense`. The axis and `dense` keywords may be
 authored in either order; `CssGridAutoFlow::serialize_specified()` emits
 the canonical order. `normal` and bare `dense` leave direction unspecified, and
-the `CssGridAutoFlowPropertyValue::value()` accessor preserves that difference.
+the `CssPropertyValue<CssGridAutoFlow>::value()` accessor preserves that difference.
 The `ExplicitAxis` branch contains a `CssGridAutoFlowMode`, the explicit axis
 and dense selection. The intrinsic
 initial is `normal`, and the longhand is not inherited. CSS-wide values,
@@ -4542,8 +4542,8 @@ string component's origin and exposes both decoded text and the authored
 fallback. Its constructors reject empty and multiple-cluster strings.
 `CssTextAlignValue`, `CssTextAlignAllValue`, and `CssTextAlignLastValue` expose
 the three distinct grammars and bounded canonical specified-value
-serialization. `CssTextAlignPropertyValue::value()` and
-`CssTextAlignLastPropertyValue::value()` provide these checked semantic values.
+serialization. `CssPropertyValue<CssTextAlignValue>::value()` and
+`CssPropertyValue<CssTextAlignLastValue>::value()` provide these checked semantic values.
 `text-align-all` likewise exposes its checked value through `value()`.
 Character search, font selection,
 directional resolution, and line layout remain downstream concerns.
@@ -4555,7 +4555,7 @@ and the seven variant longhands. `font-family`, explicit-font family lists, the
 September 7, 2026 Fonts 4 grammar. Other typography records retain their
 individual dated sources.
 
-`CssFontFamilyPropertyValue::families()` and `CssFontPropertyValue::font()` expose
+`CssPropertyValue<CssFontFamilyList>::families()` and `CssPropertyValue<CssFontValue>::font()` expose
 `CssFontFamilyList` and `CssFontValue`, with exact authored text available through
 `as_css()`. Each font wrapper retains one checked semantic value; explicit
 shorthand components belong to `CssExplicitFont`.
@@ -4633,7 +4633,7 @@ and `CssFontVariantValue` now own optional name collections, so they implement
 `Clone` rather than `Copy`; callers needing another owned value must clone it.
 `CssFontVariantValues::try_new` is no longer `const`, and its `caps()` and
 `position()` getters now borrow `&self` while still returning the same copied
-enum choices. Migrate `CssFontVariantPropertyValue::i01_subset()` consumers to
+enum choices. Migrate `CssPropertyValue<CssFontVariantValue>::i01_subset()` consumers to
 `variant()` and inspect the `Normal`, `None`, or checked `Values` branch directly.
 
 ```rust
@@ -4660,7 +4660,7 @@ number calculation, with its original parsed or programmatic origin;
 `try_from_component` and `try_from_calculation` check the literal bounds and
 numeric domain. Symbolic math remains unresolved. Its `literal_component()`,
 `calculation()`, `origin()` and bounded `serialize_specified()` methods replace
-the old integer `value()` projection. `CssFontWeightPropertyValue::value()`
+the old integer `value()` projection. `CssPropertyValue<CssFontWeight>::value()`
 returns a borrowed `&CssFontWeight`. Explicit `font` shorthand values also
 borrow their optional weight through `CssExplicitFont::weight()` and accept the
 same absolute and relative weight components, including fractions and number
@@ -4719,7 +4719,7 @@ the shared scalar's own equality likewise ignores origin and spelling.
 Huge positive exponents remain authored without expansion during admission,
 while bounded serialization can reject output that exceeds its byte budget.
 
-`CssFontSizePropertyValue::size()` borrows `&CssFontSize`.
+`CssPropertyValue<CssFontSize>::size()` borrows `&CssFontSize`.
 `CssExplicitFont::size()` also continues to borrow. The shorthand accepts the
 same size grammar, including `xxx-large`, `math`, and typed size math, while
 preserving the following font-family boundary and optional slash line height.
@@ -4744,7 +4744,7 @@ bare checked calculation roots reenter literal admission, while actual math
 functions remain symbolic. Line-height equality ignores source origin
 while preserving authored structure, and the shared number scalar's own
 equality ignores origin and spelling. Both support bounded specified serialization.
-`CssLineHeightPropertyValue::line_height()` borrows the checked line height;
+`CssPropertyValue<CssLineHeight>::line_height()` borrows the checked line height;
 numeric payloads retain exact ordinary tokens or symbolic calculations. Construct
 the number payloads with `CssSpecifiedNonNegativeNumber::try_from_component`
 or `try_from_calculation`, then inspect them with `literal_component()`,
@@ -5684,7 +5684,7 @@ retains the None or Custom branch; `CssViewTransitionIdent::try_new` checks a
 `CssCustomIdent` and excludes decoded `none` and `auto` in every ASCII case.
 Generic custom identifiers already exclude CSS-wide keywords and `default`.
 Names preserve decoded case and symbolic identity. The schema owns the ordinary
-`CssViewTransitionNamePropertyValue::name()` wrapper, global and pending
+`CssPropertyValue<CssViewTransitionName>::name()` wrapper, global and pending
 alternatives, initial None and noninheritance. Component construction, strict
 pending reentry, longhand expansion, normalization and specified declaration/rule
 output share the existing property lifecycle. The source additionally specifies
@@ -6020,7 +6020,7 @@ supersedes CSS2 §11.1.2 for `clip` while retaining required support for the
 deprecated property. Its noninherited initial is `auto`. A `rect()` has four
 top, right, bottom, left edges, each `auto` or a signed length; both comma-only
 and whitespace-only authored separators are accepted. `CssSpecifiedLength`,
-`CssClipEdge`, `CssClipRect`, and `CssClip` serialize their checked specified
+`CssAutoOr<CssNumeric<CssLength>>`, `CssClipRect`, and `CssClip` serialize their checked specified
 values under one cumulative budget, with commas in canonical rectangles and
 symbolic calculations left unresolved. Applying a clipping region and the
 separate `clip-path` property remain outside this authored-value contract.
@@ -6040,7 +6040,7 @@ content items, and permits a separate nonempty alternative of strings and
 counter functions. `CssCounterStyleValue` retains checked named styles or
 `symbols()` with string/image symbols; all predefined style names normalize to
 lowercase while custom names keep their case. Use
-`CssContentPropertyValue::value()` for the complete authored grammar. A valid `attr()` keeps the whole declaration pending, as
+`CssPropertyValue<CssContentValue>::value()` for the complete authored grammar. A valid `attr()` keeps the whole declaration pending, as
 described above.
 
 Specified serialization uses one cumulative input-node, projection-node, and
@@ -6068,7 +6068,7 @@ counter or content functions as resolved string-set leaves. A named entry
 `CssBookmarkLevel` retains `none`, an exact positive ordinary integer without a
 machine magnitude bound, or a genuine integer function calculation with deferred
 computed range and rounding. Its checked constructor routes bare calculation
-tokens through the same positive literal boundary. `CssBookmarkLabelPropertyValue`
+tokens through the same positive literal boundary. `CssPropertyValue<CssContentList>`
 uses `CssContentList`, the shared nonempty full Content item-list provider;
 a sole image stays a list item here. Property keywords and slash alternatives
 belong to `content` and are excluded from this list. `CssBookmarkState` retains
@@ -6128,8 +6128,8 @@ defines `word-spacing` and `letter-spacing` as inherited longhands with
 symbolic math, and serializes under a bounded resource budget. Percentages
 inherit intact and resolve against used font size downstream. The historical
 pure-length spacing models have no remaining grammar owner.
-`CssWordSpacingPropertyValue::spacing()` and
-`CssLetterSpacingPropertyValue::value()` borrow the shared checked value.
+`CssPropertyValue<CssTextSpacingAdjustment>::spacing()` and
+`CssPropertyValue<CssTextSpacingAdjustment>::value()` borrow the shared checked value.
 
 Ordinary free parsing and a newly constructed `CssParserContext` interpret
 `glyph-orientation-vertical` as the selected Writing Modes legacy shorthand,
@@ -6535,7 +6535,7 @@ the complete rule. `column-fill` and `column-span` have noninherited `balance`
 and `none` initials. This authored model does not perform column balancing,
 spanner layout, rule painting, or style-dependent width computation. The
 breaking public rule migration makes `CssLineWidth` an alias of
-`CssBorderWidth`, so its `Length` variant contains
+`CssLineWidth`, so its `Length` variant contains
 `CssSpecifiedNonNegativeLength`. `CssColumnRule::color()` now returns the exact
 `CssColor`, and the `column-rule-color` wrapper exposes the same value through `value()`.
 
@@ -6562,8 +6562,8 @@ Multicolumn 1 defines `column-width` as `auto | <length [0,∞]>`, `column-count
 as `auto | <integer [1,∞]>`, and the unordered `columns` shorthand. The selected
 [Sizing 4 §5.6](https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/#column-sizing)
 adds `<box-size>` to `column-width`; `columns` consumes that expanded width
-grammar. `CssColumnWidth` is now an alias of `CssSizeValue`, so callers migrate
-`CssColumnWidth::Length` to `CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(...))`.
+grammar. `CssSizeValue` is now an alias of `CssSizeValue`, so callers migrate
+`CssSizeValue::Length` to `CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(...))`.
 The `width()` and `count()` accessors remain; `CssColumns::serialize_specified()`
 emits both effective values in width-then-count order. Ordinary positive
 column counts use `CssPositiveIntegerValue::Literal`, preserving
@@ -7506,7 +7506,7 @@ inline-start, block-end and inline-end. Three values repeat the second on
 both inline edges. Expansion follows the
 [mode-selected membership policy](#four-side-shorthand-membership).
 
-`CssInsetValue`, `CssInsetPair`, and `CssInsetShorthand` preserve exact checked
+`CssInsetValue`, `CssSidePair<CssInsetValue>`, and `CssFourSides<CssInsetValue>` preserve exact checked
 numbers, authored arity and mode. Their typed equality compares retained
 structure without diagnostic origins; wrappers retain original `as_css()`
 spelling. Physical `inset`, `top`, `right`, `bottom`, and `left` wrappers expose
@@ -7525,12 +7525,12 @@ axis pairs accept one or two values and expand to their two longhands, retaining
 the authored component count and source occurrence.
 
 The four-side `margin` and `padding` values preserve authored arity and
-physical or logical mode. Their `assigned_values()` accessors apply quad
+physical or logical mode. Their `assigned()` accessors apply quad
 repetition; expansion and normalization use the
 [mode-selected membership policy](#four-side-shorthand-membership).
 
 The ten physical wrappers expose `value()` for `CssMarginValue`, `CssPaddingValue`,
-`CssMarginShorthand`, or `CssPaddingShorthand`; inspect exact literals or
+`CssFourSides<CssMarginValue>`, or `CssFourSides<CssPaddingValue>`; inspect exact literals or
 calculations through their checked length-percentage values. `as_css()` retains
 the authored spelling, while `serialize_specified()` renders a bounded
 canonical specified value.
@@ -7542,7 +7542,7 @@ defines `size`, `min-size`, and `max-size` as one- or two-value physical
 shorthands. They set width then height, minimum width then height, or maximum
 width then height, copying the complete first value when the second is omitted.
 They accept the same exact checked values as their member longhands, including
-symbolic math. `CssSizePair` and `CssMaxSizePair` retain the optional authored
+symbolic math. `CssSidePair<CssSizeValue>` and `CssSidePair<CssMaxSizeValue>` retain the optional authored
 height; their expansion contributes only the two physical members in order.
 The ordinary `size` property is rejected in `@page` context. The distinct
 page-size descriptor and CSSOM's preferred shorthand ordering remain outside
@@ -7572,9 +7572,9 @@ their own identities.
 
 `CssSpecifiedNonNegativeLength` retains exact ordinary tokens and symbolic
 length math without narrowing through a floating-point value. The checked
-`CssContainIntrinsicSizeValue` and `CssContainIntrinsicSize` models expose the
+`CssContainIntrinsicSizeValue` and `CssSidePair<CssContainIntrinsicSizeValue>` models expose the
 fallback, `auto` intent, and authored second component through `value()` on
-their property wrappers. `as_css()` retains original spelling;
+their property wrappers; equal axes are written once. `as_css()` retains original spelling;
 `serialize_specified()` gives bounded canonical output. Remembered sizes,
 containment state, writing-mode mapping, and used box dimensions belong to
 downstream style and layout.
@@ -7785,10 +7785,10 @@ operations.
 
 The selected [Backgrounds 3 border-width definitions](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-width)
 and [Logical 1 logical width definitions](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#propdef-border-block-start-width)
-provide exact `thin | medium | thick | <length [0,∞]>` widths for four physical and four logical longhands, with noninherited `medium` initials. The logical block/inline pairs retain one or two authored values and contribute their respective two longhands. `CssBorderWidth` retains exact numeric spelling and symbolic math, and `CssBorder` retains each authored width, style, and color component of the five physical and six logical border triples; omitted components contribute their defined initials. `CssBorder::color()` borrows the authored color.
+provide exact `thin | medium | thick | <length [0,∞]>` widths for four physical and four logical longhands, with noninherited `medium` initials. The logical block/inline pairs retain one or two authored values and contribute their respective two longhands. `CssLineWidth` retains exact numeric spelling and symbolic math, and `CssBorder` retains each authored width, style, and color component of the five physical and six logical border triples; omitted components contribute their defined initials. `CssBorder::color()` borrows the authored color.
 
 The four-side `border-width` grammar accepts one to four values and an optional
-leading `logical` switch. `assigned_values()` exposes side assignments;
+leading `logical` switch. `assigned()` exposes side assignments;
 expansion follows the [mode-selected membership policy](#four-side-shorthand-membership).
 Physical border triples retain their defined defaults and border-image resets.
 
@@ -7800,9 +7800,9 @@ The affected physical wrappers expose `value()` for exact checked border triples
 
 The selected [Backgrounds 3 line-style definitions](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-style) and [Logical 1 flow-relative styles](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#border-style) provide ten style keywords for four physical and four logical longhands. Their noninherited initial is `none`. `border-block-style` and `border-inline-style` retain one or two authored values, assigning start then end and repeating the first when the second is omitted. The four-side `border-style` retains one to four authored values and an optional leading `logical` switch. Its assignments are top/right/bottom/left in physical mode and block-start/inline-start/block-end/inline-end in logical mode; it does not map logical sides to physical sides.
 
-`CssBorderStylePropertyValue::value()` returns `CssBorderStyleShorthand`,
-preserving authored arity and role mode. Inspect `assigned_values()` with `kind()`
-for the authored roles. `CssBorderStyle` is the checked scalar keyword domain.
+`CssPropertyValue<CssFourSides<CssLineStyle>>::value()` returns `CssFourSides<CssLineStyle>`,
+preserving authored arity and role mode. Inspect `assigned()` with `kind()`
+for the authored roles. `CssLineStyle` is the checked scalar keyword domain.
 Each scalar, pair, and shorthand has bounded specified serialization under one
 cumulative budget per value.
 
@@ -7815,9 +7815,9 @@ mapping, computed width zeroing and painting remain downstream.
 
 The selected [Backgrounds 3 radius definitions](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-radius)
 and [Logical 1 corner definitions](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#border-radius-properties)
-cover the four physical and four flow-relative corner longhands. Each accepts one or two exact nonnegative length-percentages, with a noninherited zero initial. The first value is the horizontal radius and the second is the vertical radius, even for a logical corner name; an omitted second value repeats the first. `CssCornerRadiusValue` preserves that omission, exact ordinary spelling, deferred math, and numeric origins.
+cover the four physical and four flow-relative corner longhands. Each accepts one or two exact nonnegative length-percentages, with a noninherited zero initial. The first value is the horizontal radius and the second is the vertical radius, even for a logical corner name; an omitted second value repeats the first. A corner is a `CssSidePair` of exact radii: it preserves that omission, exact ordinary spelling, deferred math, and numeric origins, and writes equal radii once.
 
-The physical `border-radius` shorthand accepts one to four horizontal values and an optional slash followed by one to four vertical values. `CssBorderRadiusShorthand` retains the authored lists and supplies the four physical corners in top-left, top-right, bottom-right, bottom-left order. Without a slash, each contributed corner retains an omitted vertical radius; an explicit slash retains its authored vertical value. Intrinsic expansion has four physical longhand members and no reset-only members. Bounded specified serialization shares one resource budget across the aggregate and its authored children.
+The physical `border-radius` shorthand accepts one to four horizontal values and an optional slash followed by one to four vertical values. `CssBorderRadiusShorthand` retains the authored lists as `CssFourSides` values, so the one-to-four corner assignment is the side assignment of `margin`, and supplies the four physical corners in top-left, top-right, bottom-right, bottom-left order. The `border-radius` property writes each list in its shortest form and omits a vertical list equal to the horizontal one with its slash; the `round` radii of `inset()`, `xywh()` and `rect()` are written as authored. Without a slash, each contributed corner retains an omitted vertical radius; an explicit slash retains its authored vertical value. Intrinsic expansion has four physical longhand members and no reset-only members. Bounded specified serialization shares one resource budget across the aggregate and its authored children.
 
 Physical property wrappers expose the exact checked `value()`. Basic-shape `inset()` round values use `CssBorderRadiusShorthand`, preserving horizontal and vertical arity and whether the vertical list was omitted. Flow-relative wrappers do not invent a physical corner mapping. Writing-mode and direction mapping, percentage basis, overlapping-radii reduction, geometry, and painting remain downstream.
 
@@ -7842,9 +7842,9 @@ time calculations retain their math branch and defer computed range handling.
 wrappers expose this model through `value()` and retain authored case, escapes,
 comments, spelling and provenance through `as_css()` and declaration components.
 
-`pause` and `rest` use `CssSpeechBreakPair`. Its checked `try_new(before, after)`
+`pause` and `rest` use `CssSidePair<CssSpeechBreak>`. Its checked `try_new(before, after)`
 retains an optional second authored value and rejects recovered time children.
-`before()` and `after()` borrow the effective assignments; `authored_after()`
+`first()` and `second()` borrow the effective assignments; `authored_second()`
 reveals the optional authored second value. Intrinsic expansion emits exactly
 before then after, assigning one value to both when the second is omitted. There
 are no reset-only members. Whole-value CSS-wide keywords expand at the shorthand
@@ -8020,8 +8020,8 @@ components; checked property construction rejects it, while browser recovery
 can retain the cue and its shared EOF diagnostics.
 
 [Speech 1 §10.3](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#cue-props-cue)
-defines the ordered one/two-value `cue` shorthand. `CssCuePair` retains `before`
-and optional `authored_after`; `after` borrows the first cue when omitted.
+defines the ordered one/two-value `cue` shorthand. `CssSidePair<CssCue>` retains `first`
+and optional `authored_second`; `second` borrows the first cue when omitted.
 Its checked constructor rejects retained modifier-argument closure in either
 child. Intrinsic expansion supplies `cue-before` and `cue-after` in that order
 and retains source occurrence, importance and replacement component origins.
@@ -8850,7 +8850,7 @@ downstream. This authored property uses CSS2 rather than the Inline 3 shorthand.
 Decoration line output uses `underline overline line-through blink` grammar
 order while preserving the original component order in the value. `none`,
 `spelling-error` and `grammar-error` are exclusive alternatives; error lines are
-represented by `CssTextDecorationError`, never combinable flags. The [Decoration 4 shorthand grammar](https://www.w3.org/TR/2022/WD-css-text-decor-4-20220504/#text-decoration-property)
+represented by `CssTextDecorationErrorLine`, never combinable flags. The [Decoration 4 shorthand grammar](https://www.w3.org/TR/2022/WD-css-text-decor-4-20220504/#text-decoration-property)
 orders present fields as line, thickness, style and color. Optional fields remain
 omitted; explicit initial keywords remain explicit. Thus an authored
 `currentcolor wavy -1px overline underline` emits
@@ -9098,7 +9098,7 @@ one input/projection node plus the retained child costs.
 `CssInteractivity` admits Auto/Inert, inherits with initial Auto, computes as
 specified and has discrete later animation. `CssInterestDelayValue` is Normal or
 the shared signed `CssTimeValue`; Normal stays symbolic and no Duration range is
-imported. `CssInterestDelay` retains a required first and optional second value.
+imported. `CssSidePair<CssInterestDelayValue>` retains a required first and optional second value.
 It sets exactly start/end, repeating the first for omitted end, with no reset-only
 member. Both longhands inherit and initially use Normal; later animation follows
 the computed value type. A repeated retained second value can be omitted from
@@ -9281,8 +9281,8 @@ one `match-source`, `border-box`, `border-box` and `add`. The existing noninheri
 position, size and repeat lists initially contain `0% 0%`, `auto` and `repeat`.
 The initial image list contains `none`.
 
-`CssMaskBox` narrows the shared geometry keyword to content, padding, border,
-fill, stroke and view boxes. `margin-box` is rejected by mask-origin and mask-clip;
+`CssCoordBox`, the Box 4 `<coord-box>` shared with Motion, narrows the geometry keyword to
+content, padding, border, fill, stroke and view boxes. `margin-box` is rejected by mask-origin and mask-clip;
 clip-path keeps its independent seven-box domain. The pin's generic geometry-box
 cross-reference imports shape-box, which includes margin-box, while its
 property-specific six value definitions and change list remove margin-box from

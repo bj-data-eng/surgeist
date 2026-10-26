@@ -30,7 +30,7 @@ impl SpecifiedRuleWriter {
         descriptor: &CssColorProfileDescriptor,
     ) -> Result<(), CssSerializationError> {
         self.node()?;
-        self.append(descriptor.value().kind().css_name())?;
+        self.append(descriptor.value().kind().as_str())?;
         self.append(": ")?;
         self.profile_value(descriptor.value())
     }
@@ -43,7 +43,7 @@ impl SpecifiedRuleWriter {
             CssColorProfileDescriptorValueRef::Src(url) => url.append_specified(self),
             CssColorProfileDescriptorValueRef::RenderingIntent(intent) => {
                 self.node()?;
-                self.append(intent.css_name())
+                self.append(intent.as_str())
             }
             CssColorProfileDescriptorValueRef::Components(names) => {
                 for (index, name) in names.iter().enumerate() {

@@ -152,8 +152,8 @@ fn border_color_aggregate_uses_the_same_modern_color_grammar() {
     };
     let values = value.value();
     assert_eq!(values.kind(), CssBoxSideKind::Physical);
-    assert_eq!(values.authored_values().len(), 2);
-    let [top, right, bottom, left] = values.assigned_values();
+    assert_eq!(values.authored().len(), 2);
+    let [top, right, bottom, left] = values.assigned();
     number(top.hsl_value().unwrap().saturation(), 25.0);
     number(right.hwb_value().unwrap().whiteness(), 10.0);
     assert_eq!(top, bottom);

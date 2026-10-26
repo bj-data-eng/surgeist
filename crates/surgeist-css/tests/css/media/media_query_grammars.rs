@@ -171,9 +171,9 @@ fn mq3_boolean_features_preserve_their_typed_names() {
         ("grid", CssMediaFeatureKind::Grid),
     ] {
         let feature = parsed_feature(&format!("({name})"));
-        assert_eq!(feature.name(), name);
+        assert_eq!(feature.as_str(), name);
         assert!(matches!(feature, CssMediaFeatureQuery::Boolean(value) if value == expected));
-        assert_eq!(expected.name(), name);
+        assert_eq!(expected.as_str(), name);
     }
 }
 

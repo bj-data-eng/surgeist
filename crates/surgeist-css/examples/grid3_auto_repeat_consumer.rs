@@ -17,7 +17,7 @@ use surgeist_css::{
     parse_component_values, parse_property_value, parse_style_attribute,
 };
 
-fn columns(declaration: &CssDeclaration) -> &surgeist_css::CssGridTemplateColumnsPropertyValue {
+fn columns(declaration: &CssDeclaration) -> &surgeist_css::CssPropertyValue<CssGridTrackList> {
     let Some(CssKnownPropertyValueRef::GridTemplateColumns(value)) =
         declaration.known().unwrap().property_value()
     else {

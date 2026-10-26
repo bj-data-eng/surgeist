@@ -81,7 +81,7 @@ fn background_url(declaration: &CssDeclaration) -> &CssUrl {
     else {
         panic!("ordinary background image")
     };
-    let [CssImageValue::Url(url)] = images.images().images() else {
+    let [CssImageValue::Url(url)] = images.value().images() else {
         panic!("one URL")
     };
     url
@@ -802,7 +802,7 @@ fn counter_symbol_descriptor_consumers_use_shared_known_argument_validation() {
         assert!(
             parse_counter_style_descriptor_value(&valid, kind).is_clean(),
             "{}:{valid}",
-            kind.css_name()
+            kind.as_str()
         );
         assert!(
             CssCounterStyleDescriptorValue::try_from_components(
@@ -814,7 +814,7 @@ fn counter_symbol_descriptor_consumers_use_shared_known_argument_validation() {
         );
         let invalid = format!("{prefix}src(\"asset\" integrity(hash))");
         let report = parse_counter_style_descriptor_value(&invalid, kind);
-        assert!(!report.is_clean(), "{}:{invalid}", kind.css_name());
+        assert!(!report.is_clean(), "{}:{invalid}", kind.as_str());
         assert!(report.syntax().is_none());
         let error = CssCounterStyleDescriptorValue::try_from_components(
             kind,
@@ -825,7 +825,7 @@ fn counter_symbol_descriptor_consumers_use_shared_known_argument_validation() {
         assert!(
             error.diagnostic().is_some(),
             "{}:{invalid}: {error:?}",
-            kind.css_name()
+            kind.as_str()
         );
     }
 }

@@ -204,7 +204,7 @@ fn owning_pair_serializer_shortens_redundancy_and_reenters_its_grammar() {
         panic!("pause owner")
     };
     let retained = value.value().clone();
-    assert!(retained.authored_after().is_some());
+    assert!(retained.authored_second().is_some());
     let canonical = retained.serialize_specified(Default::default()).unwrap();
     assert_eq!(canonical, "1s");
     assert_eq!(value.value(), &retained);

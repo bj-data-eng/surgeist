@@ -311,10 +311,7 @@ fn border_style_hidden_remains_accepted_through_all_front_doors() {
             else {
                 panic!("typed border style")
             };
-            assert_eq!(
-                value.value().assigned_values(),
-                [&CssBorderStyle::Hidden; 4]
-            );
+            assert_eq!(value.value().assigned(), [&CssLineStyle::Hidden; 4]);
         }
     }
 }

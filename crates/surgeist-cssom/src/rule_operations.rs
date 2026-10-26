@@ -939,7 +939,7 @@ impl CssomSnapshot {
     }
     pub(crate) fn margin_name(&self, id: &CssomRuleId) -> Result<&'static str, CssomError> {
         match self.rule(id)?.data() {
-            CssomRuleData::Margin { name, .. } => Ok(name.css_name()),
+            CssomRuleData::Margin { name, .. } => Ok(name.as_str()),
             _ => Err(CssomError::WrongKind),
         }
     }

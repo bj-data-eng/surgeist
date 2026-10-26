@@ -41,7 +41,7 @@ macro_rules! known {
 
 fn recovered_number() -> CssCalculation<CssNumber> {
     let report = property("line-height:calc(1 + 2");
-    let CssLineHeight::Number(value) = known!(report, LineHeight).line_height() else {
+    let CssLineHeight::Number(value) = known!(report, LineHeight).value() else {
         panic!("number")
     };
     value.calculation().expect("retained number math").clone()
@@ -49,7 +49,7 @@ fn recovered_number() -> CssCalculation<CssNumber> {
 
 fn recovered_length_percentage() -> CssCalculation<CssLengthPercentage> {
     let report = property("line-height:calc(1px + 2%");
-    let CssLineHeight::LengthPercentage(value) = known!(report, LineHeight).line_height() else {
+    let CssLineHeight::LengthPercentage(value) = known!(report, LineHeight).value() else {
         panic!("length-percentage")
     };
     value.calculation().expect("retained length math").clone()
@@ -58,7 +58,7 @@ fn recovered_length_percentage() -> CssCalculation<CssLengthPercentage> {
 fn recovered_length() -> CssCalculation<CssLength> {
     let report = property("outline-offset:calc(1px + 2px");
     known!(report, OutlineOffset)
-        .offset()
+        .value()
         .calculation()
         .expect("retained length math")
         .clone()
@@ -278,7 +278,7 @@ fn font_weight_number_constructor_rejects_recovered_math_and_accepts_closed_math
 fn font_feature_index_constructor_rejects_recovered_math_and_accepts_closed_math() {
     let report = property("font-feature-settings:\"liga\" calc(1 + 1");
     let CssAuthoredFontFeatureSettings::Features(features) =
-        known!(report, FontFeatureSettings).settings()
+        known!(report, FontFeatureSettings).value()
     else {
         panic!("feature list")
     };
@@ -305,7 +305,7 @@ fn font_feature_index_constructor_rejects_recovered_math_and_accepts_closed_math
 #[test]
 fn ratio_operand_constructor_rejects_recovered_math_and_accepts_closed_math() {
     let report = property("aspect-ratio:1 / calc(1 + 1");
-    let CssAspectRatioValue::Ratio(ratio) = known!(report, AspectRatio).ratio() else {
+    let CssAspectRatioValue::Ratio(ratio) = known!(report, AspectRatio).value() else {
         panic!("ratio")
     };
     let recovered = ratio
@@ -335,7 +335,7 @@ fn ratio_operand_constructor_rejects_recovered_math_and_accepts_closed_math() {
 fn page_line_minimum_constructor_rejects_recovered_math_and_accepts_closed_math() {
     let report = property("orphans:calc(1 + 1");
     let recovered = known!(report, Orphans)
-        .minimum()
+        .value()
         .calculation()
         .expect("retained integer math")
         .clone();

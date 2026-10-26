@@ -4,6 +4,7 @@ use super::combinators::{Combinator, Tail, fill, keyword, parse_group};
 use super::property_input::Parser;
 use super::url::parse_url;
 use super::values::{next_is_ident, parse_length};
+use crate::CssLineWidth;
 use crate::cursor_values::{
     CssCursor, CssCursorImage, CssCursorImageSource, CssCursorImages, CssCursorUrlSet,
     CssCursorUrlSetDescriptor, CssCursorUrlSetOption, CssCursorUrlSetReference,
@@ -12,7 +13,7 @@ use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use crate::numeric::NumericInputContext;
 use crate::syntax::*;
 use crate::ui::*;
-use crate::{CssCaretColor, CssComponentValueRef, CssValueTokenRef};
+use crate::{CssCaretColor, CssComponentValueRef, CssSidePair, CssValueTokenRef};
 use cssparser::{Token, match_ignore_ascii_case};
 
 macro_rules! keyword_parser {
@@ -98,14 +99,14 @@ pub(super) fn parse_interest_delay_value<'i, 't>(
 pub(super) fn parse_interest_delay<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssInterestDelay, ParseError<'i, Error>> {
+) -> Result<CssSidePair<CssInterestDelayValue>, ParseError<'i, Error>> {
     let start = parse_interest_delay_value(input, numeric)?;
     let end = if input.is_exhausted() {
         None
     } else {
         Some(parse_interest_delay_value(input, numeric)?)
     };
-    Ok(CssInterestDelay::from_parser(start, end))
+    Ok(CssSidePair::from_parts(start, end))
 }
 pub(super) fn parse_navigation<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -476,14 +477,9 @@ pub(super) fn parse_outline_color<'i, 't>(
 pub(super) fn parse_outline_width<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssOutlineWidth, ParseError<'i, Error>> {
+) -> std::result::Result<CssLineWidth, ParseError<'i, Error>> {
     // UI 4 `outline-width: <line-width>` reuses the one `<line-width>` grammar.
-    super::border_width::parse_exact_line_width(input, numeric).map(|width| match width {
-        CssLineWidth::Thin => CssOutlineWidth::Thin,
-        CssLineWidth::Medium => CssOutlineWidth::Medium,
-        CssLineWidth::Thick => CssOutlineWidth::Thick,
-        CssLineWidth::Length(length) => CssOutlineWidth::Length(length),
-    })
+    super::border_width::parse_exact_line_width(input, numeric)
 }
 
 pub(super) fn parse_outline_offset<'i, 't>(

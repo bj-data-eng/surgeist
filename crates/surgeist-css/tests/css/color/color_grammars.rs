@@ -7,7 +7,7 @@ use surgeist_css::{
     CssRelativeColorFunction, CssSystemColor, parse_style_attribute,
 };
 
-fn color_value(source: &str) -> surgeist_css::CssColorPropertyValue {
+fn color_value(source: &str) -> surgeist_css::CssPropertyValue<surgeist_css::CssColor> {
     let report = parse_style_attribute(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     color_property_value(&report.syntax()[0]).clone()

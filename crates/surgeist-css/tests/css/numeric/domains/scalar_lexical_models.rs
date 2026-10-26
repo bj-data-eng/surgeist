@@ -221,7 +221,7 @@ fn positive_column_counts_keep_exact_token_origins_at_small_and_large_magnitudes
         else {
             panic!("column count")
         };
-        let Some(positive) = (match count.count() {
+        let Some(positive) = (match count.value() {
             CssColumnCount::Count(value) => value.literal(),
             _ => None,
         }) else {

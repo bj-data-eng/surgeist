@@ -65,7 +65,7 @@ fn orientation(declaration: &CssDeclaration) -> &CssImageOrientation {
     let CssKnownPropertyValueRef::ImageOrientation(value) = known.property_value().unwrap() else {
         panic!("typed image-orientation value")
     };
-    value.orientation()
+    value.value()
 }
 
 fn flip_angle<'a>(

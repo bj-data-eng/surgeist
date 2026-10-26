@@ -666,7 +666,7 @@ fn caret_imports_complete_color_families_and_delegates_canonical_child_output() 
             else {
                 panic!("CaretColor")
             };
-            let CssCaretColor::Color(child) = caret.caret() else {
+            let CssCaretColor::Color(child) = caret.value() else {
                 panic!("transparent Color carrier")
             };
             assert_eq!(
@@ -686,7 +686,7 @@ fn caret_imports_complete_color_families_and_delegates_canonical_child_output() 
             else {
                 panic!("caret wrapper")
             };
-            let CssCaretColor::Color(actual) = wrapper.caret() else {
+            let CssCaretColor::Color(actual) = wrapper.value() else {
                 panic!("color branch")
             };
             assert_eq!(actual.as_ref(), child.value());
@@ -980,11 +980,11 @@ fn primitive_css(
     limits: CssSerializationLimits,
 ) -> Result<String, CssSerializationError> {
     match source.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::CaretColor(v) => v.caret().serialize_specified(limits),
+        CssKnownPropertyValueRef::CaretColor(v) => v.value().serialize_specified(limits),
         CssKnownPropertyValueRef::Cursor(v) => v.value().serialize_specified(limits),
         CssKnownPropertyValueRef::PointerEvents(v) => v.value().serialize_specified(limits),
         CssKnownPropertyValueRef::UserSelect(v) => v.value().serialize_specified(limits),
-        CssKnownPropertyValueRef::Resize(v) => v.resize().serialize_specified(limits),
+        CssKnownPropertyValueRef::Resize(v) => v.value().serialize_specified(limits),
         _ => panic!("owning UI provider"),
     }
 }

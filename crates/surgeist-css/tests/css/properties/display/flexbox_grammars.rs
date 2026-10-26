@@ -33,8 +33,8 @@ fn flex_flow_retains_typed_structure() {
         else {
             panic!("expected flex-flow wrapper");
         };
-        assert_eq!(value.flow().direction(), direction);
-        assert_eq!(value.flow().wrap(), wrap);
+        assert_eq!(value.value().direction(), direction);
+        assert_eq!(value.value().wrap(), wrap);
     }
 }
 
@@ -53,8 +53,8 @@ fn flex_flow_preserves_authored_text_and_symbolic_branches() {
         panic!("expected ordinary flex-flow");
     };
     assert_eq!(value.as_css(), "ROW   wrap-reverse");
-    assert_eq!(value.flow().direction(), CssFlexDirection::Row);
-    assert_eq!(value.flow().wrap(), CssFlexWrap::WrapReverse);
+    assert_eq!(value.value().direction(), CssFlexDirection::Row);
+    assert_eq!(value.value().wrap(), CssFlexWrap::WrapReverse);
     assert!(matches!(
         report.syntax()[1].known().unwrap().declared_value(),
         CssKnownDeclaredValueRef::Global(CssGlobalKeyword::Inherit)

@@ -18,7 +18,7 @@ use crate::specified_serialization::SpecifiedSerializationContext;
 mod equality;
 pub(crate) use equality::BoundedStructuralEquality;
 
-trait InverseValueEquality {
+pub(crate) trait InverseValueEquality {
     fn inverse_equal(
         &self,
         other: &Self,
@@ -57,26 +57,35 @@ impl<T: CssNumericRoot, R: CssRange<T>> InverseValueEquality for CssNumeric<T, R
         }
     }
 }
-impl InverseValueEquality for CssCornerRadiusValue {
+/// A `<T>{1,2}` value is the same when both effective components are: a pair that omits its
+/// second component equals one that repeats the first.
+impl<T: InverseValueEquality> InverseValueEquality for CssSidePair<T> {
     fn inverse_equal(
         &self,
         other: &Self,
         context: &mut SpecifiedSerializationContext,
     ) -> EqualityResult {
-        Ok(self
-            .horizontal()
-            .inverse_equal(other.horizontal(), context)?
-            && self.vertical().inverse_equal(other.vertical(), context)?)
+        Ok(self.first().inverse_equal(other.first(), context)?
+            && self.second().inverse_equal(other.second(), context)?)
     }
 }
-impl InverseValueEquality for CssBackgroundSizeComponent {
+impl InverseValueEquality for CssScrollSnapAlignment {
+    fn inverse_equal(
+        &self,
+        other: &Self,
+        _context: &mut SpecifiedSerializationContext,
+    ) -> EqualityResult {
+        Ok(self == other)
+    }
+}
+impl<T: InverseValueEquality + PartialEq> InverseValueEquality for CssAutoOr<T> {
     fn inverse_equal(
         &self,
         other: &Self,
         context: &mut SpecifiedSerializationContext,
     ) -> EqualityResult {
         match (self, other) {
-            (Self::Length(a), Self::Length(b)) => a.inverse_equal(b, context),
+            (Self::Value(a), Self::Value(b)) => a.inverse_equal(b, context),
             _ => Ok(self == other),
         }
     }
@@ -100,11 +109,8 @@ impl InverseValueEquality for CssBackgroundSize {
             ) => Ok(a.inverse_equal(b, context)?
                 && ah
                     .as_ref()
-                    .unwrap_or(&CssBackgroundSizeComponent::Auto)
-                    .inverse_equal(
-                        bh.as_ref().unwrap_or(&CssBackgroundSizeComponent::Auto),
-                        context,
-                    )?),
+                    .unwrap_or(&CssAutoOr::Auto)
+                    .inverse_equal(bh.as_ref().unwrap_or(&CssAutoOr::Auto), context)?),
             _ => Ok(self == other),
         }
     }
@@ -224,9 +230,8 @@ macro_rules! numeric_variant_equality {
 }
 numeric_variant_equality!(CssMarginValue, LengthPercentage);
 numeric_variant_equality!(CssInsetValue, LengthPercentage);
-numeric_variant_equality!(CssScrollPaddingValue, LengthPercentage);
 numeric_variant_equality!(CssGapValue, LengthPercentage);
-numeric_variant_equality!(CssBorderWidth, Length);
+numeric_variant_equality!(CssLineWidth, Length);
 impl InverseValueEquality for CssPaddingValue {
     fn inverse_equal(
         &self,
@@ -316,7 +321,7 @@ macro_rules! structural_equality {
         fn inverse_equal(&self, other: &Self, _context: &mut SpecifiedSerializationContext) -> EqualityResult { Ok(self == other) }
     })+ };
 }
-structural_equality!(CssBorderStyle, CssOverflow);
+structural_equality!(CssLineStyle, CssOverflow);
 impl InverseValueEquality for CssCue {
     fn inverse_equal(
         &self,
@@ -345,7 +350,7 @@ macro_rules! inverse_value_equal {
     (CssLineWidth, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
-    (CssColumnWidth, $a:ident, $b:ident, $context:ident) => {
+    (CssSizeValue, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
     (CssGridLine, $a:ident, $b:ident, $context:ident) => {
@@ -369,16 +374,13 @@ macro_rules! inverse_value_equal {
     (CssTextDecorationThickness, $a:ident, $b:ident, $context:ident) => {
         $a.bounded_eq($b, $context)
     };
-    (CssOutlineWidth, $a:ident, $b:ident, $context:ident) => {
-        $a.bounded_eq($b, $context)
-    };
     (CssEasingList, $a:ident, $b:ident, $context:ident) => {
         $a.bounded_eq($b, $context)
     };
     (CssBackgroundPositionList, $a:ident, $b:ident, $context:ident) => {
         $a.bounded_eq($b, $context)
     };
-    (CssPhysicalPositionList, $a:ident, $b:ident, $context:ident) => {
+    (CssPositionList, $a:ident, $b:ident, $context:ident) => {
         $a.bounded_eq($b, $context)
     };
     (CssImageValue, $a:ident, $b:ident, $context:ident) => {
@@ -405,7 +407,7 @@ macro_rules! inverse_value_equal {
     (CssNumeric, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
-    (CssCornerRadiusValue, $a:ident, $b:ident, $context:ident) => {
+    (CssSidePair, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
     (CssBackgroundSizeList, $a:ident, $b:ident, $context:ident) => {
@@ -426,16 +428,13 @@ macro_rules! inverse_value_equal {
     (CssInsetValue, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
-    (CssScrollPaddingValue, $a:ident, $b:ident, $context:ident) => {
+    (ScrollPaddingSide, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
     (CssGapValue, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
     (CssPaddingValue, $a:ident, $b:ident, $context:ident) => {
-        $a.inverse_equal($b, $context)
-    };
-    (CssBorderWidth, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
     (CssBoxSize, $a:ident, $b:ident, $context:ident) => {
@@ -491,7 +490,7 @@ macro_rules! longhand_dispatch {
         All, $all_name:literal, [$($all_alias:literal),*], $all_id:literal,
         $all_value:ty, $all_parser:ident, $all_dispatch:block, expansion = $all_kind:ident { $($all_metadata:tt)* };
         $( $variant:ident, $name:literal, [$($alias:literal),*], $id:literal,
-           crate::$value:ident $(<$($argument:ident),+>)?, $wrapper:ident, $accessor:ident, $parser:ident, $dispatch:block,
+           crate::$value:ident $(<$($argument:ident),+>)?, $parser:ident, $dispatch:block,
            expansion = $kind:ident { $($metadata:tt)* }; )*
     ) => { longhand_dispatch!(@collect []; $( $variant, $value, $kind; )*); };
     (@collect [$($rows:tt)*]; $variant:ident, $value:ident, longhand; $($rest:tt)*) => {
@@ -684,12 +683,6 @@ macro_rules! initial_value {
         value.clone()
     }};
 }
-fn scroll_mode(mode: CssBoxSideKind) -> CssScrollSideKind {
-    match mode {
-        CssBoxSideKind::Physical => CssScrollSideKind::Physical,
-        CssBoxSideKind::Logical => CssScrollSideKind::Logical,
-    }
-}
 fn shorter_second<T: InverseValueEquality>(
     first: &T,
     second: T,
@@ -841,7 +834,7 @@ pub(crate) fn reconstruct(
                     val!(values, ScrollPaddingBlockEnd),
                     ScrollPaddingBlockEnd
                 );
-                Inverse::ScrollPaddingBlock(CssScrollPaddingPair::new(first, second))
+                Inverse::ScrollPaddingBlock(CssSidePair::new(first, second))
             }
             CssKnownProperty::ScrollPaddingInline => {
                 let first = val!(values, ScrollPaddingInlineStart);
@@ -850,7 +843,7 @@ pub(crate) fn reconstruct(
                     val!(values, ScrollPaddingInlineEnd),
                     ScrollPaddingInlineEnd
                 );
-                Inverse::ScrollPaddingInline(CssScrollPaddingPair::new(first, second))
+                Inverse::ScrollPaddingInline(CssSidePair::new(first, second))
             }
             CssKnownProperty::ScrollMarginBlock => {
                 let first = val!(values, ScrollMarginBlockStart);
@@ -859,7 +852,7 @@ pub(crate) fn reconstruct(
                     val!(values, ScrollMarginBlockEnd),
                     ScrollMarginBlockEnd
                 );
-                Inverse::ScrollMarginBlock(CssScrollMarginPair::new(first, second))
+                Inverse::ScrollMarginBlock(CssSidePair::new(first, second))
             }
             CssKnownProperty::ScrollMarginInline => {
                 let first = val!(values, ScrollMarginInlineStart);
@@ -868,7 +861,7 @@ pub(crate) fn reconstruct(
                     val!(values, ScrollMarginInlineEnd),
                     ScrollMarginInlineEnd
                 );
-                Inverse::ScrollMarginInline(CssScrollMarginPair::new(first, second))
+                Inverse::ScrollMarginInline(CssSidePair::new(first, second))
             }
             CssKnownProperty::Overflow => {
                 let first = val!(values, OverflowX);
@@ -878,12 +871,12 @@ pub(crate) fn reconstruct(
             CssKnownProperty::Size => {
                 let first = val!(values, Width);
                 let second = shorter_second!(&first, val!(values, Height), Height);
-                Inverse::Size(CssSizePair::new(first, second))
+                Inverse::Size(CssSidePair::new(first, second))
             }
             CssKnownProperty::MinSize => {
                 let first = val!(values, MinWidth);
                 let second = shorter_second!(&first, val!(values, MinHeight), MinHeight);
-                Inverse::MinSize(CssSizePair::new(first, second))
+                Inverse::MinSize(CssSidePair::new(first, second))
             }
             CssKnownProperty::ContainIntrinsicSize => {
                 let first = val!(values, ContainIntrinsicWidth);
@@ -892,45 +885,45 @@ pub(crate) fn reconstruct(
                     val!(values, ContainIntrinsicHeight),
                     ContainIntrinsicHeight
                 );
-                Inverse::ContainIntrinsicSize(CssContainIntrinsicSize::new(first, second))
+                Inverse::ContainIntrinsicSize(CssSidePair::new(first, second))
             }
             CssKnownProperty::Gap => {
                 let first = val!(values, RowGap);
                 let second = shorter_second!(&first, val!(values, ColumnGap), ColumnGap);
-                Inverse::Gap(CssGapShorthand::new(first, second))
+                Inverse::Gap(CssSidePair::new(first, second))
             }
             CssKnownProperty::InsetBlock => {
                 let first = val!(values, InsetBlockStart);
                 let second = shorter_second!(&first, val!(values, InsetBlockEnd), InsetBlockEnd);
-                Inverse::InsetBlock(CssInsetPair::new(first, second))
+                Inverse::InsetBlock(CssSidePair::new(first, second))
             }
             CssKnownProperty::InsetInline => {
                 let first = val!(values, InsetInlineStart);
                 let second = shorter_second!(&first, val!(values, InsetInlineEnd), InsetInlineEnd);
-                Inverse::InsetInline(CssInsetPair::new(first, second))
+                Inverse::InsetInline(CssSidePair::new(first, second))
             }
             CssKnownProperty::MarginBlock => {
                 let first = val!(values, MarginBlockStart);
                 let second = shorter_second!(&first, val!(values, MarginBlockEnd), MarginBlockEnd);
-                Inverse::MarginBlock(CssMarginPair::new(first, second))
+                Inverse::MarginBlock(CssSidePair::new(first, second))
             }
             CssKnownProperty::MarginInline => {
                 let first = val!(values, MarginInlineStart);
                 let second =
                     shorter_second!(&first, val!(values, MarginInlineEnd), MarginInlineEnd);
-                Inverse::MarginInline(CssMarginPair::new(first, second))
+                Inverse::MarginInline(CssSidePair::new(first, second))
             }
             CssKnownProperty::PaddingBlock => {
                 let first = val!(values, PaddingBlockStart);
                 let second =
                     shorter_second!(&first, val!(values, PaddingBlockEnd), PaddingBlockEnd);
-                Inverse::PaddingBlock(CssPaddingPair::new(first, second))
+                Inverse::PaddingBlock(CssSidePair::new(first, second))
             }
             CssKnownProperty::PaddingInline => {
                 let first = val!(values, PaddingInlineStart);
                 let second =
                     shorter_second!(&first, val!(values, PaddingInlineEnd), PaddingInlineEnd);
-                Inverse::PaddingInline(CssPaddingPair::new(first, second))
+                Inverse::PaddingInline(CssSidePair::new(first, second))
             }
             CssKnownProperty::BorderBlockWidth => {
                 let first = val!(values, BorderBlockStartWidth);
@@ -939,7 +932,7 @@ pub(crate) fn reconstruct(
                     val!(values, BorderBlockEndWidth),
                     BorderBlockEndWidth
                 );
-                Inverse::BorderBlockWidth(CssBorderWidthPair::new(first, second))
+                Inverse::BorderBlockWidth(CssSidePair::new(first, second))
             }
             CssKnownProperty::BorderInlineWidth => {
                 let first = val!(values, BorderInlineStartWidth);
@@ -948,7 +941,7 @@ pub(crate) fn reconstruct(
                     val!(values, BorderInlineEndWidth),
                     BorderInlineEndWidth
                 );
-                Inverse::BorderInlineWidth(CssBorderWidthPair::new(first, second))
+                Inverse::BorderInlineWidth(CssSidePair::new(first, second))
             }
             CssKnownProperty::BorderBlockStyle => {
                 let first = val!(values, BorderBlockStartStyle);
@@ -957,7 +950,7 @@ pub(crate) fn reconstruct(
                     val!(values, BorderBlockEndStyle),
                     BorderBlockEndStyle
                 );
-                Inverse::BorderBlockStyle(CssBorderStylePair::new(first, second))
+                Inverse::BorderBlockStyle(CssSidePair::new(first, second))
             }
             CssKnownProperty::BorderInlineStyle => {
                 let first = val!(values, BorderInlineStartStyle);
@@ -966,7 +959,7 @@ pub(crate) fn reconstruct(
                     val!(values, BorderInlineEndStyle),
                     BorderInlineEndStyle
                 );
-                Inverse::BorderInlineStyle(CssBorderStylePair::new(first, second))
+                Inverse::BorderInlineStyle(CssSidePair::new(first, second))
             }
             CssKnownProperty::GridRow => {
                 let first = val!(values, GridRowStart);
@@ -981,23 +974,23 @@ pub(crate) fn reconstruct(
             CssKnownProperty::Pause => {
                 let first = val!(values, PauseBefore);
                 let second = shorter_second!(&first, val!(values, PauseAfter), PauseAfter);
-                Inverse::Pause(CssSpeechBreakPair::from_parser(first, second))
+                Inverse::Pause(CssSidePair::from_parts(first, second))
             }
             CssKnownProperty::Rest => {
                 let first = val!(values, RestBefore);
                 let second = shorter_second!(&first, val!(values, RestAfter), RestAfter);
-                Inverse::Rest(CssSpeechBreakPair::from_parser(first, second))
+                Inverse::Rest(CssSidePair::from_parts(first, second))
             }
             CssKnownProperty::Cue => {
                 let first = val!(values, CueBefore);
                 let second = shorter_second!(&first, val!(values, CueAfter), CueAfter);
-                Inverse::Cue(CssCuePair::from_parser(first, second))
+                Inverse::Cue(CssSidePair::from_parts(first, second))
             }
             CssKnownProperty::InterestDelay => {
                 let first = val!(values, InterestDelayStart);
                 let second =
                     shorter_second!(&first, val!(values, InterestDelayEnd), InterestDelayEnd);
-                Inverse::InterestDelay(CssInterestDelay::from_parser(first, second))
+                Inverse::InterestDelay(CssSidePair::from_parts(first, second))
             }
             CssKnownProperty::Container => Inverse::Container(CssContainer::new(
                 val!(values, ContainerName),
@@ -1328,10 +1321,7 @@ pub(crate) fn reconstruct(
                         val!(values, ScrollPaddingInlineEnd)
                     ],
                 };
-                Inverse::ScrollPadding(CssScrollPaddingShorthand::try_new(
-                    scroll_mode(mode),
-                    shortest_quad!(sides),
-                )?)
+                Inverse::ScrollPadding(CssFourSides::try_new(mode, shortest_quad!(sides))?)
             }
             CssKnownProperty::ScrollMargin => {
                 let mode = mode?;
@@ -1349,10 +1339,7 @@ pub(crate) fn reconstruct(
                         val!(values, ScrollMarginInlineEnd)
                     ],
                 };
-                Inverse::ScrollMargin(CssScrollMarginShorthand::try_new(
-                    scroll_mode(mode),
-                    shortest_quad!(sides),
-                )?)
+                Inverse::ScrollMargin(CssFourSides::try_new(mode, shortest_quad!(sides))?)
             }
             CssKnownProperty::Inset => {
                 let mode = mode?;
@@ -1370,7 +1357,7 @@ pub(crate) fn reconstruct(
                         val!(values, InsetInlineEnd)
                     ],
                 };
-                Inverse::Inset(CssInsetShorthand::try_new(mode, shortest_quad!(sides))?)
+                Inverse::Inset(CssFourSides::try_new(mode, shortest_quad!(sides))?)
             }
             CssKnownProperty::Margin => {
                 let mode = mode?;
@@ -1388,7 +1375,7 @@ pub(crate) fn reconstruct(
                         val!(values, MarginInlineEnd)
                     ],
                 };
-                Inverse::Margin(CssMarginShorthand::try_new(mode, shortest_quad!(sides))?)
+                Inverse::Margin(CssFourSides::try_new(mode, shortest_quad!(sides))?)
             }
             CssKnownProperty::Padding => {
                 let mode = mode?;
@@ -1406,7 +1393,7 @@ pub(crate) fn reconstruct(
                         val!(values, PaddingInlineEnd)
                     ],
                 };
-                Inverse::Padding(CssPaddingShorthand::try_new(mode, shortest_quad!(sides))?)
+                Inverse::Padding(CssFourSides::try_new(mode, shortest_quad!(sides))?)
             }
             CssKnownProperty::BorderWidth => {
                 let mode = mode?;
@@ -1424,10 +1411,7 @@ pub(crate) fn reconstruct(
                         val!(values, BorderInlineEndWidth)
                     ],
                 };
-                Inverse::BorderWidth(CssBorderWidthShorthand::try_new(
-                    mode,
-                    shortest_quad!(sides),
-                )?)
+                Inverse::BorderWidth(CssFourSides::try_new(mode, shortest_quad!(sides))?)
             }
             CssKnownProperty::BorderStyle => {
                 let mode = mode?;
@@ -1445,15 +1429,12 @@ pub(crate) fn reconstruct(
                         val!(values, BorderInlineEndStyle)
                     ],
                 };
-                Inverse::BorderStyle(CssBorderStyleShorthand::try_new(
-                    mode,
-                    shortest_quad!(sides),
-                )?)
+                Inverse::BorderStyle(CssFourSides::try_new(mode, shortest_quad!(sides))?)
             }
             CssKnownProperty::MaxSize => {
                 let first = val!(values, MaxWidth);
                 let second = shorter_second!(&first, val!(values, MaxHeight), MaxHeight);
-                Inverse::MaxSize(CssMaxSizePair::new(first, second))
+                Inverse::MaxSize(CssSidePair::new(first, second))
             }
             CssKnownProperty::BorderRadius => {
                 let corners = [
@@ -1463,16 +1444,16 @@ pub(crate) fn reconstruct(
                     val!(values, BorderBottomLeftRadius),
                 ];
                 let horizontal = shortest_quad!(admitted_quad![
-                    corners[0].horizontal().clone(),
-                    corners[1].horizontal().clone(),
-                    corners[2].horizontal().clone(),
-                    corners[3].horizontal().clone()
+                    corners[0].first().clone(),
+                    corners[1].first().clone(),
+                    corners[2].first().clone(),
+                    corners[3].first().clone()
                 ]);
                 let vertical = shortest_quad!(admitted_quad![
-                    corners[0].vertical().clone(),
-                    corners[1].vertical().clone(),
-                    corners[2].vertical().clone(),
-                    corners[3].vertical().clone()
+                    corners[0].second().clone(),
+                    corners[1].second().clone(),
+                    corners[2].second().clone(),
+                    corners[3].second().clone()
                 ]);
                 let mut equal_axes = horizontal.len() == vertical.len();
                 if equal_axes {
@@ -1644,7 +1625,7 @@ fn reconstruct_colors(
                 .specified_inverse_eq(second, &mut writer.context)
                 .map_err(|error| first_entry.at(error.into()))?;
             let second = (!equal).then(|| second.clone());
-            let pair = CssBorderColorPair::new(first.clone(), second);
+            let pair = CssSidePair::new(first.clone(), second);
             if property == CssKnownProperty::BorderBlockColor {
                 Inverse::BorderBlockColor(pair)
             } else {
@@ -1694,8 +1675,7 @@ fn reconstruct_colors(
             })?;
             sides.extend(members.into_iter().take(count).cloned());
             Inverse::BorderColor(
-                CssBorderColorShorthand::try_new(mode, sides)
-                    .expect("nonempty bounded color sides"),
+                CssFourSides::try_new(mode, sides).expect("nonempty bounded color sides"),
             )
         }
         _ => unreachable!("selected color inverse family"),
@@ -1749,19 +1729,20 @@ pub(crate) fn append_reconstructed<'a>(
             .find(|entry| entry.property_name() == CssPropertyNameRef::Known(property));
     };
     match value {
+        // The colour reconstruction above has already compared the two colours under the
+        // writer's limits and dropped an equal second one, so a second colour that is still
+        // present is not equal; the pair must neither compare nor charge it again.
         Inverse::BorderBlockColor(value) | Inverse::BorderInlineColor(value) => {
-            value.append_to_rule_writer_with_color_visit(writer, &mut before)
+            value.append_with(writer, &mut |_, _, _| Ok(false), &mut before)
         }
-        Inverse::BorderColor(value) => {
-            value.append_to_rule_writer_with_color_visit(writer, &mut before)
-        }
-        Inverse::Pause(value) | Inverse::Rest(value) => value
-            .append_to_rule_writer_with_comparison(
-                writer,
-                &mut |a, b, context| a.inverse_equal(b, context),
-                &mut before,
-            ),
-        Inverse::InterestDelay(value) => value.append_to_rule_writer_with_comparison(
+        Inverse::BorderColor(value) => value.append_with(writer, &mut before),
+        // Retained time pairs pay the emission comparison again, under the writer's limits.
+        Inverse::Pause(value) | Inverse::Rest(value) => value.append_with(
+            writer,
+            &mut |a, b, context| a.inverse_equal(b, context),
+            &mut before,
+        ),
+        Inverse::InterestDelay(value) => value.append_with(
             writer,
             &mut |a, b, context| a.inverse_equal(b, context),
             &mut before,
@@ -2844,7 +2825,7 @@ mod mask_position_borrowed_comparison_tests {
         values
     }
 
-    fn list(values: &CssLonghandContributions) -> &CssPhysicalPositionList {
+    fn list(values: &CssLonghandContributions) -> &CssPositionList {
         let CssContributionValueRef::Ordinary(CssLonghandValueRef::MaskPosition(value)) =
             values.items()[0].value()
         else {

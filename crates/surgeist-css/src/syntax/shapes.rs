@@ -4,6 +4,7 @@ use super::{
     CssBoxEdgeKeyword, CssLength, CssLengthPercentage, CssNonNegative, CssNumeric, CssPosition,
     CssRadialExtent, CssUrl,
 };
+use crate::CssAutoOr;
 
 /// The authored radius branch of a `circle()` value.
 #[derive(Clone, Debug)]
@@ -259,31 +260,13 @@ impl CssPolygonShape {
     }
 }
 
-/// One independently authored `rect()` edge, without inferred geometry.
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub enum CssRectShapeEdge {
-    Auto,
-    LengthPercentage(CssNumeric<CssLengthPercentage>),
-}
-
-impl PartialEq for CssRectShapeEdge {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Auto, Self::Auto) => true,
-            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => left == right,
-            _ => false,
-        }
-    }
-}
-
 /// Four independently authored rectangle edges and optional authored rounding.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssRectShape {
-    top: CssRectShapeEdge,
-    right: CssRectShapeEdge,
-    bottom: CssRectShapeEdge,
-    left: CssRectShapeEdge,
+    top: CssAutoOr<CssNumeric<CssLengthPercentage>>,
+    right: CssAutoOr<CssNumeric<CssLengthPercentage>>,
+    bottom: CssAutoOr<CssNumeric<CssLengthPercentage>>,
+    left: CssAutoOr<CssNumeric<CssLengthPercentage>>,
     round: Option<crate::CssBorderRadiusShorthand>,
 }
 
@@ -291,10 +274,10 @@ impl CssRectShape {
     /// Composes checked edges in top/right/bottom/left order without resolving them.
     #[must_use]
     pub const fn new(
-        top: CssRectShapeEdge,
-        right: CssRectShapeEdge,
-        bottom: CssRectShapeEdge,
-        left: CssRectShapeEdge,
+        top: CssAutoOr<CssNumeric<CssLengthPercentage>>,
+        right: CssAutoOr<CssNumeric<CssLengthPercentage>>,
+        bottom: CssAutoOr<CssNumeric<CssLengthPercentage>>,
+        left: CssAutoOr<CssNumeric<CssLengthPercentage>>,
         round: Option<crate::CssBorderRadiusShorthand>,
     ) -> Self {
         Self {
@@ -306,19 +289,19 @@ impl CssRectShape {
         }
     }
     #[must_use]
-    pub const fn top(&self) -> &CssRectShapeEdge {
+    pub const fn top(&self) -> &CssAutoOr<CssNumeric<CssLengthPercentage>> {
         &self.top
     }
     #[must_use]
-    pub const fn right(&self) -> &CssRectShapeEdge {
+    pub const fn right(&self) -> &CssAutoOr<CssNumeric<CssLengthPercentage>> {
         &self.right
     }
     #[must_use]
-    pub const fn bottom(&self) -> &CssRectShapeEdge {
+    pub const fn bottom(&self) -> &CssAutoOr<CssNumeric<CssLengthPercentage>> {
         &self.bottom
     }
     #[must_use]
-    pub const fn left(&self) -> &CssRectShapeEdge {
+    pub const fn left(&self) -> &CssAutoOr<CssNumeric<CssLengthPercentage>> {
         &self.left
     }
     #[must_use]
@@ -485,7 +468,7 @@ impl CssShapeBox {
 
     /// Returns the canonical authored box keyword.
     #[must_use]
-    pub const fn as_css_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::ContentBox => "content-box",
             Self::PaddingBox => "padding-box",

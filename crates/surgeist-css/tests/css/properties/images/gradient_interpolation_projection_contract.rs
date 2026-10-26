@@ -30,7 +30,7 @@ fn parsed(css: &str) -> (CssDeclaration, CssImageValue) {
     else {
         panic!("background image")
     };
-    let [image] = images.images().images() else {
+    let [image] = images.value().images() else {
         panic!("one gradient")
     };
     let image = image.clone();

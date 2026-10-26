@@ -24,7 +24,7 @@ fn scalar(text: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
     }
 }
 
-fn corner(name: &str, text: &str) -> CssCornerRadiusValue {
+fn corner(name: &str, text: &str) -> CssSidePair<CssNumeric<CssLengthPercentage, CssNonNegative>> {
     let report = parse_style_attribute(&format!("{name}:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let value = report.syntax()[0]
@@ -48,27 +48,24 @@ fn checked_corner_preserves_omission_axes_origins_and_exact_literals() {
         CssComponentValue::try_dimension("1", "px").unwrap(),
     )
     .unwrap();
-    let programmatic = CssCornerRadiusValue::new(horizontal, Some(scalar("2%")));
+    let programmatic = CssSidePair::new(horizontal, Some(scalar("2%")));
     let parsed = corner("border-top-left-radius", "1px 2%");
     assert_eq!(programmatic, parsed);
     assert!(matches!(
-        programmatic.horizontal().origin(),
+        programmatic.first().origin(),
         CssValueOrigin::Programmatic
     ));
-    assert!(matches!(
-        parsed.horizontal().origin(),
-        CssValueOrigin::Parsed(_)
-    ));
+    assert!(matches!(parsed.first().origin(), CssValueOrigin::Parsed(_)));
     assert_eq!(
         programmatic
-            .horizontal()
+            .first()
             .serialize_specified(Default::default())
             .unwrap(),
         "1px"
     );
     assert_eq!(
         programmatic
-            .vertical()
+            .second()
             .serialize_specified(Default::default())
             .unwrap(),
         "2%"
@@ -79,14 +76,14 @@ fn checked_corner_preserves_omission_axes_origins_and_exact_literals() {
             .unwrap(),
         "1px 2%"
     );
-    let omitted = CssCornerRadiusValue::new(scalar("1px"), None);
-    assert_eq!(omitted.horizontal(), omitted.vertical());
-    assert!(omitted.authored_vertical().is_none());
+    let omitted = CssSidePair::new(scalar("1px"), None);
+    assert_eq!(omitted.first(), omitted.second());
+    assert!(omitted.authored_second().is_none());
     assert_ne!(
         omitted,
-        CssCornerRadiusValue::new(scalar("1px"), Some(scalar("1px")))
+        CssSidePair::new(scalar("1px"), Some(scalar("1px")))
     );
-    assert_eq!(omitted, CssCornerRadiusValue::new(scalar("1.0px"), None));
+    assert_eq!(omitted, CssSidePair::new(scalar("1.0px"), None));
     for text in ["1e100px", "1e100%", "1e-100px", "1e-100%", "-0px", "-0%"] {
         assert!(
             scalar(text)
@@ -125,7 +122,7 @@ fn every_logical_name_keeps_horizontal_then_vertical_without_mapping() {
         let value = corner(name, "1px 2%");
         assert_eq!(
             value
-                .horizontal()
+                .first()
                 .serialize_specified(Default::default())
                 .unwrap(),
             "1px",
@@ -133,7 +130,7 @@ fn every_logical_name_keeps_horizontal_then_vertical_without_mapping() {
         );
         assert_eq!(
             value
-                .vertical()
+                .second()
                 .serialize_specified(Default::default())
                 .unwrap(),
             "2%",
@@ -212,7 +209,7 @@ fn shorthand_retains_lists_slash_and_corner_assignment_for_every_arity() {
 
 #[test]
 fn specified_serialization_charges_one_aggregate_and_every_authored_child() {
-    let corner = CssCornerRadiusValue::new(scalar("1px"), Some(scalar("2%")));
+    let corner = CssSidePair::new(scalar("1px"), Some(scalar("2%")));
     assert_eq!(
         corner
             .serialize_specified(CssSerializationLimits::new(3, 3, 6))
@@ -274,17 +271,17 @@ fn specified_serialization_charges_one_aggregate_and_every_authored_child() {
 fn symbolic_math_remains_typed_and_shares_aggregate_limits() {
     let math = scalar("calc(1px + 2%)");
     let original = math.calculation().unwrap().clone();
-    let value = CssCornerRadiusValue::new(math, Some(scalar("3px")));
+    let value = CssSidePair::new(math, Some(scalar("3px")));
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
         "calc(2% + 1px) 3px"
     );
     assert_eq!(
-        value.horizontal().calculation().unwrap().components(),
+        value.first().calculation().unwrap().components(),
         original.components()
     );
     assert_eq!(
-        value.horizontal().calculation().unwrap().numeric_type(),
+        value.first().calculation().unwrap().numeric_type(),
         original.numeric_type()
     );
     let rendered = "calc(2% + 1px) 3px";
@@ -337,7 +334,7 @@ fn physical_corners_preserve_exact_magnitudes_and_math_type() {
         else {
             panic!("physical corner")
         };
-        let horizontal = wrapper.value().horizontal();
+        let horizontal = wrapper.value().first();
         let component = horizontal
             .literal()
             .map(|literal| literal.component())
@@ -352,7 +349,7 @@ fn physical_corners_preserve_exact_magnitudes_and_math_type() {
             }
             _ => panic!("exact radius token"),
         }
-        assert!(wrapper.value().authored_vertical().is_none());
+        assert!(wrapper.value().authored_second().is_none());
         let CssValueOrigin::Parsed(origin) = horizontal.origin() else {
             panic!("original declaration origin")
         };
@@ -371,7 +368,7 @@ fn physical_corners_preserve_exact_magnitudes_and_math_type() {
     else {
         panic!("math corner")
     };
-    let original = wrapper.value().horizontal().calculation().unwrap();
+    let original = wrapper.value().first().calculation().unwrap();
     assert_eq!(
         original.numeric_type().percent_hint(),
         Some(CssNumericDimension::Length)
@@ -391,7 +388,7 @@ fn physical_corners_preserve_exact_magnitudes_and_math_type() {
         wrapper
             .value()
             .top_left()
-            .horizontal()
+            .first()
             .serialize_specified(Default::default())
             .unwrap(),
         format!("1{}px", "0".repeat(100))

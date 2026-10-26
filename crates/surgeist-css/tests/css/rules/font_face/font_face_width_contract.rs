@@ -51,10 +51,7 @@ fn sheet(name: &str, text: &str) -> (CssFontFaceWidth, CssSourcePosition) {
 
 #[test]
 fn explicit_auto_and_omission_have_distinct_authored_states() {
-    assert_eq!(
-        CssFontFaceDescriptorKind::FontWidth.css_name(),
-        "font-width"
-    );
+    assert_eq!(CssFontFaceDescriptorKind::FontWidth.as_str(), "font-width");
     let auto = CssFontFaceWidth::Auto;
     assert_eq!(
         auto.serialize_specified(Default::default()).unwrap(),

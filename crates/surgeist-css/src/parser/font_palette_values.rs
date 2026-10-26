@@ -154,9 +154,9 @@ pub(super) fn parse_descriptor_value_from_parser<'i>(
     kind: CssFontPaletteDescriptorKind,
     recovery: &RecoveryState,
 ) -> Result<CssFontPaletteDescriptorValue, ParseError<'i, CssError>> {
-    super::descriptor_values::validate_root(input, "font-palette-values", kind.css_name())?;
+    super::descriptor_values::validate_root(input, "font-palette-values", kind.as_str())?;
     let numeric = NumericInputContext::parsed(recovery.source_snapshot());
-    parse_descriptor_boundary(input, "font-palette-values", kind.css_name(), |input| {
+    parse_descriptor_boundary(input, "font-palette-values", kind.as_str(), |input| {
         let beginning = input.state();
         let components = CssComponentValues::collect_from_parser(input, recovery.source_snapshot())
             .map_err(|error| invalid_component_value(input.current_source_location(), error))?;
@@ -180,21 +180,12 @@ pub(crate) fn construct_descriptor_value(
     let mut input = Parser::new(&mut parser_input);
     let numeric = NumericInputContext::components(components, serialized);
     let result = (|| {
-        super::descriptor_values::validate_root(
-            &mut input,
-            "font-palette-values",
-            kind.css_name(),
-        )?;
-        parse_descriptor_boundary(
-            &mut input,
-            "font-palette-values",
-            kind.css_name(),
-            |input| {
-                let data = parse_value_data(input, kind, components, &numeric)?;
-                input.expect_exhausted().map_err(basic)?;
-                Ok(data)
-            },
-        )
+        super::descriptor_values::validate_root(&mut input, "font-palette-values", kind.as_str())?;
+        parse_descriptor_boundary(&mut input, "font-palette-values", kind.as_str(), |input| {
+            let data = parse_value_data(input, kind, components, &numeric)?;
+            input.expect_exhausted().map_err(basic)?;
+            Ok(data)
+        })
     })();
     result.map_err(|error| {
         from_parse_error(
@@ -202,7 +193,7 @@ pub(crate) fn construct_descriptor_value(
             crate::error::with_descriptor_value_context(
                 error,
                 "font-palette-values",
-                kind.css_name(),
+                kind.as_str(),
             ),
         )
     })

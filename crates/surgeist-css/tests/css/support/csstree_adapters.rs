@@ -161,7 +161,7 @@ impl FontFaceDescriptorKind {
     const fn css_name(self) -> &'static str {
         match self {
             Self::FontStretch => "font-stretch",
-            _ => self.css_kind().css_name(),
+            _ => self.css_kind().as_str(),
         }
     }
 

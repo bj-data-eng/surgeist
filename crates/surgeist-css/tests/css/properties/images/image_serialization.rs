@@ -15,7 +15,7 @@ fn images(css: &str) -> CssImageValueList {
     else {
         panic!("expected typed background-image");
     };
-    value.images().clone()
+    value.value().clone()
 }
 
 fn only(css: &str) -> CssImageValue {

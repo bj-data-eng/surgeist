@@ -344,7 +344,7 @@ impl CssomBatch {
                 return Err(CssomError::WrongKind);
             };
             let block = block.clone();
-            this.prepare_set_property(&block, kind.css_name(), value, "", limits)
+            this.prepare_set_property(&block, kind.as_str(), value, "", limits)
         })
     }
     /// Implements style's PutForwards=cssText through the checked shared owner.

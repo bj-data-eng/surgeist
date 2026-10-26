@@ -128,7 +128,7 @@ fn parsed_gradient_stop_equals_checked_reconstruction() {
     else {
         panic!("expected background image");
     };
-    let [CssImageValue::Gradient(CssGradient::Linear(gradient))] = value.images().images() else {
+    let [CssImageValue::Gradient(CssGradient::Linear(gradient))] = value.value().images() else {
         panic!("expected a linear gradient");
     };
     let CssColorStopListItem::Stop(parsed) = &gradient.stops().items()[0] else {

@@ -117,7 +117,7 @@ impl SpecifiedRuleWriter {
         for descriptor in rule.descriptors() {
             self.node()?;
             self.append(" ")?;
-            self.append(descriptor.value().kind().css_name())?;
+            self.append(descriptor.value().kind().as_str())?;
             self.append(": ")?;
             self.descriptor_value(descriptor.value())?;
             self.append(";")?;
@@ -211,7 +211,7 @@ mod composition_tests {
         else {
             panic!("checked font palette");
         };
-        value.palette().clone()
+        value.value().clone()
     }
 
     #[test]

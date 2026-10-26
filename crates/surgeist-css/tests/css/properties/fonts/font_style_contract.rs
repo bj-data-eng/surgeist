@@ -511,7 +511,7 @@ fn initial_metadata_css_wide_and_shorthand_ambiguity_are_typed() {
         else {
             panic!("font")
         };
-        let CssFontValue::Explicit(font) = value.font() else {
+        let CssFontValue::Explicit(font) = value.value() else {
             panic!("explicit font")
         };
         let Some(CssFontStyle::Oblique { angle }) = font.style() else {

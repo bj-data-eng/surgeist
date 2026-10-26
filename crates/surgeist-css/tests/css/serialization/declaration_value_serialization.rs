@@ -30,8 +30,8 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["box-sizing"], "border-box", "border-box"),
         // CssBorderCollapse
         (&["border-collapse"], "collapse", "collapse"),
-        // CssBorderSpacing
-        (&["border-spacing"], "10px", "10px 10px"),
+        // CssSidePair<CssNumeric<CssLength, CssNonNegative>>
+        (&["border-spacing"], "10px", "10px"),
         // CssCaptionSide
         (&["caption-side"], "bottom", "bottom"),
         // CssClip
@@ -50,11 +50,11 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["table-layout"], "fixed", "fixed"),
         // CssScrollSnapType
         (&["scroll-snap-type"], "none", "none"),
-        // CssScrollSnapAlign
+        // CssSidePair<CssScrollSnapAlignment>
         (&["scroll-snap-align"], "none", "none"),
         // CssScrollSnapStop
         (&["scroll-snap-stop"], "normal", "normal"),
-        // CssScrollPaddingValue
+        // CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>
         (
             &[
                 "scroll-padding-top",
@@ -85,21 +85,21 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "10px",
             "10px",
         ),
-        // CssScrollPaddingPair
+        // CssSidePair<CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>>
         (
             &["scroll-padding-block", "scroll-padding-inline"],
             "10px",
             "10px",
         ),
-        // CssScrollMarginPair
+        // CssSidePair<CssNumeric<CssLength>>
         (
             &["scroll-margin-block", "scroll-margin-inline"],
             "10px",
             "10px",
         ),
-        // CssScrollPaddingShorthand
+        // CssFourSides<CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>>
         (&["scroll-padding"], "10px", "10px"),
-        // CssScrollMarginShorthand
+        // CssFourSides<CssNumeric<CssLength>>
         (&["scroll-margin"], "10px", "10px"),
         // CssTextSpacingAdjustment
         (&["word-spacing", "letter-spacing"], "normal", "normal"),
@@ -154,11 +154,11 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "none",
             "none",
         ),
-        // CssSpeechBreakPair
+        // CssSidePair<CssSpeechBreak>
         (&["pause", "rest"], "none", "none"),
         // CssCue
         (&["cue-before", "cue-after"], "none", "none"),
-        // CssCuePair
+        // CssSidePair<CssCue>
         (&["cue"], "none", "none"),
         // CssFlexDirection
         (&["flex-direction"], "row", "row"),
@@ -237,9 +237,9 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "none",
             "none",
         ),
-        // CssSizePair
+        // CssSidePair<CssSizeValue>
         (&["size", "min-size"], "auto", "auto"),
-        // CssMaxSizePair
+        // CssSidePair<CssMaxSizeValue>
         (&["max-size"], "none", "none"),
         // CssFrameSizing
         (&["frame-sizing"], "auto", "auto"),
@@ -256,11 +256,11 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "none",
             "none",
         ),
-        // CssContainIntrinsicSize
+        // CssSidePair<CssContainIntrinsicSizeValue>
         (&["contain-intrinsic-size"], "none", "none"),
         // CssFlexBasisValue
         (&["flex-basis"], "auto", "auto"),
-        // CssGapShorthand
+        // CssSidePair<CssGapValue>
         (&["gap"], "10px", "10px"),
         // CssGapValue
         (&["row-gap", "column-gap"], "10px", "10px"),
@@ -295,7 +295,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["column-rule-width"], "medium", "medium"),
         // CssColumnSpan
         (&["column-span"], "all", "all"),
-        // CssColumnWidth
+        // CssSizeValue
         (&["column-width"], "auto", "auto"),
         // CssColumns
         (&["columns"], "auto", "auto auto"),
@@ -424,7 +424,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["text-decoration-thickness"], "auto", "auto"),
         // CssTextTransform
         (&["text-transform"], "none", "none"),
-        // CssInsetShorthand
+        // CssFourSides<CssInsetValue>
         (&["inset"], "10px", "10px"),
         // CssInsetValue
         (
@@ -441,13 +441,13 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "10px",
             "10px",
         ),
-        // CssInsetPair
+        // CssSidePair<CssInsetValue>
         (&["inset-block", "inset-inline"], "10px", "10px"),
         // CssZIndexValue
         (&["z-index"], "auto", "auto"),
         // CssBoxDecorationBreak
         (&["box-decoration-break"], "clone", "clone"),
-        // CssMarginShorthand
+        // CssFourSides<CssMarginValue>
         (&["margin"], "10px", "10px"),
         // CssMarginValue
         (
@@ -464,9 +464,9 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "10px",
             "10px",
         ),
-        // CssMarginPair
+        // CssSidePair<CssMarginValue>
         (&["margin-block", "margin-inline"], "10px", "10px"),
-        // CssPaddingShorthand
+        // CssFourSides<CssPaddingValue>
         (&["padding"], "10px", "10px"),
         // CssPaddingValue
         (
@@ -483,7 +483,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "10px",
             "10px",
         ),
-        // CssPaddingPair
+        // CssSidePair<CssPaddingValue>
         (&["padding-block", "padding-inline"], "10px", "10px"),
         // CssBorder
         (
@@ -503,9 +503,9 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "solid",
             "solid",
         ),
-        // CssBorderWidthShorthand
+        // CssFourSides<CssLineWidth>
         (&["border-width"], "10px", "10px"),
-        // CssBorderWidth
+        // CssLineWidth
         (
             &[
                 "border-top-width",
@@ -520,7 +520,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "medium",
             "medium",
         ),
-        // CssBorderWidthPair
+        // CssSidePair<CssLineWidth>
         (
             &["border-block-width", "border-inline-width"],
             "10px",
@@ -528,9 +528,9 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         ),
         // CssBackground
         (&["background"], "purple", "purple"),
-        // CssBorderColorShorthand
+        // CssFourSides<CssColor>
         (&["border-color"], "purple", "purple"),
-        // CssBorderColorPair
+        // CssSidePair<CssColor>
         (
             &["border-block-color", "border-inline-color"],
             "purple",
@@ -570,9 +570,9 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["image-rendering"], "auto", "auto"),
         // CssObjectFit
         (&["object-fit"], "cover", "cover"),
-        // CssBorderStyleShorthand
+        // CssFourSides<CssLineStyle>
         (&["border-style"], "solid", "solid"),
-        // CssBorderStyle
+        // CssLineStyle
         (
             &[
                 "border-top-style",
@@ -587,7 +587,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "solid",
             "solid",
         ),
-        // CssBorderStylePair
+        // CssSidePair<CssLineStyle>
         (
             &["border-block-style", "border-inline-style"],
             "solid",
@@ -595,7 +595,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         ),
         // CssBorderRadiusShorthand
         (&["border-radius"], "10px", "10px"),
-        // CssCornerRadiusValue
+        // CssSidePair<CssNumeric<CssLengthPercentage, CssNonNegative>>
         (
             &[
                 "border-top-left-radius",
@@ -650,7 +650,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["outline-color"], "auto", "auto"),
         // CssOutlineStyle
         (&["outline-style"], "none", "none"),
-        // CssOutlineWidth
+        // CssLineWidth
         (&["outline-width"], "medium", "medium"),
         // CssTransform
         (&["transform"], "none", "none"),
@@ -676,7 +676,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["mix-blend-mode"], "multiply", "multiply"),
         // CssMaskList
         (&["mask"], "none", "none"),
-        // CssPhysicalPositionList
+        // CssPositionList
         (&["mask-position"], "10px 20px", "10px 20px"),
         // CssTransitionPropertyList: Transitions1 §2.1 defines the all keyword.
         (&["transition-property"], "all", "all"),

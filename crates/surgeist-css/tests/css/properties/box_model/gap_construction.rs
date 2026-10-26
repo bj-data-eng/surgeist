@@ -27,7 +27,7 @@ fn scalar(text: &str) -> CssGapValue {
     CssGapValue::LengthPercentage(numeric)
 }
 
-fn parsed_gap(value: &str) -> CssGapShorthand {
+fn parsed_gap(value: &str) -> CssSidePair<CssGapValue> {
     let source = declaration("gap", value);
     let CssKnownPropertyValueRef::Gap(gap) = source.known().unwrap().property_value().unwrap()
     else {
@@ -44,22 +44,22 @@ fn constructed_gap_preserves_authored_arity_and_numeric_origins() {
         )
         .unwrap(),
     );
-    let one = CssGapShorthand::new(row.clone(), None);
-    assert!(one.authored_column().is_none());
-    assert_eq!(one.row(), one.column());
+    let one = CssSidePair::new(row.clone(), None);
+    assert!(one.authored_second().is_none());
+    assert_eq!(one.first(), one.second());
     assert_eq!(
         one.serialize_specified(Default::default()).unwrap(),
         "1.25px"
     );
     assert_eq!(one, parsed_gap("1.25px"));
-    let CssGapValue::LengthPercentage(row_numeric) = one.row() else {
+    let CssGapValue::LengthPercentage(row_numeric) = one.first() else {
         panic!("numeric row")
     };
     assert!(matches!(row_numeric.origin(), CssValueOrigin::Programmatic));
     let parsed = parsed_gap("1.25px 2%");
-    assert_eq!(parsed, CssGapShorthand::new(row, Some(scalar("2%"))));
-    assert!(parsed.authored_column().is_some());
-    let CssGapValue::LengthPercentage(parsed_row) = parsed.row() else {
+    assert_eq!(parsed, CssSidePair::new(row, Some(scalar("2%"))));
+    assert!(parsed.authored_second().is_some());
+    let CssGapValue::LengthPercentage(parsed_row) = parsed.first() else {
         panic!("parsed numeric row")
     };
     assert!(matches!(parsed_row.origin(), CssValueOrigin::Parsed(_)));
@@ -69,7 +69,7 @@ fn constructed_gap_preserves_authored_arity_and_numeric_origins() {
     );
     assert_ne!(
         one,
-        CssGapShorthand::new(scalar("1.25px"), Some(scalar("1.25px")))
+        CssSidePair::new(scalar("1.25px"), Some(scalar("1.25px")))
     );
 }
 
@@ -82,9 +82,9 @@ fn normal_and_symbolic_numeric_values_remain_distinct() {
     );
     assert_eq!(
         parsed_gap("normal 2px"),
-        CssGapShorthand::new(normal.clone(), Some(scalar("2px")))
+        CssSidePair::new(normal.clone(), Some(scalar("2px")))
     );
-    assert_eq!(parsed_gap("normal").column(), &normal);
+    assert_eq!(parsed_gap("normal").second(), &normal);
 
     let symbolic = scalar("calc(1px + 2%)");
     let CssGapValue::LengthPercentage(value) = &symbolic else {
@@ -96,7 +96,7 @@ fn normal_and_symbolic_numeric_values_remain_distinct() {
         "calc(2% + 1px)"
     );
     assert_eq!(
-        CssGapShorthand::new(symbolic, Some(scalar("3px")))
+        CssSidePair::new(symbolic, Some(scalar("3px")))
             .serialize_specified(Default::default())
             .unwrap(),
         "calc(2% + 1px) 3px"
@@ -124,7 +124,7 @@ fn parsed_and_checked_wrappers_expose_exact_current_models() {
         )
         .unwrap();
         let expected = match name {
-            "gap" => CssGapShorthand::new(scalar("1px"), Some(scalar("2%")))
+            "gap" => CssSidePair::new(scalar("1px"), Some(scalar("2%")))
                 .serialize_specified(Default::default())
                 .unwrap(),
             "row-gap" => CssGapValue::Normal

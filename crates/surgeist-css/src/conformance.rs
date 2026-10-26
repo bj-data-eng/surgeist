@@ -2374,7 +2374,7 @@ macro_rules! define_property_definition_anchors {
         $all_value:ty, $all_parser:ident, $all_dispatch:block $(, expansion = $all_kind:ident { $($all_metadata:tt)* })?;
         $(
         $variant:ident, $canonical:literal, [$($alias:literal),*], $stable_id:literal,
-        $value:ty, $wrapper:ident, $accessor:ident, $parser:ident, $dispatch:block
+        $value:ty, $parser:ident, $dispatch:block
         $(, expansion = $expansion:ident { $($metadata:tt)* })?;
     )*) => {
         /// Returns the `#propdef-` anchor that names a schema property's definition.

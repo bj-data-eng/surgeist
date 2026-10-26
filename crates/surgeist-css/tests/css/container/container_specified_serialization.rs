@@ -54,10 +54,10 @@ fn six_type_states_preserve_semantics_and_use_grammar_order() {
         else {
             panic!("container-type");
         };
-        assert_eq!(*wrapper.container_type(), value);
+        assert_eq!(*wrapper.value(), value);
         assert_eq!(
             wrapper
-                .container_type()
+                .value()
                 .serialize_specified(Default::default())
                 .unwrap(),
             expected
@@ -92,10 +92,10 @@ fn ordered_names_keep_case_duplicates_unicode_and_identifier_boundaries() {
         else {
             panic!("container-name");
         };
-        assert_eq!(wrapper.names(), &value);
+        assert_eq!(wrapper.value(), &value);
         assert_eq!(
             wrapper
-                .names()
+                .value()
                 .serialize_specified(Default::default())
                 .unwrap(),
             expected
@@ -135,10 +135,10 @@ fn shorthand_omits_normal_and_counts_the_retained_type() {
         else {
             panic!("container");
         };
-        assert_eq!(wrapper.container(), &value);
+        assert_eq!(wrapper.value(), &value);
         assert_eq!(
             wrapper
-                .container()
+                .value()
                 .serialize_specified(Default::default())
                 .unwrap(),
             expected
@@ -159,7 +159,7 @@ fn parsed_reordered_shorthand_keeps_its_authored_occurrence() {
     else {
         panic!("container");
     };
-    let value = wrapper.container();
+    let value = wrapper.value();
     let before = value.clone();
     let components = value.to_components(Default::default()).unwrap();
     assert_limits(r"\31 pane / inline-size scroll-state", 5, |limits| {
@@ -266,10 +266,10 @@ fn explicit_normal_and_programmatic_components_keep_the_same_shorthand_value() {
         else {
             panic!("container");
         };
-        assert_eq!(wrapper.container(), &value);
+        assert_eq!(wrapper.value(), &value);
         assert_eq!(wrapper.as_css(), authored);
         assert_limits(expected, nodes, |limits| {
-            wrapper.container().serialize_specified(limits)
+            wrapper.value().serialize_specified(limits)
         });
 
         let components = value.to_components(Default::default()).unwrap();
@@ -284,10 +284,10 @@ fn explicit_normal_and_programmatic_components_keep_the_same_shorthand_value() {
         else {
             panic!("checked container");
         };
-        assert_eq!(checked_value.container(), &value);
+        assert_eq!(checked_value.value(), &value);
         assert_eq!(
             checked_value
-                .container()
+                .value()
                 .serialize_specified(Default::default())
                 .unwrap(),
             expected

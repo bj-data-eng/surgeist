@@ -163,7 +163,7 @@ fn color_only_background_supplies_each_schema_initial_list_and_one_color() {
     else {
         panic!("background wrapper")
     };
-    let [layer] = authored.background().layers() else {
+    let [layer] = authored.value().layers() else {
         panic!("one authored layer")
     };
     assert!(layer.image().is_none() && layer.position().is_none() && layer.size().is_none());

@@ -121,7 +121,7 @@ fn parses_css_system_colors_symbolically() {
         value
     );
     assert_eq!(
-        color.authored_values()[0].system(),
+        color.authored()[0].system(),
         Some(CssSystemColor::AccentColor)
     );
 

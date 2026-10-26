@@ -487,9 +487,7 @@ impl<'i, 's: 'i> DeclarationParser<'i> for PageBodyParser<'s> {
                     importance,
                 )
             })
-            .map_err(|error| {
-                crate::error::with_descriptor_context(error, "page", kind.css_name())
-            })?;
+            .map_err(|error| crate::error::with_descriptor_context(error, "page", kind.as_str()))?;
             self.recovery.retain_component_closures(implicit_closures);
             return Ok(PageBodyItem::Declaration(CssPageDeclaration::Descriptor(
                 CssPageDescriptor::from_parsed(value, importance, name_origin),
@@ -657,7 +655,7 @@ pub(crate) fn page_declaration_violation<'a>(
             }
             value
                 .value()
-                .assigned_values()
+                .assigned()
                 .into_iter()
                 .find_map(nonzero_unitless_page_length)
         }
@@ -754,21 +752,16 @@ pub(super) fn parse_descriptor_value<'i>(
             };
             V::Marks(CssPageMarks::new(crop, cross))
         }
-        CssPageDescriptorKind::Bleed => V::Bleed(
-            if input
-                .try_parse(|input| input.expect_ident_matching("auto"))
-                .is_ok()
-            {
-                CssPageBleed::Auto
-            } else {
-                CssPageBleed::Length(super::property_input::adapt_native(
-                    input,
-                    &numeric,
-                    NativeValueRange::Component,
-                    super::values::parse_length,
-                )?)
+        CssPageDescriptorKind::Bleed => V::Bleed(super::property_input::adapt_native(
+            input,
+            &numeric,
+            NativeValueRange::Component,
+            |input, numeric| {
+                super::side_shapes::parse_auto_or(input, |input| {
+                    super::values::parse_length(input, numeric)
+                })
             },
-        ),
+        )?),
     };
     input.expect_exhausted().map_err(basic)?;
     Ok(value)

@@ -163,7 +163,7 @@ fn parsed_symbolic_easing_remains_typed_through_checked_aggregates() {
     else {
         panic!("timing function wrapper");
     };
-    let [easing @ CssEasing::Steps(steps)] = wrapper.timing_functions().values() else {
+    let [easing @ CssEasing::Steps(steps)] = wrapper.value().values() else {
         panic!("one steps function");
     };
     assert!(steps.count().calculation().is_some());

@@ -586,15 +586,18 @@ fn nested_mix_prefixes_share_input_projection_and_final_bytes() {
 #[test]
 fn sibling_calculations_share_all_three_limits() {
     // Pair root 1/1 + two child 8/8 graphs = 17/17; separator is one byte.
-    let child = color("rgb(none none none / calc(1 / 128))");
-    let pair = CssBorderColorPair::new(child.clone(), Some(child));
-    let expected = "color(srgb none none none / 0.007813) color(srgb none none none / 0.007813)";
+    // The second child differs (1/64) so that it is written; its text has the same length.
+    let pair = CssSidePair::new(
+        color("rgb(none none none / calc(1 / 128))"),
+        Some(color("rgb(none none none / calc(1 / 64))")),
+    );
+    let expected = "color(srgb none none none / 0.007813) color(srgb none none none / 0.015625)";
     assert_bounded_serialization(
         &pair,
         expected,
         17,
         17,
-        CssBorderColorPair::serialize_specified,
+        CssSidePair::<CssColor>::serialize_specified,
     );
 }
 
@@ -603,7 +606,7 @@ fn utf8_prefix_spends_bytes_before_long_opaque_capture() {
     // Pair 1/1 + custom color root/missing channel 2/2 + RGB 6/5 = 9/8.
     // UTF-8 prefix color(--é none) plus separator is 17 bytes. The
     // remaining scratch needs 27, one more than the child's final 26.
-    let pair = CssBorderColorPair::new(
+    let pair = CssSidePair::new(
         color("color(--é none)"),
         Some(color("rgb(none none none / calc(100000000000000000000))")),
     );
@@ -614,7 +617,7 @@ fn utf8_prefix_spends_bytes_before_long_opaque_capture() {
         9,
         8,
         expected.len() + 1,
-        CssBorderColorPair::serialize_specified,
+        CssSidePair::<CssColor>::serialize_specified,
     );
 }
 

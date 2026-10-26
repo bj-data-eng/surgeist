@@ -68,7 +68,7 @@ fn source(name: &str, value: &str, front: usize) -> CssDeclaration {
 
 fn margins(declaration: &CssDeclaration) -> Vec<&CssMarginValue> {
     match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::Margin(value) => value.value().assigned_values().to_vec(),
+        CssKnownPropertyValueRef::Margin(value) => value.value().assigned().to_vec(),
         CssKnownPropertyValueRef::MarginTop(value) => vec![value.value()],
         CssKnownPropertyValueRef::MarginRight(value) => vec![value.value()],
         CssKnownPropertyValueRef::MarginBottom(value) => vec![value.value()],

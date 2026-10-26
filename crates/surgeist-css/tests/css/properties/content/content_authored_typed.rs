@@ -133,7 +133,7 @@ fn bookmark_level_counts_reject_nonpositive_bare_calculation_roots_on_admission(
             Some(&origin),
         );
     }
-    let positive = CssBookmarkLevel::try_new(calculation("+001")).unwrap();
+    let positive = CssBookmarkLevel::new(calculation("+001"));
     let Some(literal) = positive.level().and_then(|value| value.literal()) else {
         panic!("bare positive calculation normalizes to literal")
     };
@@ -143,7 +143,7 @@ fn bookmark_level_counts_reject_nonpositive_bare_calculation_roots_on_admission(
         "1"
     );
     for deferred in ["calc(-1)", "calc(0)", "min(-1, 0)"] {
-        let level = CssBookmarkLevel::try_new(calculation(deferred)).unwrap();
+        let level = CssBookmarkLevel::new(calculation(deferred));
         assert!(matches!(level.level(), Some(value) if value.calculation().is_some()));
     }
     assert!(CssBookmarkLevel::none().level().is_none());
@@ -172,10 +172,9 @@ fn bookmark_level_retains_exact_large_integer_and_parsed_numeric_origin() {
         literal.component().origin(),
         CssValueOrigin::Parsed(_)
     ));
-    let copied = CssBookmarkLevel::try_new(
+    let copied = CssBookmarkLevel::new(
         CssNumeric::<CssInteger, CssPositive>::try_from_literal(literal.clone()).unwrap(),
-    )
-    .unwrap();
+    );
     let Some(retained) = copied.level().and_then(|value| value.literal()) else {
         panic!("literal")
     };

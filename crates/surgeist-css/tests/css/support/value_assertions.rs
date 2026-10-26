@@ -478,7 +478,7 @@ pub fn background_image_url(text: &str) -> CssUrl {
     else {
         panic!("ordinary background image: {text}")
     };
-    let [CssImageValue::Url(url)] = images.images().images() else {
+    let [CssImageValue::Url(url)] = images.value().images() else {
         panic!("one URL: {text}")
     };
     url.clone()

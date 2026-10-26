@@ -5,13 +5,13 @@
 use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
-fn spacing(source: &CssDeclaration) -> &CssBorderSpacing {
+fn spacing(source: &CssDeclaration) -> &CssSidePair<CssNumeric<CssLength, CssNonNegative>> {
     let CssKnownPropertyValueRef::BorderSpacing(value) =
         source.known().unwrap().property_value().unwrap()
     else {
         panic!("typed border-spacing")
     };
-    value.spacing()
+    value.value()
 }
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
@@ -46,14 +46,14 @@ fn border_spacing_metadata_is_inherited_with_zero_on_both_axes() {
     let authored = declaration("border-spacing:0");
     assert!(exact_literal(
         spacing(&authored)
-            .horizontal()
+            .first()
             .literal()
             .map(|literal| literal.component()),
         "0"
     ));
     assert!(exact_literal(
         spacing(&authored)
-            .vertical()
+            .second()
             .literal()
             .map(|literal| literal.component()),
         "0"
@@ -75,17 +75,11 @@ fn one_or_two_lengths_keep_horizontal_then_vertical_effective_values() {
         let source = declaration(&format!("border-spacing:{authored}!important"));
         let value = spacing(&source);
         assert!(exact_literal(
-            value
-                .horizontal()
-                .literal()
-                .map(|literal| literal.component()),
+            value.first().literal().map(|literal| literal.component()),
             horizontal
         ));
         assert!(exact_literal(
-            value
-                .vertical()
-                .literal()
-                .map(|literal| literal.component()),
+            value.second().literal().map(|literal| literal.component()),
             vertical
         ));
         let items = expanded(&source);
@@ -105,18 +99,15 @@ fn symbolic_pure_length_math_remains_in_the_authored_pair() {
     for authored in ["calc(1px + 2em)", "calc(1px + 2em) 3px"] {
         let source = declaration(&format!("border-spacing:{authored}"));
         let value = spacing(&source);
-        assert!(value.horizontal().calculation().is_some());
+        assert!(value.first().calculation().is_some());
         if authored.ends_with("3px") {
             assert!(exact_dimension(
-                value
-                    .vertical()
-                    .literal()
-                    .map(|literal| literal.component()),
+                value.second().literal().map(|literal| literal.component()),
                 "3",
                 "px"
             ));
         } else {
-            assert_eq!(value.horizontal(), value.vertical());
+            assert_eq!(value.first(), value.second());
         }
         assert_eq!(expanded(&source).len(), 1);
     }

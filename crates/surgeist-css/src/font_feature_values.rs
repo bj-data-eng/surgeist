@@ -299,7 +299,7 @@ pub enum CssFontFeatureValueKind {
     Annotation,
 }
 impl CssFontFeatureValueKind {
-    pub const fn css_name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Stylistic => "stylistic",
             Self::HistoricalForms => "historical-forms",
@@ -321,7 +321,7 @@ impl CssFontFeatureValueKind {
             Self::Annotation,
         ]
         .into_iter()
-        .find(|kind| value.eq_ignore_ascii_case(kind.css_name()))
+        .find(|kind| value.eq_ignore_ascii_case(kind.as_str()))
     }
     // Selected Fonts 4 (2026-09-07) section 6.9.2 / frozen WebKit
     // 73aa6c89e2cb77c46184a81aec944e4ab99d114d CSSParser.cpp:800–885 policy.

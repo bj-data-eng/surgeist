@@ -322,9 +322,9 @@ fn background_projects_contrast_as_final_color_alongside_a_light_dark_image() {
     else {
         panic!("color-only background")
     };
-    assert!(value.background().layers()[0].image().is_none());
+    assert!(value.value().layers()[0].image().is_none());
     assert_eq!(
-        value.background().layers()[0]
+        value.value().layers()[0]
             .color()
             .unwrap()
             .serialize_specified(Default::default())
@@ -581,7 +581,7 @@ fn utf8_url_prefix_and_nested_image_children_share_the_complete_output_budget() 
         panic!("background")
     };
     let expected = "url(\"café.svg\") contrast-color(red)";
-    let value = value.background();
+    let value = value.value();
     assert_eq!(
         value
             .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))

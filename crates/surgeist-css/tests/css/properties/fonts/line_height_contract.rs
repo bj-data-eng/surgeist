@@ -26,7 +26,7 @@ fn property(text: &str) -> CssLineHeight {
     else {
         panic!("line height")
     };
-    value.line_height().clone()
+    value.value().clone()
 }
 
 #[test]
@@ -130,7 +130,7 @@ fn parsed_and_programmatic_values_have_distinct_origins_but_semantic_equality() 
     else {
         panic!("checked")
     };
-    assert_eq!(value.line_height(), &parsed);
+    assert_eq!(value.value(), &parsed);
     let invalid = normal_grammar_components(
         "line-height",
         CssComponentValues::try_new(
@@ -178,7 +178,7 @@ fn inherited_initial_current_wrapper_and_global_contributions_are_exact() {
     else {
         panic!("current")
     };
-    assert_eq!(value.line_height(), &property("1.250"));
+    assert_eq!(value.value(), &property("1.250"));
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
         expand_declaration(source).unwrap()
     else {
@@ -192,7 +192,7 @@ fn inherited_initial_current_wrapper_and_global_contributions_are_exact() {
     assert_eq!(item.source().importance(), CssImportance::Important);
     assert_eq!(
         item.ordinary_value().unwrap().view(),
-        CssLonghandValueRef::LineHeight(value.line_height())
+        CssLonghandValueRef::LineHeight(value.value())
     );
     for (text, keyword) in [
         ("inherit", CssGlobalKeyword::Inherit),
@@ -343,7 +343,7 @@ fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
         else {
             panic!("font")
         };
-        let CssFontValue::Explicit(font) = font.font() else {
+        let CssFontValue::Explicit(font) = font.value() else {
             panic!("explicit")
         };
         assert_eq!(font.families().families()[0].as_str(), "serif");
@@ -378,7 +378,7 @@ fn recovered_math_is_retained_by_raw_parse_but_rejected_by_strict_construction_a
         else {
             panic!("retained")
         };
-        match value.line_height() {
+        match value.value() {
             CssLineHeight::Number(admitted) if number => {
                 let calculation = admitted.calculation().expect("number math");
                 assert!(

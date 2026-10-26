@@ -8,9 +8,11 @@
 //! `auto` and `normal`. Speech 1's property tables label computed values as the
 //! specified value; the prose additionally gives contextual rules for `auto`.
 
+use crate::common_values::side_element;
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssNonNegative, CssNumeric, CssNumericConstructionError, CssSerializationError, CssTime,
+    CssNonNegative, CssNumeric, CssNumericConstructionError, CssSerializationError, CssSidePair,
+    CssTime,
 };
 
 /// Whether an element is authored to participate in speech rendering.
@@ -264,106 +266,33 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssSpeechBreak {
 }
 crate::specified_rule_serialization::specified_serialization!(CssSpeechBreak);
 
-/// Authored before/after components of a `pause` or `rest` shorthand.
-///
-/// The optional second component remains distinct from an explicitly equal
-/// value. Omission applies the first component to both longhands; the property
-/// schema supplies their pause/rest identities and source occurrence.
-///
-/// # Specified serialization
-///
-/// Serializes in grammar order, omitting an equal second component as CSSOM requires, without
-/// discarding its authored presence from this model. An omitted effective-after value incurs no
-/// duplicate input traversal.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssSpeechBreakPair {
-    before: CssSpeechBreak,
-    after: Option<CssSpeechBreak>,
-}
+// `pause` and `rest` take `<'pause-before'> <'pause-after'>?` (respectively `rest`). A second
+// component that equals the first is omitted from the specified serialization, while the model
+// keeps whether it was authored.
+side_element!(
+    CssSpeechBreak,
+    same = |a, b, _context| Ok(a.specified_value_eq(b))
+);
 
-impl CssSpeechBreakPair {
+impl CssSidePair<CssSpeechBreak> {
     /// Composes checked components, rejecting original recovered time closure
     /// while retaining whether the second component was authored.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssNumericConstructionError`] when a time component was closed implicitly.
     pub fn try_new(
-        before: CssSpeechBreak,
-        after: Option<CssSpeechBreak>,
+        first: CssSpeechBreak,
+        authored_second: Option<CssSpeechBreak>,
     ) -> Result<Self, CssNumericConstructionError> {
-        before.ensure_closed()?;
-        if let Some(after) = &after {
-            after.ensure_closed()?;
+        first.ensure_closed()?;
+        if let Some(second) = &authored_second {
+            second.ensure_closed()?;
         }
-        Ok(Self { before, after })
-    }
-
-    pub(crate) const fn from_parser(before: CssSpeechBreak, after: Option<CssSpeechBreak>) -> Self {
-        Self { before, after }
-    }
-
-    #[must_use]
-    pub const fn before(&self) -> &CssSpeechBreak {
-        &self.before
-    }
-
-    /// Borrows the optional explicitly authored second component.
-    #[must_use]
-    pub const fn authored_after(&self) -> Option<&CssSpeechBreak> {
-        self.after.as_ref()
-    }
-
-    /// Borrows the after value, sharing the first when the second was omitted.
-    #[must_use]
-    pub const fn after(&self) -> &CssSpeechBreak {
-        match &self.after {
-            Some(value) => value,
-            None => &self.before,
-        }
-    }
-
-    pub(crate) fn append_to_rule_writer_with_comparison(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-        equal: &mut impl FnMut(
-            &CssSpeechBreak,
-            &CssSpeechBreak,
-            &mut SpecifiedSerializationContext,
-        ) -> Result<bool, crate::CssSerializationError>,
-        before_value: &mut impl FnMut(usize),
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        before_value(0);
-        let context = &mut writer.context;
-        context.charge_nodes(1)?;
-        let output = &mut writer.css;
-        self.before.append_specified(context, output)?;
-        if let Some(after) = &self.after {
-            before_value(1);
-            let omit = equal(after, &self.before, context)?;
-            let suppress = context.output_suppressed() || omit;
-            let previous = context.replace_output_suppression(suppress);
-            let result = (|| {
-                if !omit {
-                    context.append(output, " ")?;
-                }
-                after.append_specified(context, output)
-            })();
-            context.replace_output_suppression(previous);
-            result?;
-        }
-        Ok(())
+        Ok(Self::from_parts(first, authored_second))
     }
 }
-impl crate::specified_rule_serialization::SpecifiedProvider for CssSpeechBreakPair {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        self.append_to_rule_writer_with_comparison(
-            writer,
-            &mut |after, before, _| Ok(after.specified_value_eq(before)),
-            &mut |_| {},
-        )
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(CssSpeechBreakPair);
+crate::common_values::side_pair_serialization!(CssSpeechBreak);
 
 /// An exact signed ordinary Speech 1 decibel dimension, retaining its origin.
 ///
@@ -610,74 +539,28 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssCue {
 }
 crate::specified_rule_serialization::specified_serialization!(CssCue);
 
-/// Ordered cue shorthand components, retaining whether after was authored.
-///
-/// # Specified serialization
-///
-/// Serializes in grammar order, omitting an equivalent optional second cue.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssCuePair {
-    before: CssCue,
-    after: Option<CssCue>,
-}
+// `cue` takes `<'cue-before'> <'cue-after'>?`; an equivalent second cue is omitted from the
+// specified serialization, while the model keeps whether it was authored.
+side_element!(CssCue, same = |a, b, _context| Ok(a.equivalent(b)));
 
-impl CssCuePair {
+impl CssSidePair<CssCue> {
     /// Composes cues, rejecting retained recovered URL modifier arguments.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::CssComponentValueError`] when a cue retains a recovered argument.
     pub fn try_new(
-        before: CssCue,
-        after: Option<CssCue>,
+        first: CssCue,
+        authored_second: Option<CssCue>,
     ) -> Result<Self, crate::CssComponentValueError> {
-        before.ensure_closed()?;
-        if let Some(after) = &after {
-            after.ensure_closed()?;
+        first.ensure_closed()?;
+        if let Some(second) = &authored_second {
+            second.ensure_closed()?;
         }
-        Ok(Self { before, after })
-    }
-
-    pub(crate) const fn from_parser(before: CssCue, after: Option<CssCue>) -> Self {
-        Self { before, after }
-    }
-
-    #[must_use]
-    pub const fn before(&self) -> &CssCue {
-        &self.before
-    }
-
-    #[must_use]
-    pub const fn authored_after(&self) -> Option<&CssCue> {
-        self.after.as_ref()
-    }
-
-    /// Shares before when the authored second component was omitted.
-    #[must_use]
-    pub const fn after(&self) -> &CssCue {
-        match &self.after {
-            Some(value) => value,
-            None => &self.before,
-        }
+        Ok(Self::from_parts(first, authored_second))
     }
 }
-impl crate::specified_rule_serialization::SpecifiedProvider for CssCuePair {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        writer.node()?;
-        writer.source_member(0, |writer| self.before.append_specified(writer))?;
-        if let Some(after) = &self.after {
-            writer.source_member(1, |writer| {
-                if self.before.equivalent(after) {
-                    writer.without_output(|writer| after.append_specified(writer))
-                } else {
-                    writer.append(" ")?;
-                    after.append_specified(writer)
-                }
-            })?;
-        }
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(CssCuePair);
+crate::common_values::side_pair_serialization!(CssCue);
 
 /// Symbolic vocal stress; acoustic realization belongs to a speech renderer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

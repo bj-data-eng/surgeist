@@ -23,17 +23,17 @@ macro_rules! aggregate_parser {
         }
     };
 }
-aggregate_parser!(slice, CssBorderImageSlice, BorderImageSlice, slice);
-aggregate_parser!(width, CssBorderImageWidth, BorderImageWidth, widths);
-aggregate_parser!(outset, CssBorderImageOutset, BorderImageOutset, outsets);
-aggregate_parser!(border, CssBorderImage, BorderImage, border_image);
+aggregate_parser!(slice, CssBorderImageSlice, BorderImageSlice, value);
+aggregate_parser!(width, CssBorderImageWidth, BorderImageWidth, value);
+aggregate_parser!(outset, CssBorderImageOutset, BorderImageOutset, value);
+aggregate_parser!(border, CssBorderImage, BorderImage, value);
 aggregate_parser!(
     iterations,
     CssAnimationIterationCountList,
     AnimationIterationCount,
-    iteration_counts
+    value
 );
-aggregate_parser!(animation, CssAnimationList, Animation, animations);
+aggregate_parser!(animation, CssAnimationList, Animation, value);
 
 fn filter(source: &str) -> CssFilter {
     let report = parse_style_attribute(source);

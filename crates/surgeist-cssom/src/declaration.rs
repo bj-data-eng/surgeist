@@ -259,7 +259,7 @@ fn entry_name(block: &CssomBlock, index: usize) -> Result<&str, CssomError> {
         CssomBlockData::FontFace(_) => Ok(font_selected(block)?
             .entries()
             .get(index)
-            .map_or("", |entry| entry.value().kind().css_name())),
+            .map_or("", |entry| entry.value().kind().as_str())),
         CssomBlockData::Page {
             selected: CssomProjection::Available(selected),
             ..
@@ -271,7 +271,7 @@ fn entry_name(block: &CssomBlock, index: usize) -> Result<&str, CssomError> {
                     property_name(entry.property_name())
                 }
                 CssSpecifiedPageDeclarationEntry::Descriptor(entry) => {
-                    entry.value().kind().css_name()
+                    entry.value().kind().as_str()
                 }
                 _ => unreachable!("CSS Page entry"),
             })),

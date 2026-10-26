@@ -26,7 +26,7 @@ fn parsed_near_terminal_dimensions_are_rejected_with_neighbor_recovery() {
         else {
             panic!("text orientation")
         };
-        assert_eq!(value.orientation(), &CssTextOrientation::Mixed);
+        assert_eq!(value.value(), &CssTextOrientation::Mixed);
         assert!(validate_style_attribute(&source).is_err());
     }
 }
@@ -107,7 +107,7 @@ fn exact_terminals_keep_mapping_spelling_and_origins() {
             else {
                 panic!("text orientation")
             };
-            assert_eq!(value.orientation(), &expected);
+            assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), text);
         }
     }

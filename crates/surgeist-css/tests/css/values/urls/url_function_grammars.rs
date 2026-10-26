@@ -14,15 +14,15 @@ use surgeist_css::{
 fn assert_url_payload(value: CssKnownPropertyValueRef<'_>, expected: &str) {
     match value {
         CssKnownPropertyValueRef::BackgroundImage(value) => assert!(matches!(
-            value.images().images(),
+            value.value().images(),
             [CssImageValue::Url(url)] if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::MaskImage(value) => assert!(matches!(
-            value.images().images(),
+            value.value().images(),
             [CssImageValue::Url(url)] if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::BorderImageSource(value) => assert!(matches!(
-            value.source(),
+            value.value(),
             CssImageValue::Url(url) if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::ListStyleImage(value) => assert!(matches!(
@@ -50,14 +50,14 @@ fn assert_url_payload(value: CssKnownPropertyValueRef<'_>, expected: &str) {
             CssClipPath::Url(url) if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::Background(value) => assert!(matches!(
-            value.background().layers(),
+            value.value().layers(),
             [layer] if matches!(layer.image(), Some(CssImageValue::Url(url)) if url.as_str() == expected)
         )),
         CssKnownPropertyValueRef::Mask(value) => {
             assert_eq!(value.value().layers().len(), 1);
         }
         CssKnownPropertyValueRef::BorderImage(value) => assert!(matches!(
-            value.border_image().source(),
+            value.value().source(),
             Some(CssImageValue::Url(url)) if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::ListStyle(value) => assert!(matches!(
@@ -164,7 +164,7 @@ fn quoted_src_accepts_ordered_modifiers_and_keeps_important_neighbors() {
     else {
         panic!("background image with modifiers")
     };
-    let [CssImageValue::Url(url)] = value.images().images() else {
+    let [CssImageValue::Url(url)] = value.value().images() else {
         panic!("one URL image")
     };
     assert_eq!(url.as_str(), "icon.svg");

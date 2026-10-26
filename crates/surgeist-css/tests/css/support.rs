@@ -22,6 +22,7 @@ pub mod lab_direct_component_cases;
 pub mod math_depth;
 pub mod named_property;
 pub mod parse_report;
+pub mod position_view;
 pub mod property_admission;
 pub mod property_expectations;
 pub mod rules;

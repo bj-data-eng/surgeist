@@ -717,7 +717,7 @@ fn raw_property_corpus_obeys_selected_grammar_and_original_coordinates() {
                 else {
                     panic!("expected background image: {id}");
                 };
-                let [CssImageValue::Url(url)] = value.images().images() else {
+                let [CssImageValue::Url(url)] = value.value().images() else {
                     panic!("expected one URL layer: {id}");
                 };
                 assert_eq!(url.as_str(), expected, "{id}");

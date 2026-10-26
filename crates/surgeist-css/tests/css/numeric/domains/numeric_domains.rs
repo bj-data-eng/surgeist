@@ -298,7 +298,7 @@ fn exact_huge_time_parse_retains_authored_payload_and_siblings() {
     else {
         panic!("exact time duration");
     };
-    let literal = wrapper.durations().values()[0].literal().unwrap();
+    let literal = wrapper.value().values()[0].literal().unwrap();
     assert_eq!(literal.numeric().representation(), "1e999");
     assert_eq!(literal.unit(), CssTimeUnit::Seconds);
     let CssValueOrigin::Parsed(origin) = literal.origin() else {
@@ -333,7 +333,7 @@ fn exact_huge_iteration_parse_retains_sheet_payload_and_siblings() {
     else {
         panic!("exact iteration count");
     };
-    let [CssAnimationIterationCount::Number(number)] = counts.iteration_counts().values() else {
+    let [CssAnimationIterationCount::Number(number)] = counts.value().values() else {
         panic!("one shared ordinary count");
     };
     assert!(

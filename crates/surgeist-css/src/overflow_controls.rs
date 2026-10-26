@@ -100,7 +100,7 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssOverflowClipM
         context.charge_nodes(1)?;
         if let Some(edge) = self.authored_box_edge {
             context.charge_nodes(1)?;
-            context.append(output, edge.as_css_str())?;
+            context.append(output, edge.as_str())?;
         }
         if let Some(offset) = &self.authored_offset {
             if self.authored_box_edge.is_some() {

@@ -528,24 +528,24 @@ impl From<CssPhysicalPosition> for CssPosition {
     }
 }
 
-/// A nonempty authored comma list of checked physical positions.
+/// A nonempty authored comma list of Values 5 positions, as `mask-position` accepts.
 ///
 /// # Specified serialization
 ///
 /// Serializes the nonempty authored layers in comma order.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssPhysicalPositionList {
-    positions: Vec<CssPhysicalPosition>,
+pub struct CssPositionList {
+    positions: Vec<CssPosition>,
 }
-impl CssPhysicalPositionList {
-    /// Constructs a nonempty list of checked physical positions.
+impl CssPositionList {
+    /// Constructs a nonempty list of checked positions.
     #[must_use]
-    pub fn try_new(positions: Vec<CssPhysicalPosition>) -> Option<Self> {
+    pub fn try_new(positions: Vec<CssPosition>) -> Option<Self> {
         (!positions.is_empty()).then_some(Self { positions })
     }
     /// Returns positions in authored comma order.
     #[must_use]
-    pub fn positions(&self) -> &[CssPhysicalPosition] {
+    pub fn positions(&self) -> &[CssPosition] {
         &self.positions
     }
 }

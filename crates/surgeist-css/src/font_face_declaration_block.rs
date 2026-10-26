@@ -53,7 +53,7 @@ impl std::fmt::Display for CssFontFaceDeclarationBlockError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
             FontFaceDeclarationBlockKind::DuplicateDescriptor { kind } => {
-                write!(f, "duplicate selected {} descriptor", kind.css_name())
+                write!(f, "duplicate selected {} descriptor", kind.as_str())
             }
             FontFaceDeclarationBlockKind::Serialization(error) => error.fmt(f),
         }
@@ -141,7 +141,7 @@ impl CssSpecifiedFontFaceDeclarationBlock {
             if index != 0 {
                 writer.append(" ")?;
             }
-            writer.append(entry.value().kind().css_name())?;
+            writer.append(entry.value().kind().as_str())?;
             writer.append(": ")?;
             entry.value().append_to_rule_writer(writer)?;
             writer.append(";")?;

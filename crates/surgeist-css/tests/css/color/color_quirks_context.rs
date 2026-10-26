@@ -41,7 +41,7 @@ fn color(source: &CssDeclaration) -> &CssColor {
         CssKnownPropertyValueRef::BorderRightColor(v) => v.value(),
         CssKnownPropertyValueRef::BorderBottomColor(v) => v.value(),
         CssKnownPropertyValueRef::BorderLeftColor(v) => v.value(),
-        CssKnownPropertyValueRef::BorderColor(v) => v.value().assigned_values()[0],
+        CssKnownPropertyValueRef::BorderColor(v) => v.value().assigned()[0],
         _ => panic!("direct Color owner"),
     }
 }

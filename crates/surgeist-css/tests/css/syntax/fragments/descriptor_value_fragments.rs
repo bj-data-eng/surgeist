@@ -405,7 +405,7 @@ fn ten_counter_descriptor_grammars_return_literal_semantics() {
         assert!(report.into_validation_result().unwrap().is_some());
     }
     for (kind, css_name, _) in COUNTERS {
-        assert_eq!(kind.css_name(), css_name);
+        assert_eq!(kind.as_str(), css_name);
     }
 }
 

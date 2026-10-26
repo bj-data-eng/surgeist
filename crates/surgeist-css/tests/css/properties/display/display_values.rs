@@ -10,7 +10,7 @@ fn declaration(input: &str) -> CssDeclaration {
     report.syntax()[0].clone()
 }
 
-fn value(declaration: &CssDeclaration) -> &CssDisplayPropertyValue {
+fn value(declaration: &CssDeclaration) -> &CssPropertyValue<CssDisplayValue> {
     let CssKnownPropertyValueRef::Display(value) =
         declaration.known().unwrap().property_value().unwrap()
     else {

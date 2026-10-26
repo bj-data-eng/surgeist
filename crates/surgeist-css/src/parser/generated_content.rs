@@ -122,7 +122,7 @@ pub(super) fn parse_bookmark_level<'i, 't>(
         return Ok(crate::CssBookmarkLevel::none());
     }
     let level = super::values::parse_positive_integer_value(input, numeric)?;
-    Ok(crate::CssBookmarkLevel::try_new(level).expect("checked positive integer root"))
+    Ok(crate::CssBookmarkLevel::new(level))
 }
 
 pub(super) fn parse_bookmark_label<'i, 't>(

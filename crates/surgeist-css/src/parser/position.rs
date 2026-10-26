@@ -56,9 +56,9 @@ pub(super) fn parse_background_position_prefix<'i, 't>(
 pub(super) fn parse_mask_position_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssPhysicalPositionList, ParseError<'i, Error>> {
-    let positions = input.parse_comma_separated(|input| parse_physical_position(input, numeric))?;
-    CssPhysicalPositionList::try_new(positions)
+) -> std::result::Result<CssPositionList, ParseError<'i, Error>> {
+    let positions = input.parse_comma_separated(|input| parse_position_prefix(input, numeric))?;
+    CssPositionList::try_new(positions)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
@@ -75,8 +75,8 @@ pub(super) fn parse_background_position_list<'i, 't>(
 pub(super) fn parse_object_position<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssPhysicalPosition, ParseError<'i, Error>> {
-    parse_physical_position(input, numeric)
+) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
+    parse_position_prefix(input, numeric)
 }
 
 pub(super) fn parse_transform_origin<'i, 't>(
@@ -157,17 +157,16 @@ enum GenericPositionAtom {
     Offset(CssNumeric<CssLengthPercentage>),
 }
 
-/// Parses physical atoms while leaving the next component unconsumed for the
+/// Parses a Values 5 `<position>` while leaving the next component unconsumed for the
 /// caller's boundary (list comma, shorthand group or end of value).
-/// The physical builder retains its one-, two- and four-component grammar;
-/// Background's distinct three-component model is not used for Mask layers.
-pub(super) fn parse_physical_position<'i, 't>(
+/// The generic builder retains its one-, two- and four-component grammar;
+/// Background's distinct three-component model is not used by these consumers.
+pub(super) fn parse_position_prefix<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssPhysicalPosition, ParseError<'i, Error>> {
-    let (atoms, states) =
-        collect_position_atoms(input, numeric, PositionGrammar::Physical, &[], true)?;
-    build_physical_position(&atoms)
+) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
+    let (atoms, states) = collect_position_atoms(input, numeric, PositionGrammar::Full, &[], true)?;
+    build_full_position(&atoms)
         .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
 }
 
@@ -237,7 +236,7 @@ fn collect_position_atoms<'i, 't>(
         && !boundaries
             .iter()
             .any(|word| super::values::next_is_ident(input, word))
-        && (!prefix_only || (atoms.len() < 4 && next_starts_background_position(input)))
+        && (!prefix_only || (atoms.len() < 4 && next_starts_position(input, grammar)))
     {
         states.push(input.state());
         atoms.push(parse_generic_position_atom(input, numeric, grammar)?);

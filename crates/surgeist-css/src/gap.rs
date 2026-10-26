@@ -1,5 +1,7 @@
 //! Exact authored gap values before layout and percentage resolution.
 
+use crate::common_values::{side_element, side_pair_entry};
+use crate::specified_inverse::InverseValueEquality as _;
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{CssLengthPercentage, CssNonNegative, CssNumeric, CssSerializationError};
 
@@ -60,65 +62,9 @@ impl PartialEq for CssGapValue {
 
 impl Eq for CssGapValue {}
 
-/// An authored `gap` shorthand with one row value and an optional column value.
-///
-/// A missing column repeats the row without manufacturing a second numeric origin.
-///
-/// # Specified serialization
-///
-/// Serializes exactly the authored one or two specified components.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssGapShorthand {
-    row: CssGapValue,
-    authored_column: Option<CssGapValue>,
-}
-
-impl CssGapShorthand {
-    /// Retains already checked values and whether the column was authored.
-    #[must_use]
-    pub fn new(row: CssGapValue, authored_column: Option<CssGapValue>) -> Self {
-        Self {
-            row,
-            authored_column,
-        }
-    }
-
-    /// Borrows the row value.
-    #[must_use]
-    pub const fn row(&self) -> &CssGapValue {
-        &self.row
-    }
-
-    /// Borrows an explicitly authored column value.
-    #[must_use]
-    pub const fn authored_column(&self) -> Option<&CssGapValue> {
-        self.authored_column.as_ref()
-    }
-
-    /// Borrows the effective column value, repeating the row when omitted.
-    #[must_use]
-    pub fn column(&self) -> &CssGapValue {
-        self.authored_column.as_ref().unwrap_or(&self.row)
-    }
-}
-impl crate::specified_rule_serialization::SpecifiedProvider for CssGapShorthand {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        let context = &mut writer.context;
-        context.charge_nodes(1)?;
-        writer.source_member(0, |writer| {
-            self.row
-                .serialize_specified_into(&mut writer.context, &mut writer.css)
-        })?;
-        if let Some(column) = &self.authored_column {
-            writer.source_member(1, |writer| {
-                writer.append(" ")?;
-                column.serialize_specified_into(&mut writer.context, &mut writer.css)
-            })?;
-        }
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(CssGapShorthand);
+// `gap` takes `<'row-gap'> <'column-gap'>?`.
+side_element!(
+    CssGapValue,
+    same = |a, b, context| a.inverse_equal(b, context)
+);
+side_pair_entry!(CssGapValue);

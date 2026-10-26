@@ -393,8 +393,8 @@ fn ordinary_border_image_arity_fill_and_auto_keep_their_typed_aggregate_roles() 
     else {
         panic!("typed slice");
     };
-    assert!(slice.slice().fill());
-    let [top, right, bottom, left] = slice.slice().values();
+    assert!(slice.value().fill());
+    let [top, right, bottom, left] = slice.value().values();
     assert!(matches!(top, CssBorderImageSliceComponent::Number(_)));
     assert!(matches!(right, CssBorderImageSliceComponent::Percentage(_)));
     assert_eq!(top, bottom);
@@ -407,7 +407,7 @@ fn ordinary_border_image_arity_fill_and_auto_keep_their_typed_aggregate_roles() 
     else {
         panic!("typed width");
     };
-    let [top, right, bottom, left] = width.widths().values();
+    let [top, right, bottom, left] = width.value().values();
     assert!(matches!(top, CssBorderImageWidthComponent::Auto));
     assert!(matches!(right, CssBorderImageWidthComponent::Number(_)));
     assert_eq!(top, bottom);
@@ -427,7 +427,7 @@ fn ordinary_border_image_shorthand_preserves_explicit_members_and_omissions() {
     else {
         panic!("first shorthand");
     };
-    let first = first.border_image();
+    let first = first.value();
     assert!(first.slice().unwrap().fill());
     assert!(first.source().is_none());
     assert!(first.width().is_none());
@@ -441,7 +441,7 @@ fn ordinary_border_image_shorthand_preserves_explicit_members_and_omissions() {
     else {
         panic!("second shorthand");
     };
-    let second = second.border_image();
+    let second = second.value();
     assert!(second.source().is_none());
     assert!(second.slice().is_some());
     assert!(matches!(
@@ -519,7 +519,7 @@ fn ordinary_animation_fractional_zero_infinite_counts_and_omission_keep_list_ord
         panic!("typed counts");
     };
     assert!(matches!(
-        counts.iteration_counts().values(),
+        counts.value().values(),
         [
             CssAnimationIterationCount::Number(_),
             CssAnimationIterationCount::Number(_),
@@ -534,12 +534,8 @@ fn ordinary_animation_fractional_zero_infinite_counts_and_omission_keep_list_ord
     else {
         panic!("typed animation");
     };
-    assert_eq!(animation.animations().values().len(), 1);
-    assert!(
-        animation.animations().values()[0]
-            .iteration_count()
-            .is_none()
-    );
+    assert_eq!(animation.value().values().len(), 1);
+    assert!(animation.value().values()[0].iteration_count().is_none());
 }
 
 #[test]

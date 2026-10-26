@@ -40,7 +40,7 @@ fn accepts_margin_auto() {
     );
     assert!(
         margin
-            .assigned_values()
+            .assigned()
             .iter()
             .all(|value| matches!(value, CssMarginValue::Auto))
     );
@@ -53,8 +53,8 @@ fn parses_spacing_inset_and_z_index_values() {
         Inset,
         value
     );
-    assert_eq!(inset.authored_values().len(), 3);
-    let [top, right, bottom, left] = inset.assigned_values();
+    assert_eq!(inset.authored().len(), 3);
+    let [top, right, bottom, left] = inset.assigned();
     assert_eq!(top, &CssInsetValue::Auto);
     assert_length_literal(
         right
@@ -150,7 +150,7 @@ fn parses_spacing_longhands_with_existing_component_rules() {
         BorderRightWidth,
         value
     );
-    let CssBorderWidth::Length(length) = width else {
+    let CssLineWidth::Length(length) = width else {
         panic!("exact border width")
     };
     assert_length_literal(
@@ -171,16 +171,16 @@ fn parses_border_style_and_border_shorthand_values() {
         value
     );
     assert_eq!(
-        styles.authored_values(),
-        &[CssBorderStyle::Solid, CssBorderStyle::Dashed]
+        styles.authored(),
+        &[CssLineStyle::Solid, CssLineStyle::Dashed]
     );
     assert_eq!(
-        styles.assigned_values(),
+        styles.assigned(),
         [
-            &CssBorderStyle::Solid,
-            &CssBorderStyle::Dashed,
-            &CssBorderStyle::Solid,
-            &CssBorderStyle::Dashed
+            &CssLineStyle::Solid,
+            &CssLineStyle::Dashed,
+            &CssLineStyle::Solid,
+            &CssLineStyle::Dashed
         ]
     );
     assert_eq!(
@@ -192,7 +192,7 @@ fn parses_border_style_and_border_shorthand_values() {
             BorderLeftStyle,
             value
         ),
-        CssBorderStyle::Groove
+        CssLineStyle::Groove
     );
     let border = property_payload!(
         declaration(
@@ -202,7 +202,7 @@ fn parses_border_style_and_border_shorthand_values() {
         Border,
         value
     );
-    assert_eq!(border.style(), Some(CssBorderStyle::Solid));
+    assert_eq!(border.style(), Some(CssLineStyle::Solid));
     assert_eq!(
         border
             .width()
@@ -226,7 +226,7 @@ fn parses_border_style_and_border_shorthand_values() {
         value
     );
     assert!(top.width().is_none());
-    assert_eq!(top.style(), Some(CssBorderStyle::Dotted));
+    assert_eq!(top.style(), Some(CssLineStyle::Dotted));
     assert_eq!(top.color().unwrap().named().unwrap().name(), "black");
 }
 
@@ -242,7 +242,7 @@ fn parses_border_radius_shorthand_and_longhands() {
     );
     assert_length_literal(
         corner
-            .horizontal()
+            .first()
             .literal()
             .map(|literal| literal.component())
             .unwrap(),
@@ -251,7 +251,7 @@ fn parses_border_radius_shorthand_and_longhands() {
     );
     assert_percentage_literal(
         corner
-            .authored_vertical()
+            .authored_second()
             .unwrap()
             .literal()
             .map(|literal| literal.component())
@@ -260,7 +260,7 @@ fn parses_border_radius_shorthand_and_longhands() {
     );
     assert_percentage_literal(
         corner
-            .vertical()
+            .second()
             .literal()
             .map(|literal| literal.component())
             .unwrap(),
@@ -284,7 +284,7 @@ fn parses_border_radius_shorthand_and_longhands() {
     ] {
         assert_length_literal(
             corner
-                .horizontal()
+                .first()
                 .literal()
                 .map(|literal| literal.component())
                 .unwrap(),
@@ -293,7 +293,7 @@ fn parses_border_radius_shorthand_and_longhands() {
         );
         assert_length_literal(
             corner
-                .authored_vertical()
+                .authored_second()
                 .unwrap()
                 .literal()
                 .map(|literal| literal.component())
@@ -303,7 +303,7 @@ fn parses_border_radius_shorthand_and_longhands() {
         );
         assert_length_literal(
             corner
-                .vertical()
+                .second()
                 .literal()
                 .map(|literal| literal.component())
                 .unwrap(),
@@ -368,9 +368,9 @@ fn parses_box_shadow_none_and_shadow_lists() {
 #[test]
 fn checked_border_constructor_rejects_empty_shorthands() {
     assert_eq!(CssBorder::try_new(None, None, None), None);
-    let border = CssBorder::try_new(None, Some(CssBorderStyle::Solid), None).unwrap();
+    let border = CssBorder::try_new(None, Some(CssLineStyle::Solid), None).unwrap();
     assert!(border.width().is_none());
-    assert_eq!(border.style(), Some(CssBorderStyle::Solid));
+    assert_eq!(border.style(), Some(CssLineStyle::Solid));
     assert!(border.color().is_none());
 }
 
@@ -390,8 +390,8 @@ fn checked_border_width_rejects_negative_and_percentage_values() {
     )
     .unwrap();
     let border = CssBorder::try_new(
-        Some(CssBorderWidth::Length(width)),
-        Some(CssBorderStyle::Solid),
+        Some(CssLineWidth::Length(width)),
+        Some(CssLineStyle::Solid),
         None,
     )
     .unwrap();
@@ -435,23 +435,17 @@ fn checked_corner_radius_constructor_rejects_parser_invalid_values() {
                 .is_err()
         );
     }
-    let radius = CssCornerRadiusValue::new(
+    let radius = CssSidePair::new(
         nonnegative_length_percentage("1px"),
         Some(nonnegative_length_percentage("25%")),
     );
     assert!(exact_dimension(
-        radius
-            .horizontal()
-            .literal()
-            .map(|literal| literal.component()),
+        radius.first().literal().map(|literal| literal.component()),
         "1",
         "px"
     ));
     assert!(exact_percentage(
-        radius
-            .vertical()
-            .literal()
-            .map(|literal| literal.component()),
+        radius.second().literal().map(|literal| literal.component()),
         "25"
     ));
 }

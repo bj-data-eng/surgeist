@@ -6,13 +6,13 @@ type Result<T> = std::result::Result<T, CssSerializationError>;
 crate::specified_rule_serialization::specified_serialization!(CssCoordBox);
 impl crate::specified_rule_serialization::SpecifiedProvider for CssCoordBox {
     fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        writer.keyword(self.as_css_str())
+        writer.keyword(self.as_str())
     }
 }
 crate::specified_rule_serialization::specified_serialization!(CssRaySize);
 impl crate::specified_rule_serialization::SpecifiedProvider for CssRaySize {
     fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        writer.keyword(self.as_css_str())
+        writer.keyword(self.as_str())
     }
 }
 crate::specified_rule_serialization::specified_serialization!(CssRay);

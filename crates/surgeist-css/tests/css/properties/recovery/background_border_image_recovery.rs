@@ -564,7 +564,7 @@ fn background_border_and_image_recovery_preserves_siblings_and_boundaries() {
     else {
         panic!("expected background-image value");
     };
-    assert!(matches!(images.images().images(), [
+    assert!(matches!(images.value().images(), [
         CssImageValue::Url(first),
         CssImageValue::Gradient(_),
         CssImageValue::None,

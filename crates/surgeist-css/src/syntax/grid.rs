@@ -419,11 +419,12 @@ pub struct CssGridIntegerTrackRepeat {
 impl CssGridIntegerTrackRepeat {
     /// Retains a positive count; function math keeps its graph symbolically.
     /// Typed child recovery remains observable; this does not certify original CSS.
-    pub fn try_new(
+    #[must_use]
+    pub const fn new(
         count: crate::CssNumeric<crate::CssInteger, crate::CssPositive>,
         content: CssGridTrackRepeatContent,
-    ) -> Option<Self> {
-        Some(Self { count, content })
+    ) -> Self {
+        Self { count, content }
     }
 
     #[must_use]
@@ -447,11 +448,12 @@ pub struct CssGridIntegerFixedRepeat {
 
 impl CssGridIntegerFixedRepeat {
     /// Retains a positive count; function math keeps its graph symbolically.
-    pub fn try_new(
+    #[must_use]
+    pub const fn new(
         count: crate::CssNumeric<crate::CssInteger, crate::CssPositive>,
         content: CssGridFixedRepeatContent,
-    ) -> Option<Self> {
-        Some(Self { count, content })
+    ) -> Self {
+        Self { count, content }
     }
 
     #[must_use]

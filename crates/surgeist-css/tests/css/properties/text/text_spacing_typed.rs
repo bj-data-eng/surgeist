@@ -184,7 +184,7 @@ fn parsed_values_preserve_exact_scalars_and_symbolic_math() {
         let current = match parsed {
             CssKnownPropertyValueRef::WordSpacing(wrapper) => {
                 assert_eq!(wrapper.as_css(), value);
-                wrapper.spacing()
+                wrapper.value()
             }
             CssKnownPropertyValueRef::LetterSpacing(wrapper) => {
                 assert_eq!(wrapper.as_css(), value);

@@ -19,14 +19,14 @@ fn images_and_gradients_retain_typed_structure() {
     else {
         panic!("expected background-image wrapper");
     };
-    assert_eq!(value.images().images().len(), 6);
+    assert_eq!(value.value().images().len(), 6);
     assert!(matches!(
-        &value.images().images()[0],
+        &value.value().images()[0],
         CssImageValue::Url(url) if url.as_str() == "hero.png"
     ));
-    assert!(matches!(value.images().images()[1], CssImageValue::None));
+    assert!(matches!(value.value().images()[1], CssImageValue::None));
 
-    let CssImageValue::Gradient(CssGradient::Linear(linear)) = &value.images().images()[2] else {
+    let CssImageValue::Gradient(CssGradient::Linear(linear)) = &value.value().images()[2] else {
         panic!("expected linear gradient");
     };
     assert!(matches!(
@@ -46,7 +46,7 @@ fn images_and_gradients_retain_typed_structure() {
             && last.position().is_none()
     ));
 
-    let CssImageValue::Gradient(CssGradient::Radial(radial)) = &value.images().images()[3] else {
+    let CssImageValue::Gradient(CssGradient::Radial(radial)) = &value.value().images()[3] else {
         panic!("expected radial gradient");
     };
     assert_eq!(radial.shape(), Some(CssRadialShape::Circle));
@@ -58,11 +58,11 @@ fn images_and_gradients_retain_typed_structure() {
     assert_eq!(radial.stops().items().len(), 2);
 
     assert!(matches!(
-        value.images().images()[4],
+        value.value().images()[4],
         CssImageValue::Gradient(CssGradient::RepeatingLinear(_))
     ));
     assert!(matches!(
-        value.images().images()[5],
+        value.value().images()[5],
         CssImageValue::Gradient(CssGradient::RepeatingRadial(_))
     ));
 }
@@ -147,7 +147,7 @@ fn images_keep_globals_substitutions_and_exact_invalid_recovery_distinct() {
     else {
         panic!("expected ordinary URL image");
     };
-    assert!(matches!(url.images().images(), [CssImageValue::Url(_)]));
+    assert!(matches!(url.value().images(), [CssImageValue::Url(_)]));
 
     let source = concat!(
         "--😀: kept; ",

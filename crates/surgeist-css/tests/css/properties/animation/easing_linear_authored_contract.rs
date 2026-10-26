@@ -50,17 +50,13 @@ fn parsed(property: CssKnownProperty, source: &str) -> CssDeclaration {
 
 fn easing(declaration: &CssDeclaration) -> &CssEasing {
     match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::TransitionTimingFunction(value) => {
-            &value.timing_functions().values()[0]
-        }
-        CssKnownPropertyValueRef::AnimationTimingFunction(value) => {
-            &value.timing_functions().values()[0]
-        }
+        CssKnownPropertyValueRef::TransitionTimingFunction(value) => &value.value().values()[0],
+        CssKnownPropertyValueRef::AnimationTimingFunction(value) => &value.value().values()[0],
         CssKnownPropertyValueRef::Transition(value) => {
-            value.transitions().values()[0].timing_function().unwrap()
+            value.value().values()[0].timing_function().unwrap()
         }
         CssKnownPropertyValueRef::Animation(value) => {
-            value.animations().values()[0].timing_function().unwrap()
+            value.value().values()[0].timing_function().unwrap()
         }
         _ => panic!("shared easing consumer"),
     }
@@ -68,8 +64,8 @@ fn easing(declaration: &CssDeclaration) -> &CssEasing {
 
 fn easing_list(declaration: &CssDeclaration) -> &CssEasingList {
     match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::TransitionTimingFunction(value) => value.timing_functions(),
-        CssKnownPropertyValueRef::AnimationTimingFunction(value) => value.timing_functions(),
+        CssKnownPropertyValueRef::TransitionTimingFunction(value) => value.value(),
+        CssKnownPropertyValueRef::AnimationTimingFunction(value) => value.value(),
         _ => panic!("timing longhand"),
     }
 }

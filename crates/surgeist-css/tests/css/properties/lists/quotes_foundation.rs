@@ -71,7 +71,7 @@ fn three_keywords_and_string_pairs_parse_as_distinct_authored_values() {
     else {
         panic!("quotes wrapper")
     };
-    let CssQuotes::Pairs(pairs) = value.quotes() else {
+    let CssQuotes::Pairs(pairs) = value.value() else {
         panic!("two authored pairs")
     };
     assert_eq!(pairs.pairs().len(), 2);
@@ -89,7 +89,7 @@ fn escaped_and_empty_strings_are_values_but_odd_pairs_are_invalid() {
     else {
         panic!("escaped quotes")
     };
-    let CssQuotes::Pairs(pairs) = value.quotes() else {
+    let CssQuotes::Pairs(pairs) = value.value() else {
         panic!("escaped pair")
     };
     assert_eq!(pairs.pairs()[0].open().as_str(), "\"");
@@ -99,7 +99,7 @@ fn escaped_and_empty_strings_are_values_but_odd_pairs_are_invalid() {
     else {
         panic!("empty pair")
     };
-    let CssQuotes::Pairs(pairs) = value.quotes() else {
+    let CssQuotes::Pairs(pairs) = value.value() else {
         panic!("empty strings are still a pair")
     };
     assert_eq!(pairs.pairs()[0].open().as_str(), "");

@@ -31,7 +31,7 @@ fn property(text: &str) -> CssFontSize {
     else {
         panic!("font-size wrapper")
     };
-    value.size().clone()
+    value.value().clone()
 }
 
 #[test]
@@ -303,7 +303,7 @@ fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
     else {
         panic!("checked size")
     };
-    let CssFontSize::LengthPercentage(number) = value.size() else {
+    let CssFontSize::LengthPercentage(number) = value.value() else {
         panic!("number")
     };
     let CssValueOrigin::Parsed(origin) = number.origin() else {
@@ -328,7 +328,7 @@ fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
     else {
         panic!("programmatic size")
     };
-    let CssFontSize::LengthPercentage(number) = value.size() else {
+    let CssFontSize::LengthPercentage(number) = value.value() else {
         panic!("number")
     };
     assert_eq!(number.origin(), &CssValueOrigin::Programmatic);
@@ -441,7 +441,7 @@ fn recovered_math_requires_parser_admission_before_typed_transfer() {
     else {
         panic!("retained size")
     };
-    let CssFontSize::LengthPercentage(admitted) = value.size() else {
+    let CssFontSize::LengthPercentage(admitted) = value.value() else {
         panic!("retained calculation")
     };
     let calculation = admitted.calculation().expect("typed recovered math");
@@ -504,7 +504,7 @@ fn shorthand_preserves_size_math_line_height_and_family_boundaries() {
         else {
             panic!("font")
         };
-        let CssFontValue::Explicit(font) = value.font() else {
+        let CssFontValue::Explicit(font) = value.value() else {
             panic!("explicit font")
         };
         assert_eq!(font.size(), &expected_size, "{source}");

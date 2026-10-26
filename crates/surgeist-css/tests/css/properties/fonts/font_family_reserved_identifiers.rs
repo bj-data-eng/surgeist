@@ -151,9 +151,9 @@ fn quoted_reserved_names_and_nonreserved_identifiers_preserve_decoded_names() {
         assert_eq!(report.syntax().len(), 2);
         for declaration in report.syntax().iter() {
             let families = match declaration.known().unwrap().property_value().unwrap() {
-                CssKnownPropertyValueRef::FontFamily(value) => value.families(),
+                CssKnownPropertyValueRef::FontFamily(value) => value.value(),
                 CssKnownPropertyValueRef::Font(value) => {
-                    let CssFontValue::Explicit(value) = value.font() else {
+                    let CssFontValue::Explicit(value) = value.value() else {
                         panic!("expected explicit font shorthand: {style}");
                     };
                     value.families()

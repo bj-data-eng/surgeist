@@ -15,7 +15,6 @@ macro_rules! provider {
         crate::specified_rule_serialization::specified_serialization!($ty);
     };
 }
-provider!(CssMaskBox, value, writer => { writer.keyword(value.keyword()) });
 provider!(CssMaskClip, value, writer => {
     match value { Self::Box(value) => value.append_to_rule_writer(writer), Self::NoClip => writer.keyword("no-clip") }
 });
@@ -117,7 +116,7 @@ mod tests {
         let list =
             CssMaskModeList::try_new(vec![CssMaskMode::Alpha, CssMaskMode::Luminance]).unwrap();
         let boxes = CssMaskLayerBoxes::Pair {
-            origin: CssMaskBox::PaddingBox,
+            origin: CssCoordBox::PaddingBox,
             clip: CssMaskClip::NoClip,
         };
         let expected = "!alpha, luminance;padding-box no-clip";
@@ -210,7 +209,7 @@ mod tests {
     #[test]
     fn suppressed_failure_restores_writer_and_retained_boxes() {
         let boxes = CssMaskLayerBoxes::Pair {
-            origin: CssMaskBox::BorderBox,
+            origin: CssCoordBox::BorderBox,
             clip: CssMaskClip::NoClip,
         };
         let before = boxes;

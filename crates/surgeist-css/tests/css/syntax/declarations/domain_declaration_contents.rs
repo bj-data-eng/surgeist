@@ -10,7 +10,7 @@ fn page_names(block: &CssPageDeclarationBlock) -> Vec<&str> {
         .occurrences()
         .iter()
         .map(|entry| match entry {
-            CssPageDeclaration::Descriptor(d) => d.value().kind().css_name(),
+            CssPageDeclaration::Descriptor(d) => d.value().kind().as_str(),
             CssPageDeclaration::Property(d) => match d.property_name() {
                 CssPropertyNameRef::Known(p) => p.canonical_name(),
                 CssPropertyNameRef::Custom(n) => n.as_str(),

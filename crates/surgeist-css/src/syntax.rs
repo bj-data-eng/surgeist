@@ -34,6 +34,7 @@ use crate::source::CssParsedOrigin;
 pub(crate) use crate::properties::CssKnownDeclaration;
 use crate::properties::CssKnownProperty;
 use crate::source::CssSourcePosition;
+use crate::{CssAutoOr, CssLineWidth, CssSizeValue};
 
 /// A parser-produced authored stylesheet.
 ///
@@ -2045,7 +2046,7 @@ pub enum CssMediaType {
 }
 
 impl CssMediaType {
-    pub const fn name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::All => "all",
             Self::Screen => "screen",
@@ -3298,9 +3299,9 @@ pub enum CssImportance {
 /// [`crate::parse_property_value`] constructs declarations from checked components without
 /// manufacturing a property-name position. Callers cannot create a property/value mismatch.
 ///
-/// ```compile_fail
+/// ```compile_fail,E0308
 /// use surgeist_css::{
-///     CssKnownPropertyValueRef, CssWidthPropertyValue, parse_style_attribute,
+///     CssKnownPropertyValueRef, CssPropertyValue, CssSizeValue, parse_style_attribute,
 /// };
 ///
 /// let width_report = parse_style_attribute("width: 1px");
@@ -3311,7 +3312,7 @@ pub enum CssImportance {
 /// let Some(CssKnownPropertyValueRef::Opacity(opacity)) =
 ///     opacity_report.syntax()[0].known().unwrap().property_value()
 /// else { panic!("expected opacity") };
-/// fn require_width(_: &CssWidthPropertyValue) {}
+/// fn require_width(_: &CssPropertyValue<CssSizeValue>) {}
 /// require_width(width);
 /// require_width(opacity);
 /// ```
@@ -4274,12 +4275,6 @@ pub enum CssColumnFill {
     BalanceAll,
 }
 
-/// The shared authored `<line-style>` domain used by borders and column rules.
-pub type CssLineStyle = CssBorderStyle;
-
-/// The shared authored `<line-width>` domain.
-pub type CssLineWidth = crate::CssBorderWidth;
-
 pub use crate::column_rule::CssColumnRule;
 
 /// The authored `column-span` keyword.
@@ -4294,9 +4289,6 @@ pub enum CssColumnSpan {
     All,
 }
 
-/// The authored `column-width` value, including Sizing 4 box sizes.
-pub type CssColumnWidth = crate::CssSizeValue;
-
 /// The authored component values of the `columns` shorthand.
 ///
 /// Omitted components are represented by their specified `auto` initial value. This syntax value
@@ -4307,18 +4299,18 @@ pub type CssColumnWidth = crate::CssSizeValue;
 /// Serializes both effective values in width-then-count order, including omitted `auto`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssColumns {
-    width: CssColumnWidth,
+    width: CssSizeValue,
     count: CssColumnCount,
 }
 
 impl CssColumns {
     /// Constructs both effective values; omitted shorthand components are supplied as `auto`.
-    pub const fn new(width: CssColumnWidth, count: CssColumnCount) -> Self {
+    pub const fn new(width: CssSizeValue, count: CssColumnCount) -> Self {
         Self { width, count }
     }
 
     #[must_use]
-    pub const fn width(&self) -> &CssColumnWidth {
+    pub const fn width(&self) -> &CssSizeValue {
         &self.width
     }
 
@@ -4650,7 +4642,7 @@ impl CssBoxEdgeKeyword {
 
     /// Returns the canonical CSS keyword spelling.
     #[must_use]
-    pub const fn as_css_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::ContentBox => "content-box",
             Self::PaddingBox => "padding-box",
@@ -4822,7 +4814,7 @@ impl CssBlendMode {
 
     /// Returns the canonical CSS keyword spelling.
     #[must_use]
-    pub const fn as_css_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Normal => "normal",
             Self::Darken => "darken",
@@ -4886,42 +4878,6 @@ pub enum CssBorderCollapse {
     Separate,
 }
 
-/// The checked horizontal and vertical authored `border-spacing` lengths.
-///
-/// # Specified serialization
-///
-/// Serializes the effective horizontal and vertical lengths, including a repeated axis.
-#[derive(Clone, Debug)]
-pub struct CssBorderSpacing {
-    horizontal: CssNumeric<CssLength, CssNonNegative>,
-    vertical: CssNumeric<CssLength, CssNonNegative>,
-}
-
-impl PartialEq for CssBorderSpacing {
-    fn eq(&self, other: &Self) -> bool {
-        self.horizontal == other.horizontal && self.vertical == other.vertical
-    }
-}
-
-impl CssBorderSpacing {
-    /// Composes checked nonnegative horizontal and vertical lengths.
-    pub const fn new(
-        horizontal: CssNumeric<CssLength, CssNonNegative>,
-        vertical: CssNumeric<CssLength, CssNonNegative>,
-    ) -> Self {
-        Self {
-            horizontal,
-            vertical,
-        }
-    }
-    pub const fn horizontal(&self) -> &CssNumeric<CssLength, CssNonNegative> {
-        &self.horizontal
-    }
-    pub const fn vertical(&self) -> &CssNumeric<CssLength, CssNonNegative> {
-        &self.vertical
-    }
-}
-
 /// The authored `caption-side` keyword.
 ///
 /// # Specified serialization
@@ -4934,28 +4890,6 @@ pub enum CssCaptionSide {
     Bottom,
 }
 
-/// One authored edge of a deprecated Masking 1 `clip: rect(...)` value.
-///
-/// # Specified serialization
-///
-/// Serializes one `auto` or signed-length rectangle edge.
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub enum CssClipEdge {
-    Auto,
-    Length(CssNumeric<CssLength>),
-}
-
-impl PartialEq for CssClipEdge {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Auto, Self::Auto) => true,
-            (Self::Length(left), Self::Length(right)) => left == right,
-            _ => false,
-        }
-    }
-}
-
 /// The four authored edges of a deprecated Masking 1 clipping rectangle.
 ///
 /// # Specified serialization
@@ -4963,19 +4897,19 @@ impl PartialEq for CssClipEdge {
 /// Serializes four effective edges in top, right, bottom, left order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssClipRect {
-    top: CssClipEdge,
-    right: CssClipEdge,
-    bottom: CssClipEdge,
-    left: CssClipEdge,
+    top: CssAutoOr<CssNumeric<CssLength>>,
+    right: CssAutoOr<CssNumeric<CssLength>>,
+    bottom: CssAutoOr<CssNumeric<CssLength>>,
+    left: CssAutoOr<CssNumeric<CssLength>>,
 }
 
 impl CssClipRect {
     #[must_use]
     pub const fn new(
-        top: CssClipEdge,
-        right: CssClipEdge,
-        bottom: CssClipEdge,
-        left: CssClipEdge,
+        top: CssAutoOr<CssNumeric<CssLength>>,
+        right: CssAutoOr<CssNumeric<CssLength>>,
+        bottom: CssAutoOr<CssNumeric<CssLength>>,
+        left: CssAutoOr<CssNumeric<CssLength>>,
     ) -> Self {
         Self {
             top,
@@ -4986,22 +4920,22 @@ impl CssClipRect {
     }
 
     #[must_use]
-    pub const fn top(&self) -> &CssClipEdge {
+    pub const fn top(&self) -> &CssAutoOr<CssNumeric<CssLength>> {
         &self.top
     }
 
     #[must_use]
-    pub const fn right(&self) -> &CssClipEdge {
+    pub const fn right(&self) -> &CssAutoOr<CssNumeric<CssLength>> {
         &self.right
     }
 
     #[must_use]
-    pub const fn bottom(&self) -> &CssClipEdge {
+    pub const fn bottom(&self) -> &CssAutoOr<CssNumeric<CssLength>> {
         &self.bottom
     }
 
     #[must_use]
-    pub const fn left(&self) -> &CssClipEdge {
+    pub const fn left(&self) -> &CssAutoOr<CssNumeric<CssLength>> {
         &self.left
     }
 }
@@ -5985,13 +5919,14 @@ pub struct CssTextDecorationLine {
 enum CssTextDecorationLineKind {
     None,
     Lines,
-    Error(CssTextDecorationError),
+    Error(CssTextDecorationErrorLine),
 }
 
-/// Exclusive error decoration alternatives, never combined with ordinary lines.
+/// The `spelling-error` and `grammar-error` keywords of `text-decoration-line`, which are
+/// exclusive alternatives and never combine with ordinary lines (Decoration 4 §2.1).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssTextDecorationError {
+pub enum CssTextDecorationErrorLine {
     SpellingError,
     GrammarError,
 }
@@ -6022,15 +5957,17 @@ impl CssTextDecorationLine {
         }
     }
 
-    /// Constructs one exclusive spelling or grammar error line.
-    pub fn error(value: CssTextDecorationError) -> Self {
+    /// Constructs one exclusive `spelling-error` or `grammar-error` line.
+    pub fn error_line(value: CssTextDecorationErrorLine) -> Self {
         Self {
             components: Vec::new(),
             kind: CssTextDecorationLineKind::Error(value),
         }
     }
 
-    pub const fn error_kind(&self) -> Option<CssTextDecorationError> {
+    /// Returns the exclusive error-line keyword, when this line is one.
+    #[must_use]
+    pub const fn as_error_line(&self) -> Option<CssTextDecorationErrorLine> {
         match self.kind {
             CssTextDecorationLineKind::Error(value) => Some(value),
             _ => None,
@@ -6281,14 +6218,14 @@ impl CssLengthUnit {
     }
 
     #[must_use]
-    pub const fn as_css_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         crate::numeric::units::suffix(crate::CssNumericUnit::Length(self))
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum CssBorderStyle {
+pub enum CssLineStyle {
     None,
     Hidden,
     Dotted,
@@ -7510,31 +7447,14 @@ impl CssBackground {
     }
 }
 
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub enum CssBackgroundSizeComponent {
-    Auto,
-    Length(CssNumeric<CssLengthPercentage, CssNonNegative>),
-}
-
-impl PartialEq for CssBackgroundSizeComponent {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Auto, Self::Auto) => true,
-            (Self::Length(left), Self::Length(right)) => left == right,
-            _ => false,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssBackgroundSize {
     Cover,
     Contain,
     Explicit {
-        width: CssBackgroundSizeComponent,
-        height: Option<CssBackgroundSizeComponent>,
+        width: CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>,
+        height: Option<CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>>,
     },
 }
 
@@ -7789,30 +7709,9 @@ impl CssOutlineColor {
     }
 }
 
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub enum CssOutlineWidth {
-    Thin,
-    Medium,
-    Thick,
-    Length(CssNumeric<CssLength, CssNonNegative>),
-}
-
-impl PartialEq for CssOutlineWidth {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Length(left), Self::Length(right)) => left == right,
-            (Self::Thin, Self::Thin)
-            | (Self::Medium, Self::Medium)
-            | (Self::Thick, Self::Thick) => true,
-            _ => false,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssOutline {
-    width: Option<CssOutlineWidth>,
+    width: Option<CssLineWidth>,
     style: Option<CssOutlineStyle>,
     color: Option<CssOutlineColor>,
 }
@@ -7820,7 +7719,7 @@ pub struct CssOutline {
 impl CssOutline {
     #[must_use]
     pub fn try_new(
-        width: Option<CssOutlineWidth>,
+        width: Option<CssLineWidth>,
         style: Option<CssOutlineStyle>,
         color: Option<CssOutlineColor>,
     ) -> Option<Self> {
@@ -7832,7 +7731,7 @@ impl CssOutline {
     }
 
     pub(crate) fn new(
-        width: Option<CssOutlineWidth>,
+        width: Option<CssLineWidth>,
         style: Option<CssOutlineStyle>,
         color: Option<CssOutlineColor>,
     ) -> Self {
@@ -7844,7 +7743,7 @@ impl CssOutline {
     }
 
     #[must_use]
-    pub const fn width(&self) -> Option<&CssOutlineWidth> {
+    pub const fn width(&self) -> Option<&CssLineWidth> {
         self.width.as_ref()
     }
 
@@ -8640,7 +8539,7 @@ mod masking_serialization;
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssMaskLayer {
     image: Option<CssImageValue>,
-    position: Option<CssPhysicalPosition>,
+    position: Option<CssPosition>,
     size: Option<CssBackgroundSize>,
     repeat: Option<CssBackgroundRepeat>,
     boxes: Option<CssMaskLayerBoxes>,
@@ -8654,7 +8553,7 @@ impl CssMaskLayer {
     #[must_use]
     pub fn try_new(
         image: Option<CssImageValue>,
-        position: Option<CssPhysicalPosition>,
+        position: Option<CssPosition>,
         size: Option<CssBackgroundSize>,
         repeat: Option<CssBackgroundRepeat>,
         boxes: Option<CssMaskLayerBoxes>,
@@ -8687,7 +8586,7 @@ impl CssMaskLayer {
         self.image.as_ref()
     }
     #[must_use]
-    pub const fn position(&self) -> Option<&CssPhysicalPosition> {
+    pub const fn position(&self) -> Option<&CssPosition> {
         self.position.as_ref()
     }
     #[must_use]

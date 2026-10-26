@@ -118,8 +118,8 @@ fn assert_members(values: &CssLonghandContributions, expected: &[Property]) {
     }
 }
 
-fn border_px(number: &str) -> CssBorderWidth {
-    CssBorderWidth::Length(
+fn border_px(number: &str) -> CssLineWidth {
+    CssLineWidth::Length(
         CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension(number, "px").unwrap(),
         )
@@ -127,7 +127,7 @@ fn border_px(number: &str) -> CssBorderWidth {
     )
 }
 
-fn length(item: &CssLonghandContribution) -> &CssBorderWidth {
+fn length(item: &CssLonghandContribution) -> &CssLineWidth {
     match (item.property(), item.value()) {
         (
             Property::BorderTopWidth,
@@ -174,7 +174,7 @@ fn spacing(item: &CssLonghandContribution) -> String {
     }
 }
 
-fn style(item: &CssLonghandContribution) -> CssBorderStyle {
+fn style(item: &CssLonghandContribution) -> CssLineStyle {
     match (item.property(), item.value()) {
         (
             Property::BorderTopStyle,
@@ -296,14 +296,14 @@ fn four_sided_length_shorthands() {
                     assert_eq!(value.as_css(), css);
                     value
                         .value()
-                        .assigned_values()
+                        .assigned()
                         .map(|side| side.serialize_specified(Default::default()).unwrap())
                 }
                 CssKnownPropertyValueRef::Padding(value) => {
                     assert_eq!(value.as_css(), css);
                     value
                         .value()
-                        .assigned_values()
+                        .assigned()
                         .map(|side| side.serialize_specified(Default::default()).unwrap())
                 }
                 other => panic!("expected checked box spacing: {other:?}"),
@@ -328,7 +328,7 @@ fn four_sided_length_shorthands() {
         assert_eq!(
             authored
                 .value()
-                .assigned_values()
+                .assigned()
                 .map(|width| width.serialize_specified(Default::default()).unwrap()),
             expected.map(|n| format!("{n}px"))
         );
@@ -342,7 +342,7 @@ fn four_sided_length_shorthands() {
     assert_eq!(
         authored
             .value()
-            .assigned_values()
+            .assigned()
             .map(|side| side.serialize_specified(Default::default()).unwrap()),
         ["auto", "10%", "-3px", "10%"]
     );
@@ -353,32 +353,32 @@ fn four_sided_length_shorthands() {
 
 fn four_sided_styles_and_current_colors() {
     for (css, expected) in [
-        ("solid", [CssBorderStyle::Solid; 4]),
+        ("solid", [CssLineStyle::Solid; 4]),
         (
             "solid dashed",
             [
-                CssBorderStyle::Solid,
-                CssBorderStyle::Dashed,
-                CssBorderStyle::Solid,
-                CssBorderStyle::Dashed,
+                CssLineStyle::Solid,
+                CssLineStyle::Dashed,
+                CssLineStyle::Solid,
+                CssLineStyle::Dashed,
             ],
         ),
         (
             "solid dashed dotted",
             [
-                CssBorderStyle::Solid,
-                CssBorderStyle::Dashed,
-                CssBorderStyle::Dotted,
-                CssBorderStyle::Dashed,
+                CssLineStyle::Solid,
+                CssLineStyle::Dashed,
+                CssLineStyle::Dotted,
+                CssLineStyle::Dashed,
             ],
         ),
         (
             "solid dashed dotted double",
             [
-                CssBorderStyle::Solid,
-                CssBorderStyle::Dashed,
-                CssBorderStyle::Dotted,
-                CssBorderStyle::Double,
+                CssLineStyle::Solid,
+                CssLineStyle::Dashed,
+                CssLineStyle::Dotted,
+                CssLineStyle::Double,
             ],
         ),
     ] {
@@ -392,10 +392,7 @@ fn four_sided_styles_and_current_colors() {
             authored.value().kind(),
             surgeist_css::CssBoxSideKind::Physical
         );
-        assert_eq!(
-            authored.value().assigned_values().map(|value| *value),
-            expected
-        );
+        assert_eq!(authored.value().assigned().map(|value| *value), expected);
         assert_selected_four(expand_declaration(&source));
     }
     for (css, expected) in [
@@ -414,7 +411,7 @@ fn four_sided_styles_and_current_colors() {
             authored.value().kind(),
             surgeist_css::CssBoxSideKind::Physical
         );
-        for (side, expected) in authored.value().assigned_values().into_iter().zip(expected) {
+        for (side, expected) in authored.value().assigned().into_iter().zip(expected) {
             assert_eq!(side.named().unwrap().name(), expected);
         }
         assert_selected_four(expand_declaration(&source));
@@ -429,7 +426,7 @@ fn four_sided_styles_and_current_colors() {
     else {
         panic!("authored current border-color");
     };
-    let [top, right, bottom, left] = authored.value().assigned_values();
+    let [top, right, bottom, left] = authored.value().assigned();
     assert_modern_color(top);
     assert_modern_color(bottom);
     assert!(right.is_current_color());
@@ -442,26 +439,21 @@ fn side_borders_supply_defaults_without_image_resets() {
         for (css, expected_width, expected_style, modern) in [
             (
                 "solid".to_owned(),
-                CssBorderWidth::Medium,
-                CssBorderStyle::Solid,
+                CssLineWidth::Medium,
+                CssLineStyle::Solid,
                 false,
             ),
-            (
-                "2px".to_owned(),
-                border_px("2"),
-                CssBorderStyle::None,
-                false,
-            ),
+            ("2px".to_owned(), border_px("2"), CssLineStyle::None, false),
             (
                 MODERN_COLOR.to_owned(),
-                CssBorderWidth::Medium,
-                CssBorderStyle::None,
+                CssLineWidth::Medium,
+                CssLineStyle::None,
                 true,
             ),
             (
                 format!("{MODERN_COLOR} dashed 3px"),
                 border_px("3"),
-                CssBorderStyle::Dashed,
+                CssLineStyle::Dashed,
                 true,
             ),
         ] {
@@ -485,20 +477,20 @@ fn full_border_resets_all_five_image_values() {
     for (css, expected_width, expected_style, modern) in [
         (
             "none".to_owned(),
-            CssBorderWidth::Medium,
-            CssBorderStyle::None,
+            CssLineWidth::Medium,
+            CssLineStyle::None,
             false,
         ),
         (
             "solid".to_owned(),
-            CssBorderWidth::Medium,
-            CssBorderStyle::Solid,
+            CssLineWidth::Medium,
+            CssLineStyle::Solid,
             false,
         ),
         (
             format!("2px dashed {MODERN_COLOR}"),
             border_px("2"),
-            CssBorderStyle::Dashed,
+            CssLineStyle::Dashed,
             true,
         ),
     ] {
@@ -510,7 +502,7 @@ fn full_border_resets_all_five_image_values() {
                 panic!("authored border");
             };
             let border = authored.value();
-            assert_eq!(border.style(), Some(CssBorderStyle::Dashed));
+            assert_eq!(border.style(), Some(CssLineStyle::Dashed));
         }
         let values = expanded(&source);
         assert_members(&values, &border_members());
@@ -543,7 +535,7 @@ fn ordinary_longhands_retain_typed_values() {
     for property in STYLES {
         let values = expanded(&declaration(property, "dashed", CssImportance::Normal));
         assert_members(&values, &[property]);
-        assert_eq!(style(member(&values, property)), CssBorderStyle::Dashed);
+        assert_eq!(style(member(&values, property)), CssLineStyle::Dashed);
     }
     for property in COLORS {
         let values = expanded(&declaration(property, MODERN_COLOR, CssImportance::Normal));

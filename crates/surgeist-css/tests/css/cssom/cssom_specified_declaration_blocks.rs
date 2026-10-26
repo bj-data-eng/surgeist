@@ -1887,7 +1887,7 @@ fn ordinary_time_pair_providers_keep_their_own_comparison_and_projection_tariffs
             CssKnownPropertyValueRef::Pause(value) => value.value().serialize_specified(limits),
             CssKnownPropertyValueRef::Rest(value) => value.value().serialize_specified(limits),
             CssKnownPropertyValueRef::InterestDelay(value) => {
-                value.delay().serialize_specified(limits)
+                value.value().serialize_specified(limits)
             }
             _ => panic!("ordinary owning time pair"),
         };
@@ -3916,10 +3916,10 @@ fn normal_cue_pair_provider_visits_explicit_redundant_children() {
         panic!("cue pair")
     };
     let value = wrapper.value();
-    assert!(value.authored_after().is_some());
+    assert!(value.authored_second().is_some());
     assert_ne!(
-        value.before(),
-        value.after(),
+        value.first(),
+        value.second(),
         "ordinary Eq retains exact authored decibel spelling"
     );
     // Pair1 + two Audio owner/URL aggregate/target/dB groups4 each = I9/P9.
@@ -3946,5 +3946,99 @@ fn normal_cue_pair_provider_visits_explicit_redundant_children() {
         assert_eq!(value.serialize_specified(exact).unwrap(), "url(\"a\") 1db");
     }
     assert_eq!(list, before);
-    assert!(value.authored_after().is_some());
+    assert!(value.authored_second().is_some());
+}
+
+/// The smallest input-node limit at which `accepts` holds, searching upward from zero.
+fn smallest_limit(accepts: impl Fn(usize) -> bool) -> usize {
+    (0..).find(|limit| accepts(*limit)).unwrap()
+}
+
+#[test]
+fn a_node_limit_that_fails_exactly_at_a_shape_aggregate_names_its_first_longhand() {
+    // The aggregate node of a one-to-four or one-to-two value is the first node the value
+    // charges. Giving the block exactly the input nodes that precede the value (its total
+    // minus the value's own typed charge) makes the aggregate the node that fails, and the
+    // failure must belong to the declaration that supplied the value's first longhand, as it
+    // did for the flow-relative margin, padding, inset and scroll forms before the shapes.
+    macro_rules! check {
+        ($variant:ident, $property:ident, $typed:literal, $longhands:literal) => {{
+            let declaration = crate::css::support::sole_declaration($typed);
+            let Some(CssKnownPropertyValueRef::$variant(value)) =
+                declaration.known().unwrap().property_value()
+            else {
+                panic!("{}", $typed);
+            };
+            let typed = smallest_limit(|nodes| {
+                value
+                    .value()
+                    .serialize_specified(CssSerializationLimits::new(nodes, usize::MAX, usize::MAX))
+                    .is_ok()
+            });
+            let list = declarations($longhands);
+            let block =
+                CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default())
+                    .unwrap();
+            let name = CssPropertyNameRef::Known(CssKnownProperty::$property);
+            let total = smallest_limit(|nodes| {
+                block
+                    .property_value(
+                        name,
+                        CssSerializationLimits::new(nodes, usize::MAX, usize::MAX),
+                    )
+                    .is_ok()
+            });
+            let error = block
+                .property_value(
+                    name,
+                    CssSerializationLimits::new(total - typed, usize::MAX, usize::MAX),
+                )
+                .unwrap_err();
+            assert_eq!(
+                resource(&error),
+                SerializationFailure::InputNodeLimit,
+                "{}",
+                $typed
+            );
+            assert!(error.declaration().is_some(), "{}", $typed);
+            assert_eq!(error.member_ordinal(), Some(0), "{}", $typed);
+        }};
+    }
+    check!(
+        BorderBlockColor,
+        BorderBlockColor,
+        "border-block-color: red blue",
+        "border-block-start-color:red;border-block-end-color:blue"
+    );
+    check!(
+        Pause,
+        Pause,
+        "pause: 1s 2s",
+        "pause-before:1s;pause-after:2s"
+    );
+    check!(Rest, Rest, "rest: 1s 2s", "rest-before:1s;rest-after:2s");
+    check!(
+        InterestDelay,
+        InterestDelay,
+        "interest-delay: 1s 2s",
+        "interest-delay-start:1s;interest-delay-end:2s"
+    );
+    check!(
+        BorderColor,
+        BorderColor,
+        "border-color: red blue green yellow",
+        "border-top-color:red;border-right-color:blue;border-bottom-color:green;border-left-color:yellow"
+    );
+    check!(
+        MarginBlock,
+        MarginBlock,
+        "margin-block: 1px 2px",
+        "margin-block-start:1px;margin-block-end:2px"
+    );
+    check!(
+        Margin,
+        Margin,
+        "margin: 1px 2px 3px 4px",
+        "margin-top:1px;margin-right:2px;margin-bottom:3px;margin-left:4px"
+    );
 }

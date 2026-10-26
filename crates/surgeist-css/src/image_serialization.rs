@@ -651,7 +651,7 @@ mod filter_image_writer_tests {
         else {
             panic!("background images")
         };
-        let [CssImageValue::Filter(value)] = images.images().images() else {
+        let [CssImageValue::Filter(value)] = images.value().images() else {
             panic!("one filter image")
         };
         (**value).clone()

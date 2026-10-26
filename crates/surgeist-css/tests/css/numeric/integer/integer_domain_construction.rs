@@ -53,11 +53,10 @@ fn auto_repeat(count: CssNumericLiteral<CssInteger>) -> CssGridIntegerTrackRepea
         CssGridTrackSize::from_breadth(CssGridTrackBreadth::auto()),
     )])
     .unwrap();
-    CssGridIntegerTrackRepeat::try_new(
+    CssGridIntegerTrackRepeat::new(
         CssNumeric::<CssInteger, CssPositive>::try_from_literal(count).unwrap(),
         content,
     )
-    .unwrap()
 }
 
 #[test]
@@ -152,11 +151,10 @@ fn both_grid_repeat_owners_retain_checked_count_components_and_origins() {
                     CssGridFixedSize::try_new(size).unwrap(),
                 )])
                 .unwrap();
-            let fixed = CssGridIntegerFixedRepeat::try_new(
+            let fixed = CssGridIntegerFixedRepeat::new(
                 CssNumeric::<CssInteger, CssPositive>::try_from_literal(count).unwrap(),
                 content,
-            )
-            .unwrap();
+            );
             for retained in [track.count(), fixed.count()] {
                 let Some(retained) = retained.literal() else {
                     panic!("ordinary exact positive count");
@@ -650,7 +648,7 @@ fn parsed_steps_keep_count_origins_symbolic_math_and_position_omission() {
         panic!("easing list");
     };
     let steps = value
-        .timing_functions()
+        .value()
         .values()
         .iter()
         .map(|value| {

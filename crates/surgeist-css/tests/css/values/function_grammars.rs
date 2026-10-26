@@ -7,7 +7,7 @@ use crate::css::support::value_assertions::exact_percentage;
 use crate::css::support::value_assertions::positive_literal;
 use surgeist_css::*;
 
-fn parsed_transform_property(value: &str) -> CssTransformPropertyValue {
+fn parsed_transform_property(value: &str) -> CssPropertyValue<CssTransform> {
     let report = parse_style_attribute(&format!("transform: {value}"));
     assert!(
         report.is_clean(),
@@ -82,7 +82,7 @@ fn assert_filter_rejected(value: &str) {
     );
 }
 
-fn parsed_filter_property(value: &str) -> CssFilterPropertyValue {
+fn parsed_filter_property(value: &str) -> CssPropertyValue<CssFilter> {
     let report = parse_style_attribute(&format!("filter: {value}"));
     assert!(
         report.is_clean(),
@@ -115,7 +115,7 @@ fn assert_clip_path_rejected(value: &str) {
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
 }
 
-fn parsed_clip_path_property(value: &str) -> CssClipPathPropertyValue {
+fn parsed_clip_path_property(value: &str) -> CssPropertyValue<CssClipPath> {
     let report = parse_style_attribute(&format!("clip-path: {value}"));
     assert!(report.is_clean(), "`{value}`: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
@@ -279,7 +279,7 @@ fn selected_basic_shapes_expose_typed_authored_components() {
     assert!(exact_dimension(
         radii
             .top_left()
-            .horizontal()
+            .first()
             .literal()
             .map(|literal| literal.component()),
         "4",
@@ -288,7 +288,7 @@ fn selected_basic_shapes_expose_typed_authored_components() {
     assert!(exact_dimension(
         radii
             .top_left()
-            .vertical()
+            .second()
             .literal()
             .map(|literal| literal.component()),
         "6",
@@ -807,7 +807,7 @@ fn filter_ordinary_global_and_substitution_values_remain_distinct() {
     ));
 }
 
-fn parsed_easing_property(value: &str) -> CssTransitionTimingFunctionPropertyValue {
+fn parsed_easing_property(value: &str) -> CssPropertyValue<CssEasingList> {
     let report = parse_style_attribute(&format!("transition-timing-function: {value}"));
     assert!(
         report.is_clean(),
@@ -842,7 +842,7 @@ fn every_easing_keyword_and_alias_is_a_distinct_branch() {
     let property = parsed_easing_property(
         "ease, linear, ease-in, ease-out, ease-in-out, step-start, step-end",
     );
-    let values = property.timing_functions().values();
+    let values = property.value().values();
     assert!(matches!(
         values,
         [
@@ -866,7 +866,7 @@ fn cubic_bezier_coordinates_are_typed_and_keep_symbolic_number_math() {
     let [
         CssEasing::CubicBezier(literal),
         CssEasing::CubicBezier(symbolic),
-    ] = property.timing_functions().values()
+    ] = property.value().values()
     else {
         panic!("expected two typed cubic-bezier values");
     };
@@ -911,7 +911,7 @@ fn every_steps_position_is_typed_and_jump_none_keeps_its_count_rule() {
         "steps(2, jump-none), steps(1, jump-both), steps(1, start), steps(1, end), ",
         "steps(calc(1 + 1), jump-none)"
     ));
-    let values = property.timing_functions().values();
+    let values = property.value().values();
     let expected_positions = [
         None,
         Some(CssStepPosition::JumpStart),
@@ -963,7 +963,7 @@ fn easing_functions_require_exact_separators_arities_and_domains() {
         assert_easing_rejected(value);
     }
     let property = parsed_easing_property("cubic-bezier(0, 1e999, 1, 1)");
-    let [CssEasing::CubicBezier(value)] = property.timing_functions().values() else {
+    let [CssEasing::CubicBezier(value)] = property.value().values() else {
         panic!("exact unrestricted Y coordinate")
     };
     assert!(exact_number(

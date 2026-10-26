@@ -257,7 +257,7 @@ fn page_body_retains_five_physical_margin_properties_priority_and_duplicates() {
     else {
         panic!("physical margin shorthand")
     };
-    let [top, right, bottom, left] = value.value().assigned_values();
+    let [top, right, bottom, left] = value.value().assigned();
     assert_eq!(top.serialize_specified(Default::default()).unwrap(), "-1px");
     assert_eq!(right.serialize_specified(Default::default()).unwrap(), "2%");
     assert!(matches!(bottom, CssMarginValue::Auto));

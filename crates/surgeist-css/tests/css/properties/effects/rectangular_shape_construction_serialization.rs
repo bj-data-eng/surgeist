@@ -19,8 +19,8 @@ fn nn(css: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
     )
     .unwrap()
 }
-fn edge(css: &str) -> CssRectShapeEdge {
-    CssRectShapeEdge::LengthPercentage(lp(css))
+fn edge(css: &str) -> CssAutoOr<CssNumeric<CssLengthPercentage>> {
+    CssAutoOr::Value(lp(css))
 }
 fn basic_shape(css: &str) -> CssBasicShape {
     let declaration = normal_declaration("clip-path", css);
@@ -37,7 +37,7 @@ fn basic_shape(css: &str) -> CssBasicShape {
 #[test]
 fn checked_rect_composition_retains_each_named_edge_and_omitted_rounding() {
     let top = edge("-1px");
-    let right = CssRectShapeEdge::Auto;
+    let right = CssAutoOr::Auto;
     let bottom = edge("2%");
     let left = edge("-3em");
     let rect = CssRectShape::new(
@@ -63,7 +63,7 @@ fn checked_rect_composition_retains_each_named_edge_and_omitted_rounding() {
     assert_ne!(rect, CssRectShape::new(left, right, bottom, top, None));
     for auto_index in 0..4 {
         let mut edges = [edge("1px"), edge("2%"), edge("3em"), edge("4px")];
-        edges[auto_index] = CssRectShapeEdge::Auto;
+        edges[auto_index] = CssAutoOr::Auto;
         let rect = CssRectShape::new(
             edges[0].clone(),
             edges[1].clone(),
@@ -136,7 +136,7 @@ fn semantic_equality_preserves_separately_observable_numeric_origins() {
         (
             "rect(auto 1px 2% 0)",
             CssBasicShape::Rect(CssRectShape::new(
-                CssRectShapeEdge::Auto,
+                CssAutoOr::Auto,
                 edge("1px"),
                 edge("2%"),
                 edge("0"),
@@ -158,9 +158,7 @@ fn semantic_equality_preserves_separately_observable_numeric_origins() {
         assert_eq!(value, constructed);
         let (parsed_scalar, constructed_scalar) = match (&value, &constructed) {
             (CssBasicShape::Rect(a), CssBasicShape::Rect(b)) => {
-                let (CssRectShapeEdge::LengthPercentage(a), CssRectShapeEdge::LengthPercentage(b)) =
-                    (a.right(), b.right())
-                else {
+                let (CssAutoOr::Value(a), CssAutoOr::Value(b)) = (a.right(), b.right()) else {
                     panic!("edge")
                 };
                 (a, b)
@@ -254,13 +252,7 @@ fn round_arity_slash_and_omission_remain_authored_distinctions() {
 
 #[test]
 fn literal_budgets_are_five_standalone_six_composed_seven_boxed() {
-    let rect = CssRectShape::new(
-        CssRectShapeEdge::Auto,
-        edge("1px"),
-        edge("2%"),
-        edge("0"),
-        None,
-    );
+    let rect = CssRectShape::new(CssAutoOr::Auto, edge("1px"), edge("2%"), edge("0"), None);
     budget("rect(auto 1px 2% 0)", 5, 5, |l| rect.serialize_specified(l));
     let xywh = CssXywhShape::new(lp("0"), lp("0"), nn("1px"), nn("2%"), None);
     budget("xywh(0 0 1px 2%)", 5, 5, |l| xywh.serialize_specified(l));
@@ -276,7 +268,7 @@ fn literal_budgets_are_five_standalone_six_composed_seven_boxed() {
         });
         for box_edge in [CssBoxEdgeKeyword::BorderBox, CssBoxEdgeKeyword::ViewBox] {
             let composition = CssClipPathShape::new(shape.clone(), Some(box_edge));
-            let text = format!("{expected} {}", box_edge.as_css_str());
+            let text = format!("{expected} {}", box_edge.as_str());
             budget(&text, 7, 7, |l| composition.serialize_specified(l));
             budget(&text, 7, 7, |l| {
                 CssClipPath::BasicShape(composition.clone()).serialize_specified(l)

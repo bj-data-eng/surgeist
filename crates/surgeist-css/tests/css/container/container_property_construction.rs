@@ -60,7 +60,7 @@ fn six_type_states_have_exact_canonical_tokens_and_checked_declaration_values() 
         else {
             panic!("type wrapper")
         };
-        assert_eq!(*wrapper.container_type(), value);
+        assert_eq!(*wrapper.value(), value);
         assert_eq!(wrapper.as_css(), text);
         assert!(declaration.position().is_none());
         assert!(declaration.parsed_value().is_none());
@@ -145,7 +145,7 @@ fn shorthand_semantic_pair_omits_normal_and_expands_in_adopted_member_order() {
         else {
             panic!("container wrapper")
         };
-        assert_eq!(wrapper.container(), &value);
+        assert_eq!(wrapper.value(), &value);
         let CssExpansion::Contributions(CssContributions::Longhands(expanded)) =
             expand_declaration(&declaration).unwrap()
         else {
@@ -185,7 +185,7 @@ fn canonical_escaping_and_byte_limits_are_checked_after_escape_expansion() {
     else {
         panic!("names")
     };
-    assert_eq!(wrapper.names(), &hex_terminated);
+    assert_eq!(wrapper.value(), &hex_terminated);
 
     let value = names(&["1pane", "a b", "a,b"]);
     let text = r"\31 pane a\ b a\,b";
@@ -238,7 +238,7 @@ fn canonical_escaping_and_byte_limits_are_checked_after_escape_expansion() {
     else {
         panic!("name wrapper")
     };
-    assert_eq!(wrapper.names(), &value);
+    assert_eq!(wrapper.value(), &value);
 }
 
 #[test]
@@ -261,19 +261,16 @@ fn parsed_wrappers_keep_authored_text_components_and_origins_when_semantics_cano
         panic!("container")
     };
     assert_eq!(wrapper.as_css(), r"P\61 ne/**/Pane / SCROLL-STATE SIZE");
-    assert_eq!(wrapper.container().names(), &names(&["Pane", "Pane"]));
+    assert_eq!(wrapper.value().names(), &names(&["Pane", "Pane"]));
     assert_eq!(
-        wrapper.container().container_type(),
+        wrapper.value().container_type(),
         CssContainerType::SizeScrollState
     );
-    let canonical = wrapper
-        .container()
-        .to_components(Default::default())
-        .unwrap();
+    let canonical = wrapper.value().to_components(Default::default()).unwrap();
     assert_programmatic(&canonical);
     assert_eq!(
         wrapper
-            .container()
+            .value()
             .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
@@ -299,12 +296,12 @@ fn parsed_none_and_omitted_type_have_checked_initial_semantics() {
             panic!("container")
         };
         assert_eq!(
-            value.container(),
+            value.value(),
             &CssContainer::new(CssContainerNames::None, CssContainerType::Normal)
         );
         assert_eq!(
             value
-                .container()
+                .value()
                 .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),

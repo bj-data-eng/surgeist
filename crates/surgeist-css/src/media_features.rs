@@ -546,7 +546,7 @@ const FEATURES: &[(CssMediaFeatureKind, &str, MediaValueFamily)] = &[
     ),
 ];
 impl CssMediaFeatureKind {
-    pub const fn name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         let mut i = 0;
         while i < FEATURES.len() {
             if self as usize == FEATURES[i].0 as usize {
@@ -613,8 +613,8 @@ pub enum CssMediaFeatureQuery {
     PrefersReducedData(CssMediaReducedDataPreference),
 }
 impl CssMediaFeatureQuery {
-    pub const fn name(&self) -> &'static str {
-        self.kind().name()
+    pub const fn as_str(&self) -> &'static str {
+        self.kind().as_str()
     }
     pub const fn kind(&self) -> CssMediaFeatureKind {
         match self {

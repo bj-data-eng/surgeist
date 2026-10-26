@@ -212,7 +212,7 @@ fn border_image_grammar_controls_preserve_typed_arity_and_reject_invalid_constru
             else {
                 panic!("typed shorthand");
             };
-            let image = wrapper.border_image();
+            let image = wrapper.value();
             assert_slice(image.slice().unwrap(), expected, false);
             assert!(image.source().is_none());
             assert!(image.width().is_none());

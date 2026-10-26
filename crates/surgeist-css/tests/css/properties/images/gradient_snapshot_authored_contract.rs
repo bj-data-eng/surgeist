@@ -46,7 +46,7 @@ fn image(declaration: &CssDeclaration) -> &CssImageValue {
     else {
         panic!("background image")
     };
-    let [image] = value.images().images() else {
+    let [image] = value.value().images() else {
         panic!("one image")
     };
     image
@@ -778,8 +778,8 @@ fn selected_gradient_serialization_limits_are_atomic_reusable_and_cumulative() {
         panic!("image list")
     };
     let repeated = CssImageValueList::try_new(vec![
-        authored.images().images()[0].clone(),
-        authored.images().images()[0].clone(),
+        authored.value().images()[0].clone(),
+        authored.value().images()[0].clone(),
     ])
     .unwrap();
     assert_eq!(

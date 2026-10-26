@@ -217,7 +217,7 @@ mod combine_cumulative_bridge_contract {
         else {
             panic!("combine");
         };
-        let value = wrapper.combine();
+        let value = wrapper.value();
         let before = value.clone();
         let mut writer = SpecifiedRuleWriter::new(Limits::new(100, 100, 1));
         writer.append("x").unwrap();

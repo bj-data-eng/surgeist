@@ -19,7 +19,7 @@ fn palette(source: &CssDeclaration) -> &CssFontPalette {
     else {
         panic!("ordinary font palette")
     };
-    value.palette()
+    value.value()
 }
 
 fn mix(value: &CssFontPalette) -> &CssFontPaletteMix {

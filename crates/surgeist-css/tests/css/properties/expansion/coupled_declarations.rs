@@ -189,6 +189,6 @@ fn coupled_origin_properties_expose_only_their_matching_typed_values() {
     );
     assert!(matches!(
         transform.known().and_then(|known| known.property_value()),
-        Some(CssKnownPropertyValueRef::TransformOrigin(value)) if value.origin().z().is_some()
+        Some(CssKnownPropertyValueRef::TransformOrigin(value)) if value.value().z().is_some()
     ));
 }

@@ -20,7 +20,7 @@ fn parsed_caret(source: &str) -> CssCaretColor {
     else {
         panic!("caret-color")
     };
-    value.caret().clone()
+    value.value().clone()
 }
 
 #[test]
@@ -152,15 +152,15 @@ fn containment_checked_construction_and_parsed_order_remain_intact() {
     else {
         panic!("contain")
     };
-    let before = value.containment().clone();
+    let before = value.value().clone();
     assert_eq!(
         value
-            .containment()
+            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         "size layout paint"
     );
-    assert_eq!(value.containment(), &before);
+    assert_eq!(value.value(), &before);
 }
 
 #[test]
@@ -221,10 +221,10 @@ fn blend_lists_preserve_order_duplicates_and_comma_byte_cost() {
     else {
         panic!("background-blend-mode")
     };
-    assert_eq!(parsed.modes(), &value);
+    assert_eq!(parsed.value(), &value);
     assert_eq!(
         parsed
-            .modes()
+            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         "screen, normal, screen"

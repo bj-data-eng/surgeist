@@ -98,7 +98,7 @@ fn main() {
         .unwrap();
         let description = match condition.kind() {
             CssContainerConditionKind::Feature(feature) => match feature {
-                CssContainerFeatureQuery::Boolean(kind) => format!("boolean {}", kind.name()),
+                CssContainerFeatureQuery::Boolean(kind) => format!("boolean {}", kind.as_str()),
                 CssContainerFeatureQuery::Width(range) => {
                     format!("width {}", describe_range(range, describe_length))
                 }

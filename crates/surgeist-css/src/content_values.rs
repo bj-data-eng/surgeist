@@ -618,10 +618,8 @@ impl CssBookmarkLevel {
     /// Retains a positive level; its type already admits only positive
     /// literals and keeps function math with deferred computed rounding/range.
     #[must_use]
-    pub fn try_new(
-        level: crate::CssNumeric<crate::CssInteger, crate::CssPositive>,
-    ) -> Option<Self> {
-        Some(Self { level: Some(level) })
+    pub const fn new(level: crate::CssNumeric<crate::CssInteger, crate::CssPositive>) -> Self {
+        Self { level: Some(level) }
     }
     /// Borrows the exact integer or deferred calculation; `None` is the CSS keyword.
     #[must_use]

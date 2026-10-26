@@ -933,7 +933,7 @@ impl CssCalculation<CssLength> {
     /// Constructs a finite programmatic length root.
     pub fn try_dimension(value: f32, unit: CssLengthUnit) -> Option<Self> {
         Self::try_from_components(
-            programmatic_dimension(value, unit.as_css_str())?,
+            programmatic_dimension(value, unit.as_str())?,
             Default::default(),
         )
         .ok()
@@ -944,7 +944,7 @@ impl CssCalculation<CssLengthPercentage> {
     /// Constructs a finite programmatic length root.
     pub fn try_dimension(value: f32, unit: CssLengthUnit) -> Option<Self> {
         Self::try_from_components(
-            programmatic_dimension(value, unit.as_css_str())?,
+            programmatic_dimension(value, unit.as_str())?,
             Default::default(),
         )
         .ok()

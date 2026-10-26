@@ -31,7 +31,7 @@ fn color(source: &str) -> CssOutlineColor {
     value.value().clone()
 }
 
-fn width(source: &str) -> CssOutlineWidth {
+fn width(source: &str) -> CssLineWidth {
     let declaration = declaration(CssKnownProperty::OutlineWidth, source);
     let CssKnownPropertyValueRef::OutlineWidth(value) =
         declaration.known().unwrap().property_value().unwrap()
@@ -76,9 +76,9 @@ fn every_semantic_outline_style_emits_one_checked_keyword() {
 #[test]
 fn outline_width_keywords_and_literal_lengths_share_numeric_limits() {
     for (value, expected) in [
-        (CssOutlineWidth::Thin, "thin"),
-        (CssOutlineWidth::Medium, "medium"),
-        (CssOutlineWidth::Thick, "thick"),
+        (CssLineWidth::Thin, "thin"),
+        (CssLineWidth::Medium, "medium"),
+        (CssLineWidth::Thick, "thick"),
         (width("2.0000000PX"), "2px"),
         (width("-0em"), "0em"),
     ] {
@@ -120,7 +120,7 @@ fn all_optional_outline_field_subsets_keep_width_style_color_order() {
     let red = color("red");
     for (value, expected, nodes) in [
         (
-            CssOutline::try_new(Some(CssOutlineWidth::Thin), None, None).unwrap(),
+            CssOutline::try_new(Some(CssLineWidth::Thin), None, None).unwrap(),
             "thin",
             2,
         ),
@@ -135,17 +135,13 @@ fn all_optional_outline_field_subsets_keep_width_style_color_order() {
             2,
         ),
         (
-            CssOutline::try_new(
-                Some(CssOutlineWidth::Thin),
-                Some(CssOutlineStyle::Solid),
-                None,
-            )
-            .unwrap(),
+            CssOutline::try_new(Some(CssLineWidth::Thin), Some(CssOutlineStyle::Solid), None)
+                .unwrap(),
             "thin solid",
             3,
         ),
         (
-            CssOutline::try_new(Some(CssOutlineWidth::Thin), None, Some(red.clone())).unwrap(),
+            CssOutline::try_new(Some(CssLineWidth::Thin), None, Some(red.clone())).unwrap(),
             "thin red",
             3,
         ),
@@ -156,7 +152,7 @@ fn all_optional_outline_field_subsets_keep_width_style_color_order() {
         ),
         (
             CssOutline::try_new(
-                Some(CssOutlineWidth::Thin),
+                Some(CssLineWidth::Thin),
                 Some(CssOutlineStyle::Solid),
                 Some(red),
             )
@@ -188,12 +184,8 @@ fn constructed_color_only_auto_synthesizes_initial_none_style() {
             3,
         ),
         (
-            CssOutline::try_new(
-                Some(CssOutlineWidth::Thin),
-                None,
-                Some(CssOutlineColor::Auto),
-            )
-            .unwrap(),
+            CssOutline::try_new(Some(CssLineWidth::Thin), None, Some(CssOutlineColor::Auto))
+                .unwrap(),
             "thin none auto",
             3,
             4,
@@ -334,7 +326,7 @@ fn parsed_shorthand_retains_lexical_components_importance_and_both_numeric_origi
     };
     let value = wrapper.value();
     let before = value.clone();
-    let CssOutlineWidth::Length(length) = value.width().unwrap() else {
+    let CssLineWidth::Length(length) = value.width().unwrap() else {
         panic!("checked length")
     };
     let width_origin = length.origin().clone();

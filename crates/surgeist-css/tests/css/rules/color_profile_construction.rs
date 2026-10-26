@@ -203,7 +203,7 @@ fn environment_only_admission_defers_whole_grammar_without_a_var_veto() {
         // <integer [0,∞]>* , ... ), so a malformed one leaves the ordinary
         // descriptor grammar, which rejects the function token itself.
         // Every front names @color-profile and the descriptor (#1446).
-        let rejected = |token| invalid_descriptor("color-profile", kind.css_name()).at(token);
+        let rejected = |token| invalid_descriptor("color-profile", kind.as_str()).at(token);
         for (invalid, expected) in [
             ("var(--x)", rejected("var(")),
             ("env()", rejected("env(")),
@@ -418,7 +418,7 @@ fn root_annotations_fail_before_environment_deferral() {
     for kind in [Kind::Src, Kind::RenderingIntent, Kind::Components] {
         // Syntax 3 <declaration-value> excludes top-level `!`, `;` and
         // unmatched closers, so the root token rejects before env() defers.
-        let rejected = |token| descriptor_rejected_at("color-profile", kind.css_name(), token);
+        let rejected = |token| descriptor_rejected_at("color-profile", kind.as_str(), token);
         for (source, token) in [
             ("env(x) !important", "!"),
             ("env(x) !other", "!"),

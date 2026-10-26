@@ -47,9 +47,9 @@ fn emit(writer: &mut SpecifiedRuleWriter, source: &str) -> Result<(), CssSeriali
         .property_value()
         .unwrap()
     {
-        CssKnownPropertyValueRef::ColumnRule(v) => v.rule().append_to_rule_writer(writer),
-        CssKnownPropertyValueRef::FontVariant(v) => v.variant().append_to_rule_writer(writer),
-        CssKnownPropertyValueRef::FontSynthesis(v) => v.synthesis().append_to_rule_writer(writer),
+        CssKnownPropertyValueRef::ColumnRule(v) => v.value().append_to_rule_writer(writer),
+        CssKnownPropertyValueRef::FontVariant(v) => v.value().append_to_rule_writer(writer),
+        CssKnownPropertyValueRef::FontSynthesis(v) => v.value().append_to_rule_writer(writer),
         CssKnownPropertyValueRef::CounterIncrement(v) => v
             .value()
             .append_to_rule_writer(CssCounterProperty::Increment, writer),
@@ -61,7 +61,7 @@ fn emit(writer: &mut SpecifiedRuleWriter, source: &str) -> Result<(), CssSeriali
         CssKnownPropertyValueRef::GridTemplateAreas(v) => v.value().append_to_rule_writer(writer),
         CssKnownPropertyValueRef::Opacity(v) => v.value().append_to_rule_writer(writer),
         CssKnownPropertyValueRef::Order(v) => v.value().append_to_rule_writer(writer),
-        CssKnownPropertyValueRef::AspectRatio(v) => v.ratio().append_to_rule_writer(writer),
+        CssKnownPropertyValueRef::AspectRatio(v) => v.value().append_to_rule_writer(writer),
         CssKnownPropertyValueRef::Pause(v) => v.value().append_to_rule_writer(writer),
         _ => panic!("selected owner"),
     }

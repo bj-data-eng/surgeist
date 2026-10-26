@@ -176,7 +176,7 @@ fn descriptor_boundaries_and_stylesheet_only_substitution_do_not_become_ordinary
             (format!("{source}!important"), "!"),
             (format!("{source};"), ";"),
         ] {
-            let expected = descriptor_rejected_at("font-face", kind.css_name(), token);
+            let expected = descriptor_rejected_at("font-face", kind.as_str(), token);
             let report = parse_font_face_descriptor_value(&invalid, kind);
             assert!(report.syntax().is_none(), "{kind:?}: {invalid}: {report:?}");
             expected.assert_first(&report);

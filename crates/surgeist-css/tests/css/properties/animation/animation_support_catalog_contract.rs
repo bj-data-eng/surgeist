@@ -18,22 +18,16 @@ fn complete(property: CssKnownProperty, value: &str, expected_entries: usize) {
     assert_eq!(known.property(), property);
     assert_eq!(known.grammar(), property.grammar());
     let entries = match known.property_value().unwrap() {
-        CssKnownPropertyValueRef::AnimationName(value) => value.names().names().len(),
-        CssKnownPropertyValueRef::AnimationDuration(value) => value.durations().values().len(),
-        CssKnownPropertyValueRef::AnimationDelay(value) => value.delays().values().len(),
-        CssKnownPropertyValueRef::AnimationTimingFunction(value) => {
-            value.timing_functions().values().len()
-        }
-        CssKnownPropertyValueRef::AnimationIterationCount(value) => {
-            value.iteration_counts().values().len()
-        }
-        CssKnownPropertyValueRef::AnimationDirection(value) => {
-            value.directions().directions().len()
-        }
-        CssKnownPropertyValueRef::AnimationFillMode(value) => value.fill_modes().modes().len(),
-        CssKnownPropertyValueRef::AnimationPlayState(value) => value.play_states().states().len(),
+        CssKnownPropertyValueRef::AnimationName(value) => value.value().names().len(),
+        CssKnownPropertyValueRef::AnimationDuration(value) => value.value().values().len(),
+        CssKnownPropertyValueRef::AnimationDelay(value) => value.value().values().len(),
+        CssKnownPropertyValueRef::AnimationTimingFunction(value) => value.value().values().len(),
+        CssKnownPropertyValueRef::AnimationIterationCount(value) => value.value().values().len(),
+        CssKnownPropertyValueRef::AnimationDirection(value) => value.value().directions().len(),
+        CssKnownPropertyValueRef::AnimationFillMode(value) => value.value().modes().len(),
+        CssKnownPropertyValueRef::AnimationPlayState(value) => value.value().states().len(),
         CssKnownPropertyValueRef::Animation(value) => {
-            let animations = value.animations().values();
+            let animations = value.value().values();
             assert_eq!(animations[1].fill_mode(), Some(CssAnimationFillMode::None));
             let Some(CssAnimationName::Custom(name)) = animations[1].name() else {
                 panic!("keyword priority leaves backwards as the second item's name")

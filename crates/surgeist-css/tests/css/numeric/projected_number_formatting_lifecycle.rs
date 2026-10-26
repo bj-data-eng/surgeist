@@ -38,8 +38,8 @@ fn length(source: &str) -> CssNumeric<CssLength> {
     )
     .unwrap()
 }
-fn padding(source: &str) -> CssScrollPaddingValue {
-    CssScrollPaddingValue::LengthPercentage(nonnegative_lp(source))
+fn padding(source: &str) -> CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>> {
+    CssAutoOr::Value(nonnegative_lp(source))
 }
 fn nonnegative_lp(source: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
     CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
@@ -626,7 +626,7 @@ fn contextual_border_components_compare_unrounded_coefficients_and_canonical_syn
 
 #[test]
 fn scroll_pairs_preserve_collision_omission_auto_and_signed_length_policies() {
-    let pair = CssScrollMarginPair::new(
+    let pair = CssSidePair::new(
         length("calc(-0.12345641px)"),
         Some(length("calc(-0.12345642px)")),
     );
@@ -636,7 +636,7 @@ fn scroll_pairs_preserve_collision_omission_auto_and_signed_length_policies() {
         "calc(-0.123456px) calc(-0.123456px)"
     );
     assert_eq!(pair, before);
-    let pad = CssScrollPaddingPair::new(
+    let pad = CssSidePair::new(
         padding("calc(0.12345641%)"),
         Some(padding("calc(0.12345642%)")),
     );
@@ -644,16 +644,13 @@ fn scroll_pairs_preserve_collision_omission_auto_and_signed_length_policies() {
         pad.serialize_specified(Default::default()).unwrap(),
         "calc(0.123456%) calc(0.123456%)"
     );
-    let absent = CssScrollMarginPair::new(length("calc(0.12345641px)"), None);
-    assert!(absent.authored_end().is_none());
+    let absent = CssSidePair::new(length("calc(0.12345641px)"), None);
+    assert!(absent.authored_second().is_none());
     assert_eq!(
         absent.serialize_specified(Default::default()).unwrap(),
         "calc(0.123456px)"
     );
-    let auto = CssScrollPaddingPair::new(
-        CssScrollPaddingValue::Auto,
-        Some(padding("calc(0.0000001px)")),
-    );
+    let auto = CssSidePair::new(CssAutoOr::Auto, Some(padding("calc(0.0000001px)")));
     assert_eq!(
         auto.serialize_specified(Default::default()).unwrap(),
         "auto calc(0px)"
@@ -668,11 +665,11 @@ fn scroll_authored_roles_keep_marker_arity_and_exact_cumulative_capture_visits()
         "calc(0.12345643px)",
         "calc(0.12345644px)",
     ];
-    for kind in [CssScrollSideKind::Physical, CssScrollSideKind::Logical] {
+    for kind in [CssBoxSideKind::Physical, CssBoxSideKind::Logical] {
         for count in 1..=4 {
             let authored: Vec<_> = sources[..count].iter().map(|s| length(s)).collect();
-            let value = CssScrollMarginShorthand::try_new(kind, authored.clone()).unwrap();
-            assert_eq!(value.authored_values(), authored);
+            let value = CssFourSides::try_new(kind, authored.clone()).unwrap();
+            assert_eq!(value.authored(), authored);
             let indices = match count {
                 1 => [0, 0, 0, 0],
                 2 => [0, 1, 0, 1],
@@ -680,36 +677,33 @@ fn scroll_authored_roles_keep_marker_arity_and_exact_cumulative_capture_visits()
                 _ => [0, 1, 2, 3],
             };
             for (role, index) in indices.into_iter().enumerate() {
-                assert_eq!(value.role(role), Some(&authored[index]));
+                assert_eq!(value.assigned().get(role).copied(), Some(&authored[index]));
             }
-            let marker = usize::from(kind == CssScrollSideKind::Logical);
+            let marker = usize::from(kind == CssBoxSideKind::Logical);
             let expected = format!(
                 "{}{}",
                 if marker == 1 { "logical " } else { "" },
                 vec!["calc(0.123456px)"; count].join(" ")
             );
-            // No physical aggregate charge; each authored Calc costs 2/1.
+            // One aggregate node for physical and logical forms alike; each authored Calc
+            // costs 2/1.
             assert_eq!(
                 value
-                    .serialize_specified(Limits::new(
-                        2 * count + marker,
-                        count + marker,
-                        expected.len()
-                    ))
+                    .serialize_specified(Limits::new(2 * count + 1, count + 1, expected.len()))
                     .unwrap(),
                 expected
             );
             for (limits, error) in [
                 (
-                    Limits::new(2 * count + marker - 1, count + marker, expected.len()),
+                    Limits::new(2 * count, count + 1, expected.len()),
                     Kind::InputNodeLimit,
                 ),
                 (
-                    Limits::new(2 * count + marker, count + marker - 1, expected.len()),
+                    Limits::new(2 * count + 1, count, expected.len()),
                     Kind::ProjectionNodeLimit,
                 ),
                 (
-                    Limits::new(2 * count + marker, count + marker, expected.len() - 1),
+                    Limits::new(2 * count + 1, count + 1, expected.len() - 1),
                     Kind::ByteLimit,
                 ),
             ] {
@@ -718,11 +712,9 @@ fn scroll_authored_roles_keep_marker_arity_and_exact_cumulative_capture_visits()
                     error
                 );
             }
-            let padded = CssScrollPaddingShorthand::try_new(
-                kind,
-                sources[..count].iter().map(|s| padding(s)).collect(),
-            )
-            .unwrap();
+            let padded =
+                CssFourSides::try_new(kind, sources[..count].iter().map(|s| padding(s)).collect())
+                    .unwrap();
             assert_eq!(
                 padded.serialize_specified(Default::default()).unwrap(),
                 expected
@@ -733,36 +725,36 @@ fn scroll_authored_roles_keep_marker_arity_and_exact_cumulative_capture_visits()
 
 #[test]
 fn canonical_scroll_equivalence_keeps_authored_capture_work_and_order() {
-    let pair = CssScrollMarginPair::new(length("calc(1in)"), Some(length("calc(96px)")));
+    // Every pair limit includes the aggregate node.
+    let pair = CssSidePair::new(length("calc(1in)"), Some(length("calc(96px)")));
     assert_eq!(
-        pair.serialize_specified(Limits::new(4, 2, 10)).unwrap(),
+        pair.serialize_specified(Limits::new(5, 3, 10)).unwrap(),
         "calc(96px)"
     );
     assert!(
-        pair.serialize_specified(Limits::new(3, 2, 10))
+        pair.serialize_specified(Limits::new(4, 3, 10))
             .unwrap_err()
             .is_input_node_limit()
     );
-    let symbolic =
-        CssScrollMarginPair::new(length("calc(1em + 2px)"), Some(length("calc(2px + 1em)")));
+    let symbolic = CssSidePair::new(length("calc(1em + 2px)"), Some(length("calc(2px + 1em)")));
     assert_eq!(
         symbolic
-            .serialize_specified(Limits::new(8, 10, 15))
+            .serialize_specified(Limits::new(9, 11, 15))
             .unwrap(),
         "calc(1em + 2px)"
     );
     // Eager capture: a failed first scratch precedes work on the next sibling.
-    let first = CssScrollMarginPair::new(length("calc(1em + 2px)"), Some(length("calc(1px)")));
-    let second = CssScrollMarginPair::new(length("calc(1px)"), Some(length("calc(1em + 2px)")));
+    let first = CssSidePair::new(length("calc(1em + 2px)"), Some(length("calc(1px)")));
+    let second = CssSidePair::new(length("calc(1px)"), Some(length("calc(1em + 2px)")));
     assert!(
         first
-            .serialize_specified(Limits::new(4, 5, 14))
+            .serialize_specified(Limits::new(5, 6, 14))
             .unwrap_err()
             .is_byte_limit()
     );
     assert!(
         second
-            .serialize_specified(Limits::new(4, 5, 14))
+            .serialize_specified(Limits::new(5, 6, 14))
             .unwrap_err()
             .is_input_node_limit()
     );
@@ -770,12 +762,12 @@ fn canonical_scroll_equivalence_keeps_authored_capture_work_and_order() {
 
 #[test]
 fn tiny_nonzero_math_does_not_compare_equal_to_actual_zero() {
-    let pair = CssScrollMarginPair::new(length("calc(0px)"), Some(length("calc(0.0000001px)")));
+    let pair = CssSidePair::new(length("calc(0px)"), Some(length("calc(0.0000001px)")));
     assert_eq!(
         pair.serialize_specified(Default::default()).unwrap(),
         "calc(0px) calc(0px)"
     );
-    let negative = CssScrollMarginPair::new(length("calc(0px * -1)"), Some(length("calc(0px)")));
+    let negative = CssSidePair::new(length("calc(0px * -1)"), Some(length("calc(0px)")));
     assert_eq!(
         negative.serialize_specified(Default::default()).unwrap(),
         "calc(0px)"
@@ -808,12 +800,11 @@ fn calc_size_and_fit_content_round_shared_children_without_erasing_symbols() {
 
 fn composed_text(value: &CssDeclaration) -> String {
     match value.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::BackgroundPosition(v) => v
-            .positions()
-            .serialize_specified(Default::default())
-            .unwrap(),
+        CssKnownPropertyValueRef::BackgroundPosition(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
         CssKnownPropertyValueRef::BackgroundImage(v) => {
-            v.images().serialize_specified(Default::default()).unwrap()
+            v.value().serialize_specified(Default::default()).unwrap()
         }
         CssKnownPropertyValueRef::ClipPath(v) => {
             v.value().serialize_specified(Default::default()).unwrap()
@@ -831,10 +822,10 @@ fn composed_text(value: &CssDeclaration) -> String {
             v.value().serialize_specified(Default::default()).unwrap()
         }
         CssKnownPropertyValueRef::AspectRatio(v) => {
-            v.ratio().serialize_specified(Default::default()).unwrap()
+            v.value().serialize_specified(Default::default()).unwrap()
         }
         CssKnownPropertyValueRef::TextCombineUpright(v) => {
-            v.combine().serialize_specified(Default::default()).unwrap()
+            v.value().serialize_specified(Default::default()).unwrap()
         }
         _ => panic!("fixture with existing specified emitter"),
     }
@@ -917,13 +908,13 @@ fn timing_children_round_without_inventing_an_aggregate_writer() {
         panic!("duration")
     };
     assert_eq!(
-        value.durations().values()[0]
+        value.value().values()[0]
             .serialize_specified(Default::default())
             .unwrap(),
         "calc(0.123456s)"
     );
     assert_eq!(
-        value.durations().values()[1]
+        value.value().values()[1]
             .serialize_specified(Default::default())
             .unwrap(),
         "calc(0.007813s)"
@@ -938,7 +929,7 @@ fn timing_children_round_without_inventing_an_aggregate_writer() {
     else {
         panic!("easing")
     };
-    let CssEasing::CubicBezier(value) = &value.timing_functions().values()[0] else {
+    let CssEasing::CubicBezier(value) = &value.value().values()[0] else {
         panic!("bezier")
     };
     assert_eq!(

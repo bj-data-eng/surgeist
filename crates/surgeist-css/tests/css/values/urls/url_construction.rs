@@ -19,7 +19,7 @@ fn background_url(value: &str) -> CssUrl {
     else {
         panic!("typed image")
     };
-    let [surgeist_css::CssImageValue::Url(url)] = image.images().images() else {
+    let [surgeist_css::CssImageValue::Url(url)] = image.value().images() else {
         panic!("one URL image")
     };
     url.clone()

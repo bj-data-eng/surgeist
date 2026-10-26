@@ -430,7 +430,7 @@ fn canonical_length(
                     strategy,
                 } => {
                     let mut total = function
-                        .name()
+                        .as_str()
                         .len()
                         .checked_add(2)
                         .and_then(|length| {

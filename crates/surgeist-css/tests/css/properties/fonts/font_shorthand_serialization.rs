@@ -15,7 +15,7 @@ fn font(source: &str) -> CssFontValue {
     else {
         panic!("font property")
     };
-    value.font().clone()
+    value.value().clone()
 }
 
 fn direct_longhand(name: &str, value: &str) -> CssLonghandValue {
@@ -158,7 +158,7 @@ fn six_system_fonts_keep_only_settable_members_symbolic() {
         else {
             panic!("font value")
         };
-        let CssFontValue::System(system) = wrapper.font() else {
+        let CssFontValue::System(system) = wrapper.value() else {
             panic!("system font")
         };
         let values = longhands(&source);

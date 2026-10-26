@@ -148,7 +148,7 @@ fn ordinary_negative_lengths_reversed_ranges_and_nondescending_weights_drop_whol
     ] {
         let source = format!(
             "@counter-style Math {{ {}: {input}; suffix: '.'; }} .after {{}}",
-            kind.css_name()
+            kind.as_str()
         );
         let report = parse_sheet(&source);
         let [diagnostic] = report.diagnostics() else {
@@ -208,8 +208,8 @@ fn malformed_and_wrong_domain_math_drop_only_the_descriptor_and_preserve_last_va
     ] {
         let source = format!(
             ".before {{}} @counter-style Math {{ {}: {accepted}; {}: {rejected}; suffix: '.'; }} .after {{}}",
-            kind.css_name(),
-            kind.css_name()
+            kind.as_str(),
+            kind.as_str()
         );
         let report = parse_sheet(&source);
         let [diagnostic] = report.diagnostics() else {

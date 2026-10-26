@@ -2,9 +2,11 @@
 
 use super::combinators::{Combinator, Tail, commit, parse_group};
 use super::property_input::Parser;
+use super::side_shapes::parse_side_pair;
+use crate::CssCue;
 use crate::error::property::{Error, ParseError, basic};
 use crate::{
-    CssSpeak, CssSpeakAs, CssSpeakAsPunctuation, CssSpeechBreak, CssSpeechBreakPair,
+    CssSidePair, CssSpeak, CssSpeakAs, CssSpeakAsPunctuation, CssSpeechBreak,
     CssSpeechBreakStrength,
 };
 use cssparser::Token;
@@ -106,14 +108,8 @@ pub(super) fn parse_speech_break<'i, 't>(
 pub(super) fn parse_speech_break_pair<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<CssSpeechBreakPair, ParseError<'i, Error>> {
-    let before = parse_speech_break(input, numeric)?;
-    let after = if input.is_exhausted() {
-        None
-    } else {
-        Some(parse_speech_break(input, numeric)?)
-    };
-    Ok(CssSpeechBreakPair::from_parser(before, after))
+) -> Result<CssSidePair<CssSpeechBreak>, ParseError<'i, Error>> {
+    parse_side_pair(input, |input| parse_speech_break(input, numeric))
 }
 
 pub(super) fn parse_cue<'i, 't>(
@@ -145,14 +141,8 @@ pub(super) fn parse_cue<'i, 't>(
 pub(super) fn parse_cue_pair<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<crate::CssCuePair, ParseError<'i, Error>> {
-    let before = parse_cue(input, numeric)?;
-    let after = if input.is_exhausted() {
-        None
-    } else {
-        Some(parse_cue(input, numeric)?)
-    };
-    Ok(crate::CssCuePair::from_parser(before, after))
+) -> Result<crate::CssSidePair<CssCue>, ParseError<'i, Error>> {
+    parse_side_pair(input, |input| parse_cue(input, numeric))
 }
 
 pub(super) fn parse_voice_stress<'i, 't>(

@@ -59,7 +59,7 @@ pub fn background_images(css: &str) -> CssImageValueList {
     else {
         panic!("typed images")
     };
-    value.images().clone()
+    value.value().clone()
 }
 
 /// The completed longhand expansion of `source`, each contribution keeping the

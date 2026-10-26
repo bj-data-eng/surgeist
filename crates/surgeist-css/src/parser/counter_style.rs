@@ -237,7 +237,7 @@ fn parse_occurrence<'i, 't>(
     name_origin: &crate::CssParsedOrigin,
     descriptor: CssCounterStyleDescriptorKind,
 ) -> Result<CssCounterStyleDescriptor, ParseError<'i, CssError>> {
-    parse_descriptor_boundary(input, "counter-style", descriptor.css_name(), |input| {
+    parse_descriptor_boundary(input, "counter-style", descriptor.as_str(), |input| {
         let (value, components, value_origin) =
             collect_declaration_value(input, source_snapshot, |input| {
                 parse_authored_value(input, descriptor, source_snapshot)
@@ -560,7 +560,7 @@ pub(super) fn parse_authored_value<'i>(
     kind: CssCounterStyleDescriptorKind,
     snapshot: &crate::CssSourceSnapshot,
 ) -> Result<CounterStyleValueData, ParseError<'i, CssError>> {
-    super::descriptor_values::validate_root(input, "counter-style", kind.css_name())?;
+    super::descriptor_values::validate_root(input, "counter-style", kind.as_str())?;
     let start = input.state();
     let components =
         crate::CssComponentValues::collect_from_parser(input, snapshot).map_err(|error| {
@@ -602,15 +602,15 @@ pub(crate) fn construct_descriptor_value(
     let mut input = Parser::new(&mut parser_input);
     let numeric = crate::numeric::NumericInputContext::components(components, serialized);
     let result = (|| {
-        super::descriptor_values::validate_root(&mut input, "counter-style", kind.css_name())?;
-        parse_descriptor_boundary(&mut input, "counter-style", kind.css_name(), |input| {
+        super::descriptor_values::validate_root(&mut input, "counter-style", kind.as_str())?;
+        parse_descriptor_boundary(&mut input, "counter-style", kind.as_str(), |input| {
             parse_value_data(input, kind, components, &numeric)
         })
     })();
     result.map_err(|error| {
         crate::error::from_parse_error(
             serialized.as_css(),
-            crate::error::with_descriptor_value_context(error, "counter-style", kind.css_name()),
+            crate::error::with_descriptor_value_context(error, "counter-style", kind.as_str()),
         )
     })
 }

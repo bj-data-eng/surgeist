@@ -141,7 +141,7 @@ fn raw_palette_descriptors_defer_matched_root_blocks_and_retain_original_compone
     for kind in PALETTE_KINDS {
         for value in PALETTE_VALUES {
             let report = parse_font_palette_descriptor_value(value, kind);
-            assert!(report.is_clean(), "{}:{value}: {report:?}", kind.css_name());
+            assert!(report.is_clean(), "{}:{value}: {report:?}", kind.as_str());
             pending_palette(report.syntax().as_ref().unwrap(), kind, value, value);
         }
     }
@@ -164,7 +164,7 @@ fn checked_palette_descriptors_defer_matched_root_blocks_without_losing_provenan
 fn palette_body_retains_pending_matched_blocks_and_real_family_neighbor() {
     for kind in PALETTE_KINDS {
         for value in PALETTE_VALUES {
-            let source = format!("{{font-family:Demo;{}:{value};}}", kind.css_name());
+            let source = format!("{{font-family:Demo;{}:{value};}}", kind.as_str());
             let report = parse_font_palette_values_block(&source);
             assert!(report.is_clean(), "{source}: {report:?}");
             let descriptors = report.syntax().as_ref().unwrap().body();
@@ -180,7 +180,7 @@ fn palette_rule_retains_pending_matched_blocks_and_following_rule() {
         for value in PALETTE_VALUES {
             let source = format!(
                 "@font-palette-values --x{{font-family:Demo;{}:{value};}} .after{{color:red;}}",
-                kind.css_name()
+                kind.as_str()
             );
             let report = parse_sheet(&source);
             assert!(report.is_clean(), "{source}: {report:?}");
@@ -224,18 +224,18 @@ fn malformed_env_and_ordinary_root_blocks_remain_invalid_in_raw_and_checked_fron
         face_rejection.assert_kind(detail);
         // The palette fronts name their at-rule and descriptor too.
         for kind in PALETTE_KINDS {
-            let palette_rejection = at(invalid_descriptor("font-palette-values", kind.css_name()));
+            let palette_rejection = at(invalid_descriptor("font-palette-values", kind.as_str()));
             let palette = parse_font_palette_descriptor_value(value, kind);
             assert!(
                 palette.syntax().is_none(),
                 "{}:{value}: {palette:?}",
-                kind.css_name()
+                kind.as_str()
             );
             palette_rejection.assert_first(&palette);
             let error =
                 PaletteValue::try_new(kind, components.clone(), Default::default()).unwrap_err();
             let Some(detail) = error.diagnostic() else {
-                panic!("{}:{value}: grammar failure: {error:?}", kind.css_name())
+                panic!("{}:{value}: grammar failure: {error:?}", kind.as_str())
             };
             palette_rejection.assert_kind(detail);
         }
@@ -260,9 +260,9 @@ fn root_bangs_semicolons_and_unmatched_closers_are_not_rescued_by_valid_env() {
             assert!(
                 palette.syntax().is_none(),
                 "{}:{value}: {palette:?}",
-                kind.css_name()
+                kind.as_str()
             );
-            descriptor_rejected_at("font-palette-values", kind.css_name(), token)
+            descriptor_rejected_at("font-palette-values", kind.as_str(), token)
                 .assert_first(&palette);
         }
         // Component admission may itself reject unmatched closers. If it admits
@@ -282,9 +282,9 @@ fn root_bangs_semicolons_and_unmatched_closers_are_not_rescued_by_valid_env() {
                 let error = PaletteValue::try_new(kind, components.clone(), Default::default())
                     .unwrap_err();
                 let Some(detail) = error.diagnostic() else {
-                    panic!("{}:{value}: grammar failure: {error:?}", kind.css_name())
+                    panic!("{}:{value}: grammar failure: {error:?}", kind.as_str())
                 };
-                descriptor_rejected_at("font-palette-values", kind.css_name(), token)
+                descriptor_rejected_at("font-palette-values", kind.as_str(), token)
                     .assert_kind(detail);
             }
         }
@@ -325,7 +325,7 @@ fn font_face_malformed_env_and_ordinary_blocks_drop_only_the_bad_descriptor() {
 fn palette_malformed_env_and_ordinary_blocks_drop_only_the_bad_descriptor() {
     for kind in PALETTE_KINDS {
         for value in ["{}", "{hello}", "env() {}", "env(choice) env() {}"] {
-            let body = format!("{{font-family:Demo;{}:{value};}}", kind.css_name());
+            let body = format!("{{font-family:Demo;{}:{value};}}", kind.as_str());
             let report = parse_font_palette_values_block(&body);
             assert!(!report.is_clean(), "{body}: {report:?}");
             assert_eq!(report.syntax().as_ref().unwrap().body().len(), 1);

@@ -103,7 +103,7 @@
 //! mutually exclusive views of those same branches.
 //!
 //! The property branch borrows a non-exhaustive [`CssKnownPropertyValueRef`].
-//! Match its concrete generated wrapper and retain a wildcard for future
+//! Match the variant that names the property and retain a wildcard for future
 //! variants:
 //!
 //! ```
@@ -136,19 +136,19 @@
 //! }
 //! ```
 //!
-//! Each ordinary property-schema row generates one private-field
-//! `Css<SchemaVariant>PropertyValue` wrapper holding the authored declaration
-//! and its grammar-checked semantic value. `as_css()` returns the exact authored
+//! Each ordinary property variant borrows one private-field [`CssPropertyValue`] holding the
+//! authored declaration and its grammar-checked semantic value. The property identity belongs to
+//! the [`CssKnownPropertyValueRef`] variant, so one generic type serves every property whose
+//! grammar produces the same value. `as_css()` returns the exact authored
 //! ordinary slice, excluding boundary trivia and terminal importance. Checked
 //! construction uses token-preserving serialization; original or programmatic
 //! provenance remains available through [`CssDeclaration::value_components`].
-//! Each wrapper has one semantic accessor: `value()` by default, or a domain name
-//! such as `images()`, `factor()`, `ratio()`, `families()`, or `font()`.
+//! Its one semantic accessor is `value()`.
 //! The `all` property accepts only global or substitution-dependent values and
-//! has no ordinary wrapper.
+//! has no ordinary value.
 //!
-//! The `background-image` and `mask-image` wrappers expose [`CssImageValueList`]
-//! through `images()`, retaining URL, `none`, gradient and LightDark branches in order.
+//! The `background-image` and `mask-image` values are [`CssImageValueList`]s read
+//! through `value()`, retaining URL, `none`, gradient and LightDark branches in order.
 //! [`CssLightDarkColor::try_new`] and [`CssLightDarkImage::try_new`] retain two
 //! checked branches and enforce the complete composed subtree's 256-level ceiling.
 //! Color pairs remain contextual; image pairs may contain two `none` branches.
@@ -197,8 +197,8 @@
 //! clipping, preserving intermediate range with binary64 significand precision.
 //! Same-space conversion retains all bits; cross-space missing channels become
 //! zero locally. Alpha and authored expression evaluation remain separate.
-//! [`CssOverflowPropertyValue::value`] exposes [`CssOverflowValue`], retaining
-//! the authored one- or two-axis form.
+//! The `overflow` value is a [`CssOverflowValue`], retaining the authored one- or two-axis
+//! form.
 //!
 //! Public enums marked `#[non_exhaustive]` require a wildcard arm in downstream
 //! matches. Closed enums, including [`CssImportance`] and [`CssSupportStatus`],
@@ -252,8 +252,10 @@
 //!
 //! [`CssPhysicalPosition::try_new`] checks the generic position's cross-axis pairing of edge
 //! offsets. Its borrowed horizontal and vertical views make omitted centered axes and authored
-//! edge origins explicit. `object-position` and every
-//! `mask-position` layer use this exact generic grammar. `background-position` instead exposes a
+//! edge origins explicit. `transform-origin` uses this physical grammar.
+//! `object-position`, `perspective-origin` and every `mask-position` layer use the Values 5
+//! [`CssPosition`], which also admits the flow-relative keywords and keeps them unresolved.
+//! `background-position` instead exposes a
 //! nonempty [`CssBackgroundPositionList`] whose layers also admit the background-only
 //! three-component form. Its noninherited longhand initial is one `0% 0%` layer.
 //! [`CssBackgroundPosition::serialize_specified`] and the list's matching method
@@ -275,7 +277,7 @@
 //!
 //! ```
 //! use surgeist_css::{
-//!     CssHorizontalPosition, CssKnownPropertyValueRef, CssVerticalPosition,
+//!     CssHorizontalPosition, CssKnownPropertyValueRef, CssPositionRef, CssVerticalPosition,
 //!     parse_style_attribute,
 //! };
 //!
@@ -292,13 +294,13 @@
 //!     .property_value().expect("ordinary background position")
 //! else { panic!("expected background-position") };
 //! assert!(matches!(
-//!     background.positions().positions()[0].horizontal(),
+//!     background.value().positions()[0].horizontal(),
 //!     CssHorizontalPosition::LeftOffset(offset)
 //!         if matches!(offset.literal().unwrap().component().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
 //! ));
 //!
 //! assert_eq!(
-//!     background.positions().serialize_specified(Default::default()).unwrap(),
+//!     background.value().serialize_specified(Default::default()).unwrap(),
 //!     "left 10px top",
 //! );
 //!
@@ -306,22 +308,23 @@
 //!     .known().expect("known mask position")
 //!     .property_value().expect("ordinary mask position")
 //! else { panic!("expected mask-position") };
-//! assert!(matches!(
-//!     mask.positions().positions()[0].vertical(),
-//!     CssVerticalPosition::BottomOffset(_)
-//! ));
+//! let CssPositionRef::Cartesian(mask_position) = mask.value().positions()[0].view()
+//! else { panic!("a Cartesian mask position") };
+//! assert!(matches!(mask_position.vertical(), CssVerticalPosition::BottomOffset(_)));
 //!
 //! let CssKnownPropertyValueRef::ObjectPosition(object) = report.syntax()[2]
 //!     .known().expect("known object position")
 //!     .property_value().expect("ordinary object position")
 //! else { panic!("expected object-position") };
-//! assert!(matches!(object.position().horizontal(), CssHorizontalPosition::Center));
+//! let CssPositionRef::Cartesian(object_position) = object.value().view()
+//! else { panic!("a Cartesian object position") };
+//! assert!(matches!(object_position.horizontal(), CssHorizontalPosition::Center));
 //!
 //! let CssKnownPropertyValueRef::TransformOrigin(transform) = report.syntax()[3]
 //!     .known().expect("known transform origin")
 //!     .property_value().expect("ordinary transform origin")
 //! else { panic!("expected transform-origin") };
-//! assert!(matches!(transform.origin().z().unwrap().literal().unwrap().component().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "50" && unit == "px"));
+//! assert!(matches!(transform.value().z().unwrap().literal().unwrap().component().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "50" && unit == "px"));
 //! ```
 //!
 //! A vertical-only planar keyword followed by a length (`top 50px` or
@@ -332,8 +335,9 @@
 //!
 //! The position property wrappers expose only their checked semantic models.
 //! `background-position` retains its distinct three-component grammar, while
-//! `object-position`, `mask-position`, and mask shorthand use physical [`CssPhysicalPosition`].
-//! Circle and ellipse instead use the full Values 5 [`CssPosition`] coordinate families.
+//! `object-position`, `perspective-origin`, `mask-position` and the mask shorthand use the full
+//! Values 5 [`CssPosition`], as do circle and ellipse; `transform-origin` keeps the physical
+//! [`CssPhysicalPosition`].
 //! Its checked Cartesian, named-flow and relative-flow constructors retain symbolic axes;
 //! [`CssPosition::view`] exposes borrowed payloads. All-center values have one Cartesian form.
 //! Specified output orders Cartesian axes horizontally/vertically and flow axes by block/inline.
@@ -818,7 +822,7 @@
 //!     .known().expect("known font")
 //!     .property_value().expect("ordinary font")
 //! else { panic!("expected font") };
-//! assert!(matches!(font.font(), CssFontValue::System(CssSystemFont::Menu)));
+//! assert!(matches!(font.value(), CssFontValue::System(CssSystemFont::Menu)));
 //! assert_eq!(font.as_css(), "menu");
 //! ```
 //!
@@ -982,10 +986,10 @@
 //! assert!(report.is_clean());
 //! let CssKnownPropertyValueRef::TransitionDuration(duration) = report.syntax()[0]
 //!     .known().unwrap().property_value().unwrap() else { panic!("duration"); };
-//! assert!(duration.durations().values()[0].calculation().is_some());
+//! assert!(duration.value().values()[0].calculation().is_some());
 //! let CssKnownPropertyValueRef::TransitionDelay(delay) = report.syntax()[1]
 //!     .known().unwrap().property_value().unwrap() else { panic!("delay"); };
-//! let delay = &delay.delays().values()[0];
+//! let delay = &delay.value().values()[0];
 //! let literal = delay.literal().unwrap();
 //! assert_eq!(literal.numeric().representation(), "-250");
 //! assert_eq!(literal.unit(), CssTimeUnit::Milliseconds);
@@ -1195,7 +1199,7 @@
 //!     .property_value().expect("ordinary value")
 //! else { panic!("expected background blend modes") };
 //! assert_eq!(
-//!     blending.modes().modes(),
+//!     blending.value().modes(),
 //!     &[CssBlendMode::Multiply, CssBlendMode::Luminosity],
 //! );
 //! let alias = feature_metadata("official.property-alias.glyph-orientation-vertical")
@@ -1440,7 +1444,7 @@
 //!     .property_value().expect("ordinary background image")
 //! else { panic!("expected background-image") };
 //! assert!(matches!(
-//!     images.images().images(),
+//!     images.value().images(),
 //!     [CssImageValue::Gradient(CssGradient::Linear(_))]
 //! ));
 //!
@@ -1448,9 +1452,9 @@
 //!     .known().expect("known border image")
 //!     .property_value().expect("ordinary border image")
 //! else { panic!("expected border-image") };
-//! assert!(border.border_image().slice().expect("slice").fill());
+//! assert!(border.value().slice().expect("slice").fill());
 //! assert_eq!(
-//!     border.border_image().serialize_specified(Default::default()).unwrap(),
+//!     border.value().serialize_specified(Default::default()).unwrap(),
 //!     "url(\"frame.png\") 10 fill / 2 / 1 round",
 //! );
 //!
@@ -1487,13 +1491,13 @@
 //!     .known().expect("known flex-flow")
 //!     .property_value().expect("ordinary flex-flow")
 //! else { panic!("expected flex-flow") };
-//! assert_eq!(flow.flow().direction(), CssFlexDirection::Column);
+//! assert_eq!(flow.value().direction(), CssFlexDirection::Column);
 //!
 //! let CssKnownPropertyValueRef::Columns(columns) = report.syntax()[1]
 //!     .known().expect("known columns")
 //!     .property_value().expect("ordinary columns")
 //! else { panic!("expected columns") };
-//! assert!(matches!(columns.columns().count(), CssColumnCount::Count(_)));
+//! assert!(matches!(columns.value().count(), CssColumnCount::Count(_)));
 //!
 //! let metadata = feature_metadata("official.property.flex-flow")
 //!     .expect("public Flexbox metadata");
@@ -1673,6 +1677,7 @@ mod block_fragments;
 mod color_profile;
 mod color_profile_serialization;
 mod common_serialization;
+mod common_values;
 mod component_values;
 mod conformance;
 mod content_serialization;
@@ -1794,6 +1799,7 @@ mod angle;
 mod aspect_ratio;
 mod border_radius;
 mod border_spacing;
+pub(crate) use border_spacing::BorderSpacingLength;
 mod border_style;
 mod border_width;
 mod box_spacing;
@@ -1846,12 +1852,12 @@ mod sizing;
 mod sizing_controls;
 mod speech;
 pub use speech::{
-    CssAudioCue, CssCue, CssCuePair, CssDecibelLiteral, CssGenericVoice, CssSemitoneLiteral,
-    CssSpeak, CssSpeakAs, CssSpeakAsPunctuation, CssSpeechBreak, CssSpeechBreakPair,
-    CssSpeechBreakStrength, CssVoiceAge, CssVoiceBalance, CssVoiceBalanceKeyword, CssVoiceDuration,
-    CssVoiceFamily, CssVoiceFamilyEntry, CssVoiceFamilyList, CssVoiceFamilyName,
-    CssVoiceFamilyNameRef, CssVoiceGender, CssVoiceLevel, CssVoiceOffset, CssVoicePitchRange,
-    CssVoiceRate, CssVoiceRateKeyword, CssVoiceStress, CssVoiceVolume, CssVoiceVolumeLevel,
+    CssAudioCue, CssCue, CssDecibelLiteral, CssGenericVoice, CssSemitoneLiteral, CssSpeak,
+    CssSpeakAs, CssSpeakAsPunctuation, CssSpeechBreak, CssSpeechBreakStrength, CssVoiceAge,
+    CssVoiceBalance, CssVoiceBalanceKeyword, CssVoiceDuration, CssVoiceFamily, CssVoiceFamilyEntry,
+    CssVoiceFamilyList, CssVoiceFamilyName, CssVoiceFamilyNameRef, CssVoiceGender, CssVoiceLevel,
+    CssVoiceOffset, CssVoicePitchRange, CssVoiceRate, CssVoiceRateKeyword, CssVoiceStress,
+    CssVoiceVolume, CssVoiceVolumeLevel,
 };
 mod image_1d;
 mod text_alignment;
@@ -1869,25 +1875,20 @@ pub use alignment::{
 };
 pub use angle::{CssAngleOrZero, CssZeroLiteral};
 pub use aspect_ratio::CssSpecifiedRatio;
-pub use border_color::{CssBorderColorPair, CssBorderColorShorthand, CssBorderColors};
-pub use border_radius::{CssBorderRadiusShorthand, CssCornerRadiusValue};
-pub use border_style::{CssBorderStylePair, CssBorderStyleShorthand};
-pub use border_width::{CssBorder, CssBorderWidth, CssBorderWidthPair, CssBorderWidthShorthand};
-pub use box_spacing::{
-    CssBoxSideKind, CssMarginPair, CssMarginShorthand, CssMarginValue, CssPaddingPair,
-    CssPaddingShorthand, CssPaddingValue,
-};
+pub(crate) use border_radius::CornerRadiusLength;
+pub use border_radius::CssBorderRadiusShorthand;
+pub use border_width::{CssBorder, CssLineWidth};
+pub use box_spacing::{CssMarginValue, CssPaddingValue};
 pub use calc_size::{CssBoxCalcSize, CssCalcSize, CssCalcSizeBasisRef, CssIntrinsicSizeKeyword};
 pub use color_alpha::{CssColorAlphaScalarRef, CssParsedColorAlphaRef};
 pub use color_scalar::{CssColorNumberLiteral, CssColorPercentageLiteral};
-pub use contain_intrinsic_size::{
-    CssContainIntrinsicSize, CssContainIntrinsicSizeFallback, CssContainIntrinsicSizeValue,
-};
+pub use common_values::{CssAutoOr, CssBoxSideKind, CssFourSides, CssSidePair};
+pub use contain_intrinsic_size::{CssContainIntrinsicSizeFallback, CssContainIntrinsicSizeValue};
 pub use display::{
     CssDisplayBox, CssDisplayInside, CssDisplayInternal, CssDisplayLegacy,
     CssDisplayListItemInside, CssDisplayOutside, CssDisplayValue,
 };
-pub use gap::{CssGapShorthand, CssGapValue};
+pub use gap::CssGapValue;
 pub use grid_template_areas::{
     CssGridTemplateAreaCell, CssGridTemplateAreaError, CssGridTemplateAreaName,
     CssGridTemplateAreaRow, CssGridTemplateAreaRows, CssGridTemplateAreas,
@@ -1926,7 +1927,7 @@ mod font_weight;
 pub use font_weight::{
     CssAbsoluteFontWeight, CssFontFaceWeight, CssFontWeight, CssFontWeightRange,
 };
-pub use inset::{CssInsetPair, CssInsetShorthand, CssInsetValue};
+pub use inset::CssInsetValue;
 pub use item_flow::{
     CssItemDirection, CssItemFlow, CssItemPack, CssItemWrap, CssItemWrapMode, CssItemWrapOrder,
 };
@@ -1940,13 +1941,13 @@ pub use view_transitions::{
 };
 mod will_change;
 pub use scroll_snap::{
-    CssScrollMarginPair, CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
-    CssScrollPaddingValue, CssScrollSideKind, CssScrollSnapAlign, CssScrollSnapAlignment,
-    CssScrollSnapAxis, CssScrollSnapStop, CssScrollSnapStrictness, CssScrollSnapType,
+    CssScrollSnapAlignment, CssScrollSnapAxis, CssScrollSnapStop, CssScrollSnapStrictness,
+    CssScrollSnapType,
 };
+pub(crate) use scroll_snap::{ScrollMarginSide, ScrollPaddingSide};
 pub use scrollbar::CssScrollbarColor;
 pub use sizing::{CssBoxSize, CssMaxSizeValue, CssSizeValue};
-pub use sizing_controls::{CssFrameSizing, CssMaxSizePair, CssMinIntrinsicSizing, CssSizePair};
+pub use sizing_controls::{CssFrameSizing, CssMinIntrinsicSizing};
 pub use text_alignment::{
     CssCharacterAlignment, CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignPosition,
     CssTextAlignValue, CssTextConstructionError,

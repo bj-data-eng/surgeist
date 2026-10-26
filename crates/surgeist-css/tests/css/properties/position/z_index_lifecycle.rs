@@ -43,7 +43,7 @@ fn declaration(value: &str) -> CssDeclaration {
     report.syntax()[0].clone()
 }
 
-fn value(source: &CssDeclaration) -> &CssZIndexPropertyValue {
+fn value(source: &CssDeclaration) -> &CssPropertyValue<CssZIndexValue> {
     let CssKnownPropertyValueRef::ZIndex(value) = source.known().unwrap().property_value().unwrap()
     else {
         panic!("z-index wrapper")

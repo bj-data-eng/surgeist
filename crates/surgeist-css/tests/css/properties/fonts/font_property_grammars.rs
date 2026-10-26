@@ -67,7 +67,7 @@ fn font_variant_longhands_and_shorthand_enforce_keyword_groups() {
     else {
         panic!("expected font-variant-caps");
     };
-    assert_eq!(caps.caps(), &CssFontVariantCaps::AllSmallCaps);
+    assert_eq!(caps.value(), &CssFontVariantCaps::AllSmallCaps);
 
     let CssKnownPropertyValueRef::FontVariantEastAsian(east_asian) = report.syntax()[1]
         .known()
@@ -77,7 +77,7 @@ fn font_variant_longhands_and_shorthand_enforce_keyword_groups() {
     else {
         panic!("expected font-variant-east-asian");
     };
-    let CssFontVariantEastAsian::Values(east_asian) = east_asian.east_asian() else {
+    let CssFontVariantEastAsian::Values(east_asian) = east_asian.value() else {
         panic!("expected East Asian values");
     };
     assert_eq!(
@@ -98,7 +98,7 @@ fn font_variant_longhands_and_shorthand_enforce_keyword_groups() {
     else {
         panic!("expected font-variant-ligatures");
     };
-    let CssFontVariantLigatures::Values(ligatures) = ligatures.ligatures() else {
+    let CssFontVariantLigatures::Values(ligatures) = ligatures.value() else {
         panic!("expected ligature values");
     };
     assert_eq!(
@@ -118,7 +118,7 @@ fn font_variant_longhands_and_shorthand_enforce_keyword_groups() {
     else {
         panic!("expected font-variant-numeric");
     };
-    let CssFontVariantNumeric::Values(numeric) = numeric.numeric() else {
+    let CssFontVariantNumeric::Values(numeric) = numeric.value() else {
         panic!("expected numeric values");
     };
     assert_eq!(
@@ -144,7 +144,7 @@ fn font_variant_longhands_and_shorthand_enforce_keyword_groups() {
     else {
         panic!("expected font-variant-position");
     };
-    assert_eq!(position.position(), &CssFontVariantPosition::Super);
+    assert_eq!(position.value(), &CssFontVariantPosition::Super);
 
     let CssKnownPropertyValueRef::FontVariant(variant) = report.syntax()[5]
         .known()
@@ -154,7 +154,7 @@ fn font_variant_longhands_and_shorthand_enforce_keyword_groups() {
     else {
         panic!("expected font-variant");
     };
-    let CssFontVariantValue::Values(values) = variant.variant() else {
+    let CssFontVariantValue::Values(values) = variant.value() else {
         panic!("expected shorthand component values");
     };
     assert_eq!(values.caps(), Some(CssFontVariantCaps::AllSmallCaps));
@@ -293,7 +293,7 @@ fn font_variant_keywords_unordered_groups_and_authored_values_are_exact() {
         else {
             panic!("expected font-variant");
         };
-        match (index, value.variant()) {
+        match (index, value.value()) {
             (0, CssFontVariantValue::Normal) => {}
             (1, CssFontVariantValue::Values(values)) => {
                 assert_eq!(values.caps(), Some(CssFontVariantCaps::SmallCaps));
@@ -315,7 +315,7 @@ fn font_variant_keywords_unordered_groups_and_authored_values_are_exact() {
     else {
         panic!("expected font-variant none");
     };
-    assert!(matches!(none.variant(), CssFontVariantValue::None));
+    assert!(matches!(none.value(), CssFontVariantValue::None));
 }
 
 #[test]
@@ -460,7 +460,7 @@ fn kerning_size_adjust_and_synthesis_follow_fonts3() {
         panic!("expected font-kerning");
     };
     assert!(matches!(
-        kerning.kerning(),
+        kerning.value(),
         surgeist_css::CssFontKerning::Normal
     ));
     assert_eq!(kerning.as_css(), "normal");
@@ -474,7 +474,7 @@ fn kerning_size_adjust_and_synthesis_follow_fonts3() {
         panic!("expected font-size-adjust");
     };
     assert!(matches!(
-        size_adjust.size_adjust(),
+        size_adjust.value(),
         surgeist_css::CssFontSizeAdjust::Number(value) if value.serialize_specified(Default::default()).unwrap() == "0.5"
     ));
 
@@ -487,7 +487,7 @@ fn kerning_size_adjust_and_synthesis_follow_fonts3() {
         panic!("expected font-synthesis");
     };
     assert!(matches!(
-        synthesis.synthesis(),
+        synthesis.value(),
         CssFontSynthesis::Values(values) if values.weight() && values.style()
     ));
 }
@@ -575,7 +575,7 @@ fn font_size_family_line_height_and_shorthand_follow_fonts3() {
     else {
         panic!("expected font-size");
     };
-    assert!(matches!(size.size(), CssFontSize::Medium));
+    assert!(matches!(size.value(), CssFontSize::Medium));
 
     let CssKnownPropertyValueRef::LineHeight(line_height) = report.syntax()[1]
         .known()
@@ -586,7 +586,7 @@ fn font_size_family_line_height_and_shorthand_follow_fonts3() {
         panic!("expected line-height");
     };
     assert!(matches!(
-        line_height.line_height(),
+        line_height.value(),
         CssLineHeight::Number(value)
             if value.serialize_specified(Default::default()).unwrap() == "1.25"
     ));
@@ -599,7 +599,7 @@ fn font_size_family_line_height_and_shorthand_follow_fonts3() {
     else {
         panic!("expected font-family");
     };
-    let families = family.families().families();
+    let families = family.value().families();
     assert_eq!(families[0].kind(), CssFontFamilyNameKind::Quoted);
     assert_eq!(families[0].as_str(), "inherit");
     assert_eq!(families[1].kind(), CssFontFamilyNameKind::IdentSequence);
@@ -622,7 +622,7 @@ fn font_size_family_line_height_and_shorthand_follow_fonts3() {
     else {
         panic!("expected font shorthand");
     };
-    let CssFontValue::Explicit(explicit) = explicit.font() else {
+    let CssFontValue::Explicit(explicit) = explicit.value() else {
         panic!("expected explicit font shorthand");
     };
     assert!(matches!(explicit.size(), CssFontSize::Medium));
@@ -644,7 +644,7 @@ fn font_size_family_line_height_and_shorthand_follow_fonts3() {
             .property_value()
             .unwrap(),
         CssKnownPropertyValueRef::Font(value)
-            if matches!(value.font(), CssFontValue::System(CssSystemFont::Menu))
+            if matches!(value.value(), CssFontValue::System(CssSystemFont::Menu))
     ));
 }
 
@@ -683,7 +683,7 @@ fn font_keywords_generics_globals_and_signed_boundaries_are_exact() {
         else {
             panic!("expected font-size keyword");
         };
-        assert_eq!(value.size(), expected);
+        assert_eq!(value.value(), expected);
     }
     let CssKnownPropertyValueRef::FontFamily(generics) = report.syntax()[12]
         .known()
@@ -695,7 +695,7 @@ fn font_keywords_generics_globals_and_signed_boundaries_are_exact() {
     };
     assert_eq!(
         generics
-            .families()
+            .value()
             .families()
             .iter()
             .map(|family| family.generic_family().unwrap())
@@ -729,7 +729,7 @@ fn font_keywords_generics_globals_and_signed_boundaries_are_exact() {
             .property_value()
             .unwrap(),
         CssKnownPropertyValueRef::FontFamily(value)
-            if value.families().families()[0].kind() == CssFontFamilyNameKind::Quoted
+            if value.value().families()[0].kind() == CssFontFamilyNameKind::Quoted
     ));
 
     for invalid in [
@@ -772,7 +772,7 @@ fn system_fonts_are_whole_values_and_explicit_components_are_unique() {
         else {
             panic!("expected font");
         };
-        assert_eq!(value.font(), &CssFontValue::System(expected));
+        assert_eq!(value.value(), &CssFontValue::System(expected));
     }
 
     let legacy = parse_style_attribute("font: italic small-caps 700 condensed 16px/normal Arial");
@@ -785,7 +785,7 @@ fn system_fonts_are_whole_values_and_explicit_components_are_unique() {
     else {
         panic!("expected font");
     };
-    let CssFontValue::Explicit(font) = legacy.font() else {
+    let CssFontValue::Explicit(font) = legacy.value() else {
         panic!("expected current explicit font");
     };
     assert_eq!(
@@ -846,7 +846,7 @@ fn font_shorthand_retains_ambiguous_normal_before_explicit_style() {
         else {
             panic!("expected font shorthand at declaration {index}");
         };
-        let CssFontValue::Explicit(explicit) = value.font() else {
+        let CssFontValue::Explicit(explicit) = value.value() else {
             panic!("expected explicit font shorthand at declaration {index}");
         };
         assert_eq!(explicit.style(), Some(expected_style));
@@ -882,7 +882,7 @@ fn font_feature_settings_preserve_authored_values() {
     else {
         panic!("expected font-feature-settings");
     };
-    let CssAuthoredFontFeatureSettings::Features(features) = value.settings() else {
+    let CssAuthoredFontFeatureSettings::Features(features) = value.value() else {
         panic!("expected feature list");
     };
     assert_eq!(

@@ -104,14 +104,14 @@ fn parsed_context_angles(text: &str) -> Vec<CssAngleOrZero> {
                     angle.angle().clone()
                 }
                 CssKnownPropertyValueRef::ImageOrientation(wrapper) => {
-                    let CssImageOrientation::Flip(Some(angle)) = wrapper.orientation() else {
+                    let CssImageOrientation::Flip(Some(angle)) = wrapper.value() else {
                         panic!("flipped orientation")
                     };
                     CssAngleOrZero::Angle(angle.clone())
                 }
                 CssKnownPropertyValueRef::BackgroundImage(wrapper) => {
                     let [CssImageValue::Gradient(CssGradient::Linear(linear))] =
-                        wrapper.images().images()
+                        wrapper.value().images()
                     else {
                         panic!("one linear gradient")
                     };

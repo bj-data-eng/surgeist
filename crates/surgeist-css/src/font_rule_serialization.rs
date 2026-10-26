@@ -185,7 +185,7 @@ impl SpecifiedRuleWriter {
         for (kind, record) in ORDER.into_iter().zip(effective) {
             if let Some(record) = record {
                 self.append(" ")?;
-                self.append(kind.css_name())?;
+                self.append(kind.as_str())?;
                 self.append(": ")?;
                 authored(self, record.value())?;
                 self.append(";")?;
@@ -258,7 +258,7 @@ impl SpecifiedRuleWriter {
                 }
             }
             self.append(" @")?;
-            self.append(kind.css_name())?;
+            self.append(kind.as_str())?;
             self.append(" {")?;
             for (index, definition) in definitions.iter().enumerate() {
                 if last[definition.name().as_str()] == index {

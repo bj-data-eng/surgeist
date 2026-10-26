@@ -413,7 +413,8 @@ fn new_layer_longhands_reject_wrong_domains_and_keep_clip_path_margin_independen
         ("mask-size", "-0.000000000001px"),
         ("mask-size", "cover auto"),
         ("mask-position", "left 10px top"),
-        ("mask-position", "inline-start"),
+        // Values 5 flow-relative keywords are admitted, but axes of different families do not mix.
+        ("mask-position", "inline-start x-start"),
         ("mask-repeat", "repeat-x round"),
     ] {
         rejected(name, value);

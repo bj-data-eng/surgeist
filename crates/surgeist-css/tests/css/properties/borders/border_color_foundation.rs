@@ -277,15 +277,15 @@ fn border_color_keeps_authored_arity_and_physical_or_logical_roles() {
         };
         let border = value.value();
         assert_eq!(border.kind(), kind, "{authored}");
-        assert_eq!(border.authored_values().len(), colors.len(), "{authored}");
-        for (color, expected) in border.authored_values().iter().zip(colors) {
+        assert_eq!(border.authored().len(), colors.len(), "{authored}");
+        for (color, expected) in border.authored().iter().zip(colors) {
             match *expected {
                 "black" => assert_eq!(color.named().unwrap().name(), "black"),
                 "currentcolor" => assert!(color.is_current_color()),
                 _ => unreachable!("captured color"),
             }
         }
-        for color in border.assigned_values() {
+        for color in border.assigned() {
             match colors[0] {
                 "black" => assert_eq!(color.named().unwrap().name(), "black"),
                 "currentcolor" => assert!(color.is_current_color()),

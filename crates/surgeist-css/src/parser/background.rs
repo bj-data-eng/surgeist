@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use super::color::{parse_color, parse_color_interpolation_method};
 use super::combinators::{Combinator, Tail, attempt, commit, fill, parse_group};
 use super::property_input::Parser;
+use super::side_shapes::parse_auto_or;
 use super::values::{
     parse_length_percentage, parse_nonnegative_length, parse_nonnegative_length_percentage,
 };
@@ -17,6 +18,7 @@ use super::values::{
     CalculationRoot, next_is_comma, parse_hinted_number_calculation, parse_nonnegative_number,
     parse_nonnegative_percentage,
 };
+use crate::CssAutoOr;
 use crate::syntax::*;
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
@@ -228,16 +230,17 @@ pub(super) fn parse_background_size<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundSize, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
-    let width = if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+    let state = input.state();
+    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         match_ignore_ascii_case! { &ident,
             "cover" => return Ok(CssBackgroundSize::Cover),
             "contain" => return Ok(CssBackgroundSize::Contain),
-            "auto" => CssBackgroundSizeComponent::Auto,
+            "auto" => {},
             _ => return Err(unexpected_at(keyword_location)),
         }
-    } else {
-        parse_background_size_component(input, numeric)?
-    };
+        input.reset(&state);
+    }
+    let width = parse_background_size_component(input, numeric)?;
     let height = attempt(input, |input| {
         parse_background_size_component(input, numeric)
     })?;
@@ -1188,15 +1191,13 @@ pub(super) fn parse_background_size_list<'i, 't>(
 pub(super) fn parse_background_size_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssBackgroundSizeComponent, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
-        Ok(CssBackgroundSizeComponent::Auto)
-    } else {
-        parse_nonnegative_length_percentage(input, numeric).map(CssBackgroundSizeComponent::Length)
-    }
+) -> std::result::Result<
+    CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>,
+    ParseError<'i, Error>,
+> {
+    parse_auto_or(input, |input| {
+        parse_nonnegative_length_percentage(input, numeric)
+    })
 }
 
 pub(super) fn parse_background_repeat_list<'i, 't>(
@@ -1267,20 +1268,23 @@ pub(super) fn parse_background_attachment<'i, 't>(
 #[cfg(test)]
 mod tests {
 
-    use super::super::position::parse_physical_position;
+    use super::super::position::parse_position_prefix;
     use super::*;
 
-    fn parse_position(source: &str) -> CssPhysicalPosition {
+    fn parse_position(source: &str) -> CssCartesianPosition {
         let snapshot = crate::CssSourceSnapshot::new(source);
         let numeric = crate::numeric::NumericInputContext::parsed(&snapshot);
         let document = crate::syntax_consumption::source_document(source, &snapshot, 0)
             .expect("position source document");
         let mut parser = Parser::new(&document);
-        let value = parse_physical_position(&mut parser, &numeric).expect("valid generic position");
+        let value = parse_position_prefix(&mut parser, &numeric).expect("valid generic position");
         parser
             .expect_exhausted()
             .expect("complete generic position");
-        value
+        let crate::CssPositionRef::Cartesian(cartesian) = value.view() else {
+            panic!("physical keywords form a Cartesian position");
+        };
+        cartesian.clone()
     }
 
     #[test]

@@ -127,7 +127,7 @@ fn checked_owners() -> Vec<CheckedOwner> {
         ("border", |v| {
             nonnegative_pure(v)
                 .ok()
-                .and_then(|v| CssBorder::try_new(Some(CssBorderWidth::Length(v)), None, None))
+                .and_then(|v| CssBorder::try_new(Some(CssLineWidth::Length(v)), None, None))
                 .is_some()
         }),
         ("shadow x", |v| {
@@ -191,12 +191,12 @@ fn checked_owners() -> Vec<CheckedOwner> {
         ("shape length percentage", |v| nonnegative_lp(v).is_ok()),
         ("corner horizontal", |v| {
             nonnegative_lp(v)
-                .map(|v| CssCornerRadiusValue::new(v, Some(zero_nonnegative_lp())))
+                .map(|v| CssSidePair::new(v, Some(zero_nonnegative_lp())))
                 .is_ok()
         }),
         ("corner vertical", |v| {
             nonnegative_lp(v)
-                .map(|v| CssCornerRadiusValue::new(zero_nonnegative_lp(), Some(v)))
+                .map(|v| CssSidePair::new(zero_nonnegative_lp(), Some(v)))
                 .is_ok()
         }),
         ("radial ellipse horizontal", |v| {
@@ -223,12 +223,12 @@ fn checked_owners() -> Vec<CheckedOwner> {
         }),
         ("border spacing horizontal", |v| {
             nonnegative_pure(v)
-                .map(|v| CssBorderSpacing::new(v, zero_nonnegative_length()))
+                .map(|v| CssSidePair::new(v, Some(zero_nonnegative_length())))
                 .is_ok()
         }),
         ("border spacing vertical", |v| {
             nonnegative_pure(v)
-                .map(|v| CssBorderSpacing::new(zero_nonnegative_length(), v))
+                .map(|v| CssSidePair::new(zero_nonnegative_length(), Some(v)))
                 .is_ok()
         }),
         ("ellipse horizontal", |v| {
@@ -272,7 +272,7 @@ fn checked_owners() -> Vec<CheckedOwner> {
         ("outline", |v| {
             nonnegative_pure(v)
                 .ok()
-                .and_then(|v| CssOutline::try_new(Some(CssOutlineWidth::Length(v)), None, None))
+                .and_then(|v| CssOutline::try_new(Some(CssLineWidth::Length(v)), None, None))
                 .is_some()
         }),
         ("background width", |v| {
@@ -280,7 +280,7 @@ fn checked_owners() -> Vec<CheckedOwner> {
                 .ok()
                 .and_then(|v| {
                     CssBackgroundSizeList::try_new(vec![CssBackgroundSize::Explicit {
-                        width: CssBackgroundSizeComponent::Length(v),
+                        width: CssAutoOr::Value(v),
                         height: None,
                     }])
                 })
@@ -291,8 +291,8 @@ fn checked_owners() -> Vec<CheckedOwner> {
                 .ok()
                 .and_then(|v| {
                     CssBackgroundSizeList::try_new(vec![CssBackgroundSize::Explicit {
-                        width: CssBackgroundSizeComponent::Auto,
-                        height: Some(CssBackgroundSizeComponent::Length(v)),
+                        width: CssAutoOr::Auto,
+                        height: Some(CssAutoOr::Value(v)),
                     }])
                 })
                 .is_some()
@@ -335,7 +335,7 @@ fn checked_length_owners_admit_valid_typed_symbolic_subtraction() {
         )
         .unwrap();
         let spacing = match declaration.known().unwrap().property_value().unwrap() {
-            CssKnownPropertyValueRef::WordSpacing(value) => value.spacing(),
+            CssKnownPropertyValueRef::WordSpacing(value) => value.value(),
             CssKnownPropertyValueRef::LetterSpacing(value) => value.value(),
             _ => panic!("spacing owner"),
         };

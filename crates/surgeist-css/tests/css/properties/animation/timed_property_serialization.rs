@@ -48,7 +48,7 @@ fn animations(css: &str) -> CssAnimationList {
     else {
         panic!("animation")
     };
-    value.animations().clone()
+    value.value().clone()
 }
 
 fn transitions(css: &str) -> CssTransitionList {
@@ -58,7 +58,7 @@ fn transitions(css: &str) -> CssTransitionList {
     else {
         panic!("transition")
     };
-    value.transitions().clone()
+    value.value().clone()
 }
 
 macro_rules! check {
@@ -279,34 +279,34 @@ fn parsed_longhands_use_the_same_canonical_providers_as_constructed_lists() {
         let parsed = declaration(&format!("{property}:{authored}"));
         let text = match parsed.known().unwrap().property_value().unwrap() {
             CssKnownPropertyValueRef::TransitionProperty(value) => {
-                value.properties().serialize_specified(Default::default())
+                value.value().serialize_specified(Default::default())
             }
             CssKnownPropertyValueRef::TransitionDuration(value) => {
-                value.durations().serialize_specified(Default::default())
+                value.value().serialize_specified(Default::default())
             }
             CssKnownPropertyValueRef::AnimationDuration(value) => {
-                value.durations().serialize_specified(Default::default())
+                value.value().serialize_specified(Default::default())
             }
             CssKnownPropertyValueRef::TransitionDelay(value) => {
-                value.delays().serialize_specified(Default::default())
+                value.value().serialize_specified(Default::default())
             }
             CssKnownPropertyValueRef::AnimationDelay(value) => {
-                value.delays().serialize_specified(Default::default())
+                value.value().serialize_specified(Default::default())
             }
             CssKnownPropertyValueRef::AnimationName(value) => {
-                value.names().serialize_specified(Default::default())
+                value.value().serialize_specified(Default::default())
             }
-            CssKnownPropertyValueRef::AnimationIterationCount(value) => value
-                .iteration_counts()
-                .serialize_specified(Default::default()),
+            CssKnownPropertyValueRef::AnimationIterationCount(value) => {
+                value.value().serialize_specified(Default::default())
+            }
             CssKnownPropertyValueRef::AnimationDirection(value) => {
-                value.directions().serialize_specified(Default::default())
+                value.value().serialize_specified(Default::default())
             }
             CssKnownPropertyValueRef::AnimationFillMode(value) => {
-                value.fill_modes().serialize_specified(Default::default())
+                value.value().serialize_specified(Default::default())
             }
             CssKnownPropertyValueRef::AnimationPlayState(value) => {
-                value.play_states().serialize_specified(Default::default())
+                value.value().serialize_specified(Default::default())
             }
             _ => panic!("timed property"),
         }

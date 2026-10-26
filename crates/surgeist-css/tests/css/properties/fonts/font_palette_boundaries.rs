@@ -12,14 +12,10 @@ fn root_matched_blocks_remain_pending_in_every_descriptor() {
         for value in ["{} var(--x)", "env(x) {}", "{var(--x)}"] {
             let source = format!(
                 "@font-palette-values --x {{ font-family: Demo; {}: {value}; base-palette: dark; }} .after {{ color: red; }}",
-                kind.css_name()
+                kind.as_str()
             );
             let report = parse_sheet(&source);
-            assert!(
-                report.is_clean(),
-                "{}: {value}: {report:?}",
-                kind.css_name()
-            );
+            assert!(report.is_clean(), "{}: {value}: {report:?}", kind.as_str());
             let [CssRule::FontPaletteValues(rule), CssRule::Style(_)] = report.syntax().rules()
             else {
                 panic!("valid sibling descriptors and following rule must survive");
@@ -29,7 +25,7 @@ fn root_matched_blocks_remain_pending_in_every_descriptor() {
             assert!(
                 fragment.is_clean(),
                 "{}: {value}: {fragment:?}",
-                kind.css_name()
+                kind.as_str()
             );
             let components = parse_component_values(value).unwrap();
             let constructed = CssFontPaletteDescriptorValue::try_new(
@@ -69,7 +65,7 @@ fn nested_fallback_blocks_remain_pending_across_descriptor_entry_points() {
         for value in ["var(--x, {hello})", "env(x, {hello})"] {
             let source = format!(
                 "@font-palette-values --x {{ font-family: Demo; {}: {value}; }}",
-                kind.css_name()
+                kind.as_str()
             );
             let report = parse_sheet(&source);
             assert!(report.is_clean(), "{:?}", report.diagnostics());

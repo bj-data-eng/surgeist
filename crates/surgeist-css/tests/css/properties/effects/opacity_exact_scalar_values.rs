@@ -5,7 +5,7 @@ use crate::css::support::property_admission::assert_reentry_rejected;
 use crate::css::support::sole_declaration;
 use surgeist_css::*;
 
-fn wrapper(declaration: &CssDeclaration) -> &CssOpacityPropertyValue {
+fn wrapper(declaration: &CssDeclaration) -> &CssPropertyValue<CssOpacityValue> {
     let CssKnownPropertyValueRef::Opacity(value) =
         declaration.known().unwrap().property_value().unwrap()
     else {

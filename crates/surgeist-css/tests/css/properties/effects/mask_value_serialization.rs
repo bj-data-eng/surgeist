@@ -2,6 +2,7 @@
 //! https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#the-mask
 
 use crate::css::support::normal_declaration;
+use crate::css::support::position_view::CartesianPosition as _;
 use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
 type Limits = CssSerializationLimits;
@@ -126,7 +127,7 @@ fn programmatic_numeric_position_keeps_exact_token_and_origin_after_rounding() {
     )
     .unwrap();
     let value = CssMaskList::try_new(vec![
-        CssMaskLayer::try_new(None, Some(position), None, None, None, None, None).unwrap(),
+        CssMaskLayer::try_new(None, Some(position.into()), None, None, None, None, None).unwrap(),
     ])
     .unwrap();
     bounds(&value, "0.123456px top", 6, 6);
@@ -160,7 +161,7 @@ fn constructors_preserve_order_and_omitted_image_position_size_repeat() {
         .unwrap(),
         CssMaskLayer::try_new(
             None,
-            Some(center),
+            Some(center.into()),
             None,
             Some(CssBackgroundRepeat::RepeatX),
             None,

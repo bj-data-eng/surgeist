@@ -9,11 +9,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::alignment::*;
-use crate::border_color::*;
 use crate::border_radius::*;
-use crate::border_style::*;
 use crate::border_width::*;
-use crate::box_spacing::*;
 use crate::color_adjustment::{CssColorScheme, CssForcedColorAdjust, CssPrintColorAdjust};
 use crate::contain_intrinsic_size::*;
 use crate::cursor_values::CssCursor;
@@ -23,8 +20,7 @@ use crate::font_palette::CssFontPalette;
 use crate::font_settings::*;
 use crate::font_synthesis::*;
 use crate::font_variant::*;
-use crate::gap::{CssGapShorthand, CssGapValue};
-use crate::inset::*;
+use crate::gap::CssGapValue;
 use crate::overflow::CssOverflowValue;
 use crate::overflow_controls::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
 use crate::parser::contains_substitution;
@@ -34,9 +30,9 @@ use crate::scrollbar::CssScrollbarColor;
 use crate::sizing::{CssMaxSizeValue, CssSizeValue};
 use crate::sizing_controls::*;
 use crate::speech::{
-    CssCue, CssCuePair, CssSpeak, CssSpeakAs, CssSpeechBreak, CssSpeechBreakPair, CssVoiceBalance,
-    CssVoiceBalanceKeyword, CssVoiceDuration, CssVoiceFamily, CssVoiceLevel, CssVoicePitchRange,
-    CssVoiceRate, CssVoiceRateKeyword, CssVoiceStress, CssVoiceVolume, CssVoiceVolumeLevel,
+    CssCue, CssSpeak, CssSpeakAs, CssSpeechBreak, CssVoiceBalance, CssVoiceBalanceKeyword,
+    CssVoiceDuration, CssVoiceFamily, CssVoiceLevel, CssVoicePitchRange, CssVoiceRate,
+    CssVoiceRateKeyword, CssVoiceStress, CssVoiceVolume, CssVoiceVolumeLevel,
 };
 use crate::syntax::*;
 use crate::text_alignment::{CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignValue};
@@ -45,6 +41,15 @@ use crate::{
     CssAbsoluteFontWeight, CssFontSize, CssFontStyle, CssFontStyleKeyword, CssFontWeight,
     CssFontWidth, CssFontWidthKeyword, CssLength, CssLineHeight, CssNumeric,
 };
+use crate::{
+    CssAutoOr, CssInsetValue, CssLineWidth, CssMarginValue, CssPaddingValue, ScrollMarginSide,
+    ScrollPaddingSide,
+};
+
+// The 50% 50% initial of object-position and perspective-origin.
+pub(crate) fn initial_position() -> CssPosition {
+    CssPosition::from(initial_transform_position())
+}
 
 // Transforms 1/2 select the same intrinsic 50% 50% planar initial.
 pub(crate) fn initial_transform_position() -> CssPhysicalPosition {
@@ -367,7 +372,7 @@ macro_rules! define_expansion_schema {
         $all_value:ty, $all_parser:ident, $all_dispatch:block, expansion = universal { $($all_metadata:tt)* };
         $(
         $variant:ident, $canonical:literal, [$($alias:literal),*], $stable_id:literal,
-        $value:ty, $wrapper:ident, $accessor:ident, $parser:ident, $dispatch:block
+        $value:ty, $parser:ident, $dispatch:block
         $(, expansion = $kind:ident { $($metadata:tt)* })?;
     )*) => {
         define_expansion_schema!(@collect [] [] [] []; All, universal { $($all_metadata)* };
@@ -377,24 +382,23 @@ macro_rules! define_expansion_schema {
     (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($four:tt)*];
         $variant:ident, $row_value:ty, longhand {
             value: $value:ty,
-            accessor: $accessor:ident, inherited: $inherited:literal, initial_kind: $initial_kind:ident, initial: $initial:expr $(, logical_group: $group:ident, mapping: $mapping:ident)?
+            inherited: $inherited:literal, initial_kind: $initial_kind:ident, initial: $initial:expr $(, logical_group: $group:ident, mapping: $mapping:ident)?
         }; $($rest:tt)*
     ) => {
         define_expansion_schema!(@collect
-            [$($longhands)* ($variant, $value, $accessor, $inherited, $initial_kind, $initial $(, $group, $mapping)?)]
+            [$($longhands)* ($variant, $value, $inherited, $initial_kind, $initial $(, $group, $mapping)?)]
             [$($shorthands)*] [$($universal)*] [$($four)*]; $($rest)*
         );
     };
     (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($four:tt)*];
         $variant:ident, $value:ty, shorthand {
-            accessor: $accessor:ident,
             members: [$($member:ident => $projection:expr),+],
             reset_only: [$($reset:ident),*]
         }; $($rest:tt)*
     ) => {
         define_expansion_schema!(@collect
             [$($longhands)*]
-            [$($shorthands)* ($variant, $value, $accessor, [$($member => $projection),+], [$($reset),*])]
+            [$($shorthands)* ($variant, $value, [$($member => $projection),+], [$($reset),*])]
             [$($universal)*] [$($four)*]; $($rest)*
         );
     };
@@ -411,22 +415,22 @@ macro_rules! define_expansion_schema {
     };
     (@collect [$($longhands:tt)*] [$($shorthands:tt)*] [$($universal:tt)*] [$($four:tt)*];
         $variant:ident, $value:ty, four_side {
-            accessor: $accessor:ident, mode: $mode:expr,
+            mode: $mode:expr,
             physical: [$($physical:ident => $physical_projection:expr),+],
             logical: [$($logical:ident => $logical_projection:expr),+]
         }; $($rest:tt)*
     ) => {
         define_expansion_schema!(@collect
             [$($longhands)*] [$($shorthands)*] [$($universal)*]
-            [$($four)* ($variant, $value, $accessor, $mode, [$($physical => $physical_projection),+], [$($logical => $logical_projection),+])]; $($rest)*
+            [$($four)* ($variant, $value, $mode, [$($physical => $physical_projection),+], [$($logical => $logical_projection),+])]; $($rest)*
         );
     };
     (@collect
-        [$(($longhand:ident, $value:ty, $accessor:ident, $inherited:literal, $initial_kind:ident, $initial:expr $(, $group:ident, $mapping:ident)?))*]
-        [$(($shorthand:ident, $shorthand_value:ty, $shorthand_accessor:ident,
+        [$(($longhand:ident, $value:ty, $inherited:literal, $initial_kind:ident, $initial:expr $(, $group:ident, $mapping:ident)?))*]
+        [$(($shorthand:ident, $shorthand_value:ty,
             [$($member:ident => $projection:expr),+], [$($reset:ident),*]))*]
         [($universal:ident, $exclude_custom:literal, [$($excluded:ident),+])]
-        [$(($four_property:ident, $four_value:ty, $four_accessor:ident, $four_mode:expr,
+        [$(($four_property:ident, $four_value:ty, $four_mode:expr,
             [$($physical:ident => $physical_projection:expr),+],
             [$($logical:ident => $logical_projection:expr),+]))*];
     ) => {
@@ -677,7 +681,7 @@ macro_rules! define_expansion_schema {
                 })*
                 $(CssKnownProperty::$four_property => {
                     let mode = match known.property_value() {
-                        Some(CssKnownPropertyValueRef::$four_property(value)) => ($four_mode)(value.$four_accessor()),
+                        Some(CssKnownPropertyValueRef::$four_property(value)) => ($four_mode)(value.value()),
                         _ => crate::CssBoxSideKind::Physical,
                     };
                     Ok(ExpansionShape::Longhands(match mode {
@@ -701,10 +705,10 @@ macro_rules! define_expansion_schema {
         ) -> Result<Vec<OwnedContributionValue>, CssExpansionError> {
             match value {
                 $(CssKnownPropertyValueRef::$longhand(value) => Ok(vec![
-                    OwnedContributionValue::Ordinary(CssLonghandValue { value: Box::new(OwnedLonghandValue::$longhand(value.$accessor().to_owned())) })
+                    OwnedContributionValue::Ordinary(CssLonghandValue { value: Box::new(OwnedLonghandValue::$longhand(value.value().to_owned())) })
                 ]),)*
                 $(CssKnownPropertyValueRef::$shorthand(value) => {
-                    let value = value.$shorthand_accessor();
+                    let value = value.value();
                     Ok(vec![
                         $(match ($projection)(value) {
                             Some(projected) => OwnedContributionValue::Ordinary(CssLonghandValue { value: Box::new(OwnedLonghandValue::$member(projected)) }),
@@ -714,7 +718,7 @@ macro_rules! define_expansion_schema {
                     ])
                 })*
                 $(CssKnownPropertyValueRef::$four_property(value) => {
-                    let value = value.$four_accessor();
+                    let value = value.value();
                     Ok(match ($four_mode)(value) {
                         crate::CssBoxSideKind::Physical => vec![
                             $(OwnedContributionValue::Ordinary(CssLonghandValue { value: Box::new(OwnedLonghandValue::$physical(($physical_projection)(value))) }),)+
@@ -876,17 +880,18 @@ timing_list_projection!(
     |values| CssAnimationNameList::try_new(values).expect("admitted animations are nonempty")
 );
 
-pub(crate) fn initial_mask_positions() -> CssPhysicalPositionList {
+pub(crate) fn initial_mask_positions() -> CssPositionList {
     let zero = crate::CssNumeric::<crate::CssLengthPercentage>::try_from_component(
         crate::CssComponentValue::try_token("0%").expect("percentage token"),
     )
     .expect("percentage length");
-    CssPhysicalPositionList::try_new(vec![
+    CssPositionList::try_new(vec![
         CssPhysicalPosition::try_new(
             CssHorizontalPosition::Offset(zero.clone()),
             CssVerticalPosition::Offset(zero),
         )
-        .expect("physical position"),
+        .expect("physical position")
+        .into(),
     ])
     .expect("one initial position")
 }
@@ -995,7 +1000,7 @@ background_list_projection!(
     mask_positions,
     CssMaskList,
     MaskPosition,
-    CssPhysicalPositionList,
+    CssPositionList,
     positions,
     |layer: &CssMaskLayer| layer.position().cloned()
 );
@@ -1453,7 +1458,7 @@ fn complete_contributions(
                 .collect(),
         },
         CssKnownDeclaredValueRef::Property(value) => match value {
-            CssKnownPropertyValueRef::Font(font) => match font.font() {
+            CssKnownPropertyValueRef::Font(font) => match font.value() {
                 CssFontValue::System(system) => {
                     let CssPropertyKindRef::Shorthand(metadata) = CssKnownProperty::Font
                         .metadata()

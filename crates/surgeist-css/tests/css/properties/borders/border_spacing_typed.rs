@@ -23,7 +23,7 @@ fn contribution(source: &CssDeclaration) -> CssLonghandContribution {
     item.clone()
 }
 
-fn typed(value: &CssLonghandValue) -> &CssBorderSpacing {
+fn typed(value: &CssLonghandValue) -> &CssSidePair<CssNumeric<CssLength, CssNonNegative>> {
     let CssLonghandValueRef::BorderSpacing(spacing) = value.view() else {
         panic!("typed border-spacing longhand")
     };
@@ -33,7 +33,7 @@ fn typed(value: &CssLonghandValue) -> &CssBorderSpacing {
 #[test]
 fn checked_pair_construction_accepts_zero_absolute_relative_and_symbolic_math() {
     for (horizontal, vertical, expected) in [
-        (nonnegative_length("0"), nonnegative_length("0"), "0 0"),
+        (nonnegative_length("0"), nonnegative_length("0"), "0"),
         (
             nonnegative_length("2px"),
             nonnegative_length("3em"),
@@ -45,9 +45,9 @@ fn checked_pair_construction_accepts_zero_absolute_relative_and_symbolic_math() 
             "1.5em 4px",
         ),
     ] {
-        let pair = CssBorderSpacing::new(horizontal.clone(), vertical.clone());
-        assert_eq!(pair.horizontal(), &horizontal);
-        assert_eq!(pair.vertical(), &vertical);
+        let pair = CssSidePair::new(horizontal.clone(), Some(vertical.clone()));
+        assert_eq!(pair.first(), &horizontal);
+        assert_eq!(pair.second(), &vertical);
         assert_eq!(
             pair.serialize_specified(Default::default()).unwrap(),
             expected
@@ -60,17 +60,17 @@ fn checked_pair_construction_accepts_zero_absolute_relative_and_symbolic_math() 
     .unwrap();
     let symbolic =
         CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(calculation).unwrap();
-    let pair = CssBorderSpacing::new(symbolic.clone(), nonnegative_length("3px"));
-    assert_eq!(pair.horizontal(), &symbolic);
-    assert!(pair.horizontal().calculation().is_some());
+    let pair = CssSidePair::new(symbolic.clone(), Some(nonnegative_length("3px")));
+    assert_eq!(pair.first(), &symbolic);
+    assert!(pair.first().calculation().is_some());
     // CSS Values 4 §10.13 sorts dimension terms by unit when serializing calc().
     assert_eq!(
         pair.serialize_specified(Default::default()).unwrap(),
         "calc(2em + 1px) 3px"
     );
     let negative_math = nonnegative_length("calc(1px - 2px)");
-    let pair = CssBorderSpacing::new(negative_math.clone(), nonnegative_length("0"));
-    assert_eq!(pair.horizontal(), &negative_math);
+    let pair = CssSidePair::new(negative_math.clone(), Some(nonnegative_length("0")));
+    assert_eq!(pair.first(), &negative_math);
     assert_eq!(
         pair.serialize_specified(Default::default()).unwrap(),
         "calc(-1px) 0"
@@ -107,9 +107,9 @@ fn checked_single_length_rejects_bare_negative_percent_and_keyword_values() {
 fn checked_calculations_remain_symbolic_even_when_their_math_is_negative() {
     let negative = nonnegative_length("calc(-2px)");
     let relative = nonnegative_length("calc(3em)");
-    let pair = CssBorderSpacing::new(negative.clone(), relative.clone());
-    assert_eq!(pair.horizontal(), &negative);
-    assert_eq!(pair.vertical(), &relative);
+    let pair = CssSidePair::new(negative.clone(), Some(relative.clone()));
+    assert_eq!(pair.first(), &negative);
+    assert_eq!(pair.second(), &relative);
     assert_eq!(
         pair.serialize_specified(Default::default()).unwrap(),
         "calc(-2px) calc(3em)"
@@ -134,13 +134,13 @@ fn initial_and_authored_contributions_expose_exact_numeric_axes() {
     let CssInitialValueRef::Value(initial) = initial.view() else {
         panic!("fixed initial")
     };
-    assert_eq!(typed(initial).horizontal(), &nonnegative_length("0"));
-    assert_eq!(typed(initial).vertical(), &nonnegative_length("0"));
+    assert_eq!(typed(initial).first(), &nonnegative_length("0"));
+    assert_eq!(typed(initial).second(), &nonnegative_length("0"));
     assert_eq!(
         typed(initial)
             .serialize_specified(Default::default())
             .unwrap(),
-        "0 0"
+        "0"
     );
 
     for (source, horizontal, vertical) in [
@@ -157,21 +157,27 @@ fn initial_and_authored_contributions_expose_exact_numeric_axes() {
         let typed = typed(expanded.ordinary_value().unwrap());
         assert_eq!(
             typed
-                .horizontal()
+                .first()
                 .serialize_specified(Default::default())
                 .unwrap(),
             horizontal
         );
         assert_eq!(
             typed
-                .vertical()
+                .second()
                 .serialize_specified(Default::default())
                 .unwrap(),
             vertical
         );
+        // Equal axes write one length.
+        let expected = if horizontal == vertical {
+            horizontal.to_owned()
+        } else {
+            format!("{horizontal} {vertical}")
+        };
         assert_eq!(
             typed.serialize_specified(Default::default()).unwrap(),
-            format!("{horizontal} {vertical}")
+            expected
         );
     }
 }
@@ -192,14 +198,14 @@ fn pending_reentry_exposes_effective_axes_with_original_source() {
     let value = typed(item.ordinary_value().unwrap());
     assert_eq!(
         value
-            .horizontal()
+            .first()
             .serialize_specified(Default::default())
             .unwrap(),
         "2px"
     );
     assert_eq!(
         value
-            .vertical()
+            .second()
             .serialize_specified(Default::default())
             .unwrap(),
         "3em"
@@ -238,7 +244,7 @@ fn single_and_pair_serializers_enforce_exact_shared_resource_budgets() {
         );
     }
 
-    let pair = CssBorderSpacing::new(nonnegative_length("2px"), nonnegative_length("3em"));
+    let pair = CssSidePair::new(nonnegative_length("2px"), Some(nonnegative_length("3em")));
     assert_eq!(
         pair.serialize_specified(CssSerializationLimits::new(3, 3, 7))
             .unwrap(),
@@ -286,7 +292,7 @@ fn two_typed_calculation_axes_share_one_streaming_serialization_budget() {
                 .is_projection_node_limit()
         );
     }
-    let pair = CssBorderSpacing::new(first, second);
+    let pair = CssSidePair::new(first, Some(second));
     assert_eq!(
         pair.serialize_specified(CssSerializationLimits::new(1_000, 1_000, 31))
             .unwrap(),

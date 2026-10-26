@@ -2,7 +2,7 @@
 //! Auto, shared Color and imported image-1D use their owning providers.
 
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
-use crate::{CssOutline, CssOutlineColor, CssOutlineStyle, CssOutlineWidth, CssSerializationError};
+use crate::{CssOutline, CssOutlineColor, CssOutlineStyle, CssSerializationError};
 
 type Result<T> = std::result::Result<T, CssSerializationError>;
 
@@ -15,10 +15,6 @@ macro_rules! provider {
 provider!(
     CssOutlineStyle,
     "Emits one UI4 Outline style keyword, charging one input and projection node. Hidden is not constructible in this domain."
-);
-provider!(
-    CssOutlineWidth,
-    "Emits a represented Outline width. Keywords charge one node in each budget; checked lengths retain the shared numeric accounting."
 );
 provider!(
     CssOutlineColor,
@@ -43,17 +39,6 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssOutlineStyle 
             Self::Inset => "inset",
             Self::Outset => "outset",
         })
-    }
-}
-
-impl crate::specified_rule_serialization::SpecifiedProvider for CssOutlineWidth {
-    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        match self {
-            Self::Thin => writer.keyword("thin"),
-            Self::Medium => writer.keyword("medium"),
-            Self::Thick => writer.keyword("thick"),
-            Self::Length(length) => length.append_to_rule_writer(writer),
-        }
     }
 }
 
@@ -112,10 +97,10 @@ mod tests {
     use crate::CssSerializationLimits as Limits;
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
     use crate::specified_rule_serialization::SpecifiedProvider as _;
-    use crate::{CssColor, CssKnownPropertyValueRef, parse_style_attribute};
+    use crate::{CssColor, CssKnownPropertyValueRef, CssLineWidth, parse_style_attribute};
 
     fn width(writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        CssOutlineWidth::Thin.append_to_rule_writer(writer)
+        CssLineWidth::Thin.append_to_rule_writer(writer)
     }
     fn style(writer: &mut SpecifiedRuleWriter) -> Result<()> {
         CssOutlineStyle::Solid.append_to_rule_writer(writer)

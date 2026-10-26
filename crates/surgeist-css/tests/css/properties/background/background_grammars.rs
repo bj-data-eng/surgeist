@@ -23,7 +23,7 @@ fn c13_background_layers_retain_typed_structure() {
     else {
         panic!("expected background wrapper");
     };
-    let [first, second] = value.background().layers() else {
+    let [first, second] = value.value().layers() else {
         panic!("expected two authored background layers");
     };
     assert!(matches!(
@@ -44,8 +44,8 @@ fn c13_background_layers_retain_typed_structure() {
     assert!(matches!(
         first.size(),
         Some(CssBackgroundSize::Explicit {
-            width: CssBackgroundSizeComponent::Length(width),
-            height: Some(CssBackgroundSizeComponent::Auto),
+            width: CssAutoOr::Value(width),
+            height: Some(CssAutoOr::Auto),
         }) if exact_dimension(width.literal().map(|literal| literal.component()), "40", "px")
     ));
     assert_eq!(
@@ -116,9 +116,9 @@ fn background_longhands_preserve_ordered_semantic_lists() {
     let CssKnownPropertyValueRef::BackgroundImage(images) = values[0] else {
         panic!("expected background-image");
     };
-    assert_eq!(images.images().images().len(), 2);
+    assert_eq!(images.value().images().len(), 2);
     assert!(matches!(
-        images.images().images(),
+        images.value().images(),
         [
             CssImageValue::None,
             CssImageValue::Gradient(CssGradient::Linear(_))
@@ -128,31 +128,31 @@ fn background_longhands_preserve_ordered_semantic_lists() {
     let CssKnownPropertyValueRef::BackgroundPosition(positions) = values[1] else {
         panic!("expected background-position");
     };
-    assert_eq!(positions.positions().positions().len(), 2);
+    assert_eq!(positions.value().positions().len(), 2);
     assert!(matches!(
-        positions.positions().positions()[0].horizontal(),
+        positions.value().positions()[0].horizontal(),
         CssHorizontalPosition::Left
     ));
     assert!(matches!(
-        positions.positions().positions()[0].vertical(),
+        positions.value().positions()[0].vertical(),
         CssVerticalPosition::Top
     ));
-    assert!(matches!(positions.positions().positions()[1].horizontal(),
+    assert!(matches!(positions.value().positions()[1].horizontal(),
         CssHorizontalPosition::RightOffset(offset)
             if exact_dimension(offset.literal().map(|literal| literal.component()), "10", "px")));
     assert!(matches!(
-        positions.positions().positions()[1].vertical(),
+        positions.value().positions()[1].vertical(),
         CssVerticalPosition::Bottom
     ));
 
     let CssKnownPropertyValueRef::BackgroundSize(sizes) = values[2] else {
         panic!("expected background-size");
     };
-    assert!(matches!(sizes.sizes().sizes(), [
+    assert!(matches!(sizes.value().sizes(), [
         CssBackgroundSize::Cover,
         CssBackgroundSize::Explicit {
-            width: CssBackgroundSizeComponent::Length(length),
-            height: Some(CssBackgroundSizeComponent::Auto),
+            width: CssAutoOr::Value(length),
+            height: Some(CssAutoOr::Auto),
         },
     ] if exact_dimension(length.literal().map(|literal| literal.component()), "10", "px")));
 
@@ -160,7 +160,7 @@ fn background_longhands_preserve_ordered_semantic_lists() {
         panic!("expected background-repeat");
     };
     assert!(matches!(
-        repeats.repeats().repeats(),
+        repeats.value().repeats(),
         [
             CssBackgroundRepeat::RepeatX,
             CssBackgroundRepeat::Axes {
@@ -174,20 +174,20 @@ fn background_longhands_preserve_ordered_semantic_lists() {
         panic!("expected background-origin");
     };
     assert_eq!(
-        origin.boxes().boxes(),
+        origin.value().boxes(),
         [CssBackgroundBox::BorderBox, CssBackgroundBox::ContentBox]
     );
 
     let CssKnownPropertyValueRef::BackgroundClip(clip) = values[5] else {
         panic!("expected background-clip");
     };
-    assert_eq!(clip.boxes().boxes(), [CssBackgroundBox::PaddingBox]);
+    assert_eq!(clip.value().boxes(), [CssBackgroundBox::PaddingBox]);
 
     let CssKnownPropertyValueRef::BackgroundAttachment(attachments) = values[6] else {
         panic!("expected background-attachment");
     };
     assert_eq!(
-        attachments.attachments().attachments(),
+        attachments.value().attachments(),
         [
             CssBackgroundAttachment::Fixed,
             CssBackgroundAttachment::Local,
@@ -211,13 +211,13 @@ fn mask_size_and_repeat_expose_ordered_symbolic_lists() {
     let [
         CssBackgroundSize::Cover,
         CssBackgroundSize::Explicit { width, height },
-    ] = sizes.sizes().sizes()
+    ] = sizes.value().sizes()
     else {
         panic!("ordered cover and symbolic explicit mask sizes");
     };
-    assert!(matches!(width, CssBackgroundSizeComponent::Length(length)
+    assert!(matches!(width, CssAutoOr::Value(length)
         if length.calculation().is_some_and(|calc| calc.components().serialize_tokens(Default::default()).unwrap().as_css() == "calc(10% + 2px)")));
-    assert!(matches!(height, Some(CssBackgroundSizeComponent::Auto)));
+    assert!(matches!(height, Some(CssAutoOr::Auto)));
 
     let CssKnownDeclaredValueRef::Property(CssKnownPropertyValueRef::MaskRepeat(repeats)) =
         report.syntax()[1].known().unwrap().declared_value()
@@ -225,7 +225,7 @@ fn mask_size_and_repeat_expose_ordered_symbolic_lists() {
         panic!("ordinary mask-repeat list");
     };
     assert!(matches!(
-        repeats.repeats().repeats(),
+        repeats.value().repeats(),
         [
             CssBackgroundRepeat::RepeatX,
             CssBackgroundRepeat::Axes {
@@ -268,7 +268,7 @@ fn background_globals_substitutions_and_layer_colors_remain_distinct() {
         panic!("expected color-only background");
     };
     assert_eq!(
-        color_only.background().layers()[0]
+        color_only.value().layers()[0]
             .color()
             .unwrap()
             .named()
@@ -282,8 +282,8 @@ fn background_globals_substitutions_and_layer_colors_remain_distinct() {
     else {
         panic!("expected image-only background");
     };
-    assert!(image_only.background().layers()[0].image().is_some());
-    assert!(image_only.background().layers()[0].color().is_none());
+    assert!(image_only.value().layers()[0].image().is_some());
+    assert!(image_only.value().layers()[0].color().is_none());
 }
 
 #[test]

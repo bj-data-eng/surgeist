@@ -60,9 +60,9 @@ const RESERVED_IDENTIFIERS: &[&str] = &[
 
 fn families(declaration: &CssDeclaration) -> &CssFontFamilyList {
     match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::FontFamily(value) => value.families(),
+        CssKnownPropertyValueRef::FontFamily(value) => value.value(),
         CssKnownPropertyValueRef::Font(value) => {
-            let CssFontValue::Explicit(font) = value.font() else {
+            let CssFontValue::Explicit(font) = value.value() else {
                 panic!("expected an explicit font shorthand");
             };
             font.families()
@@ -180,7 +180,7 @@ fn escaped_generic_keywords_and_function_arguments_have_the_same_meaning() {
             panic!("expected font-family");
         };
         assert_eq!(value.as_css(), authored);
-        let [family] = value.families().families() else {
+        let [family] = value.value().families() else {
             panic!("expected one generic: {source}");
         };
         assert!(family.generic_family().is_some(), "{source}");
@@ -206,16 +206,16 @@ fn generic_lists_preserve_authored_order_source_and_importance() {
     assert_eq!(value.as_css(), authored);
     assert_eq!(
         value
-            .families()
+            .value()
             .families()
             .iter()
             .map(|name| name.as_str())
             .collect::<Vec<_>>(),
         ["Avenir Next", "system-ui", "generic(kai)", "serif"],
     );
-    assert_eq!(value.families().families()[0].generic_family(), None);
+    assert_eq!(value.value().families()[0].generic_family(), None);
     assert!(
-        value.families().families()[1..]
+        value.value().families()[1..]
             .iter()
             .all(|name| name.generic_family().is_some())
     );
@@ -344,7 +344,7 @@ fn system_font_spellings_are_literal_names_in_family_positions() {
     else {
         panic!("expected font shorthand");
     };
-    let CssFontValue::Explicit(font) = value.font() else {
+    let CssFontValue::Explicit(font) = value.value() else {
         panic!("noninitial menu must be a literal family name");
     };
     assert_eq!(font.size(), &surgeist_css::CssFontSize::Large);
@@ -477,7 +477,7 @@ fn global_family_values_and_whole_system_font_shorthands_keep_their_branches() {
             else {
                 panic!("expected font shorthand");
             };
-            assert_eq!(value.font(), &CssFontValue::System(expected), "{source}");
+            assert_eq!(value.value(), &CssFontValue::System(expected), "{source}");
         }
     }
 }

@@ -24,7 +24,7 @@ fn mapped(source: &CssDeclaration, expected: CssTextOrientation, authored: &str)
     let CssKnownPropertyValueRef::TextOrientation(value) = known.property_value().unwrap() else {
         panic!("legacy alias maps to text-orientation")
     };
-    assert_eq!(value.orientation(), &expected);
+    assert_eq!(value.value(), &expected);
     assert_eq!(value.as_css(), authored);
 }
 
@@ -323,7 +323,7 @@ fn modern_keywords_stay_distinct_and_invalid_legacy_values_recover() {
         else {
             panic!("modern text-orientation")
         };
-        assert_eq!(value.orientation(), &orientation);
+        assert_eq!(value.value(), &orientation);
         assert_eq!(value.as_css(), spelling);
     }
     for invalid in ["45", "45deg", "180deg", "1.5708rad", "mixed"] {

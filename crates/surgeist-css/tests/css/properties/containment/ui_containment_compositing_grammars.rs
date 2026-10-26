@@ -61,7 +61,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
     else {
         panic!("expected caret-color");
     };
-    let CssCaretColor::Color(color) = caret.caret() else {
+    let CssCaretColor::Color(color) = caret.value() else {
         panic!("expected authored caret color");
     };
     assert_eq!(color.named().unwrap().name(), "rebeccapurple");
@@ -76,7 +76,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
         panic!("expected outline-offset");
     };
     assert!(exact_dimension(
-        offset.offset().literal().map(|literal| literal.component()),
+        offset.value().literal().map(|literal| literal.component()),
         "-2",
         "px"
     ));
@@ -89,7 +89,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
     else {
         panic!("expected resize");
     };
-    assert_eq!(resize.resize(), &CssResize::Horizontal);
+    assert_eq!(resize.value(), &CssResize::Horizontal);
 
     let CssKnownPropertyValueRef::Contain(contain) = report.syntax()[3]
         .known()
@@ -99,7 +99,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
     else {
         panic!("expected contain");
     };
-    let CssContain::Components(components) = contain.containment() else {
+    let CssContain::Components(components) = contain.value() else {
         panic!("expected authored contain components");
     };
     assert_eq!(
@@ -115,10 +115,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
     else {
         panic!("expected transform-box");
     };
-    assert_eq!(
-        transform_box.reference_box().edge(),
-        CssBoxEdgeKeyword::ViewBox,
-    );
+    assert_eq!(transform_box.value().edge(), CssBoxEdgeKeyword::ViewBox,);
 
     let CssKnownPropertyValueRef::BackgroundBlendMode(background) = report.syntax()[5]
         .known()
@@ -129,7 +126,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
         panic!("expected background-blend-mode");
     };
     assert_eq!(
-        background.modes().modes(),
+        background.value().modes(),
         &[CssBlendMode::Multiply, CssBlendMode::Luminosity],
     );
 
@@ -141,7 +138,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
     else {
         panic!("expected isolation");
     };
-    assert_eq!(isolation.isolation(), &CssIsolation::Isolate);
+    assert_eq!(isolation.value(), &CssIsolation::Isolate);
 
     let CssKnownPropertyValueRef::MixBlendMode(mix) = report.syntax()[7]
         .known()
@@ -151,7 +148,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
     else {
         panic!("expected mix-blend-mode");
     };
-    assert_eq!(mix.mode(), &CssBlendMode::SoftLight);
+    assert_eq!(mix.value(), &CssBlendMode::SoftLight);
 
     assert_eq!(
         surgeist_css::validate_style_attribute(source)
@@ -238,7 +235,7 @@ fn compositing_blend_mode_domain_and_background_order_are_exact() {
             CssBlendMode::from_keyword(&authored.to_ascii_uppercase()),
             Some(mode),
         );
-        assert_eq!(mode.as_css_str(), authored);
+        assert_eq!(mode.as_str(), authored);
 
         for property in ["mix-blend-mode", "background-blend-mode"] {
             let source = format!("{property}: {authored}");
@@ -260,7 +257,7 @@ fn compositing_blend_mode_domain_and_background_order_are_exact() {
         panic!("expected background blend-mode list");
     };
     assert_eq!(
-        value.modes().modes(),
+        value.value().modes(),
         &[
             CssBlendMode::Hue,
             CssBlendMode::Normal,

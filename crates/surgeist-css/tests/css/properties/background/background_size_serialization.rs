@@ -21,20 +21,22 @@ fn parsed(property: &str, css: &str) -> CssBackgroundSizeList {
         .property_value()
         .unwrap()
     {
-        CssKnownPropertyValueRef::BackgroundSize(value) => value.sizes().clone(),
-        CssKnownPropertyValueRef::MaskSize(value) => value.sizes().clone(),
+        CssKnownPropertyValueRef::BackgroundSize(value) => value.value().clone(),
+        CssKnownPropertyValueRef::MaskSize(value) => value.value().clone(),
         _ => panic!("size property"),
     }
 }
 
-fn typed(height: Option<CssBackgroundSizeComponent>) -> CssBackgroundSize {
+fn typed(
+    height: Option<CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>>,
+) -> CssBackgroundSize {
     let width = CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_token("1px").unwrap(),
     )
     .unwrap();
     assert_eq!(width.origin(), &CssValueOrigin::Programmatic);
     CssBackgroundSize::Explicit {
-        width: CssBackgroundSizeComponent::Length(width),
+        width: CssAutoOr::Value(width),
         height,
     }
 }
@@ -89,9 +91,9 @@ fn checked_scalar_omitted_height_charges_generated_projection_without_authored_i
 
 #[test]
 fn checked_scalar_explicit_auto_is_emitted_without_double_charging() {
-    let value = typed(Some(CssBackgroundSizeComponent::Auto));
+    let value = typed(Some(CssAutoOr::Auto));
     exact_bounds("1px auto", 4, 4, |limits| value.serialize_specified(limits));
-    assert_eq!(value, typed(Some(CssBackgroundSizeComponent::Auto)));
+    assert_eq!(value, typed(Some(CssAutoOr::Auto)));
 }
 
 #[test]
@@ -109,11 +111,8 @@ fn mask_list_shares_generated_defaults_and_separators_in_one_budget() {
 
 #[test]
 fn checked_list_combines_generated_and_explicit_auto_node_budgets() {
-    let value = CssBackgroundSizeList::try_new(vec![
-        typed(None),
-        typed(Some(CssBackgroundSizeComponent::Auto)),
-    ])
-    .unwrap();
+    let value =
+        CssBackgroundSizeList::try_new(vec![typed(None), typed(Some(CssAutoOr::Auto))]).unwrap();
     exact_bounds("1px auto, 1px auto", 8, 9, |limits| {
         value.serialize_specified(limits)
     });
@@ -131,7 +130,7 @@ fn symbolic_width_stays_unresolved_while_effective_height_is_serialized() {
     );
     for layer in value.sizes() {
         let CssBackgroundSize::Explicit {
-            width: CssBackgroundSizeComponent::Length(width),
+            width: CssAutoOr::Value(width),
             height: None,
         } = layer
         else {
@@ -148,7 +147,7 @@ fn serialization_success_and_failure_preserve_authored_height_and_numeric_proven
         let value = parsed("background-size", authored);
         let original = value.clone();
         let CssBackgroundSize::Explicit {
-            width: CssBackgroundSizeComponent::Length(width),
+            width: CssAutoOr::Value(width),
             height,
         } = &value.sizes()[0]
         else {
@@ -167,7 +166,7 @@ fn serialization_success_and_failure_preserve_authored_height_and_numeric_proven
         let output = value.serialize_specified(Default::default()).unwrap();
         assert_eq!(value, original);
         let CssBackgroundSize::Explicit {
-            width: CssBackgroundSizeComponent::Length(width),
+            width: CssAutoOr::Value(width),
             ..
         } = &value.sizes()[0]
         else {
@@ -204,8 +203,8 @@ fn auto_width_and_other_size_forms_keep_their_canonical_controls() {
         }
     }
     let explicit_auto = CssBackgroundSize::Explicit {
-        width: CssBackgroundSizeComponent::Auto,
-        height: Some(CssBackgroundSizeComponent::Auto),
+        width: CssAutoOr::Auto,
+        height: Some(CssAutoOr::Auto),
     };
     // Collapsing auto/auto still visits both authored components.
     exact_bounds("auto", 3, 3, |limits| {

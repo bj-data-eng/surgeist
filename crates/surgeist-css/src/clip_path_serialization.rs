@@ -1,10 +1,11 @@
 //! Cumulative specified serialization of authored clipping shapes and reference boxes.
 
+use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::{
     CssBasicShape, CssCircleRadius, CssCircleShape, CssClipPath, CssClipPathShape,
     CssEllipseRadius, CssEllipseShape, CssFillRule, CssInsetShape, CssPathShape, CssPolygonShape,
-    CssPosition, CssRadialExtent, CssRectShape, CssRectShapeEdge, CssSerializationError,
-    CssXywhShape, specified_rule_serialization::SpecifiedRuleWriter,
+    CssPosition, CssRadialExtent, CssRectShape, CssSerializationError, CssXywhShape,
+    specified_rule_serialization::SpecifiedRuleWriter,
 };
 
 type Result<T> = std::result::Result<T, CssSerializationError>;
@@ -33,7 +34,7 @@ impl CssClipPath {
             }
             Self::GeometryBox(value) => {
                 writer.node()?;
-                writer.append(value.as_css_str())
+                writer.append(value.as_str())
             }
             Self::Url(value) => value.append_specified(writer),
             Self::BasicShape(value) => value.append_specified(writer),
@@ -49,7 +50,7 @@ impl CssClipPathShape {
         if let Some(reference_box) = self.reference_box() {
             writer.append(" ")?;
             writer.node()?;
-            writer.append(reference_box.as_css_str())?;
+            writer.append(reference_box.as_str())?;
         }
         Ok(())
     }
@@ -227,15 +228,7 @@ impl CssRectShape {
             if index != 0 {
                 writer.append(" ")?;
             }
-            match edge {
-                CssRectShapeEdge::Auto => {
-                    writer.node()?;
-                    writer.append("auto")?;
-                }
-                CssRectShapeEdge::LengthPercentage(value) => {
-                    value.append_specified(&mut writer.context, &mut writer.css)?
-                }
-            }
+            edge.append_to_rule_writer(writer)?;
         }
         append_rectangle_round(self.round(), writer)?;
         writer.append(")")

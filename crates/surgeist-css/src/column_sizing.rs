@@ -81,7 +81,7 @@ impl CssColumns {
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> Result<()> {
         writer.node()?;
-        let emit_width = !matches!(self.width(), crate::CssColumnWidth::Auto)
+        let emit_width = !matches!(self.width(), crate::CssSizeValue::Auto)
             || matches!(self.count(), CssColumnCount::Auto);
         writer.source_member(0, |writer| {
             if emit_width {

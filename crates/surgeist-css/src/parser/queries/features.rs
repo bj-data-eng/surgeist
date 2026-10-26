@@ -459,7 +459,9 @@ fn parse_media_range<'i, 't, T>(
     }
     let left = value(input)?;
     let first = parse_media_comparison(input)?;
-    input.expect_ident_matching(name.id.name()).map_err(basic)?;
+    input
+        .expect_ident_matching(name.id.as_str())
+        .map_err(basic)?;
     if input.is_exhausted() {
         return Ok(CssMediaRange::new(MediaRangeState::ValueFirst {
             value: left,

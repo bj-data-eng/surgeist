@@ -301,7 +301,7 @@ fn sixteen_selected_modes_have_parsed_checked_and_keyword_identity() {
             CssBlendMode::from_keyword(&css.to_ascii_uppercase()),
             Some(expected)
         );
-        assert_eq!(expected.as_css_str(), css);
+        assert_eq!(expected.as_str(), css);
         assert_eq!(
             expected.serialize_specified(Default::default()).unwrap(),
             css
@@ -315,7 +315,7 @@ fn sixteen_selected_modes_have_parsed_checked_and_keyword_identity() {
             else {
                 panic!("typed scalar")
             };
-            assert_eq!(*wrapper.mode(), expected);
+            assert_eq!(*wrapper.value(), expected);
         }
         for source in [
             parsed(&format!(
@@ -329,7 +329,7 @@ fn sixteen_selected_modes_have_parsed_checked_and_keyword_identity() {
             else {
                 panic!("typed list")
             };
-            assert_eq!(wrapper.modes().modes(), &[expected]);
+            assert_eq!(wrapper.value().modes(), &[expected]);
         }
     }
     for (css, expected) in [
@@ -345,7 +345,7 @@ fn sixteen_selected_modes_have_parsed_checked_and_keyword_identity() {
             else {
                 panic!("typed isolation")
             };
-            assert_eq!(*wrapper.isolation(), expected);
+            assert_eq!(*wrapper.value(), expected);
         }
         assert_eq!(
             expected.serialize_specified(Default::default()).unwrap(),
@@ -363,10 +363,10 @@ fn background_list_keeps_decoded_case_duplicates_and_constructed_order() {
         panic!("list")
     };
     let expected = [CssBlendMode::Hue, CssBlendMode::Normal, CssBlendMode::Hue];
-    assert_eq!(wrapper.modes().modes(), &expected);
+    assert_eq!(wrapper.value().modes(), &expected);
     assert_eq!(
         wrapper
-            .modes()
+            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         "hue, normal, hue"

@@ -34,21 +34,20 @@ fn specified(value: &CssDeclaration) -> String {
             v.value().serialize_specified(Default::default()).unwrap()
         }
         CssKnownPropertyValueRef::AspectRatio(v) => {
-            v.ratio().serialize_specified(Default::default()).unwrap()
+            v.value().serialize_specified(Default::default()).unwrap()
         }
         CssKnownPropertyValueRef::Clip(v) => {
-            v.clip().serialize_specified(Default::default()).unwrap()
+            v.value().serialize_specified(Default::default()).unwrap()
         }
         CssKnownPropertyValueRef::Content(v) => {
             v.value().serialize_specified(Default::default()).unwrap()
         }
         CssKnownPropertyValueRef::FontSize(v) => {
-            v.size().serialize_specified(Default::default()).unwrap()
+            v.value().serialize_specified(Default::default()).unwrap()
         }
-        CssKnownPropertyValueRef::FontFamily(v) => v
-            .families()
-            .serialize_specified(Default::default())
-            .unwrap(),
+        CssKnownPropertyValueRef::FontFamily(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
         CssKnownPropertyValueRef::VoiceFamily(v) => {
             v.value().serialize_specified(Default::default()).unwrap()
         }
@@ -341,7 +340,7 @@ fn rectangle_edges_share_cumulative_limits_and_keep_their_authored_origins() {
     else {
         panic!("clip")
     };
-    let value = wrapper.clip();
+    let value = wrapper.value();
     let before = value.clone();
     let CssClip::Rect(rect) = value else {
         panic!("rectangle")
@@ -349,7 +348,7 @@ fn rectangle_edges_share_cumulative_limits_and_keep_their_authored_origins() {
     let retained: Vec<CssComponentValue> = [rect.top(), rect.bottom(), rect.left()]
         .into_iter()
         .map(|edge| {
-            let CssClipEdge::Length(length) = edge else {
+            let CssAutoOr::Value(length) = edge else {
                 panic!("ordinary length edge")
             };
             assert!(matches!(length.origin(), CssValueOrigin::Parsed(_)));
@@ -383,7 +382,7 @@ fn rectangle_edges_share_cumulative_limits_and_keep_their_authored_origins() {
             .into_iter()
             .zip(&retained)
         {
-            let CssClipEdge::Length(length) = edge else {
+            let CssAutoOr::Value(length) = edge else {
                 panic!("length edge")
             };
             assert_eq!(

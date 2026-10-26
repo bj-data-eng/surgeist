@@ -312,7 +312,7 @@ fn shorthand_borrows_fractional_and_symbolic_weight_without_claiming_other_gramm
         else {
             panic!("font shorthand")
         };
-        let CssFontValue::Explicit(explicit) = wrapper.font() else {
+        let CssFontValue::Explicit(explicit) = wrapper.value() else {
             panic!("explicit font")
         };
         assert_eq!(
@@ -335,7 +335,7 @@ fn shorthand_borrows_fractional_and_symbolic_weight_without_claiming_other_gramm
     else {
         panic!("font shorthand")
     };
-    let CssFontValue::Explicit(explicit) = wrapper.font() else {
+    let CssFontValue::Explicit(explicit) = wrapper.value() else {
         panic!("explicit font")
     };
     let Some(CssFontStyle::Oblique { angle: Some(angle) }) = explicit.style() else {

@@ -680,10 +680,10 @@ impl RecoveryState {
             return;
         };
         let navigation = match known.property_value() {
-            Some(crate::CssKnownPropertyValueRef::NavUp(value)) => value.navigation(),
-            Some(crate::CssKnownPropertyValueRef::NavRight(value)) => value.navigation(),
-            Some(crate::CssKnownPropertyValueRef::NavDown(value)) => value.navigation(),
-            Some(crate::CssKnownPropertyValueRef::NavLeft(value)) => value.navigation(),
+            Some(crate::CssKnownPropertyValueRef::NavUp(value)) => value.value(),
+            Some(crate::CssKnownPropertyValueRef::NavRight(value)) => value.value(),
+            Some(crate::CssKnownPropertyValueRef::NavDown(value)) => value.value(),
+            Some(crate::CssKnownPropertyValueRef::NavLeft(value)) => value.value(),
             _ => return,
         };
         let Some(target) = navigation.legacy_target() else {

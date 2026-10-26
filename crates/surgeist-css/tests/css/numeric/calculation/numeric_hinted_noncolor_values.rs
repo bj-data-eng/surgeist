@@ -33,7 +33,7 @@ fn line_height(source: &CssDeclaration) -> &CssLineHeight {
     else {
         panic!("line-height")
     };
-    value.line_height()
+    value.value()
 }
 
 #[test]
@@ -87,7 +87,7 @@ fn selected_frontdoors_expose_distinct_hinted_number_payloads_without_changing_a
     else {
         panic!("slice")
     };
-    for value in slice.slice().values() {
+    for value in slice.value().values() {
         let CssBorderImageSliceComponent::HintedNumberCalculation(value) = value else {
             panic!("hinted slice")
         };
@@ -106,7 +106,7 @@ fn selected_frontdoors_expose_distinct_hinted_number_payloads_without_changing_a
     else {
         panic!("width")
     };
-    for value in width.widths().values() {
+    for value in width.value().values() {
         let CssBorderImageWidthComponent::HintedNumberCalculation(value) = value else {
             panic!("hinted width")
         };
@@ -240,14 +240,14 @@ fn border_image_checked_edges_compress_only_after_visiting_their_shared_numeric_
     else {
         panic!("slice")
     };
-    assert_eq!(&slice, parsed.slice());
+    assert_eq!(&slice, parsed.value());
     let source = important_declaration(CssKnownProperty::BorderImageWidth.canonical_name(), SOURCE);
     let CssKnownPropertyValueRef::BorderImageWidth(parsed) =
         source.known().unwrap().property_value().unwrap()
     else {
         panic!("width")
     };
-    assert_eq!(&width, parsed.widths());
+    assert_eq!(&width, parsed.value());
     // Aggregate 1 + four edges, each edge aggregate 1 + seven input/eight
     // projection nodes. Compression retains all visits: 33 inputs/37 projections.
     LimitLadder::new(CSS, 33, 37)

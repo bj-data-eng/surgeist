@@ -83,7 +83,7 @@ impl std::fmt::Display for CssPageProjectionError {
         match &self.kind {
             PageProjectionKind::Properties(v) => v.fmt(f),
             PageProjectionKind::DuplicateDescriptor { kind } => {
-                write!(f, "duplicate selected {} descriptor", kind.css_name())
+                write!(f, "duplicate selected {} descriptor", kind.as_str())
             }
             PageProjectionKind::Resource(v) => v.fmt(f),
         }
@@ -349,7 +349,7 @@ impl SpecifiedRuleWriter {
                     if output {
                         self.append(" ")?;
                     }
-                    self.append(v.value().kind().css_name())?;
+                    self.append(v.value().kind().as_str())?;
                     self.append(": ")?;
                     v.value().append_value(self)?;
                     if v.importance() == CssImportance::Important {
@@ -375,7 +375,7 @@ impl SpecifiedRuleWriter {
     ) -> Result<(), RuleCssomSource> {
         self.node()?;
         self.append("@")?;
-        self.append(margin.name.css_name())?;
+        self.append(margin.name.as_str())?;
         self.append(" { ")?;
         let block =
             CssSpecifiedDeclarationBlock::from_margin_entries(margin.declarations.entries(), self)?;

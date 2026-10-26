@@ -22,7 +22,7 @@ fn background_url(value: CssKnownPropertyValueRef<'_>) -> &CssUrl {
     let CssKnownPropertyValueRef::BackgroundImage(images) = value else {
         panic!("background image value");
     };
-    let [CssImageValue::Url(url)] = images.images().images() else {
+    let [CssImageValue::Url(url)] = images.value().images() else {
         panic!("one URL image");
     };
     url

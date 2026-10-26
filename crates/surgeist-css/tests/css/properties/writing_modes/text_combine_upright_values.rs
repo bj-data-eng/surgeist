@@ -14,7 +14,7 @@ fn parsed(text: &str) -> CssTextCombineUpright {
     else {
         panic!("text-combine-upright")
     };
-    value.combine().clone()
+    value.value().clone()
 }
 fn output(value: &CssTextCombineUpright, expected: &str) {
     let before = value.clone();

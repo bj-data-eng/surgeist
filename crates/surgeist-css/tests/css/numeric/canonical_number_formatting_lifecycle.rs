@@ -488,12 +488,11 @@ mod composed_ordinary_values {
             CssKnownPropertyValueRef::ClipPath(v) => {
                 v.value().serialize_specified(Default::default()).unwrap()
             }
-            CssKnownPropertyValueRef::BackgroundPosition(v) => v
-                .positions()
-                .serialize_specified(Default::default())
-                .unwrap(),
+            CssKnownPropertyValueRef::BackgroundPosition(v) => {
+                v.value().serialize_specified(Default::default()).unwrap()
+            }
             CssKnownPropertyValueRef::BackgroundImage(v) => {
-                v.images().serialize_specified(Default::default()).unwrap()
+                v.value().serialize_specified(Default::default()).unwrap()
             }
             CssKnownPropertyValueRef::Filter(v) => {
                 v.value().serialize_specified(Default::default()).unwrap()
@@ -508,7 +507,7 @@ mod composed_ordinary_values {
                 v.value().serialize_specified(Default::default()).unwrap()
             }
             CssKnownPropertyValueRef::AspectRatio(v) => {
-                v.ratio().serialize_specified(Default::default()).unwrap()
+                v.value().serialize_specified(Default::default()).unwrap()
             }
             _ => panic!("fixture has an existing specified emitter"),
         }
@@ -661,7 +660,7 @@ mod composed_ordinary_values {
         else {
             panic!("duration")
         };
-        let values = value.durations();
+        let values = value.value();
         assert_eq!(
             values.values()[0]
                 .serialize_specified(Default::default())
@@ -692,21 +691,21 @@ mod composed_ordinary_values {
             panic!("delay")
         };
         assert_eq!(
-            value.delays().values()[0]
+            value.value().values()[0]
                 .serialize_specified(Default::default())
                 .unwrap(),
             "0s"
         );
         assert_eq!(
-            CssDelayList::try_new(value.delays().values().to_vec()).unwrap(),
-            *value.delays()
+            CssDelayList::try_new(value.value().values().to_vec()).unwrap(),
+            *value.value()
         );
         let CssKnownPropertyValueRef::TransitionTimingFunction(value) =
             declarations[2].known().unwrap().property_value().unwrap()
         else {
             panic!("easing")
         };
-        let CssEasing::CubicBezier(bezier) = &value.timing_functions().values()[0] else {
+        let CssEasing::CubicBezier(bezier) = &value.value().values()[0] else {
             panic!("bezier")
         };
         for (number, expected) in [
@@ -721,8 +720,8 @@ mod composed_ordinary_values {
             );
         }
         assert_eq!(
-            CssEasingList::try_new(value.timing_functions().values().to_vec()).unwrap(),
-            *value.timing_functions()
+            CssEasingList::try_new(value.value().values().to_vec()).unwrap(),
+            *value.value()
         );
         assert_eq!(declarations, &before);
     }

@@ -19,8 +19,8 @@ fn time(number: &str, unit: CssTimeUnit) -> CssSpeechBreak {
     .unwrap()
 }
 
-fn composed(before: CssSpeechBreak, after: Option<CssSpeechBreak>) -> CssSpeechBreakPair {
-    CssSpeechBreakPair::try_new(before, after).unwrap()
+fn composed(before: CssSpeechBreak, after: Option<CssSpeechBreak>) -> CssSidePair<CssSpeechBreak> {
+    CssSidePair::<CssSpeechBreak>::try_new(before, after).unwrap()
 }
 
 fn break_value(source: &CssDeclaration) -> &CssSpeechBreak {
@@ -33,7 +33,7 @@ fn break_value(source: &CssDeclaration) -> &CssSpeechBreak {
     }
 }
 
-fn pair(source: &CssDeclaration) -> &CssSpeechBreakPair {
+fn pair(source: &CssDeclaration) -> &CssSidePair<CssSpeechBreak> {
     match source.known().unwrap().property_value().unwrap() {
         CssKnownPropertyValueRef::Pause(value) => value.value(),
         CssKnownPropertyValueRef::Rest(value) => value.value(),
@@ -96,7 +96,7 @@ fn speech_pairs_omit_none_and_exact_zero_equivalents_without_losing_authored_chi
                 model.serialize_specified(Default::default()).unwrap(),
                 expected
             );
-            assert!(model.authored_after().is_some());
+            assert!(model.authored_second().is_some());
             assert_eq!(model, retained);
             assert_eq!(
                 model
@@ -143,7 +143,7 @@ fn speech_pairs_omit_none_and_exact_zero_equivalents_without_losing_authored_chi
         for (value, expected) in [("none -0ms", "none"), ("0e400s none", "0s")] {
             let declaration = parsed(name, value);
             let authored = pair(&declaration);
-            assert!(authored.authored_after().is_some());
+            assert!(authored.authored_second().is_some());
             assert_eq!(
                 authored.serialize_specified(Default::default()).unwrap(),
                 expected
@@ -213,14 +213,14 @@ fn checked_speech_pairs_reject_original_recovered_time_in_either_authored_positi
         (CssSpeechBreak::None, Some(recovered.clone())),
     ] {
         assert!(
-            CssSpeechBreakPair::try_new(before, after)
+            CssSidePair::<CssSpeechBreak>::try_new(before, after)
                 .unwrap_err()
                 .is_recovered_component()
         );
     }
     let parsed_pair = parse_style_attribute("rest:none calc(1s");
     assert!(!parsed_pair.is_clean());
-    assert!(pair(&parsed_pair.syntax()[0]).authored_after().is_some());
+    assert!(pair(&parsed_pair.syntax()[0]).authored_second().is_some());
 }
 
 #[test]
@@ -229,9 +229,9 @@ fn speech_pairs_retain_authored_second_presence_while_canonically_omitting_equal
     let omitted = composed(weak.clone(), None);
     let explicit = composed(weak.clone(), Some(weak.clone()));
     assert_ne!(omitted, explicit);
-    assert!(omitted.authored_after().is_none());
-    assert_eq!(omitted.before(), omitted.after());
-    assert_eq!(explicit.authored_after(), Some(&weak));
+    assert!(omitted.authored_second().is_none());
+    assert_eq!(omitted.first(), omitted.second());
+    assert_eq!(explicit.authored_second(), Some(&weak));
     assert_eq!(
         omitted.serialize_specified(Default::default()).unwrap(),
         "weak"
@@ -242,8 +242,8 @@ fn speech_pairs_retain_authored_second_presence_while_canonically_omitting_equal
     );
     for name in ["pause", "rest"] {
         let source = parsed(name, "WEAK/**/w\\65 ak");
-        assert_eq!(pair(&source).before(), &weak);
-        assert_eq!(pair(&source).authored_after(), Some(&weak));
+        assert_eq!(pair(&source).first(), &weak);
+        assert_eq!(pair(&source).authored_second(), Some(&weak));
         assert_eq!(
             pair(&source)
                 .serialize_specified(Default::default())
@@ -311,7 +311,7 @@ fn speech_pair_time_omission_uses_exact_duration_equivalence_before_rounding() {
             model.serialize_specified(Default::default()).unwrap(),
             expected
         );
-        assert!(model.authored_after().is_some());
+        assert!(model.authored_second().is_some());
     }
 }
 
@@ -406,7 +406,7 @@ fn speech_pairs_share_one_budget_and_charge_suppressed_authored_after_children()
             );
         }
         assert_eq!(model.serialize_specified(Default::default()).unwrap(), css);
-        assert_eq!(model.authored_after().is_some(), nodes == 3);
+        assert_eq!(model.authored_second().is_some(), nodes == 3);
     }
 }
 
@@ -415,7 +415,7 @@ fn speech_time_calculations_keep_math_phase_and_use_the_shared_time_projection_b
     for name in ["pause", "rest"] {
         let source = parsed(name, "calc(-1s) calc(-1s)");
         let model = pair(&source);
-        let CssSpeechBreak::Time(duration) = model.before() else {
+        let CssSpeechBreak::Time(duration) = model.first() else {
             panic!("calculated time")
         };
         assert!(duration.literal().is_none());

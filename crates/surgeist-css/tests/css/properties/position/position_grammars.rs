@@ -1,7 +1,8 @@
 use crate::css::support::math_depth::MathDepthBoundary;
+use crate::css::support::position_view::CartesianPosition as _;
 use surgeist_css::*;
 
-fn object_position(value: &str) -> CssPhysicalPosition {
+fn object_position(value: &str) -> CssPosition {
     let source = format!("object-position: {value}");
     let report = parse_style_attribute(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
@@ -13,7 +14,7 @@ fn object_position(value: &str) -> CssPhysicalPosition {
     else {
         panic!("expected object-position value");
     };
-    value.position().clone()
+    value.value().clone()
 }
 
 fn transform_origin(value: &str) -> CssTransformOrigin {
@@ -28,7 +29,7 @@ fn transform_origin(value: &str) -> CssTransformOrigin {
     else {
         panic!("expected transform-origin value");
     };
-    value.origin().clone()
+    value.value().clone()
 }
 
 fn assert_generic_position_accepted(value: &str) {
@@ -120,7 +121,7 @@ fn background_position_preserves_three_component_edge_origin() {
     else {
         panic!("expected background-position value");
     };
-    let positions = value.positions().positions();
+    let positions = value.value().positions();
     assert_eq!(positions.len(), 1);
     assert!(matches!(
         positions[0].horizontal(),
@@ -143,7 +144,7 @@ fn transform_origin_preserves_two_planar_axes_plus_z() {
     else {
         panic!("expected transform-origin value");
     };
-    let origin = value.origin();
+    let origin = value.value();
     assert!(matches!(origin.horizontal(), CssHorizontalPosition::Left));
     assert!(matches!(origin.vertical(), CssVerticalPosition::Top));
     assert!(origin.z().is_some_and(|value| exact_dimension(
@@ -546,7 +547,7 @@ fn background_and_mask_position_lists_expose_each_exact_layer() {
     else {
         panic!("expected background-position value");
     };
-    let background_layers = background.positions().positions();
+    let background_layers = background.value().positions();
     assert_eq!(background_layers.len(), 2);
     assert!(matches!(
         background_layers[0].horizontal(),
@@ -575,7 +576,7 @@ fn background_and_mask_position_lists_expose_each_exact_layer() {
     else {
         panic!("expected mask-position value");
     };
-    let mask_layers = mask.positions().positions();
+    let mask_layers = mask.value().positions();
     assert_eq!(mask_layers.len(), 2);
     assert!(matches!(
         mask_layers[0].horizontal(),
@@ -714,7 +715,8 @@ fn mask_shorthand_preserves_valid_image_position_size_and_repeat_components() {
                     CssHorizontalPosition::Center,
                     CssVerticalPosition::Center,
                 )
-                .expect("valid center position"),
+                .expect("valid center position")
+                .into(),
             ),
             Some(CssBackgroundSize::Contain),
             Some(CssBackgroundRepeat::Axes {
@@ -820,7 +822,7 @@ fn layered_positions_retain_order_and_symbolic_calculations() {
         .property_value()
         .unwrap()
     {
-        CssKnownPropertyValueRef::BackgroundPosition(value) => value.positions().positions(),
+        CssKnownPropertyValueRef::BackgroundPosition(value) => value.value().positions(),
         _ => panic!("expected background-position at {index}"),
     };
     let mask = |index: usize| match report.syntax()[index]
@@ -829,7 +831,7 @@ fn layered_positions_retain_order_and_symbolic_calculations() {
         .property_value()
         .unwrap()
     {
-        CssKnownPropertyValueRef::MaskPosition(value) => value.positions().positions(),
+        CssKnownPropertyValueRef::MaskPosition(value) => value.value().positions(),
         _ => panic!("expected mask-position at {index}"),
     };
     let first = background(0);

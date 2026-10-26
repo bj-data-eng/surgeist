@@ -15,8 +15,8 @@ const NAMES: [&str; 2] = ["orphans", "widows"];
 
 fn minimum(source: &CssDeclaration) -> &CssNumeric<CssInteger, CssPositive> {
     match source.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::Orphans(value) => value.minimum(),
-        CssKnownPropertyValueRef::Widows(value) => value.minimum(),
+        CssKnownPropertyValueRef::Orphans(value) => value.value(),
+        CssKnownPropertyValueRef::Widows(value) => value.value(),
         _ => panic!("expected a line minimum"),
     }
 }

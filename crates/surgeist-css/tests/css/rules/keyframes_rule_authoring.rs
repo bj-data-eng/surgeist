@@ -90,13 +90,13 @@ fn keyframes_rule_parser_accepts_string_names_and_selector_lists() {
         Some(CssKnownProperty::Animation)
     );
 
-    let names = property_payload!(declarations[0], AnimationName, names);
+    let names = property_payload!(declarations[0], AnimationName, value);
     assert_eq!(
         names.names(),
         &[CssAnimationName::String(CssKeyframesString::new("fade in"))]
     );
 
-    let animations = property_payload!(declarations[1], Animation, animations);
+    let animations = property_payload!(declarations[1], Animation, value);
     assert_eq!(
         animations.values()[0].name(),
         Some(&CssAnimationName::String(CssKeyframesString::new(

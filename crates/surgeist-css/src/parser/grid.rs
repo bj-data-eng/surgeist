@@ -287,18 +287,16 @@ fn parse_integer_grid_repeat<'i, 't>(
         return Err(unexpected_at(input.current_source_location()));
     }
     let component = ParsedGridTrackComponent::IntegerRepeat {
-        track: CssGridIntegerTrackRepeat::try_new(
+        track: CssGridIntegerTrackRepeat::new(
             count.clone(),
             CssGridTrackRepeatContent::try_new(track_components).expect("checked repeat content"),
-        )
-        .expect("parsed positive repeat count"),
+        ),
         fixed: fixed.then(|| {
-            CssGridIntegerFixedRepeat::try_new(
+            CssGridIntegerFixedRepeat::new(
                 count,
                 CssGridFixedRepeatContent::try_new(fixed_components)
                     .expect("checked fixed repeat content"),
             )
-            .expect("parsed positive fixed repeat count")
         }),
     };
     Ok((component, first_nonfixed))

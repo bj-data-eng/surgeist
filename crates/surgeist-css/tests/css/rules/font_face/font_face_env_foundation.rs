@@ -28,14 +28,14 @@ fn ordinary_descriptors_parse_and_plain_var_does_not_defer_them() {
         (Kind::FontFeatureSettings, "normal"),
     ] {
         let report = parse_font_face_descriptor_value(ordinary, kind);
-        assert!(report.is_clean(), "{}: {report:?}", kind.css_name());
+        assert!(report.is_clean(), "{}: {report:?}", kind.as_str());
         assert!(report.syntax().is_some());
 
         let variable = parse_font_face_descriptor_value("var(--value)", kind);
         assert!(
             variable.syntax().is_none(),
             "{}: {variable:?}",
-            kind.css_name()
+            kind.as_str()
         );
         assert!(
             variable

@@ -4,8 +4,8 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_component_rejected;
 use surgeist_css::*;
 
-fn length(number: &str, unit: &str) -> CssBorderWidth {
-    CssBorderWidth::Length(
+fn length(number: &str, unit: &str) -> CssLineWidth {
+    CssLineWidth::Length(
         CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension(number, unit).unwrap(),
         )
@@ -13,7 +13,7 @@ fn length(number: &str, unit: &str) -> CssBorderWidth {
     )
 }
 
-fn parsed_width(text: &str) -> CssBorderWidth {
+fn parsed_width(text: &str) -> CssLineWidth {
     let report = parse_style_attribute(&format!("border-top-width:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderTopWidth(value) = report.syntax()[0]
@@ -44,9 +44,9 @@ fn red() -> CssColor {
 #[test]
 fn checked_widths_preserve_exact_literals_and_origin_blind_structure() {
     for (value, expected) in [
-        (CssBorderWidth::Thin, "thin"),
-        (CssBorderWidth::Medium, "medium"),
-        (CssBorderWidth::Thick, "thick"),
+        (CssLineWidth::Thin, "thin"),
+        (CssLineWidth::Medium, "medium"),
+        (CssLineWidth::Thick, "thick"),
     ] {
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
@@ -88,16 +88,16 @@ fn checked_widths_preserve_exact_literals_and_origin_blind_structure() {
     ));
     assert!(matches!(parsed.origin(), Some(CssValueOrigin::Parsed(_))));
     assert_eq!(programmatic, parsed_width("1.0px"));
-    assert_ne!(CssBorderWidth::Thin, CssBorderWidth::Medium);
-    assert_ne!(CssBorderWidth::Thin, parsed_width("1px"));
+    assert_ne!(CssLineWidth::Thin, CssLineWidth::Medium);
+    assert_ne!(CssLineWidth::Thin, parsed_width("1px"));
 }
 
 #[test]
 fn pair_and_four_side_keep_arity_roles_and_cumulative_budgets() {
-    let pair = CssBorderWidthPair::new(CssBorderWidth::Thin, Some(CssBorderWidth::Thick));
-    assert_eq!(pair.start(), &CssBorderWidth::Thin);
-    assert_eq!(pair.authored_end(), Some(&CssBorderWidth::Thick));
-    assert_eq!(pair.end(), &CssBorderWidth::Thick);
+    let pair = CssSidePair::new(CssLineWidth::Thin, Some(CssLineWidth::Thick));
+    assert_eq!(pair.first(), &CssLineWidth::Thin);
+    assert_eq!(pair.authored_second(), Some(&CssLineWidth::Thick));
+    assert_eq!(pair.second(), &CssLineWidth::Thick);
     assert_eq!(
         pair.serialize_specified(Default::default()).unwrap(),
         "thin thick"
@@ -126,61 +126,58 @@ fn pair_and_four_side_keep_arity_roles_and_cumulative_budgets() {
             kind
         );
     }
-    let one = CssBorderWidthPair::new(CssBorderWidth::Thin, None);
-    assert_eq!(one.authored_end(), None);
-    assert_eq!(one.end(), one.start());
+    let one = CssSidePair::new(CssLineWidth::Thin, None);
+    assert_eq!(one.authored_second(), None);
+    assert_eq!(one.second(), one.first());
     assert_ne!(
         one,
-        CssBorderWidthPair::new(CssBorderWidth::Thin, Some(CssBorderWidth::Thin))
+        CssSidePair::new(CssLineWidth::Thin, Some(CssLineWidth::Thin))
     );
-    assert!(CssBorderWidthShorthand::try_new(CssBoxSideKind::Physical, vec![]).is_none());
-    assert!(
-        CssBorderWidthShorthand::try_new(CssBoxSideKind::Physical, vec![CssBorderWidth::Thin; 5])
-            .is_none()
-    );
+    assert!(CssFourSides::<CssLineWidth>::try_new(CssBoxSideKind::Physical, vec![]).is_none());
+    assert!(CssFourSides::try_new(CssBoxSideKind::Physical, vec![CssLineWidth::Thin; 5]).is_none());
     for (values, expected) in [
-        (vec![CssBorderWidth::Thin], ["thin", "thin", "thin", "thin"]),
+        (vec![CssLineWidth::Thin], ["thin", "thin", "thin", "thin"]),
         (
-            vec![CssBorderWidth::Thin, CssBorderWidth::Medium],
+            vec![CssLineWidth::Thin, CssLineWidth::Medium],
             ["thin", "medium", "thin", "medium"],
         ),
         (
             vec![
-                CssBorderWidth::Thin,
-                CssBorderWidth::Medium,
-                CssBorderWidth::Thick,
+                CssLineWidth::Thin,
+                CssLineWidth::Medium,
+                CssLineWidth::Thick,
             ],
             ["thin", "medium", "thick", "medium"],
         ),
         (
             vec![
-                CssBorderWidth::Thin,
-                CssBorderWidth::Medium,
-                CssBorderWidth::Thick,
+                CssLineWidth::Thin,
+                CssLineWidth::Medium,
+                CssLineWidth::Thick,
                 length("0", "px"),
             ],
             ["thin", "medium", "thick", "0px"],
         ),
     ] {
         for kind in [CssBoxSideKind::Physical, CssBoxSideKind::Logical] {
-            let value = CssBorderWidthShorthand::try_new(kind, values.clone()).unwrap();
+            let value = CssFourSides::try_new(kind, values.clone()).unwrap();
             assert_eq!(value.kind(), kind);
-            assert_eq!(value.authored_values().len(), values.len());
+            assert_eq!(value.authored().len(), values.len());
             assert_eq!(
                 value
-                    .assigned_values()
+                    .assigned()
                     .map(|part| part.serialize_specified(Default::default()).unwrap()),
                 expected
             );
         }
     }
-    let shorthand = CssBorderWidthShorthand::try_new(
+    let shorthand = CssFourSides::try_new(
         CssBoxSideKind::Logical,
         vec![
-            CssBorderWidth::Thin,
-            CssBorderWidth::Medium,
-            CssBorderWidth::Thick,
-            CssBorderWidth::Length(
+            CssLineWidth::Thin,
+            CssLineWidth::Medium,
+            CssLineWidth::Thick,
+            CssLineWidth::Length(
                 CssNumeric::<CssLength, CssNonNegative>::try_from_component(
                     CssComponentValue::try_number("0").unwrap(),
                 )
@@ -220,11 +217,7 @@ fn pair_and_four_side_keep_arity_roles_and_cumulative_budgets() {
     }
     assert_ne!(
         shorthand,
-        CssBorderWidthShorthand::try_new(
-            CssBoxSideKind::Physical,
-            shorthand.authored_values().to_vec()
-        )
-        .unwrap()
+        CssFourSides::try_new(CssBoxSideKind::Physical, shorthand.authored().to_vec()).unwrap()
     );
 }
 
@@ -232,13 +225,13 @@ fn pair_and_four_side_keep_arity_roles_and_cumulative_budgets() {
 fn border_triple_retains_omissions_and_exact_shared_budget() {
     assert!(CssBorder::try_new(None, None, None).is_none());
     let value = CssBorder::try_new(
-        Some(CssBorderWidth::Thin),
-        Some(CssBorderStyle::Solid),
+        Some(CssLineWidth::Thin),
+        Some(CssLineStyle::Solid),
         Some(red()),
     )
     .unwrap();
-    assert_eq!(value.width(), Some(&CssBorderWidth::Thin));
-    assert_eq!(value.style(), Some(CssBorderStyle::Solid));
+    assert_eq!(value.width(), Some(&CssLineWidth::Thin));
+    assert_eq!(value.style(), Some(CssLineStyle::Solid));
     assert_eq!(
         value
             .color()
@@ -290,12 +283,7 @@ fn border_triple_retains_omissions_and_exact_shared_budget() {
     assert_eq!(wrapper.as_css(), "red solid thin");
     assert_ne!(
         value,
-        CssBorder::try_new(
-            Some(CssBorderWidth::Thin),
-            Some(CssBorderStyle::Solid),
-            None
-        )
-        .unwrap()
+        CssBorder::try_new(Some(CssLineWidth::Thin), Some(CssLineStyle::Solid), None).unwrap()
     );
 }
 
@@ -311,7 +299,7 @@ fn pure_length_calculation_projects_without_a_percentage_basis_or_tree_reinterpr
     else {
         panic!("typed width")
     };
-    let CssBorderWidth::Length(current) = wrapper.value() else {
+    let CssLineWidth::Length(current) = wrapper.value() else {
         panic!("exact math")
     };
     let original = current.calculation().unwrap();
@@ -373,7 +361,7 @@ fn symbolic_border_triple_shares_one_numeric_and_color_budget() {
     // same order is asserted by the Overflow 3 checked length consumer.
     let value = CssBorder::try_new(
         Some(parsed_width("calc(1px + 2em)")),
-        Some(CssBorderStyle::Solid),
+        Some(CssLineStyle::Solid),
         Some(red()),
     )
     .unwrap();

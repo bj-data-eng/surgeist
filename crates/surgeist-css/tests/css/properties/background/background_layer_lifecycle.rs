@@ -269,14 +269,14 @@ fn parsed_lists_preserve_exact_ordered_size_repeat_box_and_attachment_payloads()
                 let [
                     CssBackgroundSize::Cover,
                     CssBackgroundSize::Explicit {
-                        width: CssBackgroundSizeComponent::Length(width),
-                        height: Some(CssBackgroundSizeComponent::Auto),
+                        width: CssAutoOr::Value(width),
+                        height: Some(CssAutoOr::Auto),
                     },
                     CssBackgroundSize::Explicit {
-                        width: CssBackgroundSizeComponent::Length(last),
+                        width: CssAutoOr::Value(last),
                         height: None,
                     },
-                ] = value.sizes().sizes()
+                ] = value.value().sizes()
                 else {
                     panic!("cover, explicit width/auto, then width with omitted second component")
                 };
@@ -293,7 +293,7 @@ fn parsed_lists_preserve_exact_ordered_size_repeat_box_and_attachment_payloads()
                 assert!(matches!(width.origin(), CssValueOrigin::Parsed(_)));
             }
             CssKnownPropertyValueRef::BackgroundRepeat(value) => assert_eq!(
-                value.repeats().repeats(),
+                value.value().repeats(),
                 &[
                     CssBackgroundRepeat::RepeatX,
                     CssBackgroundRepeat::Axes {
@@ -303,15 +303,15 @@ fn parsed_lists_preserve_exact_ordered_size_repeat_box_and_attachment_payloads()
                 ]
             ),
             CssKnownPropertyValueRef::BackgroundOrigin(value) => assert_eq!(
-                value.boxes().boxes(),
+                value.value().boxes(),
                 &[CssBackgroundBox::BorderBox, CssBackgroundBox::ContentBox]
             ),
             CssKnownPropertyValueRef::BackgroundClip(value) => assert_eq!(
-                value.boxes().boxes(),
+                value.value().boxes(),
                 &[CssBackgroundBox::ContentBox, CssBackgroundBox::PaddingBox]
             ),
             CssKnownPropertyValueRef::BackgroundAttachment(value) => assert_eq!(
-                value.attachments().attachments(),
+                value.value().attachments(),
                 &[
                     CssBackgroundAttachment::Fixed,
                     CssBackgroundAttachment::Local
@@ -329,10 +329,10 @@ fn parsed_lists_preserve_exact_ordered_size_repeat_box_and_attachment_payloads()
     let [
         CssBackgroundSize::Contain,
         CssBackgroundSize::Explicit {
-            width: CssBackgroundSizeComponent::Length(width),
-            height: Some(CssBackgroundSizeComponent::Auto),
+            width: CssAutoOr::Value(width),
+            height: Some(CssAutoOr::Auto),
         },
-    ] = value.sizes().sizes()
+    ] = value.value().sizes()
     else {
         panic!("contain and one symbolic explicit size")
     };

@@ -16,7 +16,7 @@ fn main() {
     };
     assert_eq!(
         value
-            .synthesis()
+            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         "weight position"
@@ -24,7 +24,7 @@ fn main() {
     let checked = CssFontSynthesis::Values(
         CssFontSynthesisValues::try_new(true, false, false, true).unwrap(),
     );
-    assert_eq!(value.synthesis(), &checked);
+    assert_eq!(value.value(), &checked);
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
         expand_declaration(source).unwrap()
     else {

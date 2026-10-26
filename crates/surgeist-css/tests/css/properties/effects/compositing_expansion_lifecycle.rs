@@ -276,7 +276,7 @@ fn sixty_four_authored_blend_entries_keep_every_index_duplicate_and_decoded_orde
         else {
             panic!("original list")
         };
-        assert_eq!(value, original.modes());
+        assert_eq!(value, original.value());
         assert_eq!(
             value
                 .serialize_specified(CssSerializationLimits::new(65, 65, expected_css.len()))
@@ -546,10 +546,10 @@ fn ordinary_background_resets_to_one_normal_independently_of_layer_or_explicit_l
             else {
                 panic!("original background")
             };
-            assert_eq!(original.background().layers().len(), count);
+            assert_eq!(original.value().layers().len(), count);
             assert_eq!(
                 original
-                    .background()
+                    .value()
                     .serialize_specified(Default::default())
                     .unwrap(),
                 css

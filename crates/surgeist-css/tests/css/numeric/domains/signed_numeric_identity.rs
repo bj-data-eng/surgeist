@@ -25,14 +25,9 @@ macro_rules! aggregate_parser {
 }
 aggregate_parser!(transform, CssTransform, Transform, value);
 aggregate_parser!(scale, CssScale, Scale, value);
-aggregate_parser!(
-    easing,
-    CssEasingList,
-    TransitionTimingFunction,
-    timing_functions
-);
-aggregate_parser!(animation, CssAnimationList, Animation, animations);
-aggregate_parser!(transition, CssTransitionList, Transition, transitions);
+aggregate_parser!(easing, CssEasingList, TransitionTimingFunction, value);
+aggregate_parser!(animation, CssAnimationList, Animation, value);
+aggregate_parser!(transition, CssTransitionList, Transition, value);
 
 #[test]
 fn matrix_equality_ignores_ordinary_number_spelling() {

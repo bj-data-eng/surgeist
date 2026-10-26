@@ -55,7 +55,7 @@ fn writing_modes_and_legacy_alias_are_typed() {
     else {
         panic!("expected text-combine-upright");
     };
-    assert_eq!(combine.combine(), &CssTextCombineUpright::All);
+    assert_eq!(combine.value(), &CssTextCombineUpright::All);
     assert_eq!(combine.as_css(), "all");
 
     let CssKnownPropertyValueRef::TextOrientation(orientation) = report.syntax()[1]
@@ -66,7 +66,7 @@ fn writing_modes_and_legacy_alias_are_typed() {
     else {
         panic!("expected text-orientation");
     };
-    assert_eq!(orientation.orientation(), &CssTextOrientation::Sideways);
+    assert_eq!(orientation.value(), &CssTextOrientation::Sideways);
 
     let CssKnownPropertyValueRef::UnicodeBidi(bidi) = report.syntax()[2]
         .known()
@@ -76,14 +76,14 @@ fn writing_modes_and_legacy_alias_are_typed() {
     else {
         panic!("expected unicode-bidi");
     };
-    assert_eq!(bidi.bidi(), &CssUnicodeBidi::IsolateOverride);
+    assert_eq!(bidi.value(), &CssUnicodeBidi::IsolateOverride);
 
     let alias = report.syntax()[3].known().unwrap();
     assert_eq!(alias.property(), CssKnownProperty::TextOrientation);
     let CssKnownPropertyValueRef::TextOrientation(mapped) = alias.property_value().unwrap() else {
         panic!("legacy shorthand must map to text-orientation");
     };
-    assert_eq!(mapped.orientation(), &CssTextOrientation::Sideways);
+    assert_eq!(mapped.value(), &CssTextOrientation::Sideways);
     assert_eq!(mapped.as_css(), "90");
     assert!(CssKnownProperty::TextOrientation.aliases().is_empty());
     assert_eq!(
@@ -140,7 +140,7 @@ fn writing_modes_keyword_and_legacy_number_domains_are_exact() {
         else {
             panic!("{source}: expected mapped text-orientation");
         };
-        assert_eq!(mapped.orientation(), &expected, "{source}");
+        assert_eq!(mapped.value(), &expected, "{source}");
         assert_eq!(mapped.as_css(), value, "{source}");
     }
 }

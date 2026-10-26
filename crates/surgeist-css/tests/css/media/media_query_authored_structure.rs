@@ -83,13 +83,13 @@ fn media_feature_names_are_canonical() {
     let CssMediaConditionKind::Feature(feature) = condition.kind() else {
         panic!("expected numeric feature");
     };
-    assert_eq!(feature.name(), "width");
+    assert_eq!(feature.as_str(), "width");
     assert_eq!(
-        CssMediaFeatureQuery::PrefersColorScheme(CssColorSchemePreference::Dark).name(),
+        CssMediaFeatureQuery::PrefersColorScheme(CssColorSchemePreference::Dark).as_str(),
         "prefers-color-scheme"
     );
     assert_eq!(
-        CssMediaFeatureQuery::AnyPointer(CssPointerCapability::Fine).name(),
+        CssMediaFeatureQuery::AnyPointer(CssPointerCapability::Fine).as_str(),
         "any-pointer"
     );
 }

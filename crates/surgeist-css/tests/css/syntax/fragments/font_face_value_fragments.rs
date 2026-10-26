@@ -119,11 +119,11 @@ fn every_descriptor_kind_returns_its_source_neutral_typed_value() {
     ];
     for (kind, source, expected) in cases {
         let report = parse_font_face_descriptor_value(source, kind);
-        assert!(report.is_clean(), "{}: {report:?}", kind.css_name());
+        assert!(report.is_clean(), "{}: {report:?}", kind.as_str());
         assert_eq!(report.syntax(), &Some(expected.into()));
         assert_eq!(report.syntax().as_ref().unwrap().kind(), kind);
         let empty = parse_font_face_descriptor_value("", kind);
-        assert!(empty.syntax().is_none(), "{}: {empty:?}", kind.css_name());
+        assert!(empty.syntax().is_none(), "{}: {empty:?}", kind.as_str());
         assert!(
             empty
                 .diagnostics()

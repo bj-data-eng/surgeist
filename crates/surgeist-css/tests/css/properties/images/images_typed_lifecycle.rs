@@ -3,6 +3,7 @@
 //! selected Images 3 CRD 2023-12-18 §§4.5–5.2, including §5.2 standard legacy
 //! acceptance, and imported physical Values 3 positions. No missing-symbol RED.
 
+use crate::css::support::position_view::CartesianPosition as _;
 use crate::css::support::property_expectations;
 
 use crate::css::support::authored_property;
@@ -69,19 +70,19 @@ fn terminal_matches_authored(item: &CssLonghandContribution, source: &CssDeclara
         (
             CssLonghandValueRef::ObjectPosition(terminal),
             CssKnownPropertyValueRef::ObjectPosition(authored),
-        ) => assert_eq!(terminal, authored.position()),
+        ) => assert_eq!(terminal, authored.value()),
         (
             CssLonghandValueRef::ImageOrientation(terminal),
             CssKnownPropertyValueRef::ImageOrientation(authored),
-        ) => assert_eq!(terminal, authored.orientation()),
+        ) => assert_eq!(terminal, authored.value()),
         (
             CssLonghandValueRef::ImageRendering(terminal),
             CssKnownPropertyValueRef::ImageRendering(authored),
-        ) => assert_eq!(terminal, authored.rendering()),
+        ) => assert_eq!(terminal, authored.value()),
         (
             CssLonghandValueRef::ObjectFit(terminal),
             CssKnownPropertyValueRef::ObjectFit(authored),
-        ) => assert_eq!(terminal, authored.fit()),
+        ) => assert_eq!(terminal, authored.value()),
         _ => panic!("ordinary terminal preserves its property's borrowed type"),
     }
 }
@@ -116,7 +117,7 @@ fn all_seven_rendering_variants_construct_serialize_parse_and_expand_without_ali
             else {
                 panic!("rendering typed wrapper")
             };
-            assert_eq!(value.rendering(), &expected);
+            assert_eq!(value.value(), &expected);
             let values = ordinary(&source);
             terminal_matches_authored(&values.items()[0], &source);
             let CssLonghandValueRef::ImageRendering(terminal) =

@@ -221,7 +221,7 @@ impl<'i> DeclarationParser<'i> for BodyParser<'i> {
                 .check_component_values(self.source, input, "css.descriptor")?;
         let owner = self
             .kind
-            .map_or("font-feature-values", CssFontFeatureValueKind::css_name);
+            .map_or("font-feature-values", CssFontFeatureValueKind::as_str);
         let value_start = input.state();
         input.reset(start);
         input.expect_ident().map_err(basic)?;

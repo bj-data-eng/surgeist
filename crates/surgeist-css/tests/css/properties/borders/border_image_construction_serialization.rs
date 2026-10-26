@@ -83,7 +83,7 @@ fn image(text: &str) -> CssBorderImage {
     else {
         panic!("border-image typed value");
     };
-    value.border_image().clone()
+    value.value().clone()
 }
 
 fn expanded_texts(text: &str) -> Vec<String> {

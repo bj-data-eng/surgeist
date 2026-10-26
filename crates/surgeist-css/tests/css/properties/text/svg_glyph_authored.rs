@@ -612,7 +612,7 @@ fn selection_preserves_modes_finite_alias_and_explicit_definition_precedence() {
             else {
                 panic!("finite target")
             };
-            assert_eq!(value.orientation(), &expected);
+            assert_eq!(value.value(), &expected);
             assert!(source.svg_glyph_orientation_vertical().is_none());
         }
     }

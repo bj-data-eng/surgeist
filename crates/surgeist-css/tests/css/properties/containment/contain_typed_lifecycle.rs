@@ -51,7 +51,7 @@ fn primitive(source: &CssDeclaration) -> &CssContain {
     else {
         panic!("typed contain wrapper")
     };
-    wrapper.containment()
+    wrapper.value()
 }
 
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {

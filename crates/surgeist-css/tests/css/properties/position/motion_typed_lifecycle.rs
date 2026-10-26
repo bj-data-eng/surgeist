@@ -82,7 +82,7 @@ fn checked_coord_conversion_admits_six_boxes_and_rejects_margin() {
             CssCoordBox::from_keyword(&keyword.to_ascii_uppercase()),
             Some(coord)
         );
-        assert_eq!(coord.as_css_str(), keyword);
+        assert_eq!(coord.as_str(), keyword);
         budget(keyword, 1, |limits| coord.serialize_specified(limits));
     }
     assert!(
@@ -145,7 +145,7 @@ fn ray_sizes_have_independent_direct_keyword_and_retained_default_contracts() {
             CssRaySize::from_keyword(&text.to_ascii_uppercase()),
             Some(size)
         );
-        assert_eq!(size.as_css_str(), text);
+        assert_eq!(size.as_str(), text);
         budget(text, 1, |limits| size.serialize_specified(limits));
     }
     assert!(CssRaySize::from_keyword("contain").is_none());

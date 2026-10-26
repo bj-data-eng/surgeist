@@ -80,10 +80,10 @@ fn every_typed_flow_pair_is_constructible_and_serializes_direction_first() {
             else {
                 panic!("parsed flow: {canonical}")
             };
-            assert_eq!(value.flow(), &flow);
+            assert_eq!(value.value(), &flow);
             assert_eq!(
                 value
-                    .flow()
+                    .value()
                     .serialize_specified(Default::default())
                     .unwrap(),
                 canonical
@@ -122,7 +122,7 @@ fn parsed_flow_keeps_authored_spelling_and_serializes_omitted_initials() {
         assert_eq!(value.as_css(), authored);
         assert_eq!(
             value
-                .flow()
+                .value()
                 .serialize_specified(Default::default())
                 .unwrap(),
             expected
@@ -133,10 +133,10 @@ fn parsed_flow_keeps_authored_spelling_and_serializes_omitted_initials() {
         else {
             panic!("reparsed canonical flow: {expected}")
         };
-        assert_eq!(reparsed.flow(), value.flow());
+        assert_eq!(reparsed.value(), value.value());
         assert_eq!(
             reparsed
-                .flow()
+                .value()
                 .serialize_specified(Default::default())
                 .unwrap(),
             expected

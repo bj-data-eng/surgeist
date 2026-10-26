@@ -86,20 +86,20 @@ fn assert_quoted_animation(authored: &str, decoded: &str, canonical: &str, short
         CssKnownPropertyValueRef::AnimationName(wrapper) if !shorthand => {
             assert_eq!(wrapper.as_css(), value);
             assert!(
-                matches!(wrapper.names().names(), [CssAnimationName::String(name)] if name.as_str() == decoded)
+                matches!(wrapper.value().names(), [CssAnimationName::String(name)] if name.as_str() == decoded)
             );
             wrapper
-                .names()
+                .value()
                 .serialize_specified(Default::default())
                 .unwrap()
         }
         CssKnownPropertyValueRef::Animation(wrapper) if shorthand => {
             assert_eq!(wrapper.as_css(), value);
             assert!(
-                matches!(wrapper.animations().values()[0].name(), Some(CssAnimationName::String(name)) if name.as_str() == decoded)
+                matches!(wrapper.value().values()[0].name(), Some(CssAnimationName::String(name)) if name.as_str() == decoded)
             );
             wrapper
-                .animations()
+                .value()
                 .serialize_specified(Default::default())
                 .unwrap()
         }
@@ -122,11 +122,11 @@ fn assert_quoted_animation(authored: &str, decoded: &str, canonical: &str, short
     {
         CssKnownPropertyValueRef::AnimationName(wrapper) if !shorthand => {
             assert!(
-                matches!(wrapper.names().names(), [CssAnimationName::String(name)] if name.as_str() == decoded)
+                matches!(wrapper.value().names(), [CssAnimationName::String(name)] if name.as_str() == decoded)
             );
             assert_eq!(
                 wrapper
-                    .names()
+                    .value()
                     .serialize_specified(Default::default())
                     .unwrap(),
                 expected
@@ -134,11 +134,11 @@ fn assert_quoted_animation(authored: &str, decoded: &str, canonical: &str, short
         }
         CssKnownPropertyValueRef::Animation(wrapper) if shorthand => {
             assert!(
-                matches!(wrapper.animations().values()[0].name(), Some(CssAnimationName::String(name)) if name.as_str() == decoded)
+                matches!(wrapper.value().values()[0].name(), Some(CssAnimationName::String(name)) if name.as_str() == decoded)
             );
             assert_eq!(
                 wrapper
-                    .animations()
+                    .value()
                     .serialize_specified(Default::default())
                     .unwrap(),
                 expected

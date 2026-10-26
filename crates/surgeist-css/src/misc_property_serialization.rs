@@ -245,17 +245,17 @@ mod tests {
         else {
             panic!("caret-color")
         };
-        let before = value.caret().clone();
+        let before = value.value().clone();
         let mut writer = SpecifiedRuleWriter::new(Limits::new(65_536, 262_144, 0));
         writer
-            .without_output(|writer| value.caret().append_to_rule_writer(writer))
+            .without_output(|writer| value.value().append_to_rule_writer(writer))
             .unwrap();
         assert!(writer.css.is_empty());
         assert!(!writer.context.output_suppressed());
-        assert_eq!(value.caret(), &before);
+        assert_eq!(value.value(), &before);
         assert_eq!(
             value
-                .caret()
+                .value()
                 .serialize_specified(Default::default())
                 .unwrap(),
             "rgb(1, 2, 3)"

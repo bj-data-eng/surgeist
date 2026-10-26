@@ -24,7 +24,7 @@ fn core_font_calculations_preserve_number_and_length_percentage_domains() {
         panic!("expected font-size");
     };
     assert!(matches!(
-        size.size(),
+        size.value(),
         CssFontSize::LengthPercentage(value)
             if value.calculation().is_some_and(|calculation|
                 calculation.result_type() == CssCalculationType::LengthPercentage
@@ -40,7 +40,7 @@ fn core_font_calculations_preserve_number_and_length_percentage_domains() {
         panic!("expected line-height number");
     };
     assert!(matches!(
-        number.line_height(),
+        number.value(),
         CssLineHeight::Number(value)
             if value.calculation().is_some_and(|calculation| calculation.result_type() == CssCalculationType::Number)
     ));
@@ -54,7 +54,7 @@ fn core_font_calculations_preserve_number_and_length_percentage_domains() {
         panic!("expected line-height length-percentage");
     };
     assert!(matches!(
-        length.line_height(),
+        length.value(),
         CssLineHeight::LengthPercentage(value)
             if matches!(
                 value.calculation(),
@@ -445,7 +445,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     else {
         panic!("expected flex-grow wrapper");
     };
-    assert!(value.factor().calculation().is_some());
+    assert!(value.value().calculation().is_some());
 
     let CssKnownPropertyValueRef::FlexShrink(value) = report.syntax()[2]
         .known()
@@ -455,7 +455,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     else {
         panic!("expected flex-shrink wrapper");
     };
-    assert!(value.factor().calculation().is_some());
+    assert!(value.value().calculation().is_some());
 
     let CssKnownPropertyValueRef::Order(value) = report.syntax()[3]
         .known()
@@ -487,7 +487,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     else {
         panic!("expected aspect-ratio wrapper");
     };
-    let CssAspectRatioValue::Ratio(ratio) = value.ratio() else {
+    let CssAspectRatioValue::Ratio(ratio) = value.value() else {
         panic!("expected deferred aspect-ratio ratio");
     };
     let calculation = ratio.numerator().calculation().expect("math numerator");
@@ -617,7 +617,7 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
     };
     assert_eq!(
         value
-            .factor()
+            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         "2"
@@ -633,7 +633,7 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
     };
     assert_eq!(
         value
-            .factor()
+            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         "0"
@@ -680,7 +680,7 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
         panic!("expected aspect-ratio wrapper");
     };
     assert!(
-        matches!(value.ratio(), CssAspectRatioValue::Ratio(ratio) if ratio.denominator().is_none() && ratio.numerator().literal().map(|literal| literal.component()).is_some())
+        matches!(value.value(), CssAspectRatioValue::Ratio(ratio) if ratio.denominator().is_none() && ratio.numerator().literal().map(|literal| literal.component()).is_some())
     );
 
     let CssKnownPropertyValueRef::Flex(value) = report.syntax()[6]

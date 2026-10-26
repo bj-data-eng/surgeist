@@ -362,8 +362,8 @@ fn border_color_assignments_retain_exact_nested_colors() {
         };
         let colors = value.value();
         assert_eq!(colors.kind(), CssBoxSideKind::Physical);
-        assert_eq!(colors.authored_values().len(), 1);
-        let [top, right, bottom, left] = colors.assigned_values();
+        assert_eq!(colors.authored().len(), 1);
+        let [top, right, bottom, left] = colors.assigned();
         assert_eq!(top, right);
         assert_eq!(top, bottom);
         assert_eq!(top, left);
@@ -392,7 +392,7 @@ fn border_color_assignments_retain_exact_nested_colors() {
         panic!("border colors")
     };
     assert!(
-        matches!(value.value().assigned_values()[0].hsl_value().unwrap().saturation(), CssColorComponent::Percentage(value) if value.numeric().representation() == "25")
+        matches!(value.value().assigned()[0].hsl_value().unwrap().saturation(), CssColorComponent::Percentage(value) if value.numeric().representation() == "25")
     );
     let report = parse_style_attribute(
         "border-color: red hsl(0 30% 50%) color-mix(in srgb, blue 0.1%, green) currentcolor !important",
@@ -407,7 +407,7 @@ fn border_color_assignments_retain_exact_nested_colors() {
     else {
         panic!("border colors")
     };
-    let [top, right, bottom, left] = value.value().assigned_values();
+    let [top, right, bottom, left] = value.value().assigned();
     assert_eq!(top.named().unwrap().name(), "red");
     assert!(
         matches!(right.hsl_value().unwrap().saturation(), CssColorComponent::Percentage(value)

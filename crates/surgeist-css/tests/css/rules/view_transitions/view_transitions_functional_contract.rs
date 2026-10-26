@@ -34,7 +34,7 @@ fn value(declaration: &CssDeclaration) -> &CssViewTransitionName {
     else {
         panic!("typed name wrapper")
     };
-    wrapper.name()
+    wrapper.value()
 }
 fn selector(source: &str) -> CssSelector {
     let report = parse_selector(source, &CssNamespaceContext::default());

@@ -49,7 +49,7 @@ fn typed_count(value: &str) -> CssColumnCount {
     else {
         panic!("existing column-count wrapper")
     };
-    checked.count().clone()
+    checked.value().clone()
 }
 
 #[test]

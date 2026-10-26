@@ -312,7 +312,7 @@ fn assert_retained_url_modifier(
     else {
         panic!("typed background image");
     };
-    let [surgeist_css::CssImageValue::Url(url)] = value.images().images() else {
+    let [surgeist_css::CssImageValue::Url(url)] = value.value().images() else {
         panic!("one retained URL image");
     };
     assert_eq!(url.as_str(), "asset");

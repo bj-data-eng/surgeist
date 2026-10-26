@@ -1,10 +1,11 @@
 //! Canonical specified Backgrounds 3 shorthand composition.
 
+use crate::CssAutoOr;
 use crate::{
     CssBackground, CssBackgroundAttachment, CssBackgroundBox, CssBackgroundLayer,
     CssBackgroundLayerBoxes, CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize,
-    CssBackgroundSizeComponent, CssComponentValueRef, CssHorizontalPosition, CssImageValue,
-    CssLengthPercentage, CssNumeric, CssSerializationError, CssValueTokenRef, CssVerticalPosition,
+    CssComponentValueRef, CssHorizontalPosition, CssImageValue, CssLengthPercentage, CssNumeric,
+    CssSerializationError, CssValueTokenRef, CssVerticalPosition,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
@@ -51,8 +52,8 @@ fn initial_size(size: &CssBackgroundSize) -> bool {
     matches!(
         size,
         CssBackgroundSize::Explicit {
-            width: CssBackgroundSizeComponent::Auto,
-            height: None | Some(CssBackgroundSizeComponent::Auto),
+            width: CssAutoOr::Auto,
+            height: None | Some(CssAutoOr::Auto),
         }
     )
 }

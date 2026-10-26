@@ -2,6 +2,7 @@
 //! Transforms 1 §§4–6/9, Transforms 2 §§5/7–10/12, and Values 4 §10.13
 //! select these operands and canonical defaults. Generic inventories remain in
 //! common/property_expectations/records.rs. No contextual matrix is evaluated.
+use crate::css::support::position_view::CartesianPosition as _;
 use crate::css::support::serialization_limits::assert_limits as budget;
 use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
@@ -170,8 +171,8 @@ fn perspective_origin_uses_the_physical_position_owner_and_origin_fields() {
         panic!("position wrapper");
     };
     assert_eq!(wrapper.as_css(), "right 2px bottom 3%");
-    assert_eq!(wrapper.position(), &position);
-    let CssHorizontalPosition::RightOffset(h) = wrapper.position().horizontal() else {
+    assert_eq!(wrapper.value(), &CssPosition::from(position.clone()));
+    let CssHorizontalPosition::RightOffset(h) = wrapper.value().horizontal() else {
         panic!("right offset");
     };
     let CssValueOrigin::Parsed(origin) = h.origin() else {

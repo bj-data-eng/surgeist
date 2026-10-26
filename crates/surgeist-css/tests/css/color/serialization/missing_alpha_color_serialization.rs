@@ -505,7 +505,7 @@ byte_case!(
 
 #[test]
 fn border_pair_siblings_share_final_bytes_and_spent_prefix() {
-    let pair = CssBorderColorPair::new(
+    let pair = CssSidePair::new(
         color("rgb(255 0 0 / none)"),
         Some(color("hsl(0 100 50 / none)")),
     );
@@ -525,7 +525,7 @@ fn border_pair_siblings_share_final_bytes_and_spent_prefix() {
 
 #[test]
 fn border_pair_input_limit_is_cumulative_across_literal_colors() {
-    let pair = CssBorderColorPair::new(
+    let pair = CssSidePair::new(
         color("rgb(255 0 0 / none)"),
         Some(color("hsl(0 100 50 / none)")),
     );
@@ -577,7 +577,7 @@ fn hwb_one_below_required_preserving_form_bytes_is_atomic() {
 fn utf8_caller_prefix_and_missing_alpha_share_exact_final_bytes() {
     // The non-ASCII custom profile is a valid CSS identifier. Its UTF-8 bytes,
     // the separator, and the RGB child's preserving form share one byte budget.
-    let pair = CssBorderColorPair::new(color("color(--é 0)"), Some(color("rgb(255 0 0 / none)")));
+    let pair = CssSidePair::new(color("color(--é 0)"), Some(color("rgb(255 0 0 / none)")));
     let expected = "color(--é 0) color(srgb 1 0 0 / none)";
     let before = pair.clone();
     let limits = Limits::new(usize::MAX, usize::MAX, expected.len());
@@ -589,7 +589,7 @@ fn utf8_caller_prefix_and_missing_alpha_share_exact_final_bytes() {
 
 #[test]
 fn utf8_caller_prefix_leaves_one_below_missing_alpha_final_bytes() {
-    let pair = CssBorderColorPair::new(color("color(--é 0)"), Some(color("rgb(255 0 0 / none)")));
+    let pair = CssSidePair::new(color("color(--é 0)"), Some(color("rgb(255 0 0 / none)")));
     let before = pair.clone();
     let limits = Limits::new(
         usize::MAX,

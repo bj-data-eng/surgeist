@@ -18,7 +18,7 @@ fn transition_properties(value: &str) -> CssTransitionPropertyList {
     else {
         panic!("transition-property");
     };
-    value.properties().clone()
+    value.value().clone()
 }
 
 fn transitions(value: &str) -> CssTransitionList {
@@ -28,7 +28,7 @@ fn transitions(value: &str) -> CssTransitionList {
     else {
         panic!("transition");
     };
-    value.transitions().clone()
+    value.value().clone()
 }
 
 fn animation_names(value: &str) -> CssAnimationNameList {
@@ -38,7 +38,7 @@ fn animation_names(value: &str) -> CssAnimationNameList {
     else {
         panic!("animation-name");
     };
-    value.names().clone()
+    value.value().clone()
 }
 
 fn animations(value: &str) -> CssAnimationList {
@@ -48,7 +48,7 @@ fn animations(value: &str) -> CssAnimationList {
     else {
         panic!("animation");
     };
-    value.animations().clone()
+    value.value().clone()
 }
 
 fn assert_transition_property_name(authored: &str, decoded: &str) {

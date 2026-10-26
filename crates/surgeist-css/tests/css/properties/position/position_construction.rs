@@ -1,4 +1,5 @@
 //! Checked authored position construction for Values 4, Backgrounds 3, and Transforms 1.
+use crate::css::support::position_view::CartesianPosition as _;
 use surgeist_css::*;
 
 #[test]
@@ -67,13 +68,13 @@ fn generic_position_retains_symbolic_offsets_and_nonempty_list_order() {
         matches!(symbolic.horizontal(), H::Offset(v) if v.calculation().is_some_and(|calc| calc.components().serialize_tokens(Default::default()).unwrap().as_css() == "calc(10px + 20%)"))
     );
     let keyword = CssPhysicalPosition::try_new(H::Left, V::Top).unwrap();
-    let list = CssPhysicalPositionList::try_new(vec![symbolic, keyword]).unwrap();
+    let list = CssPositionList::try_new(vec![symbolic.into(), keyword.into()]).unwrap();
     assert_eq!(list.positions().len(), 2);
     assert!(matches!(list.positions()[0].horizontal(), H::Offset(_)));
     assert!(matches!(list.positions()[0].vertical(), V::Center));
     assert!(matches!(list.positions()[1].horizontal(), H::Left));
     assert!(matches!(list.positions()[1].vertical(), V::Top));
-    assert!(CssPhysicalPositionList::try_new(Vec::new()).is_none());
+    assert!(CssPositionList::try_new(Vec::new()).is_none());
     assert!(
         CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_ident("auto").unwrap()
@@ -207,8 +208,16 @@ fn mask_and_shape_consumers_accept_the_generic_position_without_reinterpretation
 
     let position = CssPhysicalPosition::try_new(H::Right, V::Bottom).unwrap();
     assert!(CssMaskLayer::try_new(None, None, None, None, None, None, None).is_none());
-    let mask =
-        CssMaskLayer::try_new(None, Some(position.clone()), None, None, None, None, None).unwrap();
+    let mask = CssMaskLayer::try_new(
+        None,
+        Some(position.clone().into()),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
     assert!(matches!(mask.position().unwrap().horizontal(), H::Right));
     assert!(matches!(mask.position().unwrap().vertical(), V::Bottom));
 

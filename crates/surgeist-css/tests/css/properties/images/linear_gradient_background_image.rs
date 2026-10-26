@@ -19,9 +19,9 @@ fn valid_authored_linear_gradient_is_retained_as_background_image() {
     let Some(CssKnownPropertyValueRef::BackgroundImage(value)) = known.property_value() else {
         panic!("typed background-image value");
     };
-    let [CssImageValue::Gradient(gradient @ CssGradient::Linear(_))] = value.images().images()
+    let [CssImageValue::Gradient(gradient @ CssGradient::Linear(_))] = value.value().images()
     else {
-        panic!("one linear gradient: {:?}", value.images().images());
+        panic!("one linear gradient: {:?}", value.value().images());
     };
     // CSSOM 1 (WD 2021-08-26) §6.7.2 omits a component that does not change
     // the meaning, so the default direction stays omitted; both stops keep

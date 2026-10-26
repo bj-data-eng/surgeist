@@ -17,7 +17,7 @@ fn families(value: &CssDeclaration) -> &CssFontFamilyList {
     else {
         panic!("family property")
     };
-    value.families()
+    value.value()
 }
 
 fn literal(text: &str) -> CssFontFaceFamily {

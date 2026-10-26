@@ -21,7 +21,7 @@ fn font(declaration: &CssDeclaration) -> &CssFontValue {
     else {
         panic!("ordinary authored font")
     };
-    value.font()
+    value.value()
 }
 
 #[test]

@@ -73,13 +73,13 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssTextDecoratio
             }
             return writer.keyword("none");
         }
-        if let Some(error) = self.error_kind() {
+        if let Some(error) = self.as_error_line() {
             if !self.components().is_empty() {
                 return Err(unrepresentable());
             }
             return writer.keyword(match error {
-                crate::CssTextDecorationError::SpellingError => "spelling-error",
-                crate::CssTextDecorationError::GrammarError => "grammar-error",
+                crate::CssTextDecorationErrorLine::SpellingError => "spelling-error",
+                crate::CssTextDecorationErrorLine::GrammarError => "grammar-error",
             });
         }
         // The closed keyword grammar needs only four flags, independent of

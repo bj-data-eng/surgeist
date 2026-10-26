@@ -1,9 +1,9 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::{assert_component_rejected, assert_numeric_rejected};
 use surgeist_css::{
-    CssCalculation, CssComponentValue, CssContainIntrinsicSize, CssContainIntrinsicSizeFallback,
+    CssCalculation, CssComponentValue, CssContainIntrinsicSizeFallback,
     CssContainIntrinsicSizeValue, CssLength, CssNonNegative, CssNumeric, CssSerializationLimits,
-    CssValueOrigin, parse_component_values,
+    CssSidePair, CssValueOrigin, parse_component_values,
 };
 
 fn component(text: &str) -> CssComponentValue {
@@ -193,41 +193,41 @@ fn shorthand_repeats_the_entire_first_value_and_retains_authored_height() {
     let auto_width = CssContainIntrinsicSizeValue::with_auto(
         CssContainIntrinsicSizeFallback::Length(length("3px")),
     );
-    let one = CssContainIntrinsicSize::new(auto_width.clone(), None);
-    assert_eq!(one.width(), one.height());
-    assert!(one.height().uses_auto());
-    assert!(one.authored_height().is_none());
+    let one = CssSidePair::new(auto_width.clone(), None);
+    assert_eq!(one.first(), one.second());
+    assert!(one.second().uses_auto());
+    assert!(one.authored_second().is_none());
     assert_eq!(
         one.serialize_specified(Default::default()).unwrap(),
         "auto 3px"
     );
 
-    let two = CssContainIntrinsicSize::new(
+    let two = CssSidePair::new(
         auto_width,
         Some(CssContainIntrinsicSizeValue::new(
             CssContainIntrinsicSizeFallback::None,
         )),
     );
-    assert!(two.width().uses_auto());
-    assert!(!two.height().uses_auto());
+    assert!(two.first().uses_auto());
+    assert!(!two.second().uses_auto());
     assert!(matches!(
-        two.height().fallback(),
+        two.second().fallback(),
         CssContainIntrinsicSizeFallback::None
     ));
-    assert!(two.authored_height().is_some());
+    assert!(two.authored_second().is_some());
     assert_eq!(
         two.serialize_specified(Default::default()).unwrap(),
         "auto 3px none"
     );
     assert_ne!(one, two);
 
-    let one_none = CssContainIntrinsicSize::new(
+    let one_none = CssSidePair::new(
         CssContainIntrinsicSizeValue::with_auto(CssContainIntrinsicSizeFallback::None),
         None,
     );
     assert_eq!(
         one_none
-            .height()
+            .second()
             .serialize_specified(Default::default())
             .unwrap(),
         "auto none"
@@ -236,7 +236,7 @@ fn shorthand_repeats_the_entire_first_value_and_retains_authored_height() {
 
 #[test]
 fn serialization_shares_input_projection_and_byte_budgets_across_whole_values() {
-    let shorthand = CssContainIntrinsicSize::new(
+    let shorthand = CssSidePair::new(
         CssContainIntrinsicSizeValue::with_auto(CssContainIntrinsicSizeFallback::None),
         Some(length_value("2px")),
     );

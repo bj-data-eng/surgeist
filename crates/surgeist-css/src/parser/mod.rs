@@ -164,6 +164,7 @@ pub(crate) use recovery::finish_report;
 mod scroll_snap;
 mod scrollbar;
 mod selectors;
+mod side_shapes;
 mod sizing;
 mod sizing_controls;
 mod speech;
@@ -188,6 +189,12 @@ use cssparser::{
     match_ignore_ascii_case,
 };
 
+use crate::{
+    BorderSpacingLength, CornerRadiusLength, CssContainIntrinsicSizeValue, CssCue, CssGapValue,
+    CssInsetValue, CssInterestDelayValue, CssLineWidth, CssMarginValue, CssMaxSizeValue,
+    CssPaddingValue, CssScrollSnapAlignment, CssSizeValue, CssSpeechBreak, ScrollMarginSide,
+    ScrollPaddingSide,
+};
 use crate::{
     CssColorProfileDescriptorKind, CssColorProfileDescriptorValue, CssColorProfileRuleName,
     CssFontPaletteDescriptorKind, CssFontPaletteDescriptorValue, CssFontPaletteName,
@@ -559,7 +566,7 @@ macro_rules! define_property_dispatch {
         $all_parser:ident, $all_dispatch:block $(, expansion = $all_expansion:ident { $($all_metadata:tt)* })?;
         $(
         $variant:ident, $canonical:literal, [$($alias:literal),*], $stable_id:literal,
-        $value:ty, $wrapper:ident, $accessor:ident, $parser:ident, $dispatch:block
+        $value:ty, $parser:ident, $dispatch:block
         $(, expansion = $expansion:ident { $($metadata:tt)* })?;
     )*) => {
         fn parse_known_property_value<'i, 't>(
@@ -591,7 +598,7 @@ macro_rules! define_property_dispatch {
                         let value = $dispatch;
                         Ok(CssKnownDeclaration::from_value(
                             CssKnownDeclarationValue::$variant(CssDeclaredValue::Value(
-                                $wrapper::new(authored, value),
+                                CssPropertyValue::new(authored, value),
                             )),
                         ))
                     }
@@ -2684,7 +2691,7 @@ fn parse_legacy_property_alias_value<'i, 't>(
             let value = parse_glyph_orientation_vertical(input, numeric)?;
             Ok(CssKnownDeclaration::from_value(
                 CssKnownDeclarationValue::TextOrientation(CssDeclaredValue::Value(
-                    CssTextOrientationPropertyValue::new(authored, value),
+                    CssPropertyValue::new(authored, value),
                 )),
             ))
         }
@@ -2692,7 +2699,7 @@ fn parse_legacy_property_alias_value<'i, 't>(
             let value = parse_page_break_between(input)?;
             Ok(CssKnownDeclaration::from_value(
                 CssKnownDeclarationValue::BreakBefore(CssDeclaredValue::Value(
-                    CssBreakBeforePropertyValue::new(authored, value),
+                    CssPropertyValue::new(authored, value),
                 )),
             ))
         }
@@ -2700,7 +2707,7 @@ fn parse_legacy_property_alias_value<'i, 't>(
             let value = parse_page_break_between(input)?;
             Ok(CssKnownDeclaration::from_value(
                 CssKnownDeclarationValue::BreakAfter(CssDeclaredValue::Value(
-                    CssBreakAfterPropertyValue::new(authored, value),
+                    CssPropertyValue::new(authored, value),
                 )),
             ))
         }
@@ -2708,7 +2715,7 @@ fn parse_legacy_property_alias_value<'i, 't>(
             let value = parse_page_break_inside(input)?;
             Ok(CssKnownDeclaration::from_value(
                 CssKnownDeclarationValue::BreakInside(CssDeclaredValue::Value(
-                    CssBreakInsidePropertyValue::new(authored, value),
+                    CssPropertyValue::new(authored, value),
                 )),
             ))
         }

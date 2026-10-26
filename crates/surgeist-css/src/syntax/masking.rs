@@ -2,55 +2,11 @@
 
 use super::*;
 
-/// A Masking positioning/clipping box. The selected property-specific domain
-/// excludes margin-box; clip-path retains its independent geometry-box domain.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum CssMaskBox {
-    ContentBox,
-    PaddingBox,
-    BorderBox,
-    FillBox,
-    StrokeBox,
-    ViewBox,
-}
-
-impl CssMaskBox {
-    /// Narrows a general geometry box without resolving it against an element.
-    #[must_use]
-    pub const fn try_new(value: CssBoxEdgeKeyword) -> Option<Self> {
-        Some(match value {
-            CssBoxEdgeKeyword::ContentBox => Self::ContentBox,
-            CssBoxEdgeKeyword::PaddingBox => Self::PaddingBox,
-            CssBoxEdgeKeyword::BorderBox => Self::BorderBox,
-            CssBoxEdgeKeyword::FillBox => Self::FillBox,
-            CssBoxEdgeKeyword::StrokeBox => Self::StrokeBox,
-            CssBoxEdgeKeyword::ViewBox => Self::ViewBox,
-            CssBoxEdgeKeyword::MarginBox => return None,
-        })
-    }
-    #[must_use]
-    pub const fn keyword(self) -> &'static str {
-        self.edge().as_css_str()
-    }
-    /// The geometry-box keyword this Box 4 `<coord-box>` names.
-    const fn edge(self) -> CssBoxEdgeKeyword {
-        match self {
-            Self::ContentBox => CssBoxEdgeKeyword::ContentBox,
-            Self::PaddingBox => CssBoxEdgeKeyword::PaddingBox,
-            Self::BorderBox => CssBoxEdgeKeyword::BorderBox,
-            Self::FillBox => CssBoxEdgeKeyword::FillBox,
-            Self::StrokeBox => CssBoxEdgeKeyword::StrokeBox,
-            Self::ViewBox => CssBoxEdgeKeyword::ViewBox,
-        }
-    }
-}
-
 /// A mask-clip value. NoClip cannot be used as a mask-origin.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssMaskClip {
-    Box(CssMaskBox),
+    Box(CssCoordBox),
     NoClip,
 }
 
@@ -59,10 +15,10 @@ pub enum CssMaskClip {
 #[non_exhaustive]
 pub enum CssMaskLayerBoxes {
     /// One authored box sets both origin and clip.
-    Box(CssMaskBox),
+    Box(CssCoordBox),
     /// Two authored slots, in origin/clip order.
     Pair {
-        origin: CssMaskBox,
+        origin: CssCoordBox,
         clip: CssMaskClip,
     },
     /// Clip only; origin remains omitted and expands to its initial.
@@ -70,7 +26,7 @@ pub enum CssMaskLayerBoxes {
 }
 impl CssMaskLayerBoxes {
     #[must_use]
-    pub const fn origin(self) -> Option<CssMaskBox> {
+    pub const fn origin(self) -> Option<CssCoordBox> {
         match self {
             Self::Box(v) | Self::Pair { origin: v, .. } => Some(v),
             Self::NoClip => None,
@@ -139,7 +95,7 @@ macro_rules! mask_list {
         }
     };
 }
-mask_list!(CssMaskBoxList, CssMaskBox, boxes);
+mask_list!(CssMaskBoxList, CssCoordBox, boxes);
 mask_list!(CssMaskClipList, CssMaskClip, clips);
 mask_list!(CssMaskModeList, CssMaskMode, modes);
 mask_list!(CssMaskCompositeList, CssMaskComposite, operators);

@@ -308,7 +308,7 @@ pub(super) fn parse_authored_font_face_value<'i, 't>(
     member_diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     implicit_closures: &mut Vec<usize>,
 ) -> Result<CssAuthoredFontFaceDescriptorValue, ParseError<'i, CssError>> {
-    super::descriptor_values::validate_root(input, "font-face", kind.css_name())?;
+    super::descriptor_values::validate_root(input, "font-face", kind.as_str())?;
     let start = input.state();
     let components = match crate::CssComponentValues::collect_from_parser(input, snapshot) {
         Ok(components) => components,
@@ -366,7 +366,7 @@ fn parse_font_face_value_with_components<'i, 't>(
         crate::error::invalid_component_value(input.current_source_location(), error)
     })?;
     if pending {
-        return parse_descriptor_boundary(input, "font-face", kind.css_name(), |input| {
+        return parse_descriptor_boundary(input, "font-face", kind.as_str(), |input| {
             super::descriptor_values::consume_remaining_components(input)?;
             Ok(CssAuthoredFontFaceDescriptorValue::pending(
                 kind, components,
@@ -394,7 +394,7 @@ pub(crate) fn construct_font_face_descriptor_value(
     let working_source = crate::tokenization::prepare(source);
     let mut parser_input = cssparser::ParserInput::new(&working_source);
     let mut input = Parser::new(&mut parser_input);
-    super::descriptor_values::validate_root(&mut input, "font-face", kind.css_name())
+    super::descriptor_values::validate_root(&mut input, "font-face", kind.as_str())
         .map_err(|error| crate::error::from_parse_error(source, error))?;
     let numeric = crate::numeric::NumericInputContext::components(components, serialized);
     let mut member_diagnostics = Vec::new();
@@ -427,7 +427,7 @@ pub(super) fn parse_font_face_value<'i, 't>(
     member_diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     implicit_closures: &mut Vec<usize>,
 ) -> Result<CssFontFaceDescriptorValue, ParseError<'i, CssError>> {
-    parse_descriptor_boundary(input, "font-face", kind.css_name(), |input| {
+    parse_descriptor_boundary(input, "font-face", kind.as_str(), |input| {
         Ok(match kind {
             CssFontFaceDescriptorKind::FontFamily => {
                 CssFontFaceDescriptorValue::FontFamily(parse_font_face_family(input, numeric)?)
@@ -502,7 +502,7 @@ pub(super) fn parse_font_face_value<'i, 't>(
             }
         })
     })
-    .map_err(|error| with_descriptor_context(error, "font-face", kind.css_name()))
+    .map_err(|error| with_descriptor_context(error, "font-face", kind.as_str()))
 }
 
 fn parse_font_named_instance<'i, 't>(

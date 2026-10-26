@@ -13,20 +13,18 @@ fn specified(
     limits: CssSerializationLimits,
 ) -> Result<String, CssSerializationError> {
     match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::FontSynthesis(value) => {
-            value.synthesis().serialize_specified(limits)
-        }
+        CssKnownPropertyValueRef::FontSynthesis(value) => value.value().serialize_specified(limits),
         CssKnownPropertyValueRef::FontSynthesisWeight(value) => {
-            value.weight().serialize_specified(limits)
+            value.value().serialize_specified(limits)
         }
         CssKnownPropertyValueRef::FontSynthesisStyle(value) => {
-            value.style().serialize_specified(limits)
+            value.value().serialize_specified(limits)
         }
         CssKnownPropertyValueRef::FontSynthesisSmallCaps(value) => {
-            value.small_caps().serialize_specified(limits)
+            value.value().serialize_specified(limits)
         }
         CssKnownPropertyValueRef::FontSynthesisPosition(value) => {
-            value.position().serialize_specified(limits)
+            value.value().serialize_specified(limits)
         }
         _ => panic!("synthesis family"),
     }
@@ -77,10 +75,10 @@ fn checked_four_member_sets_reject_empty_and_emit_every_semantic_combination() {
         else {
             panic!("synthesis")
         };
-        assert_eq!(parsed.synthesis(), &value);
+        assert_eq!(parsed.value(), &value);
         assert_eq!(
             parsed
-                .synthesis()
+                .value()
                 .serialize_specified(Default::default())
                 .unwrap(),
             expected
@@ -91,7 +89,7 @@ fn checked_four_member_sets_reject_empty_and_emit_every_semantic_combination() {
         else {
             panic!("synthesis")
         };
-        assert_eq!(roundtrip.synthesis(), &value);
+        assert_eq!(roundtrip.value(), &value);
     }
 }
 

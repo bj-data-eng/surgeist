@@ -8,6 +8,7 @@
 //! functional tests alongside implementation; this draft names none of them.
 
 use crate::css::support::authored_property;
+use crate::css::support::position_view::CartesianPosition as _;
 use crate::css::support::property_expectations;
 
 use crate::css::support::authored_property::parsed;
@@ -185,9 +186,8 @@ fn malformed_positions_drop_only_their_declaration_and_have_typed_checked_failur
         "left,top",
         "center 1px top 2px",
         "left 1px top 2px right",
-        "x-start y-end",
-        "block-start inline-end",
-        "start end",
+        "x-start block-start",
+        "start x-end",
         "10deg",
         "calc(1deg)",
         "inherit left",
@@ -285,7 +285,7 @@ fn physical_position_and_orientation_keep_exact_scalar_bytes_utf16_and_semantic_
                     let (
                         CssHorizontalPosition::RightOffset(x),
                         CssVerticalPosition::BottomOffset(y),
-                    ) = (value.position().horizontal(), value.position().vertical())
+                    ) = (value.value().horizontal(), value.value().vertical())
                     else {
                         panic!("edge axes")
                     };
@@ -301,14 +301,14 @@ fn physical_position_and_orientation_keep_exact_scalar_bytes_utf16_and_semantic_
                     );
                     assert_eq!(
                         value
-                            .position()
+                            .value()
                             .serialize_specified(Default::default())
                             .unwrap(),
                         "right -0.01px bottom -2%"
                     );
                 }
                 CssKnownPropertyValueRef::ImageOrientation(value) => {
-                    let CssImageOrientation::Flip(Some(angle)) = value.orientation() else {
+                    let CssImageOrientation::Flip(Some(angle)) = value.value() else {
                         panic!("angle + flip")
                     };
                     origin(angle.origin(), raw, "-3.000e1grad");
@@ -317,7 +317,7 @@ fn physical_position_and_orientation_keep_exact_scalar_bytes_utf16_and_semantic_
                     assert_eq!(literal.unit(), CssAngleUnit::Gradians);
                     assert_eq!(
                         value
-                            .orientation()
+                            .value()
                             .serialize_specified(Default::default())
                             .unwrap(),
                         "-30grad flip"

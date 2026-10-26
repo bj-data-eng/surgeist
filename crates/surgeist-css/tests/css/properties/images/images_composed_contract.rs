@@ -46,13 +46,13 @@ fn fronts(property: CssKnownProperty, text: &str) -> Vec<(CssDeclaration, String
 fn image(declaration: &CssDeclaration) -> &CssImageValue {
     match declaration.known().unwrap().property_value().unwrap() {
         CssKnownPropertyValueRef::BackgroundImage(value) => {
-            let [image] = value.images().images() else {
+            let [image] = value.value().images() else {
                 panic!("one background image")
             };
             image
         }
         CssKnownPropertyValueRef::ListStyleImage(value) => value.value(),
-        CssKnownPropertyValueRef::BorderImageSource(value) => value.source(),
+        CssKnownPropertyValueRef::BorderImageSource(value) => value.value(),
         CssKnownPropertyValueRef::Content(value) => {
             let CssContentValue::Generated(value) = value.value() else {
                 panic!("generated replacement image")

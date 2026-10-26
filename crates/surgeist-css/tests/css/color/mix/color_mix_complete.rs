@@ -178,8 +178,8 @@ fn one_component_border_color_uses_complete_shared_mix_grammar() {
         };
         let colors = value.value();
         assert_eq!(colors.kind(), CssBoxSideKind::Physical);
-        assert_eq!(colors.authored_values().len(), 1);
-        let [top, right, bottom, left] = colors.assigned_values();
+        assert_eq!(colors.authored().len(), 1);
+        let [top, right, bottom, left] = colors.assigned();
         assert_eq!(top.color_mix_value().unwrap().components().len(), 3);
         assert_eq!(top, right);
         assert_eq!(top, bottom);

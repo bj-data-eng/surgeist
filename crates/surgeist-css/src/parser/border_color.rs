@@ -1,45 +1,24 @@
 //! Border color pairs and four-side authored grammar.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, unexpected_at};
+use super::side_shapes::{parse_four_sides, parse_side_pair};
+use crate::error::property::{Error, ParseError};
 
 use super::color::parse_color;
-use crate::border_color::CssBorderColorShorthand;
+
 use crate::numeric::NumericInputContext;
-use crate::{CssBorderColorPair, CssBoxSideKind};
+use crate::{CssColor, CssFourSides, CssSidePair};
 
 pub(super) fn parse_border_color_pair<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssBorderColorPair, ParseError<'i, Error>> {
-    let start = parse_color(input, numeric)?;
-    let authored_end = if input.is_exhausted() {
-        None
-    } else {
-        Some(parse_color(input, numeric)?)
-    };
-    Ok(CssBorderColorPair::new(start, authored_end))
+) -> Result<CssSidePair<CssColor>, ParseError<'i, Error>> {
+    parse_side_pair(input, |input| parse_color(input, numeric))
 }
 
 pub(super) fn parse_border_colors<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssBorderColorShorthand, ParseError<'i, Error>> {
-    let kind = if input
-        .try_parse(|input| input.expect_ident_matching("logical"))
-        .is_ok()
-    {
-        CssBoxSideKind::Logical
-    } else {
-        CssBoxSideKind::Physical
-    };
-    let mut colors = Vec::new();
-    while !input.is_exhausted() {
-        colors.push(parse_color(input, numeric)?);
-        if colors.len() == 4 && !input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
-    CssBorderColorShorthand::try_new(kind, colors)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+) -> Result<CssFourSides<CssColor>, ParseError<'i, Error>> {
+    parse_four_sides(input, |input| parse_color(input, numeric))
 }

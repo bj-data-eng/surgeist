@@ -53,7 +53,7 @@ fn boolean_features_preserve_all_four_identities_without_invented_values() {
         assert!(
             matches!(feature(scroll(&condition)), CssContainerScrollFeature::Boolean(kind) if *kind == expected)
         );
-        assert_eq!(expected.name(), name);
+        assert_eq!(expected.as_str(), name);
     }
 }
 
@@ -82,7 +82,7 @@ fn stuck_keywords_have_the_exact_physical_and_logical_edge_domain() {
             value.serialize_tokens(Default::default()).unwrap().as_css(),
             spelling
         );
-        assert_eq!(expected.name(), spelling);
+        assert_eq!(expected.as_str(), spelling);
     }
 }
 
@@ -108,7 +108,7 @@ fn snapped_keywords_keep_both_and_axis_names_without_accepting_edges() {
             value.serialize_tokens(Default::default()).unwrap().as_css(),
             spelling
         );
-        assert_eq!(expected.name(), spelling);
+        assert_eq!(expected.as_str(), spelling);
     }
     assert!(matches!(
         construct("scroll-state(snapped:top)").kind(),
@@ -148,7 +148,7 @@ fn shared_direction_domain_retains_distinct_scrollable_and_scrolled_features() {
                 value.serialize_tokens(Default::default()).unwrap().as_css(),
                 spelling
             );
-            assert_eq!(expected.name(), spelling);
+            assert_eq!(expected.as_str(), spelling);
         }
     }
 }

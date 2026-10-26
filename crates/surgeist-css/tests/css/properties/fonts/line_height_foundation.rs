@@ -80,7 +80,7 @@ fn established_number_length_percentage_and_font_slash_forms_remain_valid() {
     else {
         panic!("unitless zero is line-height");
     };
-    assert!(matches!(value.line_height(), CssLineHeight::Number(_)));
+    assert!(matches!(value.value(), CssLineHeight::Number(_)));
 }
 
 #[test]

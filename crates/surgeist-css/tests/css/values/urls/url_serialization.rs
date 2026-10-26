@@ -23,7 +23,7 @@ fn parsed_background_url(source: &str) -> (CssUrl, bool) {
     else {
         panic!("typed background image: {source}")
     };
-    let [CssImageValue::Url(url)] = image.images().images() else {
+    let [CssImageValue::Url(url)] = image.value().images() else {
         panic!("one retained URL image: {source}")
     };
     (url.clone(), report.is_clean())

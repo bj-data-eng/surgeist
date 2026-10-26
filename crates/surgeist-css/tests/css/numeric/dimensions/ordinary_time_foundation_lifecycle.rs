@@ -29,22 +29,22 @@ enum TimingAggregate {
 fn aggregate(declaration: &CssDeclaration) -> TimingAggregate {
     match declaration.known().unwrap().property_value().unwrap() {
         CssKnownPropertyValueRef::TransitionDuration(value) => {
-            TimingAggregate::Durations(value.durations().clone())
+            TimingAggregate::Durations(value.value().clone())
         }
         CssKnownPropertyValueRef::AnimationDuration(value) => {
-            TimingAggregate::Durations(value.durations().clone())
+            TimingAggregate::Durations(value.value().clone())
         }
         CssKnownPropertyValueRef::TransitionDelay(value) => {
-            TimingAggregate::Delays(value.delays().clone())
+            TimingAggregate::Delays(value.value().clone())
         }
         CssKnownPropertyValueRef::AnimationDelay(value) => {
-            TimingAggregate::Delays(value.delays().clone())
+            TimingAggregate::Delays(value.value().clone())
         }
         CssKnownPropertyValueRef::Transition(value) => {
-            TimingAggregate::Transitions(value.transitions().clone())
+            TimingAggregate::Transitions(value.value().clone())
         }
         CssKnownPropertyValueRef::Animation(value) => {
-            TimingAggregate::Animations(value.animations().clone())
+            TimingAggregate::Animations(value.value().clone())
         }
         other => panic!("typed time property: {other:?}"),
     }
@@ -682,8 +682,8 @@ fn non_time_iteration_and_easing_controls_preserve_exact_values_and_ranges() {
     else {
         panic!("iteration")
     };
-    assert_eq!(counts.iteration_counts().values().len(), 3);
-    let CssAnimationIterationCount::Number(number) = &counts.iteration_counts().values()[0] else {
+    assert_eq!(counts.value().values().len(), 3);
+    let CssAnimationIterationCount::Number(number) = &counts.value().values()[0] else {
         panic!("literal iteration")
     };
     assert_eq!(
@@ -691,11 +691,11 @@ fn non_time_iteration_and_easing_controls_preserve_exact_values_and_ranges() {
         "2.5"
     );
     assert!(matches!(
-        counts.iteration_counts().values()[1],
+        counts.value().values()[1],
         CssAnimationIterationCount::Number(ref value) if value.calculation().is_some()
     ));
     assert!(matches!(
-        counts.iteration_counts().values()[2],
+        counts.value().values()[2],
         CssAnimationIterationCount::Infinite
     ));
     let CssKnownPropertyValueRef::TransitionTimingFunction(easing) = report.syntax()[1]
@@ -707,7 +707,7 @@ fn non_time_iteration_and_easing_controls_preserve_exact_values_and_ranges() {
         panic!("easing")
     };
     assert!(matches!(
-        easing.timing_functions().values(),
+        easing.value().values(),
         [CssEasing::CubicBezier(_), CssEasing::Steps(_)]
     ));
     for (source, property) in [
@@ -771,7 +771,7 @@ mod construction {
                 _ => None,
             })
             .expect("duration fixture");
-        wrapper.durations().values()[0].clone()
+        wrapper.value().values()[0].clone()
     }
 
     #[test]
@@ -959,7 +959,7 @@ mod construction {
         else {
             panic!("transition recovery");
         };
-        assert!(CssTransitionList::try_new(wrapper.transitions().values().to_vec()).is_none());
+        assert!(CssTransitionList::try_new(wrapper.value().values().to_vec()).is_none());
         let report = parse_style_attribute("animation: fade calc(1s");
         let CssKnownPropertyValueRef::Animation(wrapper) = report.syntax()[0]
             .known()
@@ -969,7 +969,7 @@ mod construction {
         else {
             panic!("animation recovery");
         };
-        assert!(CssAnimationList::try_new(wrapper.animations().values().to_vec()).is_none());
+        assert!(CssAnimationList::try_new(wrapper.value().values().to_vec()).is_none());
         // Observation of recovered syntax is not clean construction.
         assert_eq!(
             raw.serialize_tokens(Default::default()).unwrap().as_css(),

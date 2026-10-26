@@ -81,7 +81,7 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
             else {
                 panic!("border")
             };
-            let CssBorderWidth::Length(border) = border.value() else {
+            let CssLineWidth::Length(border) = border.value() else {
                 panic!("length")
             };
             assert!(border.is_quirky_length());
@@ -129,10 +129,10 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
             else {
                 panic!("clip")
             };
-            let CssClip::Rect(clip) = clip.clip() else {
+            let CssClip::Rect(clip) = clip.value() else {
                 panic!("rectangle")
             };
-            let CssClipEdge::Length(clip) = clip.top() else {
+            let CssAutoOr::Value(clip) = clip.top() else {
                 panic!("length")
             };
             assert!(clip.is_quirky_length());
@@ -272,10 +272,10 @@ fn clip_length(original: &CssComponentValue) -> CssNumeric<CssLength> {
     else {
         panic!("clip")
     };
-    let CssClip::Rect(rect) = clip.clip() else {
+    let CssClip::Rect(rect) = clip.value() else {
         panic!("rectangle")
     };
-    let CssClipEdge::Length(value) = rect.top() else {
+    let CssAutoOr::Value(value) = rect.top() else {
         panic!("length")
     };
     value.clone()
@@ -299,7 +299,7 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
         else {
             panic!("border")
         };
-        let CssBorderWidth::Length(nonnegative) = border.value() else {
+        let CssLineWidth::Length(nonnegative) = border.value() else {
             panic!("nonnegative length")
         };
         let direct = CssTextShadowLayer::try_new(
@@ -389,16 +389,13 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
         else {
             panic!("padding")
         };
-        let radius = CssCornerRadiusValue::new(padding.value().length_percentage().clone(), None);
-        assert!(radius.horizontal().is_quirky_length());
+        let radius = CssSidePair::new(padding.value().length_percentage().clone(), None);
+        assert!(radius.first().is_quirky_length());
         assert_eq!(
-            radius
-                .horizontal()
-                .literal()
-                .map(|literal| literal.component()),
+            radius.first().literal().map(|literal| literal.component()),
             Some(original)
         );
-        assert_eq!(radius.vertical().origin(), original.origin());
+        assert_eq!(radius.second().origin(), original.origin());
         assert_eq!(
             radius.serialize_specified(Default::default()).unwrap(),
             "10px"

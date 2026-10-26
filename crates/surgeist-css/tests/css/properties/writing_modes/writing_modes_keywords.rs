@@ -98,7 +98,7 @@ fn assert_keyword(declaration: &CssDeclaration, text: &str, expected: Expected) 
             value.as_css()
         }
         (CssKnownPropertyValueRef::UnicodeBidi(value), Expected::Bidi(expected)) => {
-            assert_eq!(value.bidi(), &expected);
+            assert_eq!(value.value(), &expected);
             value.as_css()
         }
         (CssKnownPropertyValueRef::WritingMode(value), Expected::Writing(expected)) => {
@@ -106,7 +106,7 @@ fn assert_keyword(declaration: &CssDeclaration, text: &str, expected: Expected) 
             value.as_css()
         }
         (CssKnownPropertyValueRef::TextOrientation(value), Expected::Orientation(expected)) => {
-            assert_eq!(value.orientation(), &expected);
+            assert_eq!(value.value(), &expected);
             value.as_css()
         }
         _ => panic!("independently expected typed keyword"),

@@ -20,7 +20,7 @@ fn background(css: &str) -> CssBackground {
     else {
         panic!("typed background")
     };
-    value.background().clone()
+    value.value().clone()
 }
 
 #[test]
@@ -720,7 +720,7 @@ fn nested_color_and_image_grammar_obeys_the_shared_256_level_ceiling() {
             }
             CssKnownPropertyValueRef::BackgroundImage(v) => {
                 assert_eq!(
-                    v.images().serialize_specified(Default::default()).unwrap(),
+                    v.value().serialize_specified(Default::default()).unwrap(),
                     text
                 )
             }

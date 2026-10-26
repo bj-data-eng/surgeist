@@ -189,7 +189,7 @@ fn assert_color_result(value: &CssColor, limits: Limits, expected: Result<&str, 
     }
 }
 
-fn assert_pair_result(value: &CssBorderColorPair, limits: Limits, expected: Result<&str, Kind>) {
+fn assert_pair_result(value: &CssSidePair<CssColor>, limits: Limits, expected: Result<&str, Kind>) {
     let before = value.clone();
     let result = value.serialize_specified(limits);
     assert_eq!(result, value.serialize_specified(limits));
@@ -340,9 +340,12 @@ resources!(
     "alpha(from color-mix(lab(100 0 0), blue))"
 );
 
-fn endpoint_pair() -> CssBorderColorPair {
-    let endpoint = color("color-mix(lab(1e400 0 0), blue)");
-    CssBorderColorPair::new(endpoint.clone(), Some(endpoint))
+fn endpoint_pair() -> CssSidePair<CssColor> {
+    // Two different authored values with the same output: an equal second value is not written.
+    CssSidePair::new(
+        color("color-mix(lab(1e400 0 0), blue)"),
+        Some(color("color-mix(lab(1e401 0 0), blue)")),
+    )
 }
 // Pair root1 + two complete Mix operations: I13/P49;29 +1 +29 bytes.
 resources!(
@@ -358,8 +361,8 @@ resources!(
     "color-mix(lab(100 0 0), blue) color-mix(lab(100 0 0), blue)"
 );
 
-fn prefixed_pair(second: &str) -> CssBorderColorPair {
-    CssBorderColorPair::new(color("color(--é 0)"), Some(color(second)))
+fn prefixed_pair(second: &str) -> CssSidePair<CssColor> {
+    CssSidePair::new(color("color(--é 0)"), Some(color(second)))
 }
 // Actual prefix is13 UTF8 bytes, separator1. Identifier adds no nodes; zero
 // has no rational limbs. Pair1 + prefixI2/P1 + MixI6/P24 yieldsI9/P26.
@@ -527,7 +530,7 @@ fn prefixed_contextual_mix_cannot_skip_required_scratch() {
 }
 #[test]
 fn failing_unbounded_second_mix_keeps_entire_pair_unchanged() {
-    let pair = CssBorderColorPair::new(
+    let pair = CssSidePair::new(
         color("color-mix(lab(1e400 0 0), blue)"),
         Some(color("color-mix(lab(50 1e2000000 0), blue)")),
     );

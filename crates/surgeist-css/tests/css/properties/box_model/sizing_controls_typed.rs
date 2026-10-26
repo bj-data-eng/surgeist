@@ -13,20 +13,20 @@ fn programmatic_size(number: &str, unit: &str) -> CssSizeValue {
 #[test]
 fn pair_construction_preserves_omission_and_width_height_order() {
     let width = programmatic_size("1.5", "px");
-    let single = CssSizePair::new(width.clone(), None);
-    assert_eq!(single.width(), single.height());
-    assert!(single.authored_height().is_none());
+    let single = CssSidePair::new(width.clone(), None);
+    assert_eq!(single.first(), single.second());
+    assert!(single.authored_second().is_none());
     assert_eq!(
         single.serialize_specified(Default::default()).unwrap(),
         "1.5px"
     );
-    let explicit = CssSizePair::new(width.clone(), Some(width.clone()));
+    let explicit = CssSidePair::new(width.clone(), Some(width.clone()));
     assert_ne!(single, explicit);
     assert_eq!(
         explicit.serialize_specified(Default::default()).unwrap(),
-        "1.5px 1.5px"
+        "1.5px"
     );
-    let pair = CssSizePair::new(width, Some(CssSizeValue::Auto));
+    let pair = CssSidePair::new(width, Some(CssSizeValue::Auto));
     assert_eq!(
         pair.serialize_specified(Default::default()).unwrap(),
         "1.5px auto"
@@ -43,7 +43,7 @@ fn pair_construction_preserves_omission_and_width_height_order() {
         CssKnownProperty::MinSize
     );
 
-    let maximum = CssMaxSizePair::new(
+    let maximum = CssSidePair::new(
         CssMaxSizeValue::NONE,
         Some(
             CssMaxSizeValue::try_box_size(CssBoxSize::LengthPercentage(
@@ -66,31 +66,32 @@ fn pair_construction_preserves_omission_and_width_height_order() {
         panic!("max-size")
     };
     assert_eq!(value.value(), &maximum);
-    assert_eq!(maximum.width(), &CssMaxSizeValue::NONE);
-    assert!(maximum.authored_height().is_some());
+    assert_eq!(maximum.first(), &CssMaxSizeValue::NONE);
+    assert!(maximum.authored_second().is_some());
 }
 
 #[test]
 fn exact_and_symbolic_values_share_a_pair_budget() {
     let literal = programmatic_size("1e999", "px");
-    let pair = CssSizePair::new(literal, Some(CssSizeValue::Auto));
+    let pair = CssSidePair::new(literal, Some(CssSizeValue::Auto));
     let text = pair.serialize_specified(Default::default()).unwrap();
     assert_eq!(text.len(), 1007); // 1 + 999 zeros + px + space + auto.
     assert!(text.starts_with('1') && text.ends_with("px auto"));
-    let exactly = CssSerializationLimits::new(2, 2, text.len());
+    // One aggregate node and one for each value.
+    let exactly = CssSerializationLimits::new(3, 3, text.len());
     assert_eq!(pair.serialize_specified(exactly).unwrap(), text);
     assert!(
-        pair.serialize_specified(CssSerializationLimits::new(1, 2, text.len()))
+        pair.serialize_specified(CssSerializationLimits::new(2, 3, text.len()))
             .unwrap_err()
             .is_input_node_limit()
     );
     assert!(
-        pair.serialize_specified(CssSerializationLimits::new(2, 1, text.len()))
+        pair.serialize_specified(CssSerializationLimits::new(3, 2, text.len()))
             .unwrap_err()
             .is_projection_node_limit()
     );
     assert!(
-        pair.serialize_specified(CssSerializationLimits::new(2, 2, text.len() - 1))
+        pair.serialize_specified(CssSerializationLimits::new(3, 3, text.len() - 1))
             .unwrap_err()
             .is_byte_limit()
     );
@@ -105,7 +106,7 @@ fn exact_and_symbolic_values_share_a_pair_budget() {
         )
         .unwrap(),
     ));
-    let raw_pair = CssSizePair::new(raw_math, Some(CssSizeValue::Auto));
+    let raw_pair = CssSidePair::new(raw_math, Some(CssSizeValue::Auto));
     assert_eq!(
         raw_pair.serialize_specified(Default::default()).unwrap(),
         "calc(2% + 1px) auto"
@@ -122,7 +123,7 @@ fn exact_and_symbolic_values_share_a_pair_budget() {
     .unwrap();
     let maximum =
         CssMaxSizeValue::try_box_size(CssBoxSize::CalcSize(calc.try_into().unwrap())).unwrap();
-    let pair = CssMaxSizePair::new(CssMaxSizeValue::NONE, Some(maximum));
+    let pair = CssSidePair::new(CssMaxSizeValue::NONE, Some(maximum));
     let text = "none calc-size(min-content, 1px + size)";
     assert_eq!(pair.serialize_specified(Default::default()).unwrap(), text);
     assert_eq!(
@@ -138,19 +139,20 @@ fn exact_and_symbolic_values_share_a_pair_budget() {
     // One `none`, one calc-size root, one basis keyword, and three numeric
     // expression nodes (sum, size, length) consume six input nodes. The
     // Projection allocates the size and length leaves, a combined scalar,
-    // and their sum; with the keyword and `none`, that is six nodes.
+    // and their sum; with the keyword and `none`, that is six nodes. The pair's
+    // aggregate adds one to each.
     assert_eq!(
-        pair.serialize_specified(CssSerializationLimits::new(6, 6, text.len()))
+        pair.serialize_specified(CssSerializationLimits::new(7, 7, text.len()))
             .unwrap(),
         text
     );
     assert!(
-        pair.serialize_specified(CssSerializationLimits::new(5, 6, text.len()))
+        pair.serialize_specified(CssSerializationLimits::new(6, 7, text.len()))
             .unwrap_err()
             .is_input_node_limit()
     );
     assert!(
-        pair.serialize_specified(CssSerializationLimits::new(6, 5, text.len()))
+        pair.serialize_specified(CssSerializationLimits::new(7, 6, text.len()))
             .unwrap_err()
             .is_projection_node_limit()
     );
@@ -162,10 +164,10 @@ fn exact_and_symbolic_values_share_a_pair_budget() {
     };
     assert_eq!(parsed_pair.value(), &pair);
     let (CssBoxSize::CalcSize(direct), CssBoxSize::CalcSize(from_source)) = (
-        pair.authored_height().unwrap().box_size().unwrap(),
+        pair.authored_second().unwrap().box_size().unwrap(),
         parsed_pair
             .value()
-            .authored_height()
+            .authored_second()
             .unwrap()
             .box_size()
             .unwrap(),
@@ -266,7 +268,7 @@ fn finite_controls_have_canonical_keyword_sequences_and_limits() {
 
 #[test]
 fn pair_equality_ignores_numeric_origins_but_retains_structure() {
-    let direct = CssSizePair::new(programmatic_size("1", "px"), None);
+    let direct = CssSidePair::new(programmatic_size("1", "px"), None);
     let source = parsed("size", "1px");
     let CssKnownPropertyValueRef::Size(value) = source.known().unwrap().property_value().unwrap()
     else {
@@ -275,17 +277,17 @@ fn pair_equality_ignores_numeric_origins_but_retains_structure() {
     assert_eq!(value.value(), &direct);
     assert_eq!(
         direct,
-        CssSizePair::new(programmatic_size("1.0", "px"), None)
+        CssSidePair::new(programmatic_size("1.0", "px"), None)
     );
     assert_ne!(
         direct,
-        CssSizePair::new(
+        CssSidePair::new(
             programmatic_size("1", "px"),
             Some(programmatic_size("1", "px"))
         )
     );
     assert_ne!(
-        CssMaxSizePair::new(CssMaxSizeValue::NONE, None),
-        CssMaxSizePair::new(CssMaxSizeValue::NONE, Some(CssMaxSizeValue::NONE))
+        CssSidePair::new(CssMaxSizeValue::NONE, None),
+        CssSidePair::new(CssMaxSizeValue::NONE, Some(CssMaxSizeValue::NONE))
     );
 }

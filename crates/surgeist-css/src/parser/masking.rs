@@ -6,7 +6,7 @@ use super::background::{
     parse_image_value,
 };
 use super::combinators::{Combinator, Tail, attempt, commit, fill, parse_group};
-use super::position::parse_physical_position;
+use super::position::parse_position_prefix;
 use super::property_input::Parser;
 use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use crate::syntax::*;
@@ -30,12 +30,10 @@ keyword_parser!(parse_clip_rule, CssClipRule, "nonzero" => Nonzero, "evenodd" =>
 
 pub(super) fn parse_mask_box<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> Result<CssMaskBox, ParseError<'i, Error>> {
+) -> Result<CssCoordBox, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
-    CssBoxEdgeKeyword::from_keyword(&ident)
-        .and_then(CssMaskBox::try_new)
-        .ok_or_else(|| unexpected_at(keyword_location))
+    CssCoordBox::from_keyword(&ident).ok_or_else(|| unexpected_at(keyword_location))
 }
 pub(super) fn parse_mask_clip<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -174,7 +172,7 @@ pub(super) fn parse_mask_layer<'i, 't>(
             1 => fill(&mut repeat, input, parse_background_repeat),
             2 => {
                 if !fill(&mut position, input, |input| {
-                    parse_physical_position(input, numeric)
+                    parse_position_prefix(input, numeric)
                 })? {
                     return Ok(false);
                 }

@@ -215,7 +215,7 @@ fn parses_supported_length_units_as_authored_dimensions() {
         );
         // Values 4 §6 unit names are ASCII case-insensitive.
         assert!(
-            expected_unit.as_css_str().eq_ignore_ascii_case(unit),
+            expected_unit.as_str().eq_ignore_ascii_case(unit),
             "{authored} names {expected_unit:?}"
         );
         assert_eq!(authored, format!("{}{}", number.representation(), unit));
@@ -303,7 +303,7 @@ fn unit_matrix_accepts_every_supported_length_unit_in_ordinary_length_contexts()
             "{authored} retains its unit spelling"
         );
         assert!(
-            unit.as_css_str().eq_ignore_ascii_case(authored_unit),
+            unit.as_str().eq_ignore_ascii_case(authored_unit),
             "{authored} names its Values 4 length unit {unit:?}"
         );
     }
@@ -424,7 +424,7 @@ fn parses_calc_in_edge_shorthands() {
         Margin,
         value
     );
-    let [top, right, bottom, left] = edges.assigned_values();
+    let [top, right, bottom, left] = edges.assigned();
     let CssMarginValue::LengthPercentage(top) = top else {
         panic!("expected checked calculation")
     };
@@ -442,7 +442,7 @@ fn parses_calc_in_edge_shorthands() {
         right.serialize_specified(Default::default()).unwrap(),
         "2px"
     );
-    assert_eq!(edges.authored_values().len(), 2);
+    assert_eq!(edges.authored().len(), 2);
 
     assert_eq!(style_rule(&sheet.rules()[0]).declarations().len(), 1);
 }
@@ -455,8 +455,8 @@ fn parses_authored_normal_gap_without_canonicalizing_it() {
     else {
         panic!("gap wrapper")
     };
-    assert_eq!(value.value().row(), &CssGapValue::Normal);
-    assert!(value.value().authored_column().is_none());
+    assert_eq!(value.value().first(), &CssGapValue::Normal);
+    assert!(value.value().authored_second().is_none());
     assert_eq!(value.as_css(), "normal");
 }
 
@@ -468,7 +468,7 @@ fn parses_authored_calc_gap_without_canonicalizing_it() {
     else {
         panic!("gap wrapper")
     };
-    match value.value().row() {
+    match value.value().first() {
         CssGapValue::LengthPercentage(length) => {
             assert!(length.calculation().is_some());
             assert_eq!(value.as_css(), "calc(8px + 2%)");

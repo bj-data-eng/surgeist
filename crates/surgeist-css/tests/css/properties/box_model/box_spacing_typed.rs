@@ -1,10 +1,9 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
 use surgeist_css::{
-    CssBoxSideKind, CssCalculation, CssComponentValue, CssComponentValueRef, CssLengthPercentage,
-    CssMarginPair, CssMarginShorthand, CssMarginValue, CssNonNegative, CssNumeric, CssPaddingPair,
-    CssPaddingShorthand, CssPaddingValue, CssSerializationLimits, CssValueOrigin, CssValueTokenRef,
-    parse_component_values,
+    CssBoxSideKind, CssCalculation, CssComponentValue, CssComponentValueRef, CssFourSides,
+    CssLengthPercentage, CssMarginValue, CssNonNegative, CssNumeric, CssPaddingValue,
+    CssSerializationLimits, CssSidePair, CssValueOrigin, CssValueTokenRef, parse_component_values,
 };
 
 fn component(text: &str) -> CssComponentValue {
@@ -183,31 +182,28 @@ fn typed_margin_and_padding_equality_excludes_origin_but_retains_structure() {
 
 #[test]
 fn logical_pairs_keep_authored_cardinality_and_repeat_start_semantically() {
-    let one = CssMarginPair::new(margin("auto"), None);
-    assert_eq!(one.start(), one.end());
-    assert!(one.authored_end().is_none());
+    let one = CssSidePair::new(margin("auto"), None);
+    assert_eq!(one.first(), one.second());
+    assert!(one.authored_second().is_none());
     assert_eq!(one.serialize_specified(Default::default()).unwrap(), "auto");
-    let two = CssMarginPair::new(margin("auto"), Some(margin("auto")));
-    assert_eq!(two.start(), two.end());
+    let two = CssSidePair::new(margin("auto"), Some(margin("auto")));
+    assert_eq!(two.first(), two.second());
     assert_ne!(
         one, two,
         "authored one and two values are different structures"
     );
-    assert_eq!(
-        two.serialize_specified(Default::default()).unwrap(),
-        "auto auto"
-    );
+    assert_eq!(two.serialize_specified(Default::default()).unwrap(), "auto");
 
-    let padding_one = CssPaddingPair::new(padding("1px"), None);
-    assert_eq!(padding_one.end(), padding_one.start());
+    let padding_one = CssSidePair::new(padding("1px"), None);
+    assert_eq!(padding_one.second(), padding_one.first());
     assert_eq!(
         padding_one.serialize_specified(Default::default()).unwrap(),
         "1px"
     );
-    let padding_two = CssPaddingPair::new(padding("1px"), Some(padding("2%")));
+    let padding_two = CssSidePair::new(padding("1px"), Some(padding("2%")));
     assert_eq!(
         padding_two
-            .authored_end()
+            .authored_second()
             .unwrap()
             .serialize_specified(Default::default())
             .unwrap(),
@@ -221,33 +217,32 @@ fn logical_pairs_keep_authored_cardinality_and_repeat_start_semantically() {
 
 #[test]
 fn four_side_shorthands_preserve_kind_cardinality_and_exact_role_order() {
-    let one = CssMarginShorthand::try_new(CssBoxSideKind::Physical, vec![margin("1px")]).unwrap();
+    let one = CssFourSides::try_new(CssBoxSideKind::Physical, vec![margin("1px")]).unwrap();
     assert_eq!(
-        one.assigned_values()
+        one.assigned()
             .map(|value| value.serialize_specified(Default::default()).unwrap()),
         ["1px", "1px", "1px", "1px"]
     );
-    let two =
-        CssMarginShorthand::try_new(CssBoxSideKind::Logical, ["1px", "2px"].map(margin).to_vec())
-            .unwrap();
+    let two = CssFourSides::try_new(CssBoxSideKind::Logical, ["1px", "2px"].map(margin).to_vec())
+        .unwrap();
     assert_eq!(
-        two.assigned_values()
+        two.assigned()
             .map(|value| value.serialize_specified(Default::default()).unwrap()),
         ["1px", "2px", "1px", "2px"]
     );
-    let physical = CssMarginShorthand::try_new(
+    let physical = CssFourSides::try_new(
         CssBoxSideKind::Physical,
         ["1px", "2px", "3px", "4px"].map(margin).to_vec(),
     )
     .unwrap();
-    let logical = CssMarginShorthand::try_new(
+    let logical = CssFourSides::try_new(
         CssBoxSideKind::Logical,
         ["1px", "2px", "3px", "4px"].map(margin).to_vec(),
     )
     .unwrap();
     assert_eq!(physical.kind(), CssBoxSideKind::Physical);
     assert_eq!(logical.kind(), CssBoxSideKind::Logical);
-    assert_eq!(physical.authored_values().len(), 4);
+    assert_eq!(physical.authored().len(), 4);
     assert_ne!(physical, logical);
     assert_eq!(
         physical.serialize_specified(Default::default()).unwrap(),
@@ -259,56 +254,55 @@ fn four_side_shorthands_preserve_kind_cardinality_and_exact_role_order() {
     );
     // Physical assignments are top, right, bottom, left. Logical assignments
     // are block-start, inline-start, block-end, inline-end (§4.7).
-    for assignments in [physical.assigned_values(), logical.assigned_values()] {
+    for assignments in [physical.assigned(), logical.assigned()] {
         assert_eq!(
             assignments.map(|value| value.serialize_specified(Default::default()).unwrap()),
             ["1px", "2px", "3px", "4px"]
         );
     }
-    let three = CssMarginShorthand::try_new(
+    let three = CssFourSides::try_new(
         CssBoxSideKind::Logical,
         ["1px", "2px", "3px"].map(margin).to_vec(),
     )
     .unwrap();
     assert_eq!(
         three
-            .assigned_values()
+            .assigned()
             .map(|value| value.serialize_specified(Default::default()).unwrap()),
         ["1px", "2px", "3px", "2px"]
     );
     assert_ne!(three, logical);
-    assert!(CssMarginShorthand::try_new(CssBoxSideKind::Physical, vec![]).is_none());
-    assert!(CssMarginShorthand::try_new(CssBoxSideKind::Logical, vec![margin("0"); 5]).is_none());
+    assert!(CssFourSides::<CssMarginValue>::try_new(CssBoxSideKind::Physical, vec![]).is_none());
+    assert!(CssFourSides::try_new(CssBoxSideKind::Logical, vec![margin("0"); 5]).is_none());
 
-    let padding_shorthand = CssPaddingShorthand::try_new(
+    let padding_shorthand = CssFourSides::try_new(
         CssBoxSideKind::Logical,
         ["1px", "2%", "3px", "4%"].map(padding).to_vec(),
     )
     .unwrap();
     assert_eq!(padding_shorthand.kind(), CssBoxSideKind::Logical);
-    assert_eq!(padding_shorthand.authored_values().len(), 4);
+    assert_eq!(padding_shorthand.authored().len(), 4);
     assert_eq!(
         padding_shorthand
-            .assigned_values()
+            .assigned()
             .map(|value| value.serialize_specified(Default::default()).unwrap()),
         ["1px", "2%", "3px", "4%"]
     );
-    let one_padding =
-        CssPaddingShorthand::try_new(CssBoxSideKind::Logical, vec![padding("5px")]).unwrap();
+    let one_padding = CssFourSides::try_new(CssBoxSideKind::Logical, vec![padding("5px")]).unwrap();
     assert_eq!(
         one_padding
-            .assigned_values()
+            .assigned()
             .map(|value| value.serialize_specified(Default::default()).unwrap()),
         ["5px", "5px", "5px", "5px"]
     );
-    let two_padding = CssPaddingShorthand::try_new(
+    let two_padding = CssFourSides::try_new(
         CssBoxSideKind::Physical,
         vec![padding("5px"), padding("6%")],
     )
     .unwrap();
     assert_eq!(
         two_padding
-            .assigned_values()
+            .assigned()
             .map(|value| value.serialize_specified(Default::default()).unwrap()),
         ["5px", "6%", "5px", "6%"]
     );
@@ -318,13 +312,13 @@ fn four_side_shorthands_preserve_kind_cardinality_and_exact_role_order() {
             .unwrap(),
         "logical 1px 2% 3px 4%"
     );
-    assert!(CssPaddingShorthand::try_new(CssBoxSideKind::Physical, vec![]).is_none());
-    assert!(CssPaddingShorthand::try_new(CssBoxSideKind::Logical, vec![padding("0"); 5]).is_none());
+    assert!(CssFourSides::<CssMarginValue>::try_new(CssBoxSideKind::Physical, vec![]).is_none());
+    assert!(CssFourSides::try_new(CssBoxSideKind::Logical, vec![padding("0"); 5]).is_none());
 }
 
 #[test]
 fn combined_serialization_budgets_cover_every_child_and_logical_switch() {
-    let pair = CssMarginPair::new(margin("1px"), Some(margin("2px")));
+    let pair = CssSidePair::new(margin("1px"), Some(margin("2px")));
     assert!(
         pair.serialize_specified(CssSerializationLimits::new(1, 9, 99))
             .unwrap_err()
@@ -335,7 +329,7 @@ fn combined_serialization_budgets_cover_every_child_and_logical_switch() {
             .unwrap_err()
             .is_projection_node_limit()
     );
-    let logical = CssPaddingShorthand::try_new(
+    let logical = CssFourSides::try_new(
         CssBoxSideKind::Logical,
         vec![padding("1px"), padding("2px")],
     )

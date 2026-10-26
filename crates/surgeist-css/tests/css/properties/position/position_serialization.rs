@@ -7,7 +7,7 @@ use surgeist_css::{
     CssHorizontalPosition as H, CssSerializationLimits as L, CssVerticalPosition as V, *,
 };
 
-fn parsed(input: &str) -> CssPhysicalPosition {
+fn parsed(input: &str) -> CssPosition {
     let report = parse_style_attribute(&format!("mask-position: {input}"));
     assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::MaskPosition(value) = report.syntax()[0]
@@ -18,7 +18,7 @@ fn parsed(input: &str) -> CssPhysicalPosition {
     else {
         panic!("expected mask-position");
     };
-    value.positions().positions()[0].clone()
+    value.value().positions()[0].clone()
 }
 
 #[test]

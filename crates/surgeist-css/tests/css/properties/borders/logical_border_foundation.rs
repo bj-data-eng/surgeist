@@ -204,17 +204,17 @@ fn omitted_facets_use_logical_longhand_initials_in_facet_major_order() {
     }
     // Existing checked aggregate independently models exactly the same omissions
     // and canonical specified order without a new logical-only domain type.
-    let partial = CssBorder::try_new(None, Some(CssBorderStyle::Solid), None).unwrap();
+    let partial = CssBorder::try_new(None, Some(CssLineStyle::Solid), None).unwrap();
     assert_eq!(partial.width(), None);
-    assert_eq!(partial.style(), Some(CssBorderStyle::Solid));
+    assert_eq!(partial.style(), Some(CssLineStyle::Solid));
     assert_eq!(partial.color(), None);
     assert_eq!(
         partial.serialize_specified(Default::default()).unwrap(),
         "solid"
     );
     let full = CssBorder::try_new(
-        Some(CssBorderWidth::Thin),
-        Some(CssBorderStyle::Solid),
+        Some(CssLineWidth::Thin),
+        Some(CssLineStyle::Solid),
         Some(authored_color("currentcolor")),
     )
     .unwrap();

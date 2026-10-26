@@ -1032,12 +1032,12 @@ fn auto_timing_name(observed: &Observed<'_>) {
     match sole_value(observed) {
         CssKnownPropertyValueRef::AnimationName(value) => {
             assert!(matches!(
-                value.names().names(),
+                value.value().names(),
                 [surgeist_css::CssAnimationName::Custom(name)] if name.as_str() == "auto"
             ));
             assert_eq!(
                 value
-                    .names()
+                    .value()
                     .serialize_specified(Default::default())
                     .unwrap(),
                 "auto"
@@ -1045,12 +1045,12 @@ fn auto_timing_name(observed: &Observed<'_>) {
         }
         CssKnownPropertyValueRef::TransitionProperty(value) => {
             assert!(matches!(
-                value.properties().properties(),
+                value.value().properties(),
                 [surgeist_css::CssTransitionProperty::Custom(name)] if name.as_str() == "auto"
             ));
             assert_eq!(
                 value
-                    .properties()
+                    .value()
                     .serialize_specified(Default::default())
                     .unwrap(),
                 "auto"

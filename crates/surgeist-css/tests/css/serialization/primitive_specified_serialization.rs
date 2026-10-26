@@ -176,7 +176,7 @@ fn image_rendering_represented_states_emit_canonical_keywords() {
     cases!(
         "image-rendering",
         ImageRendering,
-        rendering,
+        value,
         [
             (CssImageRendering::Auto, "auto"),
             (CssImageRendering::CrispEdges, "crisp-edges"),
@@ -190,7 +190,7 @@ fn object_fit_represented_states_emit_canonical_keywords() {
     cases!(
         "object-fit",
         ObjectFit,
-        fit,
+        value,
         [
             (CssObjectFit::Fill, "fill"),
             (CssObjectFit::Contain, "contain"),
@@ -235,7 +235,7 @@ fn resize_represented_states_emit_canonical_keywords() {
     cases!(
         "resize",
         Resize,
-        resize,
+        value,
         [
             (CssResize::None, "none"),
             (CssResize::Both, "both"),
@@ -250,7 +250,7 @@ fn isolation_represented_states_emit_canonical_keywords() {
     cases!(
         "isolation",
         Isolation,
-        isolation,
+        value,
         [
             (CssIsolation::Auto, "auto"),
             (CssIsolation::Isolate, "isolate"),
@@ -263,7 +263,7 @@ fn blend_mode_represented_states_emit_canonical_keywords() {
     cases!(
         "mix-blend-mode",
         MixBlendMode,
-        mode,
+        value,
         [
             (CssBlendMode::Normal, "normal"),
             (CssBlendMode::Darken, "darken"),
@@ -290,7 +290,7 @@ fn transform_box_checked_edges_emit_canonical_keywords() {
     cases!(
         "transform-box",
         TransformBox,
-        reference_box,
+        value,
         [
             (
                 CssTransformBox::try_new(CssBoxEdgeKeyword::ContentBox).unwrap(),
@@ -328,7 +328,7 @@ fn escaped_keyword_identity_canonicalizes_without_changing_authored_text() {
     };
     assert_eq!(
         wrapper
-            .fit()
+            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         "scale-down"

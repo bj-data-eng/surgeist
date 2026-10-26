@@ -20,9 +20,9 @@ const NAMES: [&str; 20] = [
 
 fn families(declaration: &CssDeclaration) -> &CssFontFamilyList {
     match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::FontFamily(value) => value.families(),
+        CssKnownPropertyValueRef::FontFamily(value) => value.value(),
         CssKnownPropertyValueRef::Font(value) => {
-            let CssFontValue::Explicit(value) = value.font() else {
+            let CssFontValue::Explicit(value) = value.value() else {
                 panic!("explicit font tail");
             };
             value.families()

@@ -14,7 +14,7 @@ fn positions(source: &CssDeclaration) -> &CssBackgroundPositionList {
     else {
         panic!("expected authored background position");
     };
-    value.positions()
+    value.value()
 }
 
 fn completed(source: &CssDeclaration) -> CssLonghandContribution {

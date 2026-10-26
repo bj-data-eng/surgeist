@@ -27,7 +27,7 @@ fn orientation(source: &CssDeclaration) -> &CssImageOrientation {
     else {
         panic!("orientation")
     };
-    value.orientation()
+    value.value()
 }
 fn gradient(source: &CssDeclaration) -> &CssGradient {
     let CssKnownPropertyValueRef::BackgroundImage(value) =
@@ -35,7 +35,7 @@ fn gradient(source: &CssDeclaration) -> &CssGradient {
     else {
         panic!("background image")
     };
-    let [CssImageValue::Gradient(gradient)] = value.images().images() else {
+    let [CssImageValue::Gradient(gradient)] = value.value().images() else {
         panic!("one gradient")
     };
     gradient

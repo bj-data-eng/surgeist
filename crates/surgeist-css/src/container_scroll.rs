@@ -48,7 +48,7 @@ pub enum CssContainerScrollFeatureKind {
     Scrolled,
 }
 impl CssContainerScrollFeatureKind {
-    pub const fn name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Stuck => "stuck",
             Self::Snapped => "snapped",
@@ -59,7 +59,7 @@ impl CssContainerScrollFeatureKind {
     pub(crate) fn parse(name: &str) -> Option<Self> {
         [Self::Stuck, Self::Snapped, Self::Scrollable, Self::Scrolled]
             .into_iter()
-            .find(|kind| name.eq_ignore_ascii_case(kind.name()))
+            .find(|kind| name.eq_ignore_ascii_case(kind.as_str()))
     }
 }
 
@@ -81,7 +81,7 @@ macro_rules! keywords {
         #[non_exhaustive]
         pub enum $name { $($variant),+ }
         impl $name {
-            pub const fn name(self) -> &'static str {
+            pub const fn as_str(self) -> &'static str {
                 match self { $(Self::$variant => $spelling),+ }
             }
             pub(crate) fn parse(name: &str) -> Option<Self> {

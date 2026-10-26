@@ -22,12 +22,12 @@ fn kind_from_sheet(name: &str, value: &str) -> CssFontFaceDescriptorKind {
     assert_eq!(records.len(), 2, "{name}: {value}");
     assert!(matches!(records[0].value(), Authored::Ordinary(_)));
     let kind = records[0].value().kind();
-    assert_eq!(kind.css_name(), name);
+    assert_eq!(kind.as_str(), name);
     assert_eq!(
         records[0].position().unwrap().byte_offset().value(),
         source.find(name).unwrap()
     );
-    assert_eq!(records[1].value().kind().css_name(), "font-display");
+    assert_eq!(records[1].value().kind().as_str(), "font-display");
     kind
 }
 
@@ -105,14 +105,14 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
     };
     let records: Vec<_> = face.descriptors().occurrences().collect();
     assert_eq!(records.len(), 5);
-    assert_eq!(records[0].value().kind().css_name(), "font-family");
-    assert_eq!(records[4].value().kind().css_name(), "font-display");
+    assert_eq!(records[0].value().kind().as_str(), "font-family");
+    assert_eq!(records[4].value().kind().as_str(), "font-display");
     for (record, marker) in [
         (records[1], format!("{name}:{first}")),
         (records[2], format!("{name}:{last}")),
         (records[3], format!("{name}:env")),
     ] {
-        assert_eq!(record.value().kind().css_name(), name);
+        assert_eq!(record.value().kind().as_str(), name);
         assert_eq!(
             record.position().unwrap().byte_offset().value(),
             source.find(&marker).unwrap()
@@ -370,7 +370,7 @@ fn unknown_descriptor_recovers_locally_and_does_not_discard_historical_siblings(
     let names: Vec<_> = face
         .descriptors()
         .occurrences()
-        .map(|record| record.value().kind().css_name())
+        .map(|record| record.value().kind().as_str())
         .collect();
     assert_eq!(names, ["font-family", "src", "font-display"]);
 }

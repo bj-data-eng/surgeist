@@ -17,7 +17,7 @@ fn known(source: &str, name: &str) {
     let CssMediaConditionKind::Feature(feature) = condition.kind() else {
         panic!("known feature: {source}");
     };
-    assert_eq!(feature.name(), name);
+    assert_eq!(feature.as_str(), name);
 }
 
 fn effective(id: &str) {
@@ -185,7 +185,7 @@ fn normalization_preserves_import_alternatives_and_symbolic_media_origins() {
         panic!("checked condition");
     };
     assert!(
-        matches!(condition.kind(), CssMediaConditionKind::Feature(feature) if feature.name() == "width")
+        matches!(condition.kind(), CssMediaConditionKind::Feature(feature) if feature.as_str() == "width")
     );
     assert_eq!(
         constructed

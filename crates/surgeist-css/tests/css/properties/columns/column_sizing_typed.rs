@@ -60,8 +60,8 @@ fn exact_count_and_columns_emit_all_effective_values_under_one_budget() {
         count.serialize_specified(Default::default()).unwrap(),
         "2147483648"
     );
-    let columns = CssColumns::new(CssColumnWidth::Auto, count);
-    assert_eq!(columns.width(), &CssColumnWidth::Auto);
+    let columns = CssColumns::new(CssSizeValue::Auto, count);
+    assert_eq!(columns.width(), &CssSizeValue::Auto);
     assert_eq!(
         columns
             .count()
@@ -117,9 +117,9 @@ fn parsed_and_programmatic_exact_counts_agree_without_origin_equality() {
         CssNumeric::<CssInteger, CssPositive>::try_from_literal(exact_positive("2147483648"))
             .unwrap(),
     );
-    assert_eq!(parsed.count(), &direct);
+    assert_eq!(parsed.value(), &direct);
     let (CssColumnCount::Count(from_source), CssColumnCount::Count(programmatic)) =
-        (parsed.count(), &direct)
+        (parsed.value(), &direct)
     else {
         panic!("exact counts")
     };
@@ -140,7 +140,7 @@ fn parsed_and_programmatic_exact_counts_agree_without_origin_equality() {
 
 #[test]
 fn box_size_and_integer_math_remain_symbolic_at_the_column_boundary() {
-    let width = CssColumnWidth::BoxSize(CssBoxSize::LengthPercentage(
+    let width = CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(
         CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token("2.5%").unwrap(),
         )
@@ -161,7 +161,7 @@ fn box_size_and_integer_math_remain_symbolic_at_the_column_boundary() {
         count.serialize_specified(Default::default()).unwrap(),
         "calc(3)"
     );
-    let columns = CssColumns::new(CssColumnWidth::Auto, CssColumnCount::Count(count));
+    let columns = CssColumns::new(CssSizeValue::Auto, CssColumnCount::Count(count));
     assert_eq!(
         columns.serialize_specified(Default::default()).unwrap(),
         "auto calc(3)"
@@ -176,12 +176,12 @@ fn box_size_and_integer_math_remain_symbolic_at_the_column_boundary() {
     else {
         panic!("columns")
     };
-    assert_eq!(parsed.columns(), &columns);
+    assert_eq!(parsed.value(), &columns);
 }
 
 #[test]
 fn two_symbolic_children_share_projection_and_output_limits() {
-    let width = CssColumnWidth::BoxSize(CssBoxSize::LengthPercentage(
+    let width = CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(
         CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
             CssCalculation::<CssLengthPercentage>::try_from_components(
                 parse_component_values("calc(1px + 2%)").unwrap(),

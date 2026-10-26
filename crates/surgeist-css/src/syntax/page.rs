@@ -1,4 +1,5 @@
 //! Authored Page selectors and distinct Page/margin descriptor domains.
+use crate::CssAutoOr;
 use crate::{
     CssComponentValues, CssDeclaration, CssDeclarationList, CssDescriptorOccurrence,
     CssGlobalKeyword, CssImportance, CssLength, CssNonNegative, CssNumeric, CssParsedOrigin,
@@ -24,7 +25,7 @@ impl CssPagePseudo {
         }
     }
     #[must_use]
-    pub const fn css_name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Left => "left",
             Self::Right => "right",
@@ -163,7 +164,7 @@ pub enum CssPageDescriptorKind {
 }
 impl CssPageDescriptorKind {
     #[must_use]
-    pub const fn css_name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Size => "size",
             Self::PageOrientation => "page-orientation",
@@ -178,7 +179,7 @@ impl CssPageDescriptorKind {
     pub fn from_name(name: &str) -> Option<Self> {
         [Self::Size, Self::PageOrientation, Self::Marks, Self::Bleed]
             .into_iter()
-            .find(|kind| name.eq_ignore_ascii_case(kind.css_name()))
+            .find(|kind| name.eq_ignore_ascii_case(kind.as_str()))
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -276,17 +277,11 @@ impl CssPageMarks {
     }
 }
 #[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssPageBleed {
-    Auto,
-    Length(CssNumeric<CssLength>),
-}
-#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum PageValueData {
     Size(CssPageSizeValue),
     PageOrientation(CssPageOutputOrientation),
     Marks(CssPageMarks),
-    Bleed(CssPageBleed),
+    Bleed(CssAutoOr<CssNumeric<CssLength>>),
     Global(CssGlobalKeyword),
     Pending(crate::CssSubstitutionDependentValue),
 }
@@ -296,7 +291,7 @@ pub enum CssPageDescriptorValueRef<'a> {
     Size(&'a CssPageSizeValue),
     PageOrientation(CssPageOutputOrientation),
     Marks(CssPageMarks),
-    Bleed(&'a CssPageBleed),
+    Bleed(&'a CssAutoOr<CssNumeric<CssLength>>),
     Global(CssGlobalKeyword),
     Pending(&'a crate::CssSubstitutionDependentValue),
 }
@@ -492,7 +487,7 @@ pub enum CssMarginBox {
 }
 impl CssMarginBox {
     #[must_use]
-    pub const fn css_name(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::TopLeftCorner => "top-left-corner",
             Self::TopLeft => "top-left",
@@ -532,7 +527,7 @@ impl CssMarginBox {
             Self::RightBottom,
         ]
         .into_iter()
-        .find(|v| name.eq_ignore_ascii_case(v.css_name()))
+        .find(|v| name.eq_ignore_ascii_case(v.as_str()))
     }
 }
 #[derive(Clone, Debug, PartialEq)]

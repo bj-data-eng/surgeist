@@ -1,11 +1,12 @@
 //! Exact Box Alignment gap grammars.
 
 use super::property_input::Parser;
+use super::side_shapes::parse_side_pair;
 use crate::error::property::{Error, ParseError};
 
 use super::values::parse_nonnegative_length_percentage;
 use crate::numeric::NumericInputContext;
-use crate::{CssGapShorthand, CssGapValue};
+use crate::{CssGapValue, CssSidePair};
 
 pub(super) fn parse_gap_value<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -24,12 +25,6 @@ pub(super) fn parse_gap_value<'i, 't>(
 pub(super) fn parse_gap_shorthand<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssGapShorthand, ParseError<'i, Error>> {
-    let row = parse_gap_value(input, numeric)?;
-    let column = if input.is_exhausted() {
-        None
-    } else {
-        Some(parse_gap_value(input, numeric)?)
-    };
-    Ok(CssGapShorthand::new(row, column))
+) -> Result<CssSidePair<CssGapValue>, ParseError<'i, Error>> {
+    parse_side_pair(input, |input| parse_gap_value(input, numeric))
 }

@@ -257,7 +257,7 @@ fn public_surface_exposes_checked_core_font_models() {
     else {
         panic!("expected font-size");
     };
-    let size_kind = match size.size() {
+    let size_kind = match size.value() {
         CssFontSize::Medium => "medium",
         _ => "future font size",
     };
@@ -271,7 +271,7 @@ fn public_surface_exposes_checked_core_font_models() {
     else {
         panic!("expected font-family");
     };
-    let item = &family.families().families()[0];
+    let item = &family.value().families()[0];
     assert_eq!(item.kind(), CssFontFamilyNameKind::Generic);
     assert_eq!(item.generic_family(), Some(CssGenericFontFamily::Serif));
 
@@ -347,7 +347,7 @@ fn public_surface_exposes_checked_font_control_models() {
     else {
         panic!("expected font-size-adjust");
     };
-    assert!(matches!(adjust.size_adjust(), CssFontSizeAdjust::None));
+    assert!(matches!(adjust.value(), CssFontSizeAdjust::None));
 }
 
 #[test]
