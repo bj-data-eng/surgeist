@@ -23,8 +23,8 @@ use crate::{
     CssFontWeight, CssFontWidthKeyword, CssLineHeight, CssValueOrigin,
 };
 use crate::{
-    CssColorProfileRule, CssContainerScrollQuery, CssContainerStyleQuery, CssFontFeatureValuesRule,
-    CssFontPaletteValuesRule,
+    CssColorProfileRule, CssCondition, CssFontFeatureValuesRule, CssFontPaletteValuesRule,
+    CssScrollStateLeaf, CssStyleQueryLeaf,
 };
 use std::sync::Arc;
 
@@ -395,18 +395,18 @@ pub enum CssImportLayer {
 /// not load the imported resource.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssImportSupports {
-    condition: CssSupportsCondition,
+    condition: CssCondition<CssSupportsLeaf>,
 }
 
 impl CssImportSupports {
     #[must_use]
-    pub(crate) const fn new(condition: CssSupportsCondition) -> Self {
+    pub(crate) const fn new(condition: CssCondition<CssSupportsLeaf>) -> Self {
         Self { condition }
     }
 
     /// Returns the authored declaration test or full supports condition.
     #[must_use]
-    pub const fn condition(&self) -> &CssSupportsCondition {
+    pub const fn condition(&self) -> &CssCondition<CssSupportsLeaf> {
         &self.condition
     }
 }
@@ -956,7 +956,7 @@ impl CssMediaRule {
 /// not evaluate support, match selectors, apply cascade, or resolve values.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSupportsRule {
-    condition: CssSupportsCondition,
+    condition: CssCondition<CssSupportsLeaf>,
     rules: Vec<CssRule>,
     position: Option<CssSourcePosition>,
 }
@@ -964,7 +964,7 @@ pub struct CssSupportsRule {
 impl CssSupportsRule {
     #[must_use]
     pub(crate) fn new(
-        condition: CssSupportsCondition,
+        condition: CssCondition<CssSupportsLeaf>,
         rules: Vec<CssRule>,
         position: CssSourcePosition,
     ) -> Self {
@@ -976,7 +976,7 @@ impl CssSupportsRule {
     }
 
     #[must_use]
-    pub const fn condition(&self) -> &CssSupportsCondition {
+    pub const fn condition(&self) -> &CssCondition<CssSupportsLeaf> {
         &self.condition
     }
 
@@ -991,71 +991,13 @@ impl CssSupportsRule {
     }
 }
 
-/// One authored supports condition with original lexical backing.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssSupportsCondition {
-    kind: Box<CssSupportsConditionKind>,
-    lexical: crate::supports::SupportsLexical,
-    origin: CssValueOrigin,
-    authored_form: SupportsAuthoredForm,
-}
-impl crate::CssRetainedSources for CssSupportsCondition {
-    fn visit_retained_sources(
-        &self,
-        sources: &mut crate::CssSourceRetention,
-    ) -> Result<(), crate::CssSourceRetentionError> {
-        sources.visit(&self.origin)?;
-        sources.visit(&self.lexical)
-    }
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SupportsAuthoredForm {
-    Condition,
-    BareDeclaration,
-    BareName,
-}
-impl CssSupportsCondition {
-    pub(crate) fn new(
-        kind: CssSupportsConditionKind,
-        lexical: crate::supports::SupportsLexical,
-        authored_form: SupportsAuthoredForm,
-    ) -> Self {
-        let origin = lexical.first_origin().clone();
-        Self {
-            kind: Box::new(kind),
-            lexical,
-            origin,
-            authored_form,
-        }
-    }
-    #[must_use]
-    pub const fn kind(&self) -> &CssSupportsConditionKind {
-        &self.kind
-    }
-    #[must_use]
-    pub const fn origin(&self) -> &CssValueOrigin {
-        &self.origin
-    }
-    #[must_use]
-    pub const fn position(&self) -> Option<CssSourcePosition> {
-        crate::media::parsed_position(&self.origin)
-    }
-    #[must_use]
-    pub fn components(&self) -> &[crate::CssComponentValue] {
-        self.lexical.items()
-    }
-    pub(crate) fn into_kind(self) -> CssSupportsConditionKind {
-        *self.kind
-    }
-    pub(crate) const fn authored_form(&self) -> SupportsAuthoredForm {
-        self.authored_form
-    }
-}
-
-/// The complete authored shape of one supports condition.
+/// A leaf of a supports condition: one test of the `<supports-condition>` grammar.
+///
+/// A condition is a [`CssCondition`] over these leaves; its parenthesized layers,
+/// negations and `and`/`or` lists are [`CssConditionKind`](crate::CssConditionKind) variants.
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
-pub enum CssSupportsConditionKind {
+pub enum CssSupportsLeaf {
     Declaration(Box<CssSupportsDeclaration>),
     Named(crate::CssSupportsConditionName),
     Selector(CssSelector),
@@ -1063,33 +1005,6 @@ pub enum CssSupportsConditionKind {
     FontFormat(CssFontFormat),
     AtRule(crate::CssSupportsAtRule),
     GeneralEnclosed(CssGeneralEnclosed),
-    Not(Box<CssSupportsCondition>),
-    And(CssSupportsConditionList),
-    Or(CssSupportsConditionList),
-}
-
-/// A checked list used by `and` and `or` supports conditions.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssSupportsConditionList {
-    conditions: Vec<CssSupportsCondition>,
-}
-
-impl CssSupportsConditionList {
-    #[must_use]
-    pub fn try_new(conditions: Vec<CssSupportsCondition>) -> Option<Self> {
-        (conditions.len() >= 2).then_some(Self { conditions })
-    }
-
-    #[must_use]
-    pub(crate) fn new(conditions: Vec<CssSupportsCondition>) -> Self {
-        debug_assert!(conditions.len() >= 2);
-        Self { conditions }
-    }
-
-    #[must_use]
-    pub fn conditions(&self) -> &[CssSupportsCondition] {
-        &self.conditions
-    }
 }
 
 /// One syntactically valid declaration test inside a supports condition.
@@ -1352,27 +1267,32 @@ impl CssContainerRule {
     }
 }
 
+/// One authored `@scope` rule: its optional root and limit boundaries and its body.
+///
+/// The body is an ordinary [`CssRuleList`](crate::CssRuleList) of [`CssRule`]s. Placement inside a scope
+/// (no `@import`, `@namespace` or `@page`, declaration runs only under a style
+/// ancestor) and the no-pseudo-element boundary invariant are checks of the
+/// construction and assembly context, not separate types.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssScopeRule {
     root: Option<CssScopeSelectorList>,
     limit: Option<CssScopeSelectorList>,
-    rules: CssScopedRuleList,
+    rules: crate::CssRuleList,
     position: Option<CssSourcePosition>,
 }
 
 impl CssScopeRule {
     #[must_use]
-    #[allow(dead_code)] // Staged for @scope parser construction.
     pub(crate) fn new(
         root: Option<CssScopeSelectorList>,
         limit: Option<CssScopeSelectorList>,
-        rules: CssScopedRuleList,
+        rules: Vec<CssRule>,
         position: CssSourcePosition,
     ) -> Self {
         Self {
             root,
             limit,
-            rules,
+            rules: crate::CssRuleList::from_parsed(rules),
             position: Some(position),
         }
     }
@@ -1388,7 +1308,7 @@ impl CssScopeRule {
     }
 
     #[must_use]
-    pub const fn rules(&self) -> &CssScopedRuleList {
+    pub const fn rules(&self) -> &crate::CssRuleList {
         &self.rules
     }
 
@@ -1398,14 +1318,16 @@ impl CssScopeRule {
     }
 }
 
+/// A nonempty scope boundary list. Its members may be explicitly relative; no
+/// member contains a pseudo-element.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssScopeSelectorList {
-    selectors: Vec<CssScopeSelector>,
+    selectors: Vec<CssStyleSelector>,
 }
 
 impl CssScopeSelectorList {
     #[must_use]
-    pub fn try_new(selectors: Vec<CssScopeSelector>) -> Option<Self> {
+    pub fn try_new(selectors: Vec<CssStyleSelector>) -> Option<Self> {
         if selectors.is_empty()
             || selectors
                 .iter()
@@ -1418,7 +1340,7 @@ impl CssScopeSelectorList {
     }
 
     #[must_use]
-    pub(crate) fn new(selectors: Vec<CssScopeSelector>) -> Self {
+    pub(crate) fn new(selectors: Vec<CssStyleSelector>) -> Self {
         debug_assert!(!selectors.is_empty());
         debug_assert!(
             !selectors
@@ -1428,29 +1350,12 @@ impl CssScopeSelectorList {
         Self { selectors }
     }
 
+    /// Returns the boundary members; a leading combinator is retained without
+    /// fabricating an explicit anchor. Root relatives require an enclosing style
+    /// or scope; limit relatives refer to the scope introduced by their rule.
     #[must_use]
-    pub fn selectors(&self) -> &[CssScopeSelector] {
+    pub fn selectors(&self) -> &[CssStyleSelector] {
         &self.selectors
-    }
-}
-
-/// One scope boundary member, retaining a leading combinator without fabricating
-/// an explicit anchor. Root relatives require an enclosing style or scope;
-/// limit relatives refer to the scope introduced by their rule.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssScopeSelector {
-    Selector(CssSelector),
-    Relative(CssRelativeSelector),
-}
-
-impl CssScopeSelector {
-    #[must_use]
-    pub const fn selector(&self) -> &CssSelector {
-        match self {
-            Self::Selector(selector) => selector,
-            Self::Relative(relative) => relative.selector(),
-        }
     }
 }
 
@@ -1467,330 +1372,6 @@ pub enum CssScopeNestingContext {
     Style,
     /// An enclosing scope supplies the root's scope context, without a style ancestor.
     Scope,
-}
-
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct CssScopedRuleList {
-    rules: Vec<CssScopedRule>,
-}
-
-impl CssScopedRuleList {
-    #[must_use]
-    pub const fn new() -> Self {
-        Self { rules: Vec::new() }
-    }
-
-    #[must_use]
-    #[allow(dead_code)] // Staged for @scope parser construction.
-    pub(crate) const fn from_rules(rules: Vec<CssScopedRule>) -> Self {
-        Self { rules }
-    }
-
-    #[must_use]
-    pub fn rules(&self) -> &[CssScopedRule] {
-        &self.rules
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssScopedRule {
-    /// A nonempty declaration run inheriting the nearest ancestor style selector list.
-    NestedDeclarations(CssNestedDeclarationsRule),
-    /// A page definition retained in an ordinary group within a scope.
-    Page(CssPageRule),
-    /// A global counter definition retained in its authored scope context.
-    CounterStyle(CssCounterStyleRule),
-    /// A global font definition retained in its authored scope context.
-    FontFace(CssFontFaceRule),
-    /// A global animation definition retained in its authored scope context.
-    Keyframes(CssKeyframesRule),
-    CustomMedia(crate::CssCustomMediaRule),
-    FontFeatureValues(CssFontFeatureValuesRule),
-    FontPaletteValues(CssFontPaletteValuesRule),
-    ColorProfile(CssColorProfileRule),
-    Style(CssScopedStyleRule),
-    Media(CssScopedMediaRule),
-    Supports(CssScopedSupportsRule),
-    SupportsCondition(crate::CssSupportsConditionRule),
-    Container(CssScopedContainerRule),
-    When(crate::CssScopedWhenRule),
-    Else(crate::CssScopedElseRule),
-    LayerStatement(CssScopedLayerStatementRule),
-    LayerBlock(CssScopedLayerBlockRule),
-    Scope(CssScopeRule),
-}
-
-/// A scoped authored style rule whose declarations passed the ordinary declaration boundary.
-///
-/// Its parser-produced position identifies the start of the authored scoped style rule and cannot
-/// be forged by callers. The private collection preserves order and importance without applying
-/// scope matching, selector matching, cascade, substitution, or contextual resolution.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssScopedStyleRule {
-    selectors: CssScopedStyleSelectorList,
-    declarations: CssDeclarationList,
-    rules: Vec<CssRule>,
-    position: CssSourcePosition,
-}
-
-impl CssScopedStyleRule {
-    #[must_use]
-    #[allow(dead_code)] // Staged for @scope parser construction.
-    pub(crate) fn new(
-        selectors: CssScopedStyleSelectorList,
-        declarations: CssDeclarationList,
-        rules: Vec<CssRule>,
-        position: CssSourcePosition,
-    ) -> Self {
-        Self {
-            selectors,
-            declarations,
-            rules,
-            position,
-        }
-    }
-
-    #[must_use]
-    pub const fn selectors(&self) -> &CssScopedStyleSelectorList {
-        &self.selectors
-    }
-
-    /// Returns leading declarations when the first retained body item is a declaration run.
-    /// A rejected rule can end this run without producing a retained child.
-    #[must_use]
-    pub const fn declarations(&self) -> &CssDeclarationList {
-        &self.declarations
-    }
-
-    /// Returns nested rules and subsequent declaration runs in authored order.
-    ///
-    /// These children use ordinary nesting semantics relative to this scoped style rule.
-    /// They preserve the parent context without replacing its scoped selectors.
-    #[must_use]
-    pub fn rules(&self) -> &[CssRule] {
-        &self.rules
-    }
-
-    /// Returns the semantic source position at the authored scoped selector-list start.
-    ///
-    /// This parser-produced position is diagnostic and ordering provenance only; it does not
-    /// perform scope or selector matching and does not participate in cascade.
-    #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
-        self.position
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssScopedStyleSelectorList {
-    selectors: Vec<CssScopedStyleSelector>,
-}
-
-impl CssScopedStyleSelectorList {
-    #[must_use]
-    pub fn try_new(selectors: Vec<CssScopedStyleSelector>) -> Option<Self> {
-        if selectors.is_empty() {
-            None
-        } else {
-            Some(Self::new(selectors))
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(selectors: Vec<CssScopedStyleSelector>) -> Self {
-        debug_assert!(!selectors.is_empty());
-        Self { selectors }
-    }
-
-    #[must_use]
-    pub fn selectors(&self) -> &[CssScopedStyleSelector] {
-        &self.selectors
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssScopedStyleSelector {
-    Selector(CssSelector),
-    Relative(CssRelativeSelector),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssScopedMediaRule {
-    query: CssMediaQueryList,
-    rules: CssScopedRuleList,
-    position: Option<CssSourcePosition>,
-}
-
-impl CssScopedMediaRule {
-    #[must_use]
-    #[allow(dead_code)] // Staged for @scope parser construction.
-    pub(crate) fn new(
-        query: CssMediaQueryList,
-        rules: CssScopedRuleList,
-        position: CssSourcePosition,
-    ) -> Self {
-        Self {
-            query,
-            rules,
-            position: Some(position),
-        }
-    }
-
-    #[must_use]
-    pub const fn query(&self) -> &CssMediaQueryList {
-        &self.query
-    }
-
-    #[must_use]
-    pub const fn rules(&self) -> &CssScopedRuleList {
-        &self.rules
-    }
-
-    #[must_use]
-    pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
-    }
-}
-
-/// A parser-produced supports group inside a scoped rule list.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssScopedSupportsRule {
-    condition: CssSupportsCondition,
-    rules: CssScopedRuleList,
-    position: Option<CssSourcePosition>,
-}
-
-impl CssScopedSupportsRule {
-    #[must_use]
-    pub(crate) fn new(
-        condition: CssSupportsCondition,
-        rules: CssScopedRuleList,
-        position: CssSourcePosition,
-    ) -> Self {
-        Self {
-            condition,
-            rules,
-            position: Some(position),
-        }
-    }
-
-    #[must_use]
-    pub const fn condition(&self) -> &CssSupportsCondition {
-        &self.condition
-    }
-
-    #[must_use]
-    pub const fn rules(&self) -> &CssScopedRuleList {
-        &self.rules
-    }
-
-    #[must_use]
-    pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssScopedContainerRule {
-    prelude: CssContainerPrelude,
-    rules: CssScopedRuleList,
-    position: Option<CssSourcePosition>,
-}
-
-impl CssScopedContainerRule {
-    #[must_use]
-    #[allow(dead_code)] // Staged for @scope parser construction.
-    pub(crate) fn new(
-        prelude: CssContainerPrelude,
-        rules: CssScopedRuleList,
-        position: CssSourcePosition,
-    ) -> Self {
-        Self {
-            prelude,
-            rules,
-            position: Some(position),
-        }
-    }
-
-    /// Returns every authored entry and its shared lexical prelude.
-    #[must_use]
-    pub const fn prelude(&self) -> &CssContainerPrelude {
-        &self.prelude
-    }
-
-    #[must_use]
-    pub const fn rules(&self) -> &CssScopedRuleList {
-        &self.rules
-    }
-
-    #[must_use]
-    pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssScopedLayerStatementRule {
-    names: CssLayerNameList,
-    position: CssSourcePosition,
-}
-
-impl CssScopedLayerStatementRule {
-    #[must_use]
-    #[allow(dead_code)] // Staged for scoped @layer parser construction.
-    pub(crate) const fn new(names: CssLayerNameList, position: CssSourcePosition) -> Self {
-        Self { names, position }
-    }
-
-    #[must_use]
-    pub const fn names(&self) -> &CssLayerNameList {
-        &self.names
-    }
-
-    #[must_use]
-    pub const fn position(&self) -> CssSourcePosition {
-        self.position
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssScopedLayerBlockRule {
-    name: Option<CssLayerName>,
-    rules: CssScopedRuleList,
-    position: Option<CssSourcePosition>,
-}
-
-impl CssScopedLayerBlockRule {
-    #[must_use]
-    #[allow(dead_code)] // Staged for scoped @layer parser construction.
-    pub(crate) fn new(
-        name: Option<CssLayerName>,
-        rules: CssScopedRuleList,
-        position: CssSourcePosition,
-    ) -> Self {
-        Self {
-            name,
-            rules,
-            position: Some(position),
-        }
-    }
-
-    #[must_use]
-    pub const fn name(&self) -> Option<&CssLayerName> {
-        self.name.as_ref()
-    }
-
-    #[must_use]
-    pub const fn rules(&self) -> &CssScopedRuleList {
-        &self.rules
-    }
-
-    #[must_use]
-    pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1860,7 +1441,7 @@ impl CssMediaQueryList {
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum CssMediaQuery {
-    Condition(CssMediaCondition),
+    Condition(CssCondition<CssMediaLeaf>),
     Typed(CssTypedMediaQuery),
     Never(CssNeverMediaQuery),
 }
@@ -1941,7 +1522,7 @@ pub struct CssTypedMediaQuery {
     modifier: Option<CssMediaQueryModifier>,
     media_type: CssMediaType,
     unknown_media_type: Option<CssUnknownMediaType>,
-    condition: Option<Box<CssMediaCondition>>,
+    condition: Option<Box<CssCondition<CssMediaLeaf>>>,
     origin: CssValueOrigin,
     pub(crate) syntax: Box<MediaTypedSyntax>,
 }
@@ -1951,7 +1532,7 @@ impl CssTypedMediaQuery {
     pub(crate) fn new(
         modifier: Option<CssMediaQueryModifier>,
         media_type: CssMediaType,
-        condition: Option<CssMediaCondition>,
+        condition: Option<CssCondition<CssMediaLeaf>>,
         origin: CssValueOrigin,
         syntax: MediaTypedSyntax,
     ) -> Self {
@@ -1970,7 +1551,7 @@ impl CssTypedMediaQuery {
     pub(crate) fn new_unknown(
         modifier: Option<CssMediaQueryModifier>,
         media_type: CssUnknownMediaType,
-        condition: Option<CssMediaCondition>,
+        condition: Option<CssCondition<CssMediaLeaf>>,
         origin: CssValueOrigin,
         syntax: MediaTypedSyntax,
     ) -> Self {
@@ -2003,7 +1584,7 @@ impl CssTypedMediaQuery {
     }
 
     #[must_use]
-    pub const fn condition(&self) -> Option<&CssMediaCondition> {
+    pub const fn condition(&self) -> Option<&CssCondition<CssMediaLeaf>> {
         match &self.condition {
             Some(condition) => Some(condition),
             None => None,
@@ -2108,60 +1689,15 @@ impl CssUnknownMediaType {
     }
 }
 
-/// A checked authored media condition with parsed or programmatic provenance.
-///
-/// [`Self::kind`] exposes its semantic shape while private fields prevent callers from attaching a
-/// forged source position.
-///
-/// ```compile_fail
-/// use surgeist_css::{CssMediaCondition, CssMediaConditionKind, CssSourcePosition};
-///
-/// fn forge(kind: CssMediaConditionKind, position: CssSourcePosition) -> CssMediaCondition {
-///     CssMediaCondition { kind, position }
-/// }
-/// ```
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssMediaCondition {
-    kind: CssMediaConditionKind,
-    origin: CssValueOrigin,
-    pub(crate) syntax: MediaConditionSyntax,
-}
-impl CssMediaCondition {
-    pub(crate) fn new(
-        kind: CssMediaConditionKind,
-        origin: CssValueOrigin,
-        syntax: MediaConditionSyntax,
-    ) -> Self {
-        Self {
-            kind,
-            origin,
-            syntax,
-        }
-    }
-    pub const fn kind(&self) -> &CssMediaConditionKind {
-        &self.kind
-    }
-    pub const fn origin(&self) -> &CssValueOrigin {
-        &self.origin
-    }
-    pub const fn position(&self) -> Option<CssSourcePosition> {
-        crate::media::parsed_position(&self.origin)
-    }
-}
-
-/// The non-exhaustive authored semantic shape of a positioned media condition.
+/// A leaf of a media condition: one `<media-in-parens>` operand that is not itself a
+/// negation, junction or explicit grouping.
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
-pub enum CssMediaConditionKind {
+pub enum CssMediaLeaf {
     CustomMediaReference(crate::CssCustomMediaReference),
-    /// An explicitly parenthesized condition, retaining the outer and inner positions.
-    Parenthesized(Box<CssMediaCondition>),
     Feature(CssMediaFeatureQuery),
     UnknownFeature(CssUnknownMediaFeature),
     GeneralEnclosed(CssGeneralEnclosed),
-    Not(Box<CssMediaCondition>),
-    And(CssMediaConditionList),
-    Or(CssMediaConditionList),
 }
 
 /// Why an unknown media type is defined to be nonmatching.
@@ -2296,7 +1832,7 @@ enum CssContainerQueryEntryKind {
     NameOnly(CssContainerName),
     Query {
         name: Option<CssContainerName>,
-        query: CssContainerCondition,
+        query: CssCondition<CssContainerLeaf>,
     },
 }
 impl CssContainerQueryEntry {
@@ -2313,7 +1849,7 @@ impl CssContainerQueryEntry {
     }
     pub(crate) fn with_query(
         name: Option<CssContainerName>,
-        query: CssContainerCondition,
+        query: CssCondition<CssContainerLeaf>,
         lexical: crate::supports::SupportsLexical,
     ) -> Self {
         let origin = lexical.first_origin().clone();
@@ -2331,7 +1867,7 @@ impl CssContainerQueryEntry {
         }
     }
     #[must_use]
-    pub const fn query(&self) -> Option<&CssContainerCondition> {
+    pub const fn query(&self) -> Option<&CssCondition<CssContainerLeaf>> {
         match &self.kind {
             CssContainerQueryEntryKind::NameOnly(_) => None,
             CssContainerQueryEntryKind::Query { query, .. } => Some(query),
@@ -2352,70 +1888,24 @@ impl CssContainerQueryEntry {
     }
 }
 
-/// One checked authored container condition, preserving grouping and lexical origins.
-/// Private fields prevent constructing ungrouped mixtures of boolean operators.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssContainerCondition {
-    kind: Box<CssContainerConditionKind>,
-    lexical: crate::supports::SupportsLexical,
-    origin: CssValueOrigin,
-}
-
-impl CssContainerCondition {
-    pub(crate) fn new(
-        kind: CssContainerConditionKind,
-        lexical: crate::supports::SupportsLexical,
-    ) -> Self {
-        let origin = lexical.first_origin().clone();
-        Self {
-            kind: Box::new(kind),
-            lexical,
-            origin,
-        }
-    }
-    #[must_use]
-    pub const fn kind(&self) -> &CssContainerConditionKind {
-        &self.kind
-    }
-    #[must_use]
-    pub const fn origin(&self) -> &CssValueOrigin {
-        &self.origin
-    }
-    #[must_use]
-    pub const fn position(&self) -> Option<CssSourcePosition> {
-        crate::media::parsed_position(&self.origin)
-    }
-    /// Returns the complete selected lexical region, including authored operators
-    /// and grouping, without copying enclosing or sibling subtrees.
-    #[must_use]
-    pub fn components(&self) -> &[crate::CssComponentValue] {
-        self.lexical.items()
-    }
-}
-
-/// The inspectable shape of a condition admitted by the container grammar.
-/// Constructing a kind does not bypass checked condition construction.
-#[derive(Clone, Debug, PartialEq)]
+/// A leaf of a container condition: a size feature, a `style()` or `scroll-state()`
+/// query, or any other enclosure.
 #[non_exhaustive]
-pub enum CssContainerConditionKind {
+#[derive(Clone, Debug, PartialEq)]
+pub enum CssContainerLeaf {
     GeneralEnclosed(CssContainerGeneralEnclosed),
     Feature(CssContainerFeatureQuery),
-    Style(CssContainerStyleQuery),
-    ScrollState(CssContainerScrollQuery),
-    /// An explicit grouping pair around a condition, including redundant pairs.
-    Parenthesized(Box<CssContainerCondition>),
-    Not(Box<CssContainerCondition>),
-    And(CssContainerConditionList),
-    Or(CssContainerConditionList),
+    Style(CssCondition<CssStyleQueryLeaf>),
+    ScrollState(CssCondition<CssScrollStateLeaf>),
 }
 
 /// A container operand classified as general-enclosed by the container grammar.
 /// Its private lexical region prevents bypassing recognized feature/style admission.
 ///
-/// ```compile_fail
-/// use surgeist_css::{CssContainerCondition, CssContainerConditionKind};
-/// fn replace_kind(mut condition: CssContainerCondition, kind: CssContainerConditionKind) {
-///     condition.kind = Box::new(kind);
+/// ```compile_fail,E0616
+/// use surgeist_css::CssContainerGeneralEnclosed;
+/// fn replace_lexical(mut value: CssContainerGeneralEnclosed, other: CssContainerGeneralEnclosed) {
+///     value.lexical = other.lexical;
 /// }
 /// ```
 #[derive(Clone, Debug, PartialEq)]
@@ -2552,33 +2042,6 @@ impl From<crate::CssComponentValueError> for CssContainerConstructionError {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct CssContainerConditionList {
-    conditions: Vec<CssContainerCondition>,
-}
-
-impl CssContainerConditionList {
-    #[must_use]
-    pub fn try_new(conditions: Vec<CssContainerCondition>) -> Option<Self> {
-        if conditions.len() < 2 {
-            None
-        } else {
-            Some(Self::new(conditions))
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(conditions: Vec<CssContainerCondition>) -> Self {
-        debug_assert!(conditions.len() >= 2);
-        Self { conditions }
-    }
-
-    #[must_use]
-    pub fn conditions(&self) -> &[CssContainerCondition] {
-        &self.conditions
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssContainerFeatureQuery {
     Boolean(CssContainerSizeFeatureKind),
@@ -2588,33 +2051,6 @@ pub enum CssContainerFeatureQuery {
     BlockSize(CssMediaRange<CssContainerLength>),
     AspectRatio(CssMediaRange<CssContainerRatio>),
     Orientation(CssContainerOrientation),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssMediaConditionList {
-    conditions: Vec<CssMediaCondition>,
-}
-
-impl CssMediaConditionList {
-    #[must_use]
-    pub fn try_new(conditions: Vec<CssMediaCondition>) -> Option<Self> {
-        if conditions.len() < 2 {
-            None
-        } else {
-            Some(Self::new(conditions))
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn new(conditions: Vec<CssMediaCondition>) -> Self {
-        debug_assert!(conditions.len() >= 2);
-        Self { conditions }
-    }
-
-    #[must_use]
-    pub fn conditions(&self) -> &[CssMediaCondition] {
-        &self.conditions
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2933,16 +2369,28 @@ impl CssStyleRule {
     }
 }
 
-/// A nonempty parser-validated selector list for an authored style rule.
+/// A nonempty selector list for an authored style rule.
 ///
-/// Ordinary stylesheet contexts accept only non-relative selectors. Nested style contexts also
-/// accept relative selectors; their relationship to the parent stays symbolic until matching.
+/// Ordinary stylesheet contexts accept only non-relative selectors. Nested style contexts and
+/// scope bodies also accept relative selectors; their relationship to the parent or scope stays
+/// symbolic until matching. Explicit `&` anchors mean nesting in a style context and scope
+/// anchors in a scope body; the list itself records which, in its selectors.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssStyleSelectorList {
     selectors: Vec<CssStyleSelector>,
 }
 
 impl CssStyleSelectorList {
+    /// Returns `None` for an empty list.
+    #[must_use]
+    pub fn try_new(selectors: Vec<CssStyleSelector>) -> Option<Self> {
+        if selectors.is_empty() {
+            None
+        } else {
+            Some(Self::new(selectors))
+        }
+    }
+
     pub(crate) fn new(selectors: Vec<CssStyleSelector>) -> Self {
         debug_assert!(!selectors.is_empty());
         Self { selectors }
@@ -9596,7 +9044,7 @@ impl CssSupportsRule {
     /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing
     /// assembly.
     pub fn try_new(
-        condition: CssSupportsCondition,
+        condition: CssCondition<CssSupportsLeaf>,
         rules: Vec<CssRule>,
         context: &crate::CssNamespaceContext,
     ) -> Result<Self, crate::CssRuleConstructionError> {
@@ -9648,90 +9096,13 @@ impl CssLayerBlockRule {
     }
 }
 
-impl CssScopedMediaRule {
-    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing
-    /// provenance.
-    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing
-    /// assembly.
-    pub fn try_new(
-        query: CssMediaQueryList,
-        rules: Vec<CssScopedRule>,
-        context: &crate::CssNamespaceContext,
-    ) -> Result<Self, crate::CssRuleConstructionError> {
-        crate::rule_construction::scoped_group(&rules, context)?;
-        Ok(Self {
-            query,
-            rules: CssScopedRuleList::from_rules(rules),
-            position: None,
-        })
-    }
-}
-
-impl CssScopedSupportsRule {
-    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing
-    /// provenance.
-    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing
-    /// assembly.
-    pub fn try_new(
-        condition: CssSupportsCondition,
-        rules: Vec<CssScopedRule>,
-        context: &crate::CssNamespaceContext,
-    ) -> Result<Self, crate::CssRuleConstructionError> {
-        crate::rule_construction::supports(&condition, context)?;
-        crate::rule_construction::scoped_group(&rules, context)?;
-        Ok(Self {
-            condition,
-            rules: CssScopedRuleList::from_rules(rules),
-            position: None,
-        })
-    }
-}
-
-impl CssScopedContainerRule {
-    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing
-    /// provenance.
-    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing
-    /// assembly.
-    pub fn try_new(
-        prelude: CssContainerPrelude,
-        rules: Vec<CssScopedRule>,
-        context: &crate::CssNamespaceContext,
-    ) -> Result<Self, crate::CssRuleConstructionError> {
-        crate::rule_construction::scoped_group(&rules, context)?;
-        Ok(Self {
-            prelude,
-            rules: CssScopedRuleList::from_rules(rules),
-            position: None,
-        })
-    }
-}
-
-impl CssScopedLayerBlockRule {
-    /// Assembles an ordinary group with explicit namespace bindings and absent enclosing
-    /// provenance.
-    /// Parsed descendants retain their own positions; nested placement is rechecked by enclosing
-    /// assembly.
-    pub fn try_new(
-        name: Option<CssLayerName>,
-        rules: Vec<CssScopedRule>,
-        context: &crate::CssNamespaceContext,
-    ) -> Result<Self, crate::CssRuleConstructionError> {
-        crate::rule_construction::scoped_group(&rules, context)?;
-        Ok(Self {
-            name,
-            rules: CssScopedRuleList::from_rules(rules),
-            position: None,
-        })
-    }
-}
-
 impl CssScopeRule {
     /// Assembles boundaries and a direct scope body in the supplied authored
     /// nesting context, checking selectors and the stricter page placement.
     pub fn try_new(
         root: Option<CssScopeSelectorList>,
         limit: Option<CssScopeSelectorList>,
-        rules: Vec<CssScopedRule>,
+        rules: Vec<CssRule>,
         context: &crate::CssNamespaceContext,
         nesting: CssScopeNestingContext,
     ) -> Result<Self, crate::CssRuleConstructionError> {
@@ -9739,17 +9110,13 @@ impl CssScopeRule {
         Ok(Self {
             root,
             limit,
-            rules: CssScopedRuleList::from_rules(rules),
+            rules: crate::CssRuleList::from_parsed(rules),
             position: None,
         })
     }
 }
 
 // Parser-only sibling mutation, after complete structural reconstruction.
-pub(crate) enum CssParserRuleChildrenMut<'a> {
-    Ordinary(&'a mut Vec<CssRule>),
-    Scoped(&'a mut Vec<CssScopedRule>),
-}
 impl CssSheet {
     pub(crate) fn rules_mut(&mut self) -> &mut Vec<CssRule> {
         &mut self.rules
@@ -9760,39 +9127,17 @@ impl CssStyleBlock {
         &mut self.contents.rules
     }
 }
-impl CssScopedRuleList {
-    pub(crate) fn rules_mut(&mut self) -> &mut Vec<CssScopedRule> {
-        &mut self.rules
-    }
-}
 impl CssRule {
-    pub(crate) fn parser_children_mut(&mut self) -> Option<CssParserRuleChildrenMut<'_>> {
-        use CssParserRuleChildrenMut::{Ordinary, Scoped};
+    pub(crate) fn parser_children_mut(&mut self) -> Option<&mut Vec<CssRule>> {
         match self {
-            Self::Style(rule) => Some(Ordinary(&mut rule.contents.rules)),
-            Self::Media(rule) => Some(Ordinary(&mut rule.rules)),
-            Self::Supports(rule) => Some(Ordinary(&mut rule.rules)),
-            Self::Container(rule) => Some(Ordinary(&mut rule.rules)),
-            Self::LayerBlock(rule) => Some(Ordinary(&mut rule.rules)),
-            Self::Scope(rule) => Some(Scoped(rule.rules.rules_mut())),
-            Self::When(rule) => Some(Ordinary(rule.rules_mut())),
-            Self::Else(rule) => Some(Ordinary(rule.rules_mut())),
-            _ => None,
-        }
-    }
-}
-impl CssScopedRule {
-    pub(crate) fn parser_children_mut(&mut self) -> Option<CssParserRuleChildrenMut<'_>> {
-        use CssParserRuleChildrenMut::{Ordinary, Scoped};
-        match self {
-            Self::Style(rule) => Some(Ordinary(&mut rule.rules)),
-            Self::Media(rule) => Some(Scoped(rule.rules.rules_mut())),
-            Self::Supports(rule) => Some(Scoped(rule.rules.rules_mut())),
-            Self::Container(rule) => Some(Scoped(rule.rules.rules_mut())),
-            Self::LayerBlock(rule) => Some(Scoped(rule.rules.rules_mut())),
-            Self::Scope(rule) => Some(Scoped(rule.rules.rules_mut())),
-            Self::When(rule) => Some(Scoped(rule.rules_mut().rules_mut())),
-            Self::Else(rule) => Some(Scoped(rule.rules_mut().rules_mut())),
+            Self::Style(rule) => Some(&mut rule.contents.rules),
+            Self::Media(rule) => Some(&mut rule.rules),
+            Self::Supports(rule) => Some(&mut rule.rules),
+            Self::Container(rule) => Some(&mut rule.rules),
+            Self::LayerBlock(rule) => Some(&mut rule.rules),
+            Self::Scope(rule) => Some(rule.rules.rules_mut()),
+            Self::When(rule) => Some(rule.rules_mut()),
+            Self::Else(rule) => Some(rule.rules_mut()),
             _ => None,
         }
     }

@@ -1,3 +1,4 @@
+use crate::css::support::{graph_cssom, graph_specified};
 use surgeist_css::{
     CssKnownProperty, CssPropertyNameRef, CssSpecifiedDeclarationBlock, parse_declaration_list_text,
 };
@@ -173,7 +174,7 @@ fn mapping_order_relation_uses_canonical_terminals_and_excludes_unrelated_groups
 
 #[test]
 fn empty_live_nested_declarations_are_retained_and_filtered_from_style_and_media_text() {
-    use surgeist_css::{CssEditedGroupPreludeRef, CssEditedRuleView, CssRule, parse_sheet};
+    use surgeist_css::{CssGroupPreludeRef, CssRule, CssRuleGraphInput, parse_sheet};
     let report = parse_sheet(
         ".host { color:red; & > .child { opacity:0.5 } margin:1px } @media screen { .other { color:blue } }",
     );
@@ -187,68 +188,51 @@ fn empty_live_nested_declarations_are_retained_and_filtered_from_style_and_media
     )
     .unwrap();
     let empty = CssSpecifiedDeclarationBlock::try_from_entries(&[], Default::default()).unwrap();
-    let empty_child =
-        CssEditedRuleView::try_nested_declarations(&empty, Default::default()).unwrap();
-    assert_eq!(empty_child.serialize_cssom(Default::default()).unwrap(), "");
-    let child = CssEditedRuleView::from_rule(&style.rules()[0]);
-    assert!(std::ptr::eq(
-        child.parsed_rule().unwrap(),
-        &style.rules()[0]
-    ));
+    let empty_child = CssRuleGraphInput::nested_declarations(&empty);
+    assert_eq!(graph_cssom(empty_child, Default::default()).unwrap(), "");
+    let child = CssRuleGraphInput::from_rule(&style.rules()[0]);
     let children = [empty_child, child, empty_child];
-    let edited =
-        CssEditedRuleView::try_style(style.selectors(), &leading, &children, Default::default())
-            .unwrap();
-    assert!(edited.parsed_rule().is_none());
+    let edited = CssRuleGraphInput::style(style.selectors(), &leading, &children);
     assert_eq!(
-        edited.serialize_cssom(Default::default()).unwrap(),
+        graph_cssom(edited, Default::default()).unwrap(),
         ".host {\n  color: red;\n  & > .child { opacity: 0.5; }\n}"
     );
     let children = [empty_child, edited, empty_child];
-    let group = CssEditedRuleView::try_group(
-        CssEditedGroupPreludeRef::Media(media.query()),
-        &children,
-        Default::default(),
-    )
-    .unwrap();
+    let group = CssRuleGraphInput::group(CssGroupPreludeRef::Media(media.query()), &children);
     assert_eq!(
-        group.serialize_cssom(Default::default()).unwrap(),
+        graph_cssom(group, Default::default()).unwrap(),
         "@media screen {\n  .host {\n  color: red;\n  & > .child { opacity: 0.5; }\n}\n}"
     );
     let only_empty = [empty_child];
     assert_eq!(
-        CssEditedRuleView::try_style(style.selectors(), &empty, &only_empty, Default::default())
-            .unwrap()
-            .serialize_cssom(Default::default())
-            .unwrap(),
+        graph_cssom(
+            CssRuleGraphInput::style(style.selectors(), &empty, &only_empty),
+            Default::default()
+        )
+        .unwrap(),
         ".host {\n}"
     );
     assert_eq!(
-        CssEditedRuleView::try_group(
-            CssEditedGroupPreludeRef::Media(media.query()),
-            &only_empty,
+        graph_cssom(
+            CssRuleGraphInput::group(CssGroupPreludeRef::Media(media.query()), &only_empty),
             Default::default()
         )
-        .unwrap()
-        .serialize_cssom(Default::default())
         .unwrap(),
         "@media screen {\n\n}"
     );
     assert_eq!(
-        CssEditedRuleView::try_style(style.selectors(), &empty, &only_empty, Default::default())
-            .unwrap()
-            .serialize_specified(Default::default())
-            .unwrap(),
+        graph_specified(
+            CssRuleGraphInput::style(style.selectors(), &empty, &only_empty),
+            Default::default()
+        )
+        .unwrap(),
         ".host { }"
     );
     assert_eq!(
-        CssEditedRuleView::try_group(
-            CssEditedGroupPreludeRef::Media(media.query()),
-            &only_empty,
+        graph_specified(
+            CssRuleGraphInput::group(CssGroupPreludeRef::Media(media.query()), &only_empty),
             Default::default()
         )
-        .unwrap()
-        .serialize_specified(Default::default())
         .unwrap(),
         "@media screen { }"
     );
@@ -263,7 +247,7 @@ fn empty_live_nested_declarations_are_retained_and_filtered_from_style_and_media
 #[test]
 fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources() {
     use surgeist_css::{
-        CssEditedGroupPreludeRef, CssEditedRuleView, CssRule, CssSerializationLimits as Limits,
+        CssGroupPreludeRef, CssRule, CssRuleGraphInput, CssSerializationLimits as Limits,
         parse_sheet,
     };
 
@@ -304,17 +288,11 @@ fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources(
         panic!("media");
     };
     let empty = CssSpecifiedDeclarationBlock::try_from_entries(&[], Default::default()).unwrap();
-    let empty_child =
-        CssEditedRuleView::try_nested_declarations(&empty, Default::default()).unwrap();
-    let parsed = CssEditedRuleView::from_rule(&media.rules()[0]);
+    let empty_child = CssRuleGraphInput::nested_declarations(&empty);
+    let parsed = CssRuleGraphInput::from_rule(&media.rules()[0]);
     let children = [empty_child, parsed, empty_child];
-    let group = CssEditedRuleView::try_group(
-        CssEditedGroupPreludeRef::Media(media.query()),
-        &children,
-        Default::default(),
-    )
-    .unwrap();
-    let skipped_failure = group.serialize_cssom(Limits::new(5, 100, 100)).unwrap_err();
+    let group = CssRuleGraphInput::group(CssGroupPreludeRef::Media(media.query()), &children);
+    let skipped_failure = graph_cssom(group, Limits::new(5, 100, 100)).unwrap_err();
     assert!(
         skipped_failure.is_resource_limit()
             && skipped_failure
@@ -325,14 +303,10 @@ fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources(
     assert_eq!(skipped_failure.rule_path(), &[0]);
     let expected = "@media screen {\n  .a { }\n}";
     assert_eq!(
-        group
-            .serialize_cssom(Limits::new(100, 100, expected.len()))
-            .unwrap(),
+        graph_cssom(group, Limits::new(100, 100, expected.len())).unwrap(),
         expected
     );
-    let failure = group
-        .serialize_cssom(Limits::new(100, 100, expected.len() - 1))
-        .unwrap_err();
+    let failure = graph_cssom(group, Limits::new(100, 100, expected.len() - 1)).unwrap_err();
     assert!(
         failure.is_resource_limit()
             && failure
@@ -340,23 +314,15 @@ fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources(
                 .is_some_and(|error| error.is_byte_limit()),
         "{failure:?}"
     );
-    assert_eq!(group.serialize_cssom(Default::default()).unwrap(), expected);
+    assert_eq!(graph_cssom(group, Default::default()).unwrap(), expected);
     assert!(
-        CssEditedRuleView::try_group(
-            CssEditedGroupPreludeRef::Media(media.query()),
-            &children,
-            Limits::new(1, 100, 100)
-        )
-        .unwrap_err()
-        .is_resource_limit()
-            && CssEditedRuleView::try_group(
-                CssEditedGroupPreludeRef::Media(media.query()),
-                &children,
-                Limits::new(1, 100, 100)
-            )
+        graph_specified(group, Limits::new(1, 100, 100))
             .unwrap_err()
-            .serialization_error()
-            .is_some_and(|error| error.is_input_node_limit())
+            .is_resource_limit()
+            && graph_specified(group, Limits::new(1, 100, 100))
+                .unwrap_err()
+                .serialization_error()
+                .is_some_and(|error| error.is_input_node_limit())
     );
 }
 
@@ -424,7 +390,7 @@ fn getters_reject_incomplete_mixed_reset_and_incompatible_pending_members() {
 
 #[test]
 fn selected_keyframe_domain_rejects_priority_and_animation_terminals() {
-    use surgeist_css::{CssEditedRuleView, CssImportance, CssInvalidKeyframeSourceReason};
+    use surgeist_css::{CssImportance, CssInvalidKeyframeSourceReason, CssRuleGraphInput};
     let ordinary = block("opacity:0.5");
     let keyframe = CssSpecifiedDeclarationBlock::try_from_keyframe_entries(
         ordinary.entries(),
@@ -437,7 +403,13 @@ fn selected_keyframe_domain_rejects_priority_and_animation_terminals() {
         keyframe.serialize_cssom(Default::default()).unwrap(),
         "opacity: 0.5;"
     );
-    assert!(CssEditedRuleView::try_nested_declarations(&keyframe, Default::default()).is_err());
+    assert!(
+        graph_cssom(
+            CssRuleGraphInput::nested_declarations(&keyframe),
+            Default::default()
+        )
+        .is_err()
+    );
     let entries = [ordinary.entries()[0].with_importance(CssImportance::Important)];
     assert!(
         CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&entries, Default::default())
@@ -531,8 +503,8 @@ fn selected_completed_replacements_and_programmatic_sources_keep_their_own_paylo
 #[test]
 fn edited_group_views_reuse_preludes_and_retain_typed_literal_unavailability() {
     use surgeist_css::{
-        CssEditedGroupPreludeRef as Prelude, CssEditedRuleView as View, CssRule,
-        CssRuleCssomFormat, parse_sheet,
+        CssGroupPreludeRef as Prelude, CssRule, CssRuleCssomFormat, CssRuleGraphInput as View,
+        parse_sheet,
     };
     let report =
         parse_sheet("@supports (display:grid) {} @container (width>1px) {} @layer theme {}");
@@ -545,20 +517,13 @@ fn edited_group_views_reuse_preludes_and_retain_typed_literal_unavailability() {
     else {
         panic!("groups");
     };
-    let supports_view = View::try_group(
-        Prelude::Supports(supports.condition()),
-        &[],
-        Default::default(),
-    )
-    .unwrap();
+    let supports_view = View::group(Prelude::Supports(supports.condition()), &[]);
     assert_eq!(
-        supports_view
-            .serialize_specified(Default::default())
-            .unwrap(),
+        graph_specified(supports_view, Default::default()).unwrap(),
         "@supports (display:grid) { }"
     );
     assert_eq!(
-        supports_view.serialize_cssom(Default::default()).unwrap(),
+        graph_cssom(supports_view, Default::default()).unwrap(),
         "@supports (display:grid) {\n}"
     );
     for (prelude, expected, format) in [
@@ -573,27 +538,21 @@ fn edited_group_views_reuse_preludes_and_retain_typed_literal_unavailability() {
             CssRuleCssomFormat::LayerBlock,
         ),
     ] {
-        let view = View::try_group(prelude, &[], Default::default()).unwrap();
+        let view = View::group(prelude, &[]);
+        assert_eq!(graph_specified(view, Default::default()).unwrap(), expected);
         assert_eq!(
-            view.serialize_specified(Default::default()).unwrap(),
-            expected
-        );
-        assert_eq!(
-            view.serialize_cssom(Default::default())
+            graph_cssom(view, Default::default())
                 .unwrap_err()
                 .unavailable_format(),
             Some(format)
         );
-        assert_eq!(
-            view.serialize_specified(Default::default()).unwrap(),
-            expected
-        );
+        assert_eq!(graph_specified(view, Default::default()).unwrap(), expected);
     }
 }
 
 #[test]
 fn edited_style_accepts_detached_checked_selector_list_without_rebuilding_a_rule() {
-    use surgeist_css::{CssEditedRuleView, CssNamespaceContext, parse_selector_list};
+    use surgeist_css::{CssNamespaceContext, CssRuleGraphInput, parse_selector_list};
     let report = parse_selector_list("*.edited, #next::before", &CssNamespaceContext::default());
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let selectors = report.syntax().as_ref().unwrap();
@@ -603,13 +562,12 @@ fn edited_style_accepts_detached_checked_selector_list_without_rebuilding_a_rule
         Default::default(),
     )
     .unwrap();
-    let view = CssEditedRuleView::try_style(selectors, &edited, &[], Default::default()).unwrap();
+    let view = CssRuleGraphInput::style(selectors, &edited, &[]);
     assert_eq!(
-        view.serialize_cssom(Default::default()).unwrap(),
+        graph_cssom(view, Default::default()).unwrap(),
         ".edited, #next::before { margin-right: 2px; margin-bottom: 3px; margin-left: 4px; }"
     );
-    assert!(view.parsed_rule().is_none());
-    assert!(view.serialize_cssom(Default::default()).is_ok());
+    assert!(graph_cssom(view, Default::default()).is_ok());
 }
 
 #[test]
@@ -652,14 +610,14 @@ fn selected_page_supported_property_terminals_keep_page_sources_and_survivors() 
 
 #[test]
 fn edited_scoped_styles_borrow_scope_context_and_preserve_scoped_descendant_origins() {
-    use surgeist_css::{CssEditedRuleView as View, CssRule, CssScopedRule, parse_sheet};
+    use surgeist_css::{CssRule, CssRuleGraphInput as View, parse_sheet};
     let report =
         parse_sheet("@scope (.host) { & .child { color:red; & > .nested { opacity:0.5 } } }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("scope");
     };
-    let [CssScopedRule::Style(style)] = scope.rules().rules() else {
+    let [CssRule::Style(style)] = scope.rules().rules() else {
         panic!("scoped style");
     };
     let leading = CssSpecifiedDeclarationBlock::try_from_declarations(
@@ -668,23 +626,16 @@ fn edited_scoped_styles_borrow_scope_context_and_preserve_scoped_descendant_orig
     )
     .unwrap();
     let empty = CssSpecifiedDeclarationBlock::try_from_entries(&[], Default::default()).unwrap();
-    let empty_child = View::try_nested_declarations(&empty, Default::default()).unwrap();
+    let empty_child = View::nested_declarations(&empty);
     let children = [empty_child, View::from_rule(&style.rules()[0]), empty_child];
-    let edited =
-        View::try_scoped_style(style.selectors(), &leading, &children, Default::default()).unwrap();
+    let edited = View::style(style.selectors(), &leading, &children);
     assert_eq!(
-        edited.serialize_cssom(Default::default()).unwrap(),
+        graph_cssom(edited, Default::default()).unwrap(),
         "& .child {\n  color: red;\n  & > .nested { opacity: 0.5; }\n}"
     );
-    assert!(edited.parsed_scoped_rule().is_none());
-    let borrowed = View::from_scoped_rule(&scope.rules().rules()[0]);
-    assert!(std::ptr::eq(
-        borrowed.parsed_scoped_rule().unwrap(),
-        &scope.rules().rules()[0]
-    ));
+    let borrowed = View::from_rule(&scope.rules().rules()[0]);
     assert_eq!(
-        borrowed.serialize_cssom(Default::default()).unwrap(),
-        edited.serialize_cssom(Default::default()).unwrap()
+        graph_cssom(borrowed, Default::default()).unwrap(),
+        graph_cssom(edited, Default::default()).unwrap()
     );
-    assert!(borrowed.parsed_rule().is_none());
 }

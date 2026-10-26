@@ -6,23 +6,22 @@ use surgeist_css::{
     CssAnimationDirection, CssAuthoredFontFeature, CssAuthoredFontFeatureList,
     CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssCalculationSumOperator,
     CssColorComponent, CssColorInterpolationMethod, CssColorMixPercentage, CssColorSyntax,
-    CssComponentValue, CssCounterStyleRange, CssCounterStyleSpeakAs, CssCounterSymbol,
-    CssDefinedFalseMediaReason, CssErrorCode, CssExclusionReason, CssFeatureKind,
-    CssFontFamilyNameKind, CssFontSize, CssFontSizeAdjust, CssFontSynthesis,
-    CssFontSynthesisValues, CssFontVariantCaps, CssFontVariantEastAsianValues,
+    CssComponentValue, CssConditionKind, CssConditionList, CssCounterStyleRange,
+    CssCounterStyleSpeakAs, CssCounterSymbol, CssDefinedFalseMediaReason, CssErrorCode,
+    CssExclusionReason, CssFeatureKind, CssFontFamilyNameKind, CssFontSize, CssFontSizeAdjust,
+    CssFontSynthesis, CssFontSynthesisValues, CssFontVariantCaps, CssFontVariantEastAsianValues,
     CssFontVariantLigatureState, CssFontVariantLigatureValues, CssFontVariantNumericFigure,
     CssFontVariantNumericValues, CssFontVariantPosition, CssFontVariantValues,
     CssGenericFontFamily, CssGridAutoFlowAxis, CssImportance, CssInteger, CssKnownDeclaredValueRef,
     CssKnownProperty, CssKnownPropertyValueRef, CssLanguageRange, CssLengthPercentage,
-    CssMediaConditionKind, CssMediaQuery, CssMediaQueryModifier, CssMediaType,
-    CssNamespaceConstraint, CssNamespaceName, CssNamespacePrefix, CssNonNegative, CssNumeric,
-    CssNumericLiteral, CssOpenTypeTag, CssPropertyNameRef, CssPseudoClass, CssPseudoElement,
-    CssPseudoElementSegment, CssRecoveryAction, CssRelativeColorChannel,
-    CssRelativeColorEnvironment, CssRelativeColorExpressionValue, CssRelativeColorFunction,
-    CssRelativeColorResultDomain, CssRule, CssSelector, CssSelectorCombinator,
-    CssSpecificationTier, CssSupportStatus, CssSupportsConditionKind, CssSupportsConditionList,
-    CssSystemColor, conformance_exclusion, feature_metadata, parse_sheet, parse_style_attribute,
-    property_support_metadata, specification_source,
+    CssMediaLeaf, CssMediaQuery, CssMediaQueryModifier, CssMediaType, CssNamespaceConstraint,
+    CssNamespaceName, CssNamespacePrefix, CssNonNegative, CssNumeric, CssNumericLiteral,
+    CssOpenTypeTag, CssPropertyNameRef, CssPseudoClass, CssPseudoElement, CssPseudoElementSegment,
+    CssRecoveryAction, CssRelativeColorChannel, CssRelativeColorEnvironment,
+    CssRelativeColorExpressionValue, CssRelativeColorFunction, CssRelativeColorResultDomain,
+    CssRule, CssSelector, CssSelectorCombinator, CssSpecificationTier, CssSupportStatus,
+    CssSupportsLeaf, CssSystemColor, conformance_exclusion, feature_metadata, parse_sheet,
+    parse_style_attribute, property_support_metadata, specification_source,
 };
 
 #[test]
@@ -189,14 +188,14 @@ fn public_surface_exposes_private_field_supports_models_and_checked_lists() {
     };
     assert!(matches!(
         declaration.condition().kind(),
-        CssSupportsConditionKind::Declaration(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::Declaration(_))
     ));
     assert!(matches!(
         selector.condition().kind(),
-        CssSupportsConditionKind::Selector(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::Selector(_))
     ));
-    assert!(CssSupportsConditionList::try_new(vec![declaration.condition().clone()]).is_none());
-    let list = CssSupportsConditionList::try_new(vec![
+    assert!(CssConditionList::try_new(vec![declaration.condition().clone()]).is_none());
+    let list = CssConditionList::try_new(vec![
         declaration.condition().clone(),
         selector.condition().clone(),
     ])
@@ -214,7 +213,7 @@ fn public_surface_exposes_private_field_supports_models_and_checked_lists() {
             .expect("import supports")
             .condition()
             .kind(),
-        CssSupportsConditionKind::Declaration(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::Declaration(_))
     ));
 }
 
@@ -238,7 +237,7 @@ fn public_surface_exposes_unknown_media_types_and_general_enclosures() {
     );
 
     let condition = query.condition().expect("unknown type condition");
-    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = condition.kind() else {
         panic!("expected general enclosure")
     };
     assert_eq!(enclosed.authored(), Some("(unknown: calc(1foo + 2px))"));

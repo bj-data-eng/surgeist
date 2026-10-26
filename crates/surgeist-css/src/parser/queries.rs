@@ -29,6 +29,7 @@ use crate::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
     CssValueOrigin,
 };
+use crate::{CssCondition, CssConditionKind, CssConditionList};
 
 pub(super) static IMPLEMENTED_MEDIA: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.custom-media"),
@@ -357,7 +358,7 @@ fn parse_media_condition<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-) -> std::result::Result<CssMediaCondition, ParseError<'i, CssError>> {
+) -> std::result::Result<CssCondition<CssMediaLeaf>, ParseError<'i, CssError>> {
     parse_media_condition_with_or(source, input, true, numeric)
 }
 
@@ -365,7 +366,7 @@ fn parse_media_condition_without_or<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-) -> std::result::Result<CssMediaCondition, ParseError<'i, CssError>> {
+) -> std::result::Result<CssCondition<CssMediaLeaf>, ParseError<'i, CssError>> {
     parse_media_condition_with_or(source, input, false, numeric)
 }
 
@@ -396,7 +397,7 @@ fn parse_media_condition_with_or<'i, 't>(
     input: &mut Parser<'i, 't>,
     allow_or: bool,
     numeric: &MediaInput<'_>,
-) -> Result<CssMediaCondition, ParseError<'i, CssError>> {
+) -> Result<CssCondition<CssMediaLeaf>, ParseError<'i, CssError>> {
     parse_boolean_condition(
         &mut MediaConditionGrammar {
             source,
@@ -415,13 +416,13 @@ struct MediaConditionGrammar<'s, 'i, 't, 'n> {
 }
 impl<'i> BooleanConditionGrammar for MediaConditionGrammar<'_, 'i, '_, '_> {
     type Operator = CssValueOrigin;
-    type Node = CssMediaCondition;
+    type Node = CssCondition<CssMediaLeaf>;
     type Error = ParseError<'i, CssError>;
 
     fn keyword(&mut self, keyword: &'static str) -> Result<Option<CssValueOrigin>, Self::Error> {
         take_media_keyword(self.input, self.numeric, keyword)
     }
-    fn operand(&mut self) -> Result<CssMediaCondition, Self::Error> {
+    fn operand(&mut self) -> Result<CssCondition<CssMediaLeaf>, Self::Error> {
         parse_media_in_parens(self.source, self.input, self.numeric)
     }
     // The enclosing query owns what follows a media condition.
@@ -431,30 +432,30 @@ impl<'i> BooleanConditionGrammar for MediaConditionGrammar<'_, 'i, '_, '_> {
     fn negation(
         &mut self,
         operator: CssValueOrigin,
-        operand: CssMediaCondition,
-    ) -> CssMediaCondition {
-        CssMediaCondition::new(
-            CssMediaConditionKind::Not(Box::new(operand)),
+        operand: CssCondition<CssMediaLeaf>,
+    ) -> CssCondition<CssMediaLeaf> {
+        CssCondition::media(
+            CssConditionKind::Not(Box::new(operand)),
             operator,
             MediaConditionSyntax::Not,
         )
     }
-    fn single(&mut self, operand: CssMediaCondition) -> CssMediaCondition {
+    fn single(&mut self, operand: CssCondition<CssMediaLeaf>) -> CssCondition<CssMediaLeaf> {
         operand
     }
     fn junction(
         &mut self,
         conjunction: bool,
         operators: Vec<CssValueOrigin>,
-        operands: Vec<CssMediaCondition>,
-    ) -> CssMediaCondition {
+        operands: Vec<CssCondition<CssMediaLeaf>>,
+    ) -> CssCondition<CssMediaLeaf> {
         let origin = operands[0].origin().clone();
-        let operands = CssMediaConditionList::new(operands);
-        CssMediaCondition::new(
+        let operands = CssConditionList::new(operands);
+        CssCondition::media(
             if conjunction {
-                CssMediaConditionKind::And(operands)
+                CssConditionKind::And(operands)
             } else {
-                CssMediaConditionKind::Or(operands)
+                CssConditionKind::Or(operands)
             },
             origin,
             MediaConditionSyntax::Junction(operators),
@@ -465,7 +466,7 @@ fn parse_media_in_parens<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-) -> Result<CssMediaCondition, ParseError<'i, CssError>> {
+) -> Result<CssCondition<CssMediaLeaf>, ParseError<'i, CssError>> {
     input.skip_whitespace();
     let start = input.state();
     let component = numeric
@@ -495,7 +496,7 @@ fn parse_media_in_parens<'i, 't>(
             }) {
                 Ok(inner) => {
                     return Ok(Some((
-                        CssMediaConditionKind::Parenthesized(Box::new(inner)),
+                        CssConditionKind::Parenthesized(Box::new(inner)),
                         MediaConditionSyntax::Group { closing },
                     )));
                 }
@@ -526,7 +527,7 @@ fn parse_media_in_parens<'i, 't>(
                 let name = crate::CssCustomMediaName::try_from_component(syntax.name)
                     .expect("selected extension identifier");
                 return Ok(Some((
-                    CssMediaConditionKind::CustomMediaReference(
+                    CssConditionKind::Leaf(CssMediaLeaf::CustomMediaReference(
                         crate::CssCustomMediaReference::new(
                             name,
                             component
@@ -534,7 +535,7 @@ fn parse_media_in_parens<'i, 't>(
                                 .expect("selected custom media enclosure")
                                 .into_owned(),
                         ),
-                    ),
+                    )),
                     MediaConditionSyntax::Enclosed,
                 )));
             }
@@ -547,18 +548,18 @@ fn parse_media_in_parens<'i, 't>(
             let admitted = classify_generic_media_feature(source, p, numeric, &initial, syntax)?;
             Ok(Some(match admitted {
                 AdmittedMediaFeature::Feature(feature, syntax) => (
-                    CssMediaConditionKind::Feature(feature),
+                    CssConditionKind::Leaf(CssMediaLeaf::Feature(feature)),
                     MediaConditionSyntax::Feature(syntax),
                 ),
                 AdmittedMediaFeature::Unknown(feature) => (
-                    CssMediaConditionKind::UnknownFeature(feature),
+                    CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(feature)),
                     MediaConditionSyntax::Enclosed,
                 ),
             }))
         })?;
         input.reset(&end);
         if let Some((kind, syntax)) = candidate {
-            return Ok(CssMediaCondition::new(kind, origin, syntax));
+            return Ok(CssCondition::media(kind, origin, syntax));
         }
     }
     input.reset(&end);
@@ -566,8 +567,8 @@ fn parse_media_in_parens<'i, 't>(
         component.expect("opaque media enclosure").into_owned(),
     )
     .map_err(|_| invalid_syntax(start.source_location()))?;
-    Ok(CssMediaCondition::new(
-        CssMediaConditionKind::GeneralEnclosed(enclosed),
+    Ok(CssCondition::media(
+        CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)),
         origin,
         MediaConditionSyntax::Enclosed,
     ))
@@ -765,7 +766,7 @@ pub(crate) fn construct_media_query(
 pub(crate) fn construct_media_condition(
     values: CssComponentValues,
     limits: CssComponentValueLimits,
-) -> Result<CssMediaCondition, CssMediaConstructionError> {
+) -> Result<CssCondition<CssMediaLeaf>, CssMediaConstructionError> {
     let (deep, origin) = deep_media_components(&values);
     match crate::media::with_media_stack(
         deep,

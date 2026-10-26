@@ -1113,14 +1113,11 @@ fn literal_universal_omission_protects_actual_nesting_and_scoped_anchor_payloads
     let CssRule::Scope(scope) = &value else {
         panic!("scope")
     };
-    let [surgeist_css::CssScopedRule::Style(style)] = scope.rules().rules() else {
+    let [surgeist_css::CssRule::Style(style)] = scope.rules().rules() else {
         panic!("scoped style")
     };
-    let [
-        surgeist_css::CssScopedStyleSelector::Selector(surgeist_css::CssSelector::Compound(
-            compound,
-        )),
-    ] = style.selectors().selectors()
+    let [surgeist_css::CssStyleSelector::Selector(surgeist_css::CssSelector::Compound(compound))] =
+        style.selectors().selectors()
     else {
         panic!("scope anchor compound")
     };

@@ -16,16 +16,18 @@ pub(crate) fn construct_when_condition(
     values: CssComponentValues,
     limits: CssComponentValueLimits,
     context: CssParserContext,
-) -> Result<CssWhenCondition, CssConditionConstructionError> {
+) -> Result<CssCondition<CssWhenLeaf>, CssConditionConstructionError> {
     condition(SupportsLexical::root(values), limits, context, false)
 }
+/// A parsed `@when` or `@else` condition and the offsets of its implicit closures.
+pub(super) type WhenPrelude = (Option<CssCondition<CssWhenLeaf>>, Vec<usize>);
 pub(super) fn parse_prelude<'i>(
     source: &'i str,
     input: &mut Parser<'i, '_>,
     recovery: &RecoveryState,
     name: &str,
     optional: bool,
-) -> Result<(Option<CssWhenCondition>, Vec<usize>), ParseError<'i, CssError>> {
+) -> Result<WhenPrelude, ParseError<'i, CssError>> {
     let production = if optional {
         "ext.rule.else"
     } else {
@@ -104,7 +106,7 @@ fn condition(
     limits: CssComponentValueLimits,
     context: CssParserContext,
     authored: bool,
-) -> Result<CssWhenCondition, CssConditionConstructionError> {
+) -> Result<CssCondition<CssWhenLeaf>, CssConditionConstructionError> {
     match nested_condition(&lexical, limits, context, authored) {
         Ok(condition) => Ok(condition),
         Err(ConditionFailure::Mismatch(index)) => Err(invalid(&lexical, index)),
@@ -116,7 +118,7 @@ fn nested_condition(
     limits: CssComponentValueLimits,
     context: CssParserContext,
     authored: bool,
-) -> Result<CssWhenCondition, ConditionFailure<CssConditionConstructionError>> {
+) -> Result<CssCondition<CssWhenLeaf>, ConditionFailure<CssConditionConstructionError>> {
     parse_boolean_condition(
         &mut WhenGrammar {
             lexical,
@@ -139,13 +141,13 @@ struct WhenGrammar<'a> {
 }
 impl BooleanConditionGrammar for WhenGrammar<'_> {
     type Operator = ();
-    type Node = CssWhenCondition;
+    type Node = CssCondition<CssWhenLeaf>;
     type Error = ConditionFailure<CssConditionConstructionError>;
 
     fn keyword(&mut self, keyword: &'static str) -> Result<Option<()>, Self::Error> {
         Ok(self.cursor.ident(keyword).then_some(()))
     }
-    fn operand(&mut self) -> Result<CssWhenCondition, Self::Error> {
+    fn operand(&mut self) -> Result<CssCondition<CssWhenLeaf>, Self::Error> {
         term(
             self.lexical,
             &mut self.cursor,
@@ -161,27 +163,31 @@ impl BooleanConditionGrammar for WhenGrammar<'_> {
             Err(ConditionFailure::Mismatch(self.cursor.index))
         }
     }
-    fn negation(&mut self, (): (), operand: CssWhenCondition) -> CssWhenCondition {
-        CssWhenCondition::new(
-            CssWhenConditionKind::Not(Box::new(operand)),
+    fn negation(
+        &mut self,
+        (): (),
+        operand: CssCondition<CssWhenLeaf>,
+    ) -> CssCondition<CssWhenLeaf> {
+        CssCondition::lexical(
+            CssConditionKind::Not(Box::new(operand)),
             self.lexical.clone(),
         )
     }
-    fn single(&mut self, operand: CssWhenCondition) -> CssWhenCondition {
-        CssWhenCondition::new(operand.into_kind(), self.lexical.clone())
+    fn single(&mut self, operand: CssCondition<CssWhenLeaf>) -> CssCondition<CssWhenLeaf> {
+        CssCondition::lexical(operand.into_kind(), self.lexical.clone())
     }
     fn junction(
         &mut self,
         conjunction: bool,
         _: Vec<()>,
-        operands: Vec<CssWhenCondition>,
-    ) -> CssWhenCondition {
-        let list = CssWhenConditionList::new(operands);
-        CssWhenCondition::new(
+        operands: Vec<CssCondition<CssWhenLeaf>>,
+    ) -> CssCondition<CssWhenLeaf> {
+        let list = CssConditionList::new(operands);
+        CssCondition::lexical(
             if conjunction {
-                CssWhenConditionKind::And(list)
+                CssConditionKind::And(list)
             } else {
-                CssWhenConditionKind::Or(list)
+                CssConditionKind::Or(list)
             },
             self.lexical.clone(),
         )
@@ -206,7 +212,7 @@ fn term(
     limits: CssComponentValueLimits,
     context: CssParserContext,
     authored: bool,
-) -> Result<CssWhenCondition, ConditionFailure<CssConditionConstructionError>> {
+) -> Result<CssCondition<CssWhenLeaf>, ConditionFailure<CssConditionConstructionError>> {
     cursor.peek();
     let index = cursor.index;
     let component = cursor.next().ok_or(ConditionFailure::Mismatch(index))?;
@@ -215,18 +221,18 @@ fn term(
         CssComponentValueRef::Block(block) if block.kind() == CssBlockKind::Parenthesis => {
             match nested_condition(&lexical.children(index), limits, context, authored) {
                 Ok(group) => {
-                    return Ok(CssWhenCondition::new(
-                        CssWhenConditionKind::Parenthesized(Box::new(group)),
+                    return Ok(CssCondition::lexical(
+                        CssConditionKind::Parenthesized(Box::new(group)),
                         region,
                     ));
                 }
                 Err(ConditionFailure::Mismatch(_)) => {}
                 Err(failure @ ConditionFailure::Fatal(_)) => return Err(failure),
             }
-            CssWhenConditionKind::GeneralEnclosed(
+            CssConditionKind::Leaf(CssWhenLeaf::GeneralEnclosed(
                 CssGeneralEnclosed::try_from_component(component.clone())
                     .expect("validated enclosure"),
-            )
+            ))
         }
         CssComponentValueRef::Function(function) => {
             if function.name().eq_ignore_ascii_case("media") {
@@ -234,8 +240,8 @@ fn term(
                     component.clone(),
                     limits,
                 ))? {
-                    return Ok(CssWhenCondition::new(
-                        CssWhenConditionKind::MediaFeature(feature),
+                    return Ok(CssCondition::lexical(
+                        CssConditionKind::Leaf(CssWhenLeaf::MediaFeature(feature)),
                         region,
                     ));
                 }
@@ -247,8 +253,10 @@ fn term(
                     context,
                 ) {
                     Ok(declaration) => {
-                        return Ok(CssWhenCondition::new(
-                            CssWhenConditionKind::SupportsDeclaration(Box::new(declaration)),
+                        return Ok(CssCondition::lexical(
+                            CssConditionKind::Leaf(CssWhenLeaf::SupportsDeclaration(Box::new(
+                                declaration,
+                            ))),
                             region,
                         ));
                     }
@@ -267,14 +275,14 @@ fn term(
                     }
                 }
             }
-            CssWhenConditionKind::GeneralEnclosed(
+            CssConditionKind::Leaf(CssWhenLeaf::GeneralEnclosed(
                 CssGeneralEnclosed::try_from_component(component.clone())
                     .expect("validated function"),
-            )
+            ))
         }
         _ => return Err(ConditionFailure::Mismatch(index)),
     };
-    Ok(CssWhenCondition::new(kind, region))
+    Ok(CssCondition::lexical(kind, region))
 }
 
 // Keep whole-rule/vector temporaries out of the shared recursive block frame.
@@ -282,7 +290,7 @@ fn term(
 // additional live frame along a nested conditional chain.
 #[inline(never)]
 pub(super) fn assemble_when_rule(
-    condition: CssWhenCondition,
+    condition: CssCondition<CssWhenLeaf>,
     rules: Vec<CssRule>,
     position: CssSourcePosition,
 ) -> Vec<CssRule> {
@@ -290,7 +298,7 @@ pub(super) fn assemble_when_rule(
 }
 #[inline(never)]
 pub(super) fn assemble_else_rule(
-    condition: Option<CssWhenCondition>,
+    condition: Option<CssCondition<CssWhenLeaf>>,
     rules: Vec<CssRule>,
     position: CssSourcePosition,
 ) -> Vec<CssRule> {

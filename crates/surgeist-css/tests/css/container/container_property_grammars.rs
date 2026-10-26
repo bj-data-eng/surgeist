@@ -536,18 +536,18 @@ fn assert_style_identity(name: &str, authored_name: &str, valid_value: &str) {
     // the property name must not start evaluating or applying its value grammar.
     for value in [valid_value, "banana"] {
         let source = format!("style({authored_name}: {value})");
-        let condition = CssContainerCondition::try_from_components(
+        let condition = CssCondition::<CssContainerLeaf>::try_from_components(
             parse_component_values(&source).unwrap(),
             Default::default(),
         )
         .unwrap();
-        let CssContainerConditionKind::Style(query) = condition.kind() else {
+        let CssConditionKind::Leaf(CssContainerLeaf::Style(query)) = condition.kind() else {
             panic!("style query")
         };
-        let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain {
+        let CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(CssContainerStyleFeature::Plain {
             name: feature_name,
             value: feature_value,
-        }) = query.kind()
+        })) = query.kind()
         else {
             panic!("plain feature")
         };

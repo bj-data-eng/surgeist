@@ -1,9 +1,8 @@
 //! #644's new graph-depth contract counts every actual native child edge.
 use surgeist_css::{
-    CssEditedGroupPreludeRef, CssKeyframeRuleView, CssMarginBox, CssMarginRuleView,
-    CssNamespaceContext, CssPageRuleView, CssRule, CssRuleGraphInput as Input,
-    CssRuleSerializationLimits, CssSpecifiedDeclarationBlock as Block, CssStyleAncestor,
-    parse_sheet,
+    CssGroupPreludeRef, CssKeyframeRuleView, CssMarginBox, CssMarginRuleView, CssNamespaceContext,
+    CssPageRuleView, CssRule, CssRuleGraphInput as Input, CssRuleSerializationLimits,
+    CssSpecifiedDeclarationBlock as Block, CssStyleAncestor, parse_sheet,
 };
 
 fn format(
@@ -72,7 +71,7 @@ fn mixed_edited_parent_and_parsed_child_share_the_actual_depth() {
     let leaf = Input::from_rule(&media.rules()[0]);
     assert_eq!(format(leaf, 0).unwrap(), "a { }");
     let children = [leaf];
-    let input = Input::group(CssEditedGroupPreludeRef::Media(media.query()), &children);
+    let input = Input::group(CssGroupPreludeRef::Media(media.query()), &children);
     let expected = "@media all {\n  a { }\n}";
     assert_eq!(format(input, 1).unwrap(), expected);
     serializes_within_default_limits(input, expected);
@@ -86,7 +85,7 @@ fn parsed_scoped_graph_counts_the_same_child_edges() {
     let CssRule::Scope(scope) = &report.syntax().rules()[0] else {
         panic!()
     };
-    let input = Input::from_scoped_rule(&scope.rules().rules()[0]);
+    let input = Input::from_rule(&scope.rules().rules()[0]);
     let expected = "@media all {\n  a { }\n}";
     assert_eq!(format(input, 1).unwrap(), expected);
     serializes_within_default_limits(input, expected);
@@ -174,16 +173,13 @@ fn rendering_ancestors_reduce_the_native_child_allowance_without_resets() {
         Input::from_rule(&media.rules()[0]),
         Input::from_rule(&media.rules()[1]),
     ];
-    let input = Input::group(CssEditedGroupPreludeRef::Media(media.query()), &children);
+    let input = Input::group(CssGroupPreludeRef::Media(media.query()), &children);
     let expected = "@media all {\n  @page { @top-left { } }\n  @keyframes k {   0% { }\n}\n}";
     assert_eq!(format(input, 2).unwrap(), expected);
     serializes_within_default_limits(input, expected);
     depth_failure(input, 1, &[0, 0], None);
     let keyframe_children = [children[1]];
-    let keyframes = Input::group(
-        CssEditedGroupPreludeRef::Media(media.query()),
-        &keyframe_children,
-    );
+    let keyframes = Input::group(CssGroupPreludeRef::Media(media.query()), &keyframe_children);
     assert_eq!(
         format(keyframes, 2).unwrap(),
         format(keyframes, usize::MAX).unwrap()

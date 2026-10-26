@@ -175,12 +175,9 @@ pub(super) fn parse_scope_boundary_selector_list<'i, 't>(
     let mut selectors = Vec::new();
     loop {
         let member = if allow_relative {
-            match parse_style_selector_with_options(input, options, recovery)? {
-                CssStyleSelector::Selector(selector) => CssScopeSelector::Selector(selector),
-                CssStyleSelector::Relative(selector) => CssScopeSelector::Relative(selector),
-            }
+            parse_style_selector_with_options(input, options, recovery)?
         } else {
-            CssScopeSelector::Selector(parse_rule_selector_with_options(input, options, recovery)?)
+            CssStyleSelector::Selector(parse_rule_selector_with_options(input, options, recovery)?)
         };
         selectors.push(member);
         if input.try_parse(Parser::expect_comma).is_err() {
@@ -194,28 +191,21 @@ pub(super) fn parse_scope_boundary_selector_list<'i, 't>(
 pub(super) fn parse_scoped_style_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssScopedStyleSelectorList, ParseError<'i, CssError>> {
+) -> std::result::Result<CssStyleSelectorList, ParseError<'i, CssError>> {
     recovery.check_depth(input)?;
     let mut selectors = Vec::new();
     loop {
-        selectors.push(parse_scoped_style_selector(input, recovery)?);
+        selectors.push(parse_style_selector_with_options(
+            input,
+            SelectorParseOptions::scoped_style(),
+            recovery,
+        )?);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }
     }
     input.expect_exhausted().map_err(selector_basic)?;
-    CssScopedStyleSelectorList::try_new(selectors).ok_or_else(|| invalid_selector(input))
-}
-
-fn parse_scoped_style_selector<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssScopedStyleSelector, ParseError<'i, CssError>> {
-    match parse_style_selector_with_options(input, SelectorParseOptions::scoped_style(), recovery)?
-    {
-        CssStyleSelector::Selector(selector) => Ok(CssScopedStyleSelector::Selector(selector)),
-        CssStyleSelector::Relative(selector) => Ok(CssScopedStyleSelector::Relative(selector)),
-    }
+    CssStyleSelectorList::try_new(selectors).ok_or_else(|| invalid_selector(input))
 }
 
 pub(super) fn parse_nested_style_selector_list<'i, 't>(

@@ -670,17 +670,14 @@ fn required_optional_and_scoped_checked_carriers_preserve_conditions_without_pos
         sheet.serialize_specified(Default::default()).unwrap(),
         "@when media(width) { }\n@else { }\n@else media(width) { }"
     );
-    let scoped_when = CssScopedWhenRule::try_new(condition.clone(), Vec::new(), &context).unwrap();
-    let scoped_else = CssScopedElseRule::try_new(None, Vec::new(), &context).unwrap();
+    let scoped_when = CssWhenRule::try_new(condition.clone(), Vec::new(), &context).unwrap();
+    let scoped_else = CssElseRule::try_new(None, Vec::new(), &context).unwrap();
     assert_eq!(scoped_when.condition(), &condition);
     assert!(scoped_when.position().is_none() && scoped_else.condition().is_none());
     let scope = CssScopeRule::try_new(
         None,
         None,
-        vec![
-            CssScopedRule::When(scoped_when),
-            CssScopedRule::Else(scoped_else),
-        ],
+        vec![CssRule::When(scoped_when), CssRule::Else(scoped_else)],
         &context,
         CssScopeNestingContext::None,
     )
@@ -744,14 +741,11 @@ fn lexical_condition_and_compact_group_bytes_preserve_omission_and_grouping() {
     else {
         panic!("three ordered conditional members");
     };
-    assert!(matches!(
-        when.condition().kind(),
-        CssWhenConditionKind::And(_)
-    ));
+    assert!(matches!(when.condition().kind(), CssConditionKind::And(_)));
     assert!(omitted.condition().is_none());
     assert!(matches!(
         later.condition().unwrap().kind(),
-        CssWhenConditionKind::SupportsDeclaration(_)
+        CssConditionKind::Leaf(CssWhenLeaf::SupportsDeclaration(_))
     ));
     assert_original_declarations(
         expected,

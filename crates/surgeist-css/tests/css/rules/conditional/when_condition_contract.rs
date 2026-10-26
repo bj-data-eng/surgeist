@@ -5,8 +5,8 @@ use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
-fn feature(condition: &CssWhenCondition) -> &CssWhenMediaFeature {
-    let CssWhenConditionKind::MediaFeature(value) = condition.kind() else {
+fn feature(condition: &CssCondition<CssWhenLeaf>) -> &CssWhenMediaFeature {
+    let CssConditionKind::Leaf(CssWhenLeaf::MediaFeature(value)) = condition.kind() else {
         panic!("one supported media feature: {:?}", condition.kind());
     };
     value
@@ -184,7 +184,7 @@ fn broader_known_function_inputs_are_opaque_and_reject_on_leaf_only_admission() 
         "supports((display:grid))",
     ] {
         let condition = parse_when_condition(source).unwrap();
-        let CssWhenConditionKind::GeneralEnclosed(opaque) = condition.kind() else {
+        let CssConditionKind::Leaf(CssWhenLeaf::GeneralEnclosed(opaque)) = condition.kind() else {
             panic!("opaque fallback for {source}");
         };
         assert_eq!(opaque.authored(), Some(source));
@@ -216,7 +216,9 @@ fn supports_leaf_retains_one_declaration_and_the_selected_document_mode() {
         ("supports(future-prop:value)", "future-prop", false),
     ] {
         let condition = parse_when_condition(source).unwrap();
-        let CssWhenConditionKind::SupportsDeclaration(declaration) = condition.kind() else {
+        let CssConditionKind::Leaf(CssWhenLeaf::SupportsDeclaration(declaration)) =
+            condition.kind()
+        else {
             panic!("one supports declaration");
         };
         assert_eq!(declaration.property(), property);
@@ -239,10 +241,10 @@ fn supports_leaf_retains_one_declaration_and_the_selected_document_mode() {
     let quirks = CssParserContext::new(CssParserMode::Quirks)
         .parse_when_condition(source)
         .unwrap();
-    let CssWhenConditionKind::SupportsDeclaration(standard) = standard.kind() else {
+    let CssConditionKind::Leaf(CssWhenLeaf::SupportsDeclaration(standard)) = standard.kind() else {
         panic!("standard declaration");
     };
-    let CssWhenConditionKind::SupportsDeclaration(quirks) = quirks.kind() else {
+    let CssConditionKind::Leaf(CssWhenLeaf::SupportsDeclaration(quirks)) = quirks.kind() else {
         panic!("quirks declaration");
     };
     assert!(standard.known().is_none());
@@ -253,19 +255,19 @@ fn supports_leaf_retains_one_declaration_and_the_selected_document_mode() {
 fn homogeneous_operators_and_redundant_grouping_remain_ordered_and_symbolic() {
     let source = "((media(width) or media(height))) and not(supports(display:grid))";
     let condition = parse_when_condition(source).unwrap();
-    let CssWhenConditionKind::And(and) = condition.kind() else {
+    let CssConditionKind::And(and) = condition.kind() else {
         panic!("outer And");
     };
     let [first, second] = and.conditions() else {
         panic!("two ordered terms");
     };
-    let CssWhenConditionKind::Parenthesized(first) = first.kind() else {
+    let CssConditionKind::Parenthesized(first) = first.kind() else {
         panic!("first explicit pair");
     };
-    let CssWhenConditionKind::Parenthesized(first) = first.kind() else {
+    let CssConditionKind::Parenthesized(first) = first.kind() else {
         panic!("second explicit pair");
     };
-    let CssWhenConditionKind::Or(or) = first.kind() else {
+    let CssConditionKind::Or(or) = first.kind() else {
         panic!("grouped Or");
     };
     let [width, height] = or.conditions() else {
@@ -285,7 +287,7 @@ fn homogeneous_operators_and_redundant_grouping_remain_ordered_and_symbolic() {
     // No separating space before '(' makes not(...) a function token.
     assert!(matches!(
         second.kind(),
-        CssWhenConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssWhenLeaf::GeneralEnclosed(_))
     ));
     assert_eq!(
         condition
@@ -295,15 +297,15 @@ fn homogeneous_operators_and_redundant_grouping_remain_ordered_and_symbolic() {
         source
     );
     let unary = parse_when_condition("not (supports(display:grid))").unwrap();
-    let CssWhenConditionKind::Not(term) = unary.kind() else {
+    let CssConditionKind::Not(term) = unary.kind() else {
         panic!("one unary Not");
     };
-    let CssWhenConditionKind::Parenthesized(term) = term.kind() else {
+    let CssConditionKind::Parenthesized(term) = term.kind() else {
         panic!("explicit grouped operand");
     };
     assert!(matches!(
         term.kind(),
-        CssWhenConditionKind::SupportsDeclaration(_)
+        CssConditionKind::Leaf(CssWhenLeaf::SupportsDeclaration(_))
     ));
 }
 
@@ -318,7 +320,10 @@ fn empty_and_failed_group_probes_are_opaque_while_outer_algebra_rejects() {
     ] {
         let condition = parse_when_condition(source).unwrap();
         assert!(
-            matches!(condition.kind(), CssWhenConditionKind::GeneralEnclosed(_)),
+            matches!(
+                condition.kind(),
+                CssConditionKind::Leaf(CssWhenLeaf::GeneralEnclosed(_))
+            ),
             "{source}"
         );
         assert_eq!(
@@ -378,7 +383,7 @@ fn lexical_failures_are_terminal_component_errors_with_original_origins() {
 fn checked_recovered_input_rejects_while_parsed_rule_retains_owned_eof_closures() {
     let values = parse_component_values("media(width").unwrap();
     assert!(
-        CssWhenCondition::try_from_components(values.clone(), Default::default())
+        CssCondition::<CssWhenLeaf>::try_from_components(values.clone(), Default::default())
             .as_ref()
             .is_err_and(|error| error.is_recovered_input()
                 && matches!(error.origin(), CssValueOrigin::ImplicitClosure { .. }))
@@ -394,7 +399,7 @@ fn checked_recovered_input_rejects_while_parsed_rule_retains_owned_eof_closures(
     };
     assert!(matches!(
         rule.condition().kind(),
-        CssWhenConditionKind::MediaFeature(_)
+        CssConditionKind::Leaf(CssWhenLeaf::MediaFeature(_))
     ));
     // Lexical condition output retains the actual prelude's root trivia;
     // compact specified rule emission owns trimming that edge whitespace.
@@ -420,7 +425,7 @@ fn lexical_spelling_comments_coordinates_and_serialized_origins_survive_clone() 
     let source = "/*🦀*/ MEDIA(width) AnD (supports(display:grid) or future()) ";
     let condition = parse_when_condition(source).unwrap();
     let before = condition.clone();
-    assert!(matches!(condition.kind(), CssWhenConditionKind::And(_)));
+    assert!(matches!(condition.kind(), CssConditionKind::And(_)));
     let position = condition.position().unwrap();
     assert_eq!(
         position.byte_offset().value(),
@@ -447,7 +452,7 @@ fn lexical_spelling_comments_coordinates_and_serialized_origins_survive_clone() 
     );
     assert_eq!(condition, before);
     assert_eq!(
-        CssWhenCondition::try_from_components(
+        CssCondition::<CssWhenLeaf>::try_from_components(
             CssComponentValues::try_new(condition.components().to_vec(), Default::default())
                 .unwrap(),
             Default::default()
@@ -462,7 +467,7 @@ fn programmatic_enclosure_keeps_parsed_feature_children_without_invented_positio
     let children = parse_component_values("width").unwrap();
     let child = children.items()[0].clone();
     let component = CssComponentValue::try_function("media", children).unwrap();
-    let condition = CssWhenCondition::try_from_components(
+    let condition = CssCondition::<CssWhenLeaf>::try_from_components(
         CssComponentValues::try_new(vec![component], Default::default()).unwrap(),
         Default::default(),
     )
@@ -518,11 +523,14 @@ fn independent_component_depth_count_and_byte_limits_fail_atomically() {
                     .is_some_and(|error| component_failure(error) == kind))
         );
         assert!(
-            CssWhenCondition::try_from_components(parse_component_values(source).unwrap(), limits)
-                .as_ref()
-                .is_err_and(|error| error
-                    .component_error()
-                    .is_some_and(|error| component_failure(error) == kind))
+            CssCondition::<CssWhenLeaf>::try_from_components(
+                parse_component_values(source).unwrap(),
+                limits
+            )
+            .as_ref()
+            .is_err_and(|error| error
+                .component_error()
+                .is_some_and(|error| component_failure(error) == kind))
         );
     }
     assert_eq!(
@@ -560,19 +568,19 @@ fn supported_and_opaque_condition_depth_256_retain_identity_and_257_is_terminal(
         if opaque {
             assert!(matches!(
                 condition.kind(),
-                CssWhenConditionKind::GeneralEnclosed(_)
+                CssConditionKind::Leaf(CssWhenLeaf::GeneralEnclosed(_))
             ));
         } else {
             let mut current = &condition;
             for _ in 0..255 {
-                let CssWhenConditionKind::Parenthesized(child) = current.kind() else {
+                let CssConditionKind::Parenthesized(child) = current.kind() else {
                     panic!("every authored grouping pair retained");
                 };
                 current = child;
             }
             assert!(matches!(
                 current.kind(),
-                CssWhenConditionKind::MediaFeature(_)
+                CssConditionKind::Leaf(CssWhenLeaf::MediaFeature(_))
             ));
         }
         assert_eq!(condition.clone(), condition);

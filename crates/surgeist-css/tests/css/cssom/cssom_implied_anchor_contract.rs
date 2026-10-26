@@ -3,7 +3,7 @@
 //! an ampersand, including retained invalid forgiving members. Compact authored
 //! and general-relative output remain distinct.
 use surgeist_css::{
-    CssAdmittedStyleSelectors, CssEditedRuleView, CssNamespaceContext, CssRecoveryAction, CssRule,
+    CssNamespaceContext, CssRecoveryAction, CssRule, CssRuleGraphInput,
     CssSpecifiedDeclarationBlock, CssStyleAncestor, CssStyleSelectorContext,
     parse_relative_selector_list, parse_sheet, parse_style_selector_list,
 };
@@ -65,19 +65,26 @@ fn checked_scoped_nested_role_absolutizes_relative_payload_without_mutating_sour
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let parsed = report.syntax().as_ref().unwrap();
-    let CssAdmittedStyleSelectors::Scoped(list) = parsed.selectors() else {
-        panic!("scoped")
-    };
+    assert!(matches!(
+        parsed.context(),
+        CssStyleSelectorContext::Scoped(_)
+    ));
+    let list = parsed.selectors();
     let declarations =
         CssSpecifiedDeclarationBlock::try_from_entries(&[], Default::default()).unwrap();
-    let view =
-        CssEditedRuleView::try_scoped_style(list, &declarations, &[], Default::default()).unwrap();
+    let input = CssRuleGraphInput::style(list, &declarations, &[]);
     assert_eq!(
-        view.serialize_specified(Default::default()).unwrap(),
+        input.serialize_specified(Default::default()).unwrap(),
         "> .child, + .sibling { }"
     );
     assert_eq!(
-        view.serialize_cssom(Default::default()).unwrap(),
+        input
+            .serialize_cssom(
+                &CssNamespaceContext::default(),
+                CssStyleAncestor::Absent,
+                Default::default()
+            )
+            .unwrap(),
         "& > .child, & + .sibling { }"
     );
     assert_eq!(parsed.origin().source().as_str(), source);
@@ -103,15 +110,18 @@ fn explicit_repeated_and_retained_invalid_anchors_are_controls_without_an_extra_
             .iter()
             .any(|d| d.action() == CssRecoveryAction::PreserveInvalidSelectorListItem)
     );
-    let CssAdmittedStyleSelectors::Ordinary(list) = raw.syntax().as_ref().unwrap().selectors()
-    else {
-        panic!("ordinary")
-    };
+    let list = raw.syntax().as_ref().unwrap().selectors();
     let declarations =
         CssSpecifiedDeclarationBlock::try_from_entries(&[], Default::default()).unwrap();
-    let view = CssEditedRuleView::try_style(list, &declarations, &[], Default::default()).unwrap();
+    let input = CssRuleGraphInput::style(list, &declarations, &[]);
     assert_eq!(
-        view.serialize_cssom(Default::default()).unwrap(),
+        input
+            .serialize_cssom(
+                &CssNamespaceContext::default(),
+                CssStyleAncestor::Absent,
+                Default::default()
+            )
+            .unwrap(),
         "&:is(.ok,&.bad:unknown()) { }"
     );
     // Nesting §3.1 counts the ampersand even when it only occurs in an
@@ -121,13 +131,16 @@ fn explicit_repeated_and_retained_invalid_anchors_are_controls_without_an_extra_
         &CssNamespaceContext::default(),
         CssStyleSelectorContext::Nested,
     );
-    let CssAdmittedStyleSelectors::Ordinary(list) = raw.syntax().as_ref().unwrap().selectors()
-    else {
-        panic!("ordinary")
-    };
-    let view = CssEditedRuleView::try_style(list, &declarations, &[], Default::default()).unwrap();
+    let list = raw.syntax().as_ref().unwrap().selectors();
+    let input = CssRuleGraphInput::style(list, &declarations, &[]);
     assert_eq!(
-        view.serialize_cssom(Default::default()).unwrap(),
+        input
+            .serialize_cssom(
+                &CssNamespaceContext::default(),
+                CssStyleAncestor::Absent,
+                Default::default()
+            )
+            .unwrap(),
         ":is(.ok,&.bad:unknown()) { }"
     );
 }

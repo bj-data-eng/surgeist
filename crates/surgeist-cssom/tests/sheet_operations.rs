@@ -1097,7 +1097,7 @@ fn legacy_add_rule_defaults_end_index_exact_input_and_minus_one_result() {
     let texts = ids
         .iter()
         .map(|id| match after.rule(id).unwrap().authored() {
-            CssomAuthoredRule::Ordinary(rule) => rule.serialize_cssom(Default::default()).unwrap(),
+            CssomAuthoredRule::Rule(rule) => rule.serialize_cssom(Default::default()).unwrap(),
             _ => panic!("ordinary source rule"),
         })
         .collect::<Vec<_>>();

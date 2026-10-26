@@ -4,24 +4,27 @@ use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
-fn style(condition: &CssContainerCondition) -> &CssContainerStyleQuery {
-    let CssContainerConditionKind::Style(query) = condition.kind() else {
+fn style(condition: &CssCondition<CssContainerLeaf>) -> &CssCondition<CssStyleQueryLeaf> {
+    let CssConditionKind::Leaf(CssContainerLeaf::Style(query)) = condition.kind() else {
         panic!("style")
     };
     query
 }
 fn plain(
-    query: &CssContainerStyleQuery,
+    query: &CssCondition<CssStyleQueryLeaf>,
 ) -> (&CssContainerStyleFeatureName, &CssContainerStyleValue) {
-    let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain { name, value }) =
-        query.kind()
+    let CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(CssContainerStyleFeature::Plain {
+        name,
+        value,
+    })) = query.kind()
     else {
         panic!("plain")
     };
     (name, value)
 }
-fn range(query: &CssContainerStyleQuery) -> &CssContainerStyleRange {
-    let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Range(range)) = query.kind()
+fn range(query: &CssCondition<CssStyleQueryLeaf>) -> &CssContainerStyleRange {
+    let CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(CssContainerStyleFeature::Range(range))) =
+        query.kind()
     else {
         panic!("range")
     };
@@ -39,22 +42,22 @@ fn inner_logic_and_unknowns_expose_independent_original_regions() {
     let source = "style(NoT (((--Theme: dark) aNd future(1))))";
     let condition = construct(source);
     let query = style(&condition);
-    let CssContainerStyleQueryKind::Not(group) = query.kind() else {
+    let CssConditionKind::Not(group) = query.kind() else {
         panic!("not")
     };
-    let CssContainerStyleQueryKind::Parenthesized(group) = group.kind() else {
+    let CssConditionKind::Parenthesized(group) = group.kind() else {
         panic!("group")
     };
-    let CssContainerStyleQueryKind::Parenthesized(and) = group.kind() else {
+    let CssConditionKind::Parenthesized(and) = group.kind() else {
         panic!("redundant group")
     };
-    let CssContainerStyleQueryKind::And(list) = and.kind() else {
+    let CssConditionKind::And(list) = and.kind() else {
         panic!("and")
     };
-    let [grouped_feature, unknown] = list.queries() else {
+    let [grouped_feature, unknown] = list.conditions() else {
         panic!("two operands")
     };
-    let CssContainerStyleQueryKind::Parenthesized(feature) = grouped_feature.kind() else {
+    let CssConditionKind::Parenthesized(feature) = grouped_feature.kind() else {
         panic!("feature group")
     };
     let (CssContainerStyleFeatureName::Custom(name), value) = plain(feature) else {
@@ -65,7 +68,7 @@ fn inner_logic_and_unknowns_expose_independent_original_regions() {
         value.serialize_tokens(Default::default()).unwrap().as_css(),
         " dark"
     );
-    let CssContainerStyleQueryKind::GeneralEnclosed(opaque) = unknown.kind() else {
+    let CssConditionKind::Leaf(CssStyleQueryLeaf::GeneralEnclosed(opaque)) = unknown.kind() else {
         panic!("opaque")
     };
     assert_eq!(opaque.authored(), Some("future(1)"));
@@ -283,7 +286,7 @@ fn programmatic_operand_boundaries_and_mixed_origins_remain_inspectable() {
     )
     .unwrap();
     let function = CssComponentValue::try_function("style", argument).unwrap();
-    let condition = CssContainerCondition::try_from_components(
+    let condition = CssCondition::<CssContainerLeaf>::try_from_components(
         CssComponentValues::try_new(vec![function], Default::default()).unwrap(),
         Default::default(),
     )
@@ -323,7 +326,9 @@ fn style_limits_apply_before_admission_and_recovered_groups_keep_closure_origins
             ComponentFailure::ByteLimit,
         ),
     ] {
-        let Err(outer) = CssContainerCondition::try_from_components(values.clone(), limits) else {
+        let Err(outer) =
+            CssCondition::<CssContainerLeaf>::try_from_components(values.clone(), limits)
+        else {
             panic!("component limit")
         };
         let Some(error) = outer.component_error() else {
@@ -342,12 +347,14 @@ fn style_limits_apply_before_admission_and_recovered_groups_keep_closure_origins
             ))
         ));
     }
-    let CssContainerStyleQueryKind::Parenthesized(child) = style(&condition).kind() else {
+    let CssConditionKind::Parenthesized(child) = style(&condition).kind() else {
         panic!("retained group")
     };
     assert!(matches!(
         child.kind(),
-        CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Boolean(_))
+        CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(
+            CssContainerStyleFeature::Boolean(_)
+        ))
     ));
     assert!(
         child
@@ -430,13 +437,15 @@ fn escaped_comparison_identifiers_are_values_and_grouped_failures_are_inner_opaq
         CssComponentValueRef::Token(CssValueTokenRef::Ident(">"))
     ));
     let condition = construct("style((--x:var(color)))");
-    let CssContainerStyleQueryKind::GeneralEnclosed(opaque) = style(&condition).kind() else {
+    let CssConditionKind::Leaf(CssStyleQueryLeaf::GeneralEnclosed(opaque)) =
+        style(&condition).kind()
+    else {
         panic!("inner general-enclosed")
     };
     assert_eq!(opaque.authored(), Some("(--x:var(color))"));
     let condition = construct("style(--x:var(color))");
     assert!(matches!(
         condition.kind(),
-        CssContainerConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
     ));
 }

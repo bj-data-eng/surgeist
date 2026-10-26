@@ -13,9 +13,8 @@ pub surgeist_cssom::CssStyleSheetMedia::Text(&'a str)
 pub enum surgeist_cssom::CssomAuthoredRule
 pub surgeist_cssom::CssomAuthoredRule::Keyframe(surgeist_css::syntax::CssKeyframeBlock)
 pub surgeist_cssom::CssomAuthoredRule::Margin(surgeist_css::syntax::page::CssMarginRule)
-pub surgeist_cssom::CssomAuthoredRule::Ordinary(surgeist_css::syntax::CssRule)
 pub surgeist_cssom::CssomAuthoredRule::RawNestedDeclarations(surgeist_css::syntax::CssDeclarationList)
-pub surgeist_cssom::CssomAuthoredRule::Scoped(surgeist_css::syntax::CssScopedRule)
+pub surgeist_cssom::CssomAuthoredRule::Rule(surgeist_css::syntax::CssRule)
 pub surgeist_cssom::CssomAuthoredRule::SupportsTestChild(surgeist_css::named_supports::CssSupportsTestChild)
 impl surgeist_css::source_retention::CssRetainedSources for surgeist_cssom::CssomAuthoredRule
 pub enum surgeist_cssom::CssomBlockData
@@ -168,14 +167,14 @@ pub surgeist_cssom::CssomGroupKind::Supports
 pub surgeist_cssom::CssomGroupKind::When
 pub enum surgeist_cssom::CssomGroupPrelude
 pub surgeist_cssom::CssomGroupPrelude::Container(surgeist_css::syntax::CssContainerPrelude)
-pub surgeist_cssom::CssomGroupPrelude::Else(core::option::Option<surgeist_css::when::CssWhenCondition>)
+pub surgeist_cssom::CssomGroupPrelude::Else(core::option::Option<surgeist_css::condition::CssCondition<surgeist_css::when::CssWhenLeaf>>)
 pub surgeist_cssom::CssomGroupPrelude::Layer(core::option::Option<surgeist_css::syntax::CssLayerName>)
 pub surgeist_cssom::CssomGroupPrelude::Media(surgeist_cssom::CssomMediaListId)
 pub surgeist_cssom::CssomGroupPrelude::Scope
 pub surgeist_cssom::CssomGroupPrelude::Scope::end: core::option::Option<surgeist_css::syntax::CssScopeSelectorList>
 pub surgeist_cssom::CssomGroupPrelude::Scope::start: core::option::Option<surgeist_css::syntax::CssScopeSelectorList>
-pub surgeist_cssom::CssomGroupPrelude::Supports(surgeist_css::syntax::CssSupportsCondition)
-pub surgeist_cssom::CssomGroupPrelude::When(surgeist_css::when::CssWhenCondition)
+pub surgeist_cssom::CssomGroupPrelude::Supports(surgeist_css::condition::CssCondition<surgeist_css::syntax::CssSupportsLeaf>)
+pub surgeist_cssom::CssomGroupPrelude::When(surgeist_css::condition::CssCondition<surgeist_css::when::CssWhenLeaf>)
 impl surgeist_cssom::CssomGroupPrelude
 pub const fn surgeist_cssom::CssomGroupPrelude::kind(&self) -> surgeist_cssom::CssomGroupKind
 impl surgeist_css::source_retention::CssRetainedSources for surgeist_cssom::CssomGroupPrelude
@@ -348,16 +347,12 @@ pub surgeist_cssom::CssomRuleData::Page::selectors: surgeist_css::syntax::page::
 pub surgeist_cssom::CssomRuleData::Style
 pub surgeist_cssom::CssomRuleData::Style::block: surgeist_cssom::CssomBlockId
 pub surgeist_cssom::CssomRuleData::Style::children: surgeist_cssom::CssomRuleListId
-pub surgeist_cssom::CssomRuleData::Style::selectors: surgeist_cssom::CssomSelectors
+pub surgeist_cssom::CssomRuleData::Style::selectors: surgeist_css::syntax::CssStyleSelectorList
 pub surgeist_cssom::CssomRuleData::SupportsTestChild(surgeist_css::named_supports::CssSupportsTestChild)
 impl surgeist_cssom::CssomRuleData
 pub fn surgeist_cssom::CssomRuleData::block(&self) -> core::option::Option<&surgeist_cssom::CssomBlockId>
 pub fn surgeist_cssom::CssomRuleData::children(&self) -> core::option::Option<&surgeist_cssom::CssomRuleListId>
 impl surgeist_css::source_retention::CssRetainedSources for surgeist_cssom::CssomRuleData
-pub enum surgeist_cssom::CssomSelectors
-pub surgeist_cssom::CssomSelectors::Ordinary(surgeist_css::syntax::CssStyleSelectorList)
-pub surgeist_cssom::CssomSelectors::Scoped(surgeist_css::syntax::CssScopedStyleSelectorList)
-impl surgeist_css::source_retention::CssRetainedSources for surgeist_cssom::CssomSelectors
 pub enum surgeist_cssom::CssomSheetListTarget<'a>
 pub surgeist_cssom::CssomSheetListTarget::Created(&'a surgeist_cssom::CssomSheetTicket)
 pub surgeist_cssom::CssomSheetListTarget::Existing(&'a surgeist_cssom::CssomSheetId)

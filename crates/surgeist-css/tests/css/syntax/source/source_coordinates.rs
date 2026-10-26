@@ -4,10 +4,9 @@ use crate::css::support::parse_report as common;
 
 use common::CssParseReportTestExt;
 use surgeist_css::{
-    CssByteOffset, CssErrorCode, CssKnownProperty, CssLineIndex, CssMediaConditionKind,
+    CssByteOffset, CssConditionKind, CssErrorCode, CssKnownProperty, CssLineIndex, CssMediaLeaf,
     CssMediaQuery, CssMediaType, CssRecoveryAction, CssRule, CssSourcePosition, CssSourceSpan,
-    CssSupportsConditionKind, CssTokenKind, CssUtf16ColumnIndex, parse_sheet,
-    parse_style_attribute,
+    CssSupportsLeaf, CssTokenKind, CssUtf16ColumnIndex, parse_sheet, parse_style_attribute,
 };
 
 fn assert_copy_hash_ord<T: Copy + Eq + Ord + Hash>() {}
@@ -53,7 +52,7 @@ fn opaque_media_nodes_preserve_exact_non_bmp_byte_and_utf16_positions() {
     assert_eq!(unknown_type.as_css(), "F\\75ture");
 
     let condition_offset = source.find("(UnKnOwN").unwrap();
-    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = condition.kind() else {
         panic!("expected general enclosure details")
     };
     assert_position(
@@ -118,7 +117,8 @@ fn supports_nodes_preserve_exact_non_bmp_byte_and_utf16_positions() {
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("expected supports rule");
     };
-    let CssSupportsConditionKind::Declaration(declaration) = rule.condition().kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = rule.condition().kind()
+    else {
         panic!("expected declaration condition");
     };
 

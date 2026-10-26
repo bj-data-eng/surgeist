@@ -8,7 +8,7 @@ use surgeist_css::*;
 fn rule(source: &str) -> CssRule {
     sheet(source).rules()[0].clone()
 }
-fn scoped(source: &str) -> Vec<CssScopedRule> {
+fn scoped(source: &str) -> Vec<CssRule> {
     let source = format!("@scope {{ {source} }}");
     let input = sheet(&source);
     let CssRule::Scope(scope) = &input.rules()[0] else {
@@ -90,25 +90,25 @@ fn every_ordinary_and_scoped_group_constructor_has_absent_enclosing_position() {
     );
     let children = scoped("@font-face {}");
     assert_eq!(
-        CssScopedMediaRule::try_new(query(), children.clone(), &context())
+        CssMediaRule::try_new(query(), children.clone(), &context())
             .unwrap()
             .position(),
         None
     );
     assert_eq!(
-        CssScopedSupportsRule::try_new(supports.condition().clone(), children.clone(), &context())
+        CssSupportsRule::try_new(supports.condition().clone(), children.clone(), &context())
             .unwrap()
             .position(),
         None
     );
     assert_eq!(
-        CssScopedContainerRule::try_new(container.prelude().clone(), children.clone(), &context())
+        CssContainerRule::try_new(container.prelude().clone(), children.clone(), &context())
             .unwrap()
             .position(),
         None
     );
     assert_eq!(
-        CssScopedLayerBlockRule::try_new(None, children.clone(), &context())
+        CssLayerBlockRule::try_new(None, children.clone(), &context())
             .unwrap()
             .position(),
         None
@@ -202,7 +202,20 @@ fn detached_relative_and_nested_declaration_subtrees_recheck_ancestry() {
         assert!(error.position().is_some());
     }
     assert!(CssSheet::try_from_rules(vec![rule("& {}")]).is_ok());
-    assert!(CssScopedMediaRule::try_new(query(), scoped("> b {}"), &context()).is_ok());
+    // A relative selector needs a style or scope ancestor, so a group that holds one
+    // is assembled by its scope, not detached.
+    let error = CssMediaRule::try_new(query(), scoped("> b {}"), &context()).unwrap_err();
+    assert!(error.is_invalid_placement(), "{error:?}");
+    assert!(
+        CssScopeRule::try_new(
+            None,
+            None,
+            scoped("@media all { > b {} }"),
+            &context(),
+            CssScopeNestingContext::None,
+        )
+        .is_ok()
+    );
     assert!(
         CssMediaRule::try_new(query(), vec![rule("@import 'a';")], &context())
             .unwrap_err()
@@ -220,12 +233,12 @@ fn scope_direct_page_role_differs_from_its_ordinary_group_body() {
     let CssRule::Scope(scope) = &source.rules()[0] else {
         panic!("scope")
     };
-    let CssScopedRule::Media(media) = &scope.rules().rules()[0] else {
+    let CssRule::Media(media) = &scope.rules().rules()[0] else {
         panic!("media")
     };
-    let page = media.rules().rules()[0].clone();
+    let page = media.rules()[0].clone();
     let list = vec![page];
-    assert!(CssScopedMediaRule::try_new(query(), list.clone(), &context()).is_ok());
+    assert!(CssMediaRule::try_new(query(), list.clone(), &context()).is_ok());
     let error = CssScopeRule::try_new(None, None, list, &context(), CssScopeNestingContext::None)
         .unwrap_err();
     assert!(error.is_invalid_placement(), "{error:?}");
@@ -287,7 +300,7 @@ fn scope_raw_identifiers_and_functional_arguments_are_intrinsically_checked() {
         CssSelector::Class(String::new()),
     ] {
         let root =
-            CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]).unwrap();
+            CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(selector)]).unwrap();
         let error = CssScopeRule::try_new(
             Some(root),
             None,
@@ -301,7 +314,7 @@ fn scope_raw_identifiers_and_functional_arguments_are_intrinsically_checked() {
         assert_eq!(error.position(), None);
     }
     for name in ["1lead", "embedded space", "é"] {
-        let root = CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(
+        let root = CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(
             CssSelector::Class(name.into()),
         )])
         .unwrap();
@@ -323,7 +336,7 @@ fn scope_raw_identifiers_and_functional_arguments_are_intrinsically_checked() {
         ));
     }
     let root =
-        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector.clone())]).unwrap();
+        CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(selector.clone())]).unwrap();
     assert!(
         CssScopeRule::try_new(
             Some(root),
@@ -337,7 +350,7 @@ fn scope_raw_identifiers_and_functional_arguments_are_intrinsically_checked() {
     selector = CssSelector::PseudoClass(CssPseudoClass::Is(
         CssPseudoSelectorList::try_new(vec![selector], Default::default()).unwrap(),
     ));
-    let root = CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]).unwrap();
+    let root = CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(selector)]).unwrap();
     assert!(
         CssScopeRule::try_new(
             Some(root),
@@ -372,15 +385,13 @@ fn exact_rule_depth_boundary_counts_new_ordinary_and_scoped_wrappers() {
             .unwrap_err()
             .is_nesting_limit()
     );
-    let mut child = CssScopedRule::FontFace(CssFontFaceRule::new(CssFontFaceDescriptors::new(
-        Vec::new(),
-    )));
+    let mut child = CssRule::FontFace(CssFontFaceRule::new(
+        CssFontFaceDescriptors::new(Vec::new()),
+    ));
     for _ in 1..256 {
-        child = CssScopedRule::Media(
-            CssScopedMediaRule::try_new(query(), vec![child], &context()).unwrap(),
-        );
+        child = CssRule::Media(CssMediaRule::try_new(query(), vec![child], &context()).unwrap());
     }
-    let error = CssScopedMediaRule::try_new(query(), vec![child], &context()).unwrap_err();
+    let error = CssMediaRule::try_new(query(), vec![child], &context()).unwrap_err();
     assert!(error.is_nesting_limit(), "{error:?}");
     assert_eq!(error.position(), None);
 }
@@ -550,7 +561,7 @@ fn functional_compound_raw_classes_use_the_same_intrinsic_rejection() {
     let argument =
         CssCompoundSelectorArgument::try_new(CssSelector::Class("escaped name".into())).unwrap();
     let selector = CssSelector::PseudoClass(CssPseudoClass::HostFunction(argument));
-    let root = CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]).unwrap();
+    let root = CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(selector)]).unwrap();
     let scope = CssScopeRule::try_new(
         Some(root.clone()),
         None,
@@ -642,17 +653,17 @@ fn parsed_scoped_near_limit_subtrees_count_new_group_and_scope_wrappers() {
         panic!("parsed scope")
     };
     let children = scope.rules().rules().to_vec();
-    let CssScopedRule::Media(original) = &children[0] else {
+    let CssRule::Media(original) = &children[0] else {
         panic!("parsed scoped group")
     };
     let original_position = original.position().expect("parsed child position");
-    let wrapped = CssScopedMediaRule::try_new(query(), children.clone(), &context()).unwrap();
+    let wrapped = CssMediaRule::try_new(query(), children.clone(), &context()).unwrap();
     assert_eq!(wrapped.position(), None);
-    let CssScopedRule::Media(retained) = &wrapped.rules().rules()[0] else {
+    let CssRule::Media(retained) = &wrapped.rules()[0] else {
         panic!("retained child")
     };
     assert_eq!(retained.position(), Some(original_position));
-    assert_eq!(wrapped.rules().rules(), children);
+    assert_eq!(wrapped.rules(), children);
     let constructed_scope = CssScopeRule::try_new(
         None,
         None,
@@ -663,16 +674,12 @@ fn parsed_scoped_near_limit_subtrees_count_new_group_and_scope_wrappers() {
     .unwrap();
     assert_eq!(constructed_scope.position(), None);
     for error in [
-        CssScopedMediaRule::try_new(
-            query(),
-            vec![CssScopedRule::Scope(scope.clone())],
-            &context(),
-        )
-        .unwrap_err(),
+        CssMediaRule::try_new(query(), vec![CssRule::Scope(scope.clone())], &context())
+            .unwrap_err(),
         CssScopeRule::try_new(
             None,
             None,
-            vec![CssScopedRule::Media(wrapped)],
+            vec![CssRule::Media(wrapped)],
             &context(),
             CssScopeNestingContext::None,
         )

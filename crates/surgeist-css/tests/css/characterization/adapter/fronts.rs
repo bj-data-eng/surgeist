@@ -809,7 +809,7 @@ fn retained_rules(observation: &mut Observation, rules: &[CssRule]) {
     observation.authored = nonempty(retained.authored.join("~"));
 }
 
-fn retained_scoped(observation: &mut Observation, rules: &[CssScopedRule]) {
+fn retained_scoped(observation: &mut Observation, rules: &[CssRule]) {
     observation.add_fact(format!("rules={}", rules.len()));
     observation.retained = nonempty(Retained::scoped_rules(rules).identities.join("~"));
 }
@@ -1142,7 +1142,7 @@ fn media_query_list(observation: &mut Observation, list: &CssMediaQueryList) {
     observation.add_fact(format!("queries={}", list.queries().len()));
 }
 
-fn supports_condition(observation: &mut Observation, condition: &CssSupportsCondition) {
+fn supports_condition(observation: &mut Observation, condition: &CssCondition<CssSupportsLeaf>) {
     serialization(observation, "specified", Limited::Bytes, |limits| {
         condition
             .serialize_tokens(crate::css::support::byte_limits(limits.max_css_bytes()))
@@ -1150,7 +1150,7 @@ fn supports_condition(observation: &mut Observation, condition: &CssSupportsCond
     });
 }
 
-fn when_condition(observation: &mut Observation, condition: &CssWhenCondition) {
+fn when_condition(observation: &mut Observation, condition: &CssCondition<CssWhenLeaf>) {
     serialization(observation, "specified", Limited::Bytes, |limits| {
         condition
             .serialize_tokens(crate::css::support::byte_limits(limits.max_css_bytes()))
@@ -1615,21 +1615,26 @@ fn rule_graph(input: &str) -> Observation {
     observation
 }
 
-/// Edited-rule views of each parsed rule, and of the first style rule rebuilt
+/// Graph inputs of each parsed rule, and of the first style rule rebuilt
 /// from its selectors and specified declarations.
 fn edited_rule(input: &str) -> Observation {
     let report = parse_sheet(input);
     let mut observation = Observation::shaped("report");
     observation.report(&report);
+    let namespaces = CssNamespaceContext::from_sheet(report.syntax());
     let rules = report.syntax().rules();
     serialization(&mut observation, "specified", Limited::Values, |limits| {
         joined(rules, |rule| {
-            CssEditedRuleView::from_rule(rule).serialize_specified(limits)
+            CssRuleGraphInput::from_rule(rule).serialize_specified(unbounded_depth(limits))
         })
     });
     serialization(&mut observation, "cssom", Limited::Values, |limits| {
         joined(rules, |rule| {
-            CssEditedRuleView::from_rule(rule).serialize_cssom(limits)
+            CssRuleGraphInput::from_rule(rule).serialize_cssom(
+                &namespaces,
+                CssStyleAncestor::Absent,
+                unbounded_depth(limits),
+            )
         })
     });
     if let Some(CssRule::Style(style)) = rules.first() {
@@ -1640,22 +1645,20 @@ fn edited_rule(input: &str) -> Observation {
             Ok(block) => {
                 observation.add_fact(format!(
                     "edited-style={}",
-                    match CssEditedRuleView::try_style(
-                        style.selectors(),
-                        &block,
-                        &[],
-                        Default::default()
-                    ) {
-                        Ok(view) => super::serialized(view.serialize_specified(Default::default())),
-                        Err(error) => format!("err:{}", super::error_text(&error)),
-                    }
+                    super::serialized(
+                        CssRuleGraphInput::style(style.selectors(), &block, &[])
+                            .serialize_specified(unbounded_depth(Default::default()))
+                    )
                 ));
                 observation.add_fact(format!(
                     "edited-nested-declarations={}",
-                    match CssEditedRuleView::try_nested_declarations(&block, Default::default()) {
-                        Ok(view) => super::serialized(view.serialize_cssom(Default::default())),
-                        Err(error) => format!("err:{}", super::error_text(&error)),
-                    }
+                    super::serialized(
+                        CssRuleGraphInput::nested_declarations(&block).serialize_cssom(
+                            &namespaces,
+                            CssStyleAncestor::Absent,
+                            unbounded_depth(Default::default()),
+                        )
+                    )
                 ));
             }
             Err(error) => observation.add_fact(format!("block-err={}", super::error_text(&error))),

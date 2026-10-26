@@ -231,7 +231,7 @@ fn import_rule_parser_retains_repeated_supports_as_opaque_media() {
         panic!("expected retained import")
     };
     assert_eq!(rule.layer(), None);
-    let CssSupportsConditionKind::Declaration(declaration) = rule
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = rule
         .supports()
         .expect("first supports clause")
         .condition()
@@ -244,7 +244,7 @@ fn import_rule_parser_retains_repeated_supports_as_opaque_media() {
     else {
         panic!("expected one media condition")
     };
-    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = condition.kind() else {
         panic!("expected repeated supports function as media")
     };
     assert_eq!(enclosed.authored(), Some("supports(color: red)"));

@@ -5,7 +5,7 @@ use std::{fmt, ops::Range, sync::Arc};
 
 /// One genuine at-keyword argument admitted by an authored `at-rule()` predicate.
 ///
-/// The enclosing [`CssSupportsCondition`] owns grammar admission and retains the
+/// The enclosing [`CssCondition<CssSupportsLeaf>`] owns grammar admission and retains the
 /// complete function. Unknown names and `@charset` remain symbolic arguments;
 /// this type does not determine whether a processor supports an at-rule.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -274,7 +274,7 @@ fn construct<T: Send>(
         }
     })
 }
-impl CssSupportsCondition {
+impl CssCondition<CssSupportsLeaf> {
     pub(crate) fn try_from_components_in_context(
         values: CssComponentValues,
         namespaces: &CssNamespaceContext,
@@ -345,16 +345,14 @@ impl CssSupportsCondition {
     ) -> Result<(), CssComponentValueError> {
         if matches!(
             self.authored_form(),
-            crate::syntax::SupportsAuthoredForm::BareDeclaration
-                | crate::syntax::SupportsAuthoredForm::BareName
+            crate::SupportsAuthoredForm::BareDeclaration | crate::SupportsAuthoredForm::BareName
         ) {
             out.push_grammar(CssCanonicalToken::OpenParen, &CssValueOrigin::Programmatic)?;
         }
         out.push_components(components)?;
         if matches!(
             self.authored_form(),
-            crate::syntax::SupportsAuthoredForm::BareDeclaration
-                | crate::syntax::SupportsAuthoredForm::BareName
+            crate::SupportsAuthoredForm::BareDeclaration | crate::SupportsAuthoredForm::BareName
         ) {
             out.push_grammar(CssCanonicalToken::CloseParen, &CssValueOrigin::Programmatic)?;
         }

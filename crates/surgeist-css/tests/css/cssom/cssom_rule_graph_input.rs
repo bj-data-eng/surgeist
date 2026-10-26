@@ -3,7 +3,7 @@
 use crate::css::support::failure_classes::SerializationFailure as Resource;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::serialization_limits::LimitFailure;
-use CssEditedGroupPreludeRef as Prelude;
+use CssGroupPreludeRef as Prelude;
 use CssRuleGraphInput as Input;
 use CssSerializationLimits as Limits;
 use CssSpecifiedDeclarationBlock as Block;
@@ -328,9 +328,7 @@ fn namespace_and_external_style_ancestry_propagate_through_groups_and_restore_fo
             .into_parts()
             .0
             .unwrap();
-    let CssAdmittedStyleSelectors::Ordinary(list) = selectors.selectors() else {
-        panic!()
-    };
+    let list = selectors.selectors();
     let empty = ordinary("");
     let children = [Input::style(list, &empty, &[])];
     let query = parse_media_query_list("print").into_parts().0;
@@ -385,11 +383,9 @@ fn scoped_selectors_and_parsed_descendants_remain_in_their_actual_domains() {
     .into_parts()
     .0
     .unwrap();
-    let CssAdmittedStyleSelectors::Scoped(list) = selectors.selectors() else {
-        panic!()
-    };
+    let list = selectors.selectors();
     let empty = ordinary("");
-    let input = Input::scoped_style(list, &empty, &[]);
+    let input = Input::style(list, &empty, &[]);
     assert_eq!(
         input
             .serialize_cssom(&namespaces, CssStyleAncestor::Present, Default::default())
@@ -401,7 +397,7 @@ fn scoped_selectors_and_parsed_descendants_remain_in_their_actual_domains() {
     let CssRule::Scope(scope) = &report.syntax().rules()[0] else {
         panic!()
     };
-    let borrowed = Input::from_scoped_rule(&scope.rules().rules()[0]);
+    let borrowed = Input::from_rule(&scope.rules().rules()[0]);
     assert_eq!(
         borrowed
             .serialize_cssom(&namespaces, CssStyleAncestor::Absent, Default::default())
@@ -550,9 +546,7 @@ fn published_supports_input_continuations_keep_namespace_ancestry_and_lazy_child
             .into_parts()
             .0
             .unwrap();
-    let CssAdmittedStyleSelectors::Ordinary(selectors) = selected.selectors() else {
-        panic!()
-    };
+    let selectors = selected.selectors();
     let report = parse_sheet("@supports(display:grid){} @scope(.host){.unused{color:red}}");
     let [CssRule::Supports(supports), scope] = report.syntax().rules() else {
         panic!()

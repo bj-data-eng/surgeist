@@ -211,16 +211,18 @@ fn permissive_custom_and_style_values_retain_env_mismatches_as_raw_tokens() {
                 text
             );
         }
-        let condition = CssContainerCondition::try_from_components(
+        let condition = CssCondition::<CssContainerLeaf>::try_from_components(
             parse_component_values(&format!("style(--x:{text})")).unwrap(),
             Default::default(),
         )
         .unwrap();
-        let CssContainerConditionKind::Style(query) = condition.kind() else {
+        let CssConditionKind::Leaf(CssContainerLeaf::Style(query)) = condition.kind() else {
             panic!("style query")
         };
-        let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain { value, .. }) =
-            query.kind()
+        let CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(CssContainerStyleFeature::Plain {
+            value,
+            ..
+        })) = query.kind()
         else {
             panic!("plain style value")
         };
@@ -250,12 +252,13 @@ fn permissive_contexts_keep_the_malformed_var_restriction() {
         );
         // Conditional5 query-in-parens retains a failed style grammar as general-enclosed.
         let source = format!("style(--x:{text})");
-        let condition = CssContainerCondition::try_from_components(
+        let condition = CssCondition::<CssContainerLeaf>::try_from_components(
             parse_component_values(&source).unwrap(),
             Default::default(),
         )
         .unwrap();
-        let CssContainerConditionKind::GeneralEnclosed(opaque) = condition.kind() else {
+        let CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(opaque)) = condition.kind()
+        else {
             panic!("malformed var must not become a typed Style: {text}")
         };
         assert_eq!(opaque.authored(), Some(source.as_str()));

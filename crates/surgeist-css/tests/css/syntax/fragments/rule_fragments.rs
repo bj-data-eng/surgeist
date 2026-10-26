@@ -317,12 +317,12 @@ fn style_and_scope_depths_preserve_supported_content_and_typed_limits() {
         };
         let mut scope = mut_scope;
         for _ in 1..depth {
-            let [surgeist_css::CssScopedRule::Scope(child)] = scope.rules().rules() else {
+            let [surgeist_css::CssRule::Scope(child)] = scope.rules().rules() else {
                 panic!("scope chain")
             };
             scope = child;
         }
-        let [surgeist_css::CssScopedRule::Style(leaf)] = scope.rules().rules() else {
+        let [surgeist_css::CssRule::Style(leaf)] = scope.rules().rules() else {
             panic!("scope leaf")
         };
         assert_eq!(leaf.declarations().len(), 1);

@@ -1,9 +1,8 @@
 use surgeist_css::{
-    CssEncoding, CssEncodingSelection, CssRule, CssStylesheetDecodeHints,
-    CssStylesheetDecodeLimits, CssStylesheetLocation, CssStylesheetParseOptions,
-    CssSupportsConditionKind, CssValueOrigin, decode_stylesheet_bytes,
-    decode_stylesheet_bytes_with_limits, parse_decoded_stylesheet, parse_sheet,
-    parse_sheet_with_options,
+    CssConditionKind, CssEncoding, CssEncodingSelection, CssRule, CssStylesheetDecodeHints,
+    CssStylesheetDecodeLimits, CssStylesheetLocation, CssStylesheetParseOptions, CssSupportsLeaf,
+    CssValueOrigin, decode_stylesheet_bytes, decode_stylesheet_bytes_with_limits,
+    parse_decoded_stylesheet, parse_sheet, parse_sheet_with_options,
 };
 
 fn hints(label: &str) -> CssStylesheetDecodeHints<'_> {
@@ -320,7 +319,8 @@ fn utf16_sheet_components_share_decoded_snapshot_with_utf8_and_utf16_coordinates
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("supports rule")
     };
-    let CssSupportsConditionKind::Declaration(declaration) = rule.condition().kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = rule.condition().kind()
+    else {
         panic!("declaration condition")
     };
     let CssValueOrigin::Parsed(origin) = declaration.property_component().origin() else {
@@ -354,7 +354,8 @@ fn byte_composition_preserves_prefilter_source_and_string_recovery() {
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("supports rule")
     };
-    let CssSupportsConditionKind::Declaration(declaration) = rule.condition().kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = rule.condition().kind()
+    else {
         panic!("supports declaration")
     };
     let CssValueOrigin::Parsed(origin) = declaration.property_component().origin() else {
@@ -458,7 +459,8 @@ fn null_filtering_changes_token_semantics_while_preserving_unfiltered_snapshot()
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("supports rule")
     };
-    let CssSupportsConditionKind::Declaration(declaration) = rule.condition().kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = rule.condition().kind()
+    else {
         panic!("supports declaration")
     };
     let surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Ident(name)) =

@@ -33,7 +33,7 @@ fn construct<T: Send>(
     })
 }
 
-impl CssContainerCondition {
+impl CssCondition<CssContainerLeaf> {
     /// Admits complete component syntax with the same grammar as parsed conditions.
     /// Explicit tokens, operators and grouping retain their supplied origins.
     ///
@@ -56,20 +56,6 @@ impl CssContainerCondition {
             crate::media::component_depth(enclosed.component()) >= 32,
             || crate::parser::container_condition_from_enclosed(enclosed),
         )
-    }
-    /// Serializes authored lexical spelling, operators, trivia and every grouping
-    /// pair. Delimiters implied by parser recovery are emitted explicitly.
-    ///
-    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
-    /// limits do not apply.
-    pub fn serialize_tokens(
-        &self,
-        limits: crate::CssComponentValueLimits,
-    ) -> Result<CssSerializedValue, CssComponentValueError> {
-        let max_css_bytes = limits.max_css_bytes();
-        let mut out = CssCanonicalBuilder::new(max_css_bytes);
-        out.push_components(self.components())?;
-        out.finish()
     }
 }
 

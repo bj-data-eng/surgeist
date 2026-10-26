@@ -107,7 +107,7 @@ impl State {
             limits,
         )
     }
-    fn ordinary_children(
+    fn rule_children(
         &mut self,
         rules: &[CssRule],
         parent: &CssomRuleId,
@@ -117,26 +117,7 @@ impl State {
         let list = self.list(limits)?;
         for rule in rules {
             let id = self.adopt(
-                CssomAuthoredRule::Ordinary(rule.clone()),
-                CssomParent::Rule(parent.clone()),
-                depth + 1,
-                limits,
-            )?;
-            self.lists.get_mut(&list).expect("new list").push(id);
-        }
-        Ok(list)
-    }
-    fn scoped_children(
-        &mut self,
-        rules: &[CssScopedRule],
-        parent: &CssomRuleId,
-        depth: usize,
-        limits: &CssomLimits,
-    ) -> Result<CssomRuleListId, CssomError> {
-        let list = self.list(limits)?;
-        for rule in rules {
-            let id = self.adopt(
-                CssomAuthoredRule::Scoped(rule.clone()),
+                CssomAuthoredRule::Rule(rule.clone()),
                 CssomParent::Rule(parent.clone()),
                 depth + 1,
                 limits,
@@ -163,8 +144,7 @@ impl State {
             serial: self.allocate(limits)?,
         };
         let data = match &authored {
-            CssomAuthoredRule::Ordinary(v) => self.ordinary_data(v, &id, depth, limits)?,
-            CssomAuthoredRule::Scoped(v) => self.scoped_data(v, &id, depth, limits)?,
+            CssomAuthoredRule::Rule(v) => self.rule_data(v, &id, depth, limits)?,
             CssomAuthoredRule::Keyframe(v) => {
                 check_declarations(v.declarations().iter().map(|v| v.source()), limits)?;
                 let selected = projection(
@@ -411,7 +391,7 @@ impl State {
             query,
         })
     }
-    fn ordinary_data(
+    fn rule_data(
         &mut self,
         v: &CssRule,
         id: &CssomRuleId,
@@ -423,43 +403,43 @@ impl State {
                 self.named_supports_data(v.name(), v.body(), id, depth, limits)?
             }
             CssRule::Style(v) => CssomRuleData::Style {
-                selectors: CssomSelectors::Ordinary(v.selectors().clone()),
+                selectors: v.selectors().clone(),
                 block: self.ordinary_block(v.declarations(), id, limits)?,
-                children: self.ordinary_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth, limits)?,
             },
             CssRule::NestedDeclarations(v) => CssomRuleData::NestedDeclarations {
                 block: self.ordinary_block(v.declarations(), id, limits)?,
             },
             CssRule::Media(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Media(self.media_list(v.query().clone(), limits)?),
-                children: self.ordinary_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth, limits)?,
             },
             CssRule::Supports(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Supports(v.condition().clone()),
-                children: self.ordinary_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth, limits)?,
             },
             CssRule::Container(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Container(v.prelude().clone()),
-                children: self.ordinary_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth, limits)?,
             },
             CssRule::LayerBlock(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Layer(v.name().cloned()),
-                children: self.ordinary_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth, limits)?,
             },
             CssRule::When(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::When(v.condition().clone()),
-                children: self.ordinary_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth, limits)?,
             },
             CssRule::Else(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Else(v.condition().cloned()),
-                children: self.ordinary_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth, limits)?,
             },
             CssRule::Scope(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Scope {
                     start: v.root().cloned(),
                     end: v.limit().cloned(),
                 },
-                children: self.scoped_children(v.rules().rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules().rules(), id, depth, limits)?,
             },
             CssRule::Page(v) => self.page_data(v, id, depth, limits)?,
             CssRule::Keyframes(v) => self.keyframes_data(v, id, depth, limits)?,
@@ -483,68 +463,7 @@ impl State {
                 input: None,
             },
             _ => CssomRuleData::Leaf {
-                current: CssomAuthoredRule::Ordinary(v.clone()),
-            },
-        })
-    }
-    fn scoped_data(
-        &mut self,
-        v: &CssScopedRule,
-        id: &CssomRuleId,
-        depth: usize,
-        limits: &CssomLimits,
-    ) -> Result<CssomRuleData, CssomError> {
-        Ok(match v {
-            CssScopedRule::SupportsCondition(v) => {
-                self.named_supports_data(v.name(), v.body(), id, depth, limits)?
-            }
-            CssScopedRule::Style(v) => CssomRuleData::Style {
-                selectors: CssomSelectors::Scoped(v.selectors().clone()),
-                block: self.ordinary_block(v.declarations(), id, limits)?,
-                children: self.ordinary_children(v.rules(), id, depth, limits)?,
-            },
-            CssScopedRule::NestedDeclarations(v) => CssomRuleData::NestedDeclarations {
-                block: self.ordinary_block(v.declarations(), id, limits)?,
-            },
-            CssScopedRule::Media(v) => CssomRuleData::Group {
-                prelude: CssomGroupPrelude::Media(self.media_list(v.query().clone(), limits)?),
-                children: self.scoped_children(v.rules().rules(), id, depth, limits)?,
-            },
-            CssScopedRule::Supports(v) => CssomRuleData::Group {
-                prelude: CssomGroupPrelude::Supports(v.condition().clone()),
-                children: self.scoped_children(v.rules().rules(), id, depth, limits)?,
-            },
-            CssScopedRule::Container(v) => CssomRuleData::Group {
-                prelude: CssomGroupPrelude::Container(v.prelude().clone()),
-                children: self.scoped_children(v.rules().rules(), id, depth, limits)?,
-            },
-            CssScopedRule::LayerBlock(v) => CssomRuleData::Group {
-                prelude: CssomGroupPrelude::Layer(v.name().cloned()),
-                children: self.scoped_children(v.rules().rules(), id, depth, limits)?,
-            },
-            CssScopedRule::When(v) => CssomRuleData::Group {
-                prelude: CssomGroupPrelude::When(v.condition().clone()),
-                children: self.scoped_children(v.rules().rules(), id, depth, limits)?,
-            },
-            CssScopedRule::Else(v) => CssomRuleData::Group {
-                prelude: CssomGroupPrelude::Else(v.condition().cloned()),
-                children: self.scoped_children(v.rules().rules(), id, depth, limits)?,
-            },
-            CssScopedRule::Scope(v) => CssomRuleData::Group {
-                prelude: CssomGroupPrelude::Scope {
-                    start: v.root().cloned(),
-                    end: v.limit().cloned(),
-                },
-                children: self.scoped_children(v.rules().rules(), id, depth, limits)?,
-            },
-            CssScopedRule::Page(v) => self.page_data(v, id, depth, limits)?,
-            CssScopedRule::Keyframes(v) => self.keyframes_data(v, id, depth, limits)?,
-            CssScopedRule::CounterStyle(v) => self.counter_data(v, id, limits)?,
-            CssScopedRule::FontFace(v) => self.font_data(v, id, limits)?,
-            CssScopedRule::FontFeatureValues(v) => self.features_data(v, limits)?,
-            CssScopedRule::CustomMedia(v) => self.custom_media_data(v, limits)?,
-            _ => CssomRuleData::Leaf {
-                current: CssomAuthoredRule::Scoped(v.clone()),
+                current: CssomAuthoredRule::Rule(v.clone()),
             },
         })
     }

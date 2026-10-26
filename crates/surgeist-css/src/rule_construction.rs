@@ -308,10 +308,10 @@ pub(crate) fn sheet(rules: &[CssRule]) -> Result<(), CssRuleConstructionError> {
         }
     }
     validate(
-        List::Ordinary(rules),
+        rules,
         &CssNamespaceContext::from_bindings(bindings),
         Role::Sheet,
-        false,
+        Context::DETACHED,
         0,
         prelude_error.as_ref(),
     )
@@ -323,77 +323,80 @@ pub(crate) enum Role {
     Group,
     Scope,
 }
+/// What a rule list inherits from its owner: whether a style rule encloses it, and
+/// which anchor domain a style rule's explicit `&` belongs to. A scope body (and the
+/// groups in it) holds scope anchors; every other list, including the body of a style
+/// rule inside a scope, holds nesting anchors (CSS Cascade 6 section 2.5).
 #[derive(Clone, Copy)]
-pub(crate) enum List<'a> {
-    Ordinary(&'a [CssRule]),
-    Scoped(&'a [CssScopedRule]),
+struct Context {
+    style: bool,
+    scope_anchors: bool,
 }
-impl List<'_> {
-    fn len(self) -> usize {
-        match self {
-            Self::Ordinary(rules) => rules.len(),
-            Self::Scoped(rules) => rules.len(),
-        }
-    }
+impl Context {
+    const DETACHED: Self = Self {
+        style: false,
+        scope_anchors: false,
+    };
 }
 struct Frame<'a> {
-    list: List<'a>,
+    rules: &'a [CssRule],
     next: usize,
     role: Role,
-    style: bool,
+    inherited: Context,
     depth: u32,
     previous_conditional: bool,
 }
 
 pub(crate) fn conditional_group(
-    list: List<'_>,
+    rules: &[CssRule],
     context: &CssNamespaceContext,
     style: bool,
 ) -> Result<(), CssRuleConstructionError> {
-    validate(list, context, Role::Group, style, 1, None)
+    let inherited = Context {
+        style,
+        scope_anchors: false,
+    };
+    validate(rules, context, Role::Group, inherited, 1, None)
 }
 pub(crate) fn ordinary_group(
     rules: &[CssRule],
     context: &CssNamespaceContext,
 ) -> Result<(), CssRuleConstructionError> {
-    validate(List::Ordinary(rules), context, Role::Group, false, 1, None)
-}
-pub(crate) fn scoped_group(
-    rules: &[CssScopedRule],
-    context: &CssNamespaceContext,
-) -> Result<(), CssRuleConstructionError> {
-    validate(List::Scoped(rules), context, Role::Group, false, 1, None)
+    validate(rules, context, Role::Group, Context::DETACHED, 1, None)
 }
 pub(crate) fn scope(
     root: Option<&CssScopeSelectorList>,
     limit: Option<&CssScopeSelectorList>,
-    rules: &[CssScopedRule],
+    rules: &[CssRule],
     context: &CssNamespaceContext,
     nesting: CssScopeNestingContext,
 ) -> Result<(), CssRuleConstructionError> {
     check_scope_boundaries(root, limit, context, nesting)
         .map_err(|kind| CssRuleConstructionError::new(kind, Vec::new(), None))?;
     validate(
-        List::Scoped(rules),
+        rules,
         context,
         Role::Scope,
-        nesting == CssScopeNestingContext::Style,
+        Context {
+            style: nesting == CssScopeNestingContext::Style,
+            scope_anchors: true,
+        },
         1,
         None,
     )
 }
 pub(crate) fn supports(
-    condition: &CssSupportsCondition,
+    condition: &CssCondition<CssSupportsLeaf>,
     context: &CssNamespaceContext,
 ) -> Result<(), CssRuleConstructionError> {
     check_supports(condition, context)
         .map_err(|kind| CssRuleConstructionError::new(kind, Vec::new(), condition.position()))
 }
 fn validate(
-    list: List<'_>,
+    rules: &[CssRule],
     context: &CssNamespaceContext,
     role: Role,
-    style: bool,
+    inherited: Context,
     depth: u32,
     prelude_error: Option<&CssRuleConstructionError>,
 ) -> Result<(), CssRuleConstructionError> {
@@ -406,34 +409,32 @@ fn validate(
         )
     })?;
     frames.push(Frame {
-        list,
+        rules,
         next: 0,
         role,
-        style,
+        inherited,
         depth,
         previous_conditional: false,
     });
     while let Some(frame) = frames.last_mut() {
-        if frame.next == frame.list.len() {
+        if frame.next == frame.rules.len() {
             frames.pop();
             continue;
         }
         let index = frame.next;
         frame.next += 1;
-        let (list, role, style, parent_depth) = (frame.list, frame.role, frame.style, frame.depth);
-        let node = match list {
-            List::Ordinary(rules) => Node::Ordinary(&rules[index]),
-            List::Scoped(rules) => Node::Scoped(&rules[index]),
-        };
-        let free_else = node.is_else() && !frame.previous_conditional;
-        frame.previous_conditional = node.is_conditional();
+        let (rules, role, inherited, parent_depth) =
+            (frame.rules, frame.role, frame.inherited, frame.depth);
+        let node = &rules[index];
+        let free_else = matches!(node, CssRule::Else(_)) && !frame.previous_conditional;
+        frame.previous_conditional = is_conditional(node);
         let path = || {
             frames
                 .iter()
                 .map(|frame| frame.next - 1)
                 .collect::<Vec<_>>()
         };
-        let fail = |kind| CssRuleConstructionError::new(kind, path(), node.position());
+        let fail = |kind| CssRuleConstructionError::new(kind, path(), ordinary_position(node));
         if frames.len() == 1
             && let Some(error) = prelude_error.filter(|error| error.path().first() == Some(&index))
         {
@@ -442,26 +443,25 @@ fn validate(
         if free_else {
             return Err(fail(CssRuleConstructionErrorKind::InvalidPlacement));
         }
-        let depth = parent_depth + u32::from(node.block());
+        let depth = parent_depth + u32::from(is_block(node));
         if depth > crate::STRUCTURAL_NESTING_LIMIT {
             return Err(fail(CssRuleConstructionErrorKind::NestingLimit));
         }
-        let scoped = matches!(list, List::Scoped(_))
-            || frames.iter().any(|frame| matches!(frame.role, Role::Scope));
-        let children = node.check(context, role, style, scoped).map_err(fail)?;
-        if let Some((list, role, style)) = children {
+        let scoped = frames.iter().any(|frame| matches!(frame.role, Role::Scope));
+        let children = check(node, context, role, inherited, scoped).map_err(fail)?;
+        if let Some((rules, role, inherited)) = children {
             frames.try_reserve(1).map_err(|_| {
                 CssRuleConstructionError::new(
                     CssRuleConstructionErrorKind::CapacityOverflow,
                     Vec::new(),
-                    node.position(),
+                    ordinary_position(node),
                 )
             })?;
             frames.push(Frame {
-                list,
+                rules,
                 next: 0,
                 role,
-                style,
+                inherited,
                 depth,
                 previous_conditional: false,
             });
@@ -469,220 +469,114 @@ fn validate(
     }
     Ok(())
 }
-#[derive(Clone, Copy)]
-enum Node<'a> {
-    Ordinary(&'a CssRule),
-    Scoped(&'a CssScopedRule),
+fn is_conditional(rule: &CssRule) -> bool {
+    matches!(
+        rule,
+        CssRule::Media(_)
+            | CssRule::Supports(_)
+            | CssRule::Container(_)
+            | CssRule::When(_)
+            | CssRule::Else(_)
+    )
 }
-impl<'a> Node<'a> {
-    fn is_else(self) -> bool {
-        matches!(
-            self,
-            Self::Ordinary(CssRule::Else(_)) | Self::Scoped(CssScopedRule::Else(_))
-        )
-    }
-    fn is_conditional(self) -> bool {
-        matches!(
-            self,
-            Self::Ordinary(
-                CssRule::Media(_)
-                    | CssRule::Supports(_)
-                    | CssRule::Container(_)
-                    | CssRule::When(_)
-                    | CssRule::Else(_)
-            ) | Self::Scoped(
-                CssScopedRule::Media(_)
-                    | CssScopedRule::Supports(_)
-                    | CssScopedRule::Container(_)
-                    | CssScopedRule::When(_)
-                    | CssScopedRule::Else(_)
-            )
-        )
-    }
-
-    fn block(self) -> bool {
-        !matches!(
-            self,
-            Self::Ordinary(
-                CssRule::Import(_)
-                    | CssRule::Namespace(_)
-                    | CssRule::CustomMedia(_)
-                    | CssRule::LayerStatement(_)
-                    | CssRule::SupportsCondition(_)
-                    | CssRule::NestedDeclarations(_),
-            ) | Self::Scoped(
-                CssScopedRule::CustomMedia(_)
-                    | CssScopedRule::LayerStatement(_)
-                    | CssScopedRule::SupportsCondition(_)
-                    | CssScopedRule::NestedDeclarations(_),
-            )
-        )
-    }
-    fn position(self) -> Option<CssSourcePosition> {
-        match self {
-            Self::Ordinary(rule) => ordinary_position(rule),
-            Self::Scoped(rule) => scoped_position(rule),
+fn is_block(rule: &CssRule) -> bool {
+    !matches!(
+        rule,
+        CssRule::Import(_)
+            | CssRule::Namespace(_)
+            | CssRule::CustomMedia(_)
+            | CssRule::LayerStatement(_)
+            | CssRule::SupportsCondition(_)
+            | CssRule::NestedDeclarations(_)
+    )
+}
+/// The list a rule contains, with the role and style ancestry of that list.
+type Children<'a> = (&'a [CssRule], Role, Context);
+/// Checks one rule's placement in its list and returns the list it contains.
+fn check<'a>(
+    rule: &'a CssRule,
+    context: &CssNamespaceContext,
+    role: Role,
+    inherited: Context,
+    scoped: bool,
+) -> Result<Option<Children<'a>>, CssRuleConstructionErrorKind> {
+    use CssRuleConstructionErrorKind::InvalidPlacement;
+    let style = inherited.style;
+    match rule {
+        CssRule::Import(_) | CssRule::Namespace(_) if !matches!(role, Role::Sheet) => {
+            return Err(InvalidPlacement);
         }
-    }
-    fn check(
-        self,
-        context: &CssNamespaceContext,
-        role: Role,
-        style: bool,
-        scoped: bool,
-    ) -> Result<Option<(List<'a>, Role, bool)>, CssRuleConstructionErrorKind> {
-        use CssRuleConstructionErrorKind::InvalidPlacement;
-        match self {
-            Self::Ordinary(rule) => match rule {
-                CssRule::Import(_) | CssRule::Namespace(_) if !matches!(role, Role::Sheet) => {
-                    return Err(InvalidPlacement);
-                }
-                CssRule::FontFace(_)
-                | CssRule::FontFeatureValues(_)
-                | CssRule::FontPaletteValues(_)
-                | CssRule::ColorProfile(_)
-                | CssRule::CounterStyle(_)
-                | CssRule::Keyframes(_)
-                | CssRule::CustomMedia(_)
-                | CssRule::SupportsCondition(_)
-                    if style =>
-                {
-                    return Err(InvalidPlacement);
-                }
-                CssRule::Page(_) if style || matches!(role, Role::Scope) => {
-                    return Err(InvalidPlacement);
-                }
-                CssRule::NestedDeclarations(_) if !style => return Err(InvalidPlacement),
-                CssRule::Import(rule) => {
-                    if let Some(supports) = rule.supports() {
-                        check_supports(supports.condition(), context)?;
-                    }
-                }
-                CssRule::Style(rule) => {
-                    for selector in rule.selectors().selectors() {
-                        match selector {
-                            CssStyleSelector::Selector(selector) => {
-                                check_selector(selector, context)?
-                            }
-                            CssStyleSelector::Relative(selector) => {
-                                if !style {
-                                    return Err(InvalidPlacement);
-                                }
-                                check_selector(selector.selector(), context)?;
-                            }
-                        }
-                    }
-                    return Ok(Some((List::Ordinary(rule.rules()), Role::Group, true)));
-                }
-                CssRule::Media(rule) => {
-                    return Ok(Some((List::Ordinary(rule.rules()), Role::Group, style)));
-                }
-                CssRule::Supports(rule) => {
-                    check_supports(rule.condition(), context)?;
-                    return Ok(Some((List::Ordinary(rule.rules()), Role::Group, style)));
-                }
-                CssRule::Container(rule) => {
-                    return Ok(Some((List::Ordinary(rule.rules()), Role::Group, style)));
-                }
-                CssRule::When(rule) => {
-                    return Ok(Some((List::Ordinary(rule.rules()), Role::Group, style)));
-                }
-                CssRule::Else(rule) => {
-                    return Ok(Some((List::Ordinary(rule.rules()), Role::Group, style)));
-                }
-                CssRule::LayerBlock(rule) => {
-                    return Ok(Some((List::Ordinary(rule.rules()), Role::Group, style)));
-                }
-                CssRule::Scope(rule) => return scope_children(rule, context, style, scoped),
-                _ => {}
-            },
-            Self::Scoped(rule) => match rule {
-                CssScopedRule::FontFace(_)
-                | CssScopedRule::FontFeatureValues(_)
-                | CssScopedRule::FontPaletteValues(_)
-                | CssScopedRule::ColorProfile(_)
-                | CssScopedRule::CounterStyle(_)
-                | CssScopedRule::Keyframes(_)
-                | CssScopedRule::CustomMedia(_)
-                | CssScopedRule::SupportsCondition(_)
-                    if style =>
-                {
-                    return Err(InvalidPlacement);
-                }
-                CssScopedRule::Page(_) if style || matches!(role, Role::Scope) => {
-                    return Err(InvalidPlacement);
-                }
-                CssScopedRule::NestedDeclarations(_) if !style => return Err(InvalidPlacement),
-                CssScopedRule::Style(rule) => {
-                    for selector in rule.selectors().selectors() {
-                        match selector {
-                            CssScopedStyleSelector::Selector(selector) => {
-                                check_selector(selector, context)?
-                            }
-                            CssScopedStyleSelector::Relative(selector) => {
-                                check_selector(selector.selector(), context)?
-                            }
-                        }
-                    }
-                    return Ok(Some((List::Ordinary(rule.rules()), Role::Group, true)));
-                }
-                CssScopedRule::Media(rule) => {
-                    return Ok(Some((
-                        List::Scoped(rule.rules().rules()),
-                        Role::Group,
-                        style,
-                    )));
-                }
-                CssScopedRule::Supports(rule) => {
-                    check_supports(rule.condition(), context)?;
-                    return Ok(Some((
-                        List::Scoped(rule.rules().rules()),
-                        Role::Group,
-                        style,
-                    )));
-                }
-                CssScopedRule::Container(rule) => {
-                    return Ok(Some((
-                        List::Scoped(rule.rules().rules()),
-                        Role::Group,
-                        style,
-                    )));
-                }
-                CssScopedRule::When(rule) => {
-                    return Ok(Some((
-                        List::Scoped(rule.rules().rules()),
-                        Role::Group,
-                        style,
-                    )));
-                }
-                CssScopedRule::Else(rule) => {
-                    return Ok(Some((
-                        List::Scoped(rule.rules().rules()),
-                        Role::Group,
-                        style,
-                    )));
-                }
-                CssScopedRule::LayerBlock(rule) => {
-                    return Ok(Some((
-                        List::Scoped(rule.rules().rules()),
-                        Role::Group,
-                        style,
-                    )));
-                }
-                CssScopedRule::Scope(rule) => return scope_children(rule, context, style, scoped),
-                _ => {}
-            },
+        CssRule::FontFace(_)
+        | CssRule::FontFeatureValues(_)
+        | CssRule::FontPaletteValues(_)
+        | CssRule::ColorProfile(_)
+        | CssRule::CounterStyle(_)
+        | CssRule::Keyframes(_)
+        | CssRule::CustomMedia(_)
+        | CssRule::SupportsCondition(_)
+            if style =>
+        {
+            return Err(InvalidPlacement);
         }
-        Ok(None)
+        CssRule::Page(_) if style || matches!(role, Role::Scope) => {
+            return Err(InvalidPlacement);
+        }
+        CssRule::NestedDeclarations(_) if !style => return Err(InvalidPlacement),
+        CssRule::Import(rule) => {
+            if let Some(supports) = rule.supports() {
+                check_supports(supports.condition(), context)?;
+            }
+        }
+        CssRule::Style(rule) => {
+            for selector in rule.selectors().selectors() {
+                match selector {
+                    CssStyleSelector::Selector(selector) => check_selector_with_anchors(
+                        selector,
+                        context,
+                        Some(inherited.scope_anchors),
+                    )?,
+                    CssStyleSelector::Relative(selector) => {
+                        // A scope body is relative to its scope root; a nested style
+                        // rule is relative to its style ancestor.
+                        if !style && !scoped {
+                            return Err(InvalidPlacement);
+                        }
+                        check_selector_with_anchors(
+                            selector.selector(),
+                            context,
+                            Some(inherited.scope_anchors),
+                        )?;
+                    }
+                }
+            }
+            // The body of a style rule is relative to that rule, in any domain.
+            let inside = Context {
+                style: true,
+                scope_anchors: false,
+            };
+            return Ok(Some((rule.rules(), Role::Group, inside)));
+        }
+        CssRule::Media(rule) => return Ok(Some((rule.rules(), Role::Group, inherited))),
+        CssRule::Supports(rule) => {
+            check_supports(rule.condition(), context)?;
+            return Ok(Some((rule.rules(), Role::Group, inherited)));
+        }
+        CssRule::Container(rule) => return Ok(Some((rule.rules(), Role::Group, inherited))),
+        CssRule::When(rule) => return Ok(Some((rule.rules(), Role::Group, inherited))),
+        CssRule::Else(rule) => return Ok(Some((rule.rules(), Role::Group, inherited))),
+        CssRule::LayerBlock(rule) => return Ok(Some((rule.rules(), Role::Group, inherited))),
+        CssRule::Scope(rule) => return scope_children(rule, context, inherited, scoped),
+        _ => {}
     }
+    Ok(None)
 }
 fn scope_children<'a>(
     rule: &'a CssScopeRule,
     context: &CssNamespaceContext,
-    style: bool,
+    inherited: Context,
     scoped: bool,
-) -> Result<Option<(List<'a>, Role, bool)>, CssRuleConstructionErrorKind> {
-    let nesting = if style {
+) -> Result<Option<Children<'a>>, CssRuleConstructionErrorKind> {
+    let nesting = if inherited.style {
         CssScopeNestingContext::Style
     } else if scoped {
         CssScopeNestingContext::Scope
@@ -690,11 +584,11 @@ fn scope_children<'a>(
         CssScopeNestingContext::None
     };
     check_scope_boundaries(rule.root(), rule.limit(), context, nesting)?;
-    Ok(Some((
-        List::Scoped(rule.rules().rules()),
-        Role::Scope,
-        style,
-    )))
+    let inside = Context {
+        style: inherited.style,
+        scope_anchors: true,
+    };
+    Ok(Some((rule.rules().rules(), Role::Scope, inside)))
 }
 
 fn check_scope_boundaries(
@@ -713,7 +607,7 @@ fn check_scope_boundaries(
     ] {
         if let Some(list) = list {
             for member in list.selectors() {
-                if matches!(member, CssScopeSelector::Relative(_)) && !allow_relative {
+                if matches!(member, CssStyleSelector::Relative(_)) && !allow_relative {
                     return Err(CssRuleConstructionErrorKind::InvalidPlacement);
                 }
                 check_selector_with_anchors(member.selector(), context, Some(scope_anchors))?;
@@ -745,29 +639,6 @@ fn ordinary_position(rule: &CssRule) -> Option<CssSourcePosition> {
         CssRule::Keyframes(value) => Some(value.position()),
         CssRule::LayerStatement(value) => Some(value.position()),
         CssRule::NestedDeclarations(value) => Some(value.position()),
-    }
-}
-fn scoped_position(rule: &CssScopedRule) -> Option<CssSourcePosition> {
-    match rule {
-        CssScopedRule::FontFace(value) => value.position(),
-        CssScopedRule::FontFeatureValues(value) => value.position(),
-        CssScopedRule::FontPaletteValues(value) => value.position(),
-        CssScopedRule::ColorProfile(value) => value.position(),
-        CssScopedRule::CustomMedia(value) => value.position(),
-        CssScopedRule::SupportsCondition(value) => value.position(),
-        CssScopedRule::Media(value) => value.position(),
-        CssScopedRule::Supports(value) => value.position(),
-        CssScopedRule::Container(value) => value.position(),
-        CssScopedRule::When(value) => value.position(),
-        CssScopedRule::Else(value) => value.position(),
-        CssScopedRule::LayerBlock(value) => value.position(),
-        CssScopedRule::Scope(value) => value.position(),
-        CssScopedRule::Style(value) => Some(value.position()),
-        CssScopedRule::Page(value) => Some(value.position()),
-        CssScopedRule::CounterStyle(value) => Some(value.position()),
-        CssScopedRule::Keyframes(value) => Some(value.position()),
-        CssScopedRule::LayerStatement(value) => Some(value.position()),
-        CssScopedRule::NestedDeclarations(value) => Some(value.position()),
     }
 }
 
@@ -834,18 +705,22 @@ impl<T> CheckedStack<T> {
     }
 }
 fn check_supports(
-    condition: &CssSupportsCondition,
+    condition: &CssCondition<CssSupportsLeaf>,
     context: &CssNamespaceContext,
 ) -> Result<(), CssRuleConstructionErrorKind> {
     let mut stack = CheckedStack::new(condition)?;
     while let Some(condition) = stack.pop() {
         match condition.kind() {
-            CssSupportsConditionKind::Selector(selector) => check_selector(selector, context)?,
-            CssSupportsConditionKind::Not(condition) => stack.push(condition)?,
-            CssSupportsConditionKind::And(list) | CssSupportsConditionKind::Or(list) => {
+            CssConditionKind::Leaf(CssSupportsLeaf::Selector(selector)) => {
+                check_selector(selector, context)?
+            }
+            CssConditionKind::Not(condition) | CssConditionKind::Parenthesized(condition) => {
+                stack.push(condition)?
+            }
+            CssConditionKind::And(list) | CssConditionKind::Or(list) => {
                 stack.extend(list.conditions().iter().rev())?
             }
-            _ => {}
+            CssConditionKind::Leaf(_) => {}
         }
     }
     Ok(())

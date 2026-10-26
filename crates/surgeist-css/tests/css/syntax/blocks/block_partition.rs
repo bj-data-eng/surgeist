@@ -11,8 +11,7 @@
 use crate::css::support::authored_syntax::assert_diagnostics;
 use surgeist_css::{
     CssDeclaration, CssErrorCode, CssKnownProperty, CssNormalizedItem, CssParseReport,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssScopedRule, CssSheet, normalize_sheet,
-    parse_sheet,
+    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSheet, normalize_sheet, parse_sheet,
 };
 
 fn assert_declaration(value: &CssDeclaration, property: CssKnownProperty, css: &str) {
@@ -528,12 +527,12 @@ fn scoped_style_partition_survives_structural_chunk_boundary() {
         };
         let mut rules = scope.rules().rules();
         for _ in 1..depth {
-            let [CssScopedRule::Scope(scope)] = rules else {
+            let [CssRule::Scope(scope)] = rules else {
                 panic!("scope chain")
             };
             rules = scope.rules().rules();
         }
-        let [CssScopedRule::Style(parent)] = rules else {
+        let [CssRule::Style(parent)] = rules else {
             panic!("scoped style")
         };
         assert_eq!(parent.declarations().len(), 1);

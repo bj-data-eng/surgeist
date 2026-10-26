@@ -187,7 +187,10 @@ assert_eq!(parsed.origin().source().as_str(), ".card, > [|data-x]");
 ```
 
 Use each list's `serialize_cssom_with_limits` for one atomic cumulative budget.
-Ordinary/scoped lists reject an incompatible role or anchor domain. A missing
+A list with no explicit anchor and no relative member serializes in every role; a
+relative-only list serializes in the `Nested` and `Scoped` roles. Only an explicit
+anchor of the wrong domain (a nesting anchor in `Scoped`, a scope anchor in `Ordinary` or
+`Nested`) and a relative member in `Ordinary` fail. A missing
 required namespace binding has the distinct `NamespaceBindingUnavailable`
 error kind. Derive retained sheet bindings with `CssNamespaceContext::from_sheet`,
 or supply host-owned bindings with `from_bindings`; do not infer namespace names

@@ -87,18 +87,19 @@ fn media_group_sample(payload: usize, grouped: bool) -> Stats {
         &input.items()[0]
     };
     let expected_origin = expected.origin().clone();
-    let (result, stats) =
-        measured(|| CssMediaCondition::try_from_components(black_box(input), Default::default()));
+    let (result, stats) = measured(|| {
+        CssCondition::<CssMediaLeaf>::try_from_components(black_box(input), Default::default())
+    });
     let condition = result.expect("explicit group around a valid general-enclosed function");
     let inner = if grouped {
-        let CssMediaConditionKind::Parenthesized(inner) = condition.kind() else {
+        let CssConditionKind::Parenthesized(inner) = condition.kind() else {
             panic!("the group is preserved");
         };
         inner.as_ref()
     } else {
         &condition
     };
-    let CssMediaConditionKind::GeneralEnclosed(enclosed_value) = inner.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed_value)) = inner.kind() else {
         panic!("the future function remains opaque");
     };
     assert_same_snapshot(enclosed_value.component().origin(), &expected_origin);
@@ -134,11 +135,13 @@ fn media_value_sample(payload: usize, inside: bool) -> Stats {
         &input.items()[0]
     }
     .clone();
-    let (result, stats) =
-        measured(|| CssMediaCondition::try_from_components(black_box(input), Default::default()));
+    let (result, stats) = measured(|| {
+        CssCondition::<CssMediaLeaf>::try_from_components(black_box(input), Default::default())
+    });
     let condition = result.expect("complete feature or opaque function");
     if !inside {
-        let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+        let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = condition.kind()
+        else {
             panic!("the control retains its opaque future function");
         };
         assert_same_snapshot(enclosed.component().origin(), &expected_origin);
@@ -152,7 +155,7 @@ fn media_value_sample(payload: usize, inside: bool) -> Stats {
         );
         return stats;
     }
-    let CssMediaConditionKind::UnknownFeature(feature) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(feature)) = condition.kind() else {
         panic!("unknown feature has an explicit semantic result");
     };
     assert_eq!(feature.name(), "future");
@@ -447,16 +450,17 @@ fn retained_mixed_media_outputs_survive_input_and_sibling_drop() {
         .unwrap();
         let input = CssComponentValues::try_new(vec![group], Default::default()).unwrap();
         (
-            CssMediaCondition::try_from_components(input.clone(), Default::default()).unwrap(),
-            CssMediaCondition::try_from_components(input, Default::default()).unwrap(),
+            CssCondition::<CssMediaLeaf>::try_from_components(input.clone(), Default::default())
+                .unwrap(),
+            CssCondition::<CssMediaLeaf>::try_from_components(input, Default::default()).unwrap(),
             original,
         )
     };
     drop(first);
-    let CssMediaConditionKind::Parenthesized(inner) = second.kind() else {
+    let CssConditionKind::Parenthesized(inner) = second.kind() else {
         panic!("explicit group");
     };
-    let CssMediaConditionKind::GeneralEnclosed(enclosed) = inner.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = inner.kind() else {
         panic!("future function");
     };
     assert!(matches!(second.origin(), CssValueOrigin::Programmatic));

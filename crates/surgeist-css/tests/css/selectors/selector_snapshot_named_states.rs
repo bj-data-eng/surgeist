@@ -480,13 +480,13 @@ fn every_named_state_reuses_rules_nesting_scope_supports_and_original_positions(
         let source = format!("selector(:{})", name.to_ascii_uppercase());
         let components = parse_component_values(&source).unwrap();
         let original = components.clone();
-        let condition = CssSupportsCondition::try_from_components(
+        let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
             components,
             &CssNamespaceContext::default(),
             Default::default(),
         )
         .unwrap();
-        let CssSupportsConditionKind::Selector(selector) = condition.kind() else {
+        let CssConditionKind::Leaf(CssSupportsLeaf::Selector(selector)) = condition.kind() else {
             panic!("typed Supports selector: {condition:?}");
         };
         assert_eq!(
@@ -515,7 +515,7 @@ fn every_named_state_reuses_rules_nesting_scope_supports_and_original_positions(
         };
         assert!(matches!(
             supports.condition().kind(),
-            CssSupportsConditionKind::Selector(_)
+            CssConditionKind::Leaf(CssSupportsLeaf::Selector(_))
         ));
     }
 }

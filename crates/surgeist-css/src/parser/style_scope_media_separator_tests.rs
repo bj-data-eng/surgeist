@@ -106,16 +106,16 @@ fn check_styled(depth: usize) {
     );
     let mut children = scope.rules().rules();
     for (offset, _) in source.match_indices("@media all{") {
-        let [CssScopedRule::Media(media)] = children else {
+        let [CssRule::Media(media)] = children else {
             panic!("every Media survives")
         };
         original(media.position().unwrap(), &source, offset);
-        children = media.rules().rules();
+        children = media.rules();
     }
     let [
-        CssScopedRule::NestedDeclarations(red),
-        CssScopedRule::Style(leaf),
-        CssScopedRule::NestedDeclarations(green),
+        CssRule::NestedDeclarations(red),
+        CssRule::Style(leaf),
+        CssRule::NestedDeclarations(green),
     ] = children
     else {
         panic!(
@@ -146,7 +146,7 @@ fn check_styled(depth: usize) {
         &source,
         source.find("svg|leaf.child{").unwrap(),
     );
-    let [CssScopedStyleSelector::Selector(CssSelector::Compound(compound))] =
+    let [CssStyleSelector::Selector(CssSelector::Compound(compound))] =
         leaf.selectors().selectors()
     else {
         panic!("namespaced scoped leaf")
@@ -277,17 +277,13 @@ fn unstyled_scoped_media_discards_block_semicolon_before_supports() {
             };
             let mut children = scope.rules().rules();
             for (offset, _) in source.match_indices("@media all{") {
-                let [CssScopedRule::Media(media)] = children else {
+                let [CssRule::Media(media)] = children else {
                     panic!("ordinary scoped Media chain")
                 };
                 original(media.position().unwrap(), &source, offset);
-                children = media.rules().rules();
+                children = media.rules();
             }
-            let [
-                CssScopedRule::Supports(supports),
-                CssScopedRule::Style(kept),
-            ] = children
-            else {
+            let [CssRule::Supports(supports), CssRule::Style(kept)] = children else {
                 panic!("depth {depth}: Supports and later child after a discarded semicolon")
             };
             original(
@@ -295,7 +291,7 @@ fn unstyled_scoped_media_discards_block_semicolon_before_supports() {
                 &source,
                 source.find("@supports").unwrap(),
             );
-            let [CssScopedRule::Style(hidden)] = supports.rules().rules() else {
+            let [CssRule::Style(hidden)] = supports.rules() else {
                 panic!("Supports child")
             };
             let [hidden_color] = hidden.declarations().as_slice() else {

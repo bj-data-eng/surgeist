@@ -109,7 +109,7 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
         "color-scalar" => failed(CssColorMixPercentage::try_from_component(token("150%"))),
         "color-scheme-construction" => failed(CssColorScheme::try_new(vec![], false)),
         "component-value" => failed(CssIdent::try_new("")),
-        "container-construction" => failed(CssContainerCondition::try_from_components(
+        "container-construction" => failed(CssCondition::<CssContainerLeaf>::try_from_components(
             values("width > "),
             Default::default(),
         )),

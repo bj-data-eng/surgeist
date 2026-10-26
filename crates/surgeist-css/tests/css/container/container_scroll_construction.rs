@@ -4,14 +4,14 @@ use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
-fn scroll(condition: &CssContainerCondition) -> &CssContainerScrollQuery {
-    let CssContainerConditionKind::ScrollState(query) = condition.kind() else {
+fn scroll(condition: &CssCondition<CssContainerLeaf>) -> &CssCondition<CssScrollStateLeaf> {
+    let CssConditionKind::Leaf(CssContainerLeaf::ScrollState(query)) = condition.kind() else {
         panic!("scroll query")
     };
     query
 }
-fn feature(query: &CssContainerScrollQuery) -> &CssContainerScrollFeature {
-    let CssContainerScrollQueryKind::Feature(feature) = query.kind() else {
+fn feature(query: &CssCondition<CssScrollStateLeaf>) -> &CssContainerScrollFeature {
+    let CssConditionKind::Leaf(CssScrollStateLeaf::Feature(feature)) = query.kind() else {
         panic!("feature")
     };
     feature
@@ -112,7 +112,7 @@ fn snapped_keywords_keep_both_and_axis_names_without_accepting_edges() {
     }
     assert!(matches!(
         construct("scroll-state(snapped:top)").kind(),
-        CssContainerConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
     ));
 }
 
@@ -210,23 +210,20 @@ fn pending_domains_preserve_complete_values_and_do_not_evaluate_fallbacks() {
 #[test]
 fn recursive_queries_expose_inner_unknowns_without_dynamic_query_substitution() {
     let condition = construct("scroll-state(not ((stuck) and (future: top)))");
-    let CssContainerScrollQueryKind::Not(group) = scroll(&condition).kind() else {
+    let CssConditionKind::Not(group) = scroll(&condition).kind() else {
         panic!("not")
     };
-    let CssContainerScrollQueryKind::Parenthesized(and) = group.kind() else {
+    let CssConditionKind::Parenthesized(and) = group.kind() else {
         panic!("group")
     };
-    let CssContainerScrollQueryKind::And(list) = and.kind() else {
+    let CssConditionKind::And(list) = and.kind() else {
         panic!("and")
     };
-    let [known, unknown] = list.queries() else {
+    let [known, unknown] = list.conditions() else {
         panic!("two operands")
     };
-    assert!(matches!(
-        known.kind(),
-        CssContainerScrollQueryKind::Parenthesized(_)
-    ));
-    let CssContainerScrollQueryKind::GeneralEnclosed(opaque) = unknown.kind() else {
+    assert!(matches!(known.kind(), CssConditionKind::Parenthesized(_)));
+    let CssConditionKind::Leaf(CssScrollStateLeaf::GeneralEnclosed(opaque)) = unknown.kind() else {
         panic!("unknown")
     };
     assert_eq!(opaque.authored(), Some("(future: top)"));
@@ -241,18 +238,20 @@ fn recursive_queries_expose_inner_unknowns_without_dynamic_query_substitution() 
     );
 
     let condition = construct("scroll-state(var(--query))");
-    let CssContainerScrollQueryKind::GeneralEnclosed(opaque) = scroll(&condition).kind() else {
+    let CssConditionKind::Leaf(CssScrollStateLeaf::GeneralEnclosed(opaque)) =
+        scroll(&condition).kind()
+    else {
         panic!("opaque function, not query substitution")
     };
     assert_eq!(opaque.authored(), Some("var(--query)"));
     assert!(matches!(
         construct("scroll-state(future: top)").kind(),
-        CssContainerConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
     ));
     let condition = construct("scroll-state((stuck: both))");
     assert!(matches!(
         scroll(&condition).kind(),
-        CssContainerScrollQueryKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssScrollStateLeaf::GeneralEnclosed(_))
     ));
 }
 
@@ -339,7 +338,7 @@ fn mixed_origin_pending_components_keep_token_boundaries_after_parent_drop() {
         Default::default(),
     )
     .unwrap();
-    let condition = CssContainerCondition::try_from_enclosed(
+    let condition = CssCondition::<CssContainerLeaf>::try_from_enclosed(
         CssGeneralEnclosed::try_function("scroll-state", components).unwrap(),
     )
     .unwrap();
@@ -373,8 +372,9 @@ fn limits_and_recovered_closures_keep_typed_resource_and_source_information() {
     )
     .unwrap();
     assert_eq!(
-        CssContainerCondition::try_from_components(values.clone(), exact).unwrap(),
-        CssContainerCondition::try_from_components(values.clone(), Default::default()).unwrap()
+        CssCondition::<CssContainerLeaf>::try_from_components(values.clone(), exact).unwrap(),
+        CssCondition::<CssContainerLeaf>::try_from_components(values.clone(), Default::default())
+            .unwrap()
     );
     for (limits, expected) in [
         (
@@ -390,7 +390,9 @@ fn limits_and_recovered_closures_keep_typed_resource_and_source_information() {
             ComponentFailure::ByteLimit,
         ),
     ] {
-        let Err(outer) = CssContainerCondition::try_from_components(values.clone(), limits) else {
+        let Err(outer) =
+            CssCondition::<CssContainerLeaf>::try_from_components(values.clone(), limits)
+        else {
             panic!("resource failure")
         };
         let Some(error) = outer.component_error() else {

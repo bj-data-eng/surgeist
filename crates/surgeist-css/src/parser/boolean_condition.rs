@@ -9,8 +9,8 @@
 //! provenance and its result construction; this module owns only that shape.
 
 use super::query_components::ComponentCursor;
-use crate::CssComponentValue;
 use crate::supports::{SupportsLexical, trivia};
+use crate::{CssComponentValue, CssCondition, CssConditionKind, CssConditionList};
 use std::ops::Range;
 
 /// A boolean condition grammar over its own input.
@@ -175,42 +175,44 @@ pub(super) fn parse_component_condition<'a, G: ComponentOperands<'a>>(
 
 /// Builds one public condition model from a component-list node tree.
 pub(super) trait BooleanModel<L> {
-    type Condition;
-    type Kind;
-    fn leaf(leaf: L, lexical: &SupportsLexical) -> Self::Kind;
-    fn parenthesized(group: Box<Self::Condition>) -> Self::Kind;
-    fn not(operand: Box<Self::Condition>) -> Self::Kind;
-    fn and(operands: Vec<Self::Condition>) -> Self::Kind;
-    fn or(operands: Vec<Self::Condition>) -> Self::Kind;
-    fn condition(kind: Self::Kind, lexical: SupportsLexical) -> Self::Condition;
+    /// The public leaf type of the built condition.
+    type Leaf: crate::CssConditionLeaf<Backing = crate::condition::LexicalBacking>;
+    fn leaf(leaf: L, lexical: &SupportsLexical) -> Self::Leaf;
 }
 
 impl<L> BooleanNode<L> {
     /// Every node selects its region of the shared lexical root; a group's
     /// contents are its enclosure's children.
-    pub(super) fn build<M: BooleanModel<L>>(self, parent: &SupportsLexical) -> M::Condition {
+    pub(super) fn build<M: BooleanModel<L>>(
+        self,
+        parent: &SupportsLexical,
+    ) -> CssCondition<M::Leaf> {
         let lexical = parent.select(self.range);
         let kind = match self.kind {
-            BooleanNodeKind::Leaf(leaf) => M::leaf(leaf, &lexical),
+            BooleanNodeKind::Leaf(leaf) => CssConditionKind::Leaf(M::leaf(leaf, &lexical)),
             BooleanNodeKind::Parenthesized(group) => {
                 let opener = first_significant(&lexical);
-                M::parenthesized(Box::new(group.build::<M>(&lexical.children(opener))))
+                CssConditionKind::Parenthesized(Box::new(
+                    group.build::<M>(&lexical.children(opener)),
+                ))
             }
-            BooleanNodeKind::Not(operand) => M::not(Box::new(operand.build::<M>(&lexical))),
-            BooleanNodeKind::And(operands) => M::and(
+            BooleanNodeKind::Not(operand) => {
+                CssConditionKind::Not(Box::new(operand.build::<M>(&lexical)))
+            }
+            BooleanNodeKind::And(operands) => CssConditionKind::And(CssConditionList::new(
                 operands
                     .into_iter()
                     .map(|operand| operand.build::<M>(&lexical))
                     .collect(),
-            ),
-            BooleanNodeKind::Or(operands) => M::or(
+            )),
+            BooleanNodeKind::Or(operands) => CssConditionKind::Or(CssConditionList::new(
                 operands
                     .into_iter()
                     .map(|operand| operand.build::<M>(&lexical))
                     .collect(),
-            ),
+            )),
         };
-        M::condition(kind, lexical)
+        CssCondition::lexical(kind, lexical)
     }
 }
 

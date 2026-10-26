@@ -17,15 +17,15 @@
 //! source positions; programmatic syntax must not invent authored coordinates.
 
 use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue, CssComponentValue, CssComponentValues,
+    CssAuthoredFontFaceDescriptorValue, CssComponentValue, CssComponentValues, CssConditionKind,
     CssContributionValueRef, CssContributions, CssCustomPropertyDeclaredValue,
     CssCustomPropertyName, CssDeclaration, CssExpansion, CssFontFaceDescriptorKind,
     CssFontFaceDescriptorValue, CssGlobalKeyword, CssImportance, CssKnownProperty as Property,
-    CssLonghandContributions, CssLonghandValueRef, CssMediaConditionKind, CssMediaQuery,
+    CssLonghandContributions, CssLonghandValueRef, CssMediaLeaf, CssMediaQuery,
     CssNormalizationLimits, CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem,
     CssNormalizedSheet, CssPropertyNameRef, CssRecoveryAction, CssRule, CssRuleContext,
-    CssRuleContextKindRef, CssScopedRule, CssSelector, CssSelectorBinding, CssSelectorCombinator,
-    CssStyleRule, CssValueOrigin, expand_declaration, normalize_report, normalize_sheet,
+    CssRuleContextKindRef, CssSelector, CssSelectorBinding, CssSelectorCombinator, CssStyleRule,
+    CssValueOrigin, expand_declaration, normalize_report, normalize_sheet,
     normalize_sheet_with_limits, parse_component_values, parse_property_value, parse_sheet,
 };
 
@@ -887,7 +887,7 @@ fn unchanged_recovery_diagnostics() {
     let [CssMediaQuery::Condition(condition)] = query.queries() else {
         panic!("expected retained opaque media condition")
     };
-    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = condition.kind() else {
         panic!("expected balanced general enclosure")
     };
     assert_eq!(enclosed.authored(), Some("(width:)"));
@@ -1001,10 +1001,8 @@ fn complete_scoped_rule_traversal() {
     };
     assert_eq!(root, authored_scope.root());
     assert_eq!(limit, authored_scope.limit());
-    let [
-        CssScopedRule::LayerStatement(statement),
-        CssScopedRule::Media(media),
-    ] = authored_scope.rules().rules()
+    let [CssRule::LayerStatement(statement), CssRule::Media(media)] =
+        authored_scope.rules().rules()
     else {
         unreachable!()
     };

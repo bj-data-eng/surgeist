@@ -26,8 +26,7 @@ use std::collections::BTreeSet;
 
 use surgeist_css::{
     CssDeclaration, CssDeclarationContextRef, CssErrorCode, CssImportance, CssPropertyNameRef,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssScopedRule, parse_sheet,
-    parse_style_attribute,
+    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, parse_sheet, parse_style_attribute,
 };
 
 const FIXTURE: &str = include_str!("../../fixtures/public-report-characterization.tsv");
@@ -1234,30 +1233,28 @@ fn rule_observables(
 }
 
 fn scoped_rule_observables(
-    rule: &CssScopedRule,
+    rule: &CssRule,
     retained: &mut Vec<String>,
     frozen: &mut FrozenDeclarationCursor<'_>,
 ) {
     match rule {
-        CssScopedRule::NestedDeclarations(rule) => {
+        CssRule::NestedDeclarations(rule) => {
             rule_observables(&CssRule::NestedDeclarations(rule.clone()), retained, frozen)
         }
-        CssScopedRule::CounterStyle(rule) => {
+        CssRule::CounterStyle(rule) => {
             rule_observables(&CssRule::CounterStyle(rule.clone()), retained, frozen)
         }
-        CssScopedRule::FontFace(rule) => {
+        CssRule::FontFace(rule) => {
             rule_observables(&CssRule::FontFace(rule.clone()), retained, frozen)
         }
-        CssScopedRule::Page(rule) => {
-            rule_observables(&CssRule::Page(rule.clone()), retained, frozen)
-        }
-        CssScopedRule::Keyframes(rule) => {
+        CssRule::Page(rule) => rule_observables(&CssRule::Page(rule.clone()), retained, frozen),
+        CssRule::Keyframes(rule) => {
             rule_observables(&CssRule::Keyframes(rule.clone()), retained, frozen)
         }
-        CssScopedRule::FontFeatureValues(_) => {
+        CssRule::FontFeatureValues(_) => {
             retained.push("rule:later.rule.font-feature-values".to_owned())
         }
-        CssScopedRule::Style(rule) => {
+        CssRule::Style(rule) => {
             retained.push("rule:baseline.rule.style".to_owned());
             let ids = declaration_observables(rule.declarations().as_slice(), "public", frozen);
             retained.extend(ids);
@@ -1265,31 +1262,31 @@ fn scoped_rule_observables(
                 rule_observables(child, retained, frozen);
             }
         }
-        CssScopedRule::Media(rule) => {
-            for child in rule.rules().rules() {
+        CssRule::Media(rule) => {
+            for child in rule.rules() {
                 scoped_rule_observables(child, retained, frozen);
             }
         }
-        CssScopedRule::Supports(rule) => {
+        CssRule::Supports(rule) => {
             retained.push("rule:baseline.rule.supports".to_owned());
-            for child in rule.rules().rules() {
+            for child in rule.rules() {
                 scoped_rule_observables(child, retained, frozen);
             }
         }
-        CssScopedRule::Container(rule) => {
-            for child in rule.rules().rules() {
+        CssRule::Container(rule) => {
+            for child in rule.rules() {
                 scoped_rule_observables(child, retained, frozen);
             }
         }
-        CssScopedRule::LayerStatement(_) => {
+        CssRule::LayerStatement(_) => {
             retained.push("rule:baseline.rule.layer-statement".to_owned())
         }
-        CssScopedRule::LayerBlock(rule) => {
-            for child in rule.rules().rules() {
+        CssRule::LayerBlock(rule) => {
+            for child in rule.rules() {
                 scoped_rule_observables(child, retained, frozen);
             }
         }
-        CssScopedRule::Scope(rule) => {
+        CssRule::Scope(rule) => {
             for child in rule.rules().rules() {
                 scoped_rule_observables(child, retained, frozen);
             }

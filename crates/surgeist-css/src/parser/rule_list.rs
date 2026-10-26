@@ -108,11 +108,11 @@ pub(super) enum AtRulePrelude {
     FontFace,
     Keyframes(CssKeyframesName),
     Media(CssMediaQueryList),
-    Supports(CssSupportsCondition),
+    Supports(CssCondition<CssSupportsLeaf>),
     SupportsCondition(named_supports::NamedSupportsPrelude),
     Container(CssContainerPrelude),
-    When(CssWhenCondition, Vec<usize>),
-    Else(Option<CssWhenCondition>, Vec<usize>),
+    When(CssCondition<CssWhenLeaf>, Vec<usize>),
+    Else(Option<CssCondition<CssWhenLeaf>>, Vec<usize>),
     Scope(CssScopePrelude),
 }
 
@@ -653,21 +653,6 @@ impl From<LeafRule> for CssRule {
     }
 }
 
-impl From<LeafRule> for CssScopedRule {
-    fn from(rule: LeafRule) -> Self {
-        match rule {
-            LeafRule::CounterStyle(rule) => Self::CounterStyle(rule),
-            LeafRule::Page(rule) => Self::Page(rule),
-            LeafRule::FontFace(rule) => Self::FontFace(rule),
-            LeafRule::Keyframes(rule) => Self::Keyframes(rule),
-            LeafRule::FontFeatureValues(rule) => Self::FontFeatureValues(rule),
-            LeafRule::FontPaletteValues(rule) => Self::FontPaletteValues(rule),
-            LeafRule::ColorProfile(rule) => Self::ColorProfile(rule),
-            LeafRule::SupportsCondition(rule) => Self::SupportsCondition(rule),
-        }
-    }
-}
-
 /// Parses the block of a leaf rule, or rejects the block of a statement-only
 /// rule. A group prelude is returned for its list's own body grammar.
 // Keep descriptor parsing off the recursive group-rule frame. Deep rule
@@ -792,7 +777,10 @@ impl RuleListItem {
 pub(super) struct RuleParser<'s> {
     source: &'s str,
     top_level_phase: Option<TopLevelPreludePhase>,
+    /// Whether an enclosing style rule supplies declarations and parent selectors.
     style: bool,
+    /// The kind of `@scope` body this list is, or lives within.
+    scope: Option<ScopedBodyKind>,
     pub(super) diagnostics: Vec<crate::CssRecoveryDiagnostic>,
     pub(super) recovery: RecoveryState,
     unit: UnitState<'s>,
@@ -800,15 +788,32 @@ pub(super) struct RuleParser<'s> {
 
 impl<'s> RuleParser<'s> {
     pub(super) fn top_level(source: &'s str, recovery: RecoveryState) -> Self {
-        Self::new(source, recovery, Some(TopLevelPreludePhase::Initial), false)
+        Self::new(
+            source,
+            recovery,
+            Some(TopLevelPreludePhase::Initial),
+            false,
+            None,
+        )
     }
 
     pub(super) fn group(source: &'s str, recovery: RecoveryState) -> Self {
-        Self::new(source, recovery, None, false)
+        Self::new(source, recovery, None, false, None)
     }
 
     pub(super) fn style(source: &'s str, recovery: RecoveryState) -> Self {
-        Self::new(source, recovery, None, true)
+        Self::new(source, recovery, None, true, None)
+    }
+
+    /// A `@scope` body, or a group rule's body within one, whose actual style
+    /// ancestry is `style_ancestor`.
+    pub(super) fn scoped(
+        source: &'s str,
+        recovery: RecoveryState,
+        style_ancestor: bool,
+        body: ScopedBodyKind,
+    ) -> Self {
+        Self::new(source, recovery, None, style_ancestor, Some(body))
     }
 
     const fn new(
@@ -816,11 +821,13 @@ impl<'s> RuleParser<'s> {
         recovery: RecoveryState,
         top_level_phase: Option<TopLevelPreludePhase>,
         style: bool,
+        scope: Option<ScopedBodyKind>,
     ) -> Self {
         Self {
             source,
             top_level_phase,
             style,
+            scope,
             diagnostics: Vec::new(),
             recovery,
             unit: UnitState::new(),
@@ -828,7 +835,12 @@ impl<'s> RuleParser<'s> {
     }
 
     const fn context(&self) -> RuleListContext {
-        if self.style {
+        if let Some(body) = self.scope {
+            RuleListContext::Scoped {
+                body,
+                style_ancestor: self.style,
+            }
+        } else if self.style {
             RuleListContext::Style
         } else if self.top_level_phase.is_some() {
             RuleListContext::Stylesheet
@@ -887,7 +899,17 @@ impl<'s> RuleParser<'s> {
         &mut self,
         input: &mut Parser<'s, 'i>,
     ) -> Result<Vec<CssRule>, ParseError<'s, CssError>> {
-        if self.style {
+        if self.scope.is_some() {
+            let recovered = parse_scoped_rule_list(
+                self.source,
+                input,
+                self.recovery.clone(),
+                self.style,
+                ScopedBodyKind::OrdinaryGroup,
+            )?;
+            self.diagnostics.extend(recovered.diagnostics);
+            Ok(recovered.syntax)
+        } else if self.style {
             let recovered = parse_style_contents(self.source, input, self.recovery.clone())?;
             self.diagnostics.extend(recovered.diagnostics);
             Ok(recovered.syntax.into_nested_rules())
@@ -902,7 +924,7 @@ impl<'s> RuleParser<'s> {
     fn scope_body<'i>(
         &mut self,
         input: &mut Parser<'s, 'i>,
-    ) -> Result<CssScopedRuleList, ParseError<'s, CssError>> {
+    ) -> Result<Vec<CssRule>, ParseError<'s, CssError>> {
         let recovered = parse_scoped_rule_list(
             self.source,
             input,
@@ -1024,7 +1046,7 @@ impl<'i> AtRuleParser<'i> for RuleParser<'i> {
                 start,
                 &mut self.diagnostics,
             ),
-            Err(()) if self.style => {
+            Err(()) if self.style || self.scope.is_some() => {
                 self.unit.rejected_at_rule_start = Some(start.position().byte_index());
             }
             Err(()) => {}
@@ -1147,6 +1169,12 @@ impl<'i> QualifiedRuleParser<'i> for RuleParser<'i> {
         self.unit.boundary = nesting::StyleRuleBoundary::QualifiedPrelude;
         let mut recovery =
             SelectorRecovery::new(self.source, &mut self.diagnostics, self.recovery.clone());
+        if self.scope.is_some() {
+            // A scope body's selectors keep scope anchors, and are relative to the scope.
+            let result = parse_scoped_style_selector_list(input, &mut recovery);
+            self.unit.record_qualified_failure(&result, true);
+            return result;
+        }
         if !self.style {
             return parse_rule_selector_list(input, &mut recovery)
                 .map(CssStyleSelectorList::absolute);
@@ -1180,7 +1208,7 @@ impl<'i> QualifiedRuleParser<'i> for RuleParser<'i> {
             depth.retain();
             Ok(RuleListItem::Rules(recovered.syntax))
         })();
-        if self.style {
+        if self.style || self.scope.is_some() {
             self.unit.record_qualified_failure(&result, false);
         }
         result
@@ -1363,9 +1391,9 @@ impl RuleListSink<RuleListItem> for StyleSink {
     }
 }
 
-/// A scoped rule list, whose declaration runs are nested declarations rules.
+/// A scope body, whose declaration runs are nested declarations rules.
 pub(super) struct ScopedSink {
-    rules: Vec<CssScopedRule>,
+    rules: Vec<CssRule>,
     buffer: Vec<CssDeclaration>,
 }
 
@@ -1377,33 +1405,32 @@ impl ScopedSink {
         }
     }
 
-    pub(super) fn finish(mut self) -> CssScopedRuleList {
+    pub(super) fn finish(mut self) -> Vec<CssRule> {
         self.partition();
-        CssScopedRuleList::from_rules(self.rules)
+        self.rules
     }
 }
 
-impl RuleListSink<ScopedBlockItem> for ScopedSink {
+impl RuleListSink<RuleListItem> for ScopedSink {
     fn partition(&mut self) {
         if !self.buffer.is_empty() {
-            self.rules.push(CssScopedRule::NestedDeclarations(
-                CssNestedDeclarationsRule::new(CssDeclarationList::new(std::mem::take(
-                    &mut self.buffer,
-                ))),
-            ));
+            self.rules
+                .push(CssRule::NestedDeclarations(CssNestedDeclarationsRule::new(
+                    CssDeclarationList::new(std::mem::take(&mut self.buffer)),
+                )));
         }
     }
 
     fn retain(
         &mut self,
-        item: ScopedBlockItem,
+        item: RuleListItem,
         _: &str,
         _: usize,
         _: &mut Vec<crate::CssRecoveryDiagnostic>,
     ) {
         match item {
-            ScopedBlockItem::Declaration(declaration) => self.buffer.push(*declaration),
-            ScopedBlockItem::Rules(rules) => self.rules.extend(rules),
+            RuleListItem::Declaration(declaration) => self.buffer.push(*declaration),
+            RuleListItem::Rules(rules) => self.rules.extend(rules),
         }
     }
 }

@@ -5,10 +5,11 @@
 
 use crate::css::support::failure_classes::SerializationFailure as Resource;
 use crate::css::support::serialization_limits::LimitFailure;
+use crate::css::support::{graph_cssom, graph_specified};
 use std::error::Error;
 use surgeist_css::{
-    CssEditedGroupPreludeRef as Prelude, CssEditedRuleView as Edited, CssImportRule,
-    CssImportRuleView as ImportView, CssMediaQueryList, CssRule, CssSerializationError,
+    CssGroupPreludeRef as Prelude, CssImportRule, CssImportRuleView as ImportView,
+    CssMediaQueryList, CssRule, CssRuleGraphInput as Input, CssSerializationError,
     CssSerializationLimits as Limits, CssValueOrigin, parse_media_query_list, parse_sheet,
 };
 
@@ -78,31 +79,19 @@ fn recursive_edited_media_group_uses_each_current_list_and_original_target() {
     let print = media("print");
     let empty = CssMediaQueryList::new(Vec::new());
     let children = [
-        Edited::try_import(
-            ImportView::try_new(&original, &print, Default::default()).unwrap(),
-            Default::default(),
-        )
-        .unwrap(),
-        Edited::try_import(
-            ImportView::try_new(&original, &empty, Default::default()).unwrap(),
-            Default::default(),
-        )
-        .unwrap(),
+        Input::import(&original, &print),
+        Input::import(&original, &empty),
     ];
     let all = media("all");
-    // Formatting views do not decide destination hierarchy; CSSOM does.
-    let group = Edited::try_group(Prelude::Media(&all), &children, Default::default()).unwrap();
+    // Formatting inputs do not decide destination hierarchy; CSSOM does.
+    let group = Input::group(Prelude::Media(&all), &children);
     assert_eq!(
-        group.serialize_cssom(Default::default()).unwrap(),
+        graph_cssom(group, Default::default()).unwrap(),
         "@media all {\n  @import url(\"x\") print;\n  @import url(\"x\");\n}"
     );
     assert_eq!(
-        group.serialize_specified(Default::default()).unwrap(),
+        graph_specified(group, Default::default()).unwrap(),
         "@media all { @import 'x' print; @import 'x'; }"
-    );
-    assert!(
-        children[0].parsed_rule().is_none(),
-        "no reconstructed authored rule"
     );
     assert_eq!(
         original
@@ -158,32 +147,20 @@ fn modern_clause_and_extended_target_output_uses_the_cssom_url_first() {
         let view = ImportView::try_new(&original, &current, Default::default()).unwrap();
         assert_eq!(view.serialize_cssom(Default::default()).unwrap(), expected);
         assert_eq!(
-            Edited::try_import(view, Default::default())
-                .unwrap()
-                .serialize_specified(Default::default())
-                .unwrap(),
+            graph_specified(Input::import(view.rule(), view.media()), Default::default()).unwrap(),
             compact
         );
         assert_eq!(original, before);
     }
     let original = import("@import 'x';");
-    let children = [Edited::try_import(
-        ImportView::try_new(&original, &current, Default::default()).unwrap(),
-        Default::default(),
-    )
-    .unwrap()];
+    let children = [Input::import(&original, &current)];
     let condition_rule = parse_sheet("@supports (display: grid) {}");
     let [CssRule::Supports(supports)] = condition_rule.syntax().rules() else {
         panic!("supports");
     };
-    let group = Edited::try_group(
-        Prelude::Supports(supports.condition()),
-        &children,
-        Default::default(),
-    )
-    .unwrap();
+    let group = Input::group(Prelude::Supports(supports.condition()), &children);
     assert_eq!(
-        group.serialize_cssom(Default::default()).unwrap(),
+        graph_cssom(group, Default::default()).unwrap(),
         "@supports (display: grid) {\n  @import url(\"x\") print;\n}"
     );
 }
@@ -255,27 +232,25 @@ fn empty_current_media_charges_current_payload_and_url_bytes_atomically() {
         expected
     );
     assert_eq!(original, before);
-    // Embedding checks compact output; the final literal request separately
-    // bounds its bytes while preserving the same provider node accounting.
+    // The compact and literal requests bound their bytes separately while
+    // preserving the same provider node accounting.
     let compact = "@import 'é';";
+    let edited = Input::import(view.rule(), view.media());
     assert!(
-        Edited::try_import(view, Limits::new(2, 3, compact.len()))
+        graph_specified(edited, Limits::new(2, 3, compact.len()))
             .unwrap_err()
             .is_resource_limit()
-            && Edited::try_import(view, Limits::new(2, 3, compact.len()))
+            && graph_specified(edited, Limits::new(2, 3, compact.len()))
                 .unwrap_err()
                 .serialization_error()
                 .is_some_and(|error| error.is_input_node_limit())
     );
-    let edited = Edited::try_import(view, Limits::new(3, 3, compact.len())).unwrap();
     assert_eq!(
-        edited.serialize_specified(Default::default()).unwrap(),
+        graph_specified(edited, Limits::new(3, 3, compact.len())).unwrap(),
         compact
     );
     assert_eq!(
-        edited
-            .serialize_cssom(Limits::new(3, 3, expected.len()))
-            .unwrap(),
+        graph_cssom(edited, Limits::new(3, 3, expected.len())).unwrap(),
         expected
     );
 }
@@ -286,19 +261,11 @@ fn recursive_siblings_share_node_and_output_limits_with_exact_failure_path() {
     let print = media("print");
     let empty = CssMediaQueryList::new(Vec::new());
     let children = [
-        Edited::try_import(
-            ImportView::try_new(&original, &print, Default::default()).unwrap(),
-            Default::default(),
-        )
-        .unwrap(),
-        Edited::try_import(
-            ImportView::try_new(&original, &empty, Default::default()).unwrap(),
-            Default::default(),
-        )
-        .unwrap(),
+        Input::import(&original, &print),
+        Input::import(&original, &empty),
     ];
     let all = media("all");
-    let group = Edited::try_group(Prelude::Media(&all), &children, Default::default()).unwrap();
+    let group = Input::group(Prelude::Media(&all), &children);
     let expected = "@media all {\n  @import url(\"x\") print;\n  @import url(\"x\");\n}";
     // Group1 + outer list/type/query3 + first rule/target/list/type/query5
     // + second rule/target/empty-list3 = 12, charged once cumulatively.
@@ -312,13 +279,11 @@ fn recursive_siblings_share_node_and_output_limits_with_exact_failure_path() {
             Resource::ProjectionNodeLimit,
         ),
     ] {
-        let error = group.serialize_cssom(limits).unwrap_err();
+        let error = graph_cssom(group, limits).unwrap_err();
         assert_eq!(error.limit_kind(), Some(kind));
         assert_eq!(error.rule_path(), &[1]);
     }
-    let error = group
-        .serialize_cssom(Limits::new(12, 12, expected.len() - 1))
-        .unwrap_err();
+    let error = graph_cssom(group, Limits::new(12, 12, expected.len() - 1)).unwrap_err();
     assert!(
         error.is_resource_limit()
             && error
@@ -327,9 +292,7 @@ fn recursive_siblings_share_node_and_output_limits_with_exact_failure_path() {
         "{error:?}"
     );
     assert_eq!(
-        group
-            .serialize_cssom(Limits::new(12, 12, expected.len()))
-            .unwrap(),
+        graph_cssom(group, Limits::new(12, 12, expected.len())).unwrap(),
         expected
     );
     assert_eq!(

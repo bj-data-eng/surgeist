@@ -3,21 +3,21 @@
 use surgeist_css::*;
 
 fn main() {
-    let condition = CssContainerCondition::try_from_components(
+    let condition = CssCondition::<CssContainerLeaf>::try_from_components(
         parse_component_values("scroll-state((stuck: top) and (snapped: var(--axis, both)))")
             .unwrap(),
         Default::default(),
     )
     .unwrap();
-    let CssContainerConditionKind::ScrollState(query) = condition.kind() else {
+    let CssConditionKind::Leaf(CssContainerLeaf::ScrollState(query)) = condition.kind() else {
         panic!("scroll query")
     };
     visit(query);
 }
 
-fn visit(query: &CssContainerScrollQuery) {
+fn visit(query: &CssCondition<CssScrollStateLeaf>) {
     match query.kind() {
-        CssContainerScrollQueryKind::Feature(feature) => match feature {
+        CssConditionKind::Leaf(CssScrollStateLeaf::Feature(feature)) => match feature {
             CssContainerScrollFeature::Boolean(kind) => println!("boolean {}", kind.as_str()),
             CssContainerScrollFeature::Stuck(value) => match value.view() {
                 CssContainerStuckValueRef::Keyword(keyword) => {
@@ -43,14 +43,13 @@ fn visit(query: &CssContainerScrollQuery) {
             },
             _ => {}
         },
-        CssContainerScrollQueryKind::Parenthesized(child)
-        | CssContainerScrollQueryKind::Not(child) => visit(child),
-        CssContainerScrollQueryKind::And(list) | CssContainerScrollQueryKind::Or(list) => {
-            for child in list.queries() {
+        CssConditionKind::Parenthesized(child) | CssConditionKind::Not(child) => visit(child),
+        CssConditionKind::And(list) | CssConditionKind::Or(list) => {
+            for child in list.conditions() {
                 visit(child);
             }
         }
-        CssContainerScrollQueryKind::GeneralEnclosed(opaque) => {
+        CssConditionKind::Leaf(CssScrollStateLeaf::GeneralEnclosed(opaque)) => {
             println!("unknown at {:?}", opaque.position());
         }
         _ => {}

@@ -1,9 +1,9 @@
 //! The selected MQ5 edition supersedes MQ4; public support metadata identifies
 //! the effective definitions while retaining historical feature lookup IDs.
 use surgeist_css::{
-    CssFeatureKind, CssMediaConditionKind, CssMediaQuery, CssNormalizedItem, CssRuleContextKindRef,
-    CssSupportStatus, feature_metadata, normalize_sheet, parse_component_values, parse_media_query,
-    parse_sheet, validate_sheet,
+    CssConditionKind, CssFeatureKind, CssMediaLeaf, CssMediaQuery, CssNormalizedItem,
+    CssRuleContextKindRef, CssSupportStatus, feature_metadata, normalize_sheet,
+    parse_component_values, parse_media_query, parse_sheet, validate_sheet,
 };
 
 const MQ5: &str = "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/";
@@ -14,7 +14,7 @@ fn known(source: &str, name: &str) {
     let CssMediaQuery::Condition(condition) = report.syntax() else {
         panic!("condition query: {source}");
     };
-    let CssMediaConditionKind::Feature(feature) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(feature)) = condition.kind() else {
         panic!("known feature: {source}");
     };
     assert_eq!(feature.as_str(), name);
@@ -185,7 +185,7 @@ fn normalization_preserves_import_alternatives_and_symbolic_media_origins() {
         panic!("checked condition");
     };
     assert!(
-        matches!(condition.kind(), CssMediaConditionKind::Feature(feature) if feature.as_str() == "width")
+        matches!(condition.kind(), CssConditionKind::Leaf(CssMediaLeaf::Feature(feature)) if feature.as_str() == "width")
     );
     assert_eq!(
         constructed

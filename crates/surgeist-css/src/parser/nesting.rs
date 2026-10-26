@@ -74,7 +74,7 @@ pub(super) fn admit_detached<'i, 't>(
     recovery: RecoveryState,
     envelope: &super::rule_candidate::RuleEnvelope,
 ) -> (
-    Result<super::CssAdmittedRule, ParseError<'i, CssError>>,
+    Result<CssRule, ParseError<'i, CssError>>,
     Vec<crate::CssRecoveryDiagnostic>,
 ) {
     recovery.record_style_context(0);
@@ -86,7 +86,7 @@ pub(super) fn admit_detached<'i, 't>(
                     .into_rules()
                     .try_into()
                     .expect("one detached nested rule");
-                super::CssAdmittedRule::Ordinary(rule)
+                rule
             },
         );
     (result, parser.diagnostics)

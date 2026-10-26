@@ -340,10 +340,10 @@ fn scope_anchor_serializes_at_its_authored_compound_position() {
         .rules()
         .iter()
         .map(|rule| {
-            let surgeist_css::CssScopedRule::Style(style) = rule else {
+            let surgeist_css::CssRule::Style(style) = rule else {
                 panic!("scoped style rule")
             };
-            let [surgeist_css::CssScopedStyleSelector::Selector(selector)] =
+            let [surgeist_css::CssStyleSelector::Selector(selector)] =
                 style.selectors().selectors()
             else {
                 panic!("one scoped selector")

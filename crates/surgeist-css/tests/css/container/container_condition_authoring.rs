@@ -9,7 +9,7 @@ use crate::css::support::sheet_cases::*;
 /// The condition of a lone `@container <source> {}` prelude, parsed by the
 /// public stylesheet parser (Conditional Rules 5 §3.1), or its first
 /// diagnostic.
-fn container_condition(source: &str) -> Result<CssContainerCondition, CssError> {
+fn container_condition(source: &str) -> Result<CssCondition<CssContainerLeaf>, CssError> {
     let report = parse_sheet(&format!("@container {source} {{}}"));
     if let Some(diagnostic) = report.diagnostics().first() {
         return Err(diagnostic.error().clone());
@@ -23,14 +23,14 @@ fn container_condition(source: &str) -> Result<CssContainerCondition, CssError> 
     Ok(entry.query().expect("container query").clone())
 }
 
-fn assert_container_theme_value(condition: &CssContainerCondition) {
-    let CssContainerConditionKind::Style(query) = condition.kind() else {
+fn assert_container_theme_value(condition: &CssCondition<CssContainerLeaf>) {
+    let CssConditionKind::Leaf(CssContainerLeaf::Style(query)) = condition.kind() else {
         panic!("style")
     };
-    let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain {
+    let CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(CssContainerStyleFeature::Plain {
         name: CssContainerStyleFeatureName::Custom(name),
         value,
-    }) = query.kind()
+    })) = query.kind()
     else {
         panic!("plain custom feature")
     };
@@ -83,12 +83,12 @@ fn container_name_constructor_rejects_invalid_and_reserved_names() {
 #[test]
 fn container_condition_list_constructor_requires_at_least_two_conditions() {
     let width = container_condition("(width > 600px)").unwrap();
-    assert_eq!(CssContainerConditionList::try_new(Vec::new()), None);
     assert_eq!(
-        CssContainerConditionList::try_new(vec![width.clone()]),
+        CssConditionList::<CssContainerLeaf>::try_new(Vec::new()),
         None
     );
-    assert!(CssContainerConditionList::try_new(vec![width.clone(), width]).is_some());
+    assert_eq!(CssConditionList::try_new(vec![width.clone()]), None);
+    assert!(CssConditionList::try_new(vec![width.clone(), width]).is_some());
 }
 
 #[test]
@@ -122,7 +122,8 @@ fn container_condition_parser_retains_unrecognized_enclosures() {
         "(width > )",
     ] {
         let condition = container_condition(css).expect("valid opaque enclosure");
-        let CssContainerConditionKind::GeneralEnclosed(value) = condition.kind() else {
+        let CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(value)) = condition.kind()
+        else {
             panic!("{css} should retain an opaque enclosure");
         };
         assert_eq!(
@@ -135,11 +136,12 @@ fn container_condition_parser_retains_unrecognized_enclosures() {
 #[test]
 fn container_condition_parser_recognizes_scroll_state_keyword_features() {
     let condition = container_condition("scroll-state(stuck: top)").unwrap();
-    let CssContainerConditionKind::ScrollState(query) = condition.kind() else {
+    let CssConditionKind::Leaf(CssContainerLeaf::ScrollState(query)) = condition.kind() else {
         panic!("scroll-state")
     };
-    let CssContainerScrollQueryKind::Feature(CssContainerScrollFeature::Stuck(value)) =
-        query.kind()
+    let CssConditionKind::Leaf(CssScrollStateLeaf::Feature(CssContainerScrollFeature::Stuck(
+        value,
+    ))) = query.kind()
     else {
         panic!("stuck")
     };
@@ -152,8 +154,9 @@ fn container_condition_parser_recognizes_scroll_state_keyword_features() {
 #[test]
 fn container_condition_parser_preserves_size_feature_structure() {
     let condition = container_condition("(inline-size >= 30rem)").unwrap();
-    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::InlineSize(inline_size)) =
-        condition.kind()
+    let CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::InlineSize(
+        inline_size,
+    ))) = condition.kind()
     else {
         panic!("expected inline-size feature");
     };
@@ -179,15 +182,16 @@ fn container_condition_parser_preserves_size_feature_structure() {
 fn container_condition_parser_preserves_ratio_and_logic_structure() {
     let condition =
         container_condition("(aspect-ratio > 1 / 1) and (orientation: landscape)").unwrap();
-    let CssContainerConditionKind::And(list) = condition.kind() else {
+    let CssConditionKind::And(list) = condition.kind() else {
         panic!("expected and condition list");
     };
     let [ratio, orientation] = list.conditions() else {
         panic!("expected two conditions");
     };
 
-    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::AspectRatio(ratio)) =
-        ratio.kind()
+    let CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::AspectRatio(
+        ratio,
+    ))) = ratio.kind()
     else {
         panic!("expected aspect-ratio feature");
     };
@@ -218,8 +222,9 @@ fn container_condition_parser_preserves_ratio_and_logic_structure() {
             .trim(),
         "1"
     );
-    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::Orientation(value)) =
-        orientation.kind()
+    let CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::Orientation(
+        value,
+    ))) = orientation.kind()
     else {
         panic!("orientation")
     };
@@ -232,11 +237,11 @@ fn container_condition_parser_preserves_ratio_and_logic_structure() {
 #[test]
 fn container_style_query_preserves_custom_property_presence() {
     let condition = container_condition("style(--theme)").unwrap();
-    let CssContainerConditionKind::Style(query) = condition.kind() else {
+    let CssConditionKind::Leaf(CssContainerLeaf::Style(query)) = condition.kind() else {
         panic!("style")
     };
     assert!(
-        matches!(query.kind(), CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Boolean(CssContainerStyleFeatureName::Custom(name))) if name.as_str() == "--theme")
+        matches!(query.kind(), CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(CssContainerStyleFeature::Boolean(CssContainerStyleFeatureName::Custom(name)))) if name.as_str() == "--theme")
     );
 }
 
@@ -260,7 +265,9 @@ fn container_rule_parser_accepts_unnamed_named_and_style_conditions() {
     assert_eq!(rule.position().unwrap().column().value(), 0);
     assert!(matches!(
         rule.prelude().entries()[0].query().unwrap().kind(),
-        CssContainerConditionKind::Feature(CssContainerFeatureQuery::InlineSize(_))
+        CssConditionKind::Leaf(CssContainerLeaf::Feature(
+            CssContainerFeatureQuery::InlineSize(_)
+        ))
     ));
     let [nested] = rule.rules() else {
         panic!("expected one nested style rule");
@@ -282,7 +289,9 @@ fn container_rule_parser_accepts_unnamed_named_and_style_conditions() {
     );
     assert!(matches!(
         rule.prelude().entries()[0].query().unwrap().kind(),
-        CssContainerConditionKind::Feature(CssContainerFeatureQuery::Width(_))
+        CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::Width(
+            _
+        )))
     ));
 
     let sheet = parse_sheet("@container style(--theme: dark) { .title { color: black; } }")
@@ -345,7 +354,7 @@ fn container_rule_parser_retains_unknown_features_and_rejects_invalid_bodies() {
             .query()
             .unwrap()
             .kind(),
-        CssContainerConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
     ));
     assert_rejection(
         "@container (width > 300px) { @import \"x.css\"; }",

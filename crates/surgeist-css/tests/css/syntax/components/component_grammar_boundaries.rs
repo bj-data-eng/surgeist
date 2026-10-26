@@ -10,8 +10,8 @@ use crate::css::support::authored_syntax::{
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
-    CssBlockKind, CssComponentValueRef, CssCustomPropertyName, CssErrorCode, CssGeneralEnclosed,
-    CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssMediaConditionKind,
+    CssBlockKind, CssComponentValueRef, CssConditionKind, CssCustomPropertyName, CssErrorCode,
+    CssGeneralEnclosed, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssMediaLeaf,
     CssMediaQuery, CssMediaType, CssNamespaceContext, CssPropertyNameRef, CssRecoveryAction,
     CssRule, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef, parse_component_values,
     parse_css_supports_declaration, parse_media_query, parse_media_query_list,
@@ -31,7 +31,7 @@ fn opaque(query: &CssMediaQuery) -> &CssGeneralEnclosed {
     let CssMediaQuery::Condition(condition) = query else {
         panic!("media condition")
     };
-    let CssMediaConditionKind::GeneralEnclosed(value) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) = condition.kind() else {
         panic!("opaque any-value enclosure")
     };
     value

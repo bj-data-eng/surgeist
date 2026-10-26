@@ -21,7 +21,7 @@ fn classes(names: &[&str]) -> CssScopeSelectorList {
     CssScopeSelectorList::try_new(
         names
             .iter()
-            .map(|name| CssScopeSelector::Selector(CssSelector::Class((*name).into())))
+            .map(|name| CssStyleSelector::Selector(CssSelector::Class((*name).into())))
             .collect(),
     )
     .unwrap()
@@ -127,7 +127,7 @@ fn checked_scope_preserves_boundary_omissions_and_descendant_origins() {
         let [CssRule::Scope(outer)] = composed.rules() else {
             panic!("constructed scope")
         };
-        let [CssScopedRule::Scope(inner)] = outer.rules().rules() else {
+        let [CssRule::Scope(inner)] = outer.rules().rules() else {
             panic!("parsed descendant")
         };
         assert_eq!(
@@ -265,10 +265,10 @@ fn checked_boundary_lists_reject_empty_and_recursive_pseudo_elements() {
     // these graphs cannot be admitted through the corrected public list front.
     assert!(CssPseudoSelectorList::try_new(vec![selector.clone()], Default::default()).is_err());
     assert!(
-        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector.clone())]).is_none()
+        CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(selector.clone())]).is_none()
     );
     assert!(
-        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(CssSelector::PseudoClass(
+        CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(CssSelector::PseudoClass(
             CssPseudoClass::Scope
         ))])
         .is_some()
@@ -309,7 +309,7 @@ fn ordinary_scope_rejects_declarations_while_style_nested_scope_retains_runs() {
     let [CssRule::Scope(outer)] = report.syntax().rules() else {
         panic!("scope")
     };
-    assert!(matches!(outer.rules().rules(), [CssScopedRule::Style(_)]));
+    assert!(matches!(outer.rules().rules(), [CssRule::Style(_)]));
     let styled = sheet(".parent{@scope{opacity:.25;.child{}opacity:.5;}}");
     let [CssRule::Style(parent)] = styled.rules() else {
         panic!("parent")
@@ -318,9 +318,9 @@ fn ordinary_scope_rejects_declarations_while_style_nested_scope_retains_runs() {
         panic!("scope")
     };
     let [
-        CssScopedRule::NestedDeclarations(first),
-        CssScopedRule::Style(child),
-        CssScopedRule::NestedDeclarations(last),
+        CssRule::NestedDeclarations(first),
+        CssRule::Style(child),
+        CssRule::NestedDeclarations(last),
     ] = outer.rules().rules()
     else {
         panic!("two separate runs around child")
@@ -439,8 +439,7 @@ fn scope_serialization_preserves_nested_rule_order_and_authored_origins() {
         assert_eq!(text, expected);
         assert_eq!(value, before);
         let output = scope(&text);
-        let [CssScopedRule::Scope(first), CssScopedRule::Scope(second)] = output.rules().rules()
-        else {
+        let [CssRule::Scope(first), CssRule::Scope(second)] = output.rules().rules() else {
             panic!("authored nested order")
         };
         assert_classes(first.root(), Some(&["first"]));

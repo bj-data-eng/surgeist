@@ -1609,7 +1609,7 @@ fn selectors3_and_namespace_selectors_parse_into_typed_supports_conditions() {
     };
     assert!(matches!(
         typed.condition().kind(),
-        CssSupportsConditionKind::Selector(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::Selector(_))
     ));
 
     let general_enclosed = parse_sheet("@supports selector(.x ||) {}");
@@ -1623,7 +1623,7 @@ fn selectors3_and_namespace_selectors_parse_into_typed_supports_conditions() {
     };
     assert!(matches!(
         general_enclosed.condition().kind(),
-        CssSupportsConditionKind::GeneralEnclosed(value)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(value))
             if value.authored() == Some("selector(.x ||)")
     ));
 

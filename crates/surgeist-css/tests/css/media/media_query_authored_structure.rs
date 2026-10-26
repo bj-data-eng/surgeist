@@ -27,9 +27,9 @@ fn media_condition_list_constructor_requires_at_least_two_conditions() {
         panic!("expected checked media width condition");
     };
     let width = width.clone();
-    assert_eq!(CssMediaConditionList::try_new(Vec::new()), None);
-    assert_eq!(CssMediaConditionList::try_new(vec![width.clone()]), None);
-    assert!(CssMediaConditionList::try_new(vec![width.clone(), width]).is_some());
+    assert_eq!(CssConditionList::<CssMediaLeaf>::try_new(Vec::new()), None);
+    assert_eq!(CssConditionList::try_new(vec![width.clone()]), None);
+    assert!(CssConditionList::try_new(vec![width.clone(), width]).is_some());
 }
 
 #[test]
@@ -80,7 +80,7 @@ fn media_feature_names_are_canonical() {
     let [CssMediaQuery::Condition(condition)] = parsed.queries() else {
         panic!("expected checked width condition");
     };
-    let CssMediaConditionKind::Feature(feature) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(feature)) = condition.kind() else {
         panic!("expected numeric feature");
     };
     assert_eq!(feature.as_str(), "width");
@@ -135,7 +135,7 @@ fn media_query_parser_preserves_unknown_and_rejects_malformed_conditions() {
 
     let enclosed = parse_media_query_list("(width >= )").expect("clean parse report");
     assert!(
-        matches!(enclosed.queries(), [CssMediaQuery::Condition(condition)] if matches!(condition.kind(), CssMediaConditionKind::GeneralEnclosed(value) if value.authored() == Some("(width >= )")))
+        matches!(enclosed.queries(), [CssMediaQuery::Condition(condition)] if matches!(condition.kind(), CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) if value.authored() == Some("(width >= )")))
     );
     // Media Queries 4 §3: `<media-type> and <media-condition-without-or>`, so
     // `and` needs a following condition and a media type takes no `or`. No
@@ -164,7 +164,8 @@ fn media_query_parser_preserves_typed_query_structure() {
     let Some(condition) = query.condition() else {
         panic!("expected width condition");
     };
-    let CssMediaConditionKind::Feature(CssMediaFeatureQuery::Width(width)) = condition.kind()
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Width(width))) =
+        condition.kind()
     else {
         panic!("expected width condition");
     };
@@ -180,7 +181,8 @@ fn media_query_parser_preserves_condition_only_range_structure() {
     let [CssMediaQuery::Condition(condition)] = query_list.queries() else {
         panic!("expected one condition-only width query");
     };
-    let CssMediaConditionKind::Feature(CssMediaFeatureQuery::Width(width)) = condition.kind()
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Width(width))) =
+        condition.kind()
     else {
         panic!("expected one condition-only width query");
     };
@@ -202,7 +204,7 @@ fn media_query_parser_preserves_discrete_and_condition_list_structure() {
     let [CssMediaQuery::Condition(condition)] = query_list.queries() else {
         panic!("expected one condition-only and query");
     };
-    let CssMediaConditionKind::And(list) = condition.kind() else {
+    let CssConditionKind::And(list) = condition.kind() else {
         panic!("expected one condition-only and query");
     };
     let [hover, pointer] = list.conditions() else {
@@ -211,11 +213,15 @@ fn media_query_parser_preserves_discrete_and_condition_list_structure() {
 
     assert!(matches!(
         hover.kind(),
-        CssMediaConditionKind::Feature(CssMediaFeatureQuery::Hover(CssHoverCapability::Hover))
+        CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Hover(
+            CssHoverCapability::Hover
+        )))
     ));
     assert!(matches!(
         pointer.kind(),
-        CssMediaConditionKind::Feature(CssMediaFeatureQuery::Pointer(CssPointerCapability::Fine))
+        CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Pointer(
+            CssPointerCapability::Fine
+        )))
     ));
 }
 
@@ -296,7 +302,7 @@ fn media_rule_parser_retains_unknown_features_and_rejects_invalid_bodies() {
     assert!(matches!(
         media_rule(rule).query().queries(),
         [CssMediaQuery::Condition(condition)]
-            if matches!(condition.kind(), CssMediaConditionKind::UnknownFeature(_))
+            if matches!(condition.kind(), CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(_)))
     ));
     assert_rejection(
         "@media screen { .panel { made-up: value; } }",

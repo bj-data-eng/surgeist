@@ -9,23 +9,11 @@ impl CssRetainedSources for CssomAuthoredRule {
         sources: &mut CssSourceRetention,
     ) -> Result<(), CssSourceRetentionError> {
         match self {
-            Self::Ordinary(value) => sources.visit(value),
-            Self::Scoped(value) => sources.visit(value),
+            Self::Rule(value) => sources.visit(value),
             Self::Keyframe(value) => sources.visit(value),
             Self::Margin(value) => sources.visit(value),
             Self::RawNestedDeclarations(value) => sources.visit(value),
             Self::SupportsTestChild(value) => sources.visit(value),
-        }
-    }
-}
-impl CssRetainedSources for CssomSelectors {
-    fn visit_retained_sources(
-        &self,
-        sources: &mut CssSourceRetention,
-    ) -> Result<(), CssSourceRetentionError> {
-        match self {
-            Self::Ordinary(value) => sources.visit(value),
-            Self::Scoped(value) => sources.visit(value),
         }
     }
 }

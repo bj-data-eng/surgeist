@@ -3,11 +3,12 @@
 //! terminal values follow CSS2's independent margin assignment rule.
 use crate::css::support::failure_classes::SerializationFailure as Resource;
 use crate::css::support::serialization_limits::LimitFailure;
+use crate::css::support::{graph_cssom, graph_specified};
 use surgeist_css::{
-    CssAdmittedRule, CssEditedGroupPreludeRef as Prelude, CssEditedRuleView as View, CssImportance,
-    CssKeyframeRuleView, CssKeyframesName, CssKeyframesRuleView, CssKeyframesString,
-    CssKnownProperty as K, CssMarginBox, CssMarginRuleView, CssNamespaceContext, CssPageRuleView,
-    CssPropertyNameRef, CssRule, CssRuleAdmissionContext as Context,
+    CssGroupPreludeRef as Prelude, CssImportance, CssKeyframeRuleView, CssKeyframesName,
+    CssKeyframesRuleView, CssKeyframesString, CssKnownProperty as K, CssMarginBox,
+    CssMarginRuleView, CssNamespaceContext, CssPageRuleView, CssPropertyNameRef, CssRule,
+    CssRuleAdmissionContext as Context, CssRuleGraphInput as View,
     CssSerializationLimits as Limits, CssSpecifiedDeclarationBlock as Block,
     CssSpecifiedDeclarationEntry as Entry, CssSpecifiedPageDeclarationBlock as PageBlock,
     CssSpecifiedPageDeclarationEntry as PageEntry, classify_rule_syntax, parse_keyframe_rule,
@@ -55,9 +56,7 @@ fn contextual_admission_establishes_page_and_keyframes_group_permission_not_styl
         assert!(admitted.is_clean(), "{source}: {admitted:?}");
         assert!(matches!(
             admitted.syntax(),
-            Some(CssAdmittedRule::Ordinary(
-                CssRule::Page(_) | CssRule::Keyframes(_)
-            ))
+            Some(CssRule::Page(_) | CssRule::Keyframes(_))
         ));
         let rejected = candidate.admit(&CssNamespaceContext::default(), Context::Style);
         crate::css::support::value_assertions::assert_first_code(
@@ -131,18 +130,11 @@ fn recursive_page_preserves_mixed_selected_order_shorthand_survivors_pending_and
     let raw_selectors = parse_page_selector_list(" /*edit*/ invoice:first:left ");
     assert!(raw_selectors.is_clean());
     let selectors = raw_selectors.syntax().as_ref().unwrap();
-    let leaf = View::try_page(
-        CssPageRuleView::new(selectors, &current, &margins),
-        Default::default(),
-    )
-    .unwrap();
+    let leaf = View::page(CssPageRuleView::new(selectors, &current, &margins));
     let children = [leaf];
-    let group =
-        View::try_group(Prelude::Media(media.query()), &children, Default::default()).unwrap();
+    let group = View::group(Prelude::Media(media.query()), &children);
     let expected = "@media print {\n  @page invoice:first:left { margin-right: 2px !important; size: a4; --Case: RAW; margin-top: var(--edited); @bottom-right { } @top-center { margin-left: 4px; content: \"X\"; } }\n}";
-    assert_eq!(group.serialize_cssom(Default::default()).unwrap(), expected);
-    assert!(leaf.parsed_rule().is_none());
-    assert!(leaf.parsed_scoped_rule().is_none());
+    assert_eq!(graph_cssom(group, Default::default()).unwrap(), expected);
     assert!(
         page_property(&current, K::MarginRight)
             .source()
@@ -184,9 +176,8 @@ fn recursive_page_preserves_mixed_selected_order_shorthand_survivors_pending_and
         Block::try_from_entries(current_margin.entries(), Default::default()).unwrap();
     assert!(CssMarginRuleView::try_new(CssMarginBox::TopLeft, &wrong_domain).is_none());
     assert_eq!(report, before);
-    let failure = group
-        .serialize_cssom(Limits::new(100_000, 100_000, expected.len() - 5))
-        .unwrap_err();
+    let failure =
+        graph_cssom(group, Limits::new(100_000, 100_000, expected.len() - 5)).unwrap_err();
     assert!(
         failure.is_resource_limit()
             && failure
@@ -195,7 +186,7 @@ fn recursive_page_preserves_mixed_selected_order_shorthand_survivors_pending_and
         "{failure:?}"
     );
     assert_eq!(failure.rule_path(), &[0, 1]);
-    assert_eq!(group.serialize_cssom(Default::default()).unwrap(), expected);
+    assert_eq!(graph_cssom(group, Default::default()).unwrap(), expected);
     assert_eq!(report, before);
 }
 
@@ -272,17 +263,11 @@ fn whole_keyframes_preserves_renamed_edited_deleted_and_appended_duplicate_child
             .as_str(),
         " /*edit*/ 50%, from, 50% "
     );
-    let leaf = View::try_keyframes(whole, Default::default()).unwrap();
-    assert!(leaf.parsed_rule().is_none());
+    let leaf = View::keyframes(&name, &children);
     let group_children = [leaf];
-    let group = View::try_group(
-        Prelude::Media(media.query()),
-        &group_children,
-        Default::default(),
-    )
-    .unwrap();
+    let group = View::group(Prelude::Media(media.query()), &group_children);
     assert_eq!(
-        group.serialize_cssom(Default::default()).unwrap(),
+        graph_cssom(group, Default::default()).unwrap(),
         format!("@media print {{\n  {expected}\n}}")
     );
     let failure = whole
@@ -334,26 +319,24 @@ fn empty_whole_keyframes_and_empty_children_keep_selected_name_classification_an
 fn coupled_recursive_payloads_share_input_projection_and_output_limits_and_allow_unchanged_retry() {
     let selectors = parse_page_selector_list("");
     let page_block = PageBlock::try_from_entries(&[], Default::default()).unwrap();
-    let page = View::try_page(
-        CssPageRuleView::new(selectors.syntax().as_ref().unwrap(), &page_block, &[]),
-        Default::default(),
-    )
-    .unwrap();
+    let page = View::page(CssPageRuleView::new(
+        selectors.syntax().as_ref().unwrap(),
+        &page_block,
+        &[],
+    ));
     let name = CssKeyframesName::String(CssKeyframesString::new("k"));
-    let whole = CssKeyframesRuleView::try_new(&name, &[], Default::default()).unwrap();
-    let keyframes = View::try_keyframes(whole, Default::default()).unwrap();
+    let keyframes = View::keyframes(&name, &[]);
     let query = group_query();
     let children = [page, keyframes, page, keyframes];
-    let inner = View::try_group(Prelude::Media(&query), &children, Default::default()).unwrap();
+    let inner = View::group(Prelude::Media(&query), &children);
     let outer_children = [inner];
-    let outer =
-        View::try_group(Prelude::Media(&query), &outer_children, Default::default()).unwrap();
+    let outer = View::group(Prelude::Media(&query), &outer_children);
     let expected = "@media print {\n  @media print {\n  @page { }\n  @keyframes k { \n}\n  @page { }\n  @keyframes k { \n}\n}\n}";
-    assert_eq!(outer.serialize_cssom(Default::default()).unwrap(), expected);
+    assert_eq!(graph_cssom(outer, Default::default()).unwrap(), expected);
     // An isolated empty payload fits ten nodes; the composed traversal does not.
     let ten = Limits::new(10, 10, 1000);
-    assert!(page.serialize_cssom(ten).is_ok());
-    assert!(keyframes.serialize_cssom(ten).is_ok());
+    assert!(graph_cssom(page, ten).is_ok());
+    assert!(graph_cssom(keyframes, ten).is_ok());
     for (limits, kind) in [
         (Limits::new(10, 100_000, 1000), Resource::InputNodeLimit),
         (
@@ -366,31 +349,31 @@ fn coupled_recursive_payloads_share_input_projection_and_output_limits_and_allow
         ),
     ] {
         assert_eq!(
-            outer.serialize_cssom(limits).unwrap_err().limit_kind(),
+            graph_cssom(outer, limits).unwrap_err().limit_kind(),
             Some(kind)
         );
-        assert_eq!(outer.serialize_cssom(Default::default()).unwrap(), expected);
+        assert_eq!(graph_cssom(outer, Default::default()).unwrap(), expected);
         if kind != Resource::ByteLimit {
             crate::css::support::value_assertions::assert_rule_resource(
-                View::try_group(Prelude::Media(&query), &outer_children, limits),
+                graph_specified(outer, limits),
                 kind,
             );
         }
     }
-    // Group construction checks compact specified output, whose wrapper byte
-    // count differs from literal CSSOM. A separate byte boundary checks that phase.
+    // Compact specified output has a wrapper byte count that differs from literal
+    // CSSOM. A separate byte boundary checks that phase.
     use crate::css::support::value_assertions::assert_rule_resource;
     assert_rule_resource(
-        View::try_group(
-            Prelude::Media(&query),
-            &outer_children,
-            Limits::new(100_000, 100_000, 1),
-        ),
+        graph_specified(outer, Limits::new(100_000, 100_000, 1)),
         Resource::ByteLimit,
     );
     assert_rule_resource(
-        View::try_page(
-            CssPageRuleView::new(selectors.syntax().as_ref().unwrap(), &page_block, &[]),
+        graph_specified(
+            View::page(CssPageRuleView::new(
+                selectors.syntax().as_ref().unwrap(),
+                &page_block,
+                &[],
+            )),
             Limits::new(0, 100, 100),
         ),
         Resource::InputNodeLimit,
@@ -400,7 +383,7 @@ fn coupled_recursive_payloads_share_input_projection_and_output_limits_and_allow
         Resource::ProjectionNodeLimit,
     );
     assert_rule_resource(
-        View::try_keyframes(whole, Limits::new(100, 100, 1)),
+        graph_specified(View::keyframes(&name, &[]), Limits::new(100, 100, 1)),
         Resource::ByteLimit,
     );
 }
@@ -419,8 +402,8 @@ fn whole_keyframes_exact_empty_child_work_is_cumulative_not_restarted() {
     let exact = Limits::new(12, 12, expected.len());
     let whole = CssKeyframesRuleView::try_new(&name, &children, exact).unwrap();
     assert_eq!(whole.serialize_cssom(exact).unwrap(), expected);
-    let leaf = View::try_keyframes(whole, exact).unwrap();
-    assert_eq!(leaf.serialize_cssom(exact).unwrap(), expected);
+    let leaf = View::keyframes(&name, &children);
+    assert_eq!(graph_cssom(leaf, exact).unwrap(), expected);
     for (limits, kind) in [
         (
             Limits::new(11, 12, expected.len()),
@@ -432,7 +415,7 @@ fn whole_keyframes_exact_empty_child_work_is_cumulative_not_restarted() {
         ),
         (Limits::new(12, 12, expected.len() - 5), Resource::ByteLimit),
     ] {
-        let failure = leaf.serialize_cssom(limits).unwrap_err();
+        let failure = graph_cssom(leaf, limits).unwrap_err();
         assert_eq!(failure.limit_kind(), Some(kind));
         assert_eq!(failure.keyframe_block_index(), Some(1));
         crate::css::support::value_assertions::assert_rule_resource(
@@ -443,11 +426,10 @@ fn whole_keyframes_exact_empty_child_work_is_cumulative_not_restarted() {
     }
     let query = group_query();
     let rules = [leaf];
-    let group = View::try_group(Prelude::Media(&query), &rules, Default::default()).unwrap();
+    let group = View::group(Prelude::Media(&query), &rules);
     let group_expected = format!("@media print {{\n  {expected}\n}}");
-    let failure = group
-        .serialize_cssom(Limits::new(1000, 1000, group_expected.len() - 8))
-        .unwrap_err();
+    let failure =
+        graph_cssom(group, Limits::new(1000, 1000, group_expected.len() - 8)).unwrap_err();
     assert!(
         failure.is_resource_limit()
             && failure
@@ -458,7 +440,7 @@ fn whole_keyframes_exact_empty_child_work_is_cumulative_not_restarted() {
     assert_eq!(failure.rule_path(), &[0]);
     assert_eq!(failure.keyframe_block_index(), Some(1));
     assert_eq!(
-        group.serialize_cssom(Default::default()).unwrap(),
+        graph_cssom(group, Default::default()).unwrap(),
         group_expected
     );
 }
@@ -549,16 +531,11 @@ fn recursive_page_and_margin_keep_independent_fixed_footprint_pending_shorthand_
     )
     .unwrap();
     let margins = [CssMarginRuleView::try_new(CssMarginBox::TopLeft, &margin_survivors).unwrap()];
-    let leaf = View::try_page(
-        CssPageRuleView::new(page.selectors(), &survivor, &margins),
-        Default::default(),
-    )
-    .unwrap();
+    let leaf = View::page(CssPageRuleView::new(page.selectors(), &survivor, &margins));
     let children = [leaf];
-    let group =
-        View::try_group(Prelude::Media(media.query()), &children, Default::default()).unwrap();
+    let group = View::group(Prelude::Media(media.query()), &children);
     let expected = "@media print {\n  @page invoice { size: a4; border-top-color: ; @top-left { content: \"X\"; border-top-color: ; } }\n}";
-    assert_eq!(group.serialize_cssom(Default::default()).unwrap(), expected);
+    assert_eq!(graph_cssom(group, Default::default()).unwrap(), expected);
     assert_eq!(survivor.entries().len(), 2);
     assert_eq!(margin_survivors.entries().len(), 2);
     assert!(
@@ -589,6 +566,6 @@ fn recursive_page_and_margin_keep_independent_fixed_footprint_pending_shorthand_
             .as_str(),
         source
     );
-    assert_eq!(group.serialize_cssom(Default::default()).unwrap(), expected);
+    assert_eq!(graph_cssom(group, Default::default()).unwrap(), expected);
     assert_eq!(report, before);
 }

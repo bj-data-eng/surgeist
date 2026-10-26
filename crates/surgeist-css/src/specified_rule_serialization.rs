@@ -521,7 +521,7 @@ mod value_error_tests {
         let [CssRule::Namespace(_), CssRule::Scope(scope)] = report.syntax().rules() else {
             panic!("namespace and scope");
         };
-        let [crate::CssScopedRule::Media(media)] = scope.rules().rules() else {
+        let [crate::CssRule::Media(media)] = scope.rules().rules() else {
             panic!("scoped media");
         };
         // Sheet 1 + namespace 3 + scope 1 + media 1 + list 1 + screen 2

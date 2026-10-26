@@ -12,9 +12,8 @@
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
-    CssImportLayer, CssImportRule, CssImportance, CssMediaConditionKind, CssMediaQuery,
-    CssRecoveryAction, CssRule, CssSupportsCondition, CssSupportsConditionKind, parse_sheet,
-    validate_sheet,
+    CssCondition, CssConditionKind, CssImportLayer, CssImportRule, CssImportance, CssMediaLeaf,
+    CssMediaQuery, CssRecoveryAction, CssRule, CssSupportsLeaf, parse_sheet, validate_sheet,
 };
 
 const INVALID_DECLARATIONS: &[&str] = &[
@@ -25,7 +24,7 @@ const INVALID_DECLARATIONS: &[&str] = &[
     "color:red !",
 ];
 
-fn condition(contents: &str) -> CssSupportsCondition {
+fn condition(contents: &str) -> CssCondition<CssSupportsLeaf> {
     let source = format!("@supports ({contents}) {{}} .after{{color:red}}");
     let report = parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {report:?}");
@@ -49,8 +48,8 @@ fn import(tail: &str) -> CssImportRule {
     rule.clone()
 }
 
-fn opaque_supports(condition: &CssSupportsCondition, expected: &str) {
-    let CssSupportsConditionKind::GeneralEnclosed(value) = condition.kind() else {
+fn opaque_supports(condition: &CssCondition<CssSupportsLeaf>, expected: &str) {
+    let CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(value)) = condition.kind() else {
         panic!("expected opaque supports operand {expected}: {condition:?}");
     };
     assert_eq!(value.authored(), Some(expected));
@@ -87,7 +86,8 @@ fn supports_valid_declaration_tests_keep_empty_unknown_custom_and_terminal_impor
         ),
     ] {
         let condition = condition(contents);
-        let CssSupportsConditionKind::Declaration(declaration) = condition.kind() else {
+        let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = condition.kind()
+        else {
             panic!("valid authored declaration: {contents}: {condition:?}");
         };
         assert_eq!(declaration.authored().unwrap(), contents);
@@ -105,7 +105,7 @@ fn supports_valid_declaration_tests_keep_empty_unknown_custom_and_terminal_impor
 
         let import = import(&format!("supports({contents})"));
         assert!(import.media().is_none(), "{contents}: {import:?}");
-        let CssSupportsConditionKind::Declaration(import_declaration) =
+        let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(import_declaration)) =
             import.supports().unwrap().condition().kind()
         else {
             panic!("valid bare import declaration: {contents}");
@@ -137,7 +137,8 @@ fn supports_invalid_bare_import_candidates_select_absent_clause_opaque_media() {
             let [CssMediaQuery::Condition(condition)] = import.media().unwrap().queries() else {
                 panic!("one opaque media query: {tail}: {import:?}");
             };
-            let CssMediaConditionKind::GeneralEnclosed(value) = condition.kind() else {
+            let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) = condition.kind()
+            else {
                 panic!("whole supports function is media: {tail}: {condition:?}");
             };
             assert_eq!(value.authored(), Some(function.as_str()));
@@ -166,16 +167,19 @@ fn supports_invalid_bare_import_candidates_compose_as_complete_media_conjunction
         let [CssMediaQuery::Condition(condition)] = import.media().unwrap().queries() else {
             panic!("one media conjunction: {import:?}");
         };
-        let CssMediaConditionKind::And(operands) = condition.kind() else {
+        let CssConditionKind::And(operands) = condition.kind() else {
             panic!("media conjunction: {condition:?}");
         };
         let [opaque, feature] = operands.conditions() else {
             panic!("two media operands");
         };
         assert!(
-            matches!(opaque.kind(), CssMediaConditionKind::GeneralEnclosed(value) if value.authored() == Some(function.as_str()))
+            matches!(opaque.kind(), CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) if value.authored() == Some(function.as_str()))
         );
-        assert!(matches!(feature.kind(), CssMediaConditionKind::Feature(_)));
+        assert!(matches!(
+            feature.kind(),
+            CssConditionKind::Leaf(CssMediaLeaf::Feature(_))
+        ));
     }
 }
 

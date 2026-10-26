@@ -1,8 +1,8 @@
 use surgeist_css::{
-    CssCompoundSelector, CssErrorCode, CssLanguageRange, CssNamespaceConstraint, CssNamespaceName,
-    CssNamespacePrefix, CssPseudoClass, CssPseudoElement, CssPseudoElementSegment,
-    CssRecoveryAction, CssRule, CssScopedRule, CssSelector, CssSelectorCombinator,
-    CssSupportsConditionKind, parse_sheet,
+    CssCompoundSelector, CssConditionKind, CssErrorCode, CssLanguageRange, CssNamespaceConstraint,
+    CssNamespaceName, CssNamespacePrefix, CssPseudoClass, CssPseudoElement,
+    CssPseudoElementSegment, CssRecoveryAction, CssRule, CssSelector, CssSelectorCombinator,
+    CssSupportsLeaf, parse_sheet,
 };
 
 fn compound_selector(rule: &CssRule) -> &CssCompoundSelector {
@@ -665,14 +665,14 @@ fn namespace_bindings_reach_every_selector_consumer_without_changing_recovery() 
     assert!(matches!(media.rules(), [CssRule::Style(_)]));
     assert!(matches!(
         supports.condition().kind(),
-        CssSupportsConditionKind::Selector(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::Selector(_))
     ));
     assert!(matches!(supports.rules(), [CssRule::Style(_)]));
     assert!(matches!(container.rules(), [CssRule::Style(_)]));
     assert!(matches!(layer.rules(), [CssRule::Style(_)]));
     assert!(scope.root().is_some());
     assert!(scope.limit().is_some());
-    assert!(matches!(scope.rules().rules(), [CssScopedRule::Style(_)]));
+    assert!(matches!(scope.rules().rules(), [CssRule::Style(_)]));
 }
 
 #[test]

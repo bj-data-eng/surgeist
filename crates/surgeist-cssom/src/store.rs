@@ -393,7 +393,7 @@ impl CssomBatch {
                 continue;
             }
             let child = self.staged.adopt(
-                CssomAuthoredRule::Ordinary(rule.clone()),
+                CssomAuthoredRule::Rule(rule.clone()),
                 CssomParent::Sheet(id.clone()),
                 1,
                 &self.limits,
@@ -760,7 +760,7 @@ impl CssomBatch {
                 continue;
             }
             children.push(self.staged.adopt(
-                CssomAuthoredRule::Ordinary(rule.clone()),
+                CssomAuthoredRule::Rule(rule.clone()),
                 CssomParent::Sheet(id.clone()),
                 1,
                 &self.limits,
@@ -853,11 +853,11 @@ impl CssomBatch {
             .clone();
         if matches!(
             self.staged.rules[&root].authored(),
-            CssomAuthoredRule::Ordinary(CssRule::Namespace(_))
+            CssomAuthoredRule::Rule(CssRule::Namespace(_))
         ) && members.iter().any(|id| {
             !matches!(
                 self.staged.rules[id].authored(),
-                CssomAuthoredRule::Ordinary(CssRule::Namespace(_) | CssRule::Import(_))
+                CssomAuthoredRule::Rule(CssRule::Namespace(_) | CssRule::Import(_))
             )
         }) {
             return Err(CssomError::Source(CssomException::InvalidState));
@@ -891,7 +891,7 @@ impl CssomBatch {
         let bindings = self.staged.lists[list]
             .iter()
             .filter_map(|id| match self.staged.rules[id].authored() {
-                CssomAuthoredRule::Ordinary(CssRule::Namespace(v)) => {
+                CssomAuthoredRule::Rule(CssRule::Namespace(v)) => {
                     Some((v.prefix().cloned(), v.name().clone()))
                 }
                 _ => None,

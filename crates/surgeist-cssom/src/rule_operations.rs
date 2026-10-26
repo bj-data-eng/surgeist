@@ -383,10 +383,7 @@ impl CssomBatch {
                         .into_parts();
                     check_resource_diagnostics(&diagnostics)?;
                     retained_diagnostics = diagnostics;
-                    admitted = value.map(|value| match value {
-                        CssAdmittedRule::Ordinary(rule) => CssomAuthoredRule::Ordinary(rule),
-                        CssAdmittedRule::Scoped(rule) => CssomAuthoredRule::Scoped(rule),
-                    });
+                    admitted = value.map(CssomAuthoredRule::Rule);
                 }
             } else {
                 let (value, diagnostics) = candidate
@@ -402,10 +399,7 @@ impl CssomBatch {
                     .into_parts();
                 check_resource_diagnostics(&diagnostics)?;
                 retained_diagnostics = diagnostics;
-                admitted = value.map(|value| match value {
-                    CssAdmittedRule::Ordinary(rule) => CssomAuthoredRule::Ordinary(rule),
-                    CssAdmittedRule::Scoped(rule) => CssomAuthoredRule::Scoped(rule),
-                });
+                admitted = value.map(CssomAuthoredRule::Rule);
             }
         }
         let authored = match admitted {
@@ -497,8 +491,8 @@ impl CssomBatch {
 }
 fn phase(rule: &CssomAuthoredRule) -> u8 {
     match rule {
-        CssomAuthoredRule::Ordinary(CssRule::Import(_)) => 0,
-        CssomAuthoredRule::Ordinary(CssRule::Namespace(_)) => 1,
+        CssomAuthoredRule::Rule(CssRule::Import(_)) => 0,
+        CssomAuthoredRule::Rule(CssRule::Namespace(_)) => 1,
         _ => 2,
     }
 }
@@ -509,18 +503,10 @@ fn ordered_phase(
 ) -> Result<(), CssomError> {
     // Conditional5 §8 permits these before imports/namespaces, including
     // interleaved prefix members. Preserve an existing namespace/body phase.
-    if matches!(
-        rule,
-        CssomAuthoredRule::Ordinary(CssRule::SupportsCondition(_))
-    ) {
+    if matches!(rule, CssomAuthoredRule::Rule(CssRule::SupportsCondition(_))) {
         return Ok(());
     }
-    if !*seen_prefix
-        && matches!(
-            rule,
-            CssomAuthoredRule::Ordinary(CssRule::LayerStatement(_))
-        )
-    {
+    if !*seen_prefix && matches!(rule, CssomAuthoredRule::Rule(CssRule::LayerStatement(_))) {
         return Ok(());
     }
     let value = phase(rule);
@@ -561,7 +547,7 @@ impl CssomSnapshot {
             CssomRuleData::Keyframe { .. } => 8,
             CssomRuleData::Margin { .. } => 9,
             CssomRuleData::Leaf {
-                current: CssomAuthoredRule::Ordinary(CssRule::Namespace(_)),
+                current: CssomAuthoredRule::Rule(CssRule::Namespace(_)),
             } => 10,
             CssomRuleData::CounterStyle { .. } => 11,
             CssomRuleData::Group {
@@ -580,14 +566,9 @@ impl CssomSnapshot {
         let namespaces = self.state.rule_namespaces(id)?;
         let context = self.state.selector_context(id)?;
         match self.rule(id)?.data() {
-            CssomRuleData::Style {
-                selectors: CssomSelectors::Ordinary(list),
-                ..
-            } => list.serialize_cssom(&namespaces, context, limits),
-            CssomRuleData::Style {
-                selectors: CssomSelectors::Scoped(list),
-                ..
-            } => list.serialize_cssom(&namespaces, context, limits),
+            CssomRuleData::Style { selectors, .. } => {
+                selectors.serialize_cssom(&namespaces, context, limits)
+            }
             _ => return Err(CssomError::WrongKind),
         }
         .map_err(CssomError::Serialization)
@@ -654,12 +635,7 @@ impl CssomBatch {
             let CssomRuleData::Style { selectors, .. } = rule.data_mut() else {
                 unreachable!()
             };
-            *selectors = match parsed.selectors() {
-                CssAdmittedStyleSelectors::Ordinary(value) => {
-                    CssomSelectors::Ordinary(value.clone())
-                }
-                CssAdmittedStyleSelectors::Scoped(value) => CssomSelectors::Scoped(value.clone()),
-            };
+            *selectors = parsed.selectors().clone();
             rule.admission_diagnostics = copy_rule_diagnostics(&diagnostics)?.into();
             rule.selector_input = Some(parsed.origin().clone());
             rule.selector_inputs = Some(inputs);
@@ -924,7 +900,7 @@ impl CssomSnapshot {
     pub(crate) fn namespace_uri(&self, id: &CssomRuleId) -> Result<&str, CssomError> {
         match self.rule(id)?.data() {
             CssomRuleData::Leaf {
-                current: CssomAuthoredRule::Ordinary(CssRule::Namespace(rule)),
+                current: CssomAuthoredRule::Rule(CssRule::Namespace(rule)),
             } => Ok(rule.name().as_str()),
             _ => Err(CssomError::WrongKind),
         }
@@ -932,7 +908,7 @@ impl CssomSnapshot {
     pub(crate) fn namespace_prefix(&self, id: &CssomRuleId) -> Result<&str, CssomError> {
         match self.rule(id)?.data() {
             CssomRuleData::Leaf {
-                current: CssomAuthoredRule::Ordinary(CssRule::Namespace(rule)),
+                current: CssomAuthoredRule::Rule(CssRule::Namespace(rule)),
             } => Ok(rule.prefix().map_or("", CssNamespacePrefix::as_str)),
             _ => Err(CssomError::WrongKind),
         }
@@ -1119,10 +1095,7 @@ impl CssomSnapshot {
     ) -> Result<Vec<String>, CssomError> {
         let names = match self.rule(id)?.data() {
             CssomRuleData::Leaf {
-                current: CssomAuthoredRule::Ordinary(CssRule::LayerStatement(rule)),
-            } => rule.names(),
-            CssomRuleData::Leaf {
-                current: CssomAuthoredRule::Scoped(CssScopedRule::LayerStatement(rule)),
+                current: CssomAuthoredRule::Rule(CssRule::LayerStatement(rule)),
             } => rule.names(),
             _ => return Err(CssomError::WrongKind),
         };

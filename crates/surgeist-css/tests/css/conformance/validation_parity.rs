@@ -1,7 +1,7 @@
 use surgeist_css::{
-    CssDeclarationList, CssErrorCode, CssMediaConditionKind, CssMediaFeatureQuery, CssMediaQuery,
-    CssParseReport, CssRecoveryAction, CssRule, CssSheet, parse_sheet, parse_style_attribute,
-    validate_sheet, validate_style_attribute,
+    CssConditionKind, CssDeclarationList, CssErrorCode, CssMediaFeatureQuery, CssMediaLeaf,
+    CssMediaQuery, CssParseReport, CssRecoveryAction, CssRule, CssSheet, parse_sheet,
+    parse_style_attribute, validate_sheet, validate_style_attribute,
 };
 
 fn assert_sheet_parity(source: &str) -> CssParseReport<CssSheet> {
@@ -57,7 +57,7 @@ fn validation_accepts_opaque_and_signed_media_syntax_and_rejects_malformed_recov
     let CssMediaQuery::Typed(typed) = &rule.query().queries()[0] else {
         panic!("expected typed unknown media query")
     };
-    let CssMediaConditionKind::GeneralEnclosed(enclosed) =
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) =
         typed.condition().expect("retained condition").kind()
     else {
         panic!("unknown-unit calculation must remain a general enclosure")
@@ -66,7 +66,7 @@ fn validation_accepts_opaque_and_signed_media_syntax_and_rejects_malformed_recov
     assert!(matches!(
         &rule.query().queries()[1],
         CssMediaQuery::Condition(condition)
-            if matches!(condition.kind(), CssMediaConditionKind::Feature(CssMediaFeatureQuery::Width(_)))
+            if matches!(condition.kind(), CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Width(_))))
     ));
 
     let scripting = assert_sheet_parity("@media screen,(scripting: enabled),print {}");
@@ -77,7 +77,7 @@ fn validation_accepts_opaque_and_signed_media_syntax_and_rejects_malformed_recov
     assert!(matches!(
         &rule.query().queries()[1],
         CssMediaQuery::Condition(condition)
-            if matches!(condition.kind(), CssMediaConditionKind::Feature(CssMediaFeatureQuery::Scripting(_)))
+            if matches!(condition.kind(), CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Scripting(_))))
     ));
 
     for source in ["@media screen,layer,print {}", "@media screen,,print {}"] {

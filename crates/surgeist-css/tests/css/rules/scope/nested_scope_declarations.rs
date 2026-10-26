@@ -79,7 +79,7 @@ fn fragment_child_value(scope: &CssScopeRule) {
         .rules()
         .iter()
         .find_map(|rule| match rule {
-            CssScopedRule::Style(style) => Some(style),
+            CssRule::Style(style) => Some(style),
             _ => None,
         })
         .expect("valid scoped child remains");
@@ -176,11 +176,11 @@ fn explicit_scope_boundaries_survive_without_rebinding_inherited_selectors() {
     };
     assert_eq!(
         root.selectors(),
-        &[CssScopeSelector::Selector(CssSelector::Class(
+        &[CssStyleSelector::Selector(CssSelector::Class(
             "root".into()
         ))]
     );
-    let [CssScopeSelector::Selector(CssSelector::Complex(limit))] = limit.selectors() else {
+    let [CssStyleSelector::Selector(CssSelector::Complex(limit))] = limit.selectors() else {
         panic!("one descendant limit")
     };
     let start = limit.first();
@@ -247,7 +247,7 @@ fn scope_groups_and_inner_scopes_keep_full_ancestry_and_source_order() {
     };
     assert_eq!(
         root.selectors(),
-        &[CssScopeSelector::Selector(CssSelector::Class(
+        &[CssStyleSelector::Selector(CssSelector::Class(
             "inner".into()
         ))]
     );
@@ -377,7 +377,7 @@ fn public_style_fragments_admit_scope_runs_with_ordinary_boundaries() {
     };
     assert_eq!(
         scope.root().unwrap().selectors(),
-        &[CssScopeSelector::Selector(CssSelector::Class(
+        &[CssStyleSelector::Selector(CssSelector::Class(
             "root".into()
         ))]
     );
@@ -389,7 +389,7 @@ fn public_style_fragments_admit_scope_runs_with_ordinary_boundaries() {
     };
     assert_eq!(
         scope.root().unwrap().selectors(),
-        &[CssScopeSelector::Selector(CssSelector::Class(
+        &[CssStyleSelector::Selector(CssSelector::Class(
             "root".into()
         ))]
     );

@@ -52,13 +52,13 @@ fn selected_supports_subcondition_retains_its_whole_lexical_root() {
     ];
     components.extend(programmatic("and"));
     components.push(parsed.items().last().unwrap().clone());
-    let parent = CssSupportsCondition::try_from_components(
+    let parent = CssCondition::<CssSupportsLeaf>::try_from_components(
         CssComponentValues::try_new(components, Default::default()).unwrap(),
         &CssNamespaceContext::default(),
         Default::default(),
     )
     .unwrap();
-    let CssSupportsConditionKind::And(list) = parent.kind() else {
+    let CssConditionKind::And(list) = parent.kind() else {
         panic!("and");
     };
     let child = list.conditions()[0].clone();
@@ -129,12 +129,12 @@ fn selected_when_subcondition_retains_its_whole_lexical_root() {
     let mut components = vec![first];
     components.extend(programmatic("and"));
     components.push(parsed.items().last().unwrap().clone());
-    let parent = CssWhenCondition::try_from_components(
+    let parent = CssCondition::<CssWhenLeaf>::try_from_components(
         CssComponentValues::try_new(components, Default::default()).unwrap(),
         Default::default(),
     )
     .unwrap();
-    let CssWhenConditionKind::And(list) = parent.kind() else {
+    let CssConditionKind::And(list) = parent.kind() else {
         panic!("and");
     };
     let child = list.conditions()[0].clone();

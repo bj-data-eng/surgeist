@@ -18,15 +18,15 @@ impl From<crate::custom_media::CustomMediaSerializationFailure>
 mod tests {
     use super::*;
     use crate::{
-        CssContainerPrelude, CssCustomMediaBody, CssNamespaceContext, CssRule,
+        CssCondition, CssContainerPrelude, CssCustomMediaBody, CssNamespaceContext, CssRule,
         CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
-        CssSupportsCondition, parse_component_values, parse_sheet,
+        CssSupportsLeaf, parse_component_values, parse_sheet,
         specified_serialization::SpecifiedSerializationContext,
     };
 
     #[test]
     fn suppressed_lexical_regions_charge_omitted_whitespace_without_allocating_text() {
-        let condition = CssSupportsCondition::try_from_components(
+        let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
             parse_component_values("  (display:grid)  ").unwrap(),
             &CssNamespaceContext::default(),
             Default::default(),

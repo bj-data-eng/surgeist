@@ -6,22 +6,22 @@
 use surgeist_color::PredefinedColorSpace;
 use surgeist_css::{
     CssCalculation, CssColorComponent, CssColorConstructionError, CssColorHue,
-    CssColorNumberLiteral, CssColorProfileName, CssColorSyntax, CssComponentValue,
-    CssContainerCondition, CssContainerConditionKind, CssContainerFeatureQuery,
-    CssContainerRatioRef, CssCustomColor, CssDeviceCmykColor, CssHslColor, CssHwbColor,
-    CssLabColor, CssLchColor, CssMediaRangeRef, CssNumber, CssPredefinedColor, CssRgbColor,
-    parse_component_values,
+    CssColorNumberLiteral, CssColorProfileName, CssColorSyntax, CssComponentValue, CssCondition,
+    CssConditionKind, CssContainerFeatureQuery, CssContainerLeaf, CssContainerRatioRef,
+    CssCustomColor, CssDeviceCmykColor, CssHslColor, CssHwbColor, CssLabColor, CssLchColor,
+    CssMediaRangeRef, CssNumber, CssPredefinedColor, CssRgbColor, parse_component_values,
 };
 
 fn container_number(expression: &str) -> CssCalculation<CssNumber> {
     let source = format!("(aspect-ratio: {expression})");
-    let condition = CssContainerCondition::try_from_components(
+    let condition = CssCondition::<CssContainerLeaf>::try_from_components(
         parse_component_values(&source).unwrap(),
         Default::default(),
     )
     .expect("tree-counting remains valid in its selected container context");
-    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::AspectRatio(range)) =
-        condition.kind()
+    let CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::AspectRatio(
+        range,
+    ))) = condition.kind()
     else {
         panic!("expected an authored aspect-ratio feature: {source}");
     };

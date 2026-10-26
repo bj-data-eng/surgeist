@@ -1,10 +1,9 @@
 //! Independent CSSOM/Nesting/Namespaces expectations for pure formatting.
 use surgeist_css::{
-    CssAdmittedStyleSelectors, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
-    CssRecoveryAction, CssRule, CssScopeNestingContext, CssScopeSelectorCssomContext,
-    CssSerializationLimits as Limits, CssStyleAncestor, CssStyleSelectorContext,
-    parse_relative_selector_list, parse_rule, parse_selector_list, parse_sheet,
-    parse_style_selector_list,
+    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssRecoveryAction, CssRule,
+    CssScopeNestingContext, CssScopeSelectorCssomContext, CssSerializationLimits as Limits,
+    CssStyleAncestor, CssStyleSelectorContext, parse_relative_selector_list, parse_rule,
+    parse_selector_list, parse_sheet, parse_style_selector_list,
 };
 
 fn namespaces(default: Option<&str>, named: &[(&str, &str)]) -> CssNamespaceContext {
@@ -247,9 +246,7 @@ fn supplied_role_not_selector_content_controls_implicit_descendants() {
     );
     assert_eq!(parsed.origin().source().as_str(), raw);
     assert_eq!(parsed, &before);
-    let CssAdmittedStyleSelectors::Ordinary(list) = parsed.selectors() else {
-        panic!("ordinary domain")
-    };
+    let list = parsed.selectors();
     assert!(
         list.serialize_cssom(
             &context,
@@ -324,17 +321,22 @@ fn scoped_retained_invalid_members_and_strict_rejection_preserve_real_origins() 
                 .syntax()
                 .is_none()
         );
-        if let CssAdmittedStyleSelectors::Scoped(list) = parsed.selectors() {
-            assert!(
-                list.serialize_cssom(
-                    &context,
-                    CssStyleSelectorContext::Nested,
-                    Default::default()
-                )
+        // A typed scope anchor cannot be reread as a nesting anchor, nor the reverse.
+        let anchored = parse_style_selector_list("&.x", &context, role)
+            .syntax()
+            .clone()
+            .unwrap();
+        let other = match role {
+            CssStyleSelectorContext::Scoped(_) => CssStyleSelectorContext::Nested,
+            _ => CssStyleSelectorContext::Scoped(CssStyleAncestor::Present),
+        };
+        assert!(
+            anchored
+                .selectors()
+                .serialize_cssom(&context, other, Default::default())
                 .unwrap_err()
                 .is_unrepresentable_value()
-            );
-        }
+        );
     }
 }
 

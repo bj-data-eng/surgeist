@@ -5,7 +5,7 @@ use crate::css::support::rules::clean_sheet as sheet;
 use surgeist_css::*;
 
 fn relative(combinator: CssSelectorCombinator, selector: CssSelector) -> CssScopeSelectorList {
-    CssScopeSelectorList::try_new(vec![CssScopeSelector::Relative(CssRelativeSelector::new(
+    CssScopeSelectorList::try_new(vec![CssStyleSelector::Relative(CssRelativeSelector::new(
         combinator, selector,
     ))])
     .unwrap()
@@ -42,7 +42,7 @@ fn checked_relative_members_preserve_combinators_and_contextual_root_admission()
         for nesting in [CssScopeNestingContext::Style, CssScopeNestingContext::Scope] {
             let scope = new_scope(Some(boundary.clone()), Some(boundary.clone()), nesting).unwrap();
             assert_eq!(scope.position(), None);
-            let [CssScopeSelector::Relative(member)] = scope.root().unwrap().selectors() else {
+            let [CssStyleSelector::Relative(member)] = scope.root().unwrap().selectors() else {
                 panic!("relative member")
             };
             assert_eq!(member.combinator(), combinator);
@@ -64,10 +64,10 @@ fn checked_assembly_revalidates_actual_scope_ancestry_and_parsed_position() {
     let [CssRule::Scope(outer)] = input.rules() else {
         panic!("outer")
     };
-    let [CssScopedRule::Media(media)] = outer.rules().rules() else {
+    let [CssRule::Media(media)] = outer.rules().rules() else {
         panic!("media")
     };
-    let [CssScopedRule::Scope(inner)] = media.rules().rules() else {
+    let [CssRule::Scope(inner)] = media.rules() else {
         panic!("inner")
     };
     let before = inner.clone();
@@ -82,7 +82,7 @@ fn checked_assembly_revalidates_actual_scope_ancestry_and_parsed_position() {
     let checked = CssScopeRule::try_new(
         None,
         None,
-        vec![CssScopedRule::Media(media.clone())],
+        vec![CssRule::Media(media.clone())],
         &CssNamespaceContext::default(),
         CssScopeNestingContext::None,
     )
@@ -151,7 +151,7 @@ fn explicit_boundary_anchors_cannot_silently_change_categories_when_reassembled(
     let [CssRule::Scope(outer)] = scoped.rules() else {
         panic!("outer")
     };
-    let [CssScopedRule::Scope(inner)] = outer.rules().rules() else {
+    let [CssRule::Scope(inner)] = outer.rules().rules() else {
         panic!("inner")
     };
     for (root, nesting) in [
@@ -173,7 +173,7 @@ fn explicit_boundary_anchors_cannot_silently_change_categories_when_reassembled(
     let moved = CssScopeRule::try_new(
         None,
         None,
-        vec![CssScopedRule::Scope(ordinary.clone())],
+        vec![CssRule::Scope(ordinary.clone())],
         &CssNamespaceContext::default(),
         CssScopeNestingContext::None,
     )
@@ -199,7 +199,7 @@ fn relative_payloads_reject_pseudo_elements_bad_identifiers_and_excess_function_
     };
     let selector = style.selectors().selectors()[0].selector().clone();
     assert!(
-        CssScopeSelectorList::try_new(vec![CssScopeSelector::Relative(CssRelativeSelector::new(
+        CssScopeSelectorList::try_new(vec![CssStyleSelector::Relative(CssRelativeSelector::new(
             CssSelectorCombinator::Child,
             selector
         ))])
@@ -289,7 +289,7 @@ fn parser_split_preserves_relative_members_and_exact_style_and_scope_ancestry() 
             ),
             (limit, CssSelectorCombinator::NextSibling, 0, 2),
         ] {
-            let [CssScopeSelector::Relative(relative)] = list.selectors() else {
+            let [CssStyleSelector::Relative(relative)] = list.selectors() else {
                 panic!("relative boundary")
             };
             assert_eq!(relative.combinator(), combinator);
@@ -322,13 +322,13 @@ fn mixed_ancestry_keeps_implicit_root_order_explicit_style_anchors_and_direct_ru
                 let [CssRule::Scope(scope)] = style.rules() else {
                     panic!("outer scope")
                 };
-                let [CssScopedRule::Scope(inner)] = scope.rules().rules() else {
+                let [CssRule::Scope(inner)] = scope.rules().rules() else {
                     panic!("inner scope")
                 };
                 inner
             }
             CssRule::Scope(scope) => {
-                let [CssScopedRule::Style(style)] = scope.rules().rules() else {
+                let [CssRule::Style(style)] = scope.rules().rules() else {
                     panic!("scoped style")
                 };
                 let [CssRule::Scope(inner)] = style.rules() else {
@@ -348,7 +348,7 @@ fn mixed_ancestry_keeps_implicit_root_order_explicit_style_anchors_and_direct_ru
                 1,
             ),
         ] {
-            let [CssScopeSelector::Relative(relative)] = list.selectors() else {
+            let [CssStyleSelector::Relative(relative)] = list.selectors() else {
                 panic!("relative")
             };
             assert_eq!(relative.combinator(), combinator);

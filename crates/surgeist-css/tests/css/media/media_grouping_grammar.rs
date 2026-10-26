@@ -3,7 +3,7 @@
 //! Balanced enclosures retain their own grammar classification alongside grouping.
 
 use surgeist_css::{
-    CssErrorCode, CssMediaConditionKind, CssMediaQuery, CssMediaType, CssRecoveryAction, CssRule,
+    CssConditionKind, CssErrorCode, CssMediaQuery, CssMediaType, CssRecoveryAction, CssRule,
     parse_media_query, parse_media_query_list, parse_sheet, validate_sheet,
 };
 
@@ -20,9 +20,9 @@ fn ungrouped_known_conditions_retain_their_operators() {
             panic!("condition query");
         };
         let actual = match condition.kind() {
-            CssMediaConditionKind::Not(_) => "not",
-            CssMediaConditionKind::And(_) => "and",
-            CssMediaConditionKind::Or(_) => "or",
+            CssConditionKind::Not(_) => "not",
+            CssConditionKind::And(_) => "and",
+            CssConditionKind::Or(_) => "or",
             _ => panic!("expected operator"),
         };
         assert_eq!(actual, expected);

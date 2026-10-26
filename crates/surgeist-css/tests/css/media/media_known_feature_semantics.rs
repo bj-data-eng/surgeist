@@ -1,8 +1,8 @@
 //! Authored range orientation, exact operands and provenance are public contracts.
 use surgeist_css::{
-    CssCalculationExpressionRef, CssMediaConditionKind, CssMediaFeatureQuery, CssMediaGridRef,
-    CssMediaQuery, CssMediaRangeRef, CssMediaResolutionRef, CssQueryComparison, CssValueOrigin,
-    parse_media_query, parse_media_query_list,
+    CssCalculationExpressionRef, CssConditionKind, CssMediaFeatureQuery, CssMediaGridRef,
+    CssMediaLeaf, CssMediaQuery, CssMediaRangeRef, CssMediaResolutionRef, CssQueryComparison,
+    CssValueOrigin, parse_media_query, parse_media_query_list,
 };
 
 fn feature(source: &str) -> CssMediaFeatureQuery {
@@ -11,7 +11,7 @@ fn feature(source: &str) -> CssMediaFeatureQuery {
     let CssMediaQuery::Condition(condition) = report.syntax() else {
         panic!("expected condition");
     };
-    let CssMediaConditionKind::Feature(feature) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(feature)) = condition.kind() else {
         panic!("expected known feature");
     };
     feature.clone()
@@ -221,7 +221,8 @@ fn numeric_origins_use_the_complete_unicode_query_list_source() {
     let CssMediaQuery::Condition(condition) = &report.syntax().queries()[1] else {
         panic!("expected second query condition");
     };
-    let CssMediaConditionKind::Feature(CssMediaFeatureQuery::Width(range)) = condition.kind()
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Width(range))) =
+        condition.kind()
     else {
         panic!("expected width");
     };
@@ -269,7 +270,7 @@ fn discrete_feature_domains_accept_each_selected_keyword() {
         };
         assert!(!matches!(
             condition.kind(),
-            CssMediaConditionKind::Feature(_)
+            CssConditionKind::Leaf(CssMediaLeaf::Feature(_))
         ));
     }
 }

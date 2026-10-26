@@ -164,7 +164,7 @@ fn enclosing_a_mixed_operator_body_allows_the_general_enclosed_alternative() {
 
 #[test]
 fn known_features_and_explicit_condition_groups_precede_fallback() {
-    use surgeist_css::CssMediaConditionKind;
+    use surgeist_css::{CssConditionKind, CssMediaLeaf};
     for source in ["(width <= 10px)", "(width </**/= 10px)"] {
         let report = parse_media_query(source);
         assert!(report.is_clean());
@@ -173,7 +173,7 @@ fn known_features_and_explicit_condition_groups_precede_fallback() {
         };
         assert!(matches!(
             condition.kind(),
-            CssMediaConditionKind::Feature(_)
+            CssConditionKind::Leaf(CssMediaLeaf::Feature(_))
         ));
     }
     let report = parse_media_query("((color) and (hover))");
@@ -181,10 +181,10 @@ fn known_features_and_explicit_condition_groups_precede_fallback() {
     let CssMediaQuery::Condition(condition) = report.syntax() else {
         panic!("condition");
     };
-    let CssMediaConditionKind::Parenthesized(inner) = condition.kind() else {
+    let CssConditionKind::Parenthesized(inner) = condition.kind() else {
         panic!("group");
     };
-    let CssMediaConditionKind::And(operands) = inner.kind() else {
+    let CssConditionKind::And(operands) = inner.kind() else {
         panic!("conjunction");
     };
     assert_eq!(operands.conditions().len(), 2);
@@ -192,13 +192,13 @@ fn known_features_and_explicit_condition_groups_precede_fallback() {
         operands
             .conditions()
             .iter()
-            .all(|v| matches!(v.kind(), CssMediaConditionKind::Feature(_)))
+            .all(|v| matches!(v.kind(), CssConditionKind::Leaf(CssMediaLeaf::Feature(_))))
     );
 }
 
 #[test]
 fn general_enclosed_operands_keep_their_operator_structure() {
-    use surgeist_css::{CssMediaConditionKind, CssMediaType};
+    use surgeist_css::{CssConditionKind, CssMediaLeaf, CssMediaType};
     for (source, expected) in [
         ("not future()", 0),
         ("future() and (color)", 1),
@@ -211,13 +211,12 @@ fn general_enclosed_operands_keep_their_operator_structure() {
             panic!("condition");
         };
         match (expected, condition.kind()) {
-            (0, CssMediaConditionKind::Not(_)) | (3, CssMediaConditionKind::Parenthesized(_)) => {}
-            (1, CssMediaConditionKind::And(operands))
-            | (2, CssMediaConditionKind::Or(operands)) => {
+            (0, CssConditionKind::Not(_)) | (3, CssConditionKind::Parenthesized(_)) => {}
+            (1, CssConditionKind::And(operands)) | (2, CssConditionKind::Or(operands)) => {
                 assert_eq!(operands.conditions().len(), 2);
                 assert!(matches!(
                     operands.conditions()[1].kind(),
-                    CssMediaConditionKind::Feature(_)
+                    CssConditionKind::Leaf(CssMediaLeaf::Feature(_))
                 ));
             }
             _ => panic!("wrong outer condition for {source}"),

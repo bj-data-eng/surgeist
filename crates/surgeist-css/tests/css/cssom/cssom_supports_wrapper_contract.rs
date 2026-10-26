@@ -3,9 +3,10 @@
 //! CSSGroupingRule::cssTextForRules/appendCSSTextForItemsInternal. Conditional3
 //! 2024-08-15 requires preservation of specified logical and future-token structure.
 
+use crate::css::support::{graph_cssom, graph_specified};
 use surgeist_css::{
-    CssEditedGroupPreludeRef as Prelude, CssEditedRuleView as View, CssRule, CssRuleCssomFormat,
-    CssScopedRule, CssSpecifiedDeclarationBlock as Block, parse_sheet,
+    CssGroupPreludeRef as Prelude, CssRule, CssRuleCssomFormat, CssRuleGraphInput as View,
+    CssSpecifiedDeclarationBlock as Block, parse_sheet,
 };
 
 #[test]
@@ -96,17 +97,16 @@ fn borrowed_scoped_supports_formats_without_adopting_a_scope_wrapper() {
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("scope");
     };
-    let [scoped @ CssScopedRule::Supports(_)] = scope.rules().rules() else {
+    let [scoped @ CssRule::Supports(_)] = scope.rules().rules() else {
         panic!("scoped Supports");
     };
-    let view = View::from_scoped_rule(scoped);
-    assert!(std::ptr::eq(view.parsed_scoped_rule().unwrap(), scoped));
+    let view = View::from_rule(scoped);
     assert_eq!(
-        view.serialize_specified(Default::default()).unwrap(),
+        graph_specified(view, Default::default()).unwrap(),
         "@supports (display:grid) { & .child { } }"
     );
     assert_eq!(
-        view.serialize_cssom(Default::default()).unwrap(),
+        graph_cssom(view, Default::default()).unwrap(),
         "@supports (display:grid) {\n  & .child { }\n}"
     );
 }
@@ -128,27 +128,21 @@ fn edited_supports_preserves_selected_survivors_and_filters_empty_child_text() {
         current.serialize_cssom(Default::default()).unwrap(),
         "margin-left: 4px; margin-right: 2px;"
     );
-    let child = View::try_style(style.selectors(), &current, &[], Default::default()).unwrap();
+    let child = View::style(style.selectors(), &current, &[]);
     let empty = Block::try_from_entries(&[], Default::default()).unwrap();
-    let empty_child = View::try_nested_declarations(&empty, Default::default()).unwrap();
-    assert_eq!(empty_child.serialize_cssom(Default::default()).unwrap(), "");
+    let empty_child = View::nested_declarations(&empty);
+    assert_eq!(graph_cssom(empty_child, Default::default()).unwrap(), "");
     let children = [empty_child, child, empty_child, child, empty_child];
-    let group = View::try_group(
-        Prelude::Supports(supports.condition()),
-        &children,
-        Default::default(),
-    )
-    .unwrap();
-    assert!(group.parsed_rule().is_none());
+    let group = View::group(Prelude::Supports(supports.condition()), &children);
     assert_eq!(
-        group.serialize_specified(Default::default()).unwrap(),
+        graph_specified(group, Default::default()).unwrap(),
         "@supports (display:grid) { .child { margin-left: 4px; margin-right: 2px; } .child { margin-left: 4px; margin-right: 2px; } }"
     );
     assert_eq!(
-        group.serialize_cssom(Default::default()).unwrap(),
+        graph_cssom(group, Default::default()).unwrap(),
         "@supports (display:grid) {\n  .child { margin-left: 4px; margin-right: 2px; }\n  .child { margin-left: 4px; margin-right: 2px; }\n}"
     );
-    assert_eq!(children[0].serialize_cssom(Default::default()).unwrap(), "");
+    assert_eq!(graph_cssom(children[0], Default::default()).unwrap(), "");
     assert_eq!(
         original.serialize_cssom(Default::default()).unwrap(),
         "margin: 1px 2px 3px 4px;"
@@ -162,31 +156,25 @@ fn assert_empty_edited_frame(retain_empty_children: bool) {
         panic!("Supports");
     };
     let empty = Block::try_from_entries(&[], Default::default()).unwrap();
-    let empty_child = View::try_nested_declarations(&empty, Default::default()).unwrap();
+    let empty_child = View::nested_declarations(&empty);
     let retained = [empty_child, empty_child, empty_child];
     let children = if retain_empty_children {
         &retained[..]
     } else {
         &[][..]
     };
-    let group = View::try_group(
-        Prelude::Supports(supports.condition()),
-        children,
-        Default::default(),
-    )
-    .unwrap();
+    let group = View::group(Prelude::Supports(supports.condition()), children);
     assert_eq!(
-        group.serialize_specified(Default::default()).unwrap(),
+        graph_specified(group, Default::default()).unwrap(),
         "@supports (display:grid) { }"
     );
-    assert!(children.iter().all(|child| {
-        child
-            .serialize_cssom(Default::default())
-            .unwrap()
-            .is_empty()
-    }));
+    assert!(
+        children
+            .iter()
+            .all(|child| { graph_cssom(*child, Default::default()).unwrap().is_empty() })
+    );
     assert_eq!(
-        group.serialize_cssom(Default::default()).unwrap(),
+        graph_cssom(group, Default::default()).unwrap(),
         "@supports (display:grid) {\n}"
     );
 }

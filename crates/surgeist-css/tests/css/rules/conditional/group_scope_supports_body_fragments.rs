@@ -85,21 +85,21 @@ fn ordinary_style<'a>(rule: &'a CssRule, class: &str) -> &'a CssStyleRule {
     style
 }
 
-fn scoped_style<'a>(rule: &'a CssScopedRule, class: &str) -> &'a CssScopedStyleRule {
-    let CssScopedRule::Style(style) = rule else {
+fn scoped_style<'a>(rule: &'a CssRule, class: &str) -> &'a CssStyleRule {
+    let CssRule::Style(style) = rule else {
         panic!("scoped style")
     };
     assert_eq!(
         style.selectors().selectors(),
-        &[CssScopedStyleSelector::Selector(CssSelector::Class(
+        &[CssStyleSelector::Selector(CssSelector::Class(
             class.to_owned()
         ))]
     );
     style
 }
 
-fn scoped_run(rule: &CssScopedRule) -> &CssDeclarationList {
-    let CssScopedRule::NestedDeclarations(run) = rule else {
+fn scoped_run(rule: &CssRule) -> &CssDeclarationList {
+    let CssRule::NestedDeclarations(run) = rule else {
         panic!("direct scoped declaration run")
     };
     run.declarations()
@@ -333,8 +333,7 @@ fn scope_role_and_scoped_group_role_keep_the_defined_page_permission_distinct() 
     );
 
     let group = parse_scoped_group_block(source, &ns, CssStyleAncestor::Absent);
-    let [CssScopedRule::Page(page), child] =
-        envelope(&group, source, 0, source.len()).body().rules()
+    let [CssRule::Page(page), child] = envelope(&group, source, 0, source.len()).body().rules()
     else {
         panic!("group keeps page then style")
     };
@@ -402,10 +401,10 @@ fn supplied_namespaces_apply_without_authored_namespace_insertion_and_origins_ar
         parse_scoped_group_block(source, &ns, CssStyleAncestor::Absent),
     ] {
         let fragment = envelope(&report, source, 9, 25);
-        let [CssScopedRule::Style(style)] = fragment.body().rules() else {
+        let [CssRule::Style(style)] = fragment.body().rules() else {
             panic!("supplied scoped namespace")
         };
-        let [CssScopedStyleSelector::Selector(selector)] = style.selectors().selectors() else {
+        let [CssStyleSelector::Selector(selector)] = style.selectors().selectors() else {
             panic!("absolute namespace-qualified selector")
         };
         namespaced_selector(selector);
@@ -468,12 +467,12 @@ fn all_three_context_methods_carry_quirks_into_actual_child_property_providers()
             quirks.parse_scoped_group_block(source, &ns, CssStyleAncestor::Absent),
         ),
     ] {
-        let [CssScopedRule::Style(style)] = std.syntax().as_ref().unwrap().body().rules() else {
+        let [CssRule::Style(style)] = std.syntax().as_ref().unwrap().body().rules() else {
             panic!("standards scoped child")
         };
         property(style.declarations(), CssKnownProperty::Color, "red");
         recovered(&std);
-        let [CssScopedRule::Style(style)] = q.syntax().as_ref().unwrap().body().rules() else {
+        let [CssRule::Style(style)] = q.syntax().as_ref().unwrap().body().rules() else {
             panic!("quirks scoped child")
         };
         assert_eq!(style.declarations().len(), 2);
@@ -533,11 +532,7 @@ fn source_adjacency_is_admitted_after_deep_body_siblings_are_reconstructed() {
     ] {
         assert!(matches!(
             report.syntax().as_ref().unwrap().body().rules(),
-            [
-                CssScopedRule::Media(_),
-                CssScopedRule::When(_),
-                CssScopedRule::Else(_)
-            ]
+            [CssRule::Media(_), CssRule::When(_), CssRule::Else(_)]
         ));
         clean(&report);
     }
@@ -560,7 +555,7 @@ fn source_adjacency_is_admitted_after_deep_body_siblings_are_reconstructed() {
         parse_scope_block(&broken, &ns, CssStyleAncestor::Absent),
         parse_scoped_group_block(&broken, &ns, CssStyleAncestor::Present),
     ] {
-        let [CssScopedRule::Media(_), CssScopedRule::When(_), child] =
+        let [CssRule::Media(_), CssRule::When(_), child] =
             report.syntax().as_ref().unwrap().body().rules()
         else {
             panic!("same original-gap scoped admission")
@@ -663,7 +658,7 @@ fn native_group_unit_depth_counts_the_outer_brace_and_retains_later_source_sibli
             parse_scope_block(&source, &ns, CssStyleAncestor::Absent),
             parse_scoped_group_block(&source, &ns, CssStyleAncestor::Present),
         ] {
-            let [CssScopedRule::Media(_), after] = report.syntax().as_ref().unwrap().body().rules()
+            let [CssRule::Media(_), after] = report.syntax().as_ref().unwrap().body().rules()
             else {
                 panic!("scoped native unit recovery and later sibling")
             };
@@ -904,17 +899,17 @@ fn nested_scope_root_and_limit_are_symbolic_while_style_ancestry_passes_through(
             parse_scoped_group_block(source, &ns, ancestry),
         ] {
             let fragment = envelope(&report, source, 0, source.len());
-            let [CssScopedRule::Scope(scope)] = fragment.body().rules() else {
+            let [CssRule::Scope(scope)] = fragment.body().rules() else {
                 panic!("actual nested scope remains")
             };
             assert_eq!(scope.position().unwrap().byte_offset().value(), 1);
             assert_eq!(
                 scope.root().unwrap().selectors(),
-                &[CssScopeSelector::Selector(CssSelector::Class(
+                &[CssStyleSelector::Selector(CssSelector::Class(
                     "s".to_owned()
                 ))]
             );
-            let [CssScopeSelector::Selector(CssSelector::Complex(limit))] =
+            let [CssStyleSelector::Selector(CssSelector::Complex(limit))] =
                 scope.limit().unwrap().selectors()
             else {
                 panic!("symbolic scope-relative descendant limit")

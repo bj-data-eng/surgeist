@@ -284,10 +284,10 @@ fn ordinary_and_scoped_ordinary_group_callers_keep_actual_nested_page_inherit() 
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("actual scope")
     };
-    let [CssScopedRule::Media(media)] = scope.rules().rules() else {
+    let [CssRule::Media(media)] = scope.rules().rules() else {
         panic!("ordinary scoped media")
     };
-    let [CssScopedRule::Page(page)] = media.rules().rules() else {
+    let [CssRule::Page(page)] = media.rules() else {
         panic!("page in scoped ordinary group")
     };
     let [declaration] = page.declarations().properties().as_slice() else {
@@ -318,7 +318,7 @@ fn ordinary_and_scoped_ordinary_group_callers_keep_actual_nested_page_inherit() 
     );
     let scoped = parse_scoped_group_block(source, &ns, CssStyleAncestor::Absent);
     clean(&scoped);
-    let [CssScopedRule::Page(page)] = scoped.syntax().as_ref().unwrap().body().rules() else {
+    let [CssRule::Page(page)] = scoped.syntax().as_ref().unwrap().body().rules() else {
         panic!("direct scoped ordinary group page")
     };
     inherit(
@@ -337,7 +337,7 @@ fn inherit_admission_does_not_lift_scope_body_or_style_ancestor_page_placement_r
         parse_scope_block(source, &ns, CssStyleAncestor::Absent),
         parse_scoped_group_block(source, &ns, CssStyleAncestor::Present),
     ] {
-        let [CssScopedRule::Style(style)] = report.syntax().as_ref().unwrap().body().rules() else {
+        let [CssRule::Style(style)] = report.syntax().as_ref().unwrap().body().rules() else {
             panic!("excluded page leaves the actual style sibling")
         };
         assert_eq!(

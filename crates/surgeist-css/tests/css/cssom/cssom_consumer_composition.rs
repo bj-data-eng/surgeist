@@ -1,11 +1,12 @@
 //! Public consumer composition: checked CSS payloads without semantic text round trips.
 
+use crate::css::support::{graph_cssom, graph_limits};
 use surgeist_css::{
-    CssAdmittedRule, CssDeclaration, CssEditedGroupPreludeRef, CssEditedRuleView, CssImportance,
-    CssInvalidKeyframeSourceReason, CssKeyframeRuleView, CssKnownProperty, CssNamespaceContext,
-    CssNamespaceName, CssNamespacePrefix, CssPropertyNameRef, CssRecoveryAction, CssRule,
-    CssRuleAdmissionContext, CssSerializationLimits as Limits, CssSpecifiedDeclarationBlock,
-    CssSpecifiedDeclarationEntry, classify_rule_syntax, parse_component_values,
+    CssDeclaration, CssGroupPreludeRef, CssImportance, CssInvalidKeyframeSourceReason,
+    CssKeyframeRuleView, CssKnownProperty, CssNamespaceContext, CssNamespaceName,
+    CssNamespacePrefix, CssPropertyNameRef, CssRecoveryAction, CssRule, CssRuleAdmissionContext,
+    CssRuleGraphInput, CssSerializationLimits as Limits, CssSpecifiedDeclarationBlock,
+    CssSpecifiedDeclarationEntry, CssStyleAncestor, classify_rule_syntax, parse_component_values,
     parse_declaration_block_contents, parse_keyframe_rule, parse_keyframe_selector_list,
     parse_property_value,
 };
@@ -76,7 +77,7 @@ fn recovered_raw_terminals_form_an_edited_media_child_after_inputs_drop_and_budg
             CssRuleAdmissionContext::Stylesheet,
         );
         assert!(admitted.is_clean());
-        let Some(CssAdmittedRule::Ordinary(CssRule::Style(style))) = admitted.syntax() else {
+        let Some(CssRule::Style(style)) = admitted.syntax() else {
             panic!("admitted style")
         };
         style.selectors().clone()
@@ -89,7 +90,7 @@ fn recovered_raw_terminals_form_an_edited_media_child_after_inputs_drop_and_budg
             CssRuleAdmissionContext::Stylesheet,
         );
         assert!(admitted.is_clean());
-        let Some(CssAdmittedRule::Ordinary(CssRule::Media(media))) = admitted.syntax() else {
+        let Some(CssRule::Media(media)) = admitted.syntax() else {
             panic!("admitted media prelude")
         };
         media.query().clone()
@@ -107,22 +108,15 @@ fn recovered_raw_terminals_form_an_edited_media_child_after_inputs_drop_and_budg
             .unwrap(),
         None
     );
-    let style = CssEditedRuleView::try_style(&selectors, &edited, &[], Default::default()).unwrap();
+    let style = CssRuleGraphInput::style(&selectors, &edited, &[]);
     assert_eq!(
-        style.serialize_cssom(Default::default()).unwrap(),
+        graph_cssom(style, Default::default()).unwrap(),
         ".composed { margin-right: 2px !important; --Case: 日本; opacity: 0.5; }"
     );
     let children = [style];
-    let media = CssEditedRuleView::try_group(
-        CssEditedGroupPreludeRef::Media(&query),
-        &children,
-        Default::default(),
-    )
-    .unwrap();
+    let media = CssRuleGraphInput::group(CssGroupPreludeRef::Media(&query), &children);
     const EXPECTED: &str = "@media print {\n  .composed { margin-right: 2px !important; --Case: 日本; opacity: 0.5; }\n}";
-    let error = media
-        .serialize_cssom(Limits::new(100_000, 100_000, EXPECTED.len() - 1))
-        .unwrap_err();
+    let error = graph_cssom(media, Limits::new(100_000, 100_000, EXPECTED.len() - 1)).unwrap_err();
     assert!(
         error.is_resource_limit()
             && error
@@ -131,16 +125,12 @@ fn recovered_raw_terminals_form_an_edited_media_child_after_inputs_drop_and_budg
         "{error:?}"
     );
     assert_eq!(
-        media
-            .serialize_cssom(Limits::new(100_000, 100_000, EXPECTED.len()))
-            .unwrap(),
+        graph_cssom(media, Limits::new(100_000, 100_000, EXPECTED.len())).unwrap(),
         EXPECTED
     );
-    assert_eq!(media.serialize_cssom(Default::default()).unwrap(), EXPECTED);
+    assert_eq!(graph_cssom(media, Default::default()).unwrap(), EXPECTED);
 
     // The typed edited wrappers are programmatic; surviving occurrences are authored.
-    assert!(style.parsed_rule().is_none());
-    assert!(media.parsed_rule().is_none());
     let right = terminal(&edited, CssKnownProperty::MarginRight);
     let opacity = terminal(&edited, CssKnownProperty::Opacity);
     assert!(right.source().same_occurrence(&margin_origin));
@@ -192,7 +182,7 @@ fn contextual_retry_and_recovered_rule_publish_a_selected_snapshot_with_original
                 .any(|diagnostic| { diagnostic.action() == CssRecoveryAction::DropDeclaration })
         );
         assert!(accepted.clone().into_validation_result().is_err());
-        let Some(CssAdmittedRule::Ordinary(CssRule::Style(style))) = accepted.into_parts().0 else {
+        let Some(CssRule::Style(style)) = accepted.into_parts().0 else {
             panic!("recovered nested style retained after contextual admission")
         };
         (style, snapshot)
@@ -207,15 +197,22 @@ fn contextual_retry_and_recovered_rule_publish_a_selected_snapshot_with_original
     let selected = [opacity.with_importance(CssImportance::Important)];
     let edited =
         CssSpecifiedDeclarationBlock::try_from_entries(&selected, Default::default()).unwrap();
-    let view =
-        CssEditedRuleView::try_style(style.selectors(), &edited, &[], Default::default()).unwrap();
+    let view = CssRuleGraphInput::style(style.selectors(), &edited, &[]);
     // The explicit nesting anchor remains in the supplied receiving context.
     // No enclosing stylesheet or reparsed formatted text is needed.
+    let bindings = CssNamespaceContext::from_bindings([(
+        Some(CssNamespacePrefix::try_new("svg").unwrap()),
+        CssNamespaceName::new("urn:svg"),
+    )]);
     assert_eq!(
-        view.serialize_cssom(Default::default()).unwrap(),
+        view.serialize_cssom(
+            &bindings,
+            CssStyleAncestor::Absent,
+            graph_limits(Default::default())
+        )
+        .unwrap(),
         "& > svg|leaf { opacity: 0.25 !important; }"
     );
-    assert!(view.parsed_rule().is_none());
     assert_eq!(snapshot.as_str(), INPUT);
     assert_eq!(
         style.position().byte_offset().value(),

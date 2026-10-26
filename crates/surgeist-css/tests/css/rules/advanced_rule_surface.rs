@@ -31,7 +31,7 @@ fn advanced_css_surface_matrix_accepts_supported_forms() {
     };
     assert!(matches!(import.target(), CssImportTarget::Url(url) if url.as_str() == "theme.css"));
     assert!(import.layer().is_none());
-    let CssSupportsConditionKind::Declaration(declaration) = import
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = import
         .supports()
         .expect("selected supports clause")
         .condition()
@@ -44,7 +44,7 @@ fn advanced_css_surface_matrix_accepts_supported_forms() {
     else {
         panic!("expected condition-only media")
     };
-    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = condition.kind() else {
         panic!("expected layer function as opaque media")
     };
     assert_eq!(enclosed.authored(), Some("layer(theme)"));
@@ -112,7 +112,7 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
     let Some(import_condition) = import_query.condition() else {
         panic!("expected import width condition");
     };
-    let CssMediaConditionKind::Feature(CssMediaFeatureQuery::Width(width)) =
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Width(width))) =
         import_condition.kind()
     else {
         panic!("expected import width condition");
@@ -136,8 +136,9 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
     let [CssMediaQuery::Condition(media_condition)] = media.query().queries() else {
         panic!("expected prefers-color-scheme media condition");
     };
-    let CssMediaConditionKind::Feature(CssMediaFeatureQuery::PrefersColorScheme(color_scheme)) =
-        media_condition.kind()
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::PrefersColorScheme(
+        color_scheme,
+    ))) = media_condition.kind()
     else {
         panic!("expected prefers-color-scheme media condition");
     };
@@ -154,8 +155,9 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
         container.prelude().entries()[0].name(),
         Some(&CssContainerName::try_new("sidebar").unwrap())
     );
-    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::InlineSize(inline_size)) =
-        container.prelude().entries()[0].query().unwrap().kind()
+    let CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::InlineSize(
+        inline_size,
+    ))) = container.prelude().entries()[0].query().unwrap().kind()
     else {
         panic!("expected inline-size container condition");
     };

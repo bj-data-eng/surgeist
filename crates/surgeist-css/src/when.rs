@@ -1,60 +1,20 @@
 //! Checked authored generalized conditions and conditional group fragments.
 use crate::component_values::CssCanonicalBuilder;
-use crate::supports::SupportsLexical;
 use crate::*;
 use std::fmt;
 
-/// One condition admitted by Surgeist's bounded Conditional 5 authored profile.
-/// Grouping, supported tests and opaque terms remain symbolic and immutable.
-/// This does not evaluate a condition or infer host support.
+/// A leaf of a `@when` condition: one `<boolean-condition-in-parens>` operand of
+/// Surgeist's bounded Conditional 5 authored profile that is not itself a
+/// negation, junction or explicit grouping.
 ///
-/// ```compile_fail
-/// use surgeist_css::{CssWhenCondition, CssWhenConditionKind};
-/// fn forge(mut value: CssWhenCondition, kind: CssWhenConditionKind) {
-///     value.kind = Box::new(kind);
-/// }
-/// ```
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssWhenCondition {
-    kind: Box<CssWhenConditionKind>,
-    lexical: SupportsLexical,
-    origin: CssValueOrigin,
-}
-impl CssRetainedSources for CssWhenCondition {
-    fn visit_retained_sources(
-        &self,
-        sources: &mut CssSourceRetention,
-    ) -> Result<(), CssSourceRetentionError> {
-        sources.visit(&self.origin)?;
-        sources.visit(&self.lexical)
-    }
-}
-/// Inspectable authored shape; constructing a kind cannot construct a condition.
+/// Supported tests and opaque terms remain symbolic and immutable. This does not
+/// evaluate a condition or infer host support.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub enum CssWhenConditionKind {
-    Parenthesized(Box<CssWhenCondition>),
-    Not(Box<CssWhenCondition>),
-    And(CssWhenConditionList),
-    Or(CssWhenConditionList),
+pub enum CssWhenLeaf {
     MediaFeature(CssWhenMediaFeature),
     SupportsDeclaration(Box<CssSupportsDeclaration>),
     GeneralEnclosed(CssGeneralEnclosed),
-}
-/// At least two ordered terms joined by one homogeneous operator.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssWhenConditionList {
-    conditions: Vec<CssWhenCondition>,
-}
-impl CssWhenConditionList {
-    pub(crate) fn new(conditions: Vec<CssWhenCondition>) -> Self {
-        debug_assert!(conditions.len() >= 2);
-        Self { conditions }
-    }
-    #[must_use]
-    pub fn conditions(&self) -> &[CssWhenCondition] {
-        &self.conditions
-    }
 }
 /// Exactly one media feature inside its real `media()` function component.
 #[derive(Clone, Debug, PartialEq)]
@@ -244,34 +204,7 @@ fn construct<T: Send>(
         }
     })
 }
-impl CssWhenCondition {
-    pub(crate) fn new(kind: CssWhenConditionKind, lexical: SupportsLexical) -> Self {
-        let origin = lexical.first_origin().clone();
-        Self {
-            kind: Box::new(kind),
-            lexical,
-            origin,
-        }
-    }
-    pub(crate) fn into_kind(self) -> CssWhenConditionKind {
-        *self.kind
-    }
-    #[must_use]
-    pub const fn kind(&self) -> &CssWhenConditionKind {
-        &self.kind
-    }
-    #[must_use]
-    pub fn components(&self) -> &[CssComponentValue] {
-        self.lexical.items()
-    }
-    #[must_use]
-    pub const fn origin(&self) -> &CssValueOrigin {
-        &self.origin
-    }
-    #[must_use]
-    pub fn position(&self) -> Option<CssSourcePosition> {
-        crate::media::parsed_position(&self.origin)
-    }
+impl CssCondition<CssWhenLeaf> {
     /// Checks the complete adopted algebra and its actual lexical input.
     pub fn try_from_components(
         values: CssComponentValues,
@@ -289,19 +222,6 @@ impl CssWhenCondition {
             reject_recovered(&values)?;
             crate::parser::construct_when_condition(values, limits, context)
         })
-    }
-    /// Preserves original spelling, trivia and every grouping pair.
-    ///
-    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
-    /// limits do not apply.
-    pub fn serialize_tokens(
-        &self,
-        limits: crate::CssComponentValueLimits,
-    ) -> Result<CssSerializedValue, CssComponentValueError> {
-        let max_css_bytes = limits.max_css_bytes();
-        let mut out = CssCanonicalBuilder::new(max_css_bytes);
-        out.push_components(self.components())?;
-        out.finish()
     }
     pub(crate) fn append_specified(
         &self,
@@ -327,28 +247,28 @@ impl CssWhenCondition {
 /// Checks condition text without evaluating its supported or opaque tests.
 pub fn parse_when_condition(
     source: &str,
-) -> Result<CssWhenCondition, CssConditionConstructionError> {
+) -> Result<CssCondition<CssWhenLeaf>, CssConditionConstructionError> {
     parse_when_condition_with_limits(source, CssComponentValueLimits::default())
 }
 pub fn parse_when_condition_with_limits(
     source: &str,
     limits: CssComponentValueLimits,
-) -> Result<CssWhenCondition, CssConditionConstructionError> {
+) -> Result<CssCondition<CssWhenLeaf>, CssConditionConstructionError> {
     CssParserContext::default().parse_when_condition_with_limits(source, limits)
 }
 impl CssParserContext {
     pub fn parse_when_condition(
         self,
         source: &str,
-    ) -> Result<CssWhenCondition, CssConditionConstructionError> {
+    ) -> Result<CssCondition<CssWhenLeaf>, CssConditionConstructionError> {
         self.parse_when_condition_with_limits(source, CssComponentValueLimits::default())
     }
     pub fn parse_when_condition_with_limits(
         self,
         source: &str,
         limits: CssComponentValueLimits,
-    ) -> Result<CssWhenCondition, CssConditionConstructionError> {
-        CssWhenCondition::try_in_context(
+    ) -> Result<CssCondition<CssWhenLeaf>, CssConditionConstructionError> {
+        CssCondition::<CssWhenLeaf>::try_in_context(
             parse_component_values_with_limits(source, limits)?,
             limits,
             self,
@@ -357,19 +277,19 @@ impl CssParserContext {
 }
 
 macro_rules! conditional_rule {
-    ($name:ident, $condition:ty, $borrowed:ty, $get:ident, $rules:ty, $rule_ref:ty, $item:ty, $list:ident, $convert:path) => {
+    ($name:ident, $condition:ty, $borrowed:ty, $get:ident) => {
         /// A checked authored conditional group fragment. Complete enclosing assembly
         /// rechecks actual sibling adjacency and nearest-style placement atomically.
         #[derive(Clone, Debug, PartialEq)]
         pub struct $name {
             condition: $condition,
-            rules: $rules,
+            rules: Vec<CssRule>,
             position: Option<CssSourcePosition>,
         }
         impl $name {
             pub(crate) fn new(
                 condition: $condition,
-                rules: $rules,
+                rules: Vec<CssRule>,
                 position: CssSourcePosition,
             ) -> Self {
                 Self {
@@ -383,10 +303,10 @@ macro_rules! conditional_rule {
                 self.condition.$get()
             }
             #[must_use]
-            pub fn rules(&self) -> $rule_ref {
+            pub fn rules(&self) -> &[CssRule] {
                 &self.rules
             }
-            pub(crate) fn rules_mut(&mut self) -> &mut $rules {
+            pub(crate) fn rules_mut(&mut self) -> &mut Vec<CssRule> {
                 &mut self.rules
             }
             #[must_use]
@@ -395,7 +315,7 @@ macro_rules! conditional_rule {
             }
             pub fn try_new(
                 condition: $condition,
-                rules: Vec<$item>,
+                rules: Vec<CssRule>,
                 context: &CssNamespaceContext,
             ) -> Result<Self, CssRuleConstructionError> {
                 Self::assemble(condition, rules, context, false)
@@ -404,77 +324,41 @@ macro_rules! conditional_rule {
             /// rechecks the actual ancestry; no selector or style claim is fabricated.
             pub fn try_new_in_style(
                 condition: $condition,
-                rules: Vec<$item>,
+                rules: Vec<CssRule>,
                 context: &CssNamespaceContext,
             ) -> Result<Self, CssRuleConstructionError> {
                 Self::assemble(condition, rules, context, true)
             }
             fn assemble(
                 condition: $condition,
-                rules: Vec<$item>,
+                rules: Vec<CssRule>,
                 context: &CssNamespaceContext,
                 style: bool,
             ) -> Result<Self, CssRuleConstructionError> {
-                crate::rule_construction::conditional_group(
-                    crate::rule_construction::List::$list(&rules),
-                    context,
-                    style,
-                )?;
+                crate::rule_construction::conditional_group(&rules, context, style)?;
                 Ok(Self {
                     condition,
-                    rules: $convert(rules),
+                    rules,
                     position: None,
                 })
             }
         }
     };
 }
-impl CssWhenCondition {
+impl CssCondition<CssWhenLeaf> {
     fn borrow_condition(&self) -> &Self {
         self
     }
 }
 conditional_rule!(
     CssWhenRule,
-    CssWhenCondition,
-    &CssWhenCondition,
-    borrow_condition,
-    Vec<CssRule>,
-    &[CssRule],
-    CssRule,
-    Ordinary,
-    std::convert::identity
+    CssCondition<CssWhenLeaf>,
+    &CssCondition<CssWhenLeaf>,
+    borrow_condition
 );
 conditional_rule!(
     CssElseRule,
-    Option<CssWhenCondition>,
-    Option<&CssWhenCondition>,
-    as_ref,
-    Vec<CssRule>,
-    &[CssRule],
-    CssRule,
-    Ordinary,
-    std::convert::identity
-);
-conditional_rule!(
-    CssScopedWhenRule,
-    CssWhenCondition,
-    &CssWhenCondition,
-    borrow_condition,
-    CssScopedRuleList,
-    &CssScopedRuleList,
-    CssScopedRule,
-    Scoped,
-    CssScopedRuleList::from_rules
-);
-conditional_rule!(
-    CssScopedElseRule,
-    Option<CssWhenCondition>,
-    Option<&CssWhenCondition>,
-    as_ref,
-    CssScopedRuleList,
-    &CssScopedRuleList,
-    CssScopedRule,
-    Scoped,
-    CssScopedRuleList::from_rules
+    Option<CssCondition<CssWhenLeaf>>,
+    Option<&CssCondition<CssWhenLeaf>>,
+    as_ref
 );

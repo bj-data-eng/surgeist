@@ -8,7 +8,10 @@ use surgeist_css::*;
 fn assert_style(source: &str) {
     let condition = checked(source);
     assert!(
-        matches!(condition.kind(), CssContainerConditionKind::Style(_)),
+        matches!(
+            condition.kind(),
+            CssConditionKind::Leaf(CssContainerLeaf::Style(_))
+        ),
         "recognized authored style query: {source}"
     );
     assert_eq!(
@@ -26,7 +29,10 @@ fn assert_style(source: &str) {
         panic!("container rule")
     };
     let parsed = rule.prelude().entries()[0].query().unwrap();
-    assert!(matches!(parsed.kind(), CssContainerConditionKind::Style(_)));
+    assert!(matches!(
+        parsed.kind(),
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
+    ));
 }
 
 fn assert_opaque(source: &str) {
@@ -34,7 +40,7 @@ fn assert_opaque(source: &str) {
     assert!(
         matches!(
             condition.kind(),
-            CssContainerConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
         ),
         "unrecognized style enclosure: {source}"
     );
@@ -52,7 +58,7 @@ fn assert_opaque(source: &str) {
     };
     assert!(matches!(
         rule.prelude().entries()[0].query().unwrap().kind(),
-        CssContainerConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
     ));
 }
 
@@ -164,10 +170,11 @@ fn programmatic_style_function_uses_the_same_admission_boundary() {
     .unwrap();
     let function = CssComponentValue::try_function("style", arguments).unwrap();
     let values = CssComponentValues::try_new(vec![function], Default::default()).unwrap();
-    let condition = CssContainerCondition::try_from_components(values, Default::default()).unwrap();
+    let condition =
+        CssCondition::<CssContainerLeaf>::try_from_components(values, Default::default()).unwrap();
     assert!(matches!(
         condition.kind(),
-        CssContainerConditionKind::Style(_)
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
     ));
     assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(

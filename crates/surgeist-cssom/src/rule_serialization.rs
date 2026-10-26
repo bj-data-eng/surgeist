@@ -116,8 +116,7 @@ impl State {
         id: &CssomRuleId,
     ) -> Result<CssRuleGraphInput<'_>, CssomError> {
         match self.rule(id)?.authored() {
-            CssomAuthoredRule::Ordinary(rule) => Ok(CssRuleGraphInput::from_rule(rule)),
-            CssomAuthoredRule::Scoped(rule) => Ok(CssRuleGraphInput::from_scoped_rule(rule)),
+            CssomAuthoredRule::Rule(rule) => Ok(CssRuleGraphInput::from_rule(rule)),
             _ => Err(CssomError::WrongKind),
         }
     }
@@ -264,33 +263,26 @@ impl State {
                     match rule.data() {
                         CssomRuleData::Style {
                             selectors, block, ..
-                        } => match selectors {
-                            CssomSelectors::Ordinary(selectors) => CssRuleGraphInput::style(
-                                selectors,
-                                self.current_properties(block)?,
-                                current,
-                            ),
-                            CssomSelectors::Scoped(selectors) => CssRuleGraphInput::scoped_style(
-                                selectors,
-                                self.current_properties(block)?,
-                                current,
-                            ),
-                        },
+                        } => CssRuleGraphInput::style(
+                            selectors,
+                            self.current_properties(block)?,
+                            current,
+                        ),
                         CssomRuleData::Group { prelude, .. } => match prelude {
                             CssomGroupPrelude::Media(media) => CssRuleGraphInput::group(
-                                CssEditedGroupPreludeRef::Media(self.media(media)?),
+                                CssGroupPreludeRef::Media(self.media(media)?),
                                 current,
                             ),
                             CssomGroupPrelude::Supports(condition) => CssRuleGraphInput::group(
-                                CssEditedGroupPreludeRef::Supports(condition),
+                                CssGroupPreludeRef::Supports(condition),
                                 current,
                             ),
                             CssomGroupPrelude::Container(condition) => CssRuleGraphInput::group(
-                                CssEditedGroupPreludeRef::Container(condition),
+                                CssGroupPreludeRef::Container(condition),
                                 current,
                             ),
                             CssomGroupPrelude::Layer(name) => CssRuleGraphInput::group(
-                                CssEditedGroupPreludeRef::Layer(name.as_ref()),
+                                CssGroupPreludeRef::Layer(name.as_ref()),
                                 current,
                             ),
                             _ => self.original_failure_input(id)?,
@@ -335,7 +327,7 @@ impl State {
                 }
                 CssomRuleData::Import { media, .. } => {
                     let original = match rule.authored() {
-                        CssomAuthoredRule::Ordinary(CssRule::Import(import)) => import,
+                        CssomAuthoredRule::Rule(CssRule::Import(import)) => import,
                         _ => return Err(CssomError::WrongKind),
                     };
                     CssRuleGraphInput::import(original, self.media(media)?)
@@ -352,8 +344,7 @@ impl State {
                     }
                 }
                 CssomRuleData::Leaf { current } => match current {
-                    CssomAuthoredRule::Ordinary(rule) => CssRuleGraphInput::from_rule(rule),
-                    CssomAuthoredRule::Scoped(rule) => CssRuleGraphInput::from_scoped_rule(rule),
+                    CssomAuthoredRule::Rule(rule) => CssRuleGraphInput::from_rule(rule),
                     _ => return Err(CssomError::WrongKind),
                 },
                 // The native whole-rule wrapper is unavailable before its body.

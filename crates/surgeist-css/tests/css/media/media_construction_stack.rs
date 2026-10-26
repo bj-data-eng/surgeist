@@ -1,6 +1,6 @@
 use crate::css::support::isolated_stack;
 
-use surgeist_css::{CssMediaCondition, CssMediaQuery, parse_component_values};
+use surgeist_css::{CssCondition, CssMediaLeaf, CssMediaQuery, parse_component_values};
 
 #[test]
 fn deepest_supported_media_construction_and_serialization_fit_an_ordinary_caller_stack() {
@@ -14,9 +14,11 @@ fn deepest_supported_media_construction_and_serialization_fit_an_ordinary_caller
         || {
             let source = format!("{}(width: 1px){}", "(".repeat(255), ")".repeat(255));
             let components = parse_component_values(&source).unwrap();
-            let condition =
-                CssMediaCondition::try_from_components(components.clone(), Default::default())
-                    .unwrap();
+            let condition = CssCondition::<CssMediaLeaf>::try_from_components(
+                components.clone(),
+                Default::default(),
+            )
+            .unwrap();
             assert_eq!(
                 condition
                     .serialize_tokens(Default::default())
@@ -38,12 +40,13 @@ fn deepest_supported_media_construction_and_serialization_fit_an_ordinary_caller
             drop(query);
             drop(condition);
             let opaque = format!("(future: {}1{})", "calc(".repeat(255), ")".repeat(255));
-            let condition = CssMediaCondition::try_from_components(
+            let condition = CssCondition::<CssMediaLeaf>::try_from_components(
                 parse_component_values(&opaque).unwrap(),
                 Default::default(),
             )
             .unwrap();
-            let surgeist_css::CssMediaConditionKind::UnknownFeature(unknown) = condition.kind()
+            let surgeist_css::CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(unknown)) =
+                condition.kind()
             else {
                 panic!("unknown feature with valid numeric value");
             };

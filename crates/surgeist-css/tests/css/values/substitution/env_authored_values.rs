@@ -94,22 +94,26 @@ fn property_substitution_does_not_admit_env_as_size_or_scroll_operands() {
         "scroll-state(snapped:env(foo))",
         "scroll-state(scrollable:env(foo))",
     ] {
-        let condition = CssContainerCondition::try_from_components(
+        let condition = CssCondition::<CssContainerLeaf>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
         .unwrap();
-        let CssContainerConditionKind::GeneralEnclosed(opaque) = condition.kind() else {
+        let CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(opaque)) = condition.kind()
+        else {
             panic!("env must not add query-domain admission: {text}")
         };
         assert_eq!(opaque.authored(), Some(text));
     }
-    let style = CssContainerCondition::try_from_components(
+    let style = CssCondition::<CssContainerLeaf>::try_from_components(
         parse_component_values("style(--x:env(foo))").unwrap(),
         Default::default(),
     )
     .unwrap();
-    assert!(matches!(style.kind(), CssContainerConditionKind::Style(_)));
+    assert!(matches!(
+        style.kind(),
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
+    ));
 }
 
 #[test]
@@ -129,7 +133,9 @@ fn style_env_components_obey_explicit_enclosing_resource_limits() {
             ComponentFailure::ByteLimit,
         ),
     ] {
-        let Err(outer) = CssContainerCondition::try_from_components(values.clone(), limits) else {
+        let Err(outer) =
+            CssCondition::<CssContainerLeaf>::try_from_components(values.clone(), limits)
+        else {
             panic!("resource failure must not become opaque success")
         };
         let Some(error) = outer.component_error() else {
@@ -138,10 +144,11 @@ fn style_env_components_obey_explicit_enclosing_resource_limits() {
         assert_eq!(component_failure(error), kind);
     }
     let accepted =
-        CssContainerCondition::try_from_components(values.clone(), Default::default()).unwrap();
+        CssCondition::<CssContainerLeaf>::try_from_components(values.clone(), Default::default())
+            .unwrap();
     assert!(matches!(
         accepted.kind(),
-        CssContainerConditionKind::Style(_)
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
     ));
     assert_eq!(
         values

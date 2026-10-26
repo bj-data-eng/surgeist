@@ -9,7 +9,7 @@
 use surgeist_css::*;
 
 fn assert_query(source: &str, recognized: bool) {
-    let checked = CssContainerCondition::try_from_components(
+    let checked = CssCondition::<CssContainerLeaf>::try_from_components(
         parse_component_values(source).unwrap(),
         Default::default(),
     )
@@ -17,7 +17,7 @@ fn assert_query(source: &str, recognized: bool) {
     assert_eq!(
         !matches!(
             checked.kind(),
-            CssContainerConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
         ),
         recognized,
         "checked {source}",
@@ -37,7 +37,10 @@ fn assert_query(source: &str, recognized: bool) {
     };
     let parsed = rule.prelude().entries()[0].query().unwrap();
     assert_eq!(
-        !matches!(parsed.kind(), CssContainerConditionKind::GeneralEnclosed(_)),
+        !matches!(
+            parsed.kind(),
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
+        ),
         recognized,
         "parsed {source}",
     );
@@ -132,14 +135,14 @@ fn fully_programmatic_scroll_features_use_the_same_checked_boundary() {
         )
         .unwrap();
         let function = CssComponentValue::try_function("scroll-state", values).unwrap();
-        let condition = CssContainerCondition::try_from_components(
+        let condition = CssCondition::<CssContainerLeaf>::try_from_components(
             CssComponentValues::try_new(vec![function], Default::default()).unwrap(),
             Default::default(),
         )
         .unwrap();
         assert!(!matches!(
             condition.kind(),
-            CssContainerConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
         ));
         assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(

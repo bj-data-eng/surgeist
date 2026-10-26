@@ -1,6 +1,6 @@
 use crate::css::support::authored_syntax::property_names;
 use surgeist_css::{
-    CssDeclarationContextRef, CssErrorCode, CssRecoveryAction, CssRule, CssScopedRule, CssSelector,
+    CssDeclarationContextRef, CssErrorCode, CssRecoveryAction, CssRule, CssSelector,
     CssSelectorCombinator, CssStyleSelector, CssTokenKind, parse_sheet,
 };
 
@@ -326,7 +326,7 @@ fn block_item_recovery_nested_and_scoped_style_lists_own_declaration_recovery() 
     let [CssRule::Scope(scope)] = scoped.syntax().rules() else {
         panic!("expected retained scope rule");
     };
-    let [CssScopedRule::Style(style)] = scope.rules().rules() else {
+    let [CssRule::Style(style)] = scope.rules().rules() else {
         panic!("expected retained scoped style rule");
     };
     assert_eq!(property_names(style.declarations()), ["color", "width"]);

@@ -2,7 +2,7 @@
 //! imported Extensions 1 name grammar and adopted feature-candidate precedence.
 //! These tests deliberately use only the public surface preceding custom media.
 use surgeist_css::{
-    CssErrorCode, CssMediaConditionKind, CssMediaQuery, CssMediaType, CssNormalizedItem,
+    CssConditionKind, CssErrorCode, CssMediaLeaf, CssMediaQuery, CssMediaType, CssNormalizedItem,
     CssRecoveryAction, CssRule, CssUnknownMediaFeatureReason, normalize_sheet, parse_media_query,
     parse_media_query_list, parse_sheet, validate_sheet,
 };
@@ -214,8 +214,8 @@ fn boolean_custom_references_are_not_unknown_ordinary_features() {
         assert!(
             !matches!(
                 condition.kind(),
-                CssMediaConditionKind::UnknownFeature(_)
-                    | CssMediaConditionKind::GeneralEnclosed(_)
+                CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(_))
+                    | CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_))
             ),
             "custom reference: {source}"
         );
@@ -271,7 +271,7 @@ fn feature_first_width_rejects_custom_looking_values_with_unknown_truth() {
         let CssMediaQuery::Condition(condition) = report.syntax() else {
             panic!("condition")
         };
-        let CssMediaConditionKind::UnknownFeature(feature) = condition.kind() else {
+        let CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(feature)) = condition.kind() else {
             panic!("ordinary width domain")
         };
         assert_eq!(feature.name(), "width");
@@ -287,7 +287,7 @@ fn ambiguous_operands_keep_feature_candidate_precedence() {
     let CssMediaQuery::Condition(condition) = report.syntax() else {
         panic!("condition")
     };
-    let CssMediaConditionKind::UnknownFeature(feature) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(feature)) = condition.kind() else {
         panic!("ordinary width domain")
     };
     assert_eq!(feature.name(), "width");
@@ -297,7 +297,7 @@ fn ambiguous_operands_keep_feature_candidate_precedence() {
     let CssMediaQuery::Condition(condition) = report.syntax() else {
         panic!("condition")
     };
-    let CssMediaConditionKind::UnknownFeature(feature) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(feature)) = condition.kind() else {
         panic!("ordinary future feature")
     };
     assert_eq!(feature.name(), "future");
@@ -306,7 +306,7 @@ fn ambiguous_operands_keep_feature_candidate_precedence() {
         let report = parse_media_query(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(
-            matches!(report.syntax(), CssMediaQuery::Condition(condition) if matches!(condition.kind(), CssMediaConditionKind::GeneralEnclosed(_))),
+            matches!(report.syntax(), CssMediaQuery::Condition(condition) if matches!(condition.kind(), CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_)))),
             "{source}"
         );
     }

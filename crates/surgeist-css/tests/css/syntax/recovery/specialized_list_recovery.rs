@@ -1,7 +1,7 @@
 use surgeist_css::{
-    CssErrorCode, CssMediaConditionKind, CssMediaQuery, CssMediaType, CssNamespaceConstraint,
-    CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction, CssRule, CssSelector,
-    parse_sheet,
+    CssConditionKind, CssErrorCode, CssMediaLeaf, CssMediaQuery, CssMediaType,
+    CssNamespaceConstraint, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction, CssRule,
+    CssSelector, parse_sheet,
 };
 
 fn style_rule(
@@ -422,14 +422,15 @@ fn specialized_list_unknown_features_and_repeated_malformed_members_recover_loca
             CssMediaQuery::Condition(value),
             CssMediaQuery::Never(_),
             CssMediaQuery::Typed(_),
-        ] if matches!(unknown.kind(), CssMediaConditionKind::UnknownFeature(_))
-            && matches!(value.kind(), CssMediaConditionKind::Feature(surgeist_css::CssMediaFeatureQuery::Width(_)))
+        ] if matches!(unknown.kind(), CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(_)))
+            && matches!(value.kind(), CssConditionKind::Leaf(CssMediaLeaf::Feature(surgeist_css::CssMediaFeatureQuery::Width(_))))
     ));
     let CssMediaQuery::Condition(condition) = &queries[2] else {
         panic!("expected retained known width condition");
     };
-    let CssMediaConditionKind::Feature(surgeist_css::CssMediaFeatureQuery::Width(range)) =
-        condition.kind()
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(surgeist_css::CssMediaFeatureQuery::Width(
+        range,
+    ))) = condition.kind()
     else {
         panic!("calc(1px) is a known pure length, without evaluating it");
     };
@@ -513,7 +514,7 @@ fn specialized_list_unknown_feature_keeps_exact_text_and_position_without_recove
     let CssMediaQuery::Condition(condition) = &queries[1] else {
         panic!("expected unknown-feature condition")
     };
-    let CssMediaConditionKind::UnknownFeature(unknown) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(unknown)) = condition.kind() else {
         panic!("expected unknown-feature condition details")
     };
     assert_eq!(
@@ -683,7 +684,7 @@ fn specialized_list_media_position_delegation_covers_condition_typed_and_never()
     else {
         panic!("expected condition, typed, and Never queries in authored order");
     };
-    assert!(matches!(condition.kind(), CssMediaConditionKind::Not(_)));
+    assert!(matches!(condition.kind(), CssConditionKind::Not(_)));
     assert_eq!(condition.position(), queries[0].position());
     assert_eq!(
         condition

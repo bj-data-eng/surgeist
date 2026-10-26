@@ -1,7 +1,7 @@
 use surgeist_css::{
-    CssErrorCode, CssImportLayer, CssImportTarget, CssMediaConditionKind, CssMediaQuery,
-    CssRecoveryAction, CssRule, CssSerializedOrigin, CssSupportsConditionKind, CssValueOrigin,
-    parse_sheet, validate_sheet,
+    CssConditionKind, CssErrorCode, CssImportLayer, CssImportTarget, CssMediaLeaf, CssMediaQuery,
+    CssRecoveryAction, CssRule, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin, parse_sheet,
+    validate_sheet,
 };
 
 fn import_rule(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet> {
@@ -67,7 +67,7 @@ fn import_clauses_expose_target_layer_supports_and_media_in_order() {
             .expect("supports clause")
             .condition()
             .kind(),
-        CssSupportsConditionKind::And(list) if list.conditions().len() == 2
+        CssConditionKind::And(list) if list.conditions().len() == 2
     ));
     assert!(matches!(
         import.media().expect("media clause").queries(),
@@ -82,7 +82,7 @@ fn import_supports_accepts_bare_declarations_and_full_conditions() {
     let [CssRule::Import(bare)] = bare.syntax().rules() else {
         panic!("expected bare import")
     };
-    let CssSupportsConditionKind::Declaration(declaration) =
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) =
         bare.supports().expect("bare supports").condition().kind()
     else {
         panic!("expected declaration test")
@@ -100,7 +100,7 @@ fn import_supports_accepts_bare_declarations_and_full_conditions() {
     };
     assert!(matches!(
         full.supports().expect("full supports").condition().kind(),
-        CssSupportsConditionKind::Not(_)
+        CssConditionKind::Not(_)
     ));
     assert!(full.media().is_some());
 
@@ -136,7 +136,7 @@ fn import_supports_accepts_bare_declarations_and_full_conditions() {
     assert!(
         matches!(import.target(), CssImportTarget::String(value) if value.as_str() == "eof.css")
     );
-    let CssSupportsConditionKind::Declaration(declaration) = import
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = import
         .supports()
         .expect("retained supports clause")
         .condition()
@@ -188,7 +188,7 @@ fn repeated_or_swapped_clause_functions_remain_valid_media_suffixes() {
             assert!(import.layer().is_none());
         }
         if supports {
-            let CssSupportsConditionKind::Declaration(declaration) = import
+            let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = import
                 .supports()
                 .expect("first supports clause")
                 .condition()
@@ -204,7 +204,8 @@ fn repeated_or_swapped_clause_functions_remain_valid_media_suffixes() {
         else {
             panic!("expected one condition-only media query")
         };
-        let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+        let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = condition.kind()
+        else {
             panic!("expected clause-shaped function as opaque media")
         };
         assert_eq!(enclosed.authored(), Some(opaque));

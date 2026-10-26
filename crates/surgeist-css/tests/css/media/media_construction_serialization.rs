@@ -4,10 +4,10 @@ use crate::css::support::byte_limits;
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
-    CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValues,
-    CssMediaCondition, CssMediaConditionKind, CssMediaFeatureQuery, CssMediaQuery,
-    CssMediaRangeRef, CssSerializedOrigin, CssValueOrigin, parse_component_values,
-    parse_media_query, parse_media_query_list,
+    CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValues, CssCondition,
+    CssConditionKind, CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery, CssMediaRangeRef,
+    CssSerializedOrigin, CssValueOrigin, parse_component_values, parse_media_query,
+    parse_media_query_list,
 };
 
 fn plain_width(value: CssComponentValue) -> CssComponentValues {
@@ -34,7 +34,8 @@ fn programmatic_numeric_queries_have_checked_values_without_source_coordinates()
         panic!("condition-only query");
     };
     assert_eq!(condition.position(), None);
-    let CssMediaConditionKind::Feature(CssMediaFeatureQuery::Width(range)) = condition.kind()
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Width(range))) =
+        condition.kind()
     else {
         panic!("known width");
     };
@@ -65,11 +66,15 @@ fn cloned_parsed_numeric_children_keep_their_original_source_in_programmatic_que
     let expected = operand.origin().clone();
     let components = plain_width(operand);
     let first =
-        CssMediaCondition::try_from_components(components.clone(), Default::default()).unwrap();
-    let second = CssMediaCondition::try_from_components(components, Default::default()).unwrap();
+        CssCondition::<CssMediaLeaf>::try_from_components(components.clone(), Default::default())
+            .unwrap();
+    let second =
+        CssCondition::<CssMediaLeaf>::try_from_components(components, Default::default()).unwrap();
     assert_eq!(first, second);
     assert_eq!(first.position(), None);
-    let CssMediaConditionKind::Feature(CssMediaFeatureQuery::Width(range)) = first.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Width(range))) =
+        first.kind()
+    else {
         panic!("width");
     };
     let CssMediaRangeRef::Plain { value } = range.view() else {
@@ -90,10 +95,12 @@ fn opaque_programmatic_functions_preserve_original_components_and_token_boundari
         CssComponentValue::try_ident("e2").unwrap(),
     ]);
     let original = CssComponentValue::try_function("Future", args).unwrap();
-    let condition =
-        CssMediaCondition::try_from_components(values(vec![original.clone()]), Default::default())
-            .unwrap();
-    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+    let condition = CssCondition::<CssMediaLeaf>::try_from_components(
+        values(vec![original.clone()]),
+        Default::default(),
+    )
+    .unwrap();
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = condition.kind() else {
         panic!("opaque function");
     };
     assert_eq!(enclosed.component(), &original);
@@ -116,7 +123,7 @@ fn checked_construction_rejects_recovery_and_query_condition_context_mismatches(
             .is_err_and(|error| error.is_recovered_input())
     );
     assert!(
-        CssMediaCondition::try_from_components(
+        CssCondition::<CssMediaLeaf>::try_from_components(
             parse_component_values("screen").unwrap(),
             Default::default()
         )
@@ -271,8 +278,9 @@ fn unknown_features_keep_their_domain_reason_and_original_component() {
     ] {
         let original = parse_component_values(source).unwrap();
         let condition =
-            CssMediaCondition::try_from_components(original.clone(), Default::default()).unwrap();
-        let CssMediaConditionKind::UnknownFeature(unknown) = condition.kind() else {
+            CssCondition::<CssMediaLeaf>::try_from_components(original.clone(), Default::default())
+                .unwrap();
+        let CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(unknown)) = condition.kind() else {
             panic!("unknown feature: {source}");
         };
         assert_eq!(unknown.reason(), reason);
@@ -285,7 +293,7 @@ fn unknown_features_keep_their_domain_reason_and_original_component() {
     };
     assert!(matches!(
         condition.kind(),
-        CssMediaConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_))
     ));
 }
 
@@ -297,12 +305,13 @@ fn negation_preserves_unknown_conditions_and_separate_unknown_media_types() {
         let CssMediaQuery::Condition(condition) = report.syntax() else {
             panic!("condition negation");
         };
-        let CssMediaConditionKind::Not(operand) = condition.kind() else {
+        let CssConditionKind::Not(operand) = condition.kind() else {
             panic!("retained negation");
         };
         assert!(matches!(
             operand.kind(),
-            CssMediaConditionKind::UnknownFeature(_) | CssMediaConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(_))
+                | CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_))
         ));
     }
     let report = parse_media_query("not future-type");
@@ -333,7 +342,7 @@ fn generic_feature_math_uses_named_numeric_domains_without_admitting_percentages
         let CssMediaQuery::Condition(condition) = report.syntax() else {
             panic!("condition");
         };
-        let CssMediaConditionKind::UnknownFeature(unknown) = condition.kind() else {
+        let CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(unknown)) = condition.kind() else {
             panic!("valid generic feature with unknown name: {source}");
         };
         assert_eq!(
@@ -348,7 +357,10 @@ fn generic_feature_math_uses_named_numeric_domains_without_admitting_percentages
             panic!("condition");
         };
         assert!(
-            matches!(condition.kind(), CssMediaConditionKind::GeneralEnclosed(_)),
+            matches!(
+                condition.kind(),
+                CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_))
+            ),
             "{source}"
         );
     }
@@ -362,7 +374,8 @@ fn repeated_identifiers_retain_the_middle_feature_names_own_origin() {
         panic!("parenthesized feature");
     };
     let expected = block.values().items()[4].origin().clone();
-    let condition = CssMediaCondition::try_from_components(components, Default::default()).unwrap();
+    let condition =
+        CssCondition::<CssMediaLeaf>::try_from_components(components, Default::default()).unwrap();
     let output = condition.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), source);
     assert!(

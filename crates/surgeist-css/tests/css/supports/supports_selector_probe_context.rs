@@ -1,12 +1,15 @@
 //! Source-owned Supports selector probes preserve the outer lexical contract.
 use surgeist_css::*;
 
-fn checked(source: &str, namespaces: &CssNamespaceContext) -> CssSupportsCondition {
+fn checked(source: &str, namespaces: &CssNamespaceContext) -> CssCondition<CssSupportsLeaf> {
     let components = parse_component_values(source).unwrap();
     let original = components.clone();
-    let condition =
-        CssSupportsCondition::try_from_components(components, namespaces, Default::default())
-            .unwrap();
+    let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
+        components,
+        namespaces,
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(condition.components(), original.items());
     assert_eq!(condition.origin(), original.items()[0].origin());
     assert_eq!(
@@ -19,8 +22,8 @@ fn checked(source: &str, namespaces: &CssNamespaceContext) -> CssSupportsConditi
     condition
 }
 
-fn selector(condition: &CssSupportsCondition) -> &CssSelector {
-    let CssSupportsConditionKind::Selector(selector) = condition.kind() else {
+fn selector(condition: &CssCondition<CssSupportsLeaf>) -> &CssSelector {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Selector(selector)) = condition.kind() else {
         panic!("clean typed selector")
     };
     selector
@@ -141,7 +144,7 @@ fn generated_snapshot_preserves_default_and_case_sensitive_named_namespace_conte
     let condition = checked("selector(:is(svg|Leaf))", &namespaces);
     assert!(matches!(
         condition.kind(),
-        CssSupportsConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
     ));
     let source =
         "@namespace Svg 'urn:svg'; @namespace 'urn:default'; @supports selector(:is(Svg|Leaf)) {}";
@@ -176,7 +179,8 @@ fn diagnosed_selector_probes_remain_original_general_enclosed_without_raw_carrie
         "selector(:is(.A),.B)",
     ] {
         let condition = checked(source, &CssNamespaceContext::default());
-        let CssSupportsConditionKind::GeneralEnclosed(opaque) = condition.kind() else {
+        let CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(opaque)) = condition.kind()
+        else {
             panic!("diagnosed or incomplete selector remains opaque")
         };
         assert_eq!(opaque.authored(), Some(source));
@@ -190,7 +194,7 @@ fn diagnosed_selector_probes_remain_original_general_enclosed_without_raw_carrie
         };
         assert!(matches!(
             rule.condition().kind(),
-            CssSupportsConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
         ));
         assert!(matches!(rule.rules(), [CssRule::Style(_)]));
     }
@@ -263,7 +267,7 @@ fn programmatic_components_and_output_retry_do_not_invent_original_coordinates()
     for arguments in [arguments, parse_component_values(":is(.A)").unwrap()] {
         let original = arguments.clone();
         let outer = CssComponentValue::try_function("selector", arguments).unwrap();
-        let condition = CssSupportsCondition::try_from_components(
+        let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
             CssComponentValues::try_new(vec![outer], Default::default()).unwrap(),
             &CssNamespaceContext::default(),
             Default::default(),
@@ -360,7 +364,7 @@ fn scoped_and_import_supports_share_the_same_source_owning_operand() {
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("scope")
     };
-    let [CssScopedRule::Supports(rule)] = scope.rules().rules() else {
+    let [CssRule::Supports(rule)] = scope.rules().rules() else {
         panic!("scoped Supports")
     };
     assert_eq!(

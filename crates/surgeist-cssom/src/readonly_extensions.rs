@@ -70,9 +70,7 @@ impl CssomSnapshot {
     fn color_profile(&self, id: &CssomRuleId) -> Result<&CssColorProfileRule, CssomError> {
         match self.rule(id)?.data() {
             CssomRuleData::Leaf {
-                current:
-                    CssomAuthoredRule::Ordinary(CssRule::ColorProfile(rule))
-                    | CssomAuthoredRule::Scoped(CssScopedRule::ColorProfile(rule)),
+                current: CssomAuthoredRule::Rule(CssRule::ColorProfile(rule)),
             } => Ok(rule),
             _ => Err(CssomError::WrongKind),
         }

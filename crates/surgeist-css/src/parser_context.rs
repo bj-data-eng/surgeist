@@ -107,7 +107,7 @@ impl CssParserContext {
     pub fn parse_css_supports_condition(
         self,
         source: &str,
-    ) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
+    ) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
         css_supports_condition(source, self.standards())
     }
     /// Parses the literal property/value overload with Standards admission and this definition
@@ -283,7 +283,7 @@ impl CssParserContext {
         source: &str,
         namespaces: &CssNamespaceContext,
         ancestry: CssStyleAncestor,
-    ) -> CssParseReport<Option<CssBlockFragment<CssScopedRuleList>>> {
+    ) -> CssParseReport<Option<CssBlockFragment<CssRuleList>>> {
         crate::parser::parse_scope_block_with_context(source, namespaces, ancestry, self)
     }
     /// Parses an ordinary group inside a scope with this declaration context.
@@ -296,7 +296,7 @@ impl CssParserContext {
         source: &str,
         namespaces: &CssNamespaceContext,
         ancestry: CssStyleAncestor,
-    ) -> CssParseReport<Option<CssBlockFragment<CssScopedRuleList>>> {
+    ) -> CssParseReport<Option<CssBlockFragment<CssRuleList>>> {
         crate::parser::parse_scoped_group_block_with_context(source, namespaces, ancestry, self)
     }
     /// Checks owned components with the selected property-name grammar.
@@ -359,7 +359,7 @@ impl CssParserContext {
         self,
         source: &str,
         namespaces: &CssNamespaceContext,
-    ) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
+    ) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
         self.parse_supports_condition_with_limits(
             source,
             namespaces,
@@ -372,9 +372,11 @@ impl CssParserContext {
         source: &str,
         namespaces: &CssNamespaceContext,
         limits: CssComponentValueLimits,
-    ) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
+    ) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
         let values = parse_component_values_with_limits(source, limits)?;
-        CssSupportsCondition::try_from_components_in_context(values, namespaces, limits, self)
+        CssCondition::<CssSupportsLeaf>::try_from_components_in_context(
+            values, namespaces, limits, self,
+        )
     }
 }
 
@@ -384,16 +386,16 @@ impl CssParserContext {
 /// Introduced punctuation is programmatic; child origins retain the supplied source.
 pub fn parse_css_supports_condition(
     source: &str,
-) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
+) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
     css_supports_condition(source, CssParserContext::default())
 }
 fn css_supports_condition(
     source: &str,
     context: CssParserContext,
-) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
+) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
     let values = parse_component_values(source)?;
     let namespaces = CssNamespaceContext::default();
-    match CssSupportsCondition::try_from_components_in_context(
+    match CssCondition::<CssSupportsLeaf>::try_from_components_in_context(
         values.clone(),
         &namespaces,
         CssComponentValueLimits::default(),
@@ -404,7 +406,7 @@ fn css_supports_condition(
             if error.is_invalid_condition_grammar() || error.is_invalid_declaration_grammar() =>
         {
             let block = CssComponentValue::try_block(CssBlockKind::Parenthesis, values)?;
-            CssSupportsCondition::try_from_components_in_context(
+            CssCondition::<CssSupportsLeaf>::try_from_components_in_context(
                 CssComponentValues::try_new(vec![block], Default::default())?,
                 &namespaces,
                 CssComponentValueLimits::default(),

@@ -1,41 +1,13 @@
 //! Authored scroll-state queries. Snapshots, direction resolution and truth are external.
 use crate::component_values::CssCanonicalBuilder;
-use crate::supports::SupportsLexical;
 use crate::*;
 
-/// One admitted scroll-state query node with its original lexical region.
-/// Construct through [`CssContainerCondition::try_from_components`] or stylesheet parsing.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssContainerScrollQuery {
-    kind: Box<CssContainerScrollQueryKind>,
-    lexical: SupportsLexical,
-}
-
-/// Inspectable authored logic; a kind alone cannot construct an admitted query.
+/// A leaf of a scroll-state query: a scroll-state feature, or any other enclosure.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub enum CssContainerScrollQueryKind {
+pub enum CssScrollStateLeaf {
     Feature(CssContainerScrollFeature),
-    Parenthesized(Box<CssContainerScrollQuery>),
-    Not(Box<CssContainerScrollQuery>),
-    And(CssContainerScrollQueryList),
-    Or(CssContainerScrollQueryList),
     GeneralEnclosed(CssContainerGeneralEnclosed),
-}
-
-/// At least two operands of one homogeneous logical production.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssContainerScrollQueryList {
-    queries: Vec<CssContainerScrollQuery>,
-}
-impl CssContainerScrollQueryList {
-    pub(crate) fn new(queries: Vec<CssContainerScrollQuery>) -> Self {
-        debug_assert!(queries.len() >= 2);
-        Self { queries }
-    }
-    pub fn queries(&self) -> &[CssContainerScrollQuery] {
-        &self.queries
-    }
 }
 
 /// The four discrete features of a scroll-state query.
@@ -184,35 +156,3 @@ operand!(
     /// A direction keyword or a whole value awaiting substitution into that domain.
     CssContainerScrollDirectionValue, CssContainerScrollDirectionValueRef, CssContainerScrollDirectionKeyword, ScrollDirection
 );
-
-impl CssContainerScrollQuery {
-    pub(crate) fn new(kind: CssContainerScrollQueryKind, lexical: SupportsLexical) -> Self {
-        Self {
-            kind: Box::new(kind),
-            lexical,
-        }
-    }
-    pub fn kind(&self) -> &CssContainerScrollQueryKind {
-        &self.kind
-    }
-    pub fn components(&self) -> &[CssComponentValue] {
-        self.lexical.items()
-    }
-    pub fn origin(&self) -> &CssValueOrigin {
-        self.lexical.first_origin()
-    }
-    pub fn position(&self) -> Option<CssSourcePosition> {
-        crate::media::parsed_position(self.origin())
-    }
-    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
-    /// limits do not apply.
-    pub fn serialize_tokens(
-        &self,
-        limits: crate::CssComponentValueLimits,
-    ) -> Result<CssSerializedValue, CssComponentValueError> {
-        let max_css_bytes = limits.max_css_bytes();
-        let mut out = CssCanonicalBuilder::new(max_css_bytes);
-        out.push_components(self.components())?;
-        out.finish()
-    }
-}

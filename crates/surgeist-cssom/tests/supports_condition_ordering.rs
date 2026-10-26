@@ -42,9 +42,9 @@ fn kinds(snapshot: &CssomSnapshot, rules: &[CssomRuleId]) -> Vec<Kind> {
     rules
         .iter()
         .map(|id| match snapshot.rule(id).unwrap().authored() {
-            CssomAuthoredRule::Ordinary(CssRule::SupportsCondition(_)) => Kind::Named,
-            CssomAuthoredRule::Ordinary(CssRule::Import(_)) => Kind::Import,
-            CssomAuthoredRule::Ordinary(CssRule::Namespace(_)) => Kind::Namespace,
+            CssomAuthoredRule::Rule(CssRule::SupportsCondition(_)) => Kind::Named,
+            CssomAuthoredRule::Rule(CssRule::Import(_)) => Kind::Import,
+            CssomAuthoredRule::Rule(CssRule::Namespace(_)) => Kind::Namespace,
             other => panic!("unexpected fixture kind: {other:?}"),
         })
         .collect()

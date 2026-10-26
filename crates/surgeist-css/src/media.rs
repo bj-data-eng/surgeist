@@ -310,7 +310,7 @@ impl CssMediaQuery {
         .map_err(media_error)
     }
 }
-impl CssMediaCondition {
+impl CssCondition<CssMediaLeaf> {
     pub fn try_from_components(
         values: CssComponentValues,
         limits: CssComponentValueLimits,
@@ -603,26 +603,28 @@ fn typed_query_emits_type(
 }
 fn emit_condition(
     out: &mut CssCanonicalBuilder,
-    condition: &CssMediaCondition,
+    condition: &CssCondition<CssMediaLeaf>,
 ) -> Result<(), MediaSerializationFailure> {
     emit_condition_with_mode(out, condition, MediaOutput::Authored)
 }
 
 fn emit_condition_with_mode(
     out: &mut CssCanonicalBuilder,
-    condition: &CssMediaCondition,
+    condition: &CssCondition<CssMediaLeaf>,
     mode: MediaOutput,
 ) -> Result<(), MediaSerializationFailure> {
     match condition.kind() {
-        CssMediaConditionKind::CustomMediaReference(value) => {
+        CssConditionKind::Leaf(CssMediaLeaf::CustomMediaReference(value)) => {
             out.push_component(value.component())?
         }
-        CssMediaConditionKind::GeneralEnclosed(value) => out.push_component(value.component())?,
-        CssMediaConditionKind::UnknownFeature(value) => {
+        CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) => {
+            out.push_component(value.component())?
+        }
+        CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(value)) => {
             emit_feature(out, &value.syntax, &[], None, mode)?;
         }
-        CssMediaConditionKind::Feature(feature) => {
-            let MediaConditionSyntax::Feature(syntax) = &condition.syntax else {
+        CssConditionKind::Leaf(CssMediaLeaf::Feature(feature)) => {
+            let MediaConditionSyntax::Feature(syntax) = condition.media_syntax() else {
                 unreachable!("known atom lexical syntax")
             };
             let defaults = match feature {
@@ -639,24 +641,24 @@ fn emit_condition_with_mode(
             };
             emit_feature(out, syntax, &defaults, keyword, mode)?;
         }
-        CssMediaConditionKind::Parenthesized(inner) => {
-            let MediaConditionSyntax::Group { closing } = &condition.syntax else {
+        CssConditionKind::Parenthesized(inner) => {
+            let MediaConditionSyntax::Group { closing } = condition.media_syntax() else {
                 unreachable!("group lexical syntax")
             };
             out.push_grammar(CssCanonicalToken::OpenParen, condition.origin())?;
             emit_condition_with_mode(out, inner, mode)?;
             out.push_grammar(CssCanonicalToken::CloseParen, closing)?;
         }
-        CssMediaConditionKind::Not(inner) => {
+        CssConditionKind::Not(inner) => {
             out.push_grammar(CssCanonicalToken::Ident("not"), condition.origin())?;
             space(out, condition.origin())?;
             emit_condition_with_mode(out, inner, mode)?;
         }
-        CssMediaConditionKind::And(children) | CssMediaConditionKind::Or(children) => {
-            let MediaConditionSyntax::Junction(operators) = &condition.syntax else {
+        CssConditionKind::And(children) | CssConditionKind::Or(children) => {
+            let MediaConditionSyntax::Junction(operators) = condition.media_syntax() else {
                 unreachable!("junction lexical syntax")
             };
-            let keyword = if matches!(condition.kind(), CssMediaConditionKind::And(_)) {
+            let keyword = if matches!(condition.kind(), CssConditionKind::And(_)) {
                 "and"
             } else {
                 "or"
@@ -934,8 +936,8 @@ fn charge_query(
     query: &CssMediaQuery,
 ) -> Result<(), CssSerializationError> {
     enum Visit<'a> {
-        Condition(&'a CssMediaCondition),
-        Conditions(&'a [CssMediaCondition]),
+        Condition(&'a CssCondition<CssMediaLeaf>),
+        Conditions(&'a [CssCondition<CssMediaLeaf>]),
         Component(&'a CssComponentValue),
         Components(&'a [CssComponentValue]),
     }
@@ -989,13 +991,13 @@ fn charge_query(
             Visit::Condition(condition) => {
                 charge_node(context, condition.origin())?;
                 match condition.kind() {
-                    CssMediaConditionKind::CustomMediaReference(value) => {
+                    CssConditionKind::Leaf(CssMediaLeaf::CustomMediaReference(value)) => {
                         pending.push(Visit::Component(value.component()));
                     }
-                    CssMediaConditionKind::GeneralEnclosed(value) => {
+                    CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) => {
                         pending.push(Visit::Component(value.component()));
                     }
-                    CssMediaConditionKind::UnknownFeature(value) => {
+                    CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(value)) => {
                         check_identifier_size(
                             context,
                             &value.syntax.name_text,
@@ -1003,17 +1005,16 @@ fn charge_query(
                         )?;
                         pending.push(Visit::Component(value.component()));
                     }
-                    CssMediaConditionKind::Feature(_) => {
-                        let MediaConditionSyntax::Feature(syntax) = &condition.syntax else {
+                    CssConditionKind::Leaf(CssMediaLeaf::Feature(_)) => {
+                        let MediaConditionSyntax::Feature(syntax) = condition.media_syntax() else {
                             unreachable!("known atom lexical syntax")
                         };
                         pending.push(Visit::Component(&syntax.component));
                     }
-                    CssMediaConditionKind::Parenthesized(inner)
-                    | CssMediaConditionKind::Not(inner) => {
+                    CssConditionKind::Parenthesized(inner) | CssConditionKind::Not(inner) => {
                         pending.push(Visit::Condition(inner));
                     }
-                    CssMediaConditionKind::And(children) | CssMediaConditionKind::Or(children) => {
+                    CssConditionKind::And(children) | CssConditionKind::Or(children) => {
                         pending.push(Visit::Conditions(children.conditions()));
                     }
                 }
@@ -1095,32 +1096,32 @@ pub(crate) fn query_is_deep(query: &CssMediaQuery) -> bool {
         CssMediaQuery::Never(_) => false,
     }
 }
-fn condition_is_deep(root: &CssMediaCondition) -> bool {
+fn condition_is_deep(root: &CssCondition<CssMediaLeaf>) -> bool {
     let mut pending = vec![(root, 0usize)];
     while let Some((value, depth)) = pending.pop() {
         if depth >= 64 {
             return true;
         }
         match value.kind() {
-            CssMediaConditionKind::CustomMediaReference(_) => {}
-            CssMediaConditionKind::Parenthesized(v) | CssMediaConditionKind::Not(v) => {
+            CssConditionKind::Leaf(CssMediaLeaf::CustomMediaReference(_)) => {}
+            CssConditionKind::Parenthesized(v) | CssConditionKind::Not(v) => {
                 pending.push((v, depth + 1))
             }
-            CssMediaConditionKind::And(v) | CssMediaConditionKind::Or(v) => {
+            CssConditionKind::And(v) | CssConditionKind::Or(v) => {
                 pending.extend(v.conditions().iter().map(|v| (v, depth + 1)))
             }
-            CssMediaConditionKind::GeneralEnclosed(v) => {
+            CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(v)) => {
                 if component_depth(v.component()) >= 64 {
                     return true;
                 }
             }
-            CssMediaConditionKind::UnknownFeature(v) => {
+            CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(v)) => {
                 if component_depth(v.component()) >= 64 {
                     return true;
                 }
             }
-            CssMediaConditionKind::Feature(_) => {
-                if let MediaConditionSyntax::Feature(syntax) = &value.syntax
+            CssConditionKind::Leaf(CssMediaLeaf::Feature(_)) => {
+                if let MediaConditionSyntax::Feature(syntax) = value.media_syntax()
                     && component_depth(&syntax.component) >= 64
                 {
                     return true;

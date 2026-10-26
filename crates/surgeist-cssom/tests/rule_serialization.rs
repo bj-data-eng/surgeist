@@ -623,7 +623,7 @@ fn custom_media_current_query_keeps_native_unavailable_wrapper_boundary() {
             );
         }
     }
-    let CssomAuthoredRule::Ordinary(CssRule::CustomMedia(original)) =
+    let CssomAuthoredRule::Rule(CssRule::CustomMedia(original)) =
         current.rule(&roots[0]).unwrap().authored()
     else {
         panic!("genuine original");
@@ -679,7 +679,7 @@ fn supports_writer_consumes_current_selectors_declarations_and_child_membership(
             .unwrap(),
         "@supports (display:grid) {\n  a { color: red; }\n}"
     );
-    let CssomAuthoredRule::Ordinary(original) = current.rule(&roots[0]).unwrap().authored() else {
+    let CssomAuthoredRule::Rule(original) = current.rule(&roots[0]).unwrap().authored() else {
         panic!("genuine original");
     };
     assert_eq!(

@@ -2,18 +2,13 @@
 //! Original token gaps prove parsed adjacency; reusable checked fragments use the
 //! separate complete-list assembly owner and never carry these source constraints.
 use super::recovery::next_source_token;
-use crate::syntax::CssParserRuleChildrenMut;
 use crate::*;
 use cssparser::Token;
 use std::ops::Range;
 
 pub(super) fn sheet(source: &str, report: CssParseReport<CssSheet>) -> CssParseReport<CssSheet> {
     let (mut sheet, mut diagnostics) = report.into_parts();
-    completed_list(
-        source,
-        CssParserRuleChildrenMut::Ordinary(sheet.rules_mut()),
-        &mut diagnostics,
-    );
+    completed_list(source, sheet.rules_mut(), &mut diagnostics);
     CssParseReport::new(sheet, diagnostics)
 }
 pub(super) fn rule(
@@ -46,85 +41,46 @@ pub(super) fn style_block(
     mut block: CssStyleBlock,
     mut diagnostics: Vec<CssRecoveryDiagnostic>,
 ) -> CssParseReport<Option<CssStyleBlock>> {
-    completed_list(
-        source,
-        CssParserRuleChildrenMut::Ordinary(block.rules_mut()),
-        &mut diagnostics,
-    );
+    completed_list(source, block.rules_mut(), &mut diagnostics);
     CssParseReport::new(Some(block), diagnostics)
 }
 pub(super) fn completed_list(
     source: &str,
-    list: CssParserRuleChildrenMut<'_>,
+    list: &mut Vec<CssRule>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
 ) {
     admit(source, list, diagnostics);
 }
 
-fn admit(
-    source: &str,
-    list: CssParserRuleChildrenMut<'_>,
-    diagnostics: &mut Vec<CssRecoveryDiagnostic>,
-) {
+fn admit(source: &str, list: &mut Vec<CssRule>, diagnostics: &mut Vec<CssRecoveryDiagnostic>) {
     let mut work = vec![list];
     let mut rejected = Vec::new();
     let mut placements = Vec::new();
-    while let Some(list) = work.pop() {
+    while let Some(rules) = work.pop() {
         let mut previous_end = None;
-        match list {
-            CssParserRuleChildrenMut::Ordinary(rules) => {
-                rules.retain_mut(|rule| {
-                    let conditional = matches!(
-                        rule,
-                        CssRule::Media(_)
-                            | CssRule::Supports(_)
-                            | CssRule::Container(_)
-                            | CssRule::When(_)
-                            | CssRule::Else(_)
-                    );
-                    let start = conditional.then(|| super::rule_start(rule));
-                    check(
-                        source,
-                        matches!(rule, CssRule::Else(_)),
-                        conditional,
-                        start,
-                        &mut previous_end,
-                        &mut rejected,
-                        &mut placements,
-                    )
-                });
-                for rule in rules {
-                    if let Some(children) = rule.parser_children_mut() {
-                        work.push(children);
-                    }
-                }
-            }
-            CssParserRuleChildrenMut::Scoped(rules) => {
-                rules.retain_mut(|rule| {
-                    let conditional = matches!(
-                        rule,
-                        CssScopedRule::Media(_)
-                            | CssScopedRule::Supports(_)
-                            | CssScopedRule::Container(_)
-                            | CssScopedRule::When(_)
-                            | CssScopedRule::Else(_)
-                    );
-                    let start = conditional.then(|| super::scoped_rule_start(rule));
-                    check(
-                        source,
-                        matches!(rule, CssScopedRule::Else(_)),
-                        conditional,
-                        start,
-                        &mut previous_end,
-                        &mut rejected,
-                        &mut placements,
-                    )
-                });
-                for rule in rules {
-                    if let Some(children) = rule.parser_children_mut() {
-                        work.push(children);
-                    }
-                }
+        rules.retain_mut(|rule| {
+            let conditional = matches!(
+                rule,
+                CssRule::Media(_)
+                    | CssRule::Supports(_)
+                    | CssRule::Container(_)
+                    | CssRule::When(_)
+                    | CssRule::Else(_)
+            );
+            let start = conditional.then(|| super::rule_start(rule));
+            check(
+                source,
+                matches!(rule, CssRule::Else(_)),
+                conditional,
+                start,
+                &mut previous_end,
+                &mut rejected,
+                &mut placements,
+            )
+        });
+        for rule in rules {
+            if let Some(children) = rule.parser_children_mut() {
+                work.push(children);
             }
         }
     }

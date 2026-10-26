@@ -100,12 +100,12 @@ fn masked_rejected_child_at_chunk_boundary_keeps_leading_slot_semantics() {
             };
             let mut rules = scope.rules().rules();
             for _ in 1..62 {
-                let [CssScopedRule::Scope(scope)] = rules else {
+                let [CssRule::Scope(scope)] = rules else {
                     panic!("scope chain")
                 };
                 rules = scope.rules().rules();
             }
-            let [CssScopedRule::Style(parent)] = rules else {
+            let [CssRule::Style(parent)] = rules else {
                 panic!("scoped style")
             };
             assert_eq!(parent.declarations().len(), 1);

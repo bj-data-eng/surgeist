@@ -3,39 +3,12 @@ use crate::component_values::CssCanonicalBuilder;
 use crate::supports::SupportsLexical;
 use crate::*;
 
-/// One admitted style-query node, retaining its original lexical region.
-/// Construct through [`CssContainerCondition::try_from_components`] or stylesheet parsing.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssContainerStyleQuery {
-    kind: Box<CssContainerStyleQueryKind>,
-    lexical: SupportsLexical,
-}
-
-/// Inspectable authored logic. A kind alone cannot construct a checked query.
+/// A leaf of a style query: a style feature, or any other enclosure.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-pub enum CssContainerStyleQueryKind {
+pub enum CssStyleQueryLeaf {
     Feature(CssContainerStyleFeature),
-    Parenthesized(Box<CssContainerStyleQuery>),
-    Not(Box<CssContainerStyleQuery>),
-    And(CssContainerStyleQueryList),
-    Or(CssContainerStyleQueryList),
     GeneralEnclosed(CssContainerGeneralEnclosed),
-}
-
-/// At least two operands admitted by one homogeneous logical production.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssContainerStyleQueryList {
-    queries: Vec<CssContainerStyleQuery>,
-}
-impl CssContainerStyleQueryList {
-    pub(crate) fn new(queries: Vec<CssContainerStyleQuery>) -> Self {
-        debug_assert!(queries.len() >= 2);
-        Self { queries }
-    }
-    pub fn queries(&self) -> &[CssContainerStyleQuery] {
-        &self.queries
-    }
 }
 
 /// A property grammar identity or a case-sensitive custom-property identity.
@@ -192,17 +165,6 @@ impl CssContainerStyleRange {
     }
 }
 
-impl CssContainerStyleQuery {
-    pub(crate) fn new(kind: CssContainerStyleQueryKind, lexical: SupportsLexical) -> Self {
-        Self {
-            kind: Box::new(kind),
-            lexical,
-        }
-    }
-    pub fn kind(&self) -> &CssContainerStyleQueryKind {
-        &self.kind
-    }
-}
 impl CssContainerStyleValue {
     pub(crate) fn new(lexical: SupportsLexical) -> Self {
         Self { lexical }
@@ -240,5 +202,4 @@ macro_rules! lexical_access {
         }
     };
 }
-lexical_access!(CssContainerStyleQuery);
 lexical_access!(CssContainerStyleValue);

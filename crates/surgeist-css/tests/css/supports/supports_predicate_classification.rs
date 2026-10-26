@@ -7,12 +7,12 @@
 //! and https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-tech-values
 
 use surgeist_css::{
-    CssNamespaceContext, CssRule, CssSupportsCondition, CssSupportsConditionKind,
+    CssCondition, CssConditionKind, CssNamespaceContext, CssRule, CssSupportsLeaf,
     parse_component_values, parse_sheet,
 };
 
 fn assert_opaque_classification(condition: &str, expected_opaque: bool) {
-    let checked = CssSupportsCondition::try_from_components(
+    let checked = CssCondition::<CssSupportsLeaf>::try_from_components(
         parse_component_values(condition).expect("valid component syntax"),
         &CssNamespaceContext::default(),
         Default::default(),
@@ -27,10 +27,13 @@ fn assert_opaque_classification(condition: &str, expected_opaque: bool) {
     };
 
     // Both real fronts run before checking the shared classification contract.
-    let checked_opaque = matches!(checked.kind(), CssSupportsConditionKind::GeneralEnclosed(_));
+    let checked_opaque = matches!(
+        checked.kind(),
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
+    );
     let parsed_opaque = matches!(
         parsed.condition().kind(),
-        CssSupportsConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
     );
     assert_eq!(
         (checked_opaque, parsed_opaque),

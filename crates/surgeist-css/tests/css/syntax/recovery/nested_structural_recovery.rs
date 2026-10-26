@@ -1,6 +1,6 @@
 use surgeist_css::{
     CssErrorCode, CssKeyframeSelector, CssPropertyNameRef, CssPseudoClass, CssPseudoElement,
-    CssPseudoElementSegment, CssRecoveryAction, CssRule, CssScopedRule, CssSelector, parse_sheet,
+    CssPseudoElementSegment, CssRecoveryAction, CssRule, CssSelector, parse_sheet,
 };
 
 fn style_name(rule: &CssRule) -> &str {
@@ -135,7 +135,7 @@ fn nested_structural_qualified_failures_recover_in_group_scope_and_style_context
     };
     assert!(matches!(
         scope_rule.rules().rules(),
-        [CssScopedRule::Style(_), CssScopedRule::Style(_)]
+        [CssRule::Style(_), CssRule::Style(_)]
     ));
     let scope_start = scope_source.find(failed).unwrap();
     assert_drop(
@@ -313,7 +313,7 @@ fn nested_structural_style_and_scope_at_rule_failures_keep_authored_siblings() {
     };
     assert!(matches!(
         scope_rule.rules().rules(),
-        [CssScopedRule::Style(_), CssScopedRule::Style(_)]
+        [CssRule::Style(_), CssRule::Style(_)]
     ));
     let scope_start = scope_source.find(failed).unwrap();
     assert_drop(

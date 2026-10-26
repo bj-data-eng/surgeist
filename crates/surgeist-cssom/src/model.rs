@@ -256,19 +256,13 @@ impl CssomSheetInputs {
 /// Original checked occurrence, independent of current live fields/membership.
 #[derive(Clone, Debug)]
 pub enum CssomAuthoredRule {
-    Ordinary(CssRule),
-    Scoped(CssScopedRule),
+    Rule(CssRule),
     Keyframe(CssKeyframeBlock),
     Margin(CssMarginRule),
     /// Genuine raw declaration input retained without manufacturing a rule position.
     RawNestedDeclarations(CssDeclarationList),
     /// Genuine inert named-support test occurrence, never a rendering rule.
     SupportsTestChild(CssSupportsTestChild),
-}
-#[derive(Clone, Debug)]
-pub enum CssomSelectors {
-    Ordinary(CssStyleSelectorList),
-    Scoped(CssScopedStyleSelectorList),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssomGroupKind {
@@ -283,15 +277,15 @@ pub enum CssomGroupKind {
 #[derive(Clone, Debug)]
 pub enum CssomGroupPrelude {
     Media(CssomMediaListId),
-    Supports(CssSupportsCondition),
+    Supports(CssCondition<CssSupportsLeaf>),
     Container(CssContainerPrelude),
     Layer(Option<CssLayerName>),
     Scope {
         start: Option<CssScopeSelectorList>,
         end: Option<CssScopeSelectorList>,
     },
-    When(CssWhenCondition),
-    Else(Option<CssWhenCondition>),
+    When(CssCondition<CssWhenLeaf>),
+    Else(Option<CssCondition<CssWhenLeaf>>),
 }
 impl CssomGroupPrelude {
     pub const fn kind(&self) -> CssomGroupKind {
@@ -323,7 +317,7 @@ pub enum CssomRuleData {
     /// they have no descendant CSSOM identities or rendering capabilities.
     SupportsTestChild(CssSupportsTestChild),
     Style {
-        selectors: CssomSelectors,
+        selectors: CssStyleSelectorList,
         block: CssomBlockId,
         children: CssomRuleListId,
     },

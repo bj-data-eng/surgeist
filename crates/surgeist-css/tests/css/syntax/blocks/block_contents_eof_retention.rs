@@ -5,8 +5,7 @@
 
 use surgeist_css::{
     CssDeclaration, CssErrorCode, CssNormalizedDeclaration, CssNormalizedItem, CssParseReport,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssScopedRule, CssSheet, normalize_sheet,
-    parse_sheet,
+    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSheet, normalize_sheet, parse_sheet,
 };
 
 fn color(declaration: &CssDeclaration, expected: &str, offset: usize) {
@@ -236,10 +235,8 @@ fn style_nested_groups_retain_final_eof_run_after_child_with_original_context() 
                 }
                 CssRule::Scope(rule) => {
                     assert_eq!(group, "scope");
-                    let [
-                        CssScopedRule::Style(child),
-                        CssScopedRule::NestedDeclarations(run),
-                    ] = rule.rules().rules()
+                    let [CssRule::Style(child), CssRule::NestedDeclarations(run)] =
+                        rule.rules().rules()
                     else {
                         panic!("scope child and run")
                     };

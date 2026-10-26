@@ -366,7 +366,7 @@ fn strict_and_forgiving_contexts_preserve_pseudo_exclusion_and_original_function
         Default::default(),
     ));
     assert!(
-        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(vendor.clone())]).is_none()
+        CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(vendor.clone())]).is_none()
     );
     assert_unrepresentable_construction(CssPseudoSelectorList::try_new_forgiving(
         vec![vendor],
@@ -543,7 +543,7 @@ fn canonical_pseudos_survive_nested_scoped_normalization_and_original_supports_c
         })
         .unwrap();
     assert!(
-        matches!(supports.kind(), CssSupportsConditionKind::Selector(value) if value == &selector(".probe::-webkit-x"))
+        matches!(supports.kind(), CssConditionKind::Leaf(CssSupportsLeaf::Selector(value)) if value == &selector(".probe::-webkit-x"))
     );
     assert_eq!(
         supports
@@ -573,7 +573,7 @@ fn canonical_pseudos_survive_nested_scoped_normalization_and_original_supports_c
         origin.span().end().byte_offset().value(),
         source.find("-WebKit-X").unwrap() + "-WebKit-X".len()
     );
-    let checked = CssSupportsCondition::try_from_components(
+    let checked = CssCondition::<CssSupportsLeaf>::try_from_components(
         CssComponentValues::try_new(supports.components().to_vec(), Default::default()).unwrap(),
         &CssNamespaceContext::default(),
         Default::default(),
@@ -614,13 +614,13 @@ fn canonical_pseudos_survive_nested_scoped_normalization_and_original_supports_c
     // selector identifies the standard autofill alias and the symbolic unknown
     // vendor pseudo-element that a supports evaluator must treat as unsupported.
     let supported = |source: &str| {
-        let condition = CssSupportsCondition::try_from_components(
+        let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
             parse_component_values(source).unwrap(),
             &CssNamespaceContext::default(),
             Default::default(),
         )
         .unwrap();
-        let CssSupportsConditionKind::Selector(value) = condition.kind() else {
+        let CssConditionKind::Leaf(CssSupportsLeaf::Selector(value)) = condition.kind() else {
             panic!("{source}: selector() condition")
         };
         value.clone()
@@ -632,7 +632,7 @@ fn canonical_pseudos_survive_nested_scoped_normalization_and_original_supports_c
     assert!(vendor.has_pseudo_elements());
     assert_eq!(unknown(&vendor).as_str(), "-webkit-x");
     assert!(compound(&vendor).type_selector().is_none());
-    let invalid = CssSupportsCondition::try_from_components(
+    let invalid = CssCondition::<CssSupportsLeaf>::try_from_components(
         parse_component_values("selector(::-webkit-x())").unwrap(),
         &CssNamespaceContext::default(),
         Default::default(),
@@ -640,7 +640,7 @@ fn canonical_pseudos_survive_nested_scoped_normalization_and_original_supports_c
     .unwrap();
     assert!(matches!(
         invalid.kind(),
-        CssSupportsConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
     ));
 }
 

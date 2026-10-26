@@ -71,8 +71,8 @@ fn rejected(context: CssParserContext, name: &str, text: &str) {
     );
     assert!(!report.is_clean());
 }
-fn supports_declaration(condition: &CssSupportsCondition) -> &CssSupportsDeclaration {
-    let CssSupportsConditionKind::Declaration(value) = condition.kind() else {
+fn supports_declaration(condition: &CssCondition<CssSupportsLeaf>) -> &CssSupportsDeclaration {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(value)) = condition.kind() else {
         panic!("declaration condition")
     };
     value

@@ -40,8 +40,6 @@ enum Event<'a> {
     ),
     RelativeList(&'a [CssRelativeSelector], usize, CssSelectorGrammarContext),
     StyleList(&'a [CssStyleSelector], usize, bool),
-    ScopedStyleList(&'a [CssScopedStyleSelector], usize, bool),
-    ScopeList(&'a [CssScopeSelector], usize, bool),
     Relative(&'a CssRelativeSelector, CssSelectorGrammarContext),
     LiteralMember(&'a CssSelector, Option<CssSelectorCombinator>, bool),
     Text(&'a str),
@@ -149,57 +147,33 @@ impl CssRelativeSelectorList {
     }
 }
 impl CssStyleSelectorList {
-    /// Formats checked ordinary or nested style selectors in their actual role.
-    /// A scoped role is rejected rather than changing their anchor domain.
+    /// Formats checked style selectors in their actual role: an ordinary list, a nested
+    /// style rule's list, or a scope body's list with its genuine scope anchors. A role
+    /// whose anchor domain differs from the list's anchors is rejected rather than
+    /// changing it; relative members are rejected in the ordinary role.
     pub fn serialize_cssom(
         &self,
         namespaces: &CssNamespaceContext,
         context: CssStyleSelectorContext,
         limits: CssSerializationLimits,
     ) -> Result<String> {
-        let nested = match context {
-            CssStyleSelectorContext::Ordinary => false,
-            CssStyleSelectorContext::Nested => true,
-            CssStyleSelectorContext::Scoped(_) => return Err(invalid_context()),
+        let (nested, scoped) = match context {
+            CssStyleSelectorContext::Ordinary => (false, false),
+            CssStyleSelectorContext::Nested => (true, false),
+            CssStyleSelectorContext::Scoped(ancestor) => {
+                (ancestor == CssStyleAncestor::Present, true)
+            }
         };
         let mut writer = SpecifiedRuleWriter::new(limits);
         for member in self.selectors() {
-            let selector = match member {
-                CssStyleSelector::Selector(value) => value,
-                CssStyleSelector::Relative(value) => {
-                    if !nested {
-                        return Err(invalid_context());
-                    }
-                    value.selector()
-                }
-            };
-            writer.check_anchor_domain(selector, false)?;
+            if matches!(member, CssStyleSelector::Relative(_))
+                && matches!(context, CssStyleSelectorContext::Ordinary)
+            {
+                return Err(invalid_context());
+            }
+            writer.check_anchor_domain(member.selector(), scoped)?;
         }
         writer.cssom_style_selectors(self, nested, Some(namespaces))?;
-        Ok(writer.css)
-    }
-}
-impl CssScopedStyleSelectorList {
-    /// Formats scoped selectors while preserving their genuine scope anchors.
-    pub fn serialize_cssom(
-        &self,
-        namespaces: &CssNamespaceContext,
-        context: CssStyleSelectorContext,
-        limits: CssSerializationLimits,
-    ) -> Result<String> {
-        let CssStyleSelectorContext::Scoped(ancestor) = context else {
-            return Err(invalid_context());
-        };
-        let nested = ancestor == CssStyleAncestor::Present;
-        let mut writer = SpecifiedRuleWriter::new(limits);
-        for member in self.selectors() {
-            let selector = match member {
-                CssScopedStyleSelector::Selector(value) => value,
-                CssScopedStyleSelector::Relative(value) => value.selector(),
-            };
-            writer.check_anchor_domain(selector, true)?;
-        }
-        writer.cssom_scoped_style_selectors(self, nested, Some(namespaces))?;
         Ok(writer.css)
     }
 }
@@ -211,14 +185,8 @@ impl CssParsedStyleSelectors {
         namespaces: &CssNamespaceContext,
         limits: CssSerializationLimits,
     ) -> Result<String> {
-        match self.selectors() {
-            CssAdmittedStyleSelectors::Ordinary(list) => {
-                list.serialize_cssom(namespaces, self.context(), limits)
-            }
-            CssAdmittedStyleSelectors::Scoped(list) => {
-                list.serialize_cssom(namespaces, self.context(), limits)
-            }
-        }
+        self.selectors()
+            .serialize_cssom(namespaces, self.context(), limits)
     }
 }
 impl CssScopeSelectorList {
@@ -239,7 +207,7 @@ impl CssScopeSelectorList {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer.node()?;
         for member in self.selectors() {
-            if matches!(member, CssScopeSelector::Relative(_))
+            if matches!(member, CssStyleSelector::Relative(_))
                 && matches!(
                     context,
                     CssScopeSelectorCssomContext::Start(CssScopeNestingContext::None)
@@ -250,7 +218,7 @@ impl CssScopeSelectorList {
             writer.check_anchor_domain(member.selector(), scoped)?;
         }
         writer.selector_events_with_role(
-            Event::ScopeList(self.selectors(), 0, nested),
+            Event::StyleList(self.selectors(), 0, nested),
             OutputRole::LiteralStyle,
             Some(namespaces),
         )?;
@@ -486,14 +454,6 @@ impl SpecifiedRuleWriter {
         self.selector_events(Event::StyleList(list.selectors(), 0, false))
     }
 
-    pub(crate) fn scoped_style_selectors(
-        &mut self,
-        list: &CssScopedStyleSelectorList,
-    ) -> Result<()> {
-        self.node()?;
-        self.selector_events(Event::ScopedStyleList(list.selectors(), 0, false))
-    }
-
     pub(crate) fn cssom_style_selectors(
         &mut self,
         list: &CssStyleSelectorList,
@@ -508,23 +468,9 @@ impl SpecifiedRuleWriter {
         )
     }
 
-    pub(crate) fn cssom_scoped_style_selectors(
-        &mut self,
-        list: &CssScopedStyleSelectorList,
-        nested: bool,
-        namespaces: Option<&CssNamespaceContext>,
-    ) -> Result<()> {
-        self.node()?;
-        self.selector_events_with_role(
-            Event::ScopedStyleList(list.selectors(), 0, nested),
-            OutputRole::LiteralStyle,
-            namespaces,
-        )
-    }
-
     pub(crate) fn scope_selectors(&mut self, list: &CssScopeSelectorList) -> Result<()> {
         self.node()?;
-        self.selector_events(Event::ScopeList(list.selectors(), 0, false))
+        self.selector_events(Event::StyleList(list.selectors(), 0, false))
     }
 
     fn selector_events(&mut self, initial: Event<'_>) -> Result<()> {
@@ -797,48 +743,6 @@ impl SpecifiedRuleWriter {
                                     Event::LiteralMember(value, None, nested)
                                 }
                                 CssStyleSelector::Relative(value) => Event::LiteralMember(
-                                    value.selector(),
-                                    Some(value.combinator()),
-                                    nested,
-                                ),
-                            },
-                        )?;
-                    }
-                }
-                Event::ScopedStyleList(values, index, nested) => {
-                    if let Some(value) = values.get(index) {
-                        if index != 0 {
-                            self.append(", ")?;
-                        }
-                        push(&mut work, Event::ScopedStyleList(values, index + 1, nested))?;
-                        push(
-                            &mut work,
-                            match value {
-                                CssScopedStyleSelector::Selector(value) => {
-                                    Event::LiteralMember(value, None, nested)
-                                }
-                                CssScopedStyleSelector::Relative(value) => Event::LiteralMember(
-                                    value.selector(),
-                                    Some(value.combinator()),
-                                    nested,
-                                ),
-                            },
-                        )?;
-                    }
-                }
-                Event::ScopeList(values, index, nested) => {
-                    if let Some(value) = values.get(index) {
-                        if index != 0 {
-                            self.append(", ")?;
-                        }
-                        push(&mut work, Event::ScopeList(values, index + 1, nested))?;
-                        push(
-                            &mut work,
-                            match value {
-                                CssScopeSelector::Selector(value) => {
-                                    Event::LiteralMember(value, None, nested)
-                                }
-                                CssScopeSelector::Relative(value) => Event::LiteralMember(
                                     value.selector(),
                                     Some(value.combinator()),
                                     nested,

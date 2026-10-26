@@ -165,9 +165,9 @@ fn eligible_nested_bodies_retain_two_runs_full_parent_identity_and_child_restora
         assert_eq!(trailing.declarations().len(), 2);
         if let CssRule::Scope(scope) = group {
             let [
-                CssScopedRule::NestedDeclarations(first),
-                CssScopedRule::Style(child),
-                CssScopedRule::NestedDeclarations(last),
+                CssRule::NestedDeclarations(first),
+                CssRule::Style(child),
+                CssRule::NestedDeclarations(last),
             ] = scope.rules().rules()
             else {
                 panic!("scope runs surround its own scoped child");
@@ -368,10 +368,10 @@ fn mixed_groups_scope_anchors_and_local_style_rebinding_survive_complete_specifi
     else {
         panic!("both symbolic scope boundaries");
     };
-    let [CssScopeSelector::Selector(CssSelector::Complex(root))] = root.selectors() else {
+    let [CssStyleSelector::Selector(CssSelector::Complex(root))] = root.selectors() else {
         panic!("explicit root parent anchor");
     };
-    let [CssScopeSelector::Selector(CssSelector::Complex(limit))] = limit.selectors() else {
+    let [CssStyleSelector::Selector(CssSelector::Complex(limit))] = limit.selectors() else {
         panic!("explicit limit scope anchor");
     };
     assert_eq!(root.first().nesting_selectors(), 1);

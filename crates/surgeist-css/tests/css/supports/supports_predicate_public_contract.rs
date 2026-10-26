@@ -7,7 +7,7 @@ use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
-fn both(source: &str, inspect: impl Fn(&CssSupportsCondition)) {
+fn both(source: &str, inspect: impl Fn(&CssCondition<CssSupportsLeaf>)) {
     let condition = checked(source);
     inspect(&condition);
     assert_eq!(
@@ -86,14 +86,14 @@ fn every_font_technology_keyword_has_its_distinct_authored_payload() {
     ] {
         both(&format!("font-tech({name})"), |condition| {
             assert!(
-                matches!(condition.kind(), CssSupportsConditionKind::FontTech(value) if *value == expected)
+                matches!(condition.kind(), CssConditionKind::Leaf(CssSupportsLeaf::FontTech(value)) if *value == expected)
             );
         });
     }
     both(r"FoNt-\74 ech( /**/ VaRiAtIoNs /**/ )", |condition| {
         assert!(matches!(
             condition.kind(),
-            CssSupportsConditionKind::FontTech(CssFontTechHint::Variations)
+            CssConditionKind::Leaf(CssSupportsLeaf::FontTech(CssFontTechHint::Variations))
         ));
     });
 }
@@ -111,14 +111,16 @@ fn every_font_format_keyword_is_preserved_without_merging_synonymous_formats() {
     ] {
         both(&format!("font-format({name})"), |condition| {
             assert!(
-                matches!(condition.kind(), CssSupportsConditionKind::FontFormat(CssFontFormat::Keyword(value)) if *value == expected)
+                matches!(condition.kind(), CssConditionKind::Leaf(CssSupportsLeaf::FontFormat(CssFontFormat::Keyword(value))) if *value == expected)
             );
         });
     }
     both(r"FONT-\66 ormat( /**/ W\4f FF2 /**/ )", |condition| {
         assert!(matches!(
             condition.kind(),
-            CssSupportsConditionKind::FontFormat(CssFontFormat::Keyword(CssFontFormatHint::Woff2))
+            CssConditionKind::Leaf(CssSupportsLeaf::FontFormat(CssFontFormat::Keyword(
+                CssFontFormatHint::Woff2
+            )))
         ));
     });
 }
@@ -136,7 +138,7 @@ fn full_format_string_grammar_retains_decoded_strings_instead_of_keyword_truth()
         ("font-format('  WOFF2  ')", "  WOFF2  "),
     ] {
         both(source, |condition| {
-            let CssSupportsConditionKind::FontFormat(CssFontFormat::String(value)) =
+            let CssConditionKind::Leaf(CssSupportsLeaf::FontFormat(CssFontFormat::String(value))) =
                 condition.kind()
             else {
                 panic!("distinct authored String for {source}")
@@ -157,7 +159,7 @@ fn arbitrary_at_keywords_keep_original_tokens_decoded_names_and_function_delimit
     ] {
         let function = format!(r"aT-\72 ule( /**/ {argument} /**/ )");
         both(&function, |condition| {
-            let CssSupportsConditionKind::AtRule(value) = condition.kind() else {
+            let CssConditionKind::Leaf(CssSupportsLeaf::AtRule(value)) = condition.kind() else {
                 panic!("genuine AtKeyword predicate")
             };
             assert_eq!(value.name(), decoded);
@@ -229,7 +231,7 @@ fn programmatic_function_wrapper_keeps_the_independently_parsed_at_keyword_origi
         CssComponentValues::try_new(vec![argument.clone()], Default::default()).unwrap(),
     )
     .unwrap();
-    let condition = CssSupportsCondition::try_from_components(
+    let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
         CssComponentValues::try_new(vec![function], Default::default()).unwrap(),
         &CssNamespaceContext::default(),
         Default::default(),
@@ -237,7 +239,7 @@ fn programmatic_function_wrapper_keeps_the_independently_parsed_at_keyword_origi
     .unwrap();
     assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(condition.position(), None);
-    let CssSupportsConditionKind::AtRule(value) = condition.kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::AtRule(value)) = condition.kind() else {
         panic!("mixed-origin AtKeyword")
     };
     assert_eq!(value.component(), &argument);
@@ -259,8 +261,8 @@ fn programmatic_function_wrapper_keeps_the_independently_parsed_at_keyword_origi
 
 const COMPOSED: &str = r#"font-tech(variations) and (font-format("woff2") or at-rule(@charset)) and (--\46 eature) and selector(.probe) and (display:grid)"#;
 
-fn inspect_composed(condition: &CssSupportsCondition) {
-    let CssSupportsConditionKind::And(children) = condition.kind() else {
+fn inspect_composed(condition: &CssCondition<CssSupportsLeaf>) {
+    let CssConditionKind::And(children) = condition.kind() else {
         panic!("authored conjunction")
     };
     let [tech, grouped, named, selector, declaration] = children.conditions() else {
@@ -268,28 +270,31 @@ fn inspect_composed(condition: &CssSupportsCondition) {
     };
     assert!(matches!(
         tech.kind(),
-        CssSupportsConditionKind::FontTech(CssFontTechHint::Variations)
+        CssConditionKind::Leaf(CssSupportsLeaf::FontTech(CssFontTechHint::Variations))
     ));
-    let CssSupportsConditionKind::Or(alternatives) = grouped.kind() else {
+    let CssConditionKind::Parenthesized(group) = grouped.kind() else {
+        panic!("explicitly grouped alternatives")
+    };
+    let CssConditionKind::Or(alternatives) = group.kind() else {
         panic!("explicitly grouped alternatives")
     };
     let [format, rule] = alternatives.conditions() else {
         panic!("two alternatives")
     };
     assert!(
-        matches!(format.kind(), CssSupportsConditionKind::FontFormat(CssFontFormat::String(value)) if value.as_str() == "woff2")
+        matches!(format.kind(), CssConditionKind::Leaf(CssSupportsLeaf::FontFormat(CssFontFormat::String(value))) if value.as_str() == "woff2")
     );
     assert!(
-        matches!(rule.kind(), CssSupportsConditionKind::AtRule(value) if value.name() == "charset")
+        matches!(rule.kind(), CssConditionKind::Leaf(CssSupportsLeaf::AtRule(value)) if value.name() == "charset")
     );
     assert!(
-        matches!(named.kind(), CssSupportsConditionKind::Named(value) if value.as_str() == "--Feature")
+        matches!(named.kind(), CssConditionKind::Leaf(CssSupportsLeaf::Named(value)) if value.as_str() == "--Feature")
     );
     assert!(
-        matches!(selector.kind(), CssSupportsConditionKind::Selector(CssSelector::Class(value)) if value == "probe")
+        matches!(selector.kind(), CssConditionKind::Leaf(CssSupportsLeaf::Selector(CssSelector::Class(value))) if value == "probe")
     );
     assert!(
-        matches!(declaration.kind(), CssSupportsConditionKind::Declaration(value) if value.property() == "display")
+        matches!(declaration.kind(), CssConditionKind::Leaf(CssSupportsLeaf::Declaration(value)) if value.property() == "display")
     );
     assert_eq!(
         condition
@@ -307,18 +312,21 @@ fn predicates_compose_with_booleans_names_and_selectors_across_group_consumers()
     both(
         "not (font-tech(palettes) or at-rule(@unknown))",
         |condition| {
-            let CssSupportsConditionKind::Not(child) = condition.kind() else {
+            let CssConditionKind::Not(child) = condition.kind() else {
                 panic!("unary not")
             };
-            let CssSupportsConditionKind::Or(children) = child.kind() else {
+            let CssConditionKind::Parenthesized(group) = child.kind() else {
+                panic!("explicit group")
+            };
+            let CssConditionKind::Or(children) = group.kind() else {
                 panic!("grouped or")
             };
             assert!(matches!(
                 children.conditions()[0].kind(),
-                CssSupportsConditionKind::FontTech(CssFontTechHint::Palettes)
+                CssConditionKind::Leaf(CssSupportsLeaf::FontTech(CssFontTechHint::Palettes))
             ));
             assert!(
-                matches!(children.conditions()[1].kind(), CssSupportsConditionKind::AtRule(value) if value.name() == "unknown")
+                matches!(children.conditions()[1].kind(), CssConditionKind::Leaf(CssSupportsLeaf::AtRule(value)) if value.name() == "unknown")
             );
         },
     );
@@ -466,7 +474,7 @@ fn balanced_invalid_predicate_arguments_remain_opaque_but_invalid_outer_algebra_
             assert!(
                 matches!(
                     condition.kind(),
-                    CssSupportsConditionKind::GeneralEnclosed(_)
+                    CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
                 ),
                 "{source}"
             );
@@ -477,7 +485,7 @@ fn balanced_invalid_predicate_arguments_remain_opaque_but_invalid_outer_algebra_
         "not not at-rule(@media)",
         "font-tech(variations) and at-rule(@media) or font-format(woff2)",
     ] {
-        let error = CssSupportsCondition::try_from_components(
+        let error = CssCondition::<CssSupportsLeaf>::try_from_components(
             parse_component_values(source).unwrap(),
             &CssNamespaceContext::default(),
             Default::default(),
@@ -549,7 +557,7 @@ fn complete_predicate_graph_limits_are_cumulative_and_retries_preserve_origins()
     // Two functions and their arguments, two spaces and one operator: seven
     // components at depth one. Closing delimiters affect bytes, not node count.
     let exact = CssComponentValueLimits::try_new(1, 7, source.len()).unwrap();
-    let condition = CssSupportsCondition::try_from_components(
+    let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
         components.clone(),
         &CssNamespaceContext::default(),
         exact,
@@ -580,7 +588,7 @@ fn complete_predicate_graph_limits_are_cumulative_and_retries_preserve_origins()
             source.len() - 1,
         ),
     ] {
-        let error = CssSupportsCondition::try_from_components(
+        let error = CssCondition::<CssSupportsLeaf>::try_from_components(
             components.clone(),
             &CssNamespaceContext::default(),
             limits,
@@ -611,7 +619,7 @@ fn complete_predicate_graph_limits_are_cumulative_and_retries_preserve_origins()
         source
     );
     assert_eq!(
-        CssSupportsCondition::try_from_components(
+        CssCondition::<CssSupportsLeaf>::try_from_components(
             components,
             &CssNamespaceContext::default(),
             exact
@@ -629,7 +637,7 @@ fn recovered_predicate_delimiters_keep_parsed_import_payloads_but_fail_strict_re
         "at-rule(@media",
     ] {
         let components = parse_component_values(predicate).unwrap();
-        let error = CssSupportsCondition::try_from_components(
+        let error = CssCondition::<CssSupportsLeaf>::try_from_components(
             components,
             &CssNamespaceContext::default(),
             Default::default(),
@@ -658,16 +666,16 @@ fn recovered_predicate_delimiters_keep_parsed_import_payloads_but_fail_strict_re
         match predicate {
             "font-tech(variations" => assert!(matches!(
                 condition.kind(),
-                CssSupportsConditionKind::FontTech(CssFontTechHint::Variations)
+                CssConditionKind::Leaf(CssSupportsLeaf::FontTech(CssFontTechHint::Variations))
             )),
             "font-format(woff2" => assert!(matches!(
                 condition.kind(),
-                CssSupportsConditionKind::FontFormat(CssFontFormat::Keyword(
+                CssConditionKind::Leaf(CssSupportsLeaf::FontFormat(CssFontFormat::Keyword(
                     CssFontFormatHint::Woff2
-                ))
+                )))
             )),
             _ => assert!(
-                matches!(condition.kind(), CssSupportsConditionKind::AtRule(value) if value.name() == "media")
+                matches!(condition.kind(), CssConditionKind::Leaf(CssSupportsLeaf::AtRule(value)) if value.name() == "media")
             ),
         }
         let expected = format!("@import 'x' supports({predicate}));");
@@ -686,7 +694,7 @@ fn recovered_predicate_delimiters_keep_parsed_import_payloads_but_fail_strict_re
             CssComponentValues::try_new(condition.components().to_vec(), Default::default())
                 .unwrap();
         assert!(
-            CssSupportsCondition::try_from_components(
+            CssCondition::<CssSupportsLeaf>::try_from_components(
                 recovered,
                 &CssNamespaceContext::default(),
                 Default::default()

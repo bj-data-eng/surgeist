@@ -1210,7 +1210,7 @@
 //!
 //! # Authored when and else groups
 //!
-//! [`CssWhenCondition`] owns the adopted symbolic grammar: homogeneous boolean
+//! [`CssCondition<CssWhenLeaf>`] owns the adopted symbolic grammar: homogeneous boolean
 //! terms, explicit groups, single media-feature and supports-declaration leaves,
 //! and valid opaque enclosures. [`parse_when_condition`] returns checked syntax
 //! without evaluation. [`CssWhenRule`] and [`CssElseRule`] retain ordinary children;
@@ -1227,8 +1227,8 @@
 //!
 //! Media syntax preserves unknown conditions separately from malformed-member recovery.
 //! A structurally valid unknown feature or value is retained as
-//! [`CssMediaConditionKind::UnknownFeature`] with no diagnostic. Arbitrary checked enclosures
-//! use [`CssMediaConditionKind::GeneralEnclosed`] when no preceding grammar branch applies.
+//! [`CssMediaLeaf::UnknownFeature`] with no diagnostic. Arbitrary checked enclosures
+//! use [`CssMediaLeaf::GeneralEnclosed`] when no preceding grammar branch applies.
 //! Both preserve unknown truth under negation; query evaluation belongs downstream.
 //! A reserved or structurally
 //! malformed list member becomes [`CssMediaQuery::Never`] and emits
@@ -1236,7 +1236,7 @@
 //!
 //! ```
 //! use surgeist_css::{
-//!     CssMediaConditionKind, CssMediaQuery, CssRecoveryAction, CssRule, parse_sheet,
+//!     CssConditionKind, CssMediaLeaf, CssMediaQuery, CssRecoveryAction, CssRule, parse_sheet,
 //! };
 //!
 //! let report = parse_sheet("@media (future-mode: active), ???, print {}");
@@ -1249,7 +1249,10 @@
 //!         CssMediaQuery::Condition(condition),
 //!         CssMediaQuery::Never(_),
 //!         CssMediaQuery::Typed(_),
-//!     ] if matches!(condition.kind(), CssMediaConditionKind::UnknownFeature(_))
+//!     ] if matches!(
+//!         condition.kind(),
+//!         CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(_))
+//!     )
 //! ));
 //! assert!(matches!(
 //!     report.diagnostics(),
@@ -1270,7 +1273,7 @@
 //! general-enclosed fallback; lexical and resource failures remain terminal.
 //!
 //! ```
-//! use surgeist_css::{CssRule, CssSupportsConditionKind, parse_sheet};
+//! use surgeist_css::{CssConditionKind, CssRule, CssSupportsLeaf, parse_sheet};
 //!
 //! let report = parse_sheet(concat!(
 //!     "@supports selector(.card > .item:hover) {}",
@@ -1284,11 +1287,11 @@
 //! };
 //! assert!(matches!(
 //!     selector.condition().kind(),
-//!     CssSupportsConditionKind::Selector(_)
+//!     CssConditionKind::Leaf(CssSupportsLeaf::Selector(_))
 //! ));
 //! assert!(matches!(
 //!     fallback.condition().kind(),
-//!     CssSupportsConditionKind::GeneralEnclosed(value)
+//!     CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(value))
 //!         if value.authored() == Some("future-layout(mode)")
 //! ));
 //! ```
@@ -1300,7 +1303,7 @@
 //! evaluation, cascade, selector matching, and root/sibling lowering are downstream work.
 //!
 //! ```
-//! use surgeist_css::{CssImportLayer, CssRule, CssSupportsConditionKind, parse_sheet};
+//! use surgeist_css::{CssConditionKind, CssImportLayer, CssRule, CssSupportsLeaf, parse_sheet};
 //!
 //! let report = parse_sheet(concat!(
 //!     "@layer reset; ",
@@ -1313,7 +1316,7 @@
 //! assert!(matches!(import.layer(), Some(CssImportLayer::Named(_))));
 //! assert!(matches!(
 //!     import.supports().expect("supports clause").condition().kind(),
-//!     CssSupportsConditionKind::Declaration(_)
+//!     CssConditionKind::Leaf(CssSupportsLeaf::Declaration(_))
 //! ));
 //! assert!(import.media().is_some());
 //! ```
@@ -1741,6 +1744,9 @@ mod custom_media;
 pub use custom_media::*;
 mod named_supports;
 pub use named_supports::*;
+mod condition;
+pub(crate) use condition::SupportsAuthoredForm;
+pub use condition::{CssCondition, CssConditionKind, CssConditionLeaf, CssConditionList};
 mod container;
 mod container_features;
 mod container_properties;
@@ -1756,9 +1762,7 @@ mod supports;
 pub use supports::{CssSupportsAtRule, CssSupportsConstructionError};
 mod cssom_rule_serialization;
 mod edited_rule;
-pub use edited_rule::{
-    CssEditedGroupPreludeRef, CssEditedRuleView, CssRuleGraphInput, CssRuleSerializationLimits,
-};
+pub use edited_rule::{CssGroupPreludeRef, CssRuleGraphInput, CssRuleSerializationLimits};
 mod keyframe_matching;
 mod keyframe_serialization;
 pub use keyframe_matching::{
@@ -2056,11 +2060,10 @@ pub use normalization::{
     normalize_sheet_with_limits,
 };
 pub use parser::{
-    CssAdmittedRule, CssAdmittedStyleSelectors, CssNamespaceContext, CssParsedKeyframeRule,
-    CssParsedKeyframeSelectors, CssParsedStyleSelectors, CssRuleAdmissionContext, CssRuleSyntax,
-    CssRuleSyntaxKind, CssStyleSelectorContext, classify_rule_syntax,
-    classify_rule_syntax_with_limits, parse_color_profile_block,
-    parse_color_profile_descriptor_value, parse_counter_style_block,
+    CssNamespaceContext, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
+    CssParsedStyleSelectors, CssRuleAdmissionContext, CssRuleSyntax, CssRuleSyntaxKind,
+    CssStyleSelectorContext, classify_rule_syntax, classify_rule_syntax_with_limits,
+    parse_color_profile_block, parse_color_profile_descriptor_value, parse_counter_style_block,
     parse_counter_style_descriptor_value, parse_cssom_media_query, parse_declaration,
     parse_declaration_block_contents, parse_declaration_block_contents_with_limits,
     parse_declaration_list_text, parse_font_face_block, parse_font_face_declaration_block_contents,

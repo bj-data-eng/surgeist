@@ -17,8 +17,8 @@ use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
     CssCounterStyleDescriptorKind as Descriptor, CssCounterStyleRule, CssCounterStyleSpeakAs,
     CssCounterStyleSystem, CssCounterSymbol, CssErrorCode, CssNormalizedItem, CssRecoveryAction,
-    CssRule, CssRuleContextKindRef, CssScopedRule, CssSerializationLimits as Limits,
-    normalize_report, normalize_sheet, parse_sheet, validate_sheet,
+    CssRule, CssRuleContextKindRef, CssSerializationLimits as Limits, normalize_report,
+    normalize_sheet, parse_sheet, validate_sheet,
 };
 
 fn clean_rule(body: &str) -> CssCounterStyleRule {
@@ -409,8 +409,7 @@ fn normalized_conditional_and_scoped_rules_keep_their_image_payloads() {
     let [CssRule::CounterStyle(conditional)] = media.rules() else {
         panic!("conditional counter definition");
     };
-    let [CssScopedRule::CounterStyle(scoped), CssScopedRule::Style(_)] = scope.rules().rules()
-    else {
+    let [CssRule::CounterStyle(scoped), CssRule::Style(_)] = scope.rules().rules() else {
         panic!("scoped counter definition and sibling");
     };
     let normalized = normalize_sheet(report.syntax()).unwrap();

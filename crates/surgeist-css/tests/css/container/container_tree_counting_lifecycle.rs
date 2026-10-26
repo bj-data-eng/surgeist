@@ -11,7 +11,7 @@ fn container(sheet: &CssSheet) -> &CssContainerRule {
     rule
 }
 
-fn query(rule: &CssContainerRule, index: usize) -> &CssContainerCondition {
+fn query(rule: &CssContainerRule, index: usize) -> &CssCondition<CssContainerLeaf> {
     rule.prelude().entries()[index].query().unwrap()
 }
 
@@ -39,9 +39,10 @@ fn tree(expression: CssCalculationExpressionRef<'_>) -> CssCalculationTreeCounti
     value
 }
 
-fn ratio_numerator(condition: &CssContainerCondition) -> &CssCalculation<CssNumber> {
-    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::AspectRatio(range)) =
-        condition.kind()
+fn ratio_numerator(condition: &CssCondition<CssContainerLeaf>) -> &CssCalculation<CssNumber> {
+    let CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::AspectRatio(
+        range,
+    ))) = condition.kind()
     else {
         panic!("recognized aspect-ratio")
     };
@@ -121,7 +122,7 @@ fn container_reuse_and_normalization_keep_tree_relative_unit_and_pending_inputs(
     let before = report.clone();
     let rule = container(report.syntax());
     assert_eq!(rule.prelude().entries()[0].name().unwrap().as_str(), "Card");
-    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::Width(range)) =
+    let CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::Width(range))) =
         query(rule, 0).kind()
     else {
         panic!("typed width operand")
@@ -155,7 +156,7 @@ fn container_reuse_and_normalization_keep_tree_relative_unit_and_pending_inputs(
     let index = tree(ratio_numerator(query(rule, 1)).expression());
     assert_eq!(index.function(), CssTreeCountingFunction::SiblingIndex);
     assert_origin(index.origin(), source, "sibling-index(");
-    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::Height(range)) =
+    let CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::Height(range))) =
         query(rule, 2).kind()
     else {
         panic!("recognized pending height")
@@ -285,7 +286,7 @@ fn unsupported_tree_arguments_and_wrong_domains_keep_opaque_query_and_body_on_re
         let rule = container(report.syntax());
         assert!(matches!(
             query(rule, 0).kind(),
-            CssContainerConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
         ));
         let checked = CssContainerPrelude::try_from_components(
             CssComponentValues::try_new(rule.prelude().components().to_vec(), Default::default())
@@ -306,7 +307,7 @@ fn unsupported_tree_arguments_and_wrong_domains_keep_opaque_query_and_body_on_re
         assert!(emitted.is_clean(), "{:?}", emitted.diagnostics());
         assert!(matches!(
             query(container(emitted.syntax()), 0).kind(),
-            CssContainerConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
         ));
         assert_context(emitted.syntax(), container(emitted.syntax()).prelude());
         assert_eq!(

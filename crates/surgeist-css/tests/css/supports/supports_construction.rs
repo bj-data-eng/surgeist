@@ -8,9 +8,9 @@ use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
     CssBlockKind, CssCalculationExpressionRef, CssComponentValue, CssComponentValueLimits,
-    CssComponentValueRef, CssGlobalKeyword, CssImportance, CssKnownPropertyValueRef,
-    CssNamespaceConstraint, CssNamespaceContext, CssOpacityValue, CssRule, CssSelector,
-    CssSerializedOrigin, CssSupportsCondition, CssSupportsConditionKind, CssSupportsDeclaration,
+    CssComponentValueRef, CssCondition, CssConditionKind, CssGlobalKeyword, CssImportance,
+    CssKnownPropertyValueRef, CssNamespaceConstraint, CssNamespaceContext, CssOpacityValue,
+    CssRule, CssSelector, CssSerializedOrigin, CssSupportsDeclaration, CssSupportsLeaf,
     CssValueOrigin, CssValueTokenRef, parse_component_values, parse_sheet,
 };
 
@@ -72,7 +72,7 @@ fn programmatic_width_keeps_exact_spelling_and_has_no_source_coordinates() {
         "width:+001.5PX"
     );
     let wrapped = CssComponentValue::try_block(CssBlockKind::Parenthesis, original).unwrap();
-    let condition = CssSupportsCondition::try_from_components(
+    let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
         values(vec![wrapped]),
         &CssNamespaceContext::default(),
         Default::default(),
@@ -107,14 +107,14 @@ fn mixed_source_declaration_preserves_each_original_snapshot_inside_a_new_wrappe
     let numeric_origin = numeric.origin().clone();
     let original = values(vec![property, token(":"), numeric]);
     let wrapped = CssComponentValue::try_block(CssBlockKind::Parenthesis, original).unwrap();
-    let condition = CssSupportsCondition::try_from_components(
+    let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
         values(vec![wrapped]),
         &CssNamespaceContext::default(),
         Default::default(),
     )
     .unwrap();
     assert_eq!(condition.position(), None);
-    let CssSupportsConditionKind::Declaration(declaration) = condition.kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = condition.kind() else {
         panic!("declaration")
     };
     same_parsed_origin(declaration.property_component().origin(), &property_origin);
@@ -147,7 +147,8 @@ fn construction_from_parsed_components_does_not_claim_an_authored_declaration_sl
     let CssRule::Supports(rule) = &sheet.syntax().rules()[0] else {
         panic!("supports")
     };
-    let CssSupportsConditionKind::Declaration(parsed) = rule.condition().kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(parsed)) = rule.condition().kind()
+    else {
         panic!("declaration")
     };
     assert_eq!(parsed.authored(), Some(source));
@@ -232,7 +233,7 @@ fn supports_declaration_validity_is_independent_of_known_property_value_support(
         );
         assert!(matches!(
             condition(&format!("({source})")).kind(),
-            CssSupportsConditionKind::Declaration(_)
+            CssConditionKind::Leaf(CssSupportsLeaf::Declaration(_))
         ));
     }
     assert_eq!(
@@ -295,7 +296,7 @@ fn malformed_root_operators_are_rejected_while_general_enclosed_remains_opaque()
         "(width:1px) and (height:1px) or (color:red)",
     ] {
         assert!(
-            CssSupportsCondition::try_from_components(
+            CssCondition::<CssSupportsLeaf>::try_from_components(
                 parse_component_values(source).unwrap(),
                 &CssNamespaceContext::default(),
                 Default::default(),
@@ -309,20 +310,20 @@ fn malformed_root_operators_are_rejected_while_general_enclosed_remains_opaque()
         assert!(
             matches!(
                 condition(source).kind(),
-                CssSupportsConditionKind::GeneralEnclosed(_)
+                CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
             ),
             "{source}"
         );
     }
     let function =
         CssComponentValue::try_function("Future", values(vec![token("1"), token("e2")])).unwrap();
-    let condition = CssSupportsCondition::try_from_components(
+    let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
         values(vec![function.clone()]),
         &CssNamespaceContext::default(),
         Default::default(),
     )
     .unwrap();
-    let CssSupportsConditionKind::GeneralEnclosed(opaque) = condition.kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(opaque)) = condition.kind() else {
         panic!("opaque")
     };
     assert_eq!(opaque.component(), &function);
@@ -341,13 +342,14 @@ fn supplied_namespace_context_selects_the_typed_selector_without_resolving_its_c
     assert!(sheet.is_clean());
     let context = CssNamespaceContext::from_sheet(sheet.syntax());
     for (source, named) in [("selector(svg|a)", true), ("selector(a)", false)] {
-        let condition = CssSupportsCondition::try_from_components(
+        let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
             parse_component_values(source).unwrap(),
             &context,
             Default::default(),
         )
         .unwrap();
-        let CssSupportsConditionKind::Selector(CssSelector::Compound(selector)) = condition.kind()
+        let CssConditionKind::Leaf(CssSupportsLeaf::Selector(CssSelector::Compound(selector))) =
+            condition.kind()
         else {
             panic!("typed namespace selector")
         };
@@ -378,7 +380,7 @@ fn grouping_and_cloned_interior_children_serialize_independently_of_unrelated_si
         )
         .unwrap(),
     ]);
-    let standalone = CssSupportsCondition::try_from_components(
+    let standalone = CssCondition::<CssSupportsLeaf>::try_from_components(
         child.clone(),
         &CssNamespaceContext::default(),
         Default::default(),
@@ -391,13 +393,13 @@ fn grouping_and_cloned_interior_children_serialize_independently_of_unrelated_si
         token(" "),
         CssComponentValue::try_function("future", values(vec![])).unwrap(),
     ]);
-    let parent = CssSupportsCondition::try_from_components(
+    let parent = CssCondition::<CssSupportsLeaf>::try_from_components(
         values(siblings),
         &CssNamespaceContext::default(),
         Default::default(),
     )
     .unwrap();
-    let CssSupportsConditionKind::And(list) = parent.kind() else {
+    let CssConditionKind::And(list) = parent.kind() else {
         panic!("and")
     };
     let cloned = list.conditions()[0].clone();
@@ -429,7 +431,7 @@ fn grouping_and_cloned_interior_children_serialize_independently_of_unrelated_si
 fn recovery_and_explicit_resource_limits_report_the_original_component_origin() {
     let recovered = parse_component_values("Future(").unwrap();
     let original_origin = recovered.items()[0].origin().clone();
-    let error = CssSupportsCondition::try_from_components(
+    let error = CssCondition::<CssSupportsLeaf>::try_from_components(
         recovered,
         &CssNamespaceContext::default(),
         Default::default(),
@@ -475,7 +477,7 @@ fn recovery_and_explicit_resource_limits_report_the_original_component_origin() 
             ComponentFailure::ByteLimit,
         ),
     ] {
-        let error = CssSupportsCondition::try_from_components(
+        let error = CssCondition::<CssSupportsLeaf>::try_from_components(
             components.clone(),
             &CssNamespaceContext::default(),
             limits,
@@ -495,7 +497,7 @@ fn recovery_and_explicit_resource_limits_report_the_original_component_origin() 
     }
     let exact = CssComponentValueLimits::try_new(1, 1, 8).unwrap();
     assert_eq!(
-        CssSupportsCondition::try_from_components(
+        CssCondition::<CssSupportsLeaf>::try_from_components(
             components,
             &CssNamespaceContext::default(),
             exact
@@ -517,7 +519,7 @@ fn grammar_error_after_programmatic_tokens_identifies_the_original_parsed_offend
         .unwrap()
         .clone();
     let origin = offender.origin().clone();
-    let error = CssSupportsCondition::try_from_components(
+    let error = CssCondition::<CssSupportsLeaf>::try_from_components(
         values(vec![
             CssComponentValue::try_function("future", values(vec![])).unwrap(),
             token(" "),
@@ -630,7 +632,7 @@ fn parsed_eof_recovery_keeps_the_known_numeric_view_that_checked_construction_re
         panic!("retained import rule")
     };
     let condition = rule.supports().unwrap().condition();
-    let CssSupportsConditionKind::Declaration(declaration) = condition.kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = condition.kind() else {
         panic!("retained declaration")
     };
     let CssKnownPropertyValueRef::Width(width) =
@@ -680,7 +682,7 @@ fn parsed_eof_recovery_keeps_the_known_numeric_view_that_checked_construction_re
         "(width:calc(1px))"
     );
     assert!(
-        CssSupportsCondition::try_from_components(
+        CssCondition::<CssSupportsLeaf>::try_from_components(
             values(condition.components().to_vec()),
             &CssNamespaceContext::default(),
             Default::default(),
@@ -704,7 +706,8 @@ fn authored_legacy_property_alias_keeps_its_own_grammar_in_parsed_and_constructe
         let CssRule::Supports(rule) = &report.syntax().rules()[0] else {
             panic!("supports")
         };
-        let CssSupportsConditionKind::Declaration(parsed) = rule.condition().kind() else {
+        let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(parsed)) = rule.condition().kind()
+        else {
             panic!("declaration")
         };
         for declaration in [&constructed, parsed.as_ref()] {

@@ -2,8 +2,8 @@
 //! The adopted profile prefers present clauses only among complete derivations.
 //! Sources: pinned Cascade 5 #at-import/#layer-names and MQ5 #mq-syntax.
 use surgeist_css::{
-    CssErrorCode, CssImportLayer, CssImportRule, CssImportTarget, CssMediaConditionKind,
-    CssMediaQuery, CssMediaType, CssRecoveryAction, CssRule, CssSupportsConditionKind, parse_sheet,
+    CssConditionKind, CssErrorCode, CssImportLayer, CssImportRule, CssImportTarget, CssMediaLeaf,
+    CssMediaQuery, CssMediaType, CssRecoveryAction, CssRule, CssSupportsLeaf, parse_sheet,
     validate_sheet,
 };
 
@@ -27,7 +27,7 @@ fn opaque_media(import: &CssImportRule, authored: &str) {
     let [CssMediaQuery::Condition(condition)] = import.media().unwrap().queries() else {
         panic!("one condition-only media query");
     };
-    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = condition.kind() else {
         panic!("one general-enclosed media operand");
     };
     assert_eq!(enclosed.authored(), Some(authored));
@@ -40,7 +40,7 @@ fn named_layer(import: &CssImportRule, expected: &str) {
 }
 
 fn declaration_supports(import: &CssImportRule) {
-    let CssSupportsConditionKind::Declaration(declaration) =
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) =
         import.supports().unwrap().condition().kind()
     else {
         panic!("authored declaration test");
@@ -116,16 +116,19 @@ fn a_valid_prefix_clause_is_omitted_when_only_full_media_grammar_matches() {
         let [CssMediaQuery::Condition(condition)] = import.media().unwrap().queries() else {
             panic!("condition-only query");
         };
-        let CssMediaConditionKind::And(children) = condition.kind() else {
+        let CssConditionKind::And(children) = condition.kind() else {
             panic!("complete media conjunction");
         };
         let [opaque, color] = children.conditions() else {
             panic!("two operands");
         };
         assert!(
-            matches!(opaque.kind(), CssMediaConditionKind::GeneralEnclosed(value) if value.authored() == Some(prefix))
+            matches!(opaque.kind(), CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) if value.authored() == Some(prefix))
         );
-        assert!(matches!(color.kind(), CssMediaConditionKind::Feature(_)));
+        assert!(matches!(
+            color.kind(),
+            CssConditionKind::Leaf(CssMediaLeaf::Feature(_))
+        ));
     }
 }
 
@@ -158,7 +161,7 @@ fn clause_shaped_functions_are_valid_operands_inside_typed_media_queries() {
         };
         assert_eq!(query.media_type(), CssMediaType::Screen);
         assert!(
-            matches!(query.condition().unwrap().kind(), CssMediaConditionKind::GeneralEnclosed(value) if value.authored() == Some(operand))
+            matches!(query.condition().unwrap().kind(), CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) if value.authored() == Some(operand))
         );
     }
 }
@@ -286,19 +289,19 @@ fn eof_closures_do_not_prefer_a_grammatically_incomplete_prefix_interpretation()
     let [CssMediaQuery::Condition(condition)] = import.media().unwrap().queries() else {
         panic!("complete media condition, not recovery");
     };
-    let CssMediaConditionKind::And(operands) = condition.kind() else {
+    let CssConditionKind::And(operands) = condition.kind() else {
         panic!("complete media conjunction");
     };
     let [layer, color] = operands.conditions() else {
         panic!("both original operands");
     };
     assert!(
-        matches!(layer.kind(), CssMediaConditionKind::GeneralEnclosed(value) if value.authored() == Some("layer(theme)"))
+        matches!(layer.kind(), CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) if value.authored() == Some("layer(theme)"))
     );
     assert!(matches!(
         color.kind(),
-        CssMediaConditionKind::Feature(surgeist_css::CssMediaFeatureQuery::Boolean(
-            surgeist_css::CssMediaFeatureKind::Color
+        CssConditionKind::Leaf(CssMediaLeaf::Feature(
+            surgeist_css::CssMediaFeatureQuery::Boolean(surgeist_css::CssMediaFeatureKind::Color)
         ))
     ));
     let [statement, closure] = report.diagnostics() else {

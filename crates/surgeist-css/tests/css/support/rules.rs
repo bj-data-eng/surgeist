@@ -131,7 +131,7 @@ pub fn page_pseudo(page: &CssPageRule) -> Option<CssPagePseudo> {
 /// The selector of a scope boundary list with exactly one selector member.
 #[track_caller]
 pub fn sole_scope_selector(list: &CssScopeSelectorList) -> &CssSelector {
-    let [CssScopeSelector::Selector(selector)] = list.selectors() else {
+    let [CssStyleSelector::Selector(selector)] = list.selectors() else {
         panic!("one boundary selector: {list:?}")
     };
     selector

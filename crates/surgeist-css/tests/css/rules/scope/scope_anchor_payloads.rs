@@ -39,9 +39,9 @@ fn scope_context(normalized: &CssNormalizedSheet, offset: usize) -> &CssRuleCont
 
 fn check_three(list: &CssScopeSelectorList, nesting: bool) {
     let [
-        CssScopeSelector::Selector(zero),
-        CssScopeSelector::Selector(one),
-        CssScopeSelector::Selector(multiple),
+        CssStyleSelector::Selector(zero),
+        CssStyleSelector::Selector(one),
+        CssStyleSelector::Selector(multiple),
     ] = list.selectors()
     else {
         panic!("all three authored members retained")
@@ -70,7 +70,7 @@ fn root_limit_and_body_counts_survive_clone_and_normalization() {
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let inner = match &report.syntax().rules()[0] {
             CssRule::Scope(outer) if !prefix.is_empty() => {
-                let [CssScopedRule::Scope(inner)] = outer.rules().rules() else {
+                let [CssRule::Scope(inner)] = outer.rules().rules() else {
                     panic!("inner scope")
                 };
                 inner
@@ -87,7 +87,7 @@ fn root_limit_and_body_counts_survive_clone_and_normalization() {
         let nesting = prefix != "@scope(.outer){";
         check_three(inner.root().unwrap(), nesting);
         check_three(inner.limit().unwrap(), false);
-        let [CssScopedRule::Style(body)] = inner.rules().rules() else {
+        let [CssRule::Style(body)] = inner.rules().rules() else {
             panic!("scoped body style")
         };
         let body_members = body.selectors().selectors();
@@ -97,7 +97,7 @@ fn root_limit_and_body_counts_survive_clone_and_normalization() {
             (&body_members[1], 1, true),
             (&body_members[2], 3, true),
         ] {
-            let CssScopedStyleSelector::Selector(selector) = member else {
+            let CssStyleSelector::Selector(selector) = member else {
                 panic!("nonrelative body selector")
             };
             counts(selector, 0, expected, present);

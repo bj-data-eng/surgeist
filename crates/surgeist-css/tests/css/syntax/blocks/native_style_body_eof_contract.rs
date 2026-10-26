@@ -90,7 +90,7 @@ fn scoped_parent<'a>(report: &'a CssParseReport<CssSheet>, source: &str) -> &'a 
     let [CssRule::Scope(scope)] = parent.rules() else {
         panic!("retained scope, no media child")
     };
-    let [CssScopedRule::NestedDeclarations(run)] = scope.rules().rules() else {
+    let [CssRule::NestedDeclarations(run)] = scope.rules().rules() else {
         panic!("only the original scoped declaration run survives")
     };
     assert_declaration(
@@ -293,8 +293,8 @@ fn actual_media_semicolon_has_missing_body_contract_and_local_following_runs() {
                 panic!("retained scope")
             };
             let [
-                CssScopedRule::NestedDeclarations(before),
-                CssScopedRule::NestedDeclarations(after),
+                CssRule::NestedDeclarations(before),
+                CssRule::NestedDeclarations(after),
             ] = scope.rules().rules()
             else {
                 panic!("scope runs before and after dropped media")
@@ -384,8 +384,8 @@ fn legal_layer_statement_eof_is_retained_at_native_style_and_scoped_bounds() {
                 panic!("scope")
             };
             let [
-                CssScopedRule::NestedDeclarations(run),
-                CssScopedRule::LayerStatement(layer),
+                CssRule::NestedDeclarations(run),
+                CssRule::LayerStatement(layer),
             ] = scope.rules().rules()
             else {
                 panic!("scoped declaration run then admitted layer statement")
@@ -636,11 +636,7 @@ fn complete_media_blocks_are_clean_in_both_native_owning_contexts() {
     let [CssRule::Scope(scope)] = parent.rules() else {
         panic!("retained scope")
     };
-    let [
-        CssScopedRule::NestedDeclarations(before),
-        CssScopedRule::Media(media),
-    ] = scope.rules().rules()
-    else {
+    let [CssRule::NestedDeclarations(before), CssRule::Media(media)] = scope.rules().rules() else {
         panic!("direct scoped run and complete media")
     };
     assert_declaration(
@@ -652,7 +648,7 @@ fn complete_media_blocks_are_clean_in_both_native_owning_contexts() {
         26,
         29,
     );
-    let [CssScopedRule::NestedDeclarations(run)] = media.rules().rules() else {
+    let [CssRule::NestedDeclarations(run)] = media.rules() else {
         panic!("direct scoped media declaration run")
     };
     assert_declaration(
@@ -693,11 +689,11 @@ fn explicit_scope_root_with_style_ancestor_retains_direct_color_and_sheet_siblin
     assert!(scope.limit().is_none());
     assert_eq!(
         scope.root().unwrap().selectors(),
-        &[CssScopeSelector::Selector(CssSelector::Class(
+        &[CssStyleSelector::Selector(CssSelector::Class(
             "s".to_owned()
         ))]
     );
-    let [CssScopedRule::NestedDeclarations(run)] = scope.rules().rules() else {
+    let [CssRule::NestedDeclarations(run)] = scope.rules().rules() else {
         panic!("direct Color run, no dropped media node")
     };
     assert_declaration(

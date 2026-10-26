@@ -662,13 +662,14 @@ fn nested_and_scoped_selector_contexts_follow_real_ancestry_without_synthetic_so
             .unwrap(),
         "& > .changed"
     );
-    assert!(matches!(
-        after.rule(&scoped).unwrap().data(),
-        CssomRuleData::Style {
-            selectors: CssomSelectors::Scoped(_),
-            ..
-        }
-    ));
+    assert_eq!(
+        owner
+            .css_style_rule(&scoped)
+            .and_then(|handle| handle.capture(&after))
+            .and_then(|capture| capture.selector_text(CssSerializationLimits::default()))
+            .unwrap(),
+        ".scoped-changed"
+    );
     assert_eq!(
         after
             .rule(&scoped)
@@ -690,13 +691,21 @@ fn nested_and_scoped_selector_contexts_follow_real_ancestry_without_synthetic_so
             .unwrap()
     );
     owner.commit(edit).unwrap();
+    let after = owner.snapshot();
     assert!(matches!(
-        owner.snapshot().rule(&scoped).unwrap().data(),
-        CssomRuleData::Style {
-            selectors: CssomSelectors::Scoped(_),
-            ..
-        }
+        after.rule(&scoped).unwrap().data(),
+        CssomRuleData::Style { .. }
     ));
+    assert_eq!(
+        after
+            .rule(&scoped)
+            .unwrap()
+            .selector_input()
+            .unwrap()
+            .source()
+            .as_str(),
+        ".still-scoped"
+    );
 }
 #[test]
 fn page_selector_success_and_syntax_noop_preserve_current_descriptor_and_margin_identity() {

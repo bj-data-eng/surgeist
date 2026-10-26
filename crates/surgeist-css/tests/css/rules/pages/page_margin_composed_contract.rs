@@ -877,10 +877,10 @@ fn actual_group_page_values_compose_without_lifting_style_ancestor_placement() {
         panic!("Page in ordinary media")
     };
     assert_eq!(page.declarations().properties().len(), 2);
-    let [CssScopedRule::Media(media)] = scope.rules().rules() else {
+    let [CssRule::Media(media)] = scope.rules().rules() else {
         panic!("scoped ordinary media")
     };
-    let [CssScopedRule::Page(page)] = media.rules().rules() else {
+    let [CssRule::Page(page)] = media.rules() else {
         panic!("scoped ordinary Page")
     };
     assert_eq!(page.declarations().properties().len(), 1);
@@ -894,7 +894,7 @@ fn actual_group_page_values_compose_without_lifting_style_ancestor_placement() {
         ExpectedRejection::new(CssErrorCode::InvalidAtRulePlacement)
             .in_rule("page")
             .assert_first(&report);
-        let [CssScopedRule::Style(style)] = report.syntax().as_ref().unwrap().body().rules() else {
+        let [CssRule::Style(style)] = report.syntax().as_ref().unwrap().body().rules() else {
             panic!("following style survives excluded Page")
         };
         assert_eq!(

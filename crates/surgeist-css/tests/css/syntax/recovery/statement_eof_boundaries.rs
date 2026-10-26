@@ -3,7 +3,7 @@
 use crate::css::support::authored_syntax::assert_unclean_sheet as assert_nonclean_validation;
 use surgeist_css::{
     CssCustomMediaBody, CssErrorCode, CssImportTarget, CssNamespaceContext, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule, CssScopedRule, parse_rule, parse_sheet, validate_sheet,
+    CssRecoveryDiagnostic, CssRule, parse_rule, parse_sheet, validate_sheet,
 };
 
 fn assert_eof(diagnostic: &CssRecoveryDiagnostic, source: &str, start: usize, end: usize) {
@@ -60,15 +60,15 @@ fn assert_ordinary_statement(rule: &CssRule, kind: &str) {
     }
 }
 
-fn assert_scoped_statement(rule: &CssScopedRule, kind: &str) {
+fn assert_scoped_statement(rule: &CssRule, kind: &str) {
     match (rule, kind) {
-        (CssScopedRule::LayerStatement(layer), "layer") => {
+        (CssRule::LayerStatement(layer), "layer") => {
             let [name] = layer.names().names() else {
                 panic!("one scoped layer")
             };
             assert_eq!(name.components(), &["café".to_owned()]);
         }
-        (CssScopedRule::CustomMedia(custom), "custom-media") => {
+        (CssRule::CustomMedia(custom), "custom-media") => {
             assert_eq!(custom.name().as_str(), "--n");
             assert!(matches!(custom.body(), CssCustomMediaBody::True));
         }
@@ -221,7 +221,7 @@ fn inner_function_block_and_string_terminators_do_not_become_statement_eof() {
         };
         assert!(
             matches!(media.queries(), [surgeist_css::CssMediaQuery::Condition(condition)]
-            if matches!(condition.kind(), surgeist_css::CssMediaConditionKind::GeneralEnclosed(_)))
+            if matches!(condition.kind(), surgeist_css::CssConditionKind::Leaf(surgeist_css::CssMediaLeaf::GeneralEnclosed(_))))
         );
     }
     let [diagnostic] = eof.diagnostics() else {

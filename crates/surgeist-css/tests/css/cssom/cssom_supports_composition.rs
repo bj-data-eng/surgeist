@@ -5,16 +5,16 @@
 use crate::css::support::failure_classes::SerializationFailure as Resource;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::serialization_limits::LimitFailure;
+use crate::css::support::{graph_cssom, graph_specified};
 use std::error::Error;
 use surgeist_css::{
-    CssEditedGroupPreludeRef as Prelude, CssEditedRuleView as View, CssKeyframeRuleView,
-    CssKeyframesName, CssKeyframesRuleView, CssKeyframesString, CssKnownProperty as K,
-    CssMarginBox, CssMarginRuleView, CssNamespaceContext, CssPageRuleView, CssPropertyNameRef,
-    CssRule, CssRuleCssomFormat, CssSerializationError, CssSerializationLimits as Limits,
-    CssSpecifiedDeclarationBlock as Block, CssSpecifiedDeclarationEntry as Entry,
-    CssSpecifiedPageDeclarationBlock as PageBlock, CssSpecifiedPageDeclarationEntry as PageEntry,
-    CssValueOrigin, parse_keyframe_selector_list, parse_page_selector_list, parse_rule,
-    parse_sheet,
+    CssGroupPreludeRef as Prelude, CssKeyframeRuleView, CssKeyframesName, CssKeyframesString,
+    CssKnownProperty as K, CssMarginBox, CssMarginRuleView, CssNamespaceContext, CssPageRuleView,
+    CssPropertyNameRef, CssRule, CssRuleCssomFormat, CssRuleGraphInput as View,
+    CssSerializationError, CssSerializationLimits as Limits, CssSpecifiedDeclarationBlock as Block,
+    CssSpecifiedDeclarationEntry as Entry, CssSpecifiedPageDeclarationBlock as PageBlock,
+    CssSpecifiedPageDeclarationEntry as PageEntry, CssValueOrigin, parse_keyframe_selector_list,
+    parse_page_selector_list, parse_rule, parse_sheet,
 };
 
 fn property(block: &Block, name: K) -> &Entry {
@@ -102,19 +102,14 @@ fn omitted_empty_children_consume_work_and_preserve_the_next_child_failure_index
         panic!("rules");
     };
     let empty = Block::try_from_entries(&[], Default::default()).unwrap();
-    let empty_child = View::try_nested_declarations(&empty, Default::default()).unwrap();
+    let empty_child = View::nested_declarations(&empty);
     let children = [empty_child, View::from_rule(child), empty_child];
-    let group = View::try_group(
-        Prelude::Supports(supports.condition()),
-        &children,
-        Default::default(),
-    )
-    .unwrap();
+    let group = View::group(Prelude::Supports(supports.condition()), &children);
     let expected = "@supports (display:grid) {\n  .x { }\n}";
     // The parsed payload costs I11/P11. Each empty live view adds its real rule
     // and declaration aggregate: I2/P2, with no prefix or child output bytes.
     let exact = Limits::new(15, 15, expected.len());
-    assert_eq!(group.serialize_cssom(exact).unwrap(), expected);
+    assert_eq!(graph_cssom(group, exact).unwrap(), expected);
     for (limits, kind, path) in [
         (
             Limits::new(8, 15, expected.len()),
@@ -142,12 +137,12 @@ fn omitted_empty_children_consume_work_and_preserve_the_next_child_failure_index
             &[][..],
         ),
     ] {
-        let error = group.serialize_cssom(limits).unwrap_err();
+        let error = graph_cssom(group, limits).unwrap_err();
         assert_eq!(error.limit_kind(), Some(kind));
         assert_eq!(error.rule_path(), path);
-        assert_eq!(group.serialize_cssom(exact).unwrap(), expected);
-        assert_eq!(children[0].serialize_cssom(Default::default()).unwrap(), "");
-        assert_eq!(children[2].serialize_cssom(Default::default()).unwrap(), "");
+        assert_eq!(graph_cssom(group, exact).unwrap(), expected);
+        assert_eq!(graph_cssom(children[0], Default::default()).unwrap(), "");
+        assert_eq!(graph_cssom(children[2], Default::default()).unwrap(), "");
     }
 }
 
@@ -158,19 +153,12 @@ fn all_empty_children_have_exact_bytes_but_retain_their_own_work_tariffs() {
         panic!("Supports")
     };
     let empty = Block::try_from_entries(&[], Default::default()).unwrap();
-    let child = View::try_nested_declarations(&empty, Default::default()).unwrap();
+    let child = View::nested_declarations(&empty);
     let children = [child, child];
-    let group = View::try_group(
-        Prelude::Supports(supports.condition()),
-        &children,
-        Default::default(),
-    )
-    .unwrap();
+    let group = View::group(Prelude::Supports(supports.condition()), &children);
     let expected = "@supports (display:grid) {\n}";
     assert_eq!(
-        group
-            .serialize_cssom(Limits::new(10, 10, expected.len()))
-            .unwrap(),
+        graph_cssom(group, Limits::new(10, 10, expected.len())).unwrap(),
         expected
     );
     for (limits, kind) in [
@@ -182,10 +170,10 @@ fn all_empty_children_have_exact_bytes_but_retain_their_own_work_tariffs() {
         (Limits::new(10, 10, expected.len() - 1), Resource::ByteLimit),
     ] {
         assert_eq!(
-            group.serialize_cssom(limits).unwrap_err().limit_kind(),
+            graph_cssom(group, limits).unwrap_err().limit_kind(),
             Some(kind)
         );
-        assert_eq!(group.serialize_cssom(Default::default()).unwrap(), expected);
+        assert_eq!(graph_cssom(group, Default::default()).unwrap(), expected);
     }
 }
 
@@ -198,17 +186,12 @@ fn unavailable_descendants_keep_their_typed_cause_and_index_after_an_empty_child
     };
     let empty = Block::try_from_entries(&[], Default::default()).unwrap();
     let children = [
-        View::try_nested_declarations(&empty, Default::default()).unwrap(),
+        View::nested_declarations(&empty),
         View::from_rule(container),
     ];
-    let group = View::try_group(
-        Prelude::Supports(supports.condition()),
-        &children,
-        Default::default(),
-    )
-    .unwrap();
+    let group = View::group(Prelude::Supports(supports.condition()), &children);
     for _ in 0..2 {
-        let error = group.serialize_cssom(Default::default()).unwrap_err();
+        let error = graph_cssom(group, Default::default()).unwrap_err();
         assert_eq!(
             error.unavailable_format(),
             Some(CssRuleCssomFormat::Container)
@@ -217,10 +200,10 @@ fn unavailable_descendants_keep_their_typed_cause_and_index_after_an_empty_child
         assert!(error.source().is_none());
     }
     assert_eq!(
-        group.serialize_specified(Default::default()).unwrap(),
+        graph_specified(group, Default::default()).unwrap(),
         "@supports (display:grid) { @container (width>1px) { } }"
     );
-    assert_eq!(children[0].serialize_cssom(Default::default()).unwrap(), "");
+    assert_eq!(graph_cssom(children[0], Default::default()).unwrap(), "");
 }
 
 #[test]
@@ -306,15 +289,11 @@ fn supports_composes_current_page_margin_and_keyframe_edits_without_source_recon
     let margins = [CssMarginRuleView::try_new(CssMarginBox::TopCenter, &current_margin).unwrap()];
     let selectors = parse_page_selector_list(" /*edit*/ invoice:left ");
     assert!(selectors.is_clean());
-    let page_view = View::try_page(
-        CssPageRuleView::new(
-            selectors.syntax().as_ref().unwrap(),
-            &current_page,
-            &margins,
-        ),
-        Default::default(),
-    )
-    .unwrap();
+    let page_view = View::page(CssPageRuleView::new(
+        selectors.syntax().as_ref().unwrap(),
+        &current_page,
+        &margins,
+    ));
 
     let original_keyframe = Block::try_from_keyframe_declarations(
         keyframes.blocks()[0].declarations(),
@@ -333,38 +312,25 @@ fn supports_composes_current_page_margin_and_keyframe_edits_without_source_recon
     )
     .unwrap()];
     let name = CssKeyframesName::String(CssKeyframesString::new("current"));
-    let keyframes_view = View::try_keyframes(
-        CssKeyframesRuleView::try_new(&name, &blocks, Default::default()).unwrap(),
-        Default::default(),
-    )
-    .unwrap();
+    let keyframes_view = View::keyframes(&name, &blocks);
     let children = [keyframes_view, page_view, keyframes_view];
-    let group = View::try_group(
-        Prelude::Supports(supports.condition()),
-        &children,
-        Default::default(),
-    )
-    .unwrap();
+    let group = View::group(Prelude::Supports(supports.condition()), &children);
     let expected = "@supports (display:grid) {\n  @keyframes current {   50% { margin-right: 2px; }\n}\n  @page invoice:left { margin-right: 2px; size: a4; @top-center { margin-left: 6px; } }\n  @keyframes current {   50% { margin-right: 2px; }\n}\n}";
-    assert_eq!(group.serialize_cssom(Default::default()).unwrap(), expected);
+    assert_eq!(graph_cssom(group, Default::default()).unwrap(), expected);
     assert_eq!(
-        group
-            .serialize_cssom(Limits::new(10000, 100000, expected.len()))
-            .unwrap(),
+        graph_cssom(group, Limits::new(10000, 100000, expected.len())).unwrap(),
         expected
     );
     assert!(
-        group
-            .serialize_cssom(Limits::new(10000, 100000, expected.len() - 1))
+        graph_cssom(group, Limits::new(10000, 100000, expected.len() - 1))
             .unwrap_err()
             .is_resource_limit()
-            && group
-                .serialize_cssom(Limits::new(10000, 100000, expected.len() - 1))
+            && graph_cssom(group, Limits::new(10000, 100000, expected.len() - 1))
                 .unwrap_err()
                 .serialization_error()
                 .is_some_and(|error| error.is_byte_limit())
     );
-    assert_eq!(group.serialize_cssom(Default::default()).unwrap(), expected);
+    assert_eq!(graph_cssom(group, Default::default()).unwrap(), expected);
     assert!(
         page_property(&current_page, K::MarginRight)
             .source()

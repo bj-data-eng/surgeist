@@ -24,7 +24,7 @@ fn anchor(selector: &CssSelector, nesting: usize, scope: bool) {
 fn simple_bounds(scope: &CssScopeRule, root_nesting: usize, root_scope: bool) {
     anchor(single(scope.root().unwrap()), root_nesting, root_scope);
     anchor(single(scope.limit().unwrap()), 0, true);
-    let [CssScopedRule::Style(child)] = scope.rules().rules() else {
+    let [CssRule::Style(child)] = scope.rules().rules() else {
         panic!("one scoped child style")
     };
     assert_eq!(child.declarations().len(), 1);
@@ -138,10 +138,10 @@ fn ordinary_scope_ancestor_supplies_root_scope_but_not_limit_scope_identity() {
     let [CssRule::Scope(outer)] = report.syntax().rules() else {
         panic!("outer")
     };
-    let [CssScopedRule::Media(media)] = outer.rules().rules() else {
+    let [CssRule::Media(media)] = outer.rules().rules() else {
         panic!("media")
     };
-    let [CssScopedRule::Scope(inner)] = media.rules().rules() else {
+    let [CssRule::Scope(inner)] = media.rules() else {
         panic!("inner")
     };
     simple_bounds(inner, 0, true);
@@ -283,10 +283,10 @@ fn repeated_scoped_body_anchors_share_the_same_authored_scope_category() {
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("scope")
     };
-    let [CssScopedRule::Style(style)] = scope.rules().rules() else {
+    let [CssRule::Style(style)] = scope.rules().rules() else {
         panic!("style")
     };
-    let [CssScopedStyleSelector::Selector(selector)] = style.selectors().selectors() else {
+    let [CssStyleSelector::Selector(selector)] = style.selectors().selectors() else {
         panic!("selector")
     };
     anchor(selector, 0, true);
@@ -449,7 +449,7 @@ fn ordinary_limits_admit_all_relative_combinators_while_roots_reject_them() {
         let [CssRule::Scope(scope), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("scope and following neighbor")
         };
-        let [CssScopeSelector::Relative(relative)] = scope.limit().unwrap().selectors() else {
+        let [CssStyleSelector::Relative(relative)] = scope.limit().unwrap().selectors() else {
             panic!("retained leading combinator")
         };
         assert_eq!(relative.combinator(), expected);

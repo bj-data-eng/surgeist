@@ -83,8 +83,8 @@ pub fn component_list(items: Vec<CssComponentValue>) -> CssComponentValues {
 
 /// A container condition checked from the components of `source`.
 #[track_caller]
-pub fn checked_container_condition(source: &str) -> CssContainerCondition {
-    CssContainerCondition::try_from_components(
+pub fn checked_container_condition(source: &str) -> CssCondition<CssContainerLeaf> {
+    CssCondition::<CssContainerLeaf>::try_from_components(
         parse_component_values(source).unwrap(),
         Default::default(),
     )
@@ -94,8 +94,8 @@ pub fn checked_container_condition(source: &str) -> CssContainerCondition {
 /// A supports condition checked from the components of `source` with the
 /// default namespace context.
 #[track_caller]
-pub fn checked_supports_condition(source: &str) -> CssSupportsCondition {
-    CssSupportsCondition::try_from_components(
+pub fn checked_supports_condition(source: &str) -> CssCondition<CssSupportsLeaf> {
+    CssCondition::<CssSupportsLeaf>::try_from_components(
         parse_component_values(source).unwrap(),
         &CssNamespaceContext::default(),
         Default::default(),
@@ -127,8 +127,8 @@ pub fn checked_import_rule(source: &str) -> CssImportRule {
 
 /// The declaration of a declaration-kind supports condition.
 #[track_caller]
-pub fn supports_declaration(condition: &CssSupportsCondition) -> &CssSupportsDeclaration {
-    let CssSupportsConditionKind::Declaration(value) = condition.kind() else {
+pub fn supports_declaration(condition: &CssCondition<CssSupportsLeaf>) -> &CssSupportsDeclaration {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(value)) = condition.kind() else {
         panic!("declaration condition: {condition:?}")
     };
     value

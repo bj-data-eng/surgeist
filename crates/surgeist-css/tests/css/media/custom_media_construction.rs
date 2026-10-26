@@ -166,12 +166,13 @@ fn reference_inspection_agrees_across_parsed_and_mixed_origin_checked_admission(
         CssComponentValues::try_new(vec![name.clone()], Default::default()).unwrap(),
     )
     .unwrap();
-    let condition = CssMediaCondition::try_from_components(
+    let condition = CssCondition::<CssMediaLeaf>::try_from_components(
         CssComponentValues::try_new(vec![block.clone()], Default::default()).unwrap(),
         Default::default(),
     )
     .unwrap();
-    let CssMediaConditionKind::CustomMediaReference(reference) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::CustomMediaReference(reference)) = condition.kind()
+    else {
         panic!("symbolic reference")
     };
     assert_eq!(reference.name().as_str(), "--x");
@@ -187,7 +188,7 @@ fn reference_inspection_agrees_across_parsed_and_mixed_origin_checked_admission(
     };
     assert!(matches!(
         condition.kind(),
-        CssMediaConditionKind::CustomMediaReference(_)
+        CssConditionKind::Leaf(CssMediaLeaf::CustomMediaReference(_))
     ));
     // A dashed name is only a boolean custom-media reference, so as a
     // feature name that name first violates the condition, in either form.
@@ -196,12 +197,16 @@ fn reference_inspection_agrees_across_parsed_and_mixed_origin_checked_admission(
         ("not ((--x: 1))", Some(6)),
         ("(1 < --x)", Some(5)),
     ] {
-        let Err(error) =
-            CssMediaCondition::try_from_components(components(source), Default::default())
-        else {
+        let Err(error) = CssCondition::<CssMediaLeaf>::try_from_components(
+            components(source),
+            Default::default(),
+        ) else {
             panic!(
                 "{source}: {:?}",
-                CssMediaCondition::try_from_components(components(source), Default::default())
+                CssCondition::<CssMediaLeaf>::try_from_components(
+                    components(source),
+                    Default::default()
+                )
             )
         };
         assert!(error.is_invalid_condition_grammar(), "{source}: {error:?}");
@@ -546,7 +551,7 @@ fn atomic_metadata_distinguishes_definition_rules_from_boolean_references() {
         CssCustomMediaRule::try_from_components(components("--x (--other)"), Default::default())
             .unwrap();
     assert!(
-        matches!(rule.body(),CssCustomMediaBody::Media(list) if matches!(&list.queries()[0],CssMediaQuery::Condition(c) if matches!(c.kind(),CssMediaConditionKind::CustomMediaReference(_))))
+        matches!(rule.body(),CssCustomMediaBody::Media(list) if matches!(&list.queries()[0],CssMediaQuery::Condition(c) if matches!(c.kind(),CssConditionKind::Leaf(CssMediaLeaf::CustomMediaReference(_)))))
     );
     assert!(matches!(
         definition(rule.serialize_tokens(Default::default()).unwrap().as_css()).body(),

@@ -7,8 +7,7 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#escaping
 use crate::css::support::authored_syntax::assert_strict_rejection;
 use surgeist_css::{
-    CssContainerName, CssErrorCode, CssRecoveryAction, CssRule, CssScopedRule, parse_sheet,
-    validate_sheet,
+    CssContainerName, CssErrorCode, CssRecoveryAction, CssRule, parse_sheet, validate_sheet,
 };
 
 fn assert_accepted(prelude: &str) {
@@ -277,9 +276,9 @@ fn name_only_and_list_entries_survive_scoped_rule_parsing() {
             panic!("one scope: {source}: {report:?}");
         };
         let [
-            CssScopedRule::Style(before),
-            CssScopedRule::Container(container),
-            CssScopedRule::Style(after),
+            CssRule::Style(before),
+            CssRule::Container(container),
+            CssRule::Style(after),
         ] = scope.rules().rules()
         else {
             panic!("one scoped container between siblings: {source}: {report:?}");
@@ -292,7 +291,7 @@ fn name_only_and_list_entries_survive_scoped_rule_parsing() {
             after.position().byte_offset().value(),
             source.find(".after").unwrap()
         );
-        let [CssScopedRule::Style(child)] = container.rules().rules() else {
+        let [CssRule::Style(child)] = container.rules() else {
             panic!("one retained scoped child: {source}: {report:?}");
         };
         assert_eq!(
@@ -352,7 +351,7 @@ fn invalid_list_drops_only_its_scoped_container_rule() {
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("one surviving scope: {report:?}");
     };
-    let [CssScopedRule::Style(before), CssScopedRule::Style(after)] = scope.rules().rules() else {
+    let [CssRule::Style(before), CssRule::Style(after)] = scope.rules().rules() else {
         panic!("only the scoped siblings survive: {report:?}");
     };
     assert_eq!(

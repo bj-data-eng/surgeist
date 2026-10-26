@@ -234,13 +234,13 @@ fn hidden_lexical_roots_and_terminators_cannot_bypass_atomic_typed_admission() {
     let mut components = vec![first];
     components.extend(tokens("and"));
     components.push(parsed.items().last().unwrap().clone());
-    let parent = CssSupportsCondition::try_from_components(
+    let parent = CssCondition::<CssSupportsLeaf>::try_from_components(
         CssComponentValues::try_new(components, Default::default()).unwrap(),
         &CssNamespaceContext::default(),
         Default::default(),
     )
     .unwrap();
-    let CssSupportsConditionKind::And(list) = parent.kind() else {
+    let CssConditionKind::And(list) = parent.kind() else {
         panic!("and");
     };
     let supports = surgeist_css::CssSupportsRule::try_new(
@@ -259,12 +259,12 @@ fn hidden_lexical_roots_and_terminators_cannot_bypass_atomic_typed_admission() {
     let mut components = vec![first];
     components.extend(tokens("and"));
     components.push(parsed.items().last().unwrap().clone());
-    let parent = CssWhenCondition::try_from_components(
+    let parent = CssCondition::<CssWhenLeaf>::try_from_components(
         CssComponentValues::try_new(components, Default::default()).unwrap(),
         Default::default(),
     )
     .unwrap();
-    let CssWhenConditionKind::And(list) = parent.kind() else {
+    let CssConditionKind::And(list) = parent.kind() else {
         panic!("and");
     };
     let when = surgeist_css::CssWhenRule::try_new(

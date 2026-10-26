@@ -1,7 +1,7 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use surgeist_css::{
-    CssErrorCode, CssNamespaceConstraint, CssRecoveryAction, CssRule, CssScopedRule, CssSelector,
+    CssErrorCode, CssNamespaceConstraint, CssRecoveryAction, CssRule, CssSelector,
     CssSelectorCombinator, CssSourcePosition, CssStyleSelector, CssTokenKind, parse_sheet,
 };
 
@@ -532,12 +532,12 @@ fn structural_preflight_accepts_256_mixed_scope_and_style_blocks() {
     };
     let mut scope = scope;
     let mut scope_depth = 1;
-    while let [CssScopedRule::Scope(nested)] = scope.rules().rules() {
+    while let [CssRule::Scope(nested)] = scope.rules().rules() {
         scope = nested;
         scope_depth += 1;
     }
     assert_eq!(scope_depth, 255);
-    assert!(matches!(scope.rules().rules(), [CssScopedRule::Style(_)]));
+    assert!(matches!(scope.rules().rules(), [CssRule::Style(_)]));
 }
 
 #[test]
@@ -722,25 +722,25 @@ fn structural_preflight_orders_empty_scoped_styles_around_recovered_chunks() {
         };
         let mut scope = scope;
         for _ in 1..depth - 1 {
-            let [CssScopedRule::Scope(nested)] = scope.rules().rules() else {
+            let [CssRule::Scope(nested)] = scope.rules().rules() else {
                 panic!("expected nested scope chain at depth {depth}");
             };
             scope = nested;
         }
         let [
-            CssScopedRule::Style(before),
-            CssScopedRule::LayerBlock(recovered),
-            CssScopedRule::Style(after),
+            CssRule::Style(before),
+            CssRule::LayerBlock(recovered),
+            CssRule::Style(after),
         ] = scope.rules().rules()
         else {
             panic!("expected authored empty scoped rule order at depth {depth}: {scope:#?}");
         };
-        let [surgeist_css::CssScopedStyleSelector::Selector(before_selector)] =
+        let [surgeist_css::CssStyleSelector::Selector(before_selector)] =
             before.selectors().selectors()
         else {
             panic!("expected one ordinary scoped selector at depth {depth}");
         };
-        let [surgeist_css::CssScopedStyleSelector::Selector(after_selector)] =
+        let [surgeist_css::CssStyleSelector::Selector(after_selector)] =
             after.selectors().selectors()
         else {
             panic!("expected one ordinary scoped selector at depth {depth}");
@@ -752,7 +752,7 @@ fn structural_preflight_orders_empty_scoped_styles_around_recovered_chunks() {
                 .find(".before-empty")
                 .expect("before scoped style start"),
         );
-        assert!(recovered.rules().rules().is_empty());
+        assert!(recovered.rules().is_empty());
         assert_ascii_position(
             recovered.position().expect("parsed rule position"),
             source.find("@layer").expect("recovered scoped layer start"),

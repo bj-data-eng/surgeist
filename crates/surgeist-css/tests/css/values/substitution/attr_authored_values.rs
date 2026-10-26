@@ -99,33 +99,33 @@ fn strict_fallback_separators_apply_to_outer_stream_not_nested_functions() {
 
 #[test]
 fn attribute_functions_keep_property_and_query_contexts_separate() {
-    let valid_style = CssContainerCondition::try_from_components(
+    let valid_style = CssCondition::<CssContainerLeaf>::try_from_components(
         parse_component_values("style(--x:attr(foo))").unwrap(),
         Default::default(),
     )
     .unwrap();
     assert!(matches!(
         valid_style.kind(),
-        CssContainerConditionKind::Style(_)
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
     ));
-    let raw_style = CssContainerCondition::try_from_components(
+    let raw_style = CssCondition::<CssContainerLeaf>::try_from_components(
         parse_component_values("style(--x:attr())").unwrap(),
         Default::default(),
     )
     .unwrap();
     assert!(matches!(
         raw_style.kind(),
-        CssContainerConditionKind::Style(_)
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
     ));
 
-    let width = CssContainerCondition::try_from_components(
+    let width = CssCondition::<CssContainerLeaf>::try_from_components(
         parse_component_values("(width:attr(foo))").unwrap(),
         Default::default(),
     )
     .unwrap();
     assert!(matches!(
         width.kind(),
-        CssContainerConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
     ));
     let descriptor =
         parse_font_face_descriptor_value("attr(foo)", CssFontFaceDescriptorKind::FontStyle);

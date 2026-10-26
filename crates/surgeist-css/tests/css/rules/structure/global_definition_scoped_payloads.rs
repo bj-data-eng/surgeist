@@ -13,11 +13,11 @@ const DEFINITIONS: &str = concat!(
     "@keyframes audit{from{opacity:0}to{opacity:1}}"
 );
 
-fn assert_leaves(rules: &[CssScopedRule]) {
+fn assert_leaves(rules: &[CssRule]) {
     let [
-        CssScopedRule::CounterStyle(counter),
-        CssScopedRule::FontFace(font),
-        CssScopedRule::Keyframes(keyframes),
+        CssRule::CounterStyle(counter),
+        CssRule::FontFace(font),
+        CssRule::Keyframes(keyframes),
     ] = rules
     else {
         panic!("three typed global definitions: {rules:?}")
@@ -61,9 +61,9 @@ fn scoped_variants_reuse_owned_payloads_and_preserve_detached_values() {
     let ordinary = leaves
         .iter()
         .map(|leaf| match leaf {
-            CssScopedRule::CounterStyle(value) => CssRule::CounterStyle(value.clone()),
-            CssScopedRule::FontFace(value) => CssRule::FontFace(value.clone()),
-            CssScopedRule::Keyframes(value) => CssRule::Keyframes(value.clone()),
+            CssRule::CounterStyle(value) => CssRule::CounterStyle(value.clone()),
+            CssRule::FontFace(value) => CssRule::FontFace(value.clone()),
+            CssRule::Keyframes(value) => CssRule::Keyframes(value.clone()),
             _ => panic!("global leaf"),
         })
         .collect::<Vec<_>>();
@@ -71,11 +71,11 @@ fn scoped_variants_reuse_owned_payloads_and_preserve_detached_values() {
     assert_leaves(&leaves);
     for (leaf, value) in leaves.iter().zip(ordinary) {
         match (leaf, value) {
-            (CssScopedRule::CounterStyle(left), CssRule::CounterStyle(right)) => {
+            (CssRule::CounterStyle(left), CssRule::CounterStyle(right)) => {
                 assert_eq!(*left, right)
             }
-            (CssScopedRule::FontFace(left), CssRule::FontFace(right)) => assert_eq!(*left, right),
-            (CssScopedRule::Keyframes(left), CssRule::Keyframes(right)) => assert_eq!(*left, right),
+            (CssRule::FontFace(left), CssRule::FontFace(right)) => assert_eq!(*left, right),
+            (CssRule::Keyframes(left), CssRule::Keyframes(right)) => assert_eq!(*left, right),
             _ => panic!("same payload identity"),
         }
     }
@@ -202,17 +202,12 @@ fn definitions_do_not_modify_namespace_resolution_of_scoped_selectors() {
     let [CssRule::Namespace(_), CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("namespace and scope")
     };
-    let [
-        CssScopedRule::Style(before),
-        leaves @ ..,
-        CssScopedRule::Style(after),
-    ] = scope.rules().rules()
-    else {
+    let [CssRule::Style(before), leaves @ .., CssRule::Style(after)] = scope.rules().rules() else {
         panic!("neighboring styles")
     };
     assert_leaves(leaves);
     for (style, local_name) in [(before, "before"), (after, "after")] {
-        let [CssScopedStyleSelector::Selector(CssSelector::Compound(selector))] =
+        let [CssStyleSelector::Selector(CssSelector::Compound(selector))] =
             style.selectors().selectors()
         else {
             panic!("namespace-qualified selector")

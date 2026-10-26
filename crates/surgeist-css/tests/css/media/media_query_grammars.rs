@@ -1,8 +1,8 @@
 use surgeist_css::{
-    CssDefinedFalseMediaReason, CssErrorCode, CssGridMode, CssMediaConditionKind,
-    CssMediaFeatureKind, CssMediaFeatureQuery, CssMediaGridRef, CssMediaQuery,
-    CssMediaQueryModifier, CssMediaRangeRef, CssMediaResolutionRef, CssMediaType,
-    CssQueryComparison, CssRatio, CssRecoveryAction, CssRule, CssScanMode, parse_sheet,
+    CssConditionKind, CssDefinedFalseMediaReason, CssErrorCode, CssGridMode, CssMediaFeatureKind,
+    CssMediaFeatureQuery, CssMediaGridRef, CssMediaLeaf, CssMediaQuery, CssMediaQueryModifier,
+    CssMediaRangeRef, CssMediaResolutionRef, CssMediaType, CssQueryComparison, CssRatio,
+    CssRecoveryAction, CssRule, CssScanMode, parse_sheet,
 };
 
 fn parsed_feature(query: &str) -> CssMediaFeatureQuery {
@@ -15,7 +15,7 @@ fn parsed_feature(query: &str) -> CssMediaFeatureQuery {
     let [CssMediaQuery::Condition(condition)] = rule.query().queries() else {
         panic!("{query}: expected one condition-only query")
     };
-    let CssMediaConditionKind::Feature(feature) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(feature)) = condition.kind() else {
         panic!("{query}: expected one media feature")
     };
     feature.clone()
@@ -99,9 +99,9 @@ fn balanced_opaque_media_syntax_is_not_malformed_recovery() {
     };
     assert!(matches!(
         condition.kind(),
-        CssMediaConditionKind::Feature(CssMediaFeatureQuery::Scripting(
+        CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Scripting(
             surgeist_css::CssMediaScripting::Enabled
-        ))
+        )))
     ));
 }
 
@@ -465,14 +465,14 @@ fn balanced_nonmatching_feature_bodies_preserve_unknown_or_general_enclosed_synt
             panic!("three intact ordered members")
         };
         match condition.kind() {
-            CssMediaConditionKind::UnknownFeature(value) if unknown => {
+            CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(value)) if unknown => {
                 assert_eq!(
                     value.reason(),
                     surgeist_css::CssUnknownMediaFeatureReason::UnknownName
                 );
                 assert_eq!(value.authored(), Some(css));
             }
-            CssMediaConditionKind::GeneralEnclosed(value) if !unknown => {
+            CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) if !unknown => {
                 assert_eq!(value.authored(), Some(css));
             }
             _ => panic!("unexpected grammar classification for {css}"),
@@ -518,7 +518,7 @@ fn unknown_features_retain_names_values_and_failure_classification() {
         else {
             panic!("three ordered members")
         };
-        let CssMediaConditionKind::UnknownFeature(value) = condition.kind() else {
+        let CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(value)) = condition.kind() else {
             panic!("unknown feature {css}")
         };
         assert_eq!(value.authored(), Some(css));
@@ -535,7 +535,7 @@ fn unknown_features_retain_names_values_and_failure_classification() {
     let [CssMediaQuery::Condition(condition)] = rule.query().queries() else {
         panic!("condition query")
     };
-    let CssMediaConditionKind::GeneralEnclosed(value) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) = condition.kind() else {
         panic!("no generic math value derivation")
     };
     assert_eq!(value.authored(), Some("(future-feature: calc(1foo + 2px))"));
@@ -610,7 +610,7 @@ fn general_enclosed_balanced_nesting_obeys_the_255_256_257_boundary() {
         assert!(matches!(
             rule.query().queries(),
             [CssMediaQuery::Condition(condition)]
-                if matches!(condition.kind(), CssMediaConditionKind::GeneralEnclosed(_))
+                if matches!(condition.kind(), CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_)))
         ));
     }
 
@@ -633,7 +633,7 @@ fn unknown_feature_condition_survives_rule_eof_implicit_closure() {
     assert!(matches!(
         rule.query().queries(),
         [CssMediaQuery::Condition(condition)]
-            if matches!(condition.kind(), CssMediaConditionKind::UnknownFeature(_))
+            if matches!(condition.kind(), CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(_)))
     ));
     let [diagnostic] = report.diagnostics() else {
         panic!("expected only the rule-block EOF closure diagnostic")

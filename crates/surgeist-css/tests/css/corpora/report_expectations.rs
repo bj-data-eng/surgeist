@@ -1392,8 +1392,8 @@ fn general_enclosed_style_and_scroll_state_container_queries_are_retained() {
 
 fn container_query(observed: &Observed<'_>) {
     use surgeist_css::{
-        CssContainerConditionKind, CssContainerScrollFeature, CssContainerScrollQueryKind,
-        CssContainerStuckKeyword, CssContainerStuckValueRef,
+        CssConditionKind, CssContainerLeaf, CssContainerScrollFeature, CssContainerStuckKeyword,
+        CssContainerStuckValueRef, CssScrollStateLeaf,
     };
     named_colors(observed);
     let input = observed.input;
@@ -1403,13 +1403,17 @@ fn container_query(observed: &Observed<'_>) {
     };
     let value = container.prelude().entries()[0].query().unwrap();
     match query.as_str() {
-        "style(color: red)" => assert!(matches!(value.kind(), CssContainerConditionKind::Style(_))),
+        "style(color: red)" => assert!(matches!(
+            value.kind(),
+            CssConditionKind::Leaf(CssContainerLeaf::Style(_))
+        )),
         "scroll-state(stuck: top)" => {
-            let CssContainerConditionKind::ScrollState(scroll) = value.kind() else {
+            let CssConditionKind::Leaf(CssContainerLeaf::ScrollState(scroll)) = value.kind() else {
                 panic!("scroll-state")
             };
-            let CssContainerScrollQueryKind::Feature(CssContainerScrollFeature::Stuck(operand)) =
-                scroll.kind()
+            let CssConditionKind::Leaf(CssScrollStateLeaf::Feature(
+                CssContainerScrollFeature::Stuck(operand),
+            )) = scroll.kind()
             else {
                 panic!("stuck feature")
             };
@@ -1427,7 +1431,7 @@ fn container_query(observed: &Observed<'_>) {
         }
         _ => assert!(matches!(
             value.kind(),
-            CssContainerConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
         )),
     }
     assert_eq!(

@@ -1,6 +1,6 @@
 use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssRule, CssSerializedOrigin,
-    CssSupportsConditionKind, CssValueOrigin, parse_component_values, parse_sheet,
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssConditionKind, CssRule,
+    CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin, parse_component_values, parse_sheet,
 };
 
 // Authored syntax preserves the complete opaque enclosure, including escapes,
@@ -15,7 +15,9 @@ fn supports_opaque_enclosures_preserve_spelling_and_original_positions() {
         let [CssRule::Supports(rule)] = report.syntax().rules() else {
             panic!("expected one supports rule");
         };
-        let CssSupportsConditionKind::GeneralEnclosed(value) = rule.condition().kind() else {
+        let CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(value)) =
+            rule.condition().kind()
+        else {
             panic!("expected an opaque enclosure");
         };
         assert_eq!(value.authored(), Some(enclosure));
@@ -258,7 +260,7 @@ fn supports_fallback_collects_only_its_own_enclosure_and_shares_the_sheet_snapsh
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("expected supports");
     };
-    let CssSupportsConditionKind::And(list) = rule.condition().kind() else {
+    let CssConditionKind::And(list) = rule.condition().kind() else {
         panic!("expected three operands");
     };
     assert_eq!(list.conditions().len(), 3);
@@ -268,7 +270,8 @@ fn supports_fallback_collects_only_its_own_enclosure_and_shares_the_sheet_snapsh
             .iter()
             .zip(["future(1)", "(2px)", "selector(undeclared|x)"])
     {
-        let CssSupportsConditionKind::GeneralEnclosed(value) = condition.kind() else {
+        let CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(value)) = condition.kind()
+        else {
             panic!("expected an opaque operand");
         };
         assert_eq!(value.authored(), Some(expected));

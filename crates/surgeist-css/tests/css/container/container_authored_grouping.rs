@@ -5,11 +5,12 @@
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule
 use crate::css::support::authored_syntax::{component_list as components, component_token};
 use surgeist_css::{
-    CssBlockKind, CssComponentValue, CssComponentValueRef, CssContainerCondition, CssErrorCode,
-    CssGeneralEnclosed, CssRecoveryAction, CssRule, CssValueOrigin, parse_sheet, validate_sheet,
+    CssBlockKind, CssComponentValue, CssComponentValueRef, CssCondition, CssContainerLeaf,
+    CssErrorCode, CssGeneralEnclosed, CssRecoveryAction, CssRule, CssValueOrigin, parse_sheet,
+    validate_sheet,
 };
 
-fn parsed_condition(query: &str) -> CssContainerCondition {
+fn parsed_condition(query: &str) -> CssCondition<CssContainerLeaf> {
     let source = format!("@container {query} {{}}");
     let report = parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {report:?}");
@@ -47,12 +48,12 @@ fn assert_programmatic(component: &CssComponentValue) {
     }
 }
 
-fn checked(component: CssComponentValue) -> CssContainerCondition {
+fn checked(component: CssComponentValue) -> CssCondition<CssContainerLeaf> {
     // No parsed-source components are supplied. Every opener, token and
     // synthesized delimiter has the same Programmatic provenance, so different
     // source snapshots or offsets cannot supply the required distinction.
     assert_programmatic(&component);
-    CssContainerCondition::try_from_enclosed(
+    CssCondition::<CssContainerLeaf>::try_from_enclosed(
         CssGeneralEnclosed::try_from_component(component).unwrap(),
     )
     .unwrap()

@@ -1,8 +1,9 @@
 //! Selected Syntax 3 (2026-10-01) §§5, 5.4.6, 5.5.1–5.5.3.
 //! Existing string fronts only; supplied token/component consumers are separate.
 use surgeist_css::{
-    CssErrorCode, CssImportTarget, CssImportance, CssNamespaceContext, CssRecoveryAction, CssRule,
-    CssSelector, CssSupportsConditionKind, CssTokenKind, parse_rule, parse_sheet,
+    CssConditionKind, CssErrorCode, CssImportTarget, CssImportance, CssNamespaceContext,
+    CssRecoveryAction, CssRule, CssSelector, CssSupportsLeaf, CssTokenKind, parse_rule,
+    parse_sheet,
 };
 
 fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
@@ -136,7 +137,7 @@ fn delimiters_inside_prelude_components_do_not_end_the_outer_at_rule() {
     );
     assert!(matches!(
         supports.condition().kind(),
-        CssSupportsConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
     ));
     assert_eq!(
         supports

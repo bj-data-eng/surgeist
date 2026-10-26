@@ -650,7 +650,7 @@ fn supports_lexical_snapshot_keeps_function_opener_closer_and_identifier_spans_s
         panic!("one actual Supports rule")
     };
     let condition = rule.condition();
-    let CssSupportsConditionKind::Selector(semantic) = condition.kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Selector(semantic)) = condition.kind() else {
         panic!("typed selector probe")
     };
     assert_eq!(
@@ -684,7 +684,7 @@ fn supports_lexical_snapshot_keeps_function_opener_closer_and_identifier_spans_s
         (47, 49),
     );
     parsed_range(inner.1.closing_origin(), source, (52, 53), (49, 50));
-    let reused = CssSupportsCondition::try_from_components(
+    let reused = CssCondition::<CssSupportsLeaf>::try_from_components(
         CssComponentValues::try_new(condition.components().to_vec(), Default::default()).unwrap(),
         &CssNamespaceContext::default(),
         Default::default(),

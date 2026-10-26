@@ -53,8 +53,8 @@ mod font_variant;
 mod fragments;
 mod style_selector_fragments;
 pub use style_selector_fragments::{
-    CssAdmittedStyleSelectors, CssParsedStyleSelectors, CssStyleSelectorContext,
-    parse_style_selector_list, parse_style_selector_list_with_limits,
+    CssParsedStyleSelectors, CssStyleSelectorContext, parse_style_selector_list,
+    parse_style_selector_list_with_limits,
 };
 mod import;
 use import::{CssImportPrelude, parse_import_prelude};
@@ -62,7 +62,6 @@ pub(crate) use import::{construct_import, import_boundaries_match};
 mod reconstruction;
 use reconstruction::{
     BoundedParseContext, BoundedParseSyntax, parse_bounded, parse_sheet_bounded, rule_start,
-    scoped_rule_into_chunk_rule, scoped_rule_start,
 };
 #[cfg(test)]
 mod native_batch_boundary_tests;
@@ -76,8 +75,8 @@ mod rule_list;
 pub(crate) use page_margin_rule::parse_with_context as parse_page_margin_rule_with_context;
 pub use page_margin_rule::{parse_page_margin_rule, parse_page_margin_rule_with_limits};
 use rule_list::{
-    AtRulePrelude, GroupSink, RuleListContext, RuleListGrammar, RuleListItem, RuleListUnits,
-    RuleParser, ScopedSink, SheetSink, UnitState, parse_at_rule_prelude, recover_rule_list,
+    AtRulePrelude, GroupSink, RuleListItem, RuleListUnits, RuleParser, ScopedSink, SheetSink,
+    recover_rule_list,
 };
 #[cfg(test)]
 mod style_scope_media_separator_tests;
@@ -86,8 +85,8 @@ pub use declaration_list::parse_declaration_list_text;
 pub(crate) use declaration_list::parse_declaration_list_text_with_context;
 pub(crate) use page::{first_page_component, is_page_margin_property, page_declaration_violation};
 pub use rule_candidate::{
-    CssAdmittedRule, CssRuleAdmissionContext, CssRuleSyntax, CssRuleSyntaxKind,
-    classify_rule_syntax, classify_rule_syntax_with_limits,
+    CssRuleAdmissionContext, CssRuleSyntax, CssRuleSyntaxKind, classify_rule_syntax,
+    classify_rule_syntax_with_limits,
 };
 mod gap;
 pub(crate) mod image_1d;
@@ -170,7 +169,7 @@ mod sizing_controls;
 mod speech;
 mod supports;
 mod when;
-use crate::{CssScopedElseRule, CssScopedWhenRule, CssWhenCondition};
+use crate::{CssCondition, CssWhenLeaf};
 pub(crate) use queries::construct_when_media_feature;
 pub(crate) use when::construct_when_condition;
 mod text_alignment;
@@ -829,17 +828,7 @@ fn parse_scoped_context_inner(
     body: ScopedBodyKind,
 ) -> crate::CssParseReport<CssSheet> {
     parse_context_inner(source, recovery, |source, input, recovery| {
-        let recovered = parse_scoped_rule_list(source, input, recovery, has_style_ancestor, body)?;
-        Ok(Recovered {
-            syntax: recovered
-                .syntax
-                .rules()
-                .iter()
-                .cloned()
-                .map(scoped_rule_into_chunk_rule)
-                .collect(),
-            diagnostics: recovered.diagnostics,
-        })
+        parse_scoped_rule_list(source, input, recovery, has_style_ancestor, body)
     })
 }
 
@@ -1212,11 +1201,11 @@ fn parse_scoped_rule_list<'i, 't>(
     recovery: RecoveryState,
     has_style_ancestor: bool,
     body: ScopedBodyKind,
-) -> std::result::Result<Recovered<CssScopedRuleList>, ParseError<'i, CssError>> {
+) -> std::result::Result<Recovered<Vec<CssRule>>, ParseError<'i, CssError>> {
     if has_style_ancestor {
         recovery.record_style_context(input.position().byte_index());
     }
-    let mut grammar = ScopedRuleParser::new(source, recovery.clone(), has_style_ancestor, body);
+    let mut grammar = RuleParser::scoped(source, recovery.clone(), has_style_ancestor, body);
     // Without a style ancestor neither body admits declarations, so its rule
     // grammar selects consume a block's contents units; with one, the native
     // body parser tries each declaration before a nested rule.
@@ -1428,310 +1417,6 @@ fn parse_keyframes_prelude<'i, 't>(
         ));
     }
     Ok(name)
-}
-
-enum ScopedBlockItem {
-    Declaration(Box<CssDeclaration>),
-    Rules(Vec<CssScopedRule>),
-}
-
-struct ScopedRuleParser<'s> {
-    has_style_ancestor: bool,
-    body: ScopedBodyKind,
-    source: &'s str,
-    diagnostics: Vec<crate::CssRecoveryDiagnostic>,
-    recovery: RecoveryState,
-    unit: UnitState<'s>,
-}
-
-impl<'s> ScopedRuleParser<'s> {
-    fn new(
-        source: &'s str,
-        recovery: RecoveryState,
-        has_style_ancestor: bool,
-        body: ScopedBodyKind,
-    ) -> Self {
-        Self {
-            has_style_ancestor,
-            body,
-            source,
-            diagnostics: Vec::new(),
-            recovery,
-            unit: UnitState::new(),
-        }
-    }
-
-    // A group rule's body inside this scoped list.
-    #[inline(never)]
-    fn group_body<'t>(
-        &mut self,
-        input: &mut Parser<'s, 't>,
-        body: ScopedBodyKind,
-    ) -> Result<CssScopedRuleList, ParseError<'s, CssError>> {
-        let recovered = parse_scoped_rule_list(
-            self.source,
-            input,
-            self.recovery.clone(),
-            self.has_style_ancestor,
-            body,
-        )?;
-        self.diagnostics.extend(recovered.diagnostics);
-        Ok(recovered.syntax)
-    }
-}
-
-impl<'i> RuleListGrammar<'i, ScopedBlockItem> for ScopedRuleParser<'i> {
-    fn unit(&mut self) -> &mut UnitState<'i> {
-        &mut self.unit
-    }
-    fn recovery(&self) -> &RecoveryState {
-        &self.recovery
-    }
-    fn diagnostics(&mut self) -> &mut Vec<crate::CssRecoveryDiagnostic> {
-        &mut self.diagnostics
-    }
-}
-
-impl<'i> AtRuleParser<'i> for ScopedRuleParser<'i> {
-    type Prelude = AtRulePrelude;
-    type AtRule = ScopedBlockItem;
-    type Error = CssError;
-
-    fn parse_prelude<'t>(
-        &mut self,
-        name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
-        self.unit.boundary = nesting::StyleRuleBoundary::AtRule;
-        parse_at_rule_prelude(
-            RuleListContext::Scoped {
-                body: self.body,
-                style_ancestor: self.has_style_ancestor,
-            },
-            None,
-            self.source,
-            name,
-            input,
-            &mut self.diagnostics,
-            &self.recovery,
-        )
-    }
-
-    fn rule_without_block(
-        &mut self,
-        prelude: Self::Prelude,
-        start: &ParserState,
-    ) -> std::result::Result<Self::AtRule, ()> {
-        let result = match prelude {
-            AtRulePrelude::CustomMedia(prelude) => {
-                let rule = finish_custom_media(
-                    self.source,
-                    *prelude,
-                    start,
-                    &self.recovery,
-                    &mut self.diagnostics,
-                );
-                Ok(vec![CssScopedRule::CustomMedia(rule)])
-            }
-            AtRulePrelude::Layer(names) => CssLayerNameList::try_new(names)
-                .map(|names| {
-                    vec![CssScopedRule::LayerStatement(
-                        CssScopedLayerStatementRule::new(
-                            names,
-                            self.recovery.source_position(start.position().byte_index()),
-                        ),
-                    )]
-                })
-                .ok_or(()),
-            AtRulePrelude::Import(_)
-            | AtRulePrelude::Namespace(_)
-            | AtRulePrelude::Page(_)
-            | AtRulePrelude::CounterStyle(_)
-            | AtRulePrelude::FontFace
-            | AtRulePrelude::Keyframes(_)
-            | AtRulePrelude::FontFeatureValues(_)
-            | AtRulePrelude::FontPaletteValues(_)
-            | AtRulePrelude::ColorProfile(_)
-            | AtRulePrelude::Media(_)
-            | AtRulePrelude::Supports(_)
-            | AtRulePrelude::SupportsCondition(_)
-            | AtRulePrelude::Container(_)
-            | AtRulePrelude::When(_, _)
-            | AtRulePrelude::Else(_, _)
-            | AtRulePrelude::Scope(_) => Err(()),
-        };
-        if result.is_err() {
-            self.unit.rejected_at_rule_start = Some(start.position().byte_index());
-        } else {
-            syntax_bridge::retain_statement_eof(
-                self.source,
-                &self.recovery,
-                start,
-                &mut self.diagnostics,
-            );
-        }
-        result.map(ScopedBlockItem::Rules)
-    }
-
-    fn parse_block<'t>(
-        &mut self,
-        prelude: Self::Prelude,
-        start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::AtRule, ParseError<'i, Self::Error>> {
-        let mut depth = self
-            .recovery
-            .enter_rule_block(self.source, input, prelude.production())?;
-        let position = self.recovery.source_position(start.position().byte_index());
-        let prelude = match rule_list::parse_leaf_block(
-            prelude,
-            self.source,
-            start,
-            input,
-            &mut self.diagnostics,
-            &self.recovery,
-        )? {
-            Ok(leaf) => {
-                depth.retain();
-                return Ok(ScopedBlockItem::Rules(vec![leaf.into()]));
-            }
-            Err(group) => group,
-        };
-        let result = match prelude {
-            AtRulePrelude::Media(query) => {
-                let rules = self.group_body(input, ScopedBodyKind::OrdinaryGroup)?;
-                Ok(vec![CssScopedRule::Media(CssScopedMediaRule::new(
-                    query, rules, position,
-                ))])
-            }
-            AtRulePrelude::Supports(condition) => {
-                let rules = self.group_body(input, ScopedBodyKind::OrdinaryGroup)?;
-                Ok(vec![CssScopedRule::Supports(CssScopedSupportsRule::new(
-                    condition, rules, position,
-                ))])
-            }
-            AtRulePrelude::When(condition, implicit) => {
-                let rules = self.group_body(input, ScopedBodyKind::OrdinaryGroup)?;
-                self.recovery.retain_component_closures(implicit);
-                Ok(vec![CssScopedRule::When(CssScopedWhenRule::new(
-                    condition, rules, position,
-                ))])
-            }
-            AtRulePrelude::Else(condition, implicit) => {
-                let rules = self.group_body(input, ScopedBodyKind::OrdinaryGroup)?;
-                self.recovery.retain_component_closures(implicit);
-                Ok(vec![CssScopedRule::Else(CssScopedElseRule::new(
-                    condition, rules, position,
-                ))])
-            }
-            AtRulePrelude::Container(prelude) => {
-                let rules = self.group_body(input, ScopedBodyKind::OrdinaryGroup)?;
-                Ok(vec![CssScopedRule::Container(CssScopedContainerRule::new(
-                    prelude, rules, position,
-                ))])
-            }
-            AtRulePrelude::Layer(names) => {
-                if names.len() > 1 {
-                    return Err(invalid_at_rule_block(
-                        input,
-                        "layer",
-                        "baseline.rule.layer-block",
-                        "at most one layer name before a block",
-                    ));
-                }
-                let name = names.into_iter().next();
-                let rules = self.group_body(input, ScopedBodyKind::OrdinaryGroup)?;
-                Ok(vec![CssScopedRule::LayerBlock(
-                    CssScopedLayerBlockRule::new(name, rules, position),
-                )])
-            }
-            AtRulePrelude::Scope(prelude) => {
-                let rules = self.group_body(input, ScopedBodyKind::Scope)?;
-                Ok(vec![CssScopedRule::Scope(CssScopeRule::new(
-                    prelude.root,
-                    prelude.limit,
-                    rules,
-                    position,
-                ))])
-            }
-            leaf => unreachable!("{} has a leaf body", leaf.name()),
-        };
-        if result.is_ok() {
-            depth.retain();
-        }
-        result.map(ScopedBlockItem::Rules)
-    }
-}
-
-impl<'i> QualifiedRuleParser<'i> for ScopedRuleParser<'i> {
-    type Prelude = CssScopedStyleSelectorList;
-    type QualifiedRule = ScopedBlockItem;
-    type Error = CssError;
-
-    fn parse_prelude<'t>(
-        &mut self,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
-        self.unit.boundary = nesting::StyleRuleBoundary::QualifiedPrelude;
-        let mut recovery =
-            SelectorRecovery::new(self.source, &mut self.diagnostics, self.recovery.clone());
-        let result = parse_scoped_style_selector_list(input, &mut recovery);
-        self.unit.record_qualified_failure(&result, true);
-        result
-    }
-
-    fn parse_block<'t>(
-        &mut self,
-        selectors: Self::Prelude,
-        start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::QualifiedRule, ParseError<'i, Self::Error>> {
-        self.unit.boundary = nesting::StyleRuleBoundary::QualifiedBlock;
-        let result = (|| {
-            let mut depth =
-                self.recovery
-                    .enter_rule_block(self.source, input, "baseline.rule.style")?;
-            let recovered = parse_style_contents(self.source, input, self.recovery.clone())?;
-            self.diagnostics.extend(recovered.diagnostics);
-            depth.retain();
-            Ok(ScopedBlockItem::Rules(vec![CssScopedRule::Style(
-                CssScopedStyleRule::new(
-                    selectors,
-                    recovered.syntax.declarations,
-                    recovered.syntax.rules,
-                    self.recovery.source_position(start.position().byte_index()),
-                ),
-            )]))
-        })();
-        self.unit.record_qualified_failure(&result, false);
-        result
-    }
-}
-
-impl<'i> DeclarationParser<'i> for ScopedRuleParser<'i> {
-    type Declaration = ScopedBlockItem;
-    type Error = CssError;
-
-    fn parse_value<'t>(
-        &mut self,
-        name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-        declaration_start: &ParserState,
-    ) -> std::result::Result<Self::Declaration, ParseError<'i, Self::Error>> {
-        StrictDeclarationParser::new(self.source, self.recovery.clone())
-            .parse_value(name, input, declaration_start)
-            .map(Box::new)
-            .map(ScopedBlockItem::Declaration)
-    }
-}
-
-impl<'i> RuleBodyItemParser<'i, ScopedBlockItem, CssError> for ScopedRuleParser<'i> {
-    fn parse_declarations(&self) -> bool {
-        self.has_style_ancestor
-    }
-    fn parse_qualified(&self) -> bool {
-        true
-    }
 }
 
 // CSS Style Attributes §3 parses the value as declaration block contents in

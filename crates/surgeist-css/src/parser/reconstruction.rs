@@ -14,7 +14,7 @@ use super::{
 use crate::CssSourceSnapshot;
 use crate::error::from_parse_error;
 use crate::syntax::*;
-use crate::{CssElseRule, CssScopedElseRule, CssScopedWhenRule, CssWhenRule};
+use crate::{CssElseRule, CssWhenRule};
 
 #[derive(Clone)]
 pub(super) enum BoundedParseContext {
@@ -44,10 +44,10 @@ pub(super) enum BoundedParseContext {
 pub(super) enum BoundedParseSyntax {
     Rules(CssSheet),
     OneRule(Option<CssRule>),
-    Candidate(Option<super::CssAdmittedRule>),
+    Candidate(Option<CssRule>),
     StyleBlock(Option<CssStyleBlock>),
     GroupBlock(Option<crate::CssBlockFragment<crate::CssRuleList>>),
-    ScopedBlock(Option<crate::CssBlockFragment<CssScopedRuleList>>),
+    ScopedBlock(Option<crate::CssBlockFragment<crate::CssRuleList>>),
 }
 
 fn bounded_report<T>(
@@ -503,110 +503,6 @@ fn split_child_context(
     }
 }
 
-// The bounded parser's internal carrier holds already-validated chunks. Scoped selector
-// context remains in the selector model; splicing restores scoped rule-list wrappers.
-// This conversion never reparses a scoped prelude as an ordinary stylesheet selector.
-pub(super) fn scoped_rule_into_chunk_rule(rule: CssScopedRule) -> CssRule {
-    match rule {
-        CssScopedRule::NestedDeclarations(rule) => CssRule::NestedDeclarations(rule),
-        CssScopedRule::Style(rule) => CssRule::Style(CssStyleRule::new(
-            CssStyleSelectorList::new(
-                rule.selectors()
-                    .selectors()
-                    .iter()
-                    .map(|selector| match selector {
-                        CssScopedStyleSelector::Selector(selector) => {
-                            CssStyleSelector::Selector(selector.clone())
-                        }
-                        CssScopedStyleSelector::Relative(relative) => {
-                            CssStyleSelector::Relative(relative.clone())
-                        }
-                    })
-                    .collect(),
-            ),
-            rule.declarations().clone(),
-            rule.rules().to_vec(),
-            rule.position(),
-        )),
-        CssScopedRule::Media(rule) => CssRule::Media(CssMediaRule::new(
-            rule.query().clone(),
-            rule.rules()
-                .rules()
-                .iter()
-                .cloned()
-                .map(scoped_rule_into_chunk_rule)
-                .collect(),
-            rule.position().expect("parser-produced group position"),
-        )),
-        CssScopedRule::Supports(rule) => CssRule::Supports(CssSupportsRule::new(
-            rule.condition().clone(),
-            rule.rules()
-                .rules()
-                .iter()
-                .cloned()
-                .map(scoped_rule_into_chunk_rule)
-                .collect(),
-            rule.position().expect("parser-produced group position"),
-        )),
-        CssScopedRule::SupportsCondition(rule) => CssRule::SupportsCondition(rule),
-        CssScopedRule::When(rule) => CssRule::When(CssWhenRule::new(
-            rule.condition().clone(),
-            rule.rules()
-                .rules()
-                .iter()
-                .cloned()
-                .map(scoped_rule_into_chunk_rule)
-                .collect(),
-            rule.position()
-                .expect("parser-produced conditional position"),
-        )),
-        CssScopedRule::Else(rule) => CssRule::Else(CssElseRule::new(
-            rule.condition().cloned(),
-            rule.rules()
-                .rules()
-                .iter()
-                .cloned()
-                .map(scoped_rule_into_chunk_rule)
-                .collect(),
-            rule.position()
-                .expect("parser-produced conditional position"),
-        )),
-        CssScopedRule::Container(rule) => CssRule::Container(CssContainerRule::new(
-            rule.prelude().clone(),
-            rule.rules()
-                .rules()
-                .iter()
-                .cloned()
-                .map(scoped_rule_into_chunk_rule)
-                .collect(),
-            rule.position().expect("parser-produced group position"),
-        )),
-        CssScopedRule::LayerBlock(rule) => CssRule::LayerBlock(CssLayerBlockRule::new(
-            rule.name().cloned(),
-            rule.rules()
-                .rules()
-                .iter()
-                .cloned()
-                .map(scoped_rule_into_chunk_rule)
-                .collect(),
-            rule.position().expect("parser-produced group position"),
-        )),
-        CssScopedRule::LayerStatement(rule) => CssRule::LayerStatement(CssLayerStatementRule::new(
-            rule.names().clone(),
-            rule.position(),
-        )),
-        CssScopedRule::CounterStyle(rule) => CssRule::CounterStyle(rule),
-        CssScopedRule::FontFace(rule) => CssRule::FontFace(rule),
-        CssScopedRule::Keyframes(rule) => CssRule::Keyframes(rule),
-        CssScopedRule::Page(rule) => CssRule::Page(rule),
-        CssScopedRule::Scope(rule) => CssRule::Scope(rule),
-        CssScopedRule::CustomMedia(rule) => CssRule::CustomMedia(rule),
-        CssScopedRule::FontFeatureValues(rule) => CssRule::FontFeatureValues(rule),
-        CssScopedRule::FontPaletteValues(rule) => CssRule::FontPaletteValues(rule),
-        CssScopedRule::ColorProfile(rule) => CssRule::ColorProfile(rule),
-    }
-}
-
 fn mask_source_span(source: &str, start: usize, end: usize) -> String {
     mask_source_spans(source, std::iter::once(start..end))
 }
@@ -646,11 +542,8 @@ fn bounded_parent_admitted(syntax: &BoundedParseSyntax, parents: &[StructuralPar
         BoundedParseSyntax::OneRule(Some(rule)) => {
             admitted_rule_path(std::slice::from_ref(rule), parents)
         }
-        BoundedParseSyntax::Candidate(Some(super::CssAdmittedRule::Ordinary(rule))) => {
+        BoundedParseSyntax::Candidate(Some(rule)) => {
             admitted_rule_path(std::slice::from_ref(rule), parents)
-        }
-        BoundedParseSyntax::Candidate(Some(super::CssAdmittedRule::Scoped(rule))) => {
-            admitted_scoped_path(std::slice::from_ref(rule), parents)
         }
         BoundedParseSyntax::StyleBlock(Some(block)) => {
             let Some((root, parents)) = parents.split_first() else {
@@ -674,7 +567,7 @@ fn bounded_parent_admitted(syntax: &BoundedParseSyntax, parents: &[StructuralPar
             };
             root.start == block.origin().span().start().byte_offset().value()
                 && matches!(root.kind, GroupKind::FragmentBody)
-                && admitted_scoped_path(block.body().rules(), parents)
+                && admitted_rule_path(block.body().rules(), parents)
         }
         BoundedParseSyntax::Candidate(None)
         | BoundedParseSyntax::OneRule(None)
@@ -692,25 +585,8 @@ fn admitted_rule_path(rules: &[CssRule], parents: &[StructuralParent]) -> bool {
         return false;
     };
     match rule {
-        CssRule::Scope(scope) => admitted_scoped_path(scope.rules().rules(), remaining),
         CssRule::Style(style) => admitted_rule_path(style.rules(), remaining),
         _ => group_rules(rule).is_some_and(|rules| admitted_rule_path(rules, remaining)),
-    }
-}
-
-fn admitted_scoped_path(rules: &[CssScopedRule], parents: &[StructuralParent]) -> bool {
-    let Some((parent, remaining)) = parents.split_first() else {
-        return true;
-    };
-    let Some(rule) = rules
-        .iter()
-        .find(|rule| scoped_rule_start(rule) == parent.start)
-    else {
-        return false;
-    };
-    match rule {
-        CssScopedRule::Style(style) => admitted_rule_path(style.rules(), remaining),
-        _ => scoped_group_rules(rule).is_some_and(|rules| admitted_scoped_path(rules, remaining)),
     }
 }
 
@@ -739,30 +615,14 @@ fn splice_bounded_syntax(
             BoundedParseSyntax::OneRule(Some(rule))
         }
         BoundedParseSyntax::Candidate(Some(rule)) => {
-            let rule = match rule {
-                super::CssAdmittedRule::Ordinary(rule) => {
-                    let [rule]: [CssRule; 1] = splice_rule_list(
-                        std::slice::from_ref(&rule),
-                        parents,
-                        child_start,
-                        child_rules,
-                    )
-                    .try_into()
-                    .expect("one admitted candidate");
-                    super::CssAdmittedRule::Ordinary(rule)
-                }
-                super::CssAdmittedRule::Scoped(rule) => {
-                    let [rule]: [CssScopedRule; 1] = splice_scoped_rule_list(
-                        std::slice::from_ref(&rule),
-                        parents,
-                        child_start,
-                        child_rules,
-                    )
-                    .try_into()
-                    .expect("one admitted scoped candidate");
-                    super::CssAdmittedRule::Scoped(rule)
-                }
-            };
+            let [rule]: [CssRule; 1] = splice_rule_list(
+                std::slice::from_ref(&rule),
+                parents,
+                child_start,
+                child_rules,
+            )
+            .try_into()
+            .expect("one admitted candidate");
             BoundedParseSyntax::Candidate(Some(rule))
         }
         BoundedParseSyntax::StyleBlock(Some(block)) => {
@@ -798,10 +658,9 @@ fn splice_bounded_syntax(
             let (_, parents) = parents
                 .split_first()
                 .expect("scoped replay retains its genuine root brace");
-            let rules =
-                splice_scoped_rule_list(block.body().rules(), parents, child_start, child_rules);
+            let rules = splice_rule_list(block.body().rules(), parents, child_start, child_rules);
             BoundedParseSyntax::ScopedBlock(Some(crate::CssBlockFragment::from_parsed(
-                CssScopedRuleList::from_rules(rules),
+                crate::CssRuleList::from_parsed(rules),
                 block.origin().clone(),
             )))
         }
@@ -855,22 +714,6 @@ fn splice_rule_list(
         .map(|rule| {
             if rule_start(&rule) != parent.start {
                 return rule;
-            }
-            if matches!(parent.kind, GroupKind::Scope)
-                && let CssRule::Scope(scope) = rule
-            {
-                let rebuilt = splice_scoped_rule_list(
-                    scope.rules().rules(),
-                    &parents[1..],
-                    child_start,
-                    child_rules.clone(),
-                );
-                return CssRule::Scope(CssScopeRule::new(
-                    scope.root().cloned(),
-                    scope.limit().cloned(),
-                    CssScopedRuleList::from_rules(rebuilt),
-                    scope.position().expect("parser-produced scope position"),
-                ));
             }
             if let CssRule::Style(style) = rule {
                 let (declarations, rules) = splice_style_body(
@@ -933,68 +776,6 @@ fn splice_style_body(
     (CssDeclarationList::new(declarations), rebuilt)
 }
 
-fn splice_scoped_rule_list(
-    rules: &[CssScopedRule],
-    parents: &[StructuralParent],
-    child_start: usize,
-    child_rules: Vec<CssRule>,
-) -> Vec<CssScopedRule> {
-    if parents.is_empty() {
-        let mut combined: Vec<_> = rules
-            .iter()
-            .cloned()
-            .flat_map(|rule| {
-                if let CssScopedRule::NestedDeclarations(run) = rule {
-                    split_style_declaration_run(CssRule::NestedDeclarations(run), child_start)
-                        .into_iter()
-                        .filter_map(into_scoped_rule)
-                        .collect()
-                } else {
-                    vec![rule]
-                }
-            })
-            .collect();
-        let insertion = combined
-            .iter()
-            .position(|rule| scoped_rule_start(rule) > child_start)
-            .unwrap_or(combined.len());
-        combined.splice(
-            insertion..insertion,
-            child_rules.into_iter().filter_map(into_scoped_rule),
-        );
-        return combined;
-    }
-    let parent = &parents[0];
-    rules
-        .iter()
-        .cloned()
-        .map(|rule| {
-            if scoped_rule_start(&rule) != parent.start {
-                return rule;
-            }
-            if let CssScopedRule::Style(style) = rule {
-                let (declarations, nested) = splice_style_body(
-                    style.declarations(),
-                    style.rules(),
-                    &parents[1..],
-                    child_start,
-                    child_rules.clone(),
-                );
-                return CssScopedRule::Style(CssScopedStyleRule::new(
-                    style.selectors().clone(),
-                    declarations,
-                    nested,
-                    style.position(),
-                ));
-            }
-            let nested = scoped_group_rules(&rule).unwrap_or_default();
-            let rebuilt =
-                splice_scoped_rule_list(nested, &parents[1..], child_start, child_rules.clone());
-            rebuild_scoped_group_rule(rule, rebuilt)
-        })
-        .collect()
-}
-
 fn split_style_declaration_run(rule: CssRule, child_start: usize) -> Vec<CssRule> {
     let CssRule::NestedDeclarations(run) = rule else {
         return vec![rule];
@@ -1021,234 +802,6 @@ fn split_style_declaration_run(rule: CssRule, child_start: usize) -> Vec<CssRule
     ]
 }
 
-fn scoped_group_rules(rule: &CssScopedRule) -> Option<&[CssScopedRule]> {
-    match rule {
-        CssScopedRule::Media(rule) => Some(rule.rules().rules()),
-        CssScopedRule::Supports(rule) => Some(rule.rules().rules()),
-        CssScopedRule::Container(rule) => Some(rule.rules().rules()),
-        CssScopedRule::LayerBlock(rule) => Some(rule.rules().rules()),
-        CssScopedRule::Scope(rule) => Some(rule.rules().rules()),
-        CssScopedRule::When(rule) => Some(rule.rules().rules()),
-        CssScopedRule::Else(rule) => Some(rule.rules().rules()),
-        _ => None,
-    }
-}
-
-fn rebuild_scoped_group_rule(rule: CssScopedRule, rules: Vec<CssScopedRule>) -> CssScopedRule {
-    let rules = CssScopedRuleList::from_rules(rules);
-    match rule {
-        CssScopedRule::Media(rule) => CssScopedRule::Media(CssScopedMediaRule::new(
-            rule.query().clone(),
-            rules,
-            rule.position().expect("parser-produced group position"),
-        )),
-        CssScopedRule::Supports(rule) => CssScopedRule::Supports(CssScopedSupportsRule::new(
-            rule.condition().clone(),
-            rules,
-            rule.position().expect("parser-produced group position"),
-        )),
-        CssScopedRule::When(rule) => CssScopedRule::When(CssScopedWhenRule::new(
-            rule.condition().clone(),
-            rules,
-            rule.position()
-                .expect("parser-produced conditional position"),
-        )),
-        CssScopedRule::Else(rule) => CssScopedRule::Else(CssScopedElseRule::new(
-            rule.condition().cloned(),
-            rules,
-            rule.position()
-                .expect("parser-produced conditional position"),
-        )),
-        CssScopedRule::Container(rule) => CssScopedRule::Container(CssScopedContainerRule::new(
-            rule.prelude().clone(),
-            rules,
-            rule.position().expect("parser-produced group position"),
-        )),
-        CssScopedRule::LayerBlock(rule) => CssScopedRule::LayerBlock(CssScopedLayerBlockRule::new(
-            rule.name().cloned(),
-            rules,
-            rule.position().expect("parser-produced group position"),
-        )),
-        CssScopedRule::Scope(rule) => CssScopedRule::Scope(CssScopeRule::new(
-            rule.root().cloned(),
-            rule.limit().cloned(),
-            rules,
-            rule.position().expect("parser-produced group position"),
-        )),
-        _ => rule,
-    }
-}
-
-fn into_scoped_rule(rule: CssRule) -> Option<CssScopedRule> {
-    match rule {
-        CssRule::NestedDeclarations(rule) => Some(CssScopedRule::NestedDeclarations(rule)),
-        CssRule::Style(rule) => {
-            let selectors = CssScopedStyleSelectorList::try_new(
-                rule.selectors()
-                    .selectors()
-                    .iter()
-                    .map(|selector| match selector {
-                        CssStyleSelector::Selector(selector) => {
-                            CssScopedStyleSelector::Selector(selector.clone())
-                        }
-                        CssStyleSelector::Relative(relative) => {
-                            CssScopedStyleSelector::Relative(relative.clone())
-                        }
-                    })
-                    .collect(),
-            )?;
-            Some(CssScopedRule::Style(CssScopedStyleRule::new(
-                selectors,
-                rule.declarations().clone(),
-                rule.rules().to_vec(),
-                rule.position(),
-            )))
-        }
-        CssRule::LayerStatement(rule) => Some(CssScopedRule::LayerStatement(
-            CssScopedLayerStatementRule::new(rule.names().clone(), rule.position()),
-        )),
-        CssRule::LayerBlock(rule) => Some(CssScopedRule::LayerBlock(CssScopedLayerBlockRule::new(
-            rule.name().cloned(),
-            CssScopedRuleList::from_rules(
-                rule.rules()
-                    .iter()
-                    .cloned()
-                    .filter_map(into_scoped_rule)
-                    .collect(),
-            ),
-            rule.position().expect("parser-produced group position"),
-        ))),
-        CssRule::Media(rule) => Some(CssScopedRule::Media(CssScopedMediaRule::new(
-            rule.query().clone(),
-            CssScopedRuleList::from_rules(
-                rule.rules()
-                    .iter()
-                    .cloned()
-                    .filter_map(into_scoped_rule)
-                    .collect(),
-            ),
-            rule.position().expect("parser-produced group position"),
-        ))),
-        CssRule::Supports(rule) => Some(CssScopedRule::Supports(CssScopedSupportsRule::new(
-            rule.condition().clone(),
-            CssScopedRuleList::from_rules(
-                rule.rules()
-                    .iter()
-                    .cloned()
-                    .filter_map(into_scoped_rule)
-                    .collect(),
-            ),
-            rule.position().expect("parser-produced group position"),
-        ))),
-        CssRule::SupportsCondition(rule) => Some(CssScopedRule::SupportsCondition(rule)),
-        CssRule::When(rule) => Some(CssScopedRule::When(CssScopedWhenRule::new(
-            rule.condition().clone(),
-            CssScopedRuleList::from_rules(
-                rule.rules()
-                    .iter()
-                    .cloned()
-                    .filter_map(into_scoped_rule)
-                    .collect(),
-            ),
-            rule.position()
-                .expect("parser-produced conditional position"),
-        ))),
-        CssRule::Else(rule) => Some(CssScopedRule::Else(CssScopedElseRule::new(
-            rule.condition().cloned(),
-            CssScopedRuleList::from_rules(
-                rule.rules()
-                    .iter()
-                    .cloned()
-                    .filter_map(into_scoped_rule)
-                    .collect(),
-            ),
-            rule.position()
-                .expect("parser-produced conditional position"),
-        ))),
-        CssRule::Container(rule) => Some(CssScopedRule::Container(CssScopedContainerRule::new(
-            rule.prelude().clone(),
-            CssScopedRuleList::from_rules(
-                rule.rules()
-                    .iter()
-                    .cloned()
-                    .filter_map(into_scoped_rule)
-                    .collect(),
-            ),
-            rule.position().expect("parser-produced group position"),
-        ))),
-        CssRule::CounterStyle(rule) => Some(CssScopedRule::CounterStyle(rule)),
-        CssRule::FontFace(rule) => Some(CssScopedRule::FontFace(rule)),
-        CssRule::Keyframes(rule) => Some(CssScopedRule::Keyframes(rule)),
-        CssRule::Page(rule) => Some(CssScopedRule::Page(rule)),
-        CssRule::Scope(rule) => Some(CssScopedRule::Scope(rule)),
-        CssRule::CustomMedia(rule) => Some(CssScopedRule::CustomMedia(rule)),
-        CssRule::FontFeatureValues(rule) => Some(CssScopedRule::FontFeatureValues(rule)),
-        CssRule::FontPaletteValues(rule) => Some(CssScopedRule::FontPaletteValues(rule)),
-        CssRule::ColorProfile(rule) => Some(CssScopedRule::ColorProfile(rule)),
-        CssRule::Import(_) | CssRule::Namespace(_) => None,
-    }
-}
-
-pub(super) fn scoped_rule_start(rule: &CssScopedRule) -> usize {
-    match rule {
-        CssScopedRule::CustomMedia(rule) => {
-            return rule
-                .position()
-                .expect("parsed custom-media rule")
-                .byte_offset()
-                .value();
-        }
-        CssScopedRule::FontFeatureValues(rule) => {
-            return rule
-                .position()
-                .expect("parser-owned font rule has a source position")
-                .byte_offset()
-                .value();
-        }
-        CssScopedRule::FontPaletteValues(rule) => {
-            return rule
-                .position()
-                .expect("parser-owned palette rule has a source position")
-                .byte_offset()
-                .value();
-        }
-        CssScopedRule::ColorProfile(rule) => {
-            return rule
-                .position()
-                .expect("parser-owned profile rule has a source position")
-                .byte_offset()
-                .value();
-        }
-        CssScopedRule::NestedDeclarations(rule) => rule.position(),
-        CssScopedRule::CounterStyle(rule) => rule.position(),
-        CssScopedRule::FontFace(rule) => rule.position().expect("parser-produced rule position"),
-        CssScopedRule::Keyframes(rule) => rule.position(),
-        CssScopedRule::Page(rule) => rule.position(),
-        CssScopedRule::Style(rule) => rule.position(),
-        CssScopedRule::Media(rule) => rule.position().expect("parser-produced rule position"),
-        CssScopedRule::Supports(rule) => rule.position().expect("parser-produced rule position"),
-        CssScopedRule::SupportsCondition(rule) => {
-            return rule
-                .position()
-                .expect("parsed named supports rule")
-                .byte_offset()
-                .value();
-        }
-        CssScopedRule::Container(rule) => rule.position().expect("parser-produced rule position"),
-        CssScopedRule::When(rule) => rule
-            .position()
-            .expect("parser-produced conditional position"),
-        CssScopedRule::Else(rule) => rule
-            .position()
-            .expect("parser-produced conditional position"),
-        CssScopedRule::LayerStatement(rule) => rule.position(),
-        CssScopedRule::LayerBlock(rule) => rule.position().expect("parser-produced rule position"),
-        CssScopedRule::Scope(rule) => rule.position().expect("parser-produced rule position"),
-    }
-    .byte_offset()
-    .value()
-}
-
 fn group_rules(rule: &CssRule) -> Option<&[CssRule]> {
     match rule {
         CssRule::LayerBlock(rule) => Some(rule.rules()),
@@ -1257,6 +810,7 @@ fn group_rules(rule: &CssRule) -> Option<&[CssRule]> {
         CssRule::Container(rule) => Some(rule.rules()),
         CssRule::When(rule) => Some(rule.rules()),
         CssRule::Else(rule) => Some(rule.rules()),
+        CssRule::Scope(rule) => Some(rule.rules().rules()),
         _ => None,
     }
 }
@@ -1294,6 +848,12 @@ fn rebuild_group_rule(rule: CssRule, rules: Vec<CssRule>) -> CssRule {
             rule.prelude().clone(),
             rules,
             rule.position().expect("parser-produced group position"),
+        )),
+        CssRule::Scope(rule) => CssRule::Scope(CssScopeRule::new(
+            rule.root().cloned(),
+            rule.limit().cloned(),
+            rules,
+            rule.position().expect("parser-produced scope position"),
         )),
         _ => rule,
     }
@@ -1374,9 +934,9 @@ mod splice_tests {
             panic!("expected one scope rule");
         };
         let [
-            CssScopedRule::Style(before),
-            CssScopedRule::LayerBlock(recovered),
-            CssScopedRule::Style(after),
+            CssRule::Style(before),
+            CssRule::LayerBlock(recovered),
+            CssRule::Style(after),
         ] = scope.rules().rules()
         else {
             panic!("expected scoped splice fixture in authored order");
@@ -1396,10 +956,10 @@ mod splice_tests {
                     < after.position().byte_offset()
         );
 
-        let spliced = splice_scoped_rule_list(
+        let spliced = splice_rule_list(
             &[
-                CssScopedRule::Style(before.clone()),
-                CssScopedRule::Style(after.clone()),
+                CssRule::Style(before.clone()),
+                CssRule::Style(after.clone()),
             ],
             &[],
             recovered
@@ -1415,10 +975,10 @@ mod splice_tests {
         );
         assert_eq!(spliced, scope.rules().rules());
 
-        let stable_tie = splice_scoped_rule_list(
+        let stable_tie = splice_rule_list(
             &[
-                CssScopedRule::Style(before.clone()),
-                CssScopedRule::Style(after.clone()),
+                CssRule::Style(before.clone()),
+                CssRule::Style(after.clone()),
             ],
             &[],
             before.position().byte_offset().value(),
@@ -1431,9 +991,9 @@ mod splice_tests {
         assert_eq!(
             stable_tie,
             [
-                CssScopedRule::Style(before.clone()),
-                CssScopedRule::LayerBlock(recovered.clone()),
-                CssScopedRule::Style(after.clone()),
+                CssRule::Style(before.clone()),
+                CssRule::LayerBlock(recovered.clone()),
+                CssRule::Style(after.clone()),
             ]
         );
     }

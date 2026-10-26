@@ -16,15 +16,6 @@ pub enum CssStyleSelectorContext {
     Scoped(crate::CssStyleAncestor),
 }
 
-/// Existing checked selector carriers, selected by their actual grammar.
-#[derive(Clone, Debug, PartialEq)]
-pub enum CssAdmittedStyleSelectors {
-    /// Ordinary or nested style selectors; explicit anchors mean nesting.
-    Ordinary(CssStyleSelectorList),
-    /// Scope-body style selectors; explicit anchors mean scope anchors.
-    Scoped(CssScopedStyleSelectorList),
-}
-
 /// A parser-produced complete raw selector input and its contextual payload.
 ///
 /// This immutable authored carrier assigns no live identity and binds no parent
@@ -32,15 +23,16 @@ pub enum CssAdmittedStyleSelectors {
 /// within the payload share this input occurrence, never a fabricated rule.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssParsedStyleSelectors {
-    selectors: CssAdmittedStyleSelectors,
+    selectors: CssStyleSelectorList,
     context: CssStyleSelectorContext,
     origin: CssParsedOrigin,
 }
 
 impl CssParsedStyleSelectors {
-    /// Borrows the existing checked list without converting its anchor domain.
+    /// Borrows the checked list; an explicit anchor in it is a nesting anchor in an
+    /// ordinary or nested context and a scope anchor in a scoped one.
     #[must_use]
-    pub const fn selectors(&self) -> &CssAdmittedStyleSelectors {
+    pub const fn selectors(&self) -> &CssStyleSelectorList {
         &self.selectors
     }
 
@@ -69,16 +61,13 @@ impl CssParsedStyleSelectors {
 /// and resource action, so a consumer can distinguish them from syntax no-ops.
 ///
 /// ```
-/// use surgeist_css::{CssAdmittedStyleSelectors, CssNamespaceContext,
+/// use surgeist_css::{CssNamespaceContext,
 ///     CssSelectorCombinator, CssStyleSelector, CssStyleSelectorContext,
 ///     parse_style_selector_list};
 /// let report = parse_style_selector_list(
 ///     "> .child", &CssNamespaceContext::default(), CssStyleSelectorContext::Nested);
 /// let parsed = report.syntax().as_ref().unwrap();
-/// let CssAdmittedStyleSelectors::Ordinary(list) = parsed.selectors() else {
-///     panic!("ordinary nesting domain");
-/// };
-/// let CssStyleSelector::Relative(child) = &list.selectors()[0] else {
+/// let CssStyleSelector::Relative(child) = &parsed.selectors().selectors()[0] else {
 ///     panic!("explicit relative relationship");
 /// };
 /// assert_eq!(child.combinator(), CssSelectorCombinator::Child);
@@ -141,16 +130,13 @@ pub fn parse_style_selector_list_with_limits(
                     CssStyleSelectorContext::Ordinary => {
                         selectors::parse_rule_selector_list(input, recovery)
                             .map(CssStyleSelectorList::absolute)
-                            .map(CssAdmittedStyleSelectors::Ordinary)
                     }
                     CssStyleSelectorContext::Nested => {
                         selectors::parse_nested_style_selector_list(input, recovery)
                             .map(CssStyleSelectorList::new)
-                            .map(CssAdmittedStyleSelectors::Ordinary)
                     }
                     CssStyleSelectorContext::Scoped(_) => {
                         selectors::parse_scoped_style_selector_list(input, recovery)
-                            .map(CssAdmittedStyleSelectors::Scoped)
                     }
                 }
             })

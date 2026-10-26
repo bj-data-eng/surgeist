@@ -7,7 +7,7 @@
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#using-variables
 //! https://www.w3.org/TR/2024/WD-css-values-5-20241111/#tree-counting
 use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssContainerCondition, CssContainerConditionKind,
+    CssComponentValue, CssComponentValues, CssCondition, CssConditionKind, CssContainerLeaf,
     CssGeneralEnclosed, CssRule, CssValueOrigin, parse_component_values, parse_sheet,
 };
 
@@ -20,9 +20,12 @@ fn assert_classification(query: &str, recognized: bool) {
     };
     let parsed = rule.prelude().entries()[0].query().unwrap();
     let components = parse_component_values(query).unwrap();
-    let checked =
-        CssContainerCondition::try_from_components(components.clone(), Default::default()).unwrap();
-    let enclosed = CssContainerCondition::try_from_enclosed(
+    let checked = CssCondition::<CssContainerLeaf>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap();
+    let enclosed = CssCondition::<CssContainerLeaf>::try_from_enclosed(
         CssGeneralEnclosed::try_from_component(components.items()[0].clone()).unwrap(),
     )
     .unwrap();
@@ -33,8 +36,8 @@ fn assert_classification(query: &str, recognized: bool) {
         ("enclosed", &enclosed),
     ] {
         let actual = match condition.kind() {
-            CssContainerConditionKind::Feature(_) => true,
-            CssContainerConditionKind::GeneralEnclosed(_) => false,
+            CssConditionKind::Leaf(CssContainerLeaf::Feature(_)) => true,
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_)) => false,
             other => panic!("unexpected {route} leaf for {query}: {other:?}"),
         };
         assert_eq!(actual, recognized, "{route} recognition for {query}");
@@ -278,13 +281,13 @@ fn programmatic_signed_length_keeps_programmatic_origins_and_exact_spelling() {
         Default::default(),
     )
     .unwrap();
-    let condition = CssContainerCondition::try_from_enclosed(
+    let condition = CssCondition::<CssContainerLeaf>::try_from_enclosed(
         CssGeneralEnclosed::try_parenthesized(values).unwrap(),
     )
     .unwrap();
     assert!(matches!(
         condition.kind(),
-        CssContainerConditionKind::Feature(_)
+        CssConditionKind::Leaf(CssContainerLeaf::Feature(_))
     ));
     assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(condition.position(), None);

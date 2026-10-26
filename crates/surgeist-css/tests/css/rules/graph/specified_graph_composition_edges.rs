@@ -12,9 +12,9 @@ use crate::css::support::rules::assert_exact_specified_sheet as exact;
 use crate::css::support::rules::clean_sheet as sheet;
 use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::{
-    CssContainerPrelude, CssContainerRule, CssCustomMediaBody, CssErrorCode, CssNamespaceContext,
-    CssRecoveryAction, CssRule, CssScopedRule, CssSerializationError,
-    CssSerializationLimits as Limits, CssSheet, CssSupportsCondition, CssSupportsRule,
+    CssCondition, CssContainerPrelude, CssContainerRule, CssCustomMediaBody, CssErrorCode,
+    CssNamespaceContext, CssRecoveryAction, CssRule, CssSerializationError,
+    CssSerializationLimits as Limits, CssSheet, CssSupportsLeaf, CssSupportsRule,
     parse_component_values, parse_sheet,
 };
 
@@ -390,9 +390,12 @@ fn supports_omits_edge_whitespace_but_charges_the_complete_retained_region() {
     let components = parse_component_values(&source).unwrap();
     // Two whitespace components, one block, and its three inner tokens.
     assert_eq!(components.component_count(), 6);
-    let condition =
-        CssSupportsCondition::try_from_components(components.clone(), &context, Default::default())
-            .unwrap();
+    let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
+        components.clone(),
+        &context,
+        Default::default(),
+    )
+    .unwrap();
     let original = condition.clone();
     assert_eq!(condition.components(), components.items());
     // Existing lexical provider control: authored spelling includes both edges.
@@ -414,7 +417,7 @@ fn supports_omits_edge_whitespace_but_charges_the_complete_retained_region() {
     };
     assert_eq!(rule.condition(), &original);
 
-    let condition = CssSupportsCondition::try_from_components(
+    let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
         parse_component_values("(display:grid)").unwrap(),
         &context,
         Default::default(),
@@ -554,7 +557,7 @@ fn scoped_recovered_media_failure_keeps_provider_origin_and_enclosing_top_level_
     let [CssRule::Namespace(_), CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("namespace and scope")
     };
-    let [CssScopedRule::Media(media)] = scope.rules().rules() else {
+    let [CssRule::Media(media)] = scope.rules().rules() else {
         panic!("scoped media")
     };
     // Sheet/namespace/scope/media/list/screen/recovered query cost 10 projected

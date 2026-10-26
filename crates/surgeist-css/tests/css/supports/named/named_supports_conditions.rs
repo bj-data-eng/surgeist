@@ -5,8 +5,8 @@ use crate::css::support::authored_syntax::{
     checked_import_rule as checked_import, checked_supports_condition as checked_condition,
 };
 use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssImportRule, CssNamespaceContext, CssRule,
-    CssSerializedOrigin, CssSupportsCondition, CssSupportsConditionKind, CssValueOrigin,
+    CssComponentValue, CssComponentValues, CssCondition, CssConditionKind, CssImportRule,
+    CssNamespaceContext, CssRule, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin,
     parse_component_values, parse_sheet,
 };
 
@@ -28,7 +28,7 @@ fn named_operands_keep_decoded_case_escapes_and_unknown_identity() {
         (r"(--\46 oo)", "--Foo"),
     ] {
         let checked = checked_condition(source);
-        let CssSupportsConditionKind::Named(name) = checked.kind() else {
+        let CssConditionKind::Leaf(CssSupportsLeaf::Named(name)) = checked.kind() else {
             panic!("{source} must be a named reference");
         };
         assert_eq!(name.as_str(), decoded);
@@ -46,7 +46,7 @@ fn named_operands_keep_decoded_case_escapes_and_unknown_identity() {
         let [CssRule::Supports(rule)] = report.syntax().rules() else {
             panic!("expected parsed @supports");
         };
-        let CssSupportsConditionKind::Named(parsed) = rule.condition().kind() else {
+        let CssConditionKind::Leaf(CssSupportsLeaf::Named(parsed)) = rule.condition().kind() else {
             panic!("parsed {source} must remain symbolic Named");
         };
         assert_eq!(parsed.as_str(), decoded);
@@ -62,11 +62,11 @@ fn named_operands_keep_decoded_case_escapes_and_unknown_identity() {
     }
     assert_ne!(
         match checked_condition("(--Future)").kind() {
-            CssSupportsConditionKind::Named(name) => name.as_str().to_owned(),
+            CssConditionKind::Leaf(CssSupportsLeaf::Named(name)) => name.as_str().to_owned(),
             _ => unreachable!(),
         },
         match checked_condition("(--future)").kind() {
-            CssSupportsConditionKind::Named(name) => name.as_str().to_owned(),
+            CssConditionKind::Leaf(CssSupportsLeaf::Named(name)) => name.as_str().to_owned(),
             _ => unreachable!(),
         }
     );
@@ -75,11 +75,11 @@ fn named_operands_keep_decoded_case_escapes_and_unknown_identity() {
 #[test]
 fn named_operands_compose_with_boolean_supports_grammar() {
     let negated = checked_condition("not (--feature)");
-    let CssSupportsConditionKind::Not(child) = negated.kind() else {
+    let CssConditionKind::Not(child) = negated.kind() else {
         panic!("expected negation");
     };
     assert!(
-        matches!(child.kind(), CssSupportsConditionKind::Named(name) if name.as_str() == "--feature")
+        matches!(child.kind(), CssConditionKind::Leaf(CssSupportsLeaf::Named(name)) if name.as_str() == "--feature")
     );
     assert_eq!(
         negated
@@ -90,15 +90,15 @@ fn named_operands_compose_with_boolean_supports_grammar() {
     );
 
     let conjunction = checked_condition("(--feature) and (display:grid)");
-    let CssSupportsConditionKind::And(children) = conjunction.kind() else {
+    let CssConditionKind::And(children) = conjunction.kind() else {
         panic!("expected conjunction");
     };
     assert!(
-        matches!(children.conditions()[0].kind(), CssSupportsConditionKind::Named(name) if name.as_str() == "--feature")
+        matches!(children.conditions()[0].kind(), CssConditionKind::Leaf(CssSupportsLeaf::Named(name)) if name.as_str() == "--feature")
     );
     assert!(matches!(
         children.conditions()[1].kind(),
-        CssSupportsConditionKind::Declaration(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::Declaration(_))
     ));
     assert_eq!(
         conjunction
@@ -109,14 +109,14 @@ fn named_operands_compose_with_boolean_supports_grammar() {
     );
 
     let disjunction = checked_condition("(--left) or (--right)");
-    let CssSupportsConditionKind::Or(children) = disjunction.kind() else {
+    let CssConditionKind::Or(children) = disjunction.kind() else {
         panic!("expected disjunction");
     };
     let names: Vec<_> = children
         .conditions()
         .iter()
         .map(|child| match child.kind() {
-            CssSupportsConditionKind::Named(name) => name.as_str(),
+            CssConditionKind::Leaf(CssSupportsLeaf::Named(name)) => name.as_str(),
             other => panic!("expected named operand: {other:?}"),
         })
         .collect();
@@ -127,10 +127,7 @@ fn named_operands_compose_with_boolean_supports_grammar() {
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("expected parsed @supports");
     };
-    assert!(matches!(
-        rule.condition().kind(),
-        CssSupportsConditionKind::And(_)
-    ));
+    assert!(matches!(rule.condition().kind(), CssConditionKind::And(_)));
 }
 
 #[test]
@@ -149,7 +146,7 @@ fn import_bare_name_preserves_function_form_and_original_token_origin() {
             .supports()
             .expect("selected supports clause")
             .condition();
-        let CssSupportsConditionKind::Named(name) = condition.kind() else {
+        let CssConditionKind::Leaf(CssSupportsLeaf::Named(name)) = condition.kind() else {
             panic!("bare import name must remain symbolic");
         };
         assert_eq!(name.as_str(), "--nesting");
@@ -194,7 +191,7 @@ fn parenthesized_import_name_and_escaped_bare_name_reconstruct_distinct_forms() 
         let constructed = checked_import(source);
         for import in [parsed, &constructed] {
             let condition = import.supports().expect("supports clause").condition();
-            let CssSupportsConditionKind::Named(name) = condition.kind() else {
+            let CssConditionKind::Leaf(CssSupportsLeaf::Named(name)) = condition.kind() else {
                 panic!("{source} must select named operand");
             };
             assert_eq!(name.as_str(), decoded);
@@ -219,7 +216,7 @@ fn parenthesized_import_name_and_escaped_bare_name_reconstruct_distinct_forms() 
 
 #[test]
 fn checked_named_references_reject_eof_recovery_before_grammar() {
-    let error = CssSupportsCondition::try_from_components(
+    let error = CssCondition::<CssSupportsLeaf>::try_from_components(
         parse_component_values("(--missing").unwrap(),
         &CssNamespaceContext::default(),
         Default::default(),

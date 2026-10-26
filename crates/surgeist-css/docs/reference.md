@@ -289,10 +289,11 @@ parent through `CssSelectorContext::parent()` rather than manufacturing one.
 grammar: `Ordinary` rejects leading combinators; `Nested` retains relative
 members and symbolic nesting anchors; `Scoped(CssStyleAncestor)` retains scope
 anchors even when a style ancestor exists through the scope. An intervening
-style rule starts ordinary nesting context. The result contains the existing
-ordinary/scoped checked carrier through `CssAdmittedStyleSelectors` and retains
+style rule starts ordinary nesting context. The result holds one
+`CssStyleSelectorList`, whose explicit anchors are nesting anchors in the `Ordinary`
+and `Nested` grammars and scope anchors in the `Scoped` grammar; it retains
 the complete original input occurrence through `CssParsedStyleSelectors::origin`.
-It feeds checked edited rule views without manufacturing an authored rule.
+It feeds `CssRuleGraphInput` without manufacturing an authored rule.
 One invalid outer member or trailing nontrivia rejects the whole input, while
 forgiving and implicit EOF recovery may retain a payload with diagnostics.
 Consumers implementing selectorText no-ops therefore inspect retention and
@@ -434,7 +435,7 @@ valid and clean; an empty single query is malformed.
 supplied checked member in order through infallible construction.
 
 Media conditions preserve explicit grouping as
-`CssMediaConditionKind::Parenthesized`: the wrapper position identifies the outer
+`CssConditionKind::Parenthesized`: the wrapper position identifies the outer
 opening parenthesis and the child retains its own first non-trivia position.
 `not` takes one media operand, including a general-enclosed function;
 `and` and `or` each join a homogeneous
@@ -4241,16 +4242,16 @@ without rebuilding an authored rule or re-expanding retained shorthand sources.
 Equivalent and duplicate children remain separate. Name classification, keyText,
 declaration scheduling and whole-rule punctuation reuse the selected
 [CSSOM keyframes branch](../../../references/cssom-1--editor-capture-20261009--d42e145ec395.md#serialize-a-css-rule).
-`CssEditedRuleView::try_keyframes[_with_limits]` embeds the same payload in the
+`CssRuleGraphInput::keyframes` embeds the same payload in the
 shared recursive writer. Limits accumulate across the name, each child, and all
 ancestors; failures retain the current keyframe-block index and recursive rule
 path, publish no partial string, and permit unchanged retry. Borrowed declaration
 entries and selector/value origins retain actual authored observations; a
 programmatic name/container has no fabricated source coordinates. Matching,
 append/delete decisions, placement, live identity and revisions belong to CSSOM.
-Edited Page and keyframes payloads retain these selected wrappers when requested
-through the edited view's specified-output phase; surrounding group punctuation
-still follows that phase's existing compact provider.
+`CssRuleGraphInput` Page and keyframes payloads retain these selected wrappers when
+requested through `CssRuleGraphInput::serialize_specified`; surrounding group
+punctuation still follows the same compact provider.
 
 Literal keyframe percentages use binary64 conversion of the original coefficient,
 then finite inclusive `[0,100]` admission. This selected precision follows frozen
@@ -5498,7 +5499,7 @@ limit `&` refers to the introduced scope. An ordinary root inside another scope
 uses that enclosing scope, while a root without either ancestor retains a
 parentless nesting anchor. Repeated anchors remain distinct, including within
 functional selector arguments. Boundary lists exclude pseudo-elements. A
-`CssScopeSelectorList` preserves each `CssScopeSelector::Selector` or
+`CssScopeSelectorList` preserves each `CssStyleSelector::Selector` or
 `Relative(CssRelativeSelector)` member, including its leading combinator without
 an invented explicit anchor. Limits admit relatives in every context, relative
 to the introduced scope. Roots admit relatives with a style or scope ancestor;
@@ -5514,10 +5515,16 @@ to the nearest enclosing style or scope in the normalized rule-parent chain;
 the limit binds to the introduced scope. No parent
 selector list is expanded during parsing. Shared canonical scope output remains
 with the unfinished rule/stylesheet serializer.
-`CssScopedStyleRule` follows the same
+A scope body is an ordinary `CssRuleList` of `CssRule`s; placement, declaration
+admission, the no-pseudo-element boundary invariant and the `@page` exclusion are checks
+of the construction and assembly context, as is the anchor domain of a style rule's
+explicit `&`: a scope anchor (the scoping root, Cascade 6 section 2.5) in a scope body
+and in the groups inside it, a nesting anchor everywhere else, including the body of a
+style rule inside a scope. Construction rejects a style rule whose anchors belong to
+the other domain as an invalid boundary anchor. A style rule in a scope body follows the same
 leading-declarations and ordered-child contract: its `rules()` returns ordinary `CssRule`
 nesting children relative to the scoped style parent. A scope with a style ancestor retains
-its direct declaration runs as `CssScopedRule::NestedDeclarations`, including runs inside
+its direct declaration runs as `CssRule::NestedDeclarations`, including runs inside
 its conditional and layer groups. Ordinary scope/group bodies without style ancestry
 continue to use their rule-list grammar. Scoped runs reuse the exact ancestor style
 selector handle, including pseudo-elements, while their independent rule-parent chain
@@ -5836,8 +5843,8 @@ beneath a style-rule ancestor drop the smallest established at-rule unit and
 leave later siblings eligible.
 
 Ordinary scope bodies also retain `@font-face` and `@keyframes` definitions.
-`CssScopedRule::{CounterStyle, FontFace, Keyframes}` carries the same payload as
-its ordinary `CssRule` counterpart. Normalization records each definition once
+`CssRule::{CounterStyle, FontFace, Keyframes}` in a scope body is the same value as
+anywhere else. Normalization records each definition once
 under its authored parent context; scope does not create a new definition
 identity or localize these names. Counter-style names retain their tree-scoped
 semantics. Conditional application, font loading and name lookup belong
@@ -5903,12 +5910,12 @@ property reconstruction uses explicit domain constructors; a borrowed
 survive edits. A shared unresolved mode-switch footprint remains a typed failure
 until a completed replacement establishes it.
 
-`CssEditedRuleView::try_page[_with_limits]` embeds that same selected Page
+`CssRuleGraphInput::page` embeds that same selected Page
 payload in recursive edited group output. Margin children remain inside the
 Page payload, with their actual Margin domain and supplied order. All ancestors
 and descendants spend one shared writer budget; a margin failure extends the
-ancestor rule path with its current child index. Construction establishes
-formatting capability, while contextual insertion permission uses the existing
+ancestor rule path with its current child index. The graph checks formatting
+capability when it is serialized, while contextual insertion permission uses the existing
 rule-admission owner. Ordinary conditional/layer ancestry permits Page; style
 ancestry does not. Programmatic edited wrappers have no authored coordinates.
 
@@ -5924,8 +5931,8 @@ remains historical syntax evidence; no variable lookup or printing claim is made
 
 Block-form page rules are accepted at
 the stylesheet top level and inside ordinary conditional and layer rule lists.
-Inside scope, ordinary conditional and layer bodies retain the same payload as
-`CssScopedRule::Page`; page selectors do not become scoped element selectors.
+Inside scope, ordinary conditional and layer bodies retain the same `CssRule::Page`
+payload; page selectors do not become scoped element selectors.
 A directly enclosing scope body rejects a page under the selected Syntax 3 and
 Cascade 6 content-category interpretation. Entering another scope restores that
 body restriction. Pages remain invalid in style-rule bodies, including all group
@@ -6696,7 +6703,7 @@ Container selection, containment effects and style evaluation remain downstream.
 
 ## Conditional rules and import preludes
 
-`CssContainerRule::prelude()` and `CssScopedContainerRule::prelude()` expose a
+`CssContainerRule::prelude()` exposes a
 checked `CssContainerPrelude`. Its nonempty `entries()` retain each comma-separated
 alternative in authored order, including duplicates. Each `CssContainerQueryEntry`
 has a name, a query, or both; `name()` and `query()` expose those optional parts.
@@ -6722,12 +6729,12 @@ names requiring escapes, such as names containing spaces or leading digits.
 
 Container conditions retain explicit parentheses, homogeneous `and` or `or`
 lists, `not`, recognized size, style and scroll-state features, and opaque
-operands. `CssContainerCondition` has private fields; inspect its
-`CssContainerConditionKind` through `kind()`. A `Parenthesized` node retains each
+operands. `CssCondition<CssContainerLeaf>` has private fields; inspect its
+`CssConditionKind` through `kind()`. A `Parenthesized` node retains each
 explicit group around a recognized condition, including redundant groups.
-`GeneralEnclosed(CssContainerGeneralEnclosed)` retains complete unrecognized
-functions and parenthesized operands. Recognized grammar takes precedence over
-this fallback.
+`CssContainerLeaf::GeneralEnclosed(CssContainerGeneralEnclosed)` retains complete
+unrecognized functions and parenthesized operands. Recognized grammar takes
+precedence over this fallback.
 
 `try_from_components` and `try_from_components_with_limits` admit a complete
 condition through the same immutable component grammar as parsing.
@@ -6747,8 +6754,8 @@ order, numeric spelling, symbolic operands and meaningful token boundaries.
 They return the serialized origin map and typed resource errors. They do not
 promise lossless formatting or CSSOM whitespace normalization.
 
-`CssContainerStyleQuery` is a checked wrapper with `kind()` exposing
-`CssContainerStyleQueryKind`. Its feature, explicit group, `not`, homogeneous
+`CssCondition<CssStyleQueryLeaf>` is a checked wrapper with `kind()` exposing
+`CssConditionKind`. Its feature, explicit group, `not`, homogeneous
 `and`/`or`, and general-enclosed nodes each retain their own component region.
 Boolean and plain features carry `CssContainerStyleFeatureName`: ordinary
 `CssPropertyGrammar` identity (including aliases) or a custom-property name.
@@ -6775,11 +6782,11 @@ style-feature production rather than applying declaration parsing and its
 whitespace trimming to the function contents. Query/value serialization preserves
 lexical spelling and origins, including whitespace-only parsed operands.
 See `examples/container_style_semantic_consumer.rs` for inspection without
-reparsing serialized text. The former `CssContainerStyleQuery` enum's presence
+reparsing serialized text. The former style-query enum's presence
 and value variants migrate to `query.kind()` and `CssContainerStyleFeature`.
 
-`CssContainerConditionKind::ScrollState` carries a checked
-`CssContainerScrollQuery`. Its `kind()` exposes feature, explicit parentheses,
+`CssContainerLeaf::ScrollState` carries a checked
+`CssCondition<CssScrollStateLeaf>`. Its `kind()` exposes feature, explicit parentheses,
 negation, homogeneous lists and general-enclosed inner operands. The four
 `CssContainerScrollFeatureKind` identities are stuck, snapped, scrollable and
 scrolled. Bare features carry that identity without an invented comparison.
@@ -6853,9 +6860,9 @@ Invalid outer conditions drop their container rule while later siblings remain
 eligible. Explicit construction limits apply to the complete condition;
 serialization separately bounds its output bytes.
 
-Migration: replace direct `CssContainerCondition` enum construction with checked
+Migration: replace direct container condition enum construction with checked
 component admission, and match `condition.kind()` against
-`CssContainerConditionKind`. Replace `CssContainerGeneralEnclosed::enclosed()`
+`CssConditionKind` and `CssContainerLeaf`. Replace `CssContainerGeneralEnclosed::enclosed()`
 with `component()` when inspecting its original lexical operand. Use the
 condition serializer for the complete query, including recognized groups.
 Size-feature payloads now use `CssMediaRange<CssContainerLength>` and
@@ -6899,16 +6906,16 @@ selected source defines a literal When/Else CSSOM algorithm. Evaluation belongs
 downstream.
 
 `parse_when_condition` and `parse_when_condition_with_limits` return a checked
-`CssWhenCondition` or `CssConditionConstructionError`; the matching parser-context
+`CssCondition<CssWhenLeaf>` or `CssConditionConstructionError`; the matching parser-context
 methods preserve the selected property context. `try_from_components` and
 `try_from_components_with_limits` validate the actual complete components. The
 private condition owns its lexical spelling and origin; inspecting or constructing
-`CssWhenConditionKind` does not permit forging a checked condition.
+`CssConditionKind` does not permit forging a checked condition.
 
 The grammar admits one `not` term, or terms joined by homogeneous `and` or `or`.
 A term is a parenthesized condition, `media()` containing exactly one media
 feature, `supports()` containing exactly one declaration, or MQ4 general-enclosed
-syntax. `CssWhenConditionKind` exposes explicit grouping, negation, ordered
+syntax. `CssConditionKind<CssWhenLeaf>` exposes explicit grouping, negation, ordered
 conjunction/disjunction lists, typed media features, supports declarations and
 opaque enclosures. `media(--name)` is an unknown boolean feature. It does not
 reference a custom-media definition. The media leaf shares the media feature and
@@ -6923,10 +6930,10 @@ errors expose the responsible original `origin()`, with a component error as
 the typed error source when applicable. Lexical `serialize` preserves trivia,
 spelling and grouping; `serialize_with_limit` separately bounds output bytes.
 
-`CssWhenRule`, `CssElseRule`, `CssScopedWhenRule` and `CssScopedElseRule` are checked
+`CssWhenRule` and `CssElseRule` are checked
 group fragments with immutable condition and ordered children. When requires a
-condition; Else accepts `Option<CssWhenCondition>`. Their `try_new` and
-`try_new_in_style` take the condition, an ordinary or scoped child vector, and
+condition; Else accepts `Option<CssCondition<CssWhenLeaf>>`. Their `try_new` and
+`try_new_in_style` take the condition, a child vector, and
 `&CssNamespaceContext`. The latter checks descendants under an explicit style
 ancestor. Enclosing sheet/group assembly rechecks actual sibling placement,
 style ancestry and namespace context atomically. Programmatic at-keywords have
@@ -6992,7 +6999,7 @@ and `Copy` implementation are removed; obtain the checked ratio through a parsed
 or component-constructed media query and borrow or clone it. Container-query
 range, length and ratio types retain their existing contracts.
 
-`CssMediaConditionKind::UnknownFeature` replaces the former `DefinedFalse`
+`CssMediaLeaf::UnknownFeature` replaces the former `DefinedFalse`
 condition. It retains a validated generic feature expression and distinguishes
 an unknown name, invalid value and forbidden operation. General-enclosed syntax
 has its own variant. Both have unknown truth, including under negation; style
@@ -7007,7 +7014,7 @@ errors and original coordinates.
 
 ```rust
 use surgeist_css::{
-    CssMediaConditionKind, CssMediaQuery, CssRecoveryAction, CssRule, parse_sheet,
+    CssConditionKind, CssMediaLeaf, CssMediaQuery, CssRecoveryAction, CssRule, parse_sheet,
 };
 
 let report = parse_sheet("@media (future-mode: active), ???, print {}");
@@ -7020,7 +7027,10 @@ assert!(matches!(
         CssMediaQuery::Condition(condition),
         CssMediaQuery::Never(_),
         CssMediaQuery::Typed(_),
-    ] if matches!(condition.kind(), CssMediaConditionKind::UnknownFeature(_))
+    ] if matches!(
+        condition.kind(),
+        CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(_))
+    )
 ));
 assert_eq!(
     report.diagnostics()[0].action(),
@@ -7029,7 +7039,7 @@ assert_eq!(
 ```
 
 `CssMediaQuery::try_from_components` and
-`CssMediaCondition::try_from_components` validate checked Rust components through
+`CssCondition::<CssMediaLeaf>::try_from_components` validate checked Rust components through
 the same grammar. Their `try_from_components_with_limits` variants accept
 `CssComponentValueLimits` and retain distinct byte, component-count and nesting
 failures. The byte budget also covers canonical expansion, such as an omitted
@@ -7124,14 +7134,14 @@ scoped and style-body groups, and import `supports()` clauses. Function names an
 font keywords match without ASCII case sensitivity; original spelling, escapes,
 comments, grouping and delimiter origins remain in the condition's lexical root.
 
-`CssSupportsConditionKind::FontTech` holds one `CssFontTechHint`. The shared
+`CssSupportsLeaf::FontTech` holds one `CssFontTechHint`. The shared
 [Fonts 4 technology vocabulary](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-tech-values)
 admits `features-opentype`, `features-aat`, `features-graphite`, `color-COLRv0`,
 `color-COLRv1`, `color-SVG`, `color-sbix`, `color-CBDT`, `variations`, `palettes`
 and `incremental`. A predicate accepts exactly one technology; the comma-list
 policy of a font source's `tech()` hint remains separate.
 
-`CssSupportsConditionKind::FontFormat` holds the shared `CssFontFormat`.
+`CssSupportsLeaf::FontFormat` holds the shared `CssFontFormat`.
 The [format grammar](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-format-values)
 admits one of `collection`, `embedded-opentype`, `opentype`, `svg`, `truetype`,
 `woff` or `woff2` as a `Keyword`, or one string as a `String`. Empty, unknown,
@@ -7142,7 +7152,7 @@ it does not convert the predicate to a keyword or evaluate support.
 separately prevents a string format from satisfying support. That truth rule,
 font availability and loading belong to consumers.
 
-`CssSupportsConditionKind::AtRule` holds a private-field `CssSupportsAtRule`.
+`CssSupportsLeaf::AtRule` holds a private-field `CssSupportsAtRule`.
 Its `component()` borrows the genuine argument token, `name()` borrows its
 decoded name without the `@`, and `origin()` and `position()` retain that token's
 provenance. Decoded authored case remains intact. Any genuine at-keyword,
@@ -7208,7 +7218,7 @@ feature-test purpose; the specification does not specify each malformed-item
 result.
 
 An ordinary `@supports (--name)` operand retains
-`CssSupportsConditionKind::Named` with its checked name, even when no definition
+`CssSupportsLeaf::Named` with its checked name, even when no definition
 exists. `@import url(theme.css) supports(--name)` and its parenthesized
 alternative also retain the named reference; import serialization preserves the
 valid bare function-body spelling, while a standalone condition adds the
@@ -7221,7 +7231,7 @@ with the narrow [extension-name import](../specs/catalog.json) and the selected
 #### Checked supports values
 
 Supports conditions and declarations can also be constructed from checked
-component values. `CssSupportsCondition::try_from_components` takes an explicit
+component values. `CssCondition::<CssSupportsLeaf>::try_from_components` takes an explicit
 `CssNamespaceContext`; `CssSupportsDeclaration::try_from_components` takes the
 bare declaration contents. Both have explicit-limit variants. They share the
 authored grammar with stylesheet parsing and reject recovered component input.
@@ -7253,7 +7263,7 @@ construction rejects those same recovered inputs. A standalone condition obtaine
 from an import's bare declaration gains programmatic parentheses when serialized
 as a condition. The import rule keeps its original clause syntax.
 
-Migration: `CssSupportsCondition::position()` and
+Migration: `CssCondition::position()` and
 `CssSupportsDeclaration::position()` now return `Option<CssSourcePosition>`;
 `CssSupportsDeclaration::authored()` returns `Option<&str>`. Consumers must handle
 programmatic construction rather than assuming a single source location or text
@@ -7261,7 +7271,7 @@ slice. Existing stylesheet parsing still supplies the original positions and
 authored declaration text.
 
 ```rust
-use surgeist_css::{CssRule, CssSupportsConditionKind, parse_sheet};
+use surgeist_css::{CssConditionKind, CssRule, CssSupportsLeaf, parse_sheet};
 
 let report = parse_sheet(concat!(
     "@supports (display: grid) and (color: red) {}",
@@ -7279,15 +7289,15 @@ else {
 };
 assert!(matches!(
     declarations.condition().kind(),
-    CssSupportsConditionKind::And(_)
+    CssConditionKind::And(_)
 ));
 assert!(matches!(
     selector.condition().kind(),
-    CssSupportsConditionKind::Selector(_)
+    CssConditionKind::Leaf(CssSupportsLeaf::Selector(_))
 ));
 assert!(matches!(
     fallback.condition().kind(),
-    CssSupportsConditionKind::GeneralEnclosed(value)
+    CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(value))
         if value.authored() == Some("future-layout(mode)")
 ));
 ```
@@ -7387,12 +7397,11 @@ serialization. The typed target accessors and specified output keep the function
 and modifiers. The authored `serialize()` and
 specified output keep the authored target form.
 
-`CssEditedRuleView::try_import[_with_limits]` embeds the current import view in
+`CssRuleGraphInput::import` embeds the current import view in
 the existing recursive formatting graph. The original target/clause components
 and supplied media share the enclosing operation's input, projection and output
 budgets, interpretation protection and typed failures. Retired authored media is
-not charged or emitted. Constructors validate formatting under their supplied
-limits, while a later whole-graph request applies one cumulative budget across
+not charged or emitted. A whole-graph request applies one cumulative budget across
 all children; errors return no partial text and permit unchanged retry. CSSOM
 owns live list edits, placement, parent links and publication. In particular,
 being representable in a formatting graph does not authorize an import in an
@@ -8302,9 +8311,9 @@ parsed descriptor and child origins remain unchanged. `CssSheet::try_from_rules`
 checks ordered existing rules and derives namespace bindings from valid leading
 declarations. `try_new` on ordinary and scoped media/supports/container/layer
 blocks and scope rules uses the existing namespace context and typed preludes.
-Scoped constructors accept ordered `Vec<CssScopedRule>` children and validate
-that actual body role directly; a direct scope constructor additionally rejects
-page definitions. The rule-list wrapper remains internally assembled, without
+The scope constructor accepts ordered `Vec<CssRule>` children and validates
+that actual body role directly, additionally rejecting page, import and namespace
+definitions and declaration runs without a style ancestor. The rule-list wrapper remains internally assembled, without
 public collection mutation or a rule-list builder.
 
 One iterative validator checks import/namespace phases, duplicate decoded
@@ -9664,11 +9673,12 @@ shortest-selector search. Standalone selector and compact rule output preserve
 the authored explicit universals.
 
 The bounded standalone `serialize_cssom[_with_limits]` methods on
-`CssSelectorList`, `CssRelativeSelectorList`, `CssStyleSelectorList` and
-`CssScopedStyleSelectorList` share this same selector visitor. Supply the actual
+`CssSelectorList`, `CssRelativeSelectorList` and `CssStyleSelectorList` share this same
+selector visitor. Supply the actual
 `CssNamespaceContext`; style lists also require `CssStyleSelectorContext`.
 `CssParsedStyleSelectors` delegates using its retained admission context and
-preserves its original occurrence. Incompatible ordinary/scoped anchor domains
+preserves its original occurrence. A typed anchor outside the role's anchor domain
+(nesting anchors in a scoped role, scope anchors in an ordinary or nested one)
 and ordinary roles receiving leading relatives return `UnrepresentableValue`.
 General relatives keep their leading relationships; literal nested members emit
 their implied `&`, including implicit descendants. Explicit/repeated anchors
@@ -9761,9 +9771,10 @@ request. A mismatched Style or NestedDeclarations block fails at its actual chil
 path. No intermediate descendant strings or independently reset writers are
 created. Assembly does not establish placement validity or change origins;
 the consumer owns its live relationships and stable child buffers. Existing
-`CssEditedRuleView` checked constructors retain their eager validation contracts.
+`serialize_specified` writes the compact specified form of the same graph under the same
+limits and depth bound.
 
-`from_rule` and `from_scoped_rule` borrow original parsed payloads. A consumer
+`from_rule` borrows an original parsed payload, including one in a scope body. A consumer
 must use current typed inputs for edited fields. Unsupported whole wrappers keep
 their lazy typed capability failures before descendant output; the graph route
 does not invent Scope, When/Else or CounterStyle literal algorithms. Independently

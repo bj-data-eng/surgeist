@@ -443,3 +443,33 @@ pub fn admitted_selector(source: &str) -> CssSelector {
     assert!(report.is_clean(), "{source}: {report:?}");
     report.syntax().as_ref().expect("admitted selector").clone()
 }
+
+/// Graph limits that bound only the values, as the former value-limited rule
+/// views did: the structural depth bound is lifted.
+pub fn graph_limits(values: CssSerializationLimits) -> CssRuleSerializationLimits {
+    CssRuleSerializationLimits {
+        values,
+        max_depth: usize::MAX,
+    }
+}
+
+/// The compact specified text of `input` under value-only limits.
+pub fn graph_specified(
+    input: CssRuleGraphInput<'_>,
+    values: CssSerializationLimits,
+) -> Result<String, CssRuleSerializationError> {
+    input.serialize_specified(graph_limits(values))
+}
+
+/// The literal CSSOM text of `input` with no namespace bindings or style
+/// ancestor, under value-only limits.
+pub fn graph_cssom(
+    input: CssRuleGraphInput<'_>,
+    values: CssSerializationLimits,
+) -> Result<String, CssRuleSerializationError> {
+    input.serialize_cssom(
+        &CssNamespaceContext::default(),
+        CssStyleAncestor::Absent,
+        graph_limits(values),
+    )
+}

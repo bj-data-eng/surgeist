@@ -1,8 +1,9 @@
 use surgeist_css::{
-    CssAnimationName, CssContentValue, CssContentValueItem, CssErrorCode, CssFontFamilyNameKind,
-    CssGlobalKeyword, CssImageValue, CssKnownDeclaredValueRef, CssKnownPropertyValueRef,
-    CssNthPattern, CssPseudoClass, CssRecoveryAction, CssRule, CssSelector, CssSupportStatus,
-    CssSupportsConditionKind, CssUrlModifier, feature_metadata, parse_sheet, parse_style_attribute,
+    CssAnimationName, CssConditionKind, CssContentValue, CssContentValueItem, CssErrorCode,
+    CssFontFamilyNameKind, CssGlobalKeyword, CssImageValue, CssKnownDeclaredValueRef,
+    CssKnownPropertyValueRef, CssNthPattern, CssPseudoClass, CssRecoveryAction, CssRule,
+    CssSelector, CssSupportStatus, CssSupportsLeaf, CssUrlModifier, feature_metadata, parse_sheet,
+    parse_style_attribute,
 };
 
 #[test]
@@ -67,7 +68,7 @@ fn shared_value_grammars_are_typed_with_feature_provenance() {
     };
     assert!(matches!(
         supports.condition().kind(),
-        CssSupportsConditionKind::GeneralEnclosed(value)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(value))
             if value.authored() == Some("future(fn({x; !}) [y])")
     ));
 

@@ -82,7 +82,7 @@ fn bare_one_argument_declarations_gain_parentheses_with_original_child_sources()
 fn complete_conditions_remain_first_and_both_method_overloads_force_standards() {
     let text = "(color:red) and (width:1px)";
     let condition = parse_css_supports_condition(text).unwrap();
-    assert!(matches!(condition.kind(), CssSupportsConditionKind::And(_)));
+    assert!(matches!(condition.kind(), CssConditionKind::And(_)));
     assert_eq!(
         condition
             .serialize_tokens(Default::default())

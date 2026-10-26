@@ -3,10 +3,10 @@
 //! Syntax 3 (2026-10-01) #consume-url-token distinguishes them from bad URLs.
 use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::{
-    CssErrorCode, CssImportLayer, CssImportRule, CssImportString, CssImportTarget, CssImportUrl,
-    CssMediaQuery, CssMediaType, CssNamespaceContext, CssRecoveryAction, CssRule,
-    CssSerializedOrigin, CssSupportsConditionKind, CssValueOrigin, parse_rule, parse_sheet,
-    validate_sheet,
+    CssConditionKind, CssErrorCode, CssImportLayer, CssImportRule, CssImportString,
+    CssImportTarget, CssImportUrl, CssMediaQuery, CssMediaType, CssNamespaceContext,
+    CssRecoveryAction, CssRule, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin, parse_rule,
+    parse_sheet, validate_sheet,
 };
 
 // Authored spelling, URL-versus-string target, exact decoded value.
@@ -113,7 +113,7 @@ fn empty_targets_preserve_layer_supports_and_symbolic_media_clauses() {
             import.layer(),
             Some(CssImportLayer::Named(name)) if name.components() == ["theme"]
         ));
-        let CssSupportsConditionKind::Declaration(declaration) =
+        let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) =
             import.supports().unwrap().condition().kind()
         else {
             panic!("retained declaration supports condition");

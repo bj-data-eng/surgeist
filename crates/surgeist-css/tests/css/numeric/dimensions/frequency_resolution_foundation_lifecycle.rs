@@ -140,8 +140,9 @@ fn resolution_feature(source: &str) -> CssMediaFeatureQuery {
     let CssMediaQuery::Condition(condition) = report.syntax() else {
         panic!("condition query");
     };
-    let CssMediaConditionKind::Feature(feature @ CssMediaFeatureQuery::Resolution(_)) =
-        condition.kind()
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(
+        feature @ CssMediaFeatureQuery::Resolution(_),
+    )) = condition.kind()
     else {
         panic!("known resolution feature");
     };
@@ -758,8 +759,9 @@ mod construction {
             let CssMediaQuery::Condition(condition) = report.syntax() else {
                 panic!("condition")
             };
-            let CssMediaConditionKind::Feature(CssMediaFeatureQuery::Resolution(range)) =
-                condition.kind()
+            let CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Resolution(
+                range,
+            ))) = condition.kind()
             else {
                 panic!("known resolution")
             };

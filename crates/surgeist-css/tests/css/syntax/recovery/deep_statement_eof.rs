@@ -1,8 +1,8 @@
 //! Syntax 3 §5.5.2 returns an at-rule with an EOF fault. These cases compose
 //! that contract with existing ordinary/scoped structural recovery boundaries.
 use surgeist_css::{
-    CssErrorCode, CssLayerNameList, CssParseReport, CssRecoveryAction, CssRule, CssScopedRule,
-    CssSheet, CssSourcePosition, parse_sheet, validate_sheet,
+    CssErrorCode, CssLayerNameList, CssParseReport, CssRecoveryAction, CssRule, CssSheet,
+    CssSourcePosition, parse_sheet, validate_sheet,
 };
 
 const DEPTHS: [usize; 6] = [63, 64, 65, 127, 128, 129];
@@ -65,12 +65,12 @@ fn assert_scoped_chain(sheet: &CssSheet, depth: usize, source: &str, start: usiz
     };
     let mut parent = first;
     for _ in 1..depth {
-        let [CssScopedRule::Scope(nested)] = parent.rules().rules() else {
+        let [CssRule::Scope(nested)] = parent.rules().rules() else {
             panic!("every enclosing scoped group survives")
         };
         parent = nested;
     }
-    let [CssScopedRule::LayerStatement(statement)] = parent.rules().rules() else {
+    let [CssRule::LayerStatement(statement)] = parent.rules().rules() else {
         panic!("named layer survives at the exact innermost scoped depth")
     };
     assert_layer(statement.names());

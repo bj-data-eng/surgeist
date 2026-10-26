@@ -180,11 +180,7 @@ pub(crate) fn parse_group_block_with_context(
         };
         let block = block.map(|block| {
             let (mut body, origin) = block.into_parts();
-            conditional_chains::completed_list(
-                source,
-                crate::syntax::CssParserRuleChildrenMut::Ordinary(body.rules_mut()),
-                &mut diagnostics,
-            );
+            conditional_chains::completed_list(source, body.rules_mut(), &mut diagnostics);
             crate::CssBlockFragment::from_parsed(body, origin)
         });
         crate::CssParseReport::new(block, diagnostics)
@@ -219,7 +215,7 @@ pub fn parse_scope_block(
     source: &str,
     namespaces: &CssNamespaceContext,
     ancestry: crate::CssStyleAncestor,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<CssScopedRuleList>>> {
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssRuleList>>> {
     parse_scope_block_with_context(
         source,
         namespaces,
@@ -233,7 +229,7 @@ pub(crate) fn parse_scope_block_with_context(
     namespaces: &CssNamespaceContext,
     ancestry: crate::CssStyleAncestor,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<CssScopedRuleList>>> {
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssRuleList>>> {
     scoped_block_with_context(
         source,
         namespaces,
@@ -255,7 +251,7 @@ pub fn parse_scoped_group_block(
     source: &str,
     namespaces: &CssNamespaceContext,
     ancestry: crate::CssStyleAncestor,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<CssScopedRuleList>>> {
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssRuleList>>> {
     parse_scoped_group_block_with_context(
         source,
         namespaces,
@@ -269,7 +265,7 @@ pub(crate) fn parse_scoped_group_block_with_context(
     namespaces: &CssNamespaceContext,
     ancestry: crate::CssStyleAncestor,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<CssScopedRuleList>>> {
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssRuleList>>> {
     scoped_block_with_context(
         source,
         namespaces,
@@ -285,7 +281,7 @@ fn scoped_block_with_context(
     ancestry: crate::CssStyleAncestor,
     body: ScopedBodyKind,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<CssScopedRuleList>>> {
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssRuleList>>> {
     bounded(source, || {
         let snapshot = CssSourceSnapshot::new(source);
         let has_style_ancestor = matches!(ancestry, crate::CssStyleAncestor::Present);
@@ -306,11 +302,7 @@ fn scoped_block_with_context(
         };
         let block = block.map(|block| {
             let (mut body, origin) = block.into_parts();
-            conditional_chains::completed_list(
-                source,
-                crate::syntax::CssParserRuleChildrenMut::Scoped(body.rules_mut()),
-                &mut diagnostics,
-            );
+            conditional_chains::completed_list(source, body.rules_mut(), &mut diagnostics);
             crate::CssBlockFragment::from_parsed(body, origin)
         });
         crate::CssParseReport::new(block, diagnostics)
@@ -322,7 +314,7 @@ pub(super) fn parse_scoped_block_inner(
     recovery: RecoveryState,
     has_style_ancestor: bool,
     body: ScopedBodyKind,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<CssScopedRuleList>>> {
+) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssRuleList>>> {
     let production = match body {
         ScopedBodyKind::Scope => "css.scope-block",
         ScopedBodyKind::OrdinaryGroup => "css.scoped-group-block",
@@ -335,7 +327,7 @@ pub(super) fn parse_scoped_block_inner(
             let mut parsed =
                 parse_scoped_rule_list(source, input, recovery, has_style_ancestor, body)?;
             diagnostics.append(&mut parsed.diagnostics);
-            Ok(parsed.syntax)
+            Ok(crate::CssRuleList::from_parsed(parsed.syntax))
         },
     )
 }

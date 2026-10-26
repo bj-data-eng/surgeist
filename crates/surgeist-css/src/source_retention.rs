@@ -655,22 +655,11 @@ via!(
     self.declarations(),
     self.rules()
 );
-via!(
-    CssScopedStyleRule,
-    self,
-    self.selectors(),
-    self.declarations(),
-    self.rules()
-);
 via!(CssNestedDeclarationsRule, self, self.declarations());
 via!(CssMediaRule, self, self.query(), self.rules());
-via!(CssScopedMediaRule, self, self.query(), self.rules());
 via!(CssSupportsRule, self, self.condition(), self.rules());
-via!(CssScopedSupportsRule, self, self.condition(), self.rules());
 via!(CssContainerRule, self, self.prelude(), self.rules());
-via!(CssScopedContainerRule, self, self.prelude(), self.rules());
 via!(CssLayerBlockRule, self, self.rules());
-via!(CssScopedLayerBlockRule, self, self.rules());
 via!(
     CssCounterStyleDescriptorValue,
     self,
@@ -704,16 +693,14 @@ via!(
 );
 via!(CssKeyframeSelectorList, self, self.selectors());
 via!(CssStyleSelectorList, self, self.selectors());
-via!(CssScopedStyleSelectorList, self, self.selectors());
 via!(CssScopeSelectorList, self, self.selectors());
-via!(CssScopedRuleList, self, self.rules());
+via!(CssRuleList, self, self.rules());
 via!(CssFontFaceRule, self, self.descriptors());
 via!(CssFontFaceDescriptor, self, self.value());
 via!(CssPendingFontFaceDescriptorValue, self, self.components());
 via!(CssKeyframeDeclaration, self, self.source());
 via!(CssKeyframeDeclarationList, self, self.as_slice());
 via!(CssStyleSelector, self, self.selector());
-via!(CssScopeSelector, self, self.selector());
 via!(CssRelativeSelector, self, self.selector());
 via!(CssPageSelector, self, &self.origin());
 via!(CssPageSelectorList, self, &self.origin(), self.selectors());
@@ -758,9 +745,7 @@ via!(
 );
 via!(CssFontFeatureValuesRule, self, self.items());
 via!(CssWhenRule, self, self.condition(), self.rules());
-via!(CssScopedWhenRule, self, self.condition(), self.rules());
 via!(CssElseRule, self, &self.condition(), self.rules());
-via!(CssScopedElseRule, self, &self.condition(), self.rules());
 
 impl<T: CssRetainedSources> CssRetainedSources for CssDescriptorOccurrence<T> {
     fn visit_retained_sources(
@@ -824,17 +809,6 @@ impl CssRetainedSources for CssKeyframeSelector {
             sources.visit(value.components())?;
         }
         Ok(())
-    }
-}
-impl CssRetainedSources for CssScopedStyleSelector {
-    fn visit_retained_sources(
-        &self,
-        sources: &mut CssSourceRetention<'_>,
-    ) -> Result<(), CssSourceRetentionError> {
-        match self {
-            Self::Selector(value) => sources.visit(value),
-            Self::Relative(value) => sources.visit(value),
-        }
     }
 }
 impl CssRetainedSources for CssFontFeatureValuesItem {
@@ -923,42 +897,6 @@ impl CssRetainedSources for CssMediaQuery {
                 Ok(())
             }
             Self::Never(_) => Ok(()),
-        }
-    }
-}
-impl CssRetainedSources for CssMediaCondition {
-    fn visit_retained_sources(
-        &self,
-        sources: &mut CssSourceRetention<'_>,
-    ) -> Result<(), CssSourceRetentionError> {
-        use crate::media::MediaConditionSyntax;
-        sources.visit(self.origin())?;
-        match &self.syntax {
-            MediaConditionSyntax::Feature(value) => {
-                sources.visit(&value.component)?;
-                sources.visit(&value.name)?;
-                for values in &value.separators {
-                    sources.visit(values.as_slice())?;
-                }
-            }
-            MediaConditionSyntax::Group { closing } => sources.visit(closing)?,
-            MediaConditionSyntax::Junction(values) => sources.visit(values.as_slice())?,
-            MediaConditionSyntax::Enclosed | MediaConditionSyntax::Not => {}
-        }
-        match self.kind() {
-            CssMediaConditionKind::Parenthesized(value) | CssMediaConditionKind::Not(value) => {
-                sources.visit(value.as_ref())
-            }
-            CssMediaConditionKind::And(value) | CssMediaConditionKind::Or(value) => {
-                for value in value.conditions() {
-                    sources.visit(value)?;
-                }
-                Ok(())
-            }
-            CssMediaConditionKind::CustomMediaReference(value) => sources.visit(value.component()),
-            CssMediaConditionKind::UnknownFeature(value) => sources.visit(value.component()),
-            CssMediaConditionKind::GeneralEnclosed(value) => sources.visit(value.component()),
-            CssMediaConditionKind::Feature(_) => Ok(()), // private grammar derives this from the retained Feature syntax
         }
     }
 }
@@ -1232,34 +1170,5 @@ impl CssRetainedSources for CssRule {
         }
     }
 }
-impl CssRetainedSources for CssScopedRule {
-    fn visit_retained_sources(
-        &self,
-        sources: &mut CssSourceRetention<'_>,
-    ) -> Result<(), CssSourceRetentionError> {
-        match self {
-            Self::CustomMedia(value) => sources.visit(value),
-            Self::LayerStatement(_) => Ok(()),
-            Self::CounterStyle(value) => sources.visit(value),
-            Self::Page(value) => sources.visit(value),
-            Self::LayerBlock(value) => sources.visit(value),
-            Self::FontFace(value) => sources.visit(value),
-            Self::FontFeatureValues(value) => sources.visit(value),
-            Self::FontPaletteValues(value) => sources.visit(value),
-            Self::ColorProfile(value) => sources.visit(value),
-            Self::Keyframes(value) => sources.visit(value),
-            Self::Style(value) => sources.visit(value),
-            Self::NestedDeclarations(value) => sources.visit(value),
-            Self::Media(value) => sources.visit(value),
-            Self::Supports(value) => sources.visit(value),
-            Self::SupportsCondition(value) => sources.visit(value),
-            Self::Container(value) => sources.visit(value),
-            Self::When(value) => sources.visit(value),
-            Self::Else(value) => sources.visit(value),
-            Self::Scope(value) => sources.visit(value),
-        }
-    }
-}
-
 #[cfg(test)]
 mod admission_tests;

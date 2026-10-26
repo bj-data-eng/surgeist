@@ -9,6 +9,7 @@ use crate::error::{CssError, basic, from_parse_error, invalid_syntax};
 use crate::named_supports::CssSupportsConditionName;
 use crate::syntax::*;
 use crate::{CssComponentValues, CssParsedOrigin};
+use crate::{CssCondition, CssConditionKind, SupportsAuthoredForm};
 use cssparser::{Delimiter, ParseError, Parser, ParserInput, ParserState};
 
 pub(super) struct CssImportPrelude {
@@ -69,8 +70,8 @@ pub(crate) fn construct_import(
             SupportsAuthoredForm::BareDeclaration => {
                 let declaration = CssSupportsDeclaration::try_from_components(body, limits)?;
                 let lexical = declaration.lexical().clone();
-                CssSupportsCondition::new(
-                    CssSupportsConditionKind::Declaration(Box::new(declaration)),
+                CssCondition::lexical_form(
+                    CssConditionKind::Leaf(CssSupportsLeaf::Declaration(Box::new(declaration))),
                     lexical,
                     SupportsAuthoredForm::BareDeclaration,
                 )
@@ -86,14 +87,14 @@ pub(crate) fn construct_import(
                 };
                 let name = CssSupportsConditionName::try_from_component((*component).clone())
                     .map_err(|_| import_construction_grammar(items[index].origin()))?;
-                CssSupportsCondition::new(
-                    CssSupportsConditionKind::Named(name),
+                CssCondition::lexical_form(
+                    CssConditionKind::Leaf(CssSupportsLeaf::Named(name)),
                     crate::supports::SupportsLexical::root(body),
                     SupportsAuthoredForm::BareName,
                 )
             }
             SupportsAuthoredForm::Condition => {
-                CssSupportsCondition::try_from_components(body, context, limits)?
+                CssCondition::<CssSupportsLeaf>::try_from_components(body, context, limits)?
             }
         };
         Some(CssImportSupports::new(condition))
@@ -548,8 +549,8 @@ fn parse_import_supports<'i, 't>(
             Ok::<_, ParseError<'i, CssError>>(declaration)
         }))? {
             let lexical = declaration.lexical().clone();
-            return Ok(CssSupportsCondition::new(
-                CssSupportsConditionKind::Declaration(Box::new(declaration)),
+            return Ok(CssCondition::lexical_form(
+                CssConditionKind::Leaf(CssSupportsLeaf::Declaration(Box::new(declaration))),
                 lexical,
                 SupportsAuthoredForm::BareDeclaration,
             ));
@@ -570,8 +571,8 @@ fn parse_import_supports<'i, 't>(
             };
             let name = CssSupportsConditionName::try_from_component((*component).clone())
                 .map_err(|_| invalid_syntax(at))?;
-            Ok::<_, ParseError<'i, CssError>>(CssSupportsCondition::new(
-                CssSupportsConditionKind::Named(name),
+            Ok::<_, ParseError<'i, CssError>>(CssCondition::lexical_form(
+                CssConditionKind::Leaf(CssSupportsLeaf::Named(name)),
                 crate::supports::SupportsLexical::root(values),
                 SupportsAuthoredForm::BareName,
             ))

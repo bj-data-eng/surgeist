@@ -19,20 +19,20 @@ fn scoped_style_body_accepts_nested_rules_and_surrounding_declarations() {
 fn scoped_parent(
     report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
     scope_depth: usize,
-) -> &surgeist_css::CssScopedStyleRule {
-    use surgeist_css::{CssRule, CssScopedRule};
+) -> &surgeist_css::CssStyleRule {
+    use surgeist_css::CssRule;
 
     let [CssRule::Scope(mut_scope)] = report.syntax().rules() else {
         panic!("expected one outer scope");
     };
     let mut scope = mut_scope;
     for _ in 1..scope_depth {
-        let [CssScopedRule::Scope(child)] = scope.rules().rules() else {
+        let [CssRule::Scope(child)] = scope.rules().rules() else {
             panic!("expected retained scope ancestor");
         };
         scope = child;
     }
-    let [CssScopedRule::Style(parent)] = scope.rules().rules() else {
+    let [CssRule::Style(parent)] = scope.rules().rules() else {
         panic!("expected one authored scoped style parent");
     };
     parent

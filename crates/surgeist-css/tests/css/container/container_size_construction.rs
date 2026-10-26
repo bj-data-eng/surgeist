@@ -3,8 +3,8 @@
 use crate::css::support::authored_syntax::checked_container_condition as condition;
 use surgeist_css::*;
 
-fn feature(condition: &CssContainerCondition) -> &CssContainerFeatureQuery {
-    let CssContainerConditionKind::Feature(feature) = condition.kind() else {
+fn feature(condition: &CssCondition<CssContainerLeaf>) -> &CssContainerFeatureQuery {
+    let CssConditionKind::Leaf(CssContainerLeaf::Feature(feature)) = condition.kind() else {
         panic!("recognized feature: {condition:?}")
     };
     feature
@@ -171,7 +171,7 @@ fn exact_numeric_views_retain_magnitudes_and_unitless_zero_without_f32() {
     ] {
         assert!(matches!(
             condition(source).kind(),
-            CssContainerConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
         ));
     }
 }
@@ -331,7 +331,7 @@ fn mixed_origin_pending_components_preserve_token_origins_and_bounded_constructi
     )
     .unwrap();
     let enclosed = CssGeneralEnclosed::try_parenthesized(values).unwrap();
-    let condition = CssContainerCondition::try_from_enclosed(enclosed).unwrap();
+    let condition = CssCondition::<CssContainerLeaf>::try_from_enclosed(enclosed).unwrap();
     assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
     let CssContainerFeatureQuery::Width(range) = feature(&condition) else {
         panic!("width")
@@ -349,7 +349,7 @@ fn mixed_origin_pending_components_preserve_token_origins_and_bounded_constructi
     ));
     let components =
         CssComponentValues::try_new(condition.components().to_vec(), Default::default()).unwrap();
-    let error = CssContainerCondition::try_from_components(
+    let error = CssCondition::<CssContainerLeaf>::try_from_components(
         components,
         CssComponentValueLimits::try_new(256, usize::MAX, 1).unwrap(),
     )
@@ -361,7 +361,8 @@ fn mixed_origin_pending_components_preserve_token_origins_and_bounded_constructi
 fn recovered_numeric_closures_remain_recognized_and_serialize_explicitly() {
     let components = parse_component_values("(width: calc(1px + 2px").unwrap();
     let condition =
-        CssContainerCondition::try_from_components(components, Default::default()).unwrap();
+        CssCondition::<CssContainerLeaf>::try_from_components(components, Default::default())
+            .unwrap();
     assert!(matches!(
         feature(&condition),
         CssContainerFeatureQuery::Width(_)

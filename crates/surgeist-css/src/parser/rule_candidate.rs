@@ -32,15 +32,6 @@ pub enum CssRuleAdmissionContext {
     ScopedGroup(CssStyleAncestor),
 }
 
-/// A semantically admitted occurrence in its owning ordinary or scoped domain.
-#[derive(Clone, Debug, PartialEq)]
-pub enum CssAdmittedRule {
-    /// Ordinary stylesheet/group/style grammar.
-    Ordinary(CssRule),
-    /// Scoped selector and rule grammar.
-    Scoped(CssScopedRule),
-}
-
 #[derive(Clone, Debug)]
 pub(super) struct RuleEnvelope {
     pub(super) start: usize,
@@ -113,7 +104,7 @@ impl CssRuleSyntax {
         &self,
         namespaces: &CssNamespaceContext,
         context: CssRuleAdmissionContext,
-    ) -> CssParseReport<Option<CssAdmittedRule>> {
+    ) -> CssParseReport<Option<CssRule>> {
         self.admit_with_context(namespaces, context, CssParserContext::default())
     }
     /// Admits under explicit document mode, namespaces and destination grammar.
@@ -123,7 +114,7 @@ impl CssRuleSyntax {
         namespaces: &CssNamespaceContext,
         context: CssRuleAdmissionContext,
         parser_context: CssParserContext,
-    ) -> CssParseReport<Option<CssAdmittedRule>> {
+    ) -> CssParseReport<Option<CssRule>> {
         let source = self.origin.source().as_str();
         let refused = || None;
         let report = fragments::bounded_report(source, refused, || {
@@ -142,25 +133,11 @@ impl CssRuleSyntax {
             let BoundedParseSyntax::Candidate(rule) = syntax else {
                 unreachable!("candidate replay retains its carrier")
             };
-            let (rules, diagnostics) = match rule {
-                Some(CssAdmittedRule::Ordinary(rule)) => {
-                    let (rule, diagnostics) =
-                        conditional_chains::rule(source, rule, diagnostics).into_parts();
-                    (rule.map(CssAdmittedRule::Ordinary), diagnostics)
-                }
-                Some(CssAdmittedRule::Scoped(rule)) => {
-                    let mut rules = vec![rule];
-                    let mut diagnostics = diagnostics;
-                    conditional_chains::completed_list(
-                        source,
-                        crate::syntax::CssParserRuleChildrenMut::Scoped(&mut rules),
-                        &mut diagnostics,
-                    );
-                    (rules.pop().map(CssAdmittedRule::Scoped), diagnostics)
-                }
+            let (rule, diagnostics) = match rule {
+                Some(rule) => conditional_chains::rule(source, rule, diagnostics).into_parts(),
                 None => (None, diagnostics),
             };
-            CssParseReport::new(rules, diagnostics)
+            CssParseReport::new(rule, diagnostics)
         });
         self.with_preliminary_diagnostics(recovery::finish_report(source, report))
     }
@@ -394,7 +371,7 @@ pub(super) fn admit_inner(
     state: RecoveryState,
     envelope: &RuleEnvelope,
     context: CssRuleAdmissionContext,
-) -> CssParseReport<Option<CssAdmittedRule>> {
+) -> CssParseReport<Option<CssRule>> {
     let working_source = crate::tokenization::prepare(source);
     let mut parser_input = ParserInput::new(&working_source);
     let mut input = Parser::new(&mut parser_input);
@@ -410,7 +387,7 @@ pub(super) fn admit_inner(
                     .map(|item| {
                         let [rule]: [CssRule; 1] =
                             item.into_rules().try_into().expect("one ordinary rule");
-                        CssAdmittedRule::Ordinary(rule)
+                        rule
                     });
             (result, parser.diagnostics)
         }
@@ -419,7 +396,7 @@ pub(super) fn admit_inner(
         }
         CssRuleAdmissionContext::Scope(ancestor)
         | CssRuleAdmissionContext::ScopedGroup(ancestor) => {
-            let mut parser = ScopedRuleParser::new(
+            let mut parser = RuleParser::scoped(
                 source,
                 state.clone(),
                 ancestor == CssStyleAncestor::Present,
@@ -435,11 +412,9 @@ pub(super) fn admit_inner(
             let result =
                 syntax_bridge::admit_envelope(source, &mut input, &mut parser, &state, envelope)
                     .map(|item| {
-                        let ScopedBlockItem::Rules(rules) = item else {
-                            unreachable!("detached driver never admits a declaration")
-                        };
-                        let [rule]: [CssScopedRule; 1] = rules.try_into().expect("one scoped rule");
-                        CssAdmittedRule::Scoped(rule)
+                        let [rule]: [CssRule; 1] =
+                            item.into_rules().try_into().expect("one scoped rule");
+                        rule
                     });
             (result, parser.diagnostics)
         }

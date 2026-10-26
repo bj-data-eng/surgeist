@@ -2,6 +2,15 @@ use surgeist_css::*;
 use surgeist_css::{CssNamespaceRule, CssRule};
 use surgeist_cssom::*;
 
+fn graph_cssom(input: CssRuleGraphInput<'_>) -> String {
+    input
+        .serialize_cssom(
+            &CssNamespaceContext::default(),
+            CssStyleAncestor::Absent,
+            Default::default(),
+        )
+        .unwrap()
+}
 fn version(role: CssomInputRole, identity: &str, revision: u64) -> CssomInputVersion {
     CssomInputVersion {
         role,
@@ -187,35 +196,23 @@ fn empty_nested_child_remains_live_and_css_provider_filters_only_its_text() {
         .iter()
         .map(|id| match after.rule(id).unwrap().data() {
             CssomRuleData::NestedDeclarations { block } => {
-                CssEditedRuleView::try_nested_declarations(
-                    selected(&after, block),
-                    Default::default(),
-                )
-                .unwrap()
+                CssRuleGraphInput::nested_declarations(selected(&after, block))
             }
             _ => match after.rule(id).unwrap().authored() {
-                CssomAuthoredRule::Ordinary(v) => CssEditedRuleView::from_rule(v),
+                CssomAuthoredRule::Rule(v) => CssRuleGraphInput::from_rule(v),
                 _ => panic!("ordinary child"),
             },
         })
         .collect::<Vec<_>>();
     let CssomRuleData::Style {
-        selectors: CssomSelectors::Ordinary(selectors),
-        block,
-        ..
+        selectors, block, ..
     } = after.rule(&style).unwrap().data()
     else {
         panic!("style")
     };
-    let view = CssEditedRuleView::try_style(
-        selectors,
-        selected(&after, block),
-        &views,
-        Default::default(),
-    )
-    .unwrap();
+    let view = CssRuleGraphInput::style(selectors, selected(&after, block), &views);
     assert_eq!(
-        view.serialize_cssom(Default::default()).unwrap(),
+        graph_cssom(view),
         "a {\n  & b { color: red; }\n  & c { color: green; }\n}"
     );
     let media_id = match after.rule(&media).unwrap().data() {
@@ -226,15 +223,13 @@ fn empty_nested_child_remains_live_and_css_provider_filters_only_its_text() {
         _ => panic!("media"),
     };
     let child_views = [view];
-    let media_view = CssEditedRuleView::try_group(
-        CssEditedGroupPreludeRef::Media(after.media(media_id).unwrap()),
+    let media_view = CssRuleGraphInput::group(
+        CssGroupPreludeRef::Media(after.media(media_id).unwrap()),
         &child_views,
-        Default::default(),
-    )
-    .unwrap();
+    );
     // Selected CSSOM §serialize-rule indents each serialized child item once.
     assert_eq!(
-        media_view.serialize_cssom(Default::default()).unwrap(),
+        graph_cssom(media_view),
         "@media screen {\n  a {\n  & b { color: red; }\n  & c { color: green; }\n}\n}"
     );
 }
@@ -454,7 +449,7 @@ fn typed_and_recovered_creation_share_checked_boundary_without_fabricated_origin
     let sheet = store.commit(edit).unwrap().sheet(&ticket).unwrap().clone();
     let snapshot = store.snapshot();
     match snapshot.rule(&root(&snapshot, &sheet)).unwrap().authored() {
-        CssomAuthoredRule::Ordinary(CssRule::Namespace(v)) => assert!(v.position().is_none()),
+        CssomAuthoredRule::Rule(CssRule::Namespace(v)) => assert!(v.position().is_none()),
         _ => panic!("namespace"),
     }
     let mut edit = batch(&store);
@@ -1004,10 +999,8 @@ fn media_with_only_empty_nested_child_keeps_literal_two_newline_frame() {
         children(&after, &media).as_slice(),
         std::slice::from_ref(&nested)
     );
-    let nested_view =
-        CssEditedRuleView::try_nested_declarations(selected(&after, &block), Default::default())
-            .unwrap();
-    assert_eq!(nested_view.serialize_cssom(Default::default()).unwrap(), "");
+    let nested_view = CssRuleGraphInput::nested_declarations(selected(&after, &block));
+    assert_eq!(graph_cssom(nested_view), "");
     let children = [nested_view];
     let CssomRuleData::Group {
         prelude: CssomGroupPrelude::Media(id),
@@ -1016,16 +1009,11 @@ fn media_with_only_empty_nested_child_keeps_literal_two_newline_frame() {
     else {
         panic!("media")
     };
-    let media = CssEditedRuleView::try_group(
-        CssEditedGroupPreludeRef::Media(after.media(id).unwrap()),
+    let media = CssRuleGraphInput::group(
+        CssGroupPreludeRef::Media(after.media(id).unwrap()),
         &children,
-        Default::default(),
-    )
-    .unwrap();
-    assert_eq!(
-        media.serialize_cssom(Default::default()).unwrap(),
-        "@media screen {\n\n}"
     );
+    assert_eq!(graph_cssom(media), "@media screen {\n\n}");
 }
 
 #[test]

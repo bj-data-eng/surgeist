@@ -8,17 +8,17 @@ use crate::css::support::value_assertions::assert_parsed_span as parsed_span;
 use crate::css::support::value_assertions::clean_media_query as query;
 use crate::css::support::value_assertions::media_resource_kind as resource_kind;
 use surgeist_css::{
-    CssCalculationExpressionRef, CssMediaConditionKind, CssMediaFeatureQuery, CssMediaGridRef,
-    CssMediaQuery, CssMediaRangeRef, CssMediaResolutionRef, CssQueryComparison, CssRecoveryAction,
-    CssSerializationLimits as Limits, CssSerializedOrigin, CssUnknownMediaFeatureReason,
-    CssValueOrigin, parse_cssom_media_query, parse_media_query_list,
+    CssCalculationExpressionRef, CssConditionKind, CssMediaFeatureQuery, CssMediaGridRef,
+    CssMediaLeaf, CssMediaQuery, CssMediaRangeRef, CssMediaResolutionRef, CssQueryComparison,
+    CssRecoveryAction, CssSerializationLimits as Limits, CssSerializedOrigin,
+    CssUnknownMediaFeatureReason, CssValueOrigin, parse_cssom_media_query, parse_media_query_list,
 };
 
 fn feature(query: &CssMediaQuery) -> &CssMediaFeatureQuery {
     let CssMediaQuery::Condition(condition) = query else {
         panic!("expected a media condition");
     };
-    let CssMediaConditionKind::Feature(feature) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(feature)) = condition.kind() else {
         panic!("expected an admitted known feature");
     };
     feature
@@ -316,7 +316,7 @@ fn numeric_domains_do_not_turn_unknown_features_into_ignored_queries() {
         let CssMediaQuery::Condition(condition) = &authored else {
             panic!("expected retained condition");
         };
-        let CssMediaConditionKind::UnknownFeature(value) = condition.kind() else {
+        let CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(value)) = condition.kind() else {
             panic!("expected unknown feature, not ignored query: {source}");
         };
         assert_eq!(value.reason(), reason);
@@ -344,7 +344,7 @@ fn numeric_domains_do_not_turn_unknown_features_into_ignored_queries() {
         };
         assert!(matches!(
             condition.kind(),
-            CssMediaConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_))
         ));
         assert_eq!(
             authored
@@ -368,7 +368,7 @@ fn numeric_domains_do_not_turn_unknown_features_into_ignored_queries() {
     };
     assert!(matches!(
         condition.kind(),
-        CssMediaConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_))
     ));
     assert_eq!(
         authored

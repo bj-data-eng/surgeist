@@ -5,11 +5,11 @@ use crate::css::support::failure_classes::component_failure;
 use crate::css::support::rules::import_from_components as construct;
 use surgeist_css::{
     CssCalculationExpressionRef, CssComponentValue, CssComponentValueError,
-    CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssImportLayer,
-    CssImportRule, CssImportTarget, CssKnownPropertyValueRef, CssMediaConditionKind,
-    CssMediaConstructionError, CssMediaFeatureQuery, CssMediaQuery, CssMediaRangeRef, CssMediaType,
-    CssNamespaceConstraint, CssNamespaceContext, CssOpacityValue, CssRule, CssSelector,
-    CssSerializationError, CssSerializedOrigin, CssSupportsConditionKind, CssValueOrigin,
+    CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssConditionKind,
+    CssImportLayer, CssImportRule, CssImportTarget, CssKnownPropertyValueRef,
+    CssMediaConstructionError, CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery, CssMediaRangeRef,
+    CssMediaType, CssNamespaceConstraint, CssNamespaceContext, CssOpacityValue, CssRule,
+    CssSelector, CssSerializationError, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin,
     parse_component_values, parse_sheet,
 };
 
@@ -34,7 +34,7 @@ fn opaque(import: &CssImportRule, expected: &str) {
     let [CssMediaQuery::Condition(condition)] = import.media().unwrap().queries() else {
         panic!("one media condition")
     };
-    let CssMediaConditionKind::GeneralEnclosed(value) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) = condition.kind() else {
         panic!("opaque media")
     };
     assert_eq!(
@@ -122,7 +122,7 @@ fn empty_and_whitespace_targets_remain_authored_values_without_loading() {
         );
         assert!(matches!(
             import.supports().unwrap().condition().kind(),
-            CssSupportsConditionKind::Declaration(_)
+            CssConditionKind::Leaf(CssSupportsLeaf::Declaration(_))
         ));
         assert!(
             matches!(import.media().unwrap().queries(), [CssMediaQuery::Typed(query)] if query.media_type() == CssMediaType::Print)
@@ -146,7 +146,7 @@ fn specific_optional_clauses_win_only_when_the_complete_derivation_matches() {
     assert!(
         matches!(import.layer(), Some(CssImportLayer::Named(layer)) if layer.components() == ["theme"])
     );
-    let CssSupportsConditionKind::Declaration(declaration) =
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) =
         import.supports().unwrap().condition().kind()
     else {
         panic!("specific supports")
@@ -186,16 +186,16 @@ fn specific_optional_clauses_win_only_when_the_complete_derivation_matches() {
         let [CssMediaQuery::Condition(condition)] = import.media().unwrap().queries() else {
             panic!("media condition")
         };
-        let CssMediaConditionKind::And(children) = condition.kind() else {
+        let CssConditionKind::And(children) = condition.kind() else {
             panic!("complete conjunction")
         };
         assert!(matches!(
             children.conditions()[0].kind(),
-            CssMediaConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_))
         ));
         assert!(matches!(
             children.conditions()[1].kind(),
-            CssMediaConditionKind::Feature(_)
+            CssConditionKind::Leaf(CssMediaLeaf::Feature(_))
         ));
     }
 }
@@ -224,7 +224,7 @@ fn later_clause_shaped_functions_remain_media_in_the_selected_derivation() {
     assert_eq!(query.media_type(), CssMediaType::Screen);
     assert!(matches!(
         query.condition().unwrap().kind(),
-        CssMediaConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_))
     ));
 }
 
@@ -259,7 +259,7 @@ fn namespace_context_changes_selector_admission_without_resolving_the_namespace(
     let unbound = tail("supports(selector(svg|a))");
     assert!(matches!(
         unbound.supports().unwrap().condition().kind(),
-        CssSupportsConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
     ));
     for (source, named) in [
         ("@import 'x' supports(selector(svg|a));", true),
@@ -271,7 +271,7 @@ fn namespace_context_changes_selector_admission_without_resolving_the_namespace(
             Default::default(),
         )
         .unwrap();
-        let CssSupportsConditionKind::Selector(CssSelector::Compound(selector)) =
+        let CssConditionKind::Leaf(CssSupportsLeaf::Selector(CssSelector::Compound(selector))) =
             import.supports().unwrap().condition().kind()
         else {
             panic!("typed selector")
@@ -345,7 +345,7 @@ fn programmatic_import_and_mixed_numeric_children_keep_honest_independent_origin
     .unwrap();
     assert_eq!(import.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(import.position(), None);
-    let CssSupportsConditionKind::Declaration(declaration) =
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) =
         import.supports().unwrap().condition().kind()
     else {
         panic!("supports declaration")
@@ -371,7 +371,8 @@ fn programmatic_import_and_mixed_numeric_children_keep_honest_independent_origin
     let [CssMediaQuery::Condition(condition)] = import.media().unwrap().queries() else {
         panic!("media")
     };
-    let CssMediaConditionKind::Feature(CssMediaFeatureQuery::Width(range)) = condition.kind()
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Width(range))) =
+        condition.kind()
     else {
         panic!("width")
     };

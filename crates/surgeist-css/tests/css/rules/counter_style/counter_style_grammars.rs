@@ -592,8 +592,8 @@ fn counter_style_rule_recovery_preserves_siblings_and_boundaries() {
         panic!("scope")
     };
     let [
-        surgeist_css::CssScopedRule::CounterStyle(scoped_counter),
-        surgeist_css::CssScopedRule::Style(_),
+        surgeist_css::CssRule::CounterStyle(scoped_counter),
+        surgeist_css::CssRule::Style(_),
     ] = scope.rules().rules()
     else {
         panic!("counter and scoped sibling")

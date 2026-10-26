@@ -150,8 +150,7 @@ impl CssomSnapshot {
             return Err(CssomError::WrongKind);
         };
         let value = match current {
-            CssomAuthoredRule::Ordinary(CssRule::FontPaletteValues(value))
-            | CssomAuthoredRule::Scoped(CssScopedRule::FontPaletteValues(value)) => value,
+            CssomAuthoredRule::Rule(CssRule::FontPaletteValues(value)) => value,
             _ => return Err(CssomError::WrongKind),
         };
         Ok(CssomFontPaletteValuesView { value })

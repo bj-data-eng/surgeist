@@ -92,8 +92,9 @@ fn supports_selector_anchor_is_typed_instead_of_general_enclosed() {
     let [surgeist_css::CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("supports")
     };
-    let surgeist_css::CssSupportsConditionKind::Selector(CssSelector::Compound(compound)) =
-        rule.condition().kind()
+    let surgeist_css::CssConditionKind::Leaf(surgeist_css::CssSupportsLeaf::Selector(
+        CssSelector::Compound(compound),
+    )) = rule.condition().kind()
     else {
         panic!("typed selector, not opaque fallback")
     };

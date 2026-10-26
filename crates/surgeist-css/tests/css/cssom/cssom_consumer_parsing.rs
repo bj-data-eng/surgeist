@@ -11,10 +11,7 @@ fn candidate(source: &str) -> CssRuleSyntax {
         .0
         .expect("one generic rule")
 }
-fn admit(
-    source: &str,
-    context: CssRuleAdmissionContext,
-) -> CssParseReport<Option<CssAdmittedRule>> {
+fn admit(source: &str, context: CssRuleAdmissionContext) -> CssParseReport<Option<CssRule>> {
     candidate(source).admit(&CssNamespaceContext::default(), context)
 }
 fn names(list: &CssDeclarationList) -> Vec<&str> {
@@ -188,7 +185,7 @@ fn admission_retains_recovered_children_and_the_original_snapshot_after_report_d
         CssRuleAdmissionContext::Stylesheet,
     );
     assert!(!report.is_clean());
-    let Some(CssAdmittedRule::Ordinary(CssRule::Style(style))) = report.syntax() else {
+    let Some(CssRule::Style(style)) = report.syntax() else {
         panic!("retained style: {report:?}")
     };
     assert_eq!(names(style.declarations()), ["width", "opacity"]);
@@ -242,7 +239,7 @@ fn detached_relative_and_explicit_anchor_selectors_require_selected_context() {
     for source in ["> .b {width:1px}", "& > .b {width:1px}", ".b {width:1px}"] {
         let report = admit(source, CssRuleAdmissionContext::Style);
         assert!(report.is_clean(), "{source}: {report:?}");
-        let Some(CssAdmittedRule::Ordinary(CssRule::Style(style))) = report.syntax() else {
+        let Some(CssRule::Style(style)) = report.syntax() else {
             panic!("nested style")
         };
         assert_eq!(style.position().byte_offset().value(), 0);
@@ -278,7 +275,7 @@ fn detached_namespace_binding_rejection_is_atomic_and_retry_preserves_source_ide
         CssNamespaceContext::from_bindings([(Some(prefix), CssNamespaceName::new("urn:svg"))]);
     let accepted = syntax.admit(&bindings, CssRuleAdmissionContext::Style);
     assert!(accepted.is_clean(), "{accepted:?}");
-    let Some(CssAdmittedRule::Ordinary(CssRule::Style(style))) = accepted.syntax() else {
+    let Some(CssRule::Style(style)) = accepted.syntax() else {
         panic!("style")
     };
     assert_eq!(style.position().byte_offset().value(), 10);
@@ -310,28 +307,24 @@ fn nested_group_and_scoped_ancestry_use_their_own_grammar() {
         CssRuleAdmissionContext::ScopedGroup(CssStyleAncestor::Present),
     ] {
         let report = admit(source, context);
-        let Some(CssAdmittedRule::Scoped(CssScopedRule::Media(media))) = report.syntax() else {
+        let Some(CssRule::Media(media)) = report.syntax() else {
             panic!("scoped media: {report:?}")
         };
-        assert!(matches!(
-            &media.rules().rules()[0],
-            CssScopedRule::NestedDeclarations(_)
-        ));
-        assert!(matches!(&media.rules().rules()[1], CssScopedRule::Style(_)));
+        assert!(matches!(&media.rules()[0], CssRule::NestedDeclarations(_)));
+        assert!(matches!(&media.rules()[1], CssRule::Style(_)));
     }
     let absent = admit(
         "@media all {width:1px; .b {opacity:.5}}",
         CssRuleAdmissionContext::ScopedGroup(CssStyleAncestor::Absent),
     );
-    let Some(CssAdmittedRule::Scoped(CssScopedRule::Media(media))) = absent.syntax() else {
+    let Some(CssRule::Media(media)) = absent.syntax() else {
         panic!("scoped group")
     };
     assert!(
         media
             .rules()
-            .rules()
             .iter()
-            .all(|rule| !matches!(rule, CssScopedRule::NestedDeclarations(_)))
+            .all(|rule| !matches!(rule, CssRule::NestedDeclarations(_)))
     );
     assert!(
         admit("@font-face {font-family:x}", CssRuleAdmissionContext::Style)
@@ -468,7 +461,7 @@ fn depth_resource_rejection_and_bounded_nested_replay_have_distinct_outcomes() {
     );
     let report = admit(&source, CssRuleAdmissionContext::Style);
     assert!(report.is_clean(), "{report:?}");
-    let Some(CssAdmittedRule::Ordinary(mut rule)) = report.into_parts().0 else {
+    let Some(mut rule) = report.into_parts().0 else {
         panic!("ordinary group")
     };
     for _ in 0..130 {
@@ -504,7 +497,7 @@ fn document_mode_reaches_raw_and_detached_declarations_without_namespace_mutatio
         CssRuleAdmissionContext::Style,
         quirks,
     );
-    let Some(CssAdmittedRule::Ordinary(CssRule::Style(style))) = report.syntax() else {
+    let Some(CssRule::Style(style)) = report.syntax() else {
         panic!("style: {report:?}")
     };
     assert_eq!(style.declarations()[0].parser_context(), quirks);
@@ -556,10 +549,7 @@ fn scoped_destination_keeps_scope_anchors_and_group_placement_permission_explici
     ] {
         let report = syntax.admit(&CssNamespaceContext::default(), context);
         assert!(report.is_clean(), "{report:?}");
-        assert!(matches!(
-            report.syntax(),
-            Some(CssAdmittedRule::Scoped(CssScopedRule::Style(_)))
-        ));
+        assert!(matches!(report.syntax(), Some(CssRule::Style(_))));
     }
     let page = candidate("@page {margin:1px}");
     let namespaces = CssNamespaceContext::default();

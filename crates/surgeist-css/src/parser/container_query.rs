@@ -9,6 +9,7 @@ use super::query_components::{
     media_literal_number, negative_literal, query_plain_range, query_range_chain,
 };
 use super::recovery::RecoveryState;
+use crate::CssCondition;
 use crate::error::{CssError, invalid_syntax};
 use crate::media_features::MediaRangeState;
 use crate::numeric::CalculationRoot;
@@ -22,7 +23,7 @@ use crate::{
 /// The parsed and checked entry points share this immutable component grammar.
 pub(crate) fn container_condition_from_enclosed(
     enclosed: CssGeneralEnclosed,
-) -> Result<CssContainerCondition, CssContainerConstructionError> {
+) -> Result<CssCondition<CssContainerLeaf>, CssContainerConstructionError> {
     let values =
         CssComponentValues::try_new(vec![enclosed.component().clone()], Default::default())?;
     construct_container_condition(values, CssComponentValueLimits::default())
@@ -31,19 +32,23 @@ pub(crate) fn container_condition_from_enclosed(
 pub(crate) fn construct_container_condition(
     values: CssComponentValues,
     limits: CssComponentValueLimits,
-) -> Result<CssContainerCondition, CssContainerConstructionError> {
+) -> Result<CssCondition<CssContainerLeaf>, CssContainerConstructionError> {
     values.validate_with_limits(limits)?;
-    let node = container_condition(values.items())?.map_err(|index| {
-        CssContainerConstructionError::from(
-            crate::syntax::ContainerConstructionKind::InvalidConditionGrammar {
-                origin: values
-                    .items()
-                    .get(index)
-                    .or_else(|| values.items().last())
-                    .map_or(CssValueOrigin::Programmatic, |value| value.origin().clone()),
-            },
-        )
-    })?;
+    let node = match container_condition(values.items()) {
+        Ok(node) => node,
+        Err(ConditionFailure::Mismatch(index)) => {
+            return Err(CssContainerConstructionError::from(
+                crate::syntax::ContainerConstructionKind::InvalidConditionGrammar {
+                    origin: values
+                        .items()
+                        .get(index)
+                        .or_else(|| values.items().last())
+                        .map_or(CssValueOrigin::Programmatic, |value| value.origin().clone()),
+                },
+            ));
+        }
+        Err(ConditionFailure::Fatal(error)) => return Err(error.into()),
+    };
     Ok(node.into_condition(SupportsLexical::root(values)))
 }
 
@@ -61,54 +66,34 @@ enum ContainerLeaf {
 struct ContainerModel;
 
 impl BooleanModel<ContainerLeaf> for ContainerModel {
-    type Condition = CssContainerCondition;
-    type Kind = CssContainerConditionKind;
+    type Leaf = CssContainerLeaf;
 
-    fn leaf(leaf: ContainerLeaf, lexical: &SupportsLexical) -> Self::Kind {
+    fn leaf(leaf: ContainerLeaf, lexical: &SupportsLexical) -> CssContainerLeaf {
         match leaf {
-            ContainerLeaf::Opaque => CssContainerConditionKind::GeneralEnclosed(
-                CssContainerGeneralEnclosed::new(lexical.clone()),
-            ),
-            ContainerLeaf::Feature(feature) => CssContainerConditionKind::Feature(feature),
-            ContainerLeaf::Style(style) => CssContainerConditionKind::Style(
+            ContainerLeaf::Opaque => {
+                CssContainerLeaf::GeneralEnclosed(CssContainerGeneralEnclosed::new(lexical.clone()))
+            }
+            ContainerLeaf::Feature(feature) => CssContainerLeaf::Feature(feature),
+            ContainerLeaf::Style(style) => CssContainerLeaf::Style(
                 style.into_query(lexical.children(first_significant(lexical))),
             ),
-            ContainerLeaf::Scroll(scroll) => CssContainerConditionKind::ScrollState(
+            ContainerLeaf::Scroll(scroll) => CssContainerLeaf::ScrollState(
                 scroll.into_query(lexical.children(first_significant(lexical))),
             ),
         }
     }
-    fn parenthesized(group: Box<Self::Condition>) -> Self::Kind {
-        CssContainerConditionKind::Parenthesized(group)
-    }
-    fn not(operand: Box<Self::Condition>) -> Self::Kind {
-        CssContainerConditionKind::Not(operand)
-    }
-    fn and(operands: Vec<Self::Condition>) -> Self::Kind {
-        CssContainerConditionKind::And(CssContainerConditionList::new(operands))
-    }
-    fn or(operands: Vec<Self::Condition>) -> Self::Kind {
-        CssContainerConditionKind::Or(CssContainerConditionList::new(operands))
-    }
-    fn condition(kind: Self::Kind, lexical: SupportsLexical) -> Self::Condition {
-        CssContainerCondition::new(kind, lexical)
-    }
 }
 
 impl ContainerNode {
-    fn into_condition(self, parent: SupportsLexical) -> CssContainerCondition {
+    fn into_condition(self, parent: SupportsLexical) -> CssCondition<CssContainerLeaf> {
         self.build::<ContainerModel>(&parent)
     }
 }
 
 fn container_condition(
     items: &[CssComponentValue],
-) -> Result<Result<ContainerNode, usize>, crate::CssComponentValueError> {
-    match parse_component_condition(&mut ContainerOperands, items) {
-        Ok(node) => Ok(Ok(node)),
-        Err(ConditionFailure::Mismatch(index)) => Ok(Err(index)),
-        Err(ConditionFailure::Fatal(error)) => Err(error),
-    }
+) -> Result<ContainerNode, ConditionFailure<crate::CssComponentValueError>> {
+    parse_component_condition(&mut ContainerOperands, items)
 }
 
 // Contain 3 `<query-in-parens>`: a parenthesized condition or size feature,
@@ -150,20 +135,27 @@ fn container_atom(
         CssComponentValueRef::Function(function)
             if function.name().eq_ignore_ascii_case("style") =>
         {
-            if let Some(style) = super::container_style::parse(function.values().items()) {
+            // A style query has no resource failure; a mismatch is an enclosure.
+            if let Ok(style) = super::container_style::parse(function.values().items()) {
                 return Ok(BooleanNodeKind::Leaf(ContainerLeaf::Style(style)));
             }
         }
         CssComponentValueRef::Function(function)
             if function.name().eq_ignore_ascii_case("scroll-state") =>
         {
-            if let Some(scroll) = super::container_scroll::parse(function.values().items())? {
-                return Ok(BooleanNodeKind::Leaf(ContainerLeaf::Scroll(scroll)));
+            match super::container_scroll::parse(function.values().items()) {
+                Ok(scroll) => return Ok(BooleanNodeKind::Leaf(ContainerLeaf::Scroll(scroll))),
+                Err(ConditionFailure::Mismatch(_)) => {}
+                Err(ConditionFailure::Fatal(error)) => return Err(error),
             }
         }
         CssComponentValueRef::Block(block) if block.kind() == crate::CssBlockKind::Parenthesis => {
-            if let Ok(condition) = container_condition(block.values().items())? {
-                return Ok(BooleanNodeKind::Parenthesized(Box::new(condition)));
+            match container_condition(block.values().items()) {
+                Ok(condition) => {
+                    return Ok(BooleanNodeKind::Parenthesized(Box::new(condition)));
+                }
+                Err(ConditionFailure::Mismatch(_)) => {}
+                Err(ConditionFailure::Fatal(error)) => return Err(error),
             }
             if let Some(feature) = container_feature(block.values().items())? {
                 return Ok(BooleanNodeKind::Leaf(ContainerLeaf::Feature(feature)));
@@ -553,9 +545,15 @@ fn admit_container_prelude(
             entries.push(CssContainerQueryEntry::name_only(name, region));
         } else {
             let query_start = cursor.index;
-            let node = container_condition(&region.items()[query_start..])
-                .map_err(ContainerPreludeAdmissionError::Component)?
-                .map_err(|index| invalid(start + query_start + index))?;
+            let node = match container_condition(&region.items()[query_start..]) {
+                Ok(node) => node,
+                Err(ConditionFailure::Mismatch(index)) => {
+                    return Err(invalid(start + query_start + index));
+                }
+                Err(ConditionFailure::Fatal(error)) => {
+                    return Err(ContainerPreludeAdmissionError::Component(error));
+                }
+            };
             let query = node.into_condition(region.select(query_start..region.items().len()));
             entries.push(CssContainerQueryEntry::with_query(name, query, region));
         }

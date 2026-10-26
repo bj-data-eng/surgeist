@@ -382,11 +382,11 @@ fn isolated_scope_rule_uses_ordinary_group_admission() {
     let Some(CssRule::Scope(scope)) = report.syntax() else {
         panic!("scope fragment")
     };
-    let [CssScopedRule::Media(media)] = scope.rules().rules() else {
+    let [CssRule::Media(media)] = scope.rules().rules() else {
         panic!("media child")
     };
     // Existing API can prove retention before a scoped Page variant is added.
-    assert_eq!(media.rules().rules().len(), 3);
+    assert_eq!(media.rules().len(), 3);
 }
 
 #[test]

@@ -1,7 +1,7 @@
 use crate::css::support::authored_syntax::assert_strict_rejection;
 use surgeist_css::{
-    CssContainerConditionKind, CssContainerFeatureQuery, CssErrorCode, CssRecoveryAction, CssRule,
-    parse_sheet, validate_sheet,
+    CssConditionKind, CssContainerFeatureQuery, CssContainerLeaf, CssErrorCode, CssRecoveryAction,
+    CssRule, parse_sheet, validate_sheet,
 };
 
 // Pinned Conditional Rules 5, section 5.4:
@@ -18,33 +18,38 @@ fn grouped_size_queries_retain_their_boolean_structure() {
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("one accepted container rule must survive its empty body");
     };
-    let CssContainerConditionKind::And(and) = rule.prelude().entries()[0].query().unwrap().kind()
-    else {
+    let CssConditionKind::And(and) = rule.prelude().entries()[0].query().unwrap().kind() else {
         panic!("the outer condition must retain conjunction");
     };
     let [group, inline] = and.conditions() else {
         panic!("two operands")
     };
-    let CssContainerConditionKind::Parenthesized(disjunction) = group.kind() else {
+    let CssConditionKind::Parenthesized(disjunction) = group.kind() else {
         panic!("explicit outer grouping")
     };
-    let CssContainerConditionKind::Or(or) = disjunction.kind() else {
+    let CssConditionKind::Or(or) = disjunction.kind() else {
         panic!("grouped disjunction")
     };
     assert!(matches!(
         inline.kind(),
-        CssContainerConditionKind::Feature(CssContainerFeatureQuery::InlineSize(_))
+        CssConditionKind::Leaf(CssContainerLeaf::Feature(
+            CssContainerFeatureQuery::InlineSize(_)
+        ))
     ));
     let [width, height] = or.conditions() else {
         panic!("two disjuncts")
     };
     assert!(matches!(
         width.kind(),
-        CssContainerConditionKind::Feature(CssContainerFeatureQuery::Width(_))
+        CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::Width(
+            _
+        )))
     ));
     assert!(matches!(
         height.kind(),
-        CssContainerConditionKind::Feature(CssContainerFeatureQuery::Height(_))
+        CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::Height(
+            _
+        )))
     ));
 }
 
@@ -56,17 +61,13 @@ fn negation_can_target_a_grouped_query() {
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("one container rule expected");
     };
-    let CssContainerConditionKind::Not(operand) =
-        rule.prelude().entries()[0].query().unwrap().kind()
-    else {
+    let CssConditionKind::Not(operand) = rule.prelude().entries()[0].query().unwrap().kind() else {
         panic!("expected negation");
     };
-    let CssContainerConditionKind::Parenthesized(grouped) = operand.kind() else {
+    let CssConditionKind::Parenthesized(grouped) = operand.kind() else {
         panic!("negated grouping")
     };
-    assert!(
-        matches!(grouped.kind(), CssContainerConditionKind::And(list) if list.conditions().len() == 2)
-    );
+    assert!(matches!(grouped.kind(), CssConditionKind::And(list) if list.conditions().len() == 2));
 }
 
 #[test]

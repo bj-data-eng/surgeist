@@ -513,7 +513,7 @@ fn strict_forgiving_scope_and_supports_consumers_apply_their_actual_pseudo_bound
         vec![highlight.clone()],
         Default::default(),
     ));
-    assert!(CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(highlight)]).is_none());
+    assert!(CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(highlight)]).is_none());
     for source in [
         ":not(.keep,::highlight(Name))",
         ":has(> ::placeholder)",
@@ -549,7 +549,7 @@ fn strict_forgiving_scope_and_supports_consumers_apply_their_actual_pseudo_bound
         "selector(::search-text:current)",
         "selector(::first-letter::suffix)",
     ] {
-        let value = CssSupportsCondition::try_from_components(
+        let value = CssCondition::<CssSupportsLeaf>::try_from_components(
             parse_component_values(source).unwrap(),
             &CssNamespaceContext::default(),
             Default::default(),
@@ -557,14 +557,14 @@ fn strict_forgiving_scope_and_supports_consumers_apply_their_actual_pseudo_bound
         .unwrap();
         assert!(matches!(
             value.kind(),
-            CssSupportsConditionKind::Selector(_)
+            CssConditionKind::Leaf(CssSupportsLeaf::Selector(_))
         ));
         assert_eq!(
             value.serialize_tokens(Default::default()).unwrap().as_css(),
             source
         );
     }
-    let invalid = CssSupportsCondition::try_from_components(
+    let invalid = CssCondition::<CssSupportsLeaf>::try_from_components(
         parse_component_values("selector(::highlight())").unwrap(),
         &CssNamespaceContext::default(),
         Default::default(),
@@ -572,7 +572,7 @@ fn strict_forgiving_scope_and_supports_consumers_apply_their_actual_pseudo_bound
     .unwrap();
     assert!(matches!(
         invalid.kind(),
-        CssSupportsConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
     ));
 }
 
@@ -585,7 +585,7 @@ fn namespaces_and_lexical_probe_origins_survive_checked_reuse_without_payload_or
         panic!("namespace and Supports")
     };
     let condition = rule.condition();
-    let CssSupportsConditionKind::Selector(value) = condition.kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Selector(value)) = condition.kind() else {
         panic!("typed selector probe")
     };
     let origin = compound(value);
@@ -646,7 +646,7 @@ fn namespaces_and_lexical_probe_origins_survive_checked_reuse_without_payload_or
         Some(CssNamespacePrefix::try_new("p").unwrap()),
         CssNamespaceName::new("urn:p"),
     )]);
-    let reused = CssSupportsCondition::try_from_components(
+    let reused = CssCondition::<CssSupportsLeaf>::try_from_components(
         CssComponentValues::try_new(condition.components().to_vec(), Default::default()).unwrap(),
         &context,
         Default::default(),

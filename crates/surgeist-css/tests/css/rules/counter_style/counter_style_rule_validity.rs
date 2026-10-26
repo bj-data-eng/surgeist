@@ -5,8 +5,8 @@
 
 use surgeist_css::{
     CssCounterStyleDescriptorKind, CssCounterStyleRule, CssErrorCode, CssNormalizedItem,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssScopedRule, normalize_report,
-    parse_sheet, validate_sheet,
+    CssRecoveryAction, CssRule, CssRuleContextKindRef, normalize_report, parse_sheet,
+    validate_sheet,
 };
 
 fn assert_retained(body: &str, canonical: &str) -> CssCounterStyleRule {
@@ -172,8 +172,7 @@ fn conditional_and_scoped_incomplete_rules_keep_original_payloads() {
     let [CssRule::CounterStyle(first)] = media.rules() else {
         panic!("conditional counter rule");
     };
-    let [CssScopedRule::CounterStyle(second), CssScopedRule::Style(_)] = scope.rules().rules()
-    else {
+    let [CssRule::CounterStyle(second), CssRule::Style(_)] = scope.rules().rules() else {
         panic!("scoped counter rule and sibling");
     };
     let normalized = normalize_report(&report).unwrap();

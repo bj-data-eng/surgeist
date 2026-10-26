@@ -3,6 +3,7 @@
 mod nested_scope_declarations;
 mod nested_scope_payloads;
 mod scope_anchor_payloads;
+mod scope_body_ordinary_rules;
 mod scope_boundary_contexts;
 mod scope_boundary_depth;
 mod scope_complete_lifecycle;

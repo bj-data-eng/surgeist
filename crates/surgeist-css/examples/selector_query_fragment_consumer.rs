@@ -18,13 +18,13 @@
 
 use std::fmt::Debug;
 use surgeist_css::{
-    CssCompoundSelector, CssDefinedFalseMediaReason, CssErrorCode, CssMediaConditionKind,
-    CssMediaFeatureQuery, CssMediaQuery, CssMediaQueryList, CssMediaQueryModifier, CssMediaType,
-    CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
-    CssParseReport, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssSelector, CssSelectorCombinator, CssSourcePosition, CssStyleSelector,
-    CssStyleSelectorList, CssTokenKind, parse_media_query, parse_media_query_list, parse_selector,
-    parse_selector_list, parse_sheet,
+    CssCompoundSelector, CssConditionKind, CssDefinedFalseMediaReason, CssErrorCode,
+    CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery, CssMediaQueryList, CssMediaQueryModifier,
+    CssMediaType, CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName,
+    CssNamespacePrefix, CssParseReport, CssPseudoClass, CssPseudoSelectorListItem,
+    CssRecoveryAction, CssRecoveryDiagnostic, CssSelector, CssSelectorCombinator,
+    CssSourcePosition, CssStyleSelector, CssStyleSelectorList, CssTokenKind, parse_media_query,
+    parse_media_query_list, parse_selector, parse_selector_list, parse_sheet,
 };
 
 fn assert_position(actual: CssSourcePosition, expected: (usize, u32, u32)) {
@@ -508,11 +508,11 @@ fn assert_opaque_media(
         panic!("authored media condition")
     };
     match (condition.kind(), reason) {
-        (CssMediaConditionKind::UnknownFeature(value), Some(reason)) => {
+        (CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(value)), Some(reason)) => {
             assert_eq!(value.authored(), Some(source));
             assert_eq!(value.reason(), reason);
         }
-        (CssMediaConditionKind::GeneralEnclosed(value), None) => {
+        (CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)), None) => {
             assert_eq!(value.authored(), Some(source))
         }
         _ => panic!("expected exact opaque media grammar branch"),
@@ -561,7 +561,7 @@ fn media_admission_and_recovery() {
     };
     assert_eq!(value.modifier(), Some(CssMediaQueryModifier::Only));
     assert_eq!(value.media_type(), CssMediaType::Screen);
-    let CssMediaConditionKind::Feature(CssMediaFeatureQuery::Width(width)) =
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Width(width))) =
         value.condition().unwrap().kind()
     else {
         panic!("authored width condition");

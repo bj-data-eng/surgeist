@@ -1,13 +1,13 @@
 //! Clean constructed Supports selectors retain their typed grammar and authored outer origin.
 use surgeist_css::{
-    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem, CssSelector,
-    CssSupportsCondition, CssSupportsConditionKind, CssValueOrigin, parse_component_values,
+    CssCondition, CssConditionKind, CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem,
+    CssSelector, CssSupportsLeaf, CssValueOrigin, parse_component_values,
 };
 
-fn condition(source: &str) -> CssSupportsCondition {
+fn condition(source: &str) -> CssCondition<CssSupportsLeaf> {
     let components = parse_component_values(source).unwrap();
     let original = components.items()[0].origin().clone();
-    let condition = CssSupportsCondition::try_from_components(
+    let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
         components,
         &CssNamespaceContext::default(),
         Default::default(),
@@ -34,15 +34,16 @@ fn ordinary_selector_without_forgiving_list_has_original_outer_origin() {
     let condition = condition("selector(.A)");
     assert_eq!(
         condition.kind(),
-        &CssSupportsConditionKind::Selector(CssSelector::Class("A".into()))
+        &CssConditionKind::Leaf(CssSupportsLeaf::Selector(CssSelector::Class("A".into())))
     );
 }
 
 #[test]
 fn clean_forgiving_selector_uses_its_generated_input_snapshot() {
     let condition = condition("selector(:is(.A))");
-    let CssSupportsConditionKind::Selector(CssSelector::PseudoClass(CssPseudoClass::Is(list))) =
-        condition.kind()
+    let CssConditionKind::Leaf(CssSupportsLeaf::Selector(CssSelector::PseudoClass(
+        CssPseudoClass::Is(list),
+    ))) = condition.kind()
     else {
         panic!("typed clean Is selector")
     };

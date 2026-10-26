@@ -241,14 +241,15 @@ fn column_scope_and_supports_hosts_reuse_the_same_typed_provider() {
         complex(root).rest()[0].combinator(),
         CssSelectorCombinator::Column
     );
-    let [CssScopedRule::Style(style)] = scope.rules().rules() else {
+    let [CssRule::Style(style)] = scope.rules().rules() else {
         panic!("scoped child")
     };
-    let [CssScopedStyleSelector::Relative(relative)] = style.selectors().selectors() else {
+    let [CssStyleSelector::Relative(relative)] = style.selectors().selectors() else {
         panic!("scoped relative")
     };
     assert_eq!(relative.combinator(), CssSelectorCombinator::Column);
-    let CssSupportsConditionKind::Selector(selector) = supports.condition().kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Selector(selector)) = supports.condition().kind()
+    else {
         panic!("typed selector test")
     };
     assert_eq!(
@@ -354,6 +355,6 @@ fn class_dot_adjacency_is_shared_by_nested_scope_logical_has_and_supports_hosts(
     };
     assert!(matches!(
         supports.condition().kind(),
-        CssSupportsConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
     ));
 }

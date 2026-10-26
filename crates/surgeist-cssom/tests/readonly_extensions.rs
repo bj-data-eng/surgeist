@@ -172,7 +172,7 @@ fn query_collection_keeps_identity_current_recovery_and_historical_provenance() 
         panic!("current genuine media input")
     };
     assert_eq!(current_origin.source().as_str(), "screen,,speech");
-    let CssomAuthoredRule::Ordinary(native) = after.rule(&rule).unwrap().authored() else {
+    let CssomAuthoredRule::Rule(native) = after.rule(&rule).unwrap().authored() else {
         panic!("ordinary")
     };
     assert_eq!(
@@ -183,7 +183,7 @@ fn query_collection_keeps_identity_current_recovery_and_historical_provenance() 
         Some(CssRuleCssomFormat::CustomMedia)
     );
 
-    let CssomAuthoredRule::Ordinary(CssRule::CustomMedia(original)) =
+    let CssomAuthoredRule::Rule(CssRule::CustomMedia(original)) =
         after.rule(&rule).unwrap().authored()
     else {
         panic!("genuine original")
@@ -303,7 +303,7 @@ fn profile_getters_serialize_effective_values_and_distinguish_absence_from_empty
             .unwrap(),
         "env(channels)"
     );
-    let CssomAuthoredRule::Ordinary(original) = snapshot.rule(&ids[0]).unwrap().authored() else {
+    let CssomAuthoredRule::Rule(original) = snapshot.rule(&ids[0]).unwrap().authored() else {
         panic!("ordinary source")
     };
     assert_eq!(
@@ -352,7 +352,7 @@ fn profile_replacement_keeps_detached_old_objects_and_original_value_coordinates
         "url(\"relative.icc\")"
     );
     let CssomRuleData::Leaf {
-        current: CssomAuthoredRule::Ordinary(CssRule::ColorProfile(profile)),
+        current: CssomAuthoredRule::Rule(CssRule::ColorProfile(profile)),
     } = after.rule(&old).unwrap().data()
     else {
         panic!("checked profile")

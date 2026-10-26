@@ -4,8 +4,8 @@
 use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::*;
 
-fn run(rule: &CssScopedRule) -> &CssNestedDeclarationsRule {
-    let CssScopedRule::NestedDeclarations(run) = rule else {
+fn run(rule: &CssRule) -> &CssNestedDeclarationsRule {
+    let CssRule::NestedDeclarations(run) = rule else {
         panic!("declaration run")
     };
     assert!(!run.declarations().is_empty());
@@ -46,7 +46,7 @@ fn scope_from_style(style: &CssStyleRule) -> &CssScopeRule {
 }
 
 fn fragment_runs(scope: &CssScopeRule, source: &str) {
-    let [first, CssScopedRule::Style(child), last] = scope.rules().rules() else {
+    let [first, CssRule::Style(child), last] = scope.rules().rules() else {
         panic!("run, child, run")
     };
     let first = run(first);
@@ -196,7 +196,7 @@ fn bounded_scoped_splicing_splits_a_run_around_the_deferred_child() {
         let [CssRule::Style(style)] = report.syntax().rules() else {
             panic!("style")
         };
-        let [red, CssScopedRule::Media(_), green] = scope_from_style(style).rules().rules() else {
+        let [red, CssRule::Media(_), green] = scope_from_style(style).rules().rules() else {
             panic!("split outer run")
         };
         color(&run(red).declarations()[0], "red", &source);
@@ -240,7 +240,7 @@ fn depth_ceiling_keeps_detached_run_payload_and_selector_identity_on_small_stack
             };
             let mut scope = scope_from_style(style);
             for _ in 1..255 {
-                let [CssScopedRule::Scope(inner)] = scope.rules().rules() else {
+                let [CssRule::Scope(inner)] = scope.rules().rules() else {
                     panic!("scope chain")
                 };
                 scope = inner;

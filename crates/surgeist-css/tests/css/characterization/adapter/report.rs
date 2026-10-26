@@ -6,8 +6,8 @@ use surgeist_css::{
     CssColorComponentName, CssDeclaration, CssDeclarationContextRef, CssError, CssErrorCode,
     CssEscapeFailure, CssGlobalKeyword, CssGrammarExpectation, CssImportance,
     CssKnownDeclaredValueRef, CssKnownProperty, CssProductionId, CssPropertyNameRef,
-    CssPropertyValueError, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssScopedRule,
-    CssTokenKind, CssTokenSummary,
+    CssPropertyValueError, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssTokenKind,
+    CssTokenSummary,
 };
 
 /// Retained identities and authored declarations collected in source order.
@@ -32,7 +32,7 @@ impl Retained {
         retained
     }
 
-    pub fn scoped_rules(rules: &[CssScopedRule]) -> Self {
+    pub fn scoped_rules(rules: &[CssRule]) -> Self {
         let mut retained = Self::default();
         for rule in rules {
             retained.scoped_rule(rule);
@@ -117,48 +117,46 @@ impl Retained {
         }
     }
 
-    fn scoped_rule(&mut self, rule: &CssScopedRule) {
+    fn scoped_rule(&mut self, rule: &CssRule) {
         match rule {
-            CssScopedRule::NestedDeclarations(rule) => {
+            CssRule::NestedDeclarations(rule) => {
                 self.rule(&CssRule::NestedDeclarations(rule.clone()))
             }
-            CssScopedRule::CounterStyle(rule) => self.rule(&CssRule::CounterStyle(rule.clone())),
-            CssScopedRule::FontFace(rule) => self.rule(&CssRule::FontFace(rule.clone())),
-            CssScopedRule::Page(rule) => self.rule(&CssRule::Page(rule.clone())),
-            CssScopedRule::Keyframes(rule) => self.rule(&CssRule::Keyframes(rule.clone())),
-            CssScopedRule::FontFeatureValues(_) => {
-                self.identity("rule:later.rule.font-feature-values")
-            }
-            CssScopedRule::Style(rule) => {
+            CssRule::CounterStyle(rule) => self.rule(&CssRule::CounterStyle(rule.clone())),
+            CssRule::FontFace(rule) => self.rule(&CssRule::FontFace(rule.clone())),
+            CssRule::Page(rule) => self.rule(&CssRule::Page(rule.clone())),
+            CssRule::Keyframes(rule) => self.rule(&CssRule::Keyframes(rule.clone())),
+            CssRule::FontFeatureValues(_) => self.identity("rule:later.rule.font-feature-values"),
+            CssRule::Style(rule) => {
                 self.identity("rule:baseline.rule.style");
                 self.declaration_list(rule.declarations().as_slice(), "public");
                 for child in rule.rules() {
                     self.rule(child);
                 }
             }
-            CssScopedRule::Media(rule) => {
-                for child in rule.rules().rules() {
+            CssRule::Media(rule) => {
+                for child in rule.rules() {
                     self.scoped_rule(child);
                 }
             }
-            CssScopedRule::Supports(rule) => {
+            CssRule::Supports(rule) => {
                 self.identity("rule:baseline.rule.supports");
-                for child in rule.rules().rules() {
+                for child in rule.rules() {
                     self.scoped_rule(child);
                 }
             }
-            CssScopedRule::Container(rule) => {
-                for child in rule.rules().rules() {
+            CssRule::Container(rule) => {
+                for child in rule.rules() {
                     self.scoped_rule(child);
                 }
             }
-            CssScopedRule::LayerStatement(_) => self.identity("rule:baseline.rule.layer-statement"),
-            CssScopedRule::LayerBlock(rule) => {
-                for child in rule.rules().rules() {
+            CssRule::LayerStatement(_) => self.identity("rule:baseline.rule.layer-statement"),
+            CssRule::LayerBlock(rule) => {
+                for child in rule.rules() {
                     self.scoped_rule(child);
                 }
             }
-            CssScopedRule::Scope(rule) => {
+            CssRule::Scope(rule) => {
                 for child in rule.rules().rules() {
                     self.scoped_rule(child);
                 }

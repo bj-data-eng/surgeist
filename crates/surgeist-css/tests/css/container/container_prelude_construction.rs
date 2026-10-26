@@ -5,9 +5,9 @@ use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssContainerConditionKind, CssContainerName, CssContainerPrelude, CssNormalizedItem, CssRule,
-    CssRuleContextKindRef, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef, normalize_sheet,
-    parse_component_values, parse_sheet,
+    CssConditionKind, CssContainerLeaf, CssContainerName, CssContainerPrelude, CssNormalizedItem,
+    CssRule, CssRuleContextKindRef, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+    normalize_sheet, parse_component_values, parse_sheet,
 };
 
 fn construct(source: &str) -> CssContainerPrelude {
@@ -34,11 +34,11 @@ fn entries_retain_independent_names_queries_duplicates_and_order() {
     assert!(entries[3].query().is_none());
     assert!(matches!(
         entries[1].query().unwrap().kind(),
-        CssContainerConditionKind::Feature(_)
+        CssConditionKind::Leaf(CssContainerLeaf::Feature(_))
     ));
     assert!(matches!(
         entries[2].query().unwrap().kind(),
-        CssContainerConditionKind::Style(_)
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
     ));
     assert_eq!(
         entries[1]
@@ -155,7 +155,7 @@ fn mixed_origins_and_programmatic_escaped_names_serialize_without_reinterpretati
     assert!(rebuilt.entries()[0].query().is_none());
     assert!(matches!(
         rebuilt.entries()[1].query().unwrap().kind(),
-        CssContainerConditionKind::Style(_)
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
     ));
 }
 

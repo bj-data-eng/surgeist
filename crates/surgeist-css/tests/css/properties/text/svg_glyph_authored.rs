@@ -23,8 +23,8 @@ fn svg(source: &CssDeclaration) -> &CssSvgGlyphOrientationVerticalDeclaration {
     assert!(source.known().is_none() && source.custom().is_none());
     source.svg_glyph_orientation_vertical().unwrap()
 }
-fn query(condition: &CssSupportsCondition) -> &CssSupportsDeclaration {
-    let CssSupportsConditionKind::Declaration(value) = condition.kind() else {
+fn query(condition: &CssCondition<CssSupportsLeaf>) -> &CssSupportsDeclaration {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(value)) = condition.kind() else {
         panic!("declaration test")
     };
     value
@@ -1425,7 +1425,7 @@ fn supports_overloads_preserve_literal_boundary_importance_standards_and_sources
     }
     let text = "(glyph-orientation-vertical:180deg) and (width:1px)";
     let condition = SVG.parse_css_supports_condition(text).unwrap();
-    let CssSupportsConditionKind::And(children) = condition.kind() else {
+    let CssConditionKind::And(children) = condition.kind() else {
         panic!("complete And first")
     };
     assert!(
@@ -1556,8 +1556,16 @@ fn supports_component_recovery_and_resource_failures_are_not_grammar_retried() {
         ")".repeat(40)
     );
     let condition = QUIRKS.parse_css_supports_condition(&deep).unwrap();
+    // Every explicit grouping pair around the declaration test is a structural layer.
+    let mut test = &condition;
+    let mut layers = 0;
+    while let CssConditionKind::Parenthesized(inner) = test.kind() {
+        test = inner;
+        layers += 1;
+    }
+    assert_eq!(layers, 39);
     assert_eq!(
-        query(&condition)
+        query(test)
             .svg_glyph_orientation_vertical()
             .unwrap()
             .parser_mode(),

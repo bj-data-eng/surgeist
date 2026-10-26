@@ -16,17 +16,19 @@ fn clean(source: &str, context: CssStyleSelectorContext) -> CssParsedStyleSelect
 }
 
 fn ordinary(parsed: &CssParsedStyleSelectors) -> &CssStyleSelectorList {
-    let CssAdmittedStyleSelectors::Ordinary(list) = parsed.selectors() else {
-        panic!("ordinary nesting domain")
-    };
-    list
+    assert!(
+        !matches!(parsed.context(), CssStyleSelectorContext::Scoped(_)),
+        "ordinary nesting domain"
+    );
+    parsed.selectors()
 }
 
-fn scoped(parsed: &CssParsedStyleSelectors) -> &CssScopedStyleSelectorList {
-    let CssAdmittedStyleSelectors::Scoped(list) = parsed.selectors() else {
-        panic!("scope anchor domain")
-    };
-    list
+fn scoped(parsed: &CssParsedStyleSelectors) -> &CssStyleSelectorList {
+    assert!(
+        matches!(parsed.context(), CssStyleSelectorContext::Scoped(_)),
+        "scope anchor domain"
+    );
+    parsed.selectors()
 }
 
 fn compound(selector: &CssSelector) -> &CssCompoundSelector {
@@ -94,9 +96,9 @@ fn scope_body_anchors_do_not_become_nesting_anchors_when_a_style_ancestor_exists
         let parsed = clean("&:is(&.child, .other), > &&.next, .implicit", context);
         assert_eq!(parsed.context(), context);
         let [
-            CssScopedStyleSelector::Selector(first),
-            CssScopedStyleSelector::Relative(next),
-            CssScopedStyleSelector::Selector(implicit),
+            CssStyleSelector::Selector(first),
+            CssStyleSelector::Relative(next),
+            CssStyleSelector::Selector(implicit),
         ] = scoped(&parsed).selectors()
         else {
             panic!("scope-context members")
@@ -140,7 +142,7 @@ fn scoped_relative_names_reuse_the_supplied_namespace_environment() {
         CssStyleSelectorContext::Scoped(CssStyleAncestor::Absent),
     );
     assert!(report.is_clean(), "{report:?}");
-    let [CssScopedStyleSelector::Relative(relative)] =
+    let [CssStyleSelector::Relative(relative)] =
         scoped(report.syntax().as_ref().unwrap()).selectors()
     else {
         panic!("one scoped relative name")
@@ -409,35 +411,28 @@ fn component_allowance_covers_all_members_descendants_and_root_trivia_once() {
 }
 
 #[test]
-fn admitted_carriers_feed_checked_edited_views_without_constructing_authored_rules() {
+fn admitted_carriers_feed_rule_graph_inputs_without_constructing_authored_rules() {
     let declarations = CssSpecifiedDeclarationBlock::try_from_declarations(
         parse_declaration_block_contents("").syntax(),
         Default::default(),
     )
     .unwrap();
+    let namespaces = CssNamespaceContext::default();
     let parsed = clean(".Consumer > .leaf", CssStyleSelectorContext::Ordinary);
-    let view =
-        CssEditedRuleView::try_style(ordinary(&parsed), &declarations, &[], Default::default())
-            .unwrap();
+    let input = CssRuleGraphInput::style(ordinary(&parsed), &declarations, &[]);
     assert_eq!(
-        view.serialize_cssom(Default::default()).unwrap(),
+        input
+            .serialize_cssom(&namespaces, CssStyleAncestor::Absent, Default::default())
+            .unwrap(),
         ".Consumer > .leaf { }"
     );
-    assert!(view.parsed_rule().is_none());
     let parsed = clean(
         "&.scoped",
         CssStyleSelectorContext::Scoped(CssStyleAncestor::Present),
     );
-    let view = CssEditedRuleView::try_scoped_style(
-        scoped(&parsed),
-        &declarations,
-        &[],
-        Default::default(),
-    )
-    .unwrap();
+    let input = CssRuleGraphInput::style(scoped(&parsed), &declarations, &[]);
     assert_eq!(
-        view.serialize_specified(Default::default()).unwrap(),
+        input.serialize_specified(Default::default()).unwrap(),
         "&.scoped { }"
     );
-    assert!(view.parsed_rule().is_none());
 }

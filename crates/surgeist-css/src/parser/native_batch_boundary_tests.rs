@@ -5,9 +5,9 @@ use super::{
 };
 use crate::{
     CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName,
-    CssNamespacePrefix, CssParseReport, CssRecoveryAction, CssRule, CssScopedRule, CssSelector,
-    CssSheet, CssSourcePosition, CssSourceSnapshot, CssStyleRule, CssStyleSelector, CssTokenKind,
-    ErrorKind, parse_rule, parse_sheet, parse_style_block, validate_sheet,
+    CssNamespacePrefix, CssParseReport, CssRecoveryAction, CssRule, CssSelector, CssSheet,
+    CssSourcePosition, CssSourceSnapshot, CssStyleRule, CssStyleSelector, CssTokenKind, ErrorKind,
+    parse_rule, parse_sheet, parse_style_block, validate_sheet,
 };
 
 const BATCH_BOUNDARIES: [usize; 3] = [31, 32, 33];
@@ -82,13 +82,13 @@ fn assert_layer_chain(
         };
         let mut parent = first;
         for _ in 1..depth {
-            let [CssScopedRule::Scope(child)] = parent.rules().rules() else {
+            let [CssRule::Scope(child)] = parent.rules().rules() else {
                 panic!("every admitted Scope parent survives")
             };
             parent = child;
         }
         if let Some(start) = start {
-            let [CssScopedRule::LayerStatement(statement)] = parent.rules().rules() else {
+            let [CssRule::LayerStatement(statement)] = parent.rules().rules() else {
                 panic!("innermost retained layer")
             };
             assert_eq!(

@@ -5,7 +5,7 @@ use crate::css::support::failure_classes::SerializationFailure as Resource;
 use crate::css::support::failure_classes::component_failure;
 use crate::css::support::serialization_limits::LimitFailure;
 use surgeist_css::{
-    CssComponentValueLimits, CssEditedGroupPreludeRef, CssErrorCode, CssNamespaceContext,
+    CssComponentValueLimits, CssErrorCode, CssGroupPreludeRef, CssNamespaceContext,
     CssRecoveryAction, CssRule, CssRuleCssomFormat, CssRuleGraphInput, CssRuleSerializationLimits,
     CssSerializationLimits, CssStyleAncestor, CssSupportsConditionName,
     CssSupportsTestChild as Child, CssSupportsTestChildRef as Ref, CssSupportsTestItem,
@@ -465,7 +465,7 @@ fn ordinary_ancestor_and_current_named_payload_share_depth_and_output_budget() {
         .0
         .unwrap();
     let children = [CssRuleGraphInput::named_supports(&name, &body)];
-    let root = CssRuleGraphInput::group(CssEditedGroupPreludeRef::Media(&queries), &children);
+    let root = CssRuleGraphInput::group(CssGroupPreludeRef::Media(&queries), &children);
     let expected = "@media screen {\n  @supports-condition --feature { & { color: fn(x); } }\n}";
     assert_eq!(graph(root, limits(4)).unwrap(), expected);
     let error = graph(root, limits(3)).unwrap_err();

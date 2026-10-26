@@ -59,10 +59,10 @@ fn scoped_pages_reuse_payload_without_element_declaration_contributions() {
         let [CssRule::Scope(scope)] = report.syntax().rules() else {
             panic!("scope")
         };
-        let [CssScopedRule::Media(media)] = scope.rules().rules() else {
+        let [CssRule::Media(media)] = scope.rules().rules() else {
             panic!("media")
         };
-        let [CssScopedRule::Page(page)] = media.rules().rules() else {
+        let [CssRule::Page(page)] = media.rules() else {
             panic!("typed scoped page")
         };
         assert_eq!(page_pseudo(page), selector);
@@ -110,14 +110,14 @@ fn scoped_page_prelude_errors_keep_neighbors_and_valid_page() {
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("scope")
     };
-    let [CssScopedRule::Media(media)] = scope.rules().rules() else {
+    let [CssRule::Media(media)] = scope.rules().rules() else {
         panic!("media")
     };
     let [
-        CssScopedRule::Style(before),
-        CssScopedRule::Page(page),
-        CssScopedRule::Style(after),
-    ] = media.rules().rules()
+        CssRule::Style(before),
+        CssRule::Page(page),
+        CssRule::Style(after),
+    ] = media.rules()
     else {
         panic!("retained neighbors and valid page")
     };
@@ -153,10 +153,10 @@ fn scoped_page_retains_payload_and_original_positions_at_eof() {
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("scope")
     };
-    let [CssScopedRule::Media(media)] = scope.rules().rules() else {
+    let [CssRule::Media(media)] = scope.rules().rules() else {
         panic!("media")
     };
-    let [CssScopedRule::Page(page)] = media.rules().rules() else {
+    let [CssRule::Page(page)] = media.rules() else {
         panic!("page")
     };
     assert_margin(page);
@@ -192,20 +192,20 @@ fn page_leaf_does_not_change_namespace_resolution_of_scoped_neighbors() {
     let [CssRule::Namespace(_), CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("namespace and scope")
     };
-    let [CssScopedRule::Media(media)] = scope.rules().rules() else {
+    let [CssRule::Media(media)] = scope.rules().rules() else {
         panic!("media")
     };
     let [
-        CssScopedRule::Style(before),
-        CssScopedRule::Page(page),
-        CssScopedRule::Style(after),
-    ] = media.rules().rules()
+        CssRule::Style(before),
+        CssRule::Page(page),
+        CssRule::Style(after),
+    ] = media.rules()
     else {
         panic!("neighbors and page")
     };
     assert_eq!(page.declarations().properties().len(), 1);
     for (style, local_name) in [(before, "before"), (after, "after")] {
-        let [CssScopedStyleSelector::Selector(CssSelector::Compound(selector))] =
+        let [CssStyleSelector::Selector(CssSelector::Compound(selector))] =
             style.selectors().selectors()
         else {
             panic!("qualified selector")
@@ -305,12 +305,12 @@ fn excess_scoped_page_preserves_statement_in_its_same_parent() {
             );
             let mut rules = scope.rules().rules();
             for _ in 0..255 {
-                let [CssScopedRule::Media(media)] = rules else {
+                let [CssRule::Media(media)] = rules else {
                     panic!("all admitted Media ancestors survive")
                 };
-                rules = media.rules().rules();
+                rules = media.rules();
             }
-            let [CssScopedRule::LayerStatement(layer)] = rules else {
+            let [CssRule::LayerStatement(layer)] = rules else {
                 panic!("same-parent Layer statement retained: {rules:?}")
             };
             assert_eq!(layer.names().names()[0].components(), &["kept".to_owned()]);

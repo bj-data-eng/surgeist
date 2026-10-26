@@ -305,12 +305,12 @@ fn pending_attr_normalization_retains_recovered_order_and_importance() {
 
 #[test]
 fn property_attr_deferral_does_not_admit_query_or_descriptor_operands() {
-    let query = CssContainerCondition::try_from_components(
+    let query = CssCondition::<CssContainerLeaf>::try_from_components(
         parse_component_values("(width:attr(foo))").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let CssContainerConditionKind::GeneralEnclosed(opaque) = query.kind() else {
+    let CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(opaque)) = query.kind() else {
         panic!("width query retains its own grammar")
     };
     assert_eq!(opaque.authored(), Some("(width:attr(foo))"));

@@ -152,7 +152,7 @@ fn property_bridge_retains_the_programmatic_root_and_original_parsed_children() 
 #[test]
 fn supports_math_keeps_full_stylesheet_coordinates_after_unicode_prefix() {
     use surgeist_css::{
-        CssKnownPropertyValueRef, CssOpacityValue, CssRule, CssSupportsConditionKind,
+        CssConditionKind, CssKnownPropertyValueRef, CssOpacityValue, CssRule, CssSupportsLeaf,
         CssValueOrigin, parse_sheet,
     };
     let source = "/*λ*/\n@supports (opacity: calc(1e99999 / 2)) {}";
@@ -161,7 +161,8 @@ fn supports_math_keeps_full_stylesheet_coordinates_after_unicode_prefix() {
     let CssRule::Supports(rule) = &report.syntax().rules()[0] else {
         panic!("expected supports")
     };
-    let CssSupportsConditionKind::Declaration(declaration) = rule.condition().kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = rule.condition().kind()
+    else {
         panic!("expected declaration")
     };
     let CssKnownPropertyValueRef::Opacity(opacity) =

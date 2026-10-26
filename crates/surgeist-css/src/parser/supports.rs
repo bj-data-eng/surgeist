@@ -59,7 +59,7 @@ pub(super) fn parse_supports_condition<'i, 't>(
     input: &mut Parser<'i, 't>,
     _diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<CssSupportsCondition, ParseError<'i, CssError>> {
+) -> Result<CssCondition<CssSupportsLeaf>, ParseError<'i, CssError>> {
     let implicit =
         recovery.check_specialized_components(source, input, "baseline.rule.supports")?;
     let start = input.current_source_location();
@@ -126,7 +126,7 @@ pub(crate) fn construct_supports_condition(
     values: CssComponentValues,
     namespaces: &CssNamespaceContext,
     limits: CssComponentValueLimits,
-) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
+) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
     construct_supports_condition_with_context(
         values,
         namespaces,
@@ -140,7 +140,7 @@ pub(crate) fn construct_supports_condition_with_context(
     namespaces: &CssNamespaceContext,
     limits: CssComponentValueLimits,
     parser_context: crate::CssParserContext,
-) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
+) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
     validate(&values, limits)?;
     let recovery = RecoveryState::at_depth("", 0, StyleContextCaptures::default())
         .with_parser_context(parser_context);
@@ -204,7 +204,7 @@ fn condition(
     recovery: &RecoveryState,
     authored: bool,
     limits: CssComponentValueLimits,
-) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
+) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
     let significant: Vec<_> = lexical
         .items()
         .iter()
@@ -256,7 +256,7 @@ struct SupportsGrammar<'a> {
 }
 impl BooleanConditionGrammar for SupportsGrammar<'_> {
     type Operator = ();
-    type Node = CssSupportsCondition;
+    type Node = CssCondition<CssSupportsLeaf>;
     type Error = ConditionFailure<CssSupportsConstructionError>;
 
     fn keyword(&mut self, keyword: &'static str) -> Result<Option<()>, Self::Error> {
@@ -268,7 +268,7 @@ impl BooleanConditionGrammar for SupportsGrammar<'_> {
         }
         Ok(matched.then_some(()))
     }
-    fn operand(&mut self) -> Result<CssSupportsCondition, Self::Error> {
+    fn operand(&mut self) -> Result<CssCondition<CssSupportsLeaf>, Self::Error> {
         let index = self.significant[self.slot];
         self.slot += 1;
         Ok(operand(
@@ -284,35 +284,33 @@ impl BooleanConditionGrammar for SupportsGrammar<'_> {
             Some(&index) => Err(ConditionFailure::Mismatch(index)),
         }
     }
-    fn negation(&mut self, (): (), operand: CssSupportsCondition) -> CssSupportsCondition {
-        CssSupportsCondition::new(
-            CssSupportsConditionKind::Not(Box::new(operand)),
+    fn negation(
+        &mut self,
+        (): (),
+        operand: CssCondition<CssSupportsLeaf>,
+    ) -> CssCondition<CssSupportsLeaf> {
+        CssCondition::lexical(
+            CssConditionKind::Not(Box::new(operand)),
             self.lexical.clone(),
-            SupportsAuthoredForm::Condition,
         )
     }
-    fn single(&mut self, operand: CssSupportsCondition) -> CssSupportsCondition {
-        CssSupportsCondition::new(
-            operand.into_kind(),
-            self.lexical.clone(),
-            SupportsAuthoredForm::Condition,
-        )
+    fn single(&mut self, operand: CssCondition<CssSupportsLeaf>) -> CssCondition<CssSupportsLeaf> {
+        CssCondition::lexical(operand.into_kind(), self.lexical.clone())
     }
     fn junction(
         &mut self,
         conjunction: bool,
         _: Vec<()>,
-        operands: Vec<CssSupportsCondition>,
-    ) -> CssSupportsCondition {
-        let list = CssSupportsConditionList::new(operands);
-        CssSupportsCondition::new(
+        operands: Vec<CssCondition<CssSupportsLeaf>>,
+    ) -> CssCondition<CssSupportsLeaf> {
+        let list = CssConditionList::new(operands);
+        CssCondition::lexical(
             if conjunction {
-                CssSupportsConditionKind::And(list)
+                CssConditionKind::And(list)
             } else {
-                CssSupportsConditionKind::Or(list)
+                CssConditionKind::Or(list)
             },
             self.lexical.clone(),
-            SupportsAuthoredForm::Condition,
         )
     }
 }
@@ -321,7 +319,7 @@ fn operand(
     recovery: &RecoveryState,
     authored: bool,
     limits: CssComponentValueLimits,
-) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
+) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
     let value = &lexical.items()[0];
     let kind = match value.view() {
         CssComponentValueRef::Block(block) if block.kind() == CssBlockKind::Parenthesis => {
@@ -334,16 +332,16 @@ fn operand(
             if let [component] = named.as_slice()
                 && let Ok(name) = CssSupportsConditionName::try_from_component((*component).clone())
             {
-                CssSupportsConditionKind::Named(name)
+                CssConditionKind::Leaf(CssSupportsLeaf::Named(name))
             } else if let Some(declaration) = grammar(declaration(
                 children.clone(),
                 authored,
                 limits,
                 recovery.parser_context(),
             ))? {
-                CssSupportsConditionKind::Declaration(Box::new(declaration))
+                CssConditionKind::Leaf(CssSupportsLeaf::Declaration(Box::new(declaration)))
             } else if let Some(group) = grammar(condition(children, recovery, authored, limits))? {
-                group.into_kind()
+                CssConditionKind::Parenthesized(Box::new(group))
             } else {
                 enclosed(value)?
             }
@@ -367,7 +365,7 @@ fn operand(
                 let parsed = parse_rule_selector(&mut input, &mut selector_recovery);
                 match parsed {
                     Ok(selector) if input.is_exhausted() && diagnostics.is_empty() => {
-                        CssSupportsConditionKind::Selector(selector)
+                        CssConditionKind::Leaf(CssSupportsLeaf::Selector(selector))
                     }
                     Err(error) if terminal_error(&error) => {
                         let kind = match &error.kind {
@@ -391,23 +389,19 @@ fn operand(
                     _ => enclosed(value)?,
                 }
             } else if let Some(predicate) = function_predicate(function) {
-                predicate
+                CssConditionKind::Leaf(predicate)
             } else {
                 enclosed(value)?
             }
         }
         _ => return Err(invalid_condition(value.origin())),
     };
-    Ok(CssSupportsCondition::new(
-        kind,
-        lexical,
-        SupportsAuthoredForm::Condition,
-    ))
+    Ok(CssCondition::lexical(kind, lexical))
 }
 // Keep leaf assembly outside the recursive operand frame. The lexical condition
 // already owns validation, delimiters and output; these are transparent views.
 #[inline(never)]
-fn function_predicate(function: &CssFunctionValue) -> Option<CssSupportsConditionKind> {
+fn function_predicate(function: &CssFunctionValue) -> Option<CssSupportsLeaf> {
     let mut arguments = function
         .values()
         .items()
@@ -419,7 +413,7 @@ fn function_predicate(function: &CssFunctionValue) -> Option<CssSupportsConditio
     }
     if function.name().eq_ignore_ascii_case("font-tech") {
         return CssFontTechHint::from_ascii_name(ident(argument)?.as_bytes())
-            .map(CssSupportsConditionKind::FontTech);
+            .map(CssSupportsLeaf::FontTech);
     }
     if function.name().eq_ignore_ascii_case("font-format") {
         let format = match argument.view() {
@@ -431,20 +425,19 @@ fn function_predicate(function: &CssFunctionValue) -> Option<CssSupportsConditio
             }
             _ => return None,
         };
-        return Some(CssSupportsConditionKind::FontFormat(format));
+        return Some(CssSupportsLeaf::FontFormat(format));
     }
     if function.name().eq_ignore_ascii_case("at-rule") {
-        return CssSupportsAtRule::from_component(argument.clone())
-            .map(CssSupportsConditionKind::AtRule);
+        return CssSupportsAtRule::from_component(argument.clone()).map(CssSupportsLeaf::AtRule);
     }
     None
 }
 fn enclosed(
     value: &CssComponentValue,
-) -> Result<CssSupportsConditionKind, CssSupportsConstructionError> {
-    Ok(CssSupportsConditionKind::GeneralEnclosed(
+) -> Result<CssConditionKind<CssSupportsLeaf>, CssSupportsConstructionError> {
+    Ok(CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(
         CssGeneralEnclosed::try_from_component(value.clone()).expect("function or parenthesis"),
-    ))
+    )))
 }
 pub(super) fn declaration(
     lexical: SupportsLexical,
@@ -687,7 +680,7 @@ mod generated_selector_tests {
         .unwrap();
         assert!(matches!(
             value.kind(),
-            CssSupportsConditionKind::Selector(_)
+            CssConditionKind::Leaf(CssSupportsLeaf::Selector(_))
         ));
         assert_eq!(state.structural_depth(), 254);
         let state = RecoveryState::at_depth(source, 255, StyleContextCaptures::default());

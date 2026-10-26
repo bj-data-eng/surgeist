@@ -2,25 +2,24 @@
 //! The same supported scoped selector remains valid regardless of ancestor depth.
 
 use surgeist_css::{
-    CssRule, CssScopedRule, CssScopedStyleRule, CssScopedStyleSelector, CssSelector,
-    CssSelectorCombinator, parse_sheet,
+    CssRule, CssSelector, CssSelectorCombinator, CssStyleRule, CssStyleSelector, parse_sheet,
 };
 
 fn style_at_scope_depth(
     report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
     scope_depth: usize,
-) -> &CssScopedStyleRule {
+) -> &CssStyleRule {
     let [CssRule::Scope(first)] = report.syntax().rules() else {
         panic!("expected retained scope root");
     };
     let mut scope = first;
     for _ in 1..scope_depth {
-        let [CssScopedRule::Scope(next)] = scope.rules().rules() else {
+        let [CssRule::Scope(next)] = scope.rules().rules() else {
             panic!("expected retained scope ancestor");
         };
         scope = next;
     }
-    let [CssScopedRule::Style(style)] = scope.rules().rules() else {
+    let [CssRule::Style(style)] = scope.rules().rules() else {
         panic!("expected retained scoped style rule");
     };
     style
@@ -41,7 +40,7 @@ fn scoped_anchor_remains_valid_when_its_rule_starts_a_structural_chunk() {
             report.diagnostics()
         );
         let style = style_at_scope_depth(&report, depth);
-        let [CssScopedStyleSelector::Selector(CssSelector::Compound(selector))] =
+        let [CssStyleSelector::Selector(CssSelector::Compound(selector))] =
             style.selectors().selectors()
         else {
             panic!("expected authored scoped anchor");
@@ -71,7 +70,7 @@ fn scoped_relative_selector_remains_valid_when_its_rule_starts_a_structural_chun
             report.diagnostics()
         );
         let style = style_at_scope_depth(&report, depth);
-        let [CssScopedStyleSelector::Relative(relative)] = style.selectors().selectors() else {
+        let [CssStyleSelector::Relative(relative)] = style.selectors().selectors() else {
             panic!("expected authored relative scoped selector");
         };
         assert_eq!(relative.combinator(), CssSelectorCombinator::Child);

@@ -45,8 +45,8 @@ fn color(source: &CssDeclaration) -> &CssColor {
         _ => panic!("direct Color owner"),
     }
 }
-fn test_declaration(condition: &CssSupportsCondition) -> &CssSupportsDeclaration {
-    let CssSupportsConditionKind::Declaration(v) = condition.kind() else {
+fn test_declaration(condition: &CssCondition<CssSupportsLeaf>) -> &CssSupportsDeclaration {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(v)) = condition.kind() else {
         panic!("declaration test")
     };
     v
@@ -757,7 +757,7 @@ fn supports_rules_retain_document_mode_while_both_method_overloads_force_standar
             .parse_supports_condition("future(ABC)", &namespaces)
             .unwrap()
             .kind(),
-        CssSupportsConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
     ));
 }
 #[test]
