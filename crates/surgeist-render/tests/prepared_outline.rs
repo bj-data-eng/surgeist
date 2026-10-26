@@ -1,23 +1,23 @@
 //! Public headless behavior. Geometry expectations come from the licensed Ahem
 //! glyph/source tables, not from the preparation output under test.
 use surgeist_render::{
-    Color, Error, ErrorCode, FontData, NormalizedCoordinate, OutlineCapability, OutlineLimits,
-    OutlineNumericPhase, OutlinePreparationError, OutlineResource, OutlineSynthesis, PathElement,
-    PreparedOutline, Rect, Scene, TextGlyph, TextInstance, TextPaint, TextRunBoundsKind, Transform,
-    VariationTable,
+    Color, Error, ErrorCode, FontData, GlyphCapability, GlyphNumericPhase, GlyphPreparationError,
+    GlyphResource, GlyphRunLimits, GlyphSynthesis, NormalizedCoordinate, PathElement,
+    PreparedGlyphRun, Rect, Scene, TextGlyph, TextInstance, TextPaint, TextRunBoundsKind,
+    Transform, VariationTable,
 };
 
 const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
 const X: u32 = 58;
 
-fn limits() -> OutlineLimits {
-    OutlineLimits::new(16, 1024, 1 << 20, 1 << 20)
+fn limits() -> GlyphRunLimits {
+    GlyphRunLimits::new(16, 1024, 1 << 20, 1 << 20)
 }
 fn instance(size: f32, coordinates: Vec<NormalizedCoordinate>, skew: f32) -> TextInstance {
     TextInstance::try_new(
         size,
         coordinates,
-        OutlineSynthesis::try_new(skew, 0.0).unwrap(),
+        GlyphSynthesis::try_new(skew, 0.0).unwrap(),
     )
     .unwrap()
 }
@@ -27,18 +27,18 @@ fn font(bytes: &[u8]) -> FontData {
 fn glyph() -> TextGlyph {
     TextGlyph::try_new(X, -20.0, 30.0, -123.0).unwrap()
 }
-fn diagnostic(error: &Error) -> OutlinePreparationError {
-    assert_eq!(error.code(), ErrorCode::OutlinePreparation);
-    *error.outline_preparation_diagnostic().unwrap()
+fn diagnostic(error: &Error) -> GlyphPreparationError {
+    assert_eq!(error.code(), ErrorCode::GlyphPreparation);
+    *error.glyph_preparation_diagnostic().unwrap()
 }
-fn prepare(bytes: &[u8], instance: &TextInstance) -> PreparedOutline {
+fn prepare(bytes: &[u8], instance: &TextInstance) -> PreparedGlyphRun {
     font(bytes)
-        .prepare_outline(instance, &[glyph()], limits())
+        .prepare_glyph_run(instance, &[glyph()], limits())
         .unwrap()
 }
 
 #[test]
-fn prepared_outline_retains_real_ahem_ink_separately_from_negative_advance() {
+fn prepared_glyph_run_retains_real_ahem_ink_separately_from_negative_advance() {
     // X is the rectangle (0,-200)..(1000,800), UPEM1000; the run flips y.
     let prepared = prepare(AHEM, &instance(1000.0, vec![], 0.0));
     assert_eq!(
@@ -53,21 +53,23 @@ fn prepared_outline_retains_real_ahem_ink_separately_from_negative_advance() {
 }
 
 #[test]
-fn prepared_outline_true_empty_and_empty_input_have_no_authored_bounds_escape() {
+fn prepared_glyph_run_true_empty_and_empty_input_have_no_authored_bounds_escape() {
     let font = font(AHEM);
     let instance = instance(1000.0, vec![], 0.0);
     for glyphs in [
         vec![],
         vec![TextGlyph::try_new(3, 0.0, 0.0, 1000.0).unwrap()],
     ] {
-        let prepared = font.prepare_outline(&instance, &glyphs, limits()).unwrap();
+        let prepared = font
+            .prepare_glyph_run(&instance, &glyphs, limits())
+            .unwrap();
         assert_eq!(prepared.bounds().kind(), TextRunBoundsKind::Empty);
         assert_eq!(prepared.path_elements().count(), 0);
     }
 }
 
 #[test]
-fn prepared_outline_actual_skew_precedes_reflection_and_local_placement() {
+fn prepared_glyph_run_actual_skew_precedes_reflection_and_local_placement() {
     let prepared = prepare(AHEM, &instance(1000.0, vec![], 0.5));
     // Font y800 shifts x+400, font y-200 shifts x-100, before local (-20,30).
     assert_eq!(
@@ -80,14 +82,14 @@ fn prepared_outline_actual_skew_precedes_reflection_and_local_placement() {
 }
 
 #[test]
-fn prepared_outline_exact_coordinate_lattice_rejects_loss_and_wrong_axis_inventory() {
+fn prepared_glyph_run_exact_coordinate_lattice_rejects_loss_and_wrong_axis_inventory() {
     assert_eq!(
         NormalizedCoordinate::try_from_bits(8192).unwrap(),
         NormalizedCoordinate::try_from_scalar(0.5).unwrap()
     );
     assert!(matches!(
         diagnostic(&NormalizedCoordinate::try_from_scalar(0.1).unwrap_err()),
-        OutlinePreparationError::CoordinateLoss { .. }
+        GlyphPreparationError::CoordinateLoss { .. }
     ));
     assert!(NormalizedCoordinate::try_from_bits(16385).is_err());
     for scalar in [f32::NAN, f32::INFINITY, -1.01] {
@@ -101,10 +103,10 @@ fn prepared_outline_exact_coordinate_lattice_rejects_loss_and_wrong_axis_invento
     assert_eq!(
         diagnostic(
             &font(AHEM)
-                .prepare_outline(&extra, &[glyph()], limits())
+                .prepare_glyph_run(&extra, &[glyph()], limits())
                 .unwrap_err()
         ),
-        OutlinePreparationError::CoordinateCount {
+        GlyphPreparationError::CoordinateCount {
             supplied: 1,
             required: 0
         }
@@ -112,7 +114,7 @@ fn prepared_outline_exact_coordinate_lattice_rejects_loss_and_wrong_axis_invento
 }
 
 #[test]
-fn prepared_outline_real_nondefault_variation_changes_exact_geometry_and_retains_bits() {
+fn prepared_glyph_run_real_nondefault_variation_changes_exact_geometry_and_retains_bits() {
     let bytes = variable_ahem();
     for (bits, expected_width) in [(0, 1000.0), (8192, 1050.0), (16384, 1100.0)] {
         let instance = instance(
@@ -137,10 +139,10 @@ fn prepared_outline_real_nondefault_variation_changes_exact_geometry_and_retains
     assert_eq!(
         diagnostic(
             &font(&bytes)
-                .prepare_outline(&missing, &[glyph()], limits())
+                .prepare_glyph_run(&missing, &[glyph()], limits())
                 .unwrap_err()
         ),
-        OutlinePreparationError::CoordinateCount {
+        GlyphPreparationError::CoordinateCount {
             supplied: 0,
             required: 1
         }
@@ -148,7 +150,7 @@ fn prepared_outline_real_nondefault_variation_changes_exact_geometry_and_retains
 }
 
 #[test]
-fn prepared_outline_present_malformed_variation_metadata_cannot_become_default_success() {
+fn prepared_glyph_run_present_malformed_variation_metadata_cannot_become_default_success() {
     let coordinate = vec![NormalizedCoordinate::try_from_bits(16384).unwrap()];
     for (tag, table) in [
         (*b"fvar", VariationTable::Fvar),
@@ -158,14 +160,14 @@ fn prepared_outline_present_malformed_variation_metadata_cannot_become_default_s
         assert_eq!(
             diagnostic(
                 &font(&bytes)
-                    .prepare_outline(
+                    .prepare_glyph_run(
                         &instance(1000.0, coordinate.clone(), 0.0),
                         &[glyph()],
                         limits()
                     )
                     .unwrap_err()
             ),
-            OutlinePreparationError::InvalidVariation { table }
+            GlyphPreparationError::InvalidVariation { table }
         );
         let mut outside = variable_ahem();
         let record = (0..usize::from(u16_at(&outside, 4)))
@@ -176,14 +178,14 @@ fn prepared_outline_present_malformed_variation_metadata_cannot_become_default_s
         assert_eq!(
             diagnostic(
                 &font(&outside)
-                    .prepare_outline(
+                    .prepare_glyph_run(
                         &instance(1000.0, coordinate.clone(), 0.0),
                         &[glyph()],
                         limits()
                     )
                     .unwrap_err()
             ),
-            OutlinePreparationError::InvalidVariation { table }
+            GlyphPreparationError::InvalidVariation { table }
         );
     }
     let bytes = variable_ahem();
@@ -195,10 +197,10 @@ fn prepared_outline_present_malformed_variation_metadata_cannot_become_default_s
     assert_eq!(
         diagnostic(
             &font(&malformed)
-                .prepare_outline(&instance(1000.0, coordinate, 0.0), &[glyph()], limits())
+                .prepare_glyph_run(&instance(1000.0, coordinate, 0.0), &[glyph()], limits())
                 .unwrap_err()
         ),
-        OutlinePreparationError::InvalidVariation {
+        GlyphPreparationError::InvalidVariation {
             table: VariationTable::Gvar
         }
     );
@@ -208,43 +210,45 @@ fn prepared_outline_present_malformed_variation_metadata_cannot_become_default_s
     assert_eq!(
         diagnostic(
             &font(&malformed_varc)
-                .prepare_outline(&instance(1000.0, vec![], 0.0), &[glyph()], limits())
+                .prepare_glyph_run(&instance(1000.0, vec![], 0.0), &[glyph()], limits())
                 .unwrap_err()
         ),
-        OutlinePreparationError::UnsupportedOutline {
-            capability: OutlineCapability::VariableComposite
+        GlyphPreparationError::UnsupportedOutline {
+            capability: GlyphCapability::VariableComposite
         }
     );
 }
 
 #[test]
-fn prepared_outline_limits_refuse_whole_runs_and_retry_preserves_original_inputs() {
+fn prepared_glyph_run_limits_refuse_whole_runs_and_retry_preserves_original_inputs() {
     let font = font(AHEM);
     let instance = instance(1000.0, vec![], 0.0);
     let glyphs = [glyph(), glyph()];
     for (limits, resource) in [
         (
-            OutlineLimits::new(1, 1024, 1 << 20, 1 << 20),
-            OutlineResource::Glyphs,
+            GlyphRunLimits::new(1, 1024, 1 << 20, 1 << 20),
+            GlyphResource::Glyphs,
         ),
         (
-            OutlineLimits::new(16, 4, 1 << 20, 1 << 20),
-            OutlineResource::PathElements,
+            GlyphRunLimits::new(16, 4, 1 << 20, 1 << 20),
+            GlyphResource::PathElements,
         ),
         (
-            OutlineLimits::new(16, 1024, 0, 1 << 20),
-            OutlineResource::ScratchBytes,
+            GlyphRunLimits::new(16, 1024, 0, 1 << 20),
+            GlyphResource::ScratchBytes,
         ),
         (
-            OutlineLimits::new(16, 1024, 1 << 20, 0),
-            OutlineResource::RetainedBytes,
+            GlyphRunLimits::new(16, 1024, 1 << 20, 0),
+            GlyphResource::RetainedBytes,
         ),
     ] {
         assert!(
-            matches!(diagnostic(&font.prepare_outline(&instance, &glyphs, limits).unwrap_err()), OutlinePreparationError::Limit { resource: actual, .. } if actual == resource)
+            matches!(diagnostic(&font.prepare_glyph_run(&instance, &glyphs, limits).unwrap_err()), GlyphPreparationError::Limit { resource: actual, .. } if actual == resource)
         );
     }
-    let prepared = font.prepare_outline(&instance, &glyphs, limits()).unwrap();
+    let prepared = font
+        .prepare_glyph_run(&instance, &glyphs, limits())
+        .unwrap();
     assert_eq!(prepared.glyphs(), glyphs);
     assert_eq!(prepared.path_elements().count(), 10);
     // Blob boxes its input bytes: discarded input Vec spare capacity is not
@@ -254,11 +258,11 @@ fn prepared_outline_limits_refuse_whole_runs_and_retry_preserves_original_inputs
     let overcapacity = FontData::try_from_bytes(bytes, 0).unwrap();
     let required = |font: &FontData| match diagnostic(
         &font
-            .prepare_outline(&instance, &[], OutlineLimits::new(0, 0, 0, 0))
+            .prepare_glyph_run(&instance, &[], GlyphRunLimits::new(0, 0, 0, 0))
             .unwrap_err(),
     ) {
-        OutlinePreparationError::Limit {
-            resource: OutlineResource::RetainedBytes,
+        GlyphPreparationError::Limit {
+            resource: GlyphResource::RetainedBytes,
             required,
             ..
         } => required,
@@ -274,68 +278,68 @@ fn prepared_outline_limits_refuse_whole_runs_and_retry_preserves_original_inputs
     let padded = FontData::try_from_bytes(padded, 0).unwrap();
     assert_eq!(required(&padded), charge + PADDING);
     assert!(
-        matches!(diagnostic(&padded.prepare_outline(&instance, &[], OutlineLimits::new(0,0,0,charge)).unwrap_err()), OutlinePreparationError::Limit { resource: OutlineResource::RetainedBytes, required, .. } if required == charge + PADDING)
+        matches!(diagnostic(&padded.prepare_glyph_run(&instance, &[], GlyphRunLimits::new(0,0,0,charge)).unwrap_err()), GlyphPreparationError::Limit { resource: GlyphResource::RetainedBytes, required, .. } if required == charge + PADDING)
     );
     assert!(
         padded
-            .prepare_outline(
+            .prepare_glyph_run(
                 &instance,
                 &[],
-                OutlineLimits::new(0, 0, 0, charge + PADDING)
+                GlyphRunLimits::new(0, 0, 0, charge + PADDING)
             )
             .is_ok()
     );
     assert!(
         overcapacity
-            .prepare_outline(&instance, &[], OutlineLimits::new(0, 0, 0, charge))
+            .prepare_glyph_run(&instance, &[], GlyphRunLimits::new(0, 0, 0, charge))
             .is_ok()
     );
     assert!(
-        matches!(diagnostic(&font.prepare_outline(&instance, &[], OutlineLimits::new(0, 0, 0, charge - 1)).unwrap_err()), OutlinePreparationError::Limit { resource: OutlineResource::RetainedBytes, required, .. } if required == charge)
+        matches!(diagnostic(&font.prepare_glyph_run(&instance, &[], GlyphRunLimits::new(0, 0, 0, charge - 1)).unwrap_err()), GlyphPreparationError::Limit { resource: GlyphResource::RetainedBytes, required, .. } if required == charge)
     );
 }
 
 #[test]
-fn prepared_outline_numeric_and_invalid_synthesis_refusals_do_not_publish_empty() {
+fn prepared_glyph_run_numeric_and_invalid_synthesis_refusals_do_not_publish_empty() {
     let font = font(AHEM);
     // Actual path underflow and overflow, rather than an arbitrary size cap.
     for (size, skew) in [(f32::from_bits(1), 0.0), (f32::MAX, 1.0)] {
         assert!(matches!(
             diagnostic(
                 &font
-                    .prepare_outline(
+                    .prepare_glyph_run(
                         &instance(size, vec![], skew),
                         &[TextGlyph::try_new(X, 0.0, 0.0, 1.0).unwrap()],
                         limits(),
                     )
                     .unwrap_err()
             ),
-            OutlinePreparationError::Numeric { .. }
+            GlyphPreparationError::Numeric { .. }
         ));
     }
     let huge = TextGlyph::try_new(X, f64::from(f32::MAX), 0.0, 1.0).unwrap();
     assert!(matches!(
         diagnostic(
             &font
-                .prepare_outline(&instance(1000.0, vec![], 0.0), &[huge], limits())
+                .prepare_glyph_run(&instance(1000.0, vec![], 0.0), &[huge], limits())
                 .unwrap_err()
         ),
-        OutlinePreparationError::Numeric { .. }
+        GlyphPreparationError::Numeric { .. }
     ));
     for (skew, displacement) in [(f32::NAN, 1.0), (0.0, -1.0), (0.0, f32::INFINITY)] {
         assert_eq!(
-            diagnostic(&OutlineSynthesis::try_new(skew, displacement).unwrap_err()),
-            OutlinePreparationError::InvalidSynthesis
+            diagnostic(&GlyphSynthesis::try_new(skew, displacement).unwrap_err()),
+            GlyphPreparationError::InvalidSynthesis
         );
     }
     let invalid = TextGlyph::try_new(281, 0.0, 0.0, 0.0).unwrap();
     assert_eq!(
         diagnostic(
             &font
-                .prepare_outline(&instance(1000.0, vec![], 0.0), &[invalid], limits())
+                .prepare_glyph_run(&instance(1000.0, vec![], 0.0), &[invalid], limits())
                 .unwrap_err()
         ),
-        OutlinePreparationError::GlyphRange {
+        GlyphPreparationError::GlyphRange {
             glyph: 281,
             count: 281
         }
@@ -343,7 +347,7 @@ fn prepared_outline_numeric_and_invalid_synthesis_refusals_do_not_publish_empty(
 }
 
 #[test]
-fn prepared_outline_unscaled_provider_preserves_large_and_non_lattice_sizes() {
+fn prepared_glyph_run_unscaled_provider_preserves_large_and_non_lattice_sizes() {
     // Ahem's literal 1000-unit square at UPEM1000. The unscaled provider never
     // converts 1M ppem to the overflowing requested-size Fixed quotient.
     let large = prepare(AHEM, &instance(1_000_000.0, vec![], 0.0));
@@ -369,7 +373,7 @@ fn prepared_outline_unscaled_provider_preserves_large_and_non_lattice_sizes() {
 }
 
 #[test]
-fn prepared_outline_harfbuzz_first_offcurve_contour_has_literal_start_and_control() {
+fn prepared_glyph_run_harfbuzz_first_offcurve_contour_has_literal_start_and_control() {
     // One OFF point followed by two ON points. HB starts at the second point;
     // the FT path instead starts at the last point. These are literal glyph facts.
     let mut data = vec![];
@@ -382,7 +386,7 @@ fn prepared_outline_harfbuzz_first_offcurve_contour_has_literal_start_and_contro
     }
     let bytes = replace_x_glyph(data);
     let prepared = font(&bytes)
-        .prepare_outline(
+        .prepare_glyph_run(
             &instance(1000.0, vec![], 0.0),
             &[TextGlyph::try_new(X, 0.0, 0.0, 0.0).unwrap()],
             limits(),
@@ -398,7 +402,7 @@ fn prepared_outline_harfbuzz_first_offcurve_contour_has_literal_start_and_contro
 }
 
 #[test]
-fn prepared_outline_composite_and_sparse_variation_refuse_the_whole_run() {
+fn prepared_glyph_run_composite_and_sparse_variation_refuse_the_whole_run() {
     let mut composite = vec![];
     for n in [-1i16, 0, -200, 1000, 800, 11, 35, 0, 0, 8192] {
         composite.extend(n.to_be_bytes());
@@ -408,15 +412,15 @@ fn prepared_outline_composite_and_sparse_variation_refuse_the_whole_run() {
     assert_eq!(
         diagnostic(
             &font(&composite)
-                .prepare_outline(
+                .prepare_glyph_run(
                     &instance(1000.0, vec![], 0.0),
                     &valid_then_composite,
                     limits()
                 )
                 .unwrap_err()
         ),
-        OutlinePreparationError::UnsupportedOutline {
-            capability: OutlineCapability::CompositeGlyph
+        GlyphPreparationError::UnsupportedOutline {
+            capability: GlyphCapability::CompositeGlyph
         }
     );
     // Explicit point indices are sparse, even when every point is listed. IUP
@@ -429,7 +433,7 @@ fn prepared_outline_composite_and_sparse_variation_refuse_the_whole_run() {
     assert_eq!(
         diagnostic(
             &font(&sparse)
-                .prepare_outline(
+                .prepare_glyph_run(
                     &instance(
                         1000.0,
                         vec![NormalizedCoordinate::try_from_bits(16384).unwrap()],
@@ -440,14 +444,14 @@ fn prepared_outline_composite_and_sparse_variation_refuse_the_whole_run() {
                 )
                 .unwrap_err()
         ),
-        OutlinePreparationError::UnsupportedOutline {
-            capability: OutlineCapability::SparseVariation
+        GlyphPreparationError::UnsupportedOutline {
+            capability: GlyphCapability::SparseVariation
         }
     );
 }
 
 #[test]
-fn prepared_outline_active_partial_delta_fixed_overflow_is_not_default_success() {
+fn prepared_glyph_run_active_partial_delta_fixed_overflow_is_not_default_success() {
     // An i32 delta32768 is exact in f32 at scalarONE, but the provider's partial
     // scalar route first shifts it into signed16.16 and would wrap at +0.5.
     let mut tuple = vec![0, 1, 0, 10, 0, 35, 0xA0, 0, 0x40, 0, 0, 0xC7];
@@ -466,7 +470,7 @@ fn prepared_outline_active_partial_delta_fixed_overflow_is_not_default_success()
     );
     assert_eq!(full.bounds().ink_rect().unwrap().width(), 33768.0);
     let error = font(&bytes)
-        .prepare_outline(
+        .prepare_glyph_run(
             &instance(
                 1000.0,
                 vec![NormalizedCoordinate::try_from_bits(8192).unwrap()],
@@ -478,20 +482,20 @@ fn prepared_outline_active_partial_delta_fixed_overflow_is_not_default_success()
         .unwrap_err();
     assert!(matches!(
         diagnostic(&error),
-        OutlinePreparationError::Numeric {
-            phase: OutlineNumericPhase::ProviderPoint,
+        GlyphPreparationError::Numeric {
+            phase: GlyphNumericPhase::ProviderPoint,
             ..
         }
     ));
 }
 
 #[test]
-fn prepared_outline_shared_identity_and_scene_survive_original_input_drop() {
+fn prepared_glyph_run_shared_identity_and_scene_survive_original_input_drop() {
     let prepared = {
         let bytes = AHEM.to_vec();
         let font = font(&bytes);
         let glyphs = vec![glyph()];
-        font.prepare_outline(&instance(1000.0, vec![], 0.0), &glyphs, limits())
+        font.prepare_glyph_run(&instance(1000.0, vec![], 0.0), &glyphs, limits())
             .unwrap()
     };
     let cloned = prepared.clone();
@@ -499,7 +503,7 @@ fn prepared_outline_shared_identity_and_scene_survive_original_input_drop() {
     assert!(prepared.is_same_preparation(&cloned));
     assert!(!prepared.is_same_preparation(&independent));
     let mut scene = Scene::new();
-    scene.prepared_outline(
+    scene.prepared_glyph_run(
         prepared,
         Transform::identity(),
         TextPaint::try_fill(Color::BLACK.into()).unwrap(),

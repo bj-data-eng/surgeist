@@ -1,4 +1,4 @@
-<test name="taffy_issue_696_min_height__content_box_ltr" use-rounding="true">
+<test name="taffy_issue_696_min_height__content_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" flex-direction="column" width="200px">

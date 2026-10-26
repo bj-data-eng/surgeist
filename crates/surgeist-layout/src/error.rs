@@ -1,6 +1,6 @@
 use crate::DefaultScalar;
 use crate::geometry::{FlowAxes, PhysicalAxis};
-use crate::node_input::{FloatExclusionIntervalErrorOf, InlineTextInputErrorOf};
+use crate::node_input::FloatExclusionIntervalErrorOf;
 use crate::output::RunMode;
 use crate::scalar::LayoutScalar;
 use crate::sizing::resolve::SizingResolutionError;
@@ -10,7 +10,7 @@ pub type LayoutResultOf<Node, T, S, M = core::convert::Infallible> =
     Result<T, LayoutErrorOf<Node, S, M>>;
 pub type LayoutResult<Node, T, M> = LayoutResultOf<Node, T, DefaultScalar, M>;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 pub struct LayoutErrorOf<Node, S: LayoutScalar = DefaultScalar, M = core::convert::Infallible> {
     site: LayoutErrorSiteOf<Node>,
     operation: LayoutOperation,
@@ -75,19 +75,49 @@ pub enum LayoutOperation {
     FloatExclusionQuery,
     RoundingFinalization,
     GridLanePlacement,
+    TextCapture,
+    InlineWrapping,
+    TextSelection,
+    TextPlacement,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum LayoutErrorKindOf<S: LayoutScalar = DefaultScalar, M = core::convert::Infallible> {
     InvalidInput(LayoutInvalidInputOf<S>),
     MissingContext(LayoutMissingContext),
     UnsupportedCapability(LayoutUnsupportedCapability),
     Measurement(M),
+    /// The actual Text owner refused the captured protocol operation.
+    Text(surgeist_text::Error),
+    /// A complete canonical Text feedback basis repeated without acceptance.
+    TextFeedbackCycle,
+    /// Numeric inline avoidance repeated an actual metric-envelope/float-band
+    /// basis without convergence. No chosen line has been published.
+    InlineFeedbackCycle,
+    /// Layout's completed justification correction still exceeds the actual
+    /// line budget. Both quantities are logical Text advances, before scalar
+    /// conversion or physical placement.
+    TextSpacingBudget {
+        available: f64,
+        advance: f64,
+    },
+    TextNumeric {
+        value: f64,
+        reason: LayoutTextNumericError,
+    },
     InternalInvariant(LayoutInternalInvariant),
 }
 
 pub type LayoutErrorKind<M = core::convert::Infallible> = LayoutErrorKindOf<DefaultScalar, M>;
+
+/// Failure at Layout's actual Text-to-canonical-scalar conversion boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LayoutTextNumericError {
+    NonFinite,
+    OutOfRange,
+    NonZeroLost,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
@@ -100,7 +130,6 @@ pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
     InvalidNumeric {
         value: S,
     },
-    InlineText(InlineTextInputErrorOf<S>),
     /// A visible inline control disagrees with its containing block's flow.
     InlineFlowMismatch {
         expected: FlowAxes,
@@ -118,8 +147,12 @@ pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
     FloatExclusionProviderOutput {
         error: FloatExclusionIntervalErrorOf<S>,
     },
+    AnonymousBlockRole,
+    AnonymousIndentMismatch,
     InvalidationNodeNotReachable,
     TreeTopologyCycle,
+    TextBinding(crate::text_layout::TextBindingError),
+    WrappingScope(crate::inline_wrapping::WrappingScopeError),
 }
 
 pub type LayoutInvalidInput = LayoutInvalidInputOf<DefaultScalar>;
@@ -128,6 +161,7 @@ pub type LayoutInvalidInput = LayoutInvalidInputOf<DefaultScalar>;
 pub enum AtomicInlineParticipationRoleError {
     MissingForAtomicInline,
     UnexpectedForNonAtomic,
+    UnexpectedForPreparedAtomic,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -149,6 +183,14 @@ pub enum FloatExclusionRoleError {
 pub enum LayoutMissingContext {
     RequiredBasis,
     FloatExclusionProvider,
+    TextCapture,
+    InlineWrapping,
+    /// The selected hyphenation needs an owning completed-block continuation.
+    TextBlockTail,
+    TextOutOfFlowGeometry,
+    /// A computed semantic cut has no proved side in the actual native flow.
+    ComputedLineBoundaryIncidence,
+    AnonymousGeneratingBlock,
 }
 
 impl core::hash::Hash for PhysicalAxis {
@@ -288,7 +330,6 @@ pub enum LayoutInternalInvariant {
     InvalidRoundedInlineFragmentGeometry,
     MissingLeafMeasurementProvider,
     MissingStagedUnroundedOutput,
-    MissingCachedInlineFragmentState,
     SubgridTrackInheritance,
     SubgridBaselineInheritance,
 }
@@ -423,4 +464,16 @@ where
             )),
         ),
     }
+}
+
+/// Refusal from the common immutable inline-scope owner.
+pub(crate) fn wrapping_error<Node, S: LayoutScalar, M>(
+    node: Node,
+    reason: crate::inline_wrapping::WrappingScopeError,
+) -> LayoutErrorOf<Node, S, M> {
+    LayoutErrorOf::new(
+        LayoutErrorSiteOf::Node(node),
+        LayoutOperation::InlineWrapping,
+        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(reason)),
+    )
 }

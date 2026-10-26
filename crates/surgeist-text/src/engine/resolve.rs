@@ -6,8 +6,8 @@ use fontique::{Collection, FamilyId, FontStyle, FontWeight, FontWidth, GenericFa
 use parlance::{FontFamilyName, FontFeature, FontVariation};
 
 use crate::{
-    Brush, Decoration, Error, ErrorCode, LineHeight, OverflowWrap, Range, Result, TextNumericError,
-    TextNumericPhase, ValidatedSource, ValidatedStyle, Wrap,
+    Brush, Decoration, Error, ErrorCode, LineHeight, Range, Result, Source, TextNumericError,
+    TextNumericPhase, ValidatedStyle,
 };
 
 #[derive(Clone, Debug)]
@@ -33,44 +33,72 @@ pub(crate) struct ResolvedStyle {
     pub(crate) line_height: LineHeight,
     pub(crate) word_spacing: f64,
     pub(crate) letter_spacing: f64,
-    pub(crate) overflow_wrap: OverflowWrap,
-    pub(crate) wrap: Wrap,
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct AnalyzedStyleRun {
-    pub(crate) range: Range,
+    pub(crate) owner: AnalyzedStyleOwner,
     pub(crate) style: ValidatedStyle,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum AnalyzedStyleOwner {
+    Source(Range),
+    Control(usize),
+    Scope(usize),
+}
+impl AnalyzedStyleRun {
+    pub(crate) fn source_range(&self) -> Option<Range> {
+        match self.owner {
+            AnalyzedStyleOwner::Source(range) => Some(range),
+            AnalyzedStyleOwner::Control(_) | AnalyzedStyleOwner::Scope(_) => None,
+        }
+    }
+}
+
 pub(crate) fn analyze_styles(
-    source: &ValidatedSource,
+    source: &Source,
+    spans: &[crate::source_model::ValidatedSpan],
     default_style: &ValidatedStyle,
+    paragraph: &crate::protocol::paragraph::ParagraphData,
 ) -> Vec<AnalyzedStyleRun> {
-    let mut boundaries = vec![0, source.source().text().len()];
-    for span in source.span_styles() {
-        boundaries.push(span.range().start);
-        boundaries.push(span.range().end);
+    let extent = paragraph.extent_in(source);
+    let mut boundaries = vec![extent.start, extent.end];
+    for span in spans {
+        boundaries.push(span.range().start.clamp(extent.start, extent.end));
+        boundaries.push(span.range().end.clamp(extent.start, extent.end));
     }
     boundaries.sort_unstable();
     boundaries.dedup();
-    let mut result = Vec::new();
+    let mut result: Vec<AnalyzedStyleRun> = Vec::new();
     for endpoints in boundaries.windows(2) {
-        let range = Range::new(endpoints[0], endpoints[1]);
-        let style = source
-            .span_styles()
-            .iter()
-            .rev()
-            .find(|span| span.range().start <= range.start && span.range().end >= range.end)
-            .map_or(default_style, |span| span.style());
-        result.push(AnalyzedStyleRun {
-            range,
-            style: style.clone(),
-        });
+        for range in paragraph.intersections(Range::new(endpoints[0], endpoints[1])) {
+            let style = spans
+                .iter()
+                .rev()
+                .find(|span| span.range().start <= range.start && span.range().end >= range.end)
+                .map_or(default_style, |span| span.style());
+            // A transparent child hole contributes no parent style transition.
+            // Equal actual styles therefore retain one shaping row across it;
+            // paragraph coverage continues to own the original-piece authority.
+            if paragraph.coverage.is_some()
+                && let Some(last) = result.last_mut()
+                && last.style.authored() == style.authored()
+            {
+                if let AnalyzedStyleOwner::Source(source) = &mut last.owner {
+                    source.end = range.end;
+                }
+            } else {
+                result.push(AnalyzedStyleRun {
+                    owner: AnalyzedStyleOwner::Source(range),
+                    style: style.clone(),
+                });
+            }
+        }
     }
     if result.is_empty() {
         result.push(AnalyzedStyleRun {
-            range: Range::new(0, 0),
+            owner: AnalyzedStyleOwner::Source(Range::new(extent.start, extent.start)),
             style: default_style.clone(),
         });
     }
@@ -147,8 +175,6 @@ fn resolve_style(
         line_height: scaled_line_height(style.line_height, scale)?,
         word_spacing: scaled_logical(style.word_spacing, scale, false, "word spacing")?,
         letter_spacing: scaled_logical(style.letter_spacing, scale, false, "letter spacing")?,
-        overflow_wrap: style.overflow_wrap,
-        wrap: style.wrap,
     })
 }
 
@@ -257,4 +283,15 @@ fn scaled_logical(value: f64, scale: f32, positive: bool, field: &'static str) -
         ));
     }
     Ok(result)
+}
+
+/// Canonical source-style row; control rows never acquire source membership.
+pub(crate) fn source_style(styles: &[AnalyzedStyleRun], at: usize) -> usize {
+    // Analysis appends genuine control rows after the ordered source rows.
+    // Search only source membership; neither an empty source nor end affinity
+    // may accidentally borrow a control's unrelated style.
+    let source_count = styles.partition_point(|row| row.source_range().is_some());
+    styles[..source_count]
+        .partition_point(|row| row.source_range().is_some_and(|range| range.end <= at))
+        .min(source_count - 1)
 }

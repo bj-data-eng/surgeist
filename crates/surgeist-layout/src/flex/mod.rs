@@ -114,7 +114,8 @@ where
             &collected_items,
             &constants,
             FlexLineCollectionRound::Normal,
-        );
+        )
+        .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
         let (_, _, first_lines) = resolve_flex_round(
             tree,
             node,
@@ -128,7 +129,8 @@ where
             &collected_items,
             &constants,
             FlexLineCollectionRound::Collapsed,
-        );
+        )
+        .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
         let (second_items, second_lines) =
             struts.prepare_second_round(&collected_items, &second_collection_lines);
         resolve_flex_round(tree, node, input, &constants, second_items, second_lines)?
@@ -137,7 +139,8 @@ where
             &collected_items,
             &constants,
             FlexLineCollectionRound::Normal,
-        );
+        )
+        .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
         resolve_flex_round(
             tree,
             node,
@@ -1484,11 +1487,11 @@ mod fri06_c13_t06_characterization_tests {
         };
         assert_eq!(error.site(), LayoutErrorSiteOf::Node(7));
         assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-        assert_eq!(
+        crate::test_support::assert_error_kind(
             error.kind(),
             &LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
                 value: S::INFINITY,
-            })
+            }),
         );
     }
 

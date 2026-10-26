@@ -74,15 +74,22 @@ pub(crate) enum SelectedGlyphTrace {
     },
 }
 
-struct SelectedBitmap<'a> {
-    width: u32,
-    height: u32,
-    data: SelectedBitmapData<'a>,
+pub(crate) struct SelectedBitmap<'a> {
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) source: SelectedBitmapSource,
+    pub(crate) data: SelectedBitmapData<'a>,
     #[cfg(test)]
     selection: Option<SelectedBitmapSelection>,
 }
 
-enum SelectedBitmapData<'a> {
+#[derive(Clone, Copy)]
+pub(crate) enum SelectedBitmapSource {
+    Sbix { ppem: u16, x: i16, y: i16 },
+    Other,
+}
+
+pub(crate) enum SelectedBitmapData<'a> {
     Bgra(&'a [u8]),
     Png {
         data: &'a [u8],
@@ -195,7 +202,7 @@ pub(crate) fn preflight_selected_glyphs<'a>(run: &'a TextRun<'a>) -> Result<Vali
             return Err(missing_glyph_error(glyph.id()));
         }
         let glyph_id = GlyphId::new(glyph.id());
-        let representation = if selected_color_glyph(colr.as_ref(), glyph_id, font_data)? {
+        let representation = if selected_color_root(colr.as_ref(), glyph_id, font_data)?.is_some() {
             preflight_selected_image_head(&font, font_data)?;
             let cpal = font.cpal().map_err(|_| font_data_error(font_data))?;
             let color = font
@@ -251,75 +258,57 @@ fn canonical_glyph_coordinate(value: f64) -> Result<f32> {
     Ok(canonical)
 }
 
-fn selected_color_glyph<'a>(
+fn selected_color_root<'a>(
     colr: Option<&skrifa::raw::tables::colr::Colr<'a>>,
     glyph_id: GlyphId,
     font_data: &FontData,
-) -> Result<bool> {
+) -> Result<Option<skrifa::color::ColorGlyphFormat>> {
     let Some(colr) = colr else {
-        return Ok(false);
+        return Ok(None);
     };
-    let selected = match colr.version() {
-        0 => colr
-            .v0_base_glyph(glyph_id)
-            .map_err(|_| font_data_error(font_data))?
-            .is_some(),
-        1 => {
-            let selected_v1 = match colr.base_glyph_list_offset() {
-                Some(offset) if offset.is_null() => false,
-                Some(_) => colr
+    if !matches!(colr.version(), 0 | 1) {
+        return Err(font_data_error(font_data));
+    }
+    if colr.version() == 1 {
+        match colr.base_glyph_list_offset() {
+            Some(offset) if offset.is_null() => {}
+            Some(_) => {
+                if colr
                     .v1_base_glyph(glyph_id)
                     .map_err(|_| font_data_error(font_data))?
-                    .is_some(),
-                None => return Err(font_data_error(font_data)),
-            };
-            selected_v1
-                || colr
-                    .v0_base_glyph(glyph_id)
-                    .map_err(|_| font_data_error(font_data))?
                     .is_some()
+                {
+                    return Ok(Some(skrifa::color::ColorGlyphFormat::ColrV1));
+                }
+            }
+            None => return Err(font_data_error(font_data)),
         }
-        _ => return Err(font_data_error(font_data)),
-    };
-    Ok(selected)
+    }
+    if colr.num_base_glyph_records() != 0
+        && colr
+            .v0_base_glyph(glyph_id)
+            .map_err(|_| font_data_error(font_data))?
+            .is_some()
+    {
+        return Ok(Some(skrifa::color::ColorGlyphFormat::ColrV0));
+    }
+    Ok(None)
 }
 
-/// Uses the same actual representation priority as authored runs. This boundary
-/// does not draw a default-instance outline before exact-instance preparation.
-pub(crate) fn require_outline_selection(
+pub(crate) fn selected_color_format(
     font: &skrifa::FontRef<'_>,
-    font_data: &FontData,
-    glyph: u32,
-    size: f32,
-) -> Result<()> {
+    glyph: GlyphId,
+    data: &FontData,
+) -> Result<Option<skrifa::color::ColorGlyphFormat>> {
     let colr = font
         .table_data(Tag::new(b"COLR"))
-        .map(|_| font.colr().map_err(|_| font_data_error(font_data)))
+        .map(|_| {
+            font.colr()
+                .map_err(|_| Error::from(crate::GlyphPreparationError::InvalidFont))
+        })
         .transpose()?;
-    let glyph = GlyphId::new(glyph);
-    if selected_color_glyph(colr.as_ref(), glyph, font_data)? {
-        // This entry does not execute COLR. Qualify borrowed selection metadata,
-        // then refuse without drawing outlines or allocating a raster buffer.
-        let cpal = font.cpal().map_err(|_| font_data_error(font_data))?;
-        let records = cpal
-            .color_records_array()
-            .transpose()
-            .map_err(|_| font_data_error(font_data))?
-            .ok_or_else(|| font_data_error(font_data))?;
-        for start in cpal.color_record_indices() {
-            let end = usize::from(start.get()) + usize::from(cpal.num_palette_entries());
-            if end > records.len() {
-                return Err(font_data_error(font_data));
-            }
-        }
-        return Err(crate::OutlinePreparationError::UnsupportedColor.into());
-    }
-    if select_bitmap(font, Size::new(size), glyph, font_data)?.is_some() {
-        // Selection validates actual table/record lookup. Pixel decoding belongs
-        // to eventual bitmap support, not to refusing this unsupported capability.
-        return Err(crate::OutlinePreparationError::UnsupportedBitmap.into());
-    }
-    Ok(())
+    selected_color_root(colr.as_ref(), glyph, data)
+        .map_err(|_| crate::GlyphPreparationError::InvalidFont.into())
 }
 
 fn preflight_selected_image_head(font: &skrifa::FontRef<'_>, font_data: &FontData) -> Result<()> {
@@ -371,7 +360,7 @@ fn preflight_color_glyph(
     Ok(())
 }
 
-fn select_bitmap<'a>(
+pub(crate) fn select_bitmap<'a>(
     font: &skrifa::FontRef<'a>,
     size: Size,
     glyph_id: GlyphId,
@@ -483,6 +472,7 @@ fn select_sbix_glyph<'a>(
         return Ok(Some(SelectedBitmap {
             width: 0,
             height: 0,
+            source: SelectedBitmapSource::Other,
             data: SelectedBitmapData::Unsupported,
             #[cfg(test)]
             selection: None,
@@ -491,6 +481,11 @@ fn select_sbix_glyph<'a>(
     Ok(Some(SelectedBitmap {
         width: 0,
         height: 0,
+        source: SelectedBitmapSource::Sbix {
+            ppem: strike.ppem(),
+            x: glyph.origin_offset_x(),
+            y: glyph.origin_offset_y(),
+        },
         data: SelectedBitmapData::Png {
             data: glyph.data(),
             expected_dimensions: None,
@@ -777,6 +772,7 @@ fn selected_bdt_glyph<'a>(
     Ok(SelectedBitmap {
         width,
         height,
+        source: SelectedBitmapSource::Other,
         data,
         #[cfg(test)]
         selection: None,

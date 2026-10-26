@@ -1,4 +1,4 @@
-<test name="subgrid_baseline_auto_rows_parent_row3_first__border_box_rtl" use-rounding="true">
+<test name="subgrid_baseline_auto_rows_parent_row3_first__border_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="800px" height="max-content"/>
   <input>
     <div source-tag="div" layout-ready-inline-root="true" display="grid" direction="rtl" grid-template-rows="auto auto auto" grid-template-columns="100px 100px 100px 100px">

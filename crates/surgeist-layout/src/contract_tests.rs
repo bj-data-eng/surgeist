@@ -168,150 +168,60 @@ fn node_input_and_output_support_f64_scalar_lane() {
     assert_eq!(compute_output.size.width, precision_sentinel);
 }
 
-fn fri06_c01_segment<S: LayoutScalar>(
-    id: u64,
-    whitespace: InlineWhitespaceEdge,
-    following_break: InlineBreakOpportunityOf<S>,
-) -> ShapedInlineSegmentOf<S> {
-    ShapedInlineSegmentOf::try_new(
-        InlineSegmentId::new(id),
-        S::from_f64(12.0),
-        InlineMetricsOf::from_ascent_descent(S::from_f64(8.0), S::from_f64(2.0)).unwrap(),
-        BidiLevel::try_new(1).unwrap(),
-        whitespace,
-        following_break,
+fn prepared_occurrences(
+    nodes: impl IntoIterator<Item = u32>,
+) -> crate::test_support::text::PreparedParagraph {
+    use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
+    let style = ahem_style(10.0, 10.0);
+    let source = surgeist_text::Source::new("X");
+    PreparedParagraph::new(
+        nodes
+            .into_iter()
+            .map(|node| ParagraphPart::text(node, source.clone(), style.clone()))
+            .collect(),
+        style,
+        surgeist_text::ParagraphBaseDirection::LeftToRight,
     )
-    .unwrap()
 }
 
 fn assert_fri06_c01_inline_model<S: LayoutScalar>() {
     fn assert_copy<T: Clone + Copy + core::fmt::Debug + PartialEq>() {}
     fn assert_owned<T: Clone + core::fmt::Debug + PartialEq>() {}
-
-    assert_copy::<InlineSegmentId>();
     assert_copy::<BidiLevel>();
     assert_copy::<InlineWhitespaceEdge>();
-    assert_copy::<InlineBreakKind>();
-    assert_copy::<InlineBreakOpportunityOf<S>>();
-    assert_copy::<ShapedInlineSegmentOf<S>>();
-    assert_copy::<AtomicInlineParticipationOf<S>>();
-    assert_owned::<InlineTextInputOf<S>>();
-
-    let id = InlineSegmentId::new(42);
-    assert_eq!(id.get(), 42);
+    assert_copy::<InlineBreakOpportunity>();
+    assert_copy::<AtomicInlineParticipation>();
+    assert_owned::<TextParticipation>();
+    assert_owned::<surgeist_text::PreparedOrigin>();
     assert!(!BidiLevel::try_new(0).unwrap().is_rtl());
     assert!(BidiLevel::try_new(125).unwrap().is_rtl());
     assert_eq!(
         BidiLevel::try_new(127),
         Err(BidiLevelError::OutOfRange { level: 127 })
     );
-
-    let prohibited = InlineBreakOpportunityOf::<S>::prohibited();
-    let allowed = InlineBreakOpportunityOf::<S>::allowed();
-    let mandatory = InlineBreakOpportunityOf::<S>::mandatory();
-    let replacement =
-        InlineBreakOpportunityOf::<S>::try_allowed_with_replacement(S::from_f64(3.0)).unwrap();
-    assert_eq!(prohibited.kind(), InlineBreakKind::Prohibited);
-    assert_eq!(allowed.kind(), InlineBreakKind::Allowed);
-    assert_eq!(mandatory.kind(), InlineBreakKind::Mandatory);
-    assert_eq!(replacement.kind(), InlineBreakKind::AllowedWithReplacement);
-    assert_eq!(
-        replacement.replacement_inline_extent(),
-        Some(S::from_f64(3.0))
-    );
-    assert_eq!(allowed.replacement_inline_extent(), None);
-    for rejected in [S::from_f64(-1.0), S::INFINITY, S::NAN] {
-        assert!(matches!(
-            InlineBreakOpportunityOf::<S>::try_allowed_with_replacement(rejected),
-            Err(InlineTextInputErrorOf::InvalidReplacementInlineExtent { .. })
-        ));
-    }
-    let negative_zero =
-        InlineBreakOpportunityOf::<S>::try_allowed_with_replacement(-S::ZERO).unwrap();
-    assert_eq!(negative_zero.replacement_inline_extent(), Some(S::ZERO));
-
-    for whitespace in [
-        InlineWhitespaceEdge::Preserve,
-        InlineWhitespaceEdge::DiscardAtLineStart,
-        InlineWhitespaceEdge::DiscardAtLineEnd,
-        InlineWhitespaceEdge::DiscardAtBoth,
+    for following in [
+        InlineBreakOpportunity::Prohibited,
+        InlineBreakOpportunity::Allowed,
+        InlineBreakOpportunity::Mandatory,
     ] {
-        let segment = fri06_c01_segment(7, whitespace, allowed);
-        assert_eq!(segment.segment_id(), InlineSegmentId::new(7));
-        assert_eq!(segment.inline_extent(), S::from_f64(12.0));
-        assert_eq!(
-            segment.metrics(),
-            InlineMetricsOf::from_ascent_descent(S::from_f64(8.0), S::from_f64(2.0)).unwrap()
-        );
-        assert_eq!(segment.bidi_level(), BidiLevel::try_new(1).unwrap());
-        assert_eq!(segment.whitespace_edge(), whitespace);
-        assert_eq!(segment.following_break(), allowed);
+        let atomic = AtomicInlineParticipation::new(BidiLevel::try_new(2).unwrap(), following);
+        assert_eq!(atomic.bidi_level(), BidiLevel::try_new(2).unwrap());
+        assert_eq!(atomic.following_break(), following);
     }
-
-    for whitespace_edge in [
-        InlineWhitespaceEdge::DiscardAtLineStart,
-        InlineWhitespaceEdge::DiscardAtLineEnd,
-        InlineWhitespaceEdge::DiscardAtBoth,
-    ] {
-        assert!(matches!(
-            ShapedInlineSegmentOf::try_new(
-                InlineSegmentId::new(8),
-                S::from_f64(1.0),
-                InlineMetricsOf::default(),
-                BidiLevel::try_new(0).unwrap(),
-                whitespace_edge,
-                replacement,
-            ),
-            Err(InlineTextInputErrorOf::ReplacementWithDiscardableWhitespace { .. })
-        ));
-    }
-    for inline_extent in [S::from_f64(-1.0), S::INFINITY, S::NAN] {
-        assert!(matches!(
-            ShapedInlineSegmentOf::try_new(
-                InlineSegmentId::new(8),
-                inline_extent,
-                InlineMetricsOf::default(),
-                BidiLevel::try_new(0).unwrap(),
-                InlineWhitespaceEdge::Preserve,
-                prohibited,
-            ),
-            Err(InlineTextInputErrorOf::InvalidInlineExtent { .. })
-        ));
-    }
-
+    let prepared = prepared_occurrences([1]);
+    let origin = prepared.origin(1);
+    assert_eq!(origin.view().local_range(), surgeist_text::Range::new(0, 1));
     assert_eq!(
-        InlineTextInputOf::<S>::try_new(Vec::new()),
-        Err(InlineTextInputErrorOf::Empty)
+        origin.view().aggregate_range(),
+        surgeist_text::Range::new(0, 1)
     );
-    let first = fri06_c01_segment(1, InlineWhitespaceEdge::Preserve, prohibited);
+    let text = TextParticipation::new(origin.clone());
+    assert_eq!(text.origin(), &origin);
     assert_eq!(
-        InlineTextInputOf::try_new(vec![first, first]),
-        Err(InlineTextInputErrorOf::DuplicateSegmentId {
-            segment_id: InlineSegmentId::new(1),
-        })
-    );
-    let text = InlineTextInputOf::try_new(vec![first]).unwrap();
-    assert_eq!(text.segments(), &[first]);
-    assert_eq!(
-        LayoutInputOf::inline_text(text.clone()).as_inline_text(),
+        LayoutInputOf::<S>::inline_text(text.clone()).as_inline_text(),
         Some(&text)
     );
-
-    let atomic =
-        AtomicInlineParticipationOf::try_new(BidiLevel::try_new(2).unwrap(), allowed).unwrap();
-    assert_eq!(atomic.bidi_level(), BidiLevel::try_new(2).unwrap());
-    assert_eq!(atomic.following_break(), allowed);
-    for following_break in [prohibited, allowed, mandatory] {
-        assert!(
-            AtomicInlineParticipationOf::try_new(BidiLevel::try_new(0).unwrap(), following_break,)
-                .is_ok()
-        );
-    }
-    assert!(matches!(
-        AtomicInlineParticipationOf::try_new(BidiLevel::try_new(0).unwrap(), replacement),
-        Err(AtomicInlineParticipationErrorOf::ReplacementNotAllowed { .. })
-    ));
-
+    assert_ne!(origin, prepared_occurrences([1]).origin(1));
     let default = NodeInputOf::<S>::default();
     assert_eq!(default.atomic_inline_participation, None);
     assert_eq!(default.float_exclusion, FloatExclusion::MarginBox);
@@ -340,97 +250,118 @@ fn fri06_c01_inline_model_validates_and_exposes_both_scalar_lanes() {
     assert_fri06_c01_inline_model::<f64>();
 }
 
-fn fri06_mr02_segments<S: LayoutScalar>(
-    ids: impl IntoIterator<Item = u64>,
-) -> Vec<ShapedInlineSegmentOf<S>> {
-    ids.into_iter()
-        .map(|id| {
-            fri06_c01_segment(
-                id,
-                InlineWhitespaceEdge::Preserve,
-                InlineBreakOpportunityOf::prohibited(),
-            )
-        })
-        .collect()
-}
-
 #[test]
-fn fri06_mr02_duplicate_id_empty_input_is_rejected_in_both_scalar_lanes() {
+fn prepared_empty_origin_is_a_real_zero_glyph_occurrence_in_both_scalar_lanes() {
     fn assert_lane<S: LayoutScalar>() {
+        let paragraph = crate::test_support::text::PreparedParagraph::plain(
+            1,
+            surgeist_text::Source::new(""),
+            crate::test_support::text::ahem_style(10.0, 10.0),
+        );
+        let origin = paragraph.origin(1);
+        assert_eq!(origin.view().local_range(), surgeist_text::Range::new(0, 0));
+        let empty = paragraph
+            .prepared
+            .unit_views()
+            .find(|unit| unit.empty_origin().as_ref() == Some(&origin))
+            .unwrap();
+        assert_eq!(empty.advance(), 0.0);
+        assert_eq!(empty.source_range(), surgeist_text::Range::new(0, 0));
         assert_eq!(
-            InlineTextInputOf::<S>::try_new(Vec::new()),
-            Err(InlineTextInputErrorOf::Empty)
+            paragraph
+                .text_input::<S>(1)
+                .as_inline_text()
+                .unwrap()
+                .origin(),
+            &origin
         );
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
 
 #[test]
-fn fri06_mr02_duplicate_id_unique_long_input_preserves_order_and_value_in_both_scalar_lanes() {
+fn prepared_unique_long_input_preserves_original_occurrences_and_actual_advances_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
-        let segments = fri06_mr02_segments::<S>(0..2_048);
-        let text = InlineTextInputOf::try_new(segments.clone()).unwrap();
-
-        assert_eq!(text.segments(), segments);
-        assert_eq!(text.clone(), text);
+        let paragraph = prepared_occurrences(1..=2_048);
+        let origins: Vec<_> = paragraph.prepared.origin_views().collect();
+        assert_eq!(origins.len(), 2_048);
+        for (index, origin) in origins.iter().enumerate() {
+            assert_eq!(
+                origin.aggregate_range(),
+                surgeist_text::Range::new(index, index + 1)
+            );
+            assert_eq!(origin.local_range(), surgeist_text::Range::new(0, 1));
+            assert_eq!(origin.source().text().code_units(), [u16::from(b'X')]);
+            if index > 0 {
+                assert_ne!(origin.handle(), origins[index - 1].handle());
+            }
+        }
         assert_eq!(
-            text.segments()
-                .iter()
-                .map(|segment| segment.segment_id().get())
-                .collect::<Vec<_>>(),
-            (0..2_048).collect::<Vec<_>>()
+            paragraph
+                .prepared
+                .unit_views()
+                .map(|unit| unit.advance())
+                .sum::<f64>(),
+            20_480.0
+        );
+        assert_eq!(
+            paragraph
+                .text_input::<S>(2_048)
+                .as_inline_text()
+                .unwrap()
+                .origin(),
+            &origins[2_047].handle()
         );
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
 
-#[test]
-fn fri06_mr02_duplicate_id_first_possible_repeat_returns_current_id_in_both_scalar_lanes() {
-    fn assert_lane<S: LayoutScalar>() {
-        assert_eq!(
-            InlineTextInputOf::try_new(fri06_mr02_segments::<S>([17, 17, 99])),
-            Err(InlineTextInputErrorOf::DuplicateSegmentId {
-                segment_id: InlineSegmentId::new(17),
-            })
-        );
+fn assert_duplicate_run_nodes<S: LayoutScalar>(nodes: &[u32]) {
+    let paragraph = prepared_occurrences(nodes.iter().copied());
+    let mut tree = crate::test_support::layout_tree::PublicLayoutTreeOf::<S>::new()
+        .children(0, nodes.iter().copied())
+        .style(0, NodeInputOf::default());
+    for &node in nodes {
+        tree = tree.input(node, paragraph.text_input(node));
     }
-
-    assert_lane::<f32>();
-    assert_lane::<f64>();
+    let result = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    );
+    let error = match result {
+        Ok(_) => panic!("repeated actual run node must be refused"),
+        Err(error) => error,
+    };
+    assert_eq!(error.operation(), LayoutOperation::TextCapture);
+    crate::test_support::assert_error_kind(
+        error.kind(),
+        &LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::TextBinding(
+            TextBindingError::DuplicateRunNode,
+        )),
+    );
 }
 
 #[test]
-fn fri06_mr02_duplicate_id_final_repeat_returns_current_id_in_both_scalar_lanes() {
-    fn assert_lane<S: LayoutScalar>() {
-        assert_eq!(
-            InlineTextInputOf::try_new(fri06_mr02_segments::<S>([3, 4, 5, 3])),
-            Err(InlineTextInputErrorOf::DuplicateSegmentId {
-                segment_id: InlineSegmentId::new(3),
-            })
-        );
-    }
-
-    assert_lane::<f32>();
-    assert_lane::<f64>();
+fn first_repeated_run_node_is_rejected_before_capture_in_both_scalar_lanes() {
+    assert_duplicate_run_nodes::<f32>(&[17, 17, 99]);
+    assert_duplicate_run_nodes::<f64>(&[17, 17, 99]);
 }
-
 #[test]
-fn fri06_mr02_duplicate_id_competing_families_return_first_repeat_in_both_scalar_lanes() {
-    fn assert_lane<S: LayoutScalar>() {
-        assert_eq!(
-            InlineTextInputOf::try_new(fri06_mr02_segments::<S>([2, 900, 900, 2])),
-            Err(InlineTextInputErrorOf::DuplicateSegmentId {
-                segment_id: InlineSegmentId::new(900),
-            })
-        );
-    }
-
-    assert_lane::<f32>();
-    assert_lane::<f64>();
+fn final_repeated_run_node_is_rejected_before_capture_in_both_scalar_lanes() {
+    assert_duplicate_run_nodes::<f32>(&[3, 4, 5, 3]);
+    assert_duplicate_run_nodes::<f64>(&[3, 4, 5, 3]);
+}
+#[test]
+fn competing_repeated_run_nodes_are_rejected_before_capture_in_both_scalar_lanes() {
+    assert_duplicate_run_nodes::<f32>(&[2, 900, 900, 2]);
+    assert_duplicate_run_nodes::<f64>(&[2, 900, 900, 2]);
 }
 
 #[derive(Clone)]
@@ -525,25 +456,25 @@ fn fri06_c01_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
 }
 
 fn assert_fri06_c01_non_box<S: LayoutScalar>() {
-    let segment: ShapedInlineSegmentOf<S> = fri06_c01_segment(
-        1,
-        InlineWhitespaceEdge::Preserve,
-        InlineBreakOpportunityOf::prohibited(),
-    );
-    let text = InlineTextInputOf::try_new(vec![segment]).unwrap();
-    let valid = fri06_c01_tree(
+    let paragraph = prepared_occurrences([1]);
+    let text = paragraph
+        .text_input::<S>(1)
+        .as_inline_text()
+        .unwrap()
+        .clone();
+    let valid = fri06_c01_tree::<S>(
         LayoutInputOf::inline_text(text.clone()),
         NodeInputOf::non_box(),
     );
     let error = compute_layout(&valid, 0, fri06_c01_request()).unwrap_err();
     assert_eq!(error.operation(), LayoutOperation::RootLayout);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKindOf::UnsupportedCapability(LayoutUnsupportedCapability::LaterFriBehavior)
+        &LayoutErrorKindOf::UnsupportedCapability(LayoutUnsupportedCapability::LaterFriBehavior),
     );
     assert_eq!(valid.cache_reads.get(), 0);
 
-    let noncanonical = fri06_c01_tree(
+    let noncanonical = fri06_c01_tree::<S>(
         LayoutInputOf::inline_text(text.clone()),
         NodeInputOf::default(),
     );
@@ -556,7 +487,7 @@ fn assert_fri06_c01_non_box<S: LayoutScalar>() {
         })
     ));
 
-    let mut childful = fri06_c01_tree(
+    let mut childful = fri06_c01_tree::<S>(
         LayoutInputOf::inline_text(text.clone()),
         NodeInputOf::non_box(),
     );
@@ -576,7 +507,8 @@ fn assert_fri06_c01_non_box<S: LayoutScalar>() {
         })
     ));
 
-    let mut measured = fri06_c01_tree(LayoutInputOf::inline_text(text), NodeInputOf::non_box());
+    let mut measured =
+        fri06_c01_tree::<S>(LayoutInputOf::inline_text(text), NodeInputOf::non_box());
     measured.measured[0] = true;
     assert!(matches!(
         compute_layout(&measured, 0, fri06_c01_request())
@@ -646,11 +578,11 @@ fn assert_fri06_mr01_non_box_precedence<S: LayoutScalar>(input: LayoutInputOf<S>
 
         assert_eq!(error.operation(), LayoutOperation::RootLayout);
         assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
-        assert_eq!(
+        crate::test_support::assert_error_kind(
             error.kind(),
             &LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::NonBoxNodeRole {
                 reason: expected_reason,
-            })
+            }),
         );
     }
 }
@@ -658,13 +590,13 @@ fn assert_fri06_mr01_non_box_precedence<S: LayoutScalar>(input: LayoutInputOf<S>
 #[test]
 fn fri06_mr01_non_box_inline_text_precedence_is_exact_in_both_scalar_lanes() {
     fn assert_lane<S: LayoutScalar>() {
-        let segment: ShapedInlineSegmentOf<S> = fri06_c01_segment(
-            1,
-            InlineWhitespaceEdge::Preserve,
-            InlineBreakOpportunityOf::prohibited(),
-        );
-        let text = InlineTextInputOf::try_new(vec![segment]).unwrap();
-        assert_fri06_mr01_non_box_precedence(LayoutInputOf::inline_text(text));
+        let paragraph = prepared_occurrences([1]);
+        let text = paragraph
+            .text_input::<S>(1)
+            .as_inline_text()
+            .unwrap()
+            .clone();
+        assert_fri06_mr01_non_box_precedence::<S>(LayoutInputOf::inline_text(text));
     }
 
     assert_lane::<f32>();
@@ -681,7 +613,11 @@ fn fri06_mr01_non_box_line_break_precedence_is_exact_in_both_scalar_lanes() {
 fn fri06_mr01_non_box_inline_boundary_precedence_is_exact_in_both_scalar_lanes() {
     fn assert_lane<S: LayoutScalar>() {
         assert_fri06_mr01_non_box_precedence(LayoutInputOf::inline_boundary(
-            InlineBoundaryInputOf::<S>::new(InlineBoundaryKind::Start, InlineMetricsOf::default()),
+            InlineBoundaryInputOf::<S>::new(
+                InlineBoundaryKind::Start,
+                InlineMetricsOf::default(),
+                InlineBoundaryEdgeOf::ZERO,
+            ),
         ));
     }
 
@@ -723,11 +659,10 @@ fn assert_fri06_c01_box_roles<S: LayoutScalar>() {
         assert_eq!(tree.provider_calls.get(), 0);
     }
 
-    let atomic = AtomicInlineParticipationOf::try_new(
+    let atomic = AtomicInlineParticipation::new(
         BidiLevel::try_new(0).unwrap(),
-        InlineBreakOpportunityOf::mandatory(),
-    )
-    .unwrap();
+        InlineBreakOpportunity::Mandatory,
+    );
     let extraneous_atomic = NodeInputOf::<S> {
         atomic_inline_participation: Some(atomic),
         ..NodeInputOf::default()
@@ -984,9 +919,9 @@ fn fri06_c01_float_exclusion_diagnostics_preserve_provider_and_site_context() {
         LayoutOperation::FloatExclusionQuery,
         LayoutErrorKindOf::Measurement(ProviderFailure(11)),
     );
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         provider.kind(),
-        &LayoutErrorKindOf::Measurement(ProviderFailure(11))
+        &LayoutErrorKindOf::Measurement(ProviderFailure(11)),
     );
 }
 
@@ -1315,7 +1250,7 @@ fn node_input_defaults_match_the_layout_contract() {
     assert_eq!(node_input.display, Display::Flex);
     assert_eq!(node_input.box_sizing, BoxSizing::BorderBox);
     assert_eq!(node_input.direction, Direction::Ltr);
-    assert_eq!(node_input.text_align, TextAlign::Auto);
+    assert_eq!(node_input.text_align, TextAlign::Start);
     assert_eq!(node_input.overflow, ComputedOverflow::VISIBLE);
     assert_eq!(node_input.scrollbar_width.get(), 0.0);
     assert_eq!(node_input.position, Position::Relative);
@@ -1431,10 +1366,14 @@ fn line_break_input_supports_f64_metrics() {
 #[test]
 fn inline_boundary_input_requires_explicit_metrics() {
     let metrics = InlineMetrics::from_line_height_and_baseline(28.0, 20.0).unwrap();
-    let input = InlineBoundaryInput::new(InlineBoundaryKind::Start, metrics)
-        .with_writing_mode(WritingMode::VerticalRl)
-        .with_direction(Direction::Rtl)
-        .with_vertical_align(VerticalAlign::Top);
+    let input = InlineBoundaryInput::new(
+        InlineBoundaryKind::Start,
+        metrics,
+        crate::InlineBoundaryEdgeOf::ZERO,
+    )
+    .with_writing_mode(WritingMode::VerticalRl)
+    .with_direction(Direction::Rtl)
+    .with_vertical_align(VerticalAlign::Top);
 
     assert_eq!(input.kind(), InlineBoundaryKind::Start);
     assert_eq!(input.metrics(), metrics);
@@ -1446,7 +1385,11 @@ fn inline_boundary_input_requires_explicit_metrics() {
 #[test]
 fn inline_boundary_input_supports_f64_metrics() {
     let metrics = InlineMetricsOf::<f64>::from_line_height_and_baseline(40.0, 30.0).unwrap();
-    let input = InlineBoundaryInputOf::<f64>::new(InlineBoundaryKind::End, metrics);
+    let input = InlineBoundaryInputOf::<f64>::new(
+        InlineBoundaryKind::End,
+        metrics,
+        InlineBoundaryEdgeOf::ZERO,
+    );
 
     assert_eq!(input.kind(), InlineBoundaryKind::End);
     assert_eq!(input.metrics().line_extent(), 40.0);
@@ -1517,7 +1460,11 @@ fn layout_input_distinguishes_box_from_line_break() {
 #[test]
 fn layout_input_distinguishes_inline_boundary_from_boxes_and_breaks() {
     let metrics = InlineMetrics::from_line_height_and_baseline(18.0, 14.0).unwrap();
-    let boundary = InlineBoundaryInput::new(InlineBoundaryKind::Start, metrics);
+    let boundary = InlineBoundaryInput::new(
+        InlineBoundaryKind::Start,
+        metrics,
+        crate::InlineBoundaryEdgeOf::ZERO,
+    );
     let layout_input = LayoutInput::inline_boundary(boundary);
 
     assert!(layout_input.as_box().is_none());
@@ -1780,20 +1727,19 @@ fn node_input_default_retains_horizontal_tb_ltr_for_both_scalar_lanes() {
 fn borrowed_input_views_reuse_validated_backing_in_both_scalar_lanes() {
     fn assert_lane<S: LayoutScalar>() {
         let metrics = InlineMetricsOf::try_new(S::from_f64(7.0), S::from_f64(11.0)).unwrap();
-        let segments = [(17, 23.0), (19, 31.0)].map(|(id, extent)| {
-            ShapedInlineSegmentOf::try_new(
-                InlineSegmentId::new(id),
-                S::from_f64(extent),
-                metrics,
-                BidiLevel::try_new(2).unwrap(),
-                InlineWhitespaceEdge::Preserve,
-                InlineBreakOpportunityOf::allowed(),
-            )
+        let paragraph = prepared_occurrences([1]);
+        let text = paragraph
+            .text_input::<S>(1)
+            .as_inline_text()
             .unwrap()
-        });
-        let text = InlineTextInputOf::try_new(segments.to_vec()).unwrap();
+            .clone();
+        let origin = text.origin().clone();
         let line_break = LineBreakInputOf::new().with_metrics(metrics);
-        let boundary = InlineBoundaryInputOf::new(InlineBoundaryKind::Start, metrics);
+        let boundary = InlineBoundaryInputOf::new(
+            InlineBoundaryKind::Start,
+            metrics,
+            crate::InlineBoundaryEdgeOf::ZERO,
+        );
         let tree = crate::test_support::layout_tree::PublicLayoutTreeOf::new()
             .style(
                 0,
@@ -1825,12 +1771,9 @@ fn borrowed_input_views_reuse_validated_backing_in_both_scalar_lanes() {
             );
             let first_text = tree.layout_input(1).as_inline_text().unwrap();
             let second_text = tree.layout_input(1).as_inline_text().unwrap();
-            assert_eq!(first_text.segments(), segments);
-            assert!(core::ptr::eq(first_text.segments(), text_source.segments()));
-            assert!(core::ptr::eq(
-                second_text.segments(),
-                text_source.segments()
-            ));
+            assert_eq!(first_text.origin(), &origin);
+            assert!(core::ptr::eq(first_text, text_source));
+            assert!(core::ptr::eq(second_text, text_source));
             assert_eq!(tree.layout_input(2).as_line_break(), Some(line_break));
             assert_eq!(tree.layout_input(3).as_inline_boundary(), Some(boundary));
         }
@@ -1893,4 +1836,66 @@ fn borrowed_input_completed_geometry_and_caches_outlive_source_in_both_scalar_la
 
     assert_lane::<f32>();
     assert_lane::<f64>();
+}
+
+#[test]
+fn inline_boundary_edge_validates_components_and_sum_in_both_scalar_lanes() {
+    fn lane<S: LayoutScalar>() {
+        let edge = InlineBoundaryEdgeOf::<S>::try_new(S::from_f64(3.0), S::from_f64(5.0)).unwrap();
+        assert_eq!(edge.border(), S::from_f64(3.0));
+        assert_eq!(edge.padding(), S::from_f64(5.0));
+        assert_eq!(edge.advance(), S::from_f64(8.0));
+        assert_eq!(InlineBoundaryEdgeOf::<S>::ZERO.advance(), S::ZERO);
+        let zero = InlineBoundaryEdgeOf::try_new(-S::ZERO, -S::ZERO).unwrap();
+        assert_eq!(zero.border().to_f64().to_bits(), 0.0f64.to_bits());
+        assert_eq!(zero.padding().to_f64().to_bits(), 0.0f64.to_bits());
+        for (border, padding) in [(S::from_f64(-1.0), S::ZERO), (S::ZERO, S::from_f64(-1.0))] {
+            assert!(matches!(
+                InlineBoundaryEdgeOf::try_new(border, padding),
+                Err(NonNegativeFiniteScalarErrorOf::Negative { .. })
+            ));
+        }
+        for (border, padding) in [
+            (S::INFINITY, S::ZERO),
+            (S::ZERO, S::INFINITY),
+            (S::NAN, S::ZERO),
+            (S::ZERO, S::NAN),
+        ] {
+            assert!(matches!(
+                InlineBoundaryEdgeOf::try_new(border, padding),
+                Err(NonNegativeFiniteScalarErrorOf::NonFinite { .. })
+            ));
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+    assert!(
+        matches!(InlineBoundaryEdgeOf::try_new(f32::MAX,f32::MAX),Err(NonNegativeFiniteScalarErrorOf::NonFinite{value}) if value==f32::INFINITY)
+    );
+    assert!(
+        matches!(InlineBoundaryEdgeOf::try_new(f64::MAX,f64::MAX),Err(NonNegativeFiniteScalarErrorOf::NonFinite{value}) if value==f64::INFINITY)
+    );
+}
+
+#[test]
+fn inline_boundary_edge_exposes_the_used_scalar_sum_without_widened_resummation() {
+    let edge = InlineBoundaryEdgeOf::<f32>::try_new(0.1, 0.2).unwrap();
+    assert_eq!(edge.advance(), 0.3f32);
+    assert_ne!(
+        f64::from(edge.advance()),
+        f64::from(edge.border()) + f64::from(edge.padding())
+    );
+    let input = InlineBoundaryInputOf::new(
+        InlineBoundaryKind::End,
+        InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+        edge,
+    );
+    assert_eq!(input.edge(), edge);
+    assert_eq!(input.kind(), InlineBoundaryKind::End);
+    let threshold = InlineBoundaryEdgeOf::<f32>::try_new(4.8, 0.2).unwrap();
+    assert_eq!(threshold.advance(), 5.0);
+    assert_eq!(
+        f64::from(threshold.border()) + f64::from(threshold.padding()),
+        5.000_000_193_715_095_5
+    );
 }

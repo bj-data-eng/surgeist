@@ -10,19 +10,44 @@ paragraphs execute source processing and capture their actual base direction;
 inline-box alignment requests do not imply CSS vertical-alignment execution.
 See the [support reference](docs/reference.md) for the current contract.
 
-`process_source_whitespace` executes source-local Collapse, Discard, Preserve and
-PreserveSpaces before fonts, retaining exact original source, document delimiter
-facts and UTF-16 correspondence. Explicit affinity projects contraction interiors
-and transparent box anchors. Its partial plaintext iterator returns same-result
-slices and real box occurrences, without document serialization or opportunity
-analysis. Collapse retains executed deletion causes and uses a selected Unicode
-context policy for segment breaks, without selected-line trimming. `AnalyzedSource::from_paragraph` retains this executed phase and its exact
-occurrence capture for composed preparation; standalone Preserve remains unchanged.
+`process_source_whitespace` executes source-local whitespace processing before
+fonts. `process_contextual_source` additionally consumes captured box, paragraph
+and trim facts in original order. Its issued paragraph views retain their styles,
+source pieces and occurrences through analysis, preparation and placement;
+internal child text remains outside the parent view. Both fronts share whitespace
+correspondence and partial plaintext without inserting presentation characters.
+See [contextual processing](docs/reference.md#contextual-source-processing).
 
 `Text` retains exact UTF-16 code units, and public source positions and ranges
 count those units. Edits can split or join surrogate pairs. `AnalyzedSource`
-retains original Unicode analysis without fonts; layout uses a separate glyph
-projection for isolated units. Source-only accessibility needs no placement and
+retains original source and pre-font semantic analysis. `Style::word_space_transform`
+replaces eligible original U+200B with SPACE or IDEOGRAPHIC SPACE using
+`WordSpaceTransform::{Space, IdeographicSpace}`; None is neutral. This runs after
+Phase I, followed by contextual casing, full-width and full-size-kana, before
+analysis, shaping and wrapping. `TextTransform::Set` combines operations built with `TextTransformSet`:
+`.with_case(CaseTransform::Uppercase)`, `.with_full_width(true)` and
+`.with_full_size_kana(true)`; lowercase and capitalize are also supported.
+Full-width uses the raw Unicode wide/narrow relation and
+maps authored SPACE only when processing preserved it. Separator-generated SPACE
+qualifies in every whitespace mode; actual line-edge rules still apply.
+Native paragraph capture accepts genuine styled `ParagraphControlKind::Wbr`
+occurrences. Expanded separators retain control identity and geometry without
+inventing source characters; [exact-seam admission](docs/reference.md#native-wbr-separators)
+defines their supported insertion positions. Contextual capture also supports
+Japanese automatic phrase insertion with `SpaceAutoPhrase` or
+`IdeographicSpaceAutoPhrase`. It uses the pinned BudouX Japanese model and the
+actual governing scope's Style; [phrase capture and ownership](docs/reference.md#native-automatic-phrase-separators)
+describe language admission, required topology and conservative detection limits.
+Original UTF-16 and plaintext remain unchanged through expansions and removals.
+`WordBreak::AutoPhrase` separately requests phrase-preserving wrapping over final
+transformed input, with ordered finite overflow restoration. See
+[word breaking](docs/reference.md#word-breaking) for language and intrinsic limits.
+The exclusive `TextTransform::MathAuto` requires complete original Text-node
+content captured on native paragraph origins. It maps eligible surviving text
+through the pinned MathML Core relation; raw standalone layout refuses the
+missing context. See [transformation inputs](docs/reference.md#defaults-and-validation).
+Layout uses a separate glyph projection
+for isolated units. Source-only accessibility needs no placement and
 omits unsupported geometry. Positioned accessibility, interaction and paint
 readback share the committed layout. Shaping boundaries inside an original pair
 still return a precise error.
@@ -38,6 +63,17 @@ handles admit a complete `LineSelectionRequest`; selected spacing allocation and
 finalization produce immutable line-local output. `Layout::from_finalized_lines`
 validates one explicitly anchored line set without wrapping again. See the
 [composed protocol guide](docs/composed-lines.md).
+
+Automatic hyphenation has bounded en-US support through the pinned
+[resource and exceptions](docs/hyphenation-resources.md). Prepared word and cut
+views retain actual source custody; selected indication text remains presentation
+and does not enter plaintext. LogicalAfter continuations pair exact selected
+choices across lines. BothSides emits the same chosen text once on each side of
+one ending, with the same exact continuation identity. Before and After use their
+own authenticated local bidi attachments and fresh joint shaping without changing
+original paragraph resolution. Local order or retained font-query evidence that
+cannot support the combined presentation returns a precise refusal. Independently
+chosen strings for each side and a language-convention table are not provided.
 
 `System::registered_font_faces` lends actual registered resources without shaping
 a sample character or resolving a Style. Retained `FontData` can select an explicit

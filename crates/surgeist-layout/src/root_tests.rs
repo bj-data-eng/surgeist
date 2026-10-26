@@ -10,6 +10,8 @@ mod fixtures;
 
 #[path = "root_tests/containing_contexts_tests.rs"]
 mod containing_contexts;
+#[path = "root_tests/inline_boundary_edges.rs"]
+mod inline_boundary_edges;
 #[path = "root_tests/measurement_tests.rs"]
 mod measurement;
 #[path = "root_tests/requests_tests.rs"]

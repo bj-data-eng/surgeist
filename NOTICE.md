@@ -57,20 +57,39 @@ records changes and limitations. The originals remain authoritative.
 
 ### Ahem
 
-The layout and render crates include Ahem test fonts. Layout embeds WOFF2 bytes
+The layout, render and text crates include Ahem test fonts. Layout embeds WOFF2 bytes
 retained from Taffy's browser-test support and credits Todd Fahrner and Paul
-Nelson through Kozea/Ahem. Render bundles a W3C-distributed TTF and credits Todd
-Fahrner and Myles C. Maxfield in the included upstream README.
+Nelson through Kozea/Ahem. Render bundles a W3C-distributed TTF, also copied
+unchanged into Text's fixtures and Layout's prepared-text browser corpus, and
+credits Todd Fahrner and Myles C. Maxfield in the included upstream README.
 
 * License: [Public domain with the upstream Creative Commons Zero fallback](licenses/ahem/COPYING)
 * Homepages: [Kozea/Ahem](https://github.com/Kozea/Ahem) and [W3C Ahem](https://www.w3.org/Style/CSS/Test/Fonts/Ahem/)
 * Authorship and usage: [W3C upstream README](licenses/ahem/UPSTREAM-README)
 
-Both crates carry byte-identical `COPYING` declarations, shared here. Layout's
+All three crates carry byte-identical `COPYING` declarations, shared here. Layout's
 [source notice](https://github.com/bj-data-eng/surgeist-layout/blob/b65a18c042655f47d0870f712c7b5e647b5e28a6/NOTICE.md#ahem)
 identifies the declaration's Kozea revision; render's
 [fixture provenance](https://github.com/bj-data-eng/surgeist-render/blob/e44860e7df530795fef2d423024723d5fa5dc447/tests/fixtures/fonts/ahem/PROVENANCE.md)
 records its font and notice hashes. These fonts are test assets.
+Layout's [TTF provenance](crates/surgeist-layout/tests/layout/browser_parity/fonts/PROVENANCE.md)
+identifies the exact shared bytes separately from its embedded WOFF2.
+
+### BudouX 0.9.3 adapted source and Japanese model
+
+`surgeist-text` includes a safe Rust adaptation of Google BudouX phrase inference,
+its unchanged Japanese model and marked quality rows, distributed by Google LLC
+at commit `25946bbbb271dc8a53bb5b04082c6859abc5c847`.
+Copyright 2021 Google LLC.
+
+* License: [Apache License 2.0](crates/surgeist-text/licenses/budoux/LICENSE)
+* Homepage: [BudouX](https://github.com/google/budoux)
+* Exact source and modifications: [phrase-model guide](crates/surgeist-text/tools/automatic-phrase/README.md)
+* Scope and retained attribution: [Text notice](crates/surgeist-text/NOTICE.md#budoux-093-adapted-source-and-japanese-model)
+
+The adaptation retains semantic character positions and checked scoring. Model
+proposals alone do not establish CSS eligibility or general Japanese linguistic
+quality. Training data and training software are not bundled.
 
 ### Chromium Blink implementation references
 
@@ -331,11 +350,13 @@ This entry covers the rule-data companion. The full normative UAX 29 revision 47
 report is excluded from public distribution; its catalog entry is metadata only
 and normative citations remain upstream.
 
-### Unicode 18 bidirectional character data
+### Unicode 18 character data
 
 `surgeist-html-semantics` includes the complete Unicode 18.0.0 DerivedBidiClass data and
 an offline-generated private first-strong classification table, distributed by
 Unicode, Inc. The checked-in reference retains the complete data text.
+`surgeist-text` includes the raw wide/narrow records from UnicodeData 18.0.0
+and an offline-generated private full-width mapping table from those records.
 
 * License: [Unicode License v3](licenses/unicode/18.0.0/LICENSE)
 * Homepage: [Unicode Character Database](https://www.unicode.org/Public/18.0.0/ucd/)
@@ -344,6 +365,26 @@ Unicode, Inc. The checked-in reference retains the complete data text.
 The 1991–2026 copyright and permission text is retained separately from the
 older Unicode companion's legal material. The normative UAX #9 revision 52
 report remains an external citation with metadata only in the public references.
+
+### W3C MathML Core italic mapping
+
+`surgeist-text` includes an unchanged Appendix C.1 table excerpt from
+Mathematical Markup Language (MathML) Core, W3C Candidate Recommendation
+Snapshot 24 June 2025, and a generated numeric mapping derived from it.
+[Copyright](https://www.w3.org/policies/#copyright) © 2025
+[World Wide Web Consortium](https://www.w3.org/). W3C®
+[liability](https://www.w3.org/policies/#Legal_Disclaimer),
+[trademark](https://www.w3.org/policies/#W3C_Trademarks) and
+[permissive document license](https://www.w3.org/copyright/software-license-2023/)
+rules apply.
+
+* License: [W3C Software and Document License, 2023](crates/surgeist-text/licenses/w3c/software-license-2023.txt)
+* Original: [MathML Core, Appendix C.1](https://www.w3.org/TR/2025/CR-mathml-core-20250624/#italic-mappings)
+* Exact source and adaptation: [mapping guide](crates/surgeist-text/tools/math-auto/README.md)
+
+The excerpt preserves the original HTML bytes; the generated Rust represents
+its original/italic columns as sorted numeric pairs. This attribution covers
+the mapping material, separately from the reference-document bundle below.
 
 ### W3C reference documents and CSSWG source witnesses
 

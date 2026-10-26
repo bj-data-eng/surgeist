@@ -1,4 +1,4 @@
-<test name="grid_min_content_flex_single_item_margin_percent__content_box_rtl" use-rounding="true">
+<test name="grid_min_content_flex_single_item_margin_percent__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" box-sizing="content-box" direction="rtl" grid-template-rows="40px 40px 40px" grid-template-columns="40px min-content 1fr">

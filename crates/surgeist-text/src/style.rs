@@ -235,9 +235,41 @@ impl From<Slant> for FontStyle {
     }
 }
 
+/// Mutually exclusive CSS end-hanging permissions.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum HangingPunctuationEnd {
+    ForceEnd,
+    AllowEnd,
+}
+
+/// Normalized CSS hanging-punctuation declaration. All permissions absent is none.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct HangingPunctuation {
+    first: bool,
+    end: Option<HangingPunctuationEnd>,
+    last: bool,
+}
+impl HangingPunctuation {
+    pub const fn new(first: bool, end: Option<HangingPunctuationEnd>, last: bool) -> Self {
+        Self { first, end, last }
+    }
+    pub const fn first(self) -> bool {
+        self.first
+    }
+    pub const fn end(self) -> Option<HangingPunctuationEnd> {
+        self.end
+    }
+    pub const fn last(self) -> bool {
+        self.last
+    }
+}
+
 /// Resolved text style accepted by the text layout engine.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Style {
+    /// Native hanging declaration; formatted roles are supplied at line time.
+    pub hanging_punctuation: HangingPunctuation,
+    pub tab_size: crate::TabSize,
     pub font: Font,
     pub size: f32,
     pub line_height: LineHeight,
@@ -250,9 +282,20 @@ pub struct Style {
     pub direction: Direction,
     pub white_space: WhiteSpace,
     pub word_break: WordBreak,
+    pub line_break: LineBreak,
     pub wrap: Wrap,
     pub overflow_wrap: OverflowWrap,
     pub text_transform: TextTransform,
+    pub word_space_transform: WordSpaceTransform,
+    /// Defaults to Manual; Auto also permits Text's qualified en-US resource.
+    pub hyphens: crate::Hyphens,
+    /// Computed per-cut native minima, retaining symbolic Auto components.
+    /// Raw standalone layout does not consume these count restrictions.
+    pub hyphenate_limit_chars: crate::HyphenateLimitChars,
+    /// Exact indication or native convention/first-available-font resolution.
+    pub hyphenate_character: crate::HyphenateCharacter,
+    /// Optional producer claim bound to this style's complete actual locale.
+    pub native_hyphenation_convention: Option<crate::NativeHyphenationConvention>,
 }
 
 impl Style {
@@ -260,11 +303,59 @@ impl Style {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Interpret declared breaking policies without replacing their inputs.
+    pub(crate) fn effective_breaking(&self) -> EffectiveBreaking {
+        let (word, overflow, lexical_line_breaking, auto_phrase) = match self.word_break {
+            WordBreak::Normal => (OrdinaryWordBreak::Normal, self.overflow_wrap, true, false),
+            WordBreak::BreakAll => (
+                OrdinaryWordBreak::BreakAll,
+                self.overflow_wrap,
+                false,
+                false,
+            ),
+            WordBreak::KeepAll => (OrdinaryWordBreak::KeepAll, self.overflow_wrap, true, false),
+            WordBreak::BreakWord => (
+                OrdinaryWordBreak::Normal,
+                OverflowWrap::Anywhere,
+                true,
+                false,
+            ),
+            WordBreak::Manual => (OrdinaryWordBreak::Normal, self.overflow_wrap, false, false),
+            WordBreak::AutoPhrase => (OrdinaryWordBreak::Normal, self.overflow_wrap, true, true),
+        };
+        EffectiveBreaking {
+            word,
+            overflow,
+            lexical_line_breaking,
+            auto_phrase,
+        }
+    }
+}
+
+/// The three ordinary modes, after interpreting declared breaking properties.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) enum OrdinaryWordBreak {
+    Normal,
+    BreakAll,
+    KeepAll,
+}
+
+pub(crate) struct EffectiveBreaking {
+    pub(crate) word: OrdinaryWordBreak,
+    pub(crate) overflow: OverflowWrap,
+    /// Whether lexical line analysis and its missing-model fallback may run.
+    /// This does not govern word metadata, orthography, or hyphenation.
+    pub(crate) lexical_line_breaking: bool,
+    /// Actual owner requests phrase preference and initially excludes hyphens,
+    /// independently of whether its language has a phrase model.
+    pub(crate) auto_phrase: bool,
 }
 
 impl Default for Style {
     fn default() -> Self {
         Self {
+            hanging_punctuation: HangingPunctuation::default(),
             font: Font::default(),
             size: 16.0,
             line_height: LineHeight::MetricsRelative(1.0),
@@ -277,9 +368,16 @@ impl Default for Style {
             direction: Direction::Auto,
             white_space: WhiteSpace::Preserve,
             word_break: WordBreak::Normal,
+            line_break: LineBreak::Auto,
             wrap: Wrap::Word,
             overflow_wrap: OverflowWrap::Normal,
-            text_transform: TextTransform::None,
+            text_transform: TextTransform::none(),
+            word_space_transform: WordSpaceTransform::None,
+            tab_size: crate::TabSize::default(),
+            hyphens: crate::Hyphens::Manual,
+            hyphenate_limit_chars: crate::HyphenateLimitChars::default(),
+            hyphenate_character: crate::HyphenateCharacter::Auto,
+            native_hyphenation_convention: None,
         }
     }
 }
@@ -300,6 +398,23 @@ pub enum WhiteSpace {
     /// Preserve spaces while normalizing tabs and document delimiters to spaces.
     /// The explicit processed-paragraph front consumes this mode.
     PreserveSpaces,
+    /// Collapse spaces and tabs while retaining each document delimiter as LF.
+    PreserveBreaks,
+    /// Preserve whitespace and permit wrapping after each retained separator.
+    BreakSpaces,
+}
+
+impl WhiteSpace {
+    pub(crate) const fn collapses_spaces(self) -> bool {
+        matches!(self, Self::Collapse | Self::PreserveBreaks)
+    }
+
+    pub(crate) const fn preserves_breaks(self) -> bool {
+        matches!(
+            self,
+            Self::Preserve | Self::PreserveBreaks | Self::BreakSpaces
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -307,6 +422,27 @@ pub enum WordBreak {
     Normal,
     BreakAll,
     KeepAll,
+    /// CSS legacy behavior: Normal word breaking with Anywhere overflow wrapping,
+    /// regardless of the separately retained declared OverflowWrap value.
+    BreakWord,
+    /// Normal breaking with lexical line analysis disabled; orthographic
+    /// opportunities, hyphenation, and declared overflow wrapping remain active.
+    Manual,
+    /// Prefer natural phrases when supported and initially suppress this
+    /// owner's hyphenation. Finite overflow can restore qualified alternatives.
+    AutoPhrase,
+}
+
+/// Line-breaking restrictions; Auto uses Text's deterministic Strict policy.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum LineBreak {
+    #[default]
+    Auto,
+    Loose,
+    Normal,
+    Strict,
+    /// Ordinary opportunities at actual text typographic-unit edges.
+    Anywhere,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -322,9 +458,121 @@ pub enum OverflowWrap {
     BreakWord,
 }
 
+/// Presentation replacement of genuine U+200B, native wbr and virtual separators.
+/// Automatic Japanese phrases require demanded authentic contextual scope facts.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum WordSpaceTransform {
+    #[default]
+    None,
+    Space,
+    IdeographicSpace,
+    SpaceAutoPhrase,
+    IdeographicSpaceAutoPhrase,
+}
+
+impl WordSpaceTransform {
+    pub(crate) const fn replacement(self) -> Option<u32> {
+        match self {
+            Self::None => None,
+            Self::Space | Self::SpaceAutoPhrase => Some(0x20),
+            Self::IdeographicSpace | Self::IdeographicSpaceAutoPhrase => Some(0x3000),
+        }
+    }
+    pub(crate) const fn detects_phrases(self) -> bool {
+        matches!(
+            self,
+            Self::SpaceAutoPhrase | Self::IdeographicSpaceAutoPhrase
+        )
+    }
+}
+
+/// Computed presentation operation, executed before Unicode analysis.
+/// Math-auto requires an explicit complete-original-Text-node capture.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TextTransform {
+    Set(TextTransformSet),
+    MathAuto,
+}
+
+impl Default for TextTransform {
+    fn default() -> Self {
+        Self::none()
+    }
+}
+
+impl TextTransform {
+    /// The neutral case, width and kana set.
+    #[must_use]
+    pub const fn none() -> Self {
+        Self::Set(TextTransformSet::none())
+    }
+}
+
+/// Composable computed case, full-width and full-size-kana operations.
+/// The empty set is the valid neutral value; execution follows that order.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct TextTransformSet {
+    case: CaseTransform,
+    full_width: bool,
+    full_size_kana: bool,
+}
+
+/// Computed contextual casing operation. Language comes from each component's
+/// own style; context and capitalization words use immutable pre-casing input.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum CaseTransform {
+    #[default]
     None,
+    Uppercase,
+    Lowercase,
+    Capitalize,
+}
+
+impl TextTransformSet {
+    /// The neutral presentation operation.
+    #[must_use]
+    pub const fn none() -> Self {
+        Self {
+            case: CaseTransform::None,
+            full_width: false,
+            full_size_kana: false,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_case(mut self, case: CaseTransform) -> Self {
+        self.case = case;
+        self
+    }
+
+    #[must_use]
+    pub const fn case(self) -> CaseTransform {
+        self.case
+    }
+
+    /// Enables or disables the complete raw Unicode full-width operation.
+    #[must_use]
+    pub const fn with_full_width(mut self, enabled: bool) -> Self {
+        self.full_width = enabled;
+        self
+    }
+
+    #[must_use]
+    pub const fn full_width(self) -> bool {
+        self.full_width
+    }
+
+    /// Enables or disables the complete full-size-kana operation.
+    #[must_use]
+    pub const fn with_full_size_kana(mut self, enabled: bool) -> Self {
+        self.full_size_kana = enabled;
+        self
+    }
+
+    #[must_use]
+    pub const fn full_size_kana(self) -> bool {
+        self.full_size_kana
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -579,6 +827,17 @@ enum StyleInputPhase {
 }
 
 fn validate_style(style: &Style, phase: StyleInputPhase) -> Result<ParsedStyle> {
+    if phase == StyleInputPhase::Standalone && style.text_transform == TextTransform::MathAuto {
+        return Err(Error::new(
+            ErrorCode::UnsupportedFeature,
+            "math-auto requires complete original Text-node capture",
+        )
+        .with_detail(ErrorDetail::UnsupportedTextStyle {
+            feature: TextStyleFeature::MathAuto,
+            reason: UnsupportedTextStyleReason::RequiresCompleteTextNodeContext,
+        }));
+    }
+
     if style.direction != Direction::Auto {
         return Err(Error::new(
             ErrorCode::UnsupportedFeature,
@@ -602,6 +861,12 @@ fn validate_style(style: &Style, phase: StyleInputPhase) -> Result<ParsedStyle> 
                 WhiteSpace::PreserveSpaces => {
                     "standalone preserve-spaces requires explicit processed-paragraph capture"
                 }
+                WhiteSpace::PreserveBreaks => {
+                    "standalone preserve-breaks requires explicit processed-paragraph capture"
+                }
+                WhiteSpace::BreakSpaces => {
+                    "standalone break-spaces requires explicit processed-paragraph capture"
+                }
                 WhiteSpace::Preserve => unreachable!("unsupported branch excludes Preserve"),
             },
         )
@@ -609,6 +874,8 @@ fn validate_style(style: &Style, phase: StyleInputPhase) -> Result<ParsedStyle> 
             feature: match style.white_space {
                 WhiteSpace::Discard => TextStyleFeature::WhiteSpaceDiscard,
                 WhiteSpace::PreserveSpaces => TextStyleFeature::WhiteSpacePreserveSpaces,
+                WhiteSpace::PreserveBreaks => TextStyleFeature::WhiteSpacePreserveBreaks,
+                WhiteSpace::BreakSpaces => TextStyleFeature::WhiteSpaceBreakSpaces,
                 WhiteSpace::Collapse => TextStyleFeature::WhiteSpaceCollapse,
                 WhiteSpace::Preserve => unreachable!("unsupported branch excludes Preserve"),
             },
@@ -624,6 +891,9 @@ fn validate_style(style: &Style, phase: StyleInputPhase) -> Result<ParsedStyle> 
     validate_decoration(style.underline, "underline")?;
     validate_decoration(style.strikethrough, "strikethrough")?;
     let locale = style.locale.as_deref().map(parse_language).transpose()?;
+    if let Some(convention) = &style.native_hyphenation_convention {
+        convention.bind(style.locale.as_deref())?;
+    }
     let font_family = parse_font_families(&style.font.family)?;
     let font_features = font_settings_source(&style.font.features);
     if let Some(features) = &font_features {

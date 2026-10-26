@@ -1,4 +1,4 @@
-<test name="fri07_flex_composition__content_box_rtl" use-rounding="true">
+<test name="fri07_flex_composition__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl" writing-mode="sideways-rl" flex-direction="column-reverse" flex-wrap="wrap-reverse" overflow-x="auto" overflow-y="auto" scrollbar-width="15" width="120px" height="180px" row-gap="6px" column-gap="6px">

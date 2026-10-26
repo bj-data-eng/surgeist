@@ -1,4 +1,4 @@
-<test name="subgrid_auto_track_sizing_fixed_then_auto__border_box_ltr" use-rounding="true">
+<test name="subgrid_auto_track_sizing_fixed_then_auto__border_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="article" display="grid" box-sizing="content-box" direction="ltr" font-family="monospace" font-size="16px" line-height="16px" max-width="260px" padding-top="1px" padding-left="5px" padding-bottom="1px" padding-right="5px" border-top="1px" border-left="1px" border-bottom="1px" border-right="1px" grid-template-columns="100px auto">

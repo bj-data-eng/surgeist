@@ -1,4 +1,4 @@
-<test name="gap_row_gap_percentage_wrapping__content_box_ltr" use-rounding="true">
+<test name="gap_row_gap_percentage_wrapping__content_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" flex-wrap="wrap" width="80px" row-gap="10%" column-gap="10px">

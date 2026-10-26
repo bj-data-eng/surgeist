@@ -1,4 +1,4 @@
-<test name="fri03_order_modified_grid__content_box_rtl" use-rounding="true">
+<test name="fri03_order_modified_grid__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" box-sizing="content-box" direction="rtl" width="80px" height="20px" grid-template-rows="20px" grid-template-columns="20px 20px 20px 20px">

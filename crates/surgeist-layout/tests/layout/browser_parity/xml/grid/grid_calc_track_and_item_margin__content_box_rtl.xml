@@ -1,4 +1,4 @@
-<test name="grid_calc_track_and_item_margin__content_box_rtl" use-rounding="true">
+<test name="grid_calc_track_and_item_margin__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" box-sizing="content-box" direction="rtl" width="240px" grid-template-rows="40px" grid-template-columns="calc(25% + 20px) 80px">

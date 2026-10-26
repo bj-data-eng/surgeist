@@ -1,4 +1,4 @@
-<test name="fri05_scroll_target_geometry__border_box_rtl" use-rounding="true">
+<test name="fri05_scroll_target_geometry__border_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="block" direction="rtl" overflow-x="auto" overflow-y="auto" scrollbar-width="15" scroll-padding-top="1px" scroll-padding-right="2px" scroll-padding-bottom="3px" scroll-padding-left="4px" width="100px" height="100px">

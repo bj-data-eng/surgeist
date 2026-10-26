@@ -8,7 +8,7 @@ fn bold(size: f32, skew: f32) -> TextInstance {
     TextInstance::try_new(
         size,
         vec![],
-        OutlineSynthesis::try_new(skew, displacement).unwrap(),
+        GlyphSynthesis::try_new(skew, displacement).unwrap(),
     )
     .unwrap()
 }
@@ -27,7 +27,9 @@ fn explicit_positive_bold_appends_two_literal_contours_without_changing_glyph_fa
     assert_eq!(instance.synthesis().embolden(), 10.0);
     for advance in [-123.0, 0.0] {
         let glyphs = [TextGlyph::try_new(X, 20.0, 30.0, advance).unwrap()];
-        let prepared = font.prepare_outline(&instance, &glyphs, limits()).unwrap();
+        let prepared = font
+            .prepare_glyph_run(&instance, &glyphs, limits())
+            .unwrap();
         assert_eq!(prepared.font(), &font);
         assert_eq!(prepared.instance(), &instance);
         assert_eq!(prepared.glyphs(), glyphs);
@@ -65,7 +67,9 @@ fn explicit_bold_after_existing_x_shear_keeps_local_displacement_and_literal_bou
     let font = font(AHEM);
     let instance = bold(360.0, 0.5);
     let glyphs = [TextGlyph::try_new(X, 20.0, 30.0, -10.0).unwrap()];
-    let prepared = font.prepare_outline(&instance, &glyphs, limits()).unwrap();
+    let prepared = font
+        .prepare_glyph_run(&instance, &glyphs, limits())
+        .unwrap();
     // x*s + k*y*s + gx, then +j*b. Top y800 contributes +144,
     // bottom y-200 contributes -36; neither copy adjusts y or advance.
     assert_eq!(
@@ -92,7 +96,9 @@ fn positive_bold_preserves_source_proved_empty_glyphs_and_empty_input() {
         vec![TextGlyph::try_new(3, 20.0, 30.0, 360.0).unwrap()],
         vec![TextGlyph::try_new(253, -50.0, -60.0, 0.0).unwrap()],
     ] {
-        let prepared = font.prepare_outline(&instance, &glyphs, limits()).unwrap();
+        let prepared = font
+            .prepare_glyph_run(&instance, &glyphs, limits())
+            .unwrap();
         assert_eq!(prepared.bounds().kind(), TextRunBoundsKind::Empty);
         assert_eq!(prepared.path_elements().count(), 0);
         assert_eq!(prepared.glyphs(), glyphs);
@@ -110,24 +116,24 @@ fn bold_copy_uses_existing_limits_and_same_input_raised_retry_is_atomic() {
     let mut failures = Vec::new();
     for (resource, low) in [
         (
-            OutlineResource::Glyphs,
-            OutlineLimits::new(0, 10, 1 << 20, 1 << 20),
+            GlyphResource::Glyphs,
+            GlyphRunLimits::new(0, 10, 1 << 20, 1 << 20),
         ),
         (
-            OutlineResource::PathElements,
-            OutlineLimits::new(1, 9, 1 << 20, 1 << 20),
+            GlyphResource::PathElements,
+            GlyphRunLimits::new(1, 9, 1 << 20, 1 << 20),
         ),
         (
-            OutlineResource::ScratchBytes,
-            OutlineLimits::new(1, 10, 0, 1 << 20),
+            GlyphResource::ScratchBytes,
+            GlyphRunLimits::new(1, 10, 0, 1 << 20),
         ),
         (
-            OutlineResource::RetainedBytes,
-            OutlineLimits::new(1, 10, 1 << 20, 0),
+            GlyphResource::RetainedBytes,
+            GlyphRunLimits::new(1, 10, 1 << 20, 0),
         ),
     ] {
-        match font.prepare_outline(&instance, &glyphs, low) {
-            Err(error) if matches!(diagnostic(&error),OutlinePreparationError::Limit{resource:actual,..} if actual==resource) =>
+        match font.prepare_glyph_run(&instance, &glyphs, low) {
+            Err(error) if matches!(diagnostic(&error),GlyphPreparationError::Limit{resource:actual,..} if actual==resource) =>
                 {}
             Err(error) => failures.push(format!("{resource:?}: {:?}", diagnostic(&error))),
             Ok(_) => failures.push(format!("{resource:?}: unexpected output")),
@@ -136,10 +142,10 @@ fn bold_copy_uses_existing_limits_and_same_input_raised_retry_is_atomic() {
         assert_eq!(instance, retained_instance);
         assert_eq!(glyphs[0].advance(), -123.0);
     }
-    match font.prepare_outline(
+    match font.prepare_glyph_run(
         &instance,
         &glyphs,
-        OutlineLimits::new(1, 10, 1 << 20, 1 << 20),
+        GlyphRunLimits::new(1, 10, 1 << 20, 1 << 20),
     ) {
         Ok(prepared) => {
             assert_eq!(prepared.path_elements().count(), 10);
@@ -163,16 +169,18 @@ fn positive_copy_displacement_lost_at_canonical_point_conversion_refuses_whole_r
     let plain = instance(36.0, vec![], 0.0);
     // Original X width36 survives f32 (spacing4 here); positive b=1 does
     // not move any canonical x. This isolates copy loss from original ink loss.
-    let original = font.prepare_outline(&plain, &[far], limits()).unwrap();
+    let original = font.prepare_glyph_run(&plain, &[far], limits()).unwrap();
     assert_eq!(original.bounds().ink_rect().unwrap().width(), 36.0);
     let bold = bold(36.0, 0.0);
     assert_eq!(bold.synthesis().embolden(), 1.0);
     let glyphs = [TextGlyph::try_new(X, 20.0, 30.0, -10.0).unwrap(), far];
     let kept_font = font.clone();
     let kept_instance = bold.clone();
-    let error = font.prepare_outline(&bold, &glyphs, limits()).unwrap_err();
+    let error = font
+        .prepare_glyph_run(&bold, &glyphs, limits())
+        .unwrap_err();
     assert!(
-        matches!(diagnostic(&error), OutlinePreparationError::Numeric { .. }),
+        matches!(diagnostic(&error), GlyphPreparationError::Numeric { .. }),
         "{:?}",
         diagnostic(&error)
     );

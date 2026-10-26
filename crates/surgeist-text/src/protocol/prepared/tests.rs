@@ -1,4 +1,6 @@
 use super::*;
+#[path = "break_all_hyphenation.rs"]
+mod break_all_hyphenation;
 use crate::protocol::paragraph::*;
 use crate::protocol::*;
 use crate::{
@@ -9,6 +11,8 @@ use crate::{
 fn paragraph(source: Source) -> ParagraphInput {
     let len = source.text().len();
     ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        tab_reference: None,
         source: source.clone(),
         base_style: Style {
             font: Font::new().family("Ahem"),
@@ -19,6 +23,7 @@ fn paragraph(source: Source) -> ParagraphInput {
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![ParagraphOrigin {
+            text_node: None,
             source,
             local: Range::new(0, len),
             aggregate: Range::new(0, len),
@@ -47,6 +52,98 @@ fn system() -> System {
         .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
         .unwrap();
     system
+}
+
+fn whitespace_preparation(value: &str, mode: WhiteSpace, wrap: crate::Wrap) -> PreparedText {
+    let mut input = paragraph(Source::new(value));
+    input.base_style.white_space = mode;
+    input.base_style.wrap = wrap;
+    let analyzed =
+        crate::test_wrapping::bind_missing(&AnalyzedSource::from_paragraph(input).unwrap(), wrap);
+    system()
+        .prepare(&analyzed, PreparationOptions::default())
+        .unwrap()
+}
+
+#[test]
+fn preserve_breaks_issues_each_forced_delimiter_even_without_soft_wrapping() {
+    for wrap in [crate::Wrap::Word, crate::Wrap::None] {
+        let prepared = whitespace_preparation("A \t\n\n \tB", WhiteSpace::PreserveBreaks, wrap);
+        assert_eq!(
+            prepared
+                .analyzed_source()
+                .processed_source()
+                .processed_text()
+                .code_units(),
+            [65, 10, 10, 66]
+        );
+        assert_eq!(
+            prepared
+                .opportunity_views()
+                .filter(|offer| offer.kind() == PreparedBreakKind::Forced)
+                .map(|offer| offer.boundary().view().source_before().get())
+                .collect::<Vec<_>>(),
+            [4, 5]
+        );
+    }
+}
+
+#[test]
+fn break_spaces_issues_after_each_separator_without_splitting_its_grapheme() {
+    for (value, expected) in [
+        ("A  \t\u{2000}B", vec![2, 3, 4, 5]),
+        ("A \u{301}B", vec![]),
+        ("A\u{a0}B", vec![]),
+    ] {
+        let prepared = whitespace_preparation(value, WhiteSpace::BreakSpaces, crate::Wrap::Word);
+        assert_eq!(
+            prepared
+                .opportunity_views()
+                .filter(|offer| offer.kind() == PreparedBreakKind::Allowed)
+                .map(|offer| offer.boundary().view().source_before().get())
+                .collect::<Vec<_>>(),
+            expected,
+            "{value:?}"
+        );
+    }
+    let nowrap = whitespace_preparation("A  \t B", WhiteSpace::BreakSpaces, crate::Wrap::None);
+    assert!(
+        !nowrap
+            .opportunity_views()
+            .any(|offer| offer.kind() == PreparedBreakKind::Allowed)
+    );
+}
+
+#[test]
+fn break_spaces_keeps_adopted_glue_joiner_and_typographic_unit_precedence() {
+    for (value, expected) in [
+        ("A\u{2007}B", vec![]),
+        ("A\u{202f}B", vec![]),
+        (" \u{a0}", vec![1]),
+        ("\t\u{a0}", vec![1]),
+        ("\u{2007}\u{a0}", vec![]),
+        ("\u{2007}\u{2060}B", vec![]),
+        (" \u{2060}B", vec![]),
+        (" \u{200d}\u{301}", vec![]),
+        (" \u{200d}\u{301}B", vec![]),
+        ("A B", vec![2]),
+        ("A  B", vec![2, 3]),
+        ("\t\tB", vec![1, 2]),
+        ("\u{2007}\u{202f}B", vec![]),
+        (" \u{2007}B", vec![1]),
+        ("A\u{2007}\u{200b}\u{202f}B", vec![3]),
+    ] {
+        let prepared = whitespace_preparation(value, WhiteSpace::BreakSpaces, crate::Wrap::Word);
+        assert_eq!(
+            prepared
+                .opportunity_views()
+                .filter(|offer| offer.kind() == PreparedBreakKind::Allowed)
+                .map(|offer| offer.boundary().view().source_before().get())
+                .collect::<Vec<_>>(),
+            expected,
+            "{value:?}"
+        );
+    }
 }
 
 fn native_atomic_preparation(
@@ -89,7 +186,10 @@ fn native_atomic_preparation(
         .collect();
     let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
     system()
-        .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+        .prepare(
+            &analyzed,
+            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+        )
         .unwrap()
 }
 
@@ -177,7 +277,10 @@ fn native_atomic_out_of_flow_control_creates_no_break_opportunity() {
     }];
     let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
     let prepared = system()
-        .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+        .prepare(
+            &analyzed,
+            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+        )
         .unwrap();
     assert_eq!(allowed_atomic_sides(&prepared), [[false, false]]);
 }
@@ -297,7 +400,10 @@ fn native_atomic_transparent_occurrences_do_not_reintroduce_a_forbidden_break() 
             .collect();
             let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
             let prepared = system()
-                .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+                .prepare(
+                    &analyzed,
+                    PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+                )
                 .unwrap();
             prepared
                 .opportunity_views()
@@ -317,7 +423,7 @@ fn native_atomic_transparent_occurrences_do_not_reintroduce_a_forbidden_break() 
     );
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum TransparentAtomicNeighbor {
     OutOfFlow,
     InlineBoundary,
@@ -364,6 +470,7 @@ fn atomic_transparent_input(
             input.origins.clear();
             if at != 0 {
                 input.origins.push(ParagraphOrigin {
+                    text_node: None,
                     source: input.source.clone(),
                     local: Range::new(0, at),
                     aggregate: Range::new(0, at),
@@ -372,6 +479,7 @@ fn atomic_transparent_input(
             }
             let empty = input.origins.len();
             input.origins.push(ParagraphOrigin {
+                text_node: None,
                 source: Source::new(""),
                 local: Range::new(0, 0),
                 aggregate: Range::new(at, at),
@@ -379,6 +487,7 @@ fn atomic_transparent_input(
             });
             if at != len {
                 input.origins.push(ParagraphOrigin {
+                    text_node: None,
                     source: input.source.clone(),
                     local: Range::new(at, len),
                     aggregate: Range::new(at, len),
@@ -425,7 +534,10 @@ fn atomic_transparent_input(
 fn prepare_opportunity_inventory(input: ParagraphInput) -> Vec<(usize, PreparedBreakKind)> {
     let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
     let prepared = system()
-        .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+        .prepare(
+            &analyzed,
+            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+        )
         .unwrap();
     prepared
         .opportunity_views()
@@ -481,7 +593,7 @@ fn native_hard_separator_precedence_keeps_earlier_soft_control_owners() {
         ),
         (
             ParagraphControlKind::DiscretionaryBreak {
-                wrap: crate::Wrap::Word,
+                style: Box::new(paragraph(Source::new("")).base_style),
             },
             PreparedBreakKind::Discretionary,
         ),
@@ -501,24 +613,26 @@ fn native_hard_separator_precedence_keeps_earlier_soft_control_owners() {
             })
             .collect();
         if expected == PreparedBreakKind::Discretionary {
-            input.replacements.push(ParagraphReplacement {
-                definition: ParagraphReplacementDefinition::Control {
-                    control: 0,
-                    origin: None,
-                },
-                insertion_anchor: 0,
-                style_anchor: 0,
-                text: Text::from("-"),
-            });
+            input.replacements.push(
+                ParagraphReplacement::resolved_native_logical_before(
+                    ParagraphReplacementDefinition::Control {
+                        control: 0,
+                        origin: None,
+                    },
+                    0,
+                    vec![Text::from("-")],
+                )
+                .unwrap(),
+            );
         }
-        assert_eq!(
-            prepare_opportunity_inventory(input),
-            [
-                (1, expected),
-                (3, PreparedBreakKind::Forced),
-                (4, PreparedBreakKind::ParagraphEnd),
-            ]
-        );
+        let mut expected_inventory = vec![
+            (3, PreparedBreakKind::Forced),
+            (4, PreparedBreakKind::ParagraphEnd),
+        ];
+        if expected == PreparedBreakKind::Allowed {
+            expected_inventory.insert(0, (1, expected));
+        }
+        assert_eq!(prepare_opportunity_inventory(input), expected_inventory);
     }
 }
 
@@ -586,7 +700,7 @@ fn native_atomic_directional_controls_do_not_hide_incident_glue() {
                 prepare_opportunity_inventory(atomic_transparent_input(
                     text,
                     1,
-                    TransparentAtomicNeighbor::Directional(kind),
+                    TransparentAtomicNeighbor::Directional(kind.clone()),
                     false,
                 )),
                 [
@@ -607,7 +721,12 @@ fn native_atomic_transparent_semantic_edges_create_no_extra_soft_line() {
         TransparentAtomicNeighbor::EmptyOrigin,
     ] {
         assert_eq!(
-            prepare_opportunity_inventory(atomic_transparent_input("X", 1, transparent, false)),
+            prepare_opportunity_inventory(atomic_transparent_input(
+                "X",
+                1,
+                transparent.clone(),
+                false
+            )),
             [
                 (1, PreparedBreakKind::Allowed),
                 (3, PreparedBreakKind::ParagraphEnd),
@@ -651,10 +770,7 @@ fn native_atomic_transparent_relation_rejects_disagreeing_captured_ancestors() {
             ancestor_wrap: crate::Wrap::Word,
         },
     ]);
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
-    let error = system()
-        .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
-        .unwrap_err();
+    let error = AnalyzedSource::from_paragraph(input).unwrap_err();
     assert_eq!(
         error.detail(),
         Some(&crate::ErrorDetail::InvalidTextProtocol {
@@ -702,7 +818,11 @@ fn native_atomic_collapse_space_permission_is_local_only_before_the_atomic() {
                 .collect();
                 let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
                 let prepared = system()
-                    .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+                    .prepare(
+                        &analyzed,
+                        PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance)
+                            .unwrap(),
+                    )
                     .unwrap();
                 allowed_atomic_sides(&prepared)
             })
@@ -735,12 +855,14 @@ fn native_connection_space_owner_depends_on_actual_disappearance() {
                 input.base_style.wrap = local_wrap;
                 input.origins = vec![
                     ParagraphOrigin {
+                        text_node: None,
                         source: Source::new("A "),
                         local: Range::new(0, 2),
                         aggregate: Range::new(0, 2),
                         kind: ParagraphOriginKind::Authored,
                     },
                     ParagraphOrigin {
+                        text_node: None,
                         source: Source::new("B"),
                         local: Range::new(0, 1),
                         aggregate: Range::new(2, 3),
@@ -759,7 +881,11 @@ fn native_connection_space_owner_depends_on_actual_disappearance() {
                 }];
                 let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
                 let prepared = system()
-                    .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+                    .prepare(
+                        &analyzed,
+                        PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance)
+                            .unwrap(),
+                    )
                     .unwrap();
                 prepared.opportunity_views().any(|row| {
                     row.kind() == PreparedBreakKind::Allowed
@@ -773,7 +899,9 @@ fn native_connection_space_owner_depends_on_actual_disappearance() {
 
 fn context(end: LineEnd) -> LineContext {
     LineContext {
+        formatted_line: crate::FormattedLineContext::default(),
         base_direction: ParagraphBaseDirection::LeftToRight,
+        line_box_direction: crate::LineBoxDirection::LeftToRight,
         orientation: LineOrientation::Horizontal,
         start: LineStart::Paragraph,
         end,
@@ -781,7 +909,7 @@ fn context(end: LineEnd) -> LineContext {
         indent: 0.0,
         alignment: crate::Alignment::Start,
         tabs: TabContext::NoTabs,
-        hanging: HangingContext::None,
+
         spacing: SpacingPolicy::Spaces,
     }
 }
@@ -794,19 +922,31 @@ fn select_whole(prepared: &PreparedText) -> SelectedLine {
         .handle();
     prepared
         .select(LineSelectionRequest {
+            boundary_context: Vec::new(),
+            incoming: None,
             start,
             end: termination.view().boundary(),
             participants: prepared.participants().collect(),
-            termination,
+            termination: crate::PreparedTermination::Ordinary(termination),
             alternative: None,
             context: context(LineEnd::Paragraph),
             atomics: Vec::new(),
+            line_box_struts: Vec::new(),
             line_strut: None,
             controls: prepared
                 .control_views()
-                .map(|control| ControlAllocation {
-                    occurrence: control.handle(),
-                    strut: None,
+                .map(|control| {
+                    let occurrence = control.handle();
+                    ControlAllocation {
+                        boundary: matches!(
+                            occurrence.view().kind(),
+                            crate::ParagraphControlKind::InlineBoundaryStart
+                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                        )
+                        .then_some(crate::InlineBoundaryAllocation::ZERO),
+                        occurrence,
+                        strut: None,
+                    }
                 })
                 .collect(),
         })
@@ -819,24 +959,28 @@ fn discarded_original_coverage_and_distinct_empty_occurrences_survive_selection(
     input.base_style.white_space = WhiteSpace::Discard;
     input.origins = vec![
         ParagraphOrigin {
+            text_node: None,
             source: Source::new(" A "),
             local: Range::new(0, 3),
             aggregate: Range::new(0, 3),
             kind: ParagraphOriginKind::Authored,
         },
         ParagraphOrigin {
+            text_node: None,
             source: Source::new(""),
             local: Range::new(0, 0),
             aggregate: Range::new(3, 3),
             kind: ParagraphOriginKind::Generated,
         },
         ParagraphOrigin {
+            text_node: None,
             source: Source::new(""),
             local: Range::new(0, 0),
             aggregate: Range::new(3, 3),
             kind: ParagraphOriginKind::Authored,
         },
         ParagraphOrigin {
+            text_node: None,
             source: Source::new("  B"),
             local: Range::new(0, 3),
             aggregate: Range::new(3, 6),
@@ -875,7 +1019,10 @@ fn discarded_original_coverage_and_distinct_empty_occurrences_survive_selection(
     );
     let mut system = system();
     let prepared = system
-        .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+        .prepare(
+            &analyzed,
+            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+        )
         .unwrap();
     let selected = select_whole(&prepared);
     assert_eq!(selected.inner.presentation.source, Range::new(0, 6));
@@ -899,7 +1046,7 @@ fn discarded_original_coverage_and_distinct_empty_occurrences_survive_selection(
     drop(system);
     drop(analyzed);
     let (shaped, mapping) = crate::engine::shape::finalize(
-        &selected.inner,
+        selected.inner.presentation_input(),
         &mut crate::engine::shape::ShapeContext::default(),
     )
     .unwrap();
@@ -982,46 +1129,63 @@ fn explicit_transparent_half_pair_affinity_does_not_split_but_inflow_really_does
 
 #[test]
 fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent() {
-    let mut input = paragraph(Source::new("A\u{ad}B"));
-    input.replacements = vec![ParagraphReplacement {
-        definition: ParagraphReplacementDefinition::Source {
-            origin: 0,
-            source: Range::new(1, 2),
-        },
-        insertion_anchor: 2,
-        style_anchor: 0,
-        text: Text::from("- "),
-    }];
+    let mut input = paragraph(Source::new("AX\u{ad}BBB"));
+    input.replacements = vec![
+        ParagraphReplacement::resolved_native_logical_before(
+            ParagraphReplacementDefinition::Source {
+                origin: 0,
+                source: Range::new(2, 3),
+            },
+            3,
+            vec![Text::from("- ")],
+        )
+        .unwrap(),
+    ];
     let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
     let mut system = system();
     let prepared = system
-        .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+        .prepare(
+            &analyzed,
+            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+        )
         .unwrap();
     let alternative = prepared.alternative_views().next().unwrap().handle();
-    let termination = alternative.view().opportunity();
+    let termination = alternative.view().opportunity().unwrap();
     let end = termination.view().boundary();
     let count = end.view().participant_offset();
     let selected = prepared
         .select(LineSelectionRequest {
+            boundary_context: Vec::new(),
+            incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end,
             participants: prepared.participants().take(count).collect(),
-            termination,
+            termination: crate::PreparedTermination::Ordinary(termination),
             alternative: Some(alternative),
             context: context(LineEnd::Soft),
             atomics: Vec::new(),
+            line_box_struts: Vec::new(),
             line_strut: None,
             controls: prepared
                 .control_views()
-                .map(|control| ControlAllocation {
-                    occurrence: control.handle(),
-                    strut: None,
+                .map(|control| {
+                    let occurrence = control.handle();
+                    ControlAllocation {
+                        boundary: matches!(
+                            occurrence.view().kind(),
+                            crate::ParagraphControlKind::InlineBoundaryStart
+                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                        )
+                        .then_some(crate::InlineBoundaryAllocation::ZERO),
+                        occurrence,
+                        strut: None,
+                    }
                 })
                 .collect(),
         })
         .unwrap();
-    assert_eq!(selected.inner.presentation.projection.text, "A- ");
-    assert_eq!(selected.inner.presentation.source, Range::new(0, 2));
+    assert_eq!(selected.inner.presentation.projection.text, "AX- ");
+    assert_eq!(selected.inner.presentation.source, Range::new(0, 3));
     let replacement: Vec<_> = selected
         .inner
         .presentation
@@ -1033,14 +1197,14 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
     assert!(
         replacement
             .iter()
-            .all(|u| u.source == Range::new(2, 2) && u.participant.is_none())
+            .all(|u| u.source == Range::new(3, 3) && u.participant.is_none())
     );
     assert!(replacement[1].eligible_space);
-    assert_eq!(replacement[1].presentation, Range::new(2, 3));
+    assert_eq!(replacement[1].presentation, Range::new(3, 4));
     system.refresh_fonts().unwrap();
     drop(system);
     let (shaped, _) = crate::engine::shape::finalize(
-        &selected.inner,
+        selected.inner.presentation_input(),
         &mut crate::engine::shape::ShapeContext::default(),
     )
     .unwrap();
@@ -1054,7 +1218,7 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
         shaped
             .glyphs
             .iter()
-            .filter(|g| g.source == Range::new(2, 2))
+            .filter(|g| g.source == Range::new(3, 3))
             .count(),
         2
     );
@@ -1062,65 +1226,88 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
 
 #[test]
 fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
-    let mut input = paragraph(Source::new(""));
-    input.origins.clear();
+    let mut input = paragraph(Source::new("AXXXX"));
     input.anchor_order.clear();
     input.controls = vec![ParagraphControl {
-        at: 0,
+        at: 2,
         kind: ParagraphControlKind::DiscretionaryBreak {
-            wrap: crate::Wrap::Word,
+            style: Box::new(paragraph(Source::new("")).base_style),
         },
     }];
     input.anchor_order = vec![ParagraphAnchor {
         item: ParagraphAnchorItem::Control(0),
         affinity: Affinity::Before,
     }];
-    input.replacements = vec![ParagraphReplacement {
-        definition: ParagraphReplacementDefinition::Control {
-            control: 0,
-            origin: None,
-        },
-        insertion_anchor: 0,
-        style_anchor: 0,
-        text: Text::from(""),
-    }];
+    input.replacements = vec![
+        ParagraphReplacement::resolved_native_logical_before(
+            ParagraphReplacementDefinition::Control {
+                control: 0,
+                origin: None,
+            },
+            2,
+            vec![Text::from("")],
+        )
+        .unwrap(),
+    ];
     let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
     let mut system = system();
     let prepared = system
-        .prepare(&analyzed, PreparationOptions::try_new(1.0).unwrap())
+        .prepare(
+            &analyzed,
+            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+        )
         .unwrap();
     let alternative = prepared.alternative_views().next().unwrap().handle();
-    let termination = alternative.view().opportunity();
+    let termination = alternative.view().opportunity().unwrap();
     let selected = prepared
         .select(LineSelectionRequest {
+            boundary_context: Vec::new(),
+            incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
-            participants: prepared.participants().collect(),
-            termination,
+            participants: prepared
+                .participants()
+                .take(termination.view().boundary().view().participant_offset())
+                .collect(),
+            termination: crate::PreparedTermination::Ordinary(termination),
             alternative: Some(alternative),
             context: context(LineEnd::Soft),
             atomics: Vec::new(),
+            line_box_struts: Vec::new(),
             line_strut: None,
             controls: prepared
                 .control_views()
-                .map(|control| ControlAllocation {
-                    occurrence: control.handle(),
-                    strut: None,
+                .map(|control| {
+                    let occurrence = control.handle();
+                    ControlAllocation {
+                        boundary: matches!(
+                            occurrence.view().kind(),
+                            crate::ParagraphControlKind::InlineBoundaryStart
+                                | crate::ParagraphControlKind::InlineBoundaryEnd
+                        )
+                        .then_some(crate::InlineBoundaryAllocation::ZERO),
+                        occurrence,
+                        strut: None,
+                    }
                 })
                 .collect(),
         })
         .unwrap();
     let fragments = selected_origin_intersections(&selected.inner);
-    assert_eq!(fragments.len(), 2);
+    assert_eq!(fragments.len(), 4);
+    let fragments: Vec<_> = fragments
+        .into_iter()
+        .filter(|f| !matches!(f.owner, FragmentOwner::Origin(_)))
+        .collect();
     assert!(matches!(fragments[0].owner, FragmentOwner::Alternative(0)));
     assert!(matches!(fragments[1].owner, FragmentOwner::Control(0)));
     assert!(fragments.iter().all(|f| f.source.is_none()));
     let (shaped, _) = crate::engine::shape::finalize(
-        &selected.inner,
+        selected.inner.presentation_input(),
         &mut crate::engine::shape::ShapeContext::default(),
     )
     .unwrap();
-    assert!(shaped.glyphs.is_empty());
+    assert_eq!(shaped.glyphs.len(), 2);
     assert_eq!(
         shaped
             .items
@@ -1156,7 +1343,10 @@ fn raw_standalone_crlf_forced_items_do_not_split_native_normalized_delimiter() {
     let source = Source::new("\r\n");
     let raw = AnalyzedSource::new(source.clone(), paragraph(source.clone()).base_style).unwrap();
     let prepared = system
-        .prepare(&raw, PreparationOptions::try_new(1.0).unwrap())
+        .prepare(
+            &raw,
+            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+        )
         .unwrap();
     assert_eq!(
         prepared
@@ -1187,7 +1377,10 @@ fn raw_standalone_crlf_forced_items_do_not_split_native_normalized_delimiter() {
         [0xa]
     );
     let prepared = system
-        .prepare(&native, PreparationOptions::try_new(1.0).unwrap())
+        .prepare(
+            &native,
+            PreparationOptions::try_new(1.0, crate::TabPreparation::FontAdvance).unwrap(),
+        )
         .unwrap();
     assert_eq!(
         prepared

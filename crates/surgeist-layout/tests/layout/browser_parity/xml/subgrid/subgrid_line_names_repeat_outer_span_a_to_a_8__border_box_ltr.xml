@@ -1,4 +1,4 @@
-<test name="subgrid_line_names_repeat_outer_span_a_to_a_8__border_box_ltr" use-rounding="true">
+<test name="subgrid_line_names_repeat_outer_span_a_to_a_8__border_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" direction="ltr" font-family="monospace" font-size="24px" line-height="24px" padding-top="20px" padding-left="10px" padding-bottom="20px" padding-right="10px" grid-template-rows="auto" grid-template-columns="repeat(10, 10px) repeat(10, [a] 10px) [a]">

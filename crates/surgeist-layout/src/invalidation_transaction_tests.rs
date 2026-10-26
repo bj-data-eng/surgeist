@@ -194,9 +194,9 @@ fn fri06_c01_invalidation_self_cycle_returns_typed_topology_error() {
         }
     );
     assert_eq!(error.operation(), LayoutOperation::CacheInvalidation);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKind::InvalidInput(LayoutInvalidInput::TreeTopologyCycle)
+        &LayoutErrorKind::InvalidInput(LayoutInvalidInput::TreeTopologyCycle),
     );
 }
 
@@ -216,9 +216,9 @@ fn fri06_c01_invalidation_multi_node_cycle_returns_typed_topology_error() {
         }
     );
     assert_eq!(error.operation(), LayoutOperation::CacheInvalidation);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKind::InvalidInput(LayoutInvalidInput::TreeTopologyCycle)
+        &LayoutErrorKind::InvalidInput(LayoutInvalidInput::TreeTopologyCycle),
     );
 }
 
@@ -270,9 +270,9 @@ fn fri06_c01_invalidation_shared_repeated_edge_dag_expands_each_adjacency_once()
 
     assert_eq!(error.site(), LayoutErrorSite::Node(u32::MAX));
     assert_eq!(error.operation(), LayoutOperation::CacheInvalidation);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidationNodeNotReachable)
+        &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidationNodeNotReachable),
     );
     assert_eq!(tree.child_adjacency_queries.get(), (DEPTH * 2 + 1) as usize);
 }
@@ -287,9 +287,9 @@ fn fri06_c01_invalidation_unreachable_subject_has_exact_diagnostic() {
 
     assert_eq!(error.site(), LayoutErrorSite::Node(99));
     assert_eq!(error.operation(), LayoutOperation::CacheInvalidation);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidationNodeNotReachable)
+        &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidationNodeNotReachable),
     );
     assert_eq!(*tree.caches.borrow(), caches_before);
     assert!(tree.measurement_calls.borrow().is_empty());
@@ -339,7 +339,17 @@ fn fri06_c01_invalidation_legacy_compute_is_empty_dirty_set() {
     let explicit = compute_layout_invalidated(&tree, 0, invalidation_request(), &[])
         .expect("empty invalidation computes");
 
-    assert_eq!(legacy, explicit);
+    assert_eq!(legacy.unrounded_entries(), explicit.unrounded_entries());
+    assert_eq!(legacy.final_entries(), explicit.final_entries());
+    assert_eq!(legacy.unrounded_inline_fragments().len(), 0);
+    assert_eq!(explicit.unrounded_inline_fragments().len(), 0);
+    assert_eq!(legacy.final_inline_fragments().len(), 0);
+    assert_eq!(explicit.final_inline_fragments().len(), 0);
+    assert_eq!(legacy.cache_store_entries(), explicit.cache_store_entries());
+    assert_eq!(legacy.cache_clear_entries(), explicit.cache_clear_entries());
+    assert!(legacy.placed_text().is_empty());
+    assert!(explicit.placed_text().is_empty());
+    assert_eq!(legacy.invalidated_nodes(), explicit.invalidated_nodes());
     assert!(legacy.invalidated_nodes().is_empty());
 }
 
@@ -361,9 +371,9 @@ fn fri06_c01_invalidation_layout_failure_preserves_cache_and_dirty_subjects() {
 
     assert_eq!(error.site(), LayoutErrorSite::Node(4));
     assert_eq!(error.operation(), LayoutOperation::LeafMeasurement);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKind::Measurement("dirty measurement failed")
+        &LayoutErrorKind::Measurement("dirty measurement failed"),
     );
     assert_eq!(*tree.caches.borrow(), caches_before);
     assert_eq!(dirty, vec![4]);
@@ -448,7 +458,9 @@ impl LayoutBatchSink<u32, Scalar> for TransactionSink {
         }
         self.unrounded_fragments.clear();
         for entry in prepared.unrounded_fragments {
-            let node = entry.node();
+            let crate::InlineFragmentOwner::Node(node) = *entry.owner() else {
+                panic!("transaction fixture uses node ownership")
+            };
             self.unrounded_fragments.push(entry);
             self.mutations
                 .borrow_mut()
@@ -456,7 +468,9 @@ impl LayoutBatchSink<u32, Scalar> for TransactionSink {
         }
         self.final_fragments.clear();
         for entry in prepared.final_fragments {
-            let node = entry.node();
+            let crate::InlineFragmentOwner::Node(node) = *entry.owner() else {
+                panic!("transaction fixture uses node ownership")
+            };
             self.final_fragments.push(entry);
             self.mutations
                 .borrow_mut()
@@ -479,12 +493,10 @@ impl LayoutBatchSink<u32, Scalar> for TransactionSink {
 
 fn transaction_batch() -> CompletedLayoutBatch<u32> {
     let fragment = InlineFragmentOutput::new(
-        InlineSegmentId::new(7),
-        ScrollRect::try_new(Point::new(1.0, 2.0), Size::new(3.0, 4.0)).unwrap(),
+        crate::test_support::text_fragment::fragment(),
+        Some(ScrollRect::try_new(Point::new(1.0, 2.0), Size::new(3.0, 4.0)).unwrap()),
         Point::new(1.0, 5.0),
         0,
-        0,
-        None,
     );
     let input = ComputeInput::root_layout(
         Size::NONE,
@@ -498,8 +510,14 @@ fn transaction_batch() -> CompletedLayoutBatch<u32> {
     CompletedLayoutBatch::from_entries(
         vec![LayoutOutputEntry::new(1, NodeOutput::new())],
         vec![LayoutOutputEntry::new(1, NodeOutput::new())],
-        vec![InlineFragmentOutputEntry::new(1, fragment)],
-        vec![InlineFragmentOutputEntry::new(1, fragment)],
+        vec![InlineFragmentOutputEntry::new(
+            crate::InlineFragmentOwner::Node(1),
+            fragment.clone(),
+        )],
+        vec![InlineFragmentOutputEntry::new(
+            crate::InlineFragmentOwner::Node(1),
+            fragment,
+        )],
         vec![
             LayoutCacheStoreEntry::new(
                 1,

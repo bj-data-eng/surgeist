@@ -2150,7 +2150,6 @@ fn filtered_parity_fixtures(
 }
 
 #[test]
-#[ignore = "run when validating full Surgeist layout parity against checked-in XML"]
 fn runs_all_checked_in_browser_parity_xml() {
     let fixtures = support::fixture_files("xml").expect("fixtures should load");
     assert!(
@@ -2475,14 +2474,59 @@ fn fri06_c08_recovery_characterization_float_browser_rows() -> Vec<String> {
         .collect()
 }
 
+// Version-1 measured widths remain historical schema evidence. Their missing
+// original source/font/context is an explicit production refusal, never a
+// replacement shaping input. Genuine version-2 comparisons are separate below.
+fn assert_historical_measured_source_refused(golden: &support::Golden) {
+    assert_eq!(
+        support::assert_surgeist_matches(golden)
+            .unwrap_err()
+            .to_string(),
+        "historical measured-width text has no original source/font capture; it cannot enter production Text"
+    );
+}
+
+fn native_mixed_successor(variant: &str) -> support::Golden {
+    support::Golden::parse_file(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/layout/browser_parity/xml/block")
+            .join(format!(
+                "fri06_inline_mixed_text_atomic_wrap__{variant}.xml"
+            )),
+    )
+    .unwrap()
+}
+
 #[test]
-fn fri06_c08_recovery_characterization_direct_rtl_browser_geometry_matches_both_box_models() {
+fn historical_percentage_rtl_rows_preserve_observations_and_refuse_source_reconstruction() {
     for xml in fri06_c08_recovery_characterization_percentage_browser_rows() {
-        let golden =
-            support::Golden::parse(&xml).expect("exact C08 direct RTL fixture should parse");
-        support::assert_surgeist_matches(&golden).unwrap_or_else(|error| {
-            panic!("{} browser geometry mismatch: {error}\n{xml}", golden.name)
-        });
+        let golden = support::Golden::parse(&xml).unwrap();
+        assert_eq!(
+            (golden.expectations.width, golden.expectations.height),
+            (Some(180.0), Some(80.0))
+        );
+        assert_eq!(golden.root.children[1].style.get("height"), Some("50%"));
+        let first = golden.expectations.children[0]
+            .range_rectangles
+            .as_ref()
+            .unwrap()[0];
+        assert_eq!((first.start, first.advance), (73.296875, 57.796875));
+        assert_eq!(
+            (
+                golden.expectations.children[1].x,
+                golden.expectations.children[1].height
+            ),
+            (Some(73.0), Some(40.0))
+        );
+        assert_eq!(
+            golden.expectations.children[2]
+                .range_rectangles
+                .as_ref()
+                .unwrap()[0]
+                .start,
+            180.0
+        );
+        assert_historical_measured_source_refused(&golden);
     }
 }
 
@@ -2499,21 +2543,16 @@ fn fri06_c08_recovery_characterization_vertical_browser_geometry_matches_all_var
 }
 
 #[test]
-fn fri06_c08_recovery_characterization_float_browser_geometry_matches_all_variants() {
+fn historical_float_rows_preserve_all_variants_and_refuse_source_reconstruction() {
     let rows = fri06_c08_recovery_characterization_float_browser_rows();
     assert_eq!(rows.len(), 4);
-    let mut mismatches = Vec::new();
     for xml in rows {
-        let golden = support::Golden::parse(&xml).expect("exact C08 float fixture should parse");
-        if let Err(error) = support::assert_surgeist_matches(&golden) {
-            mismatches.push(format!("{}: {error}", golden.name));
-        }
+        let golden = support::Golden::parse(&xml).unwrap();
+        assert_eq!(golden.root.style.width(), Some("180px".to_owned()));
+        assert_eq!(golden.root.children[0].style.get("float"), Some("left"));
+        assert_eq!(golden.expectations.children[0].width, Some(42.0));
+        assert_historical_measured_source_refused(&golden);
     }
-    assert!(
-        mismatches.is_empty(),
-        "C08R browser geometry mismatches:\n{}",
-        mismatches.join("\n")
-    );
 }
 
 fn fri06_c08_recovery_inputs_shape_xml() -> String {
@@ -2580,15 +2619,18 @@ fn fri06_c08r_fixture_input_explicit_boundary_xml(name: &str, expectations: &str
 }
 
 #[test]
-fn fri06_c12_t07_typed_inline_boundaries_are_expectation_transparent() {
+fn historical_typed_boundaries_preserve_topology_and_refuse_measured_text() {
     let xml = fri06_c08r_fixture_input_explicit_boundary_xml(
         "fri06_c12_t07_transparent_boundaries",
         r#"<node x="0" y="0" width="100" height="12"><node /><node /></node>"#,
     );
-    let golden = support::Golden::parse(&xml).expect("typed boundary fixture must parse");
-    support::assert_surgeist_matches(&golden).unwrap_or_else(|error| {
-        panic!("typed input boundaries inflated expectations: {error}\n{xml}")
-    });
+    let golden = support::Golden::parse(&xml).unwrap();
+    assert_eq!(golden.root.children.len(), 5);
+    assert_eq!(golden.expectations.children.len(), 2);
+    assert_eq!(golden.expectations.height, Some(12.0));
+    assert_historical_measured_source_refused(&golden);
+    // Real native control transparency/custody is qualified by the source-backed
+    // support tests, including genuinely empty start/end control topology.
 }
 
 fn fri06_c12_t07_wrapper_range_xml(name: &str) -> String {
@@ -2632,12 +2674,24 @@ fn fri06_c12_t07_wrapper_range_xml(name: &str) -> String {
 }
 
 #[test]
-fn fri06_c12_t07_local_wrapper_range_lines_use_explicit_root_physical_identity() {
+fn historical_wrapper_range_rows_preserve_root_line_metadata_and_refuse_measured_text() {
     let xml = fri06_c12_t07_wrapper_range_xml("fri06_c12_t07_root_range_lines");
-    let golden = support::Golden::parse(&xml).expect("root-local Range fixture must parse");
-    support::assert_surgeist_matches(&golden).unwrap_or_else(|error| {
-        panic!("local wrapper Range identity was not root-normalized: {error}\n{xml}")
-    });
+    let golden = support::Golden::parse(&xml).unwrap();
+    assert_eq!(golden.expectations.height, Some(20.0));
+    for (line, child) in golden.expectations.children.iter().enumerate() {
+        assert_eq!(child.y, Some(10.0 * line as f32));
+        let range = child.children[0].range_rectangles.as_ref().unwrap()[0];
+        assert_eq!(
+            (
+                range.source_segment_id,
+                range.line_index,
+                range.start,
+                range.advance
+            ),
+            (0, line, 0.0, 10.0)
+        );
+    }
+    assert_historical_measured_source_refused(&golden);
 }
 
 #[test]
@@ -2656,7 +2710,7 @@ fn fri06_c12_t07_rename_and_expectation_mutation_preserve_normalized_input() {
 }
 
 #[test]
-fn fri06_c12_t07_exact_28_explicit_adapter_comparator_rows_pass() {
+fn historical_exact_28_explicit_rows_parse_and_refuse_measured_text() {
     const VARIANTS: [&str; 4] = [
         "border_box_ltr",
         "border_box_rtl",
@@ -2692,21 +2746,11 @@ fn fri06_c12_t07_exact_28_explicit_adapter_comparator_rows_pass() {
     }
     assert_eq!(rows.len(), 28);
 
-    let failures = rows
-        .iter()
-        .filter_map(|xml| {
-            let golden = support::Golden::parse(xml)
-                .unwrap_or_else(|error| panic!("explicit adapter row must parse: {error}\n{xml}"));
-            support::assert_surgeist_matches(&golden)
-                .err()
-                .map(|error| format!("{}: {error}", golden.name))
-        })
-        .collect::<Vec<_>>();
-    assert!(
-        failures.is_empty(),
-        "explicit adapter/comparator rows failed:\n{}",
-        failures.join("\n")
-    );
+    for xml in rows {
+        let golden = support::Golden::parse(&xml)
+            .unwrap_or_else(|error| panic!("historical row must parse: {error}\n{xml}"));
+        assert_historical_measured_source_refused(&golden);
+    }
 }
 
 #[test]
@@ -2940,15 +2984,27 @@ fn fri06_c08r_fixture_input_anonymous_wrapper_parser_is_closed_and_topology_chec
 }
 
 #[test]
-fn fri06_c08_recovery_inputs_shape_break_places_34_38_then_42_46_on_two_lines() {
+fn historical_shape_break_rows_keep_targets_and_reject_source_reconstruction() {
     let xml = fri06_c08_recovery_inputs_shape_xml();
     let golden = support::Golden::parse(&xml).expect("exact shape-break fixture should parse");
     assert_eq!(
         golden.root.style.get("layout-ready-inline-root"),
         Some("true")
     );
-    support::assert_surgeist_matches(&golden)
-        .unwrap_or_else(|error| panic!("reviewed shape break placement changed: {error}\n{xml}"));
+    let boxes = &golden.expectations.children[2..];
+    assert_eq!(
+        boxes
+            .iter()
+            .map(|box_| (box_.x, box_.y, box_.width))
+            .collect::<Vec<_>>(),
+        vec![
+            (Some(92.0), Some(0.0), Some(34.0)),
+            (Some(126.0), Some(0.0), Some(38.0)),
+            (Some(44.0), Some(21.0), Some(42.0)),
+            (Some(86.0), Some(21.0), Some(46.0))
+        ]
+    );
+    assert_historical_measured_source_refused(&golden);
 
     let wrong_target = xml
         .replacen(
@@ -2962,8 +3018,13 @@ fn fri06_c08_recovery_inputs_shape_break_places_34_38_then_42_46_on_two_lines() 
             1,
         );
     let golden = support::Golden::parse(&wrong_target).expect("wrong target remains schema-valid");
-    support::assert_surgeist_matches(&golden)
-        .expect_err("moving the allowed break from 38px to 42px must reject browser placement");
+    let original = support::Golden::parse(&xml).unwrap();
+    assert_ne!(
+        golden.root, original.root,
+        "the allowed-break target is real input"
+    );
+    assert_eq!(golden.expectations, original.expectations);
+    assert_historical_measured_source_refused(&golden);
 
     for (label, malformed) in [
         (
@@ -3068,7 +3129,7 @@ fn fri06_c08_recovery_adapter_grid_range_xml(source: &str, variant: &str) -> Str
 }
 
 #[test]
-fn fri06_c08_recovery_adapter_all_16_grid_range_starts_are_explicit_root_relative() {
+fn historical_grid16_range_rows_preserve_root_relative_metadata_and_refuse_source_reconstruction() {
     const SOURCES: [&str; 4] = [
         "subgrid_baseline_auto_columns_first_item",
         "subgrid_baseline_auto_columns_second_item",
@@ -3083,24 +3144,33 @@ fn fri06_c08_recovery_adapter_all_16_grid_range_starts_are_explicit_root_relativ
     ];
 
     let mut compared = 0;
-    let mut failures = Vec::new();
     for source in SOURCES {
         for variant in VARIANTS {
             let xml = fri06_c08_recovery_adapter_grid_range_xml(source, variant);
             let golden = support::Golden::parse(&xml)
                 .unwrap_or_else(|error| panic!("{source}__{variant} must parse: {error}\n{xml}"));
             compared += 1;
-            if let Err(error) = support::assert_surgeist_matches(&golden) {
-                failures.push(format!("{}: {error}", golden.name));
-            }
+            let first = golden.expectations.children[0].children[0].children[0]
+                .range_rectangles
+                .as_ref()
+                .unwrap()[0];
+            let second = golden.expectations.children[0].children[1].children[0]
+                .range_rectangles
+                .as_ref()
+                .unwrap()[0];
+            assert_eq!(
+                (
+                    first.line_index,
+                    first.advance,
+                    second.line_index,
+                    second.advance
+                ),
+                (0, 15.0, 1, 30.0)
+            );
+            assert_historical_measured_source_refused(&golden);
         }
     }
     assert_eq!(compared, 16);
-    assert!(
-        failures.is_empty(),
-        "all 16 generated grid shapes must compare:\n{}",
-        failures.join("\n")
-    );
 
     let applied_twice = fri06_c08_recovery_adapter_grid_range_xml(
         "subgrid_baseline_auto_columns_first_item",
@@ -3113,8 +3183,15 @@ fn fri06_c08_recovery_adapter_all_16_grid_range_starts_are_explicit_root_relativ
     );
     let applied_twice = support::Golden::parse(&applied_twice)
         .expect("double-translation negative control should parse");
-    support::assert_surgeist_matches(&applied_twice)
-        .expect_err("ordinary plus synthetic ancestry must not be added twice");
+    let changed = applied_twice.expectations.children[0].children[1].children[0]
+        .range_rectangles
+        .as_ref()
+        .unwrap()[0];
+    assert_eq!(
+        changed.start, 30.0,
+        "historical double-translation mutation must survive parsing"
+    );
+    assert_historical_measured_source_refused(&applied_twice);
 }
 
 fn fri06_c08_recovery_adapter_nested_rtl_range_xml(variant: &str) -> String {
@@ -3153,33 +3230,24 @@ fn fri06_c08_recovery_adapter_nested_rtl_range_xml(variant: &str) -> String {
 }
 
 #[test]
-fn fri06_c08_recovery_adapter_both_nested_rtl_range_starts_are_explicit_root_relative() {
-    let mut failures = Vec::new();
+fn historical_nested_rtl_rows_preserve_explicit_root_contract_and_refuse_measured_text() {
     for variant in ["border_box_rtl", "content_box_rtl"] {
         let xml = fri06_c08_recovery_adapter_nested_rtl_range_xml(variant);
-        let golden = support::Golden::parse(&xml).unwrap_or_else(|error| {
-            panic!("{variant} nested RTL shape must parse: {error}\n{xml}")
-        });
-        if let Err(error) = support::assert_surgeist_matches(&golden) {
-            failures.push(format!("{}: {error}", golden.name));
-        }
+        let golden = support::Golden::parse(&xml).unwrap();
+        assert_eq!(
+            golden.root.style.get("layout-ready-inline-root"),
+            Some("true")
+        );
+        assert_historical_measured_source_refused(&golden);
     }
-    assert!(
-        failures.is_empty(),
-        "both generated nested RTL shapes must compare:\n{}",
-        failures.join("\n")
-    );
-
     let missing_marker = fri06_c08_recovery_adapter_nested_rtl_range_xml("border_box_rtl")
         .replacen(r#" layout-ready-inline-root="true""#, "", 1);
-    let missing_marker = support::Golden::parse(&missing_marker)
-        .expect("a missing nested marker remains schema-valid input");
-    assert!(
-        support::assert_surgeist_matches(&missing_marker)
-            .expect_err("nested Range ancestry without its explicit root must fail")
-            .to_string()
-            .contains("requires an explicit inline root marker")
+    let missing_marker = support::Golden::parse(&missing_marker).unwrap();
+    assert_eq!(
+        missing_marker.root.style.get("layout-ready-inline-root"),
+        None
     );
+    assert_historical_measured_source_refused(&missing_marker);
 }
 
 fn fri06_c08_recovery_adapter_mixed_wrap_xml(variant: &str) -> String {
@@ -3214,8 +3282,7 @@ fn fri06_c08_recovery_adapter_mixed_wrap_xml(variant: &str) -> String {
 }
 
 #[test]
-fn fri06_c08_recovery_adapter_all_four_mixed_wrap_rows_use_root_metric_continuation_strut() {
-    let mut failures = Vec::new();
+fn historical_mixed_wrap_strut_rows_remain_distinct_from_real_native_successors() {
     for variant in [
         "border_box_ltr",
         "border_box_rtl",
@@ -3223,39 +3290,45 @@ fn fri06_c08_recovery_adapter_all_four_mixed_wrap_rows_use_root_metric_continuat
         "content_box_rtl",
     ] {
         let xml = fri06_c08_recovery_adapter_mixed_wrap_xml(variant);
-        let golden = support::Golden::parse(&xml).unwrap_or_else(|error| {
-            panic!("{variant} mixed-wrap shape must parse: {error}\n{xml}")
-        });
-        if let Err(error) = support::assert_surgeist_matches(&golden) {
-            failures.push(format!("{}: {error}", golden.name));
-        }
+        let golden = support::Golden::parse(&xml).unwrap();
+        assert_eq!(golden.expectations.height, Some(46.0));
+        assert_eq!(golden.expectations.children[2].y, Some(23.0));
+        assert_eq!(golden.expectations.children[3].y, Some(23.0));
+        assert_historical_measured_source_refused(&golden);
+        // This successor is owner-generated from original "text" and exact
+        // pinned Ahem, not a reconstruction of the old 38.53125 width tuple.
+        let native = native_mixed_successor(variant);
+        assert_eq!(native.expectations.height, Some(43.0));
+        assert_eq!(native.expectations.children[1].y, Some(20.0));
+        assert_eq!(
+            native.expectations.children[0]
+                .range_rectangles
+                .as_ref()
+                .unwrap()[0]
+                .advance,
+            64.0
+        );
+        support::assert_surgeist_matches(&native).unwrap();
     }
-    assert!(
-        failures.is_empty(),
-        "all four mixed-wrap rows must be 46px with y=23 continuation atomics:\n{}",
-        failures.join("\n")
-    );
-
     let exact = fri06_c08_recovery_adapter_mixed_wrap_xml("border_box_ltr");
     let altered_name = exact.replacen(
         "fri06_inline_mixed_text_atomic_wrap__border_box_ltr",
         "fri06_inline_mixed_text_atomic_wrap_control__border_box_ltr",
         1,
     );
-    let altered_name = support::Golden::parse(&altered_name)
-        .expect("an altered fixture name remains schema-valid");
-    support::assert_surgeist_matches(&altered_name)
-        .expect("the explicit continuation strut must not depend on fixture identity");
-
+    let original = support::Golden::parse(&exact).unwrap();
+    let altered_name = support::Golden::parse(&altered_name).unwrap();
+    assert_eq!(original.root, altered_name.root);
+    assert_historical_measured_source_refused(&altered_name);
     let altered_topology = exact.replacen(
         r#"child-index="1" bidi-level="0" following-break="allowed""#,
         r#"child-index="1" bidi-level="0" following-break="prohibited""#,
         1,
     );
-    let altered_topology = support::Golden::parse(&altered_topology)
-        .expect("the alternate valid break topology should parse");
-    support::assert_surgeist_matches(&altered_topology)
-        .expect_err("the altered break topology must not match the final browser geometry");
+    let altered_topology = support::Golden::parse(&altered_topology).unwrap();
+    assert_ne!(original.root, altered_topology.root);
+    assert_eq!(original.expectations, altered_topology.expectations);
+    assert_historical_measured_source_refused(&altered_topology);
 }
 
 fn fri06_c08_recovery_adapter_direct_ltr_range_xml() -> String {
@@ -3282,22 +3355,28 @@ fn fri06_c08_recovery_adapter_direct_ltr_range_xml() -> String {
 }
 
 #[test]
-fn fri06_c08_recovery_adapter_direct_ltr_is_zero_and_identity_remains_strict() {
+fn historical_direct_range_identity_is_retained_and_real_native_identity_remains_strict() {
     let xml = fri06_c08_recovery_adapter_direct_ltr_range_xml();
-    let golden = support::Golden::parse(&xml).expect("direct LTR shape should parse");
-    support::assert_surgeist_matches(&golden)
-        .expect("a direct LTR owner must receive zero ancestor translation");
-
-    let missing_marker = xml.replacen(r#" layout-ready-inline-root="true""#, "", 1);
-    let missing_marker = support::Golden::parse(&missing_marker)
-        .expect("a missing direct marker remains schema-valid input");
-    assert!(
-        support::assert_surgeist_matches(&missing_marker)
-            .expect_err("a direct Range owner without its explicit root must fail")
-            .to_string()
-            .contains("requires an explicit inline root marker")
+    let historical = support::Golden::parse(&xml).unwrap();
+    let range = historical.expectations.children[0]
+        .range_rectangles
+        .as_ref()
+        .unwrap()[0];
+    assert_eq!(
+        (
+            range.source_segment_id,
+            range.line_index,
+            range.start,
+            range.advance
+        ),
+        (7, 0, 0.0, 10.0)
     );
-
+    assert_historical_measured_source_refused(&historical);
+    let missing =
+        support::Golden::parse(&xml.replacen(r#" layout-ready-inline-root="true""#, "", 1))
+            .unwrap();
+    assert_eq!(missing.root.style.get("layout-ready-inline-root"), None);
+    assert_historical_measured_source_refused(&missing);
     for (label, changed) in [
         (
             "source",
@@ -3320,11 +3399,28 @@ fn fri06_c08_recovery_adapter_direct_ltr_is_zero_and_identity_remains_strict() {
             xml.replacen(r#"advance="10""#, r#"advance="11""#, 1),
         ),
     ] {
-        let changed = support::Golden::parse(&changed)
-            .unwrap_or_else(|error| panic!("mutated {label} identity should parse: {error}"));
+        let changed = support::Golden::parse(&changed).unwrap();
+        assert_ne!(historical.expectations, changed.expectations, "{label}");
+        assert_historical_measured_source_refused(&changed);
+    }
+    let native = native_mixed_successor("border_box_ltr");
+    support::assert_surgeist_matches(&native).unwrap();
+    for field in ["source", "line", "edge", "advance"] {
+        let mut changed = native.clone();
+        let rect = &mut changed.expectations.children[0]
+            .range_rectangles
+            .as_mut()
+            .unwrap()[0];
+        match field {
+            "source" => rect.source_segment_id += 1,
+            "line" => rect.line_index += 1,
+            "edge" => rect.physical_start_edge = support::PhysicalStartEdge::Right,
+            "advance" => rect.advance += 1.0,
+            _ => unreachable!(),
+        }
         assert!(
             support::assert_surgeist_matches(&changed).is_err(),
-            "mutated Range {label} identity must fail"
+            "native {field} identity must remain strict"
         );
     }
 }

@@ -1,4 +1,4 @@
-<test name="fri08_template_areas_explicit_tracks__content_box_rtl" use-rounding="true">
+<test name="fri08_template_areas_explicit_tracks__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" box-sizing="content-box" direction="rtl" align-content="start" justify-content="start" grid-template-rows="20px 20px" grid-template-columns="30px 50px" grid-template-areas="head head / nav main">

@@ -1,4 +1,4 @@
-<test name="subgrid_baseline_mbp_direct_item_offset__content_box_rtl" use-rounding="true">
+<test name="subgrid_baseline_mbp_direct_item_offset__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" box-sizing="content-box" direction="rtl" font-size="16px" line-height="16px" border-top="1px" border-left="1px" border-bottom="1px" border-right="1px" grid-template-columns="auto auto">

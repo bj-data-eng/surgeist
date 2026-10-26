@@ -9,6 +9,33 @@ use std::vec::Vec;
 /// Type alias for a bidirectional level.
 pub(crate) type BidiLevel = u8;
 
+/// P2/P3 eligibility, retaining isolate prefix state across a body scan.
+pub(crate) struct EligibleStrong {
+    isolates: usize,
+}
+
+impl EligibleStrong {
+    pub(crate) fn new() -> Self {
+        Self { isolates: 0 }
+    }
+
+    pub(crate) fn advance(&mut self, ty: BidiClass) -> Option<BidiLevel> {
+        match ty {
+            BidiClass::RightToLeftIsolate
+            | BidiClass::LeftToRightIsolate
+            | BidiClass::FirstStrongIsolate => self.isolates += 1,
+            BidiClass::PopDirectionalIsolate => self.isolates = self.isolates.saturating_sub(1),
+            BidiClass::LeftToRight | BidiClass::RightToLeft | BidiClass::ArabicLetter
+                if self.isolates == 0 =>
+            {
+                return Some(if ty == BidiClass::LeftToRight { 0 } else { 1 });
+            }
+            _ => {}
+        }
+        None
+    }
+}
+
 /// Resolver for the Unicode bidirectional algorithm.
 #[derive(Clone, Default)]
 pub(crate) struct BidiResolver {
@@ -37,11 +64,6 @@ impl BidiResolver {
             indices: Vec::new(),
             flags: 0,
         }
-    }
-
-    /// Returns the base level of the text.
-    pub(crate) fn base_level(&self) -> u8 {
-        self.base_level
     }
 
     /// Returns the sequence of bidi levels corresponding to all characters in the
@@ -83,7 +105,7 @@ impl BidiResolver {
         }
         self.base_level = match base_level {
             Some(level) => level & 1,
-            _ => Self::default_level(&self.initial_types),
+            _ => Self::default_level(self.initial_types.iter().copied()),
         };
         if !needs_bidi && self.base_level == 0 {
             self.flags |= 1;
@@ -162,49 +184,20 @@ impl BidiResolver {
         }
     }
 
-    fn default_level(types: &[BidiClass]) -> u8 {
-        let mut isolates: usize = 0;
-        for ty in types {
-            let ty = *ty;
-            match ty {
-                BidiClass::RightToLeftIsolate
-                | BidiClass::LeftToRightIsolate
-                | BidiClass::FirstStrongIsolate => isolates += 1,
-                BidiClass::PopDirectionalIsolate => {
-                    isolates = isolates.saturating_sub(1);
-                }
-                BidiClass::LeftToRight | BidiClass::RightToLeft | BidiClass::ArabicLetter
-                    if isolates == 0 =>
-                {
-                    return if ty == BidiClass::LeftToRight { 0 } else { 1 };
-                }
-                _ => {}
-            }
-        }
-        0
+    pub(crate) fn default_level(mut types: impl Iterator<Item = BidiClass>) -> u8 {
+        let mut scanner = EligibleStrong::new();
+        types.find_map(|ty| scanner.advance(ty)).unwrap_or(0)
     }
 
     fn default_level_until_pdi(types: &[BidiClass]) -> u8 {
-        let mut isolates: usize = 0;
+        let mut scanner = EligibleStrong::new();
         for ty in types {
             let ty = *ty;
-            match ty {
-                BidiClass::RightToLeftIsolate
-                | BidiClass::LeftToRightIsolate
-                | BidiClass::FirstStrongIsolate => isolates += 1,
-                BidiClass::PopDirectionalIsolate => {
-                    if isolates > 0 {
-                        isolates -= 1;
-                    } else {
-                        return 0;
-                    }
-                }
-                BidiClass::LeftToRight | BidiClass::RightToLeft | BidiClass::ArabicLetter
-                    if isolates == 0 =>
-                {
-                    return if ty == BidiClass::LeftToRight { 0 } else { 1 };
-                }
-                _ => {}
+            if ty == BidiClass::PopDirectionalIsolate && scanner.isolates == 0 {
+                return 0;
+            }
+            if let Some(level) = scanner.advance(ty) {
+                return level;
             }
         }
         0
@@ -842,4 +835,63 @@ impl BracketStack {
 
 const fn mask(t: BidiClass) -> u32 {
     1 << (t.to_icu4c_value() as u32)
+}
+
+/// Canonical selected-line L1 roles, also used inside an indication's local UBA.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) enum LineReset {
+    Removed,
+    White,
+    Separator,
+    Other,
+}
+impl LineReset {
+    pub(crate) fn from_class(class: BidiClass) -> Self {
+        match class {
+            BidiClass::ParagraphSeparator | BidiClass::SegmentSeparator => Self::Separator,
+            BidiClass::WhiteSpace
+            | BidiClass::LeftToRightIsolate
+            | BidiClass::RightToLeftIsolate
+            | BidiClass::FirstStrongIsolate
+            | BidiClass::PopDirectionalIsolate => Self::White,
+            BidiClass::LeftToRightEmbedding
+            | BidiClass::RightToLeftEmbedding
+            | BidiClass::LeftToRightOverride
+            | BidiClass::RightToLeftOverride
+            | BidiClass::PopDirectionalFormat
+            | BidiClass::BoundaryNeutral => Self::Removed,
+            _ => Self::Other,
+        }
+    }
+    pub(crate) fn combine(self, next: Self) -> Self {
+        match (self, next) {
+            (Self::Separator, _) | (_, Self::Separator) => Self::Separator,
+            (Self::Other, _) | (_, Self::Other) => Self::Other,
+            (Self::White, _) | (_, Self::White) => Self::White,
+            _ => Self::Removed,
+        }
+    }
+}
+pub(crate) fn reset_line_levels(levels: &mut [u8], roles: &[LineReset], base: u8) {
+    debug_assert_eq!(levels.len(), roles.len());
+    for i in 0..levels.len() {
+        if roles[i] != LineReset::Separator {
+            continue;
+        }
+        levels[i] = base;
+        for j in (0..i).rev() {
+            match roles[j] {
+                LineReset::Removed => continue,
+                LineReset::White => levels[j] = base,
+                _ => break,
+            }
+        }
+    }
+    for i in (0..levels.len()).rev() {
+        match roles[i] {
+            LineReset::Removed => continue,
+            LineReset::White => levels[i] = base,
+            _ => break,
+        }
+    }
 }

@@ -2,29 +2,29 @@ use super::support::{
     AHEM_FONT_BYTES, AHEM_GLYPH_X, default_graph_working_format_for_test, pixel_rgba,
 };
 use crate::{
-    Capabilities, Color, FontData, Gradient, GradientStop, Image, ImageQuality, Options,
-    OutlineLimits, OutlineSynthesis, Parameters, Point, PreparedOutline, Rect, RenderRoute,
-    Renderer, Scene, Shape, Size, TextGlyph, TextInstance, TextPaint, Transform,
+    Capabilities, Color, FontData, GlyphRunLimits, GlyphSynthesis, Gradient, GradientStop, Image,
+    ImageQuality, Options, Parameters, Point, PreparedGlyphRun, Rect, RenderRoute, Renderer, Scene,
+    Shape, Size, TextGlyph, TextInstance, TextPaint, Transform,
     command::RenderCommand,
     encode::encode_vello_scene_with_initial_transform,
     vello_engine::scene::{VelloFillRuleObservationForTest, VelloPathElementObservationForTest},
 };
 
-fn overlapping_outline() -> PreparedOutline {
+fn overlapping_outline() -> PreparedGlyphRun {
     let font = FontData::try_from_bytes(AHEM_FONT_BYTES.to_vec(), 0).unwrap();
-    let instance = TextInstance::try_new(1000.0, vec![], OutlineSynthesis::none()).unwrap();
+    let instance = TextInstance::try_new(1000.0, vec![], GlyphSynthesis::none()).unwrap();
     let glyph = TextGlyph::try_new(AHEM_GLYPH_X, 0.0, 800.0, -10.0).unwrap();
-    font.prepare_outline(
+    font.prepare_glyph_run(
         &instance,
         &[glyph, glyph],
-        OutlineLimits::new(2, 16, 1 << 20, 1 << 20),
+        GlyphRunLimits::new(2, 16, 1 << 20, 1 << 20),
     )
     .unwrap()
 }
 
 // An actual static composite X repeats the original A contour twice. No source
 // point flattening: the production qualifier/provider must traverse both records.
-fn overlapping_composite_outline() -> PreparedOutline {
+fn overlapping_composite_outline() -> PreparedGlyphRun {
     fn u16_at(bytes: &[u8], at: usize) -> u16 {
         u16::from_be_bytes(bytes[at..at + 2].try_into().unwrap())
     }
@@ -83,13 +83,13 @@ fn overlapping_composite_outline() -> PreparedOutline {
         bytes.extend_from_slice(data);
     }
     let font = FontData::try_from_bytes(bytes, 0).unwrap();
-    let instance = TextInstance::try_new(1000.0, vec![], OutlineSynthesis::none()).unwrap();
+    let instance = TextInstance::try_new(1000.0, vec![], GlyphSynthesis::none()).unwrap();
     let glyph = TextGlyph::try_new(AHEM_GLYPH_X, 0.0, 800.0, -10.0).unwrap();
     let result = font
-        .prepare_outline(
+        .prepare_glyph_run(
             &instance,
             &[glyph],
-            OutlineLimits::new(1, 16, 1 << 20, 1 << 20),
+            GlyphRunLimits::new(1, 16, 1 << 20, 1 << 20),
         )
         .unwrap();
     assert_eq!(result.glyphs(), [glyph]);
@@ -98,18 +98,18 @@ fn overlapping_composite_outline() -> PreparedOutline {
 }
 
 #[test]
-fn prepared_outline_normalization_and_encoder_share_one_real_run_wide_nonzero_draw() {
+fn prepared_glyph_run_normalization_and_encoder_share_one_real_run_wide_nonzero_draw() {
     let outline = overlapping_outline();
     let transform = Transform::translation(7.0, -3.0).unwrap();
     let mut scene = Scene::new();
-    scene.prepared_outline(
+    scene.prepared_glyph_run(
         outline.clone(),
         transform,
         TextPaint::try_fill(Color::try_rgba(1.0, 0.0, 0.0, 0.5).unwrap().into()).unwrap(),
     );
     let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
-    let RenderCommand::PreparedOutline {
-        outline: actual,
+    let RenderCommand::PreparedGlyphRun {
+        run: actual,
         transform: actual_transform,
         ..
     } = &normalized.commands[0]
@@ -137,13 +137,13 @@ fn prepared_outline_normalization_and_encoder_share_one_real_run_wide_nonzero_dr
 }
 
 #[test]
-fn prepared_outline_backend_placement_refuses_before_any_frame_output() {
+fn prepared_glyph_run_backend_placement_refuses_before_any_frame_output() {
     for transform in [
         Transform::scale(f64::MAX, 1.0).unwrap(),
         Transform::translation(1e30, 0.0).unwrap(),
     ] {
         let mut scene = Scene::new();
-        scene.prepared_outline(
+        scene.prepared_glyph_run(
             overlapping_outline(),
             transform,
             TextPaint::try_fill(Color::BLACK.into()).unwrap(),
@@ -155,15 +155,15 @@ fn prepared_outline_backend_placement_refuses_before_any_frame_output() {
                 Err(error) => error,
             };
         assert!(matches!(
-            error.outline_preparation_diagnostic(),
-            Some(crate::OutlinePreparationError::Numeric {
-                phase: crate::OutlineNumericPhase::Placement,
+            error.glyph_preparation_diagnostic(),
+            Some(crate::GlyphPreparationError::Numeric {
+                phase: crate::GlyphNumericPhase::Placement,
                 ..
             })
         ));
     }
     let mut singular = Scene::new();
-    singular.prepared_outline(
+    singular.prepared_glyph_run(
         overlapping_outline(),
         Transform::scale(0.0, 0.0).unwrap(),
         TextPaint::try_fill(Color::BLACK.into()).unwrap(),
@@ -178,7 +178,7 @@ fn prepared_outline_backend_placement_refuses_before_any_frame_output() {
 }
 
 #[test]
-fn prepared_outline_real_gpu_direct_and_graph_keep_overlapping_translucent_glyphs_one_fill() {
+fn prepared_glyph_run_real_gpu_direct_and_graph_keep_overlapping_translucent_glyphs_one_fill() {
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let working_format = default_graph_working_format_for_test(&mut renderer);
     let mut surface =
@@ -195,7 +195,7 @@ fn prepared_outline_real_gpu_direct_and_graph_keep_overlapping_translucent_glyph
         let paint =
             TextPaint::try_fill(Color::try_rgba(1.0, 0.0, 0.0, 0.5).unwrap().into()).unwrap();
         let draw = |scene: &mut Scene| {
-            scene.prepared_outline(
+            scene.prepared_glyph_run(
                 outline.clone(),
                 Transform::scale(0.002, 0.002).unwrap(),
                 paint,
@@ -234,16 +234,16 @@ fn prepared_outline_real_gpu_direct_and_graph_keep_overlapping_translucent_glyph
 }
 
 #[test]
-fn prepared_outline_real_gpu_color_gradient_and_image_keep_run_local_paint_space() {
+fn prepared_glyph_run_real_gpu_color_gradient_and_image_keep_run_local_paint_space() {
     let font = FontData::try_from_bytes(AHEM_FONT_BYTES.to_vec(), 0).unwrap();
     let outline = font
-        .prepare_outline(
-            &TextInstance::try_new(1.0, vec![], OutlineSynthesis::none()).unwrap(),
+        .prepare_glyph_run(
+            &TextInstance::try_new(1.0, vec![], GlyphSynthesis::none()).unwrap(),
             &[
                 TextGlyph::try_new(AHEM_GLYPH_X, 0.0, 0.8, 1.0).unwrap(),
                 TextGlyph::try_new(AHEM_GLYPH_X, 2.0, 0.8, 1.0).unwrap(),
             ],
-            OutlineLimits::new(2, 16, 1 << 20, 1 << 20),
+            GlyphRunLimits::new(2, 16, 1 << 20, 1 << 20),
         )
         .unwrap();
     let red = Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap();
@@ -276,7 +276,7 @@ fn prepared_outline_real_gpu_color_gradient_and_image_keep_run_local_paint_space
         for graph in [false, true] {
             let mut scene = Scene::new();
             let draw = |scene: &mut Scene| {
-                scene.prepared_outline(
+                scene.prepared_glyph_run(
                     outline.clone(),
                     Transform::try_new([2.0, 0.0, 0.0, 1.0, 1.0, 0.0]).unwrap(),
                     paint.clone(),
@@ -343,15 +343,15 @@ fn bold_contour_copies_are_one_nonzero_fill_on_direct_and_base_graph_routes() {
             let instance = TextInstance::try_new(
                 plain.instance().size(),
                 plain.instance().coordinates().to_vec(),
-                OutlineSynthesis::try_new(0.0, plain.instance().size() / 36.0_f32).unwrap(),
+                GlyphSynthesis::try_new(0.0, plain.instance().size() / 36.0_f32).unwrap(),
             )
             .unwrap();
             let prepared = plain
                 .font()
-                .prepare_outline(
+                .prepare_glyph_run(
                     &instance,
                     plain.glyphs(),
-                    OutlineLimits::new(2, 32, 1 << 20, 1 << 20),
+                    GlyphRunLimits::new(2, 32, 1 << 20, 1 << 20),
                 )
                 .unwrap();
             assert_eq!(prepared.path_elements().count(), 20);
@@ -373,7 +373,7 @@ fn bold_contour_copies_are_one_nonzero_fill_on_direct_and_base_graph_routes() {
                 Shape::rect(Rect::new(0.0, 0.0, 2.0, 2.0)),
                 Color::try_rgba(1.0, 1.0, 1.0, 1.0).unwrap(),
             );
-            scene.prepared_outline(
+            scene.prepared_glyph_run(
                 outline.clone(),
                 Transform::scale(0.002, 0.002).unwrap(),
                 TextPaint::try_fill(Color::try_rgba(1.0, 0.0, 0.0, 0.5).unwrap().into()).unwrap(),
@@ -430,7 +430,7 @@ fn bold_contour_copies_are_one_nonzero_fill_on_direct_and_base_graph_routes() {
 fn any_absorbed_bold_point_refuses_even_when_other_copy_points_move() {
     let font = FontData::try_from_bytes(AHEM_FONT_BYTES.to_vec(), 0).unwrap();
     let instance =
-        TextInstance::try_new(36.0, vec![], OutlineSynthesis::try_new(0.0, 1.0).unwrap()).unwrap();
+        TextInstance::try_new(36.0, vec![], GlyphSynthesis::try_new(0.0, 1.0).unwrap()).unwrap();
     // Exact IEEE ties-to-even facts isolate partial copy loss: the left point
     // moves, but the right original/copy both round to33554464.
     assert_ne!(33_554_426.0_f64 as f32, 33_554_427.0_f64 as f32);
@@ -440,16 +440,16 @@ fn any_absorbed_bold_point_refuses_even_when_other_copy_points_move() {
         TextGlyph::try_new(AHEM_GLYPH_X, 33_554_426.0, 0.0, 0.0).unwrap(),
     ];
     let error = font
-        .prepare_outline(
+        .prepare_glyph_run(
             &instance,
             &glyphs,
-            OutlineLimits::new(2, 20, 1 << 20, 1 << 20),
+            GlyphRunLimits::new(2, 20, 1 << 20, 1 << 20),
         )
         .unwrap_err();
     assert!(matches!(
-        error.outline_preparation_diagnostic(),
-        Some(crate::OutlinePreparationError::Numeric {
-            phase: crate::OutlineNumericPhase::Synthesis,
+        error.glyph_preparation_diagnostic(),
+        Some(crate::GlyphPreparationError::Numeric {
+            phase: crate::GlyphNumericPhase::Synthesis,
             value: 1.0,
         })
     ));

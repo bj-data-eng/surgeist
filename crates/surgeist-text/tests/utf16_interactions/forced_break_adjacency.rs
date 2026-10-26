@@ -17,6 +17,16 @@ fn prepare_paragraph(
     transparent_chain: bool,
     white_space: WhiteSpace,
 ) -> PreparedText {
+    prepare_paragraph_at(text, kinds, transparent_chain, white_space, 0)
+}
+
+fn prepare_paragraph_at(
+    text: &str,
+    kinds: &[ParagraphControlKind],
+    transparent_chain: bool,
+    white_space: WhiteSpace,
+    control_at: usize,
+) -> PreparedText {
     let mut source = Source::identified(text, SOURCE_ID, SOURCE_REVISION);
     source.inline_box(InlineBox::new(
         Id::from_u64(40),
@@ -46,6 +56,8 @@ fn prepare_paragraph(
     }));
     let length = source.text().len();
     let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        tab_reference: None,
         source: source.clone(),
         base_style: Style {
             white_space,
@@ -56,6 +68,7 @@ fn prepare_paragraph(
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![ParagraphOrigin {
+            text_node: None,
             source: source.clone(),
             local: Range::new(0, length),
             aggregate: Range::new(0, length),
@@ -64,8 +77,11 @@ fn prepare_paragraph(
         connections: Vec::new(),
         controls: kinds
             .iter()
-            .copied()
-            .map(|kind| ParagraphControl { at: 0, kind })
+            .cloned()
+            .map(|kind| ParagraphControl {
+                at: control_at,
+                kind,
+            })
             .collect(),
         boundary_policies: [
             ParagraphBoundaryDefinition::AtomicBefore(0),
@@ -83,15 +99,15 @@ fn prepare_paragraph(
             .enumerate()
             .filter_map(|(control, kind)| {
                 matches!(kind, ParagraphControlKind::DiscretionaryBreak { .. }).then_some(
-                    ParagraphReplacement {
-                        definition: ParagraphReplacementDefinition::Control {
+                    ParagraphReplacement::resolved_native_logical_before(
+                        ParagraphReplacementDefinition::Control {
                             control,
                             origin: None,
                         },
-                        insertion_anchor: 0,
-                        style_anchor: 0,
-                        text: Text::from("-"),
-                    },
+                        control_at,
+                        vec![Text::from("-")],
+                    )
+                    .unwrap(),
                 )
             })
             .collect(),
@@ -124,14 +140,14 @@ fn prepare_paragraph(
     assert_eq!(
         prepared
             .control_views()
-            .map(|control| control.kind())
+            .map(|control| control.kind().clone())
             .collect::<Vec<_>>(),
         kinds
     );
     let controls: Vec<_> = prepared
         .control_views()
         .map(|control| {
-            assert_eq!(control.source_position().get(), 0);
+            assert_eq!(control.source_position().get(), control_at);
             let handle = control.handle();
             assert_eq!(handle.prepared_text(), prepared);
             handle
@@ -173,7 +189,7 @@ fn native_hard_positions(prepared: &PreparedText) -> Vec<usize> {
         .enumerate()
         .filter_map(|(index, participant)| match participant {
             PreparedParticipant::Control(control)
-                if control.view().kind() == ParagraphControlKind::ForcedBreak =>
+                if control.view().kind() == &ParagraphControlKind::ForcedBreak =>
             {
                 Some(index)
             }
@@ -331,7 +347,9 @@ fn discretionary_offer_immediately_before_a_hard_control_is_prohibited() {
     let prepared = prepare_paragraph(
         "X",
         &[
-            ParagraphControlKind::DiscretionaryBreak { wrap: Wrap::Word },
+            ParagraphControlKind::DiscretionaryBreak {
+                style: Box::new(style()),
+            },
             ParagraphControlKind::ForcedBreak,
         ],
         false,
@@ -350,11 +368,42 @@ fn optional_and_discretionary_owners_keep_permission_without_a_hard_neighbor() {
             PreparedBreakKind::Allowed,
         ),
         (
-            ParagraphControlKind::DiscretionaryBreak { wrap: Wrap::Word },
+            ParagraphControlKind::DiscretionaryBreak {
+                style: Box::new(style()),
+            },
             PreparedBreakKind::Discretionary,
         ),
     ] {
-        let prepared = prepare_paragraph("X", &[kind], false, WhiteSpace::Preserve);
+        let short = prepare_paragraph(
+            "X",
+            std::slice::from_ref(&kind),
+            false,
+            WhiteSpace::Preserve,
+        );
+        if expected == PreparedBreakKind::Discretionary {
+            assert!(
+                !short
+                    .opportunity_views()
+                    .any(|v| v.kind() == PreparedBreakKind::Discretionary),
+                "no before/after lexical counts at the original beginning control"
+            );
+        }
+        if expected == PreparedBreakKind::Allowed {
+            let control = short.control_views().next().unwrap().handle();
+            let after = short
+                .participants()
+                .position(|p| p == PreparedParticipant::Control(control.clone()))
+                .unwrap()
+                + 1;
+            assert!(
+                short
+                    .opportunity_views()
+                    .any(|v| v.boundary().view().participant_offset() == after
+                        && v.kind() == PreparedBreakKind::Allowed),
+                "the original atomic-adjacent OptionalBreak at zero keeps its independent permission"
+            );
+        }
+        let prepared = prepare_paragraph_at("AXXXX", &[kind], false, WhiteSpace::Preserve, 2);
         let control = prepared.control_views().next().unwrap().handle();
         let after_control = prepared
             .participants()
@@ -378,7 +427,8 @@ fn optional_and_discretionary_owners_keep_permission_without_a_hard_neighbor() {
                     assert_eq!(defining, control);
                     assert!(origin.is_none());
                 }
-                PreparedAlternativeDefinition::Source { .. } => {
+                PreparedAlternativeDefinition::Automatic { .. }
+                | PreparedAlternativeDefinition::Source { .. } => {
                     panic!("a real native control must not acquire a fabricated source definition");
                 }
             }

@@ -309,7 +309,8 @@ impl<'a> crate::Shaper<'a> {
             plan.script.unwrap_or(script::UNKNOWN)
         );
 
-        if buffer.len > 0 {
+        let di_admitted = super::default_ignorable::begin(&mut buffer);
+        if buffer.len > 0 && di_admitted {
             if plan
                 .ot_map
                 .selected_capacity_loss(features, [!plan.apply_morx, plan.apply_gpos])
@@ -327,6 +328,7 @@ impl<'a> crate::Shaper<'a> {
             });
         }
 
+        super::default_ignorable::finish(&mut buffer);
         buffer.leave();
 
         GlyphBuffer(buffer)

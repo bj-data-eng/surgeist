@@ -2,6 +2,7 @@
 
 pub(crate) mod data;
 mod finalize;
+pub(crate) mod flow;
 mod placement;
 mod standalone;
 
@@ -30,30 +31,71 @@ pub(crate) fn finalize_selected(
 
 fn finalize_standalone(
     prepared: Arc<PreparedData>,
-    selection: super::LineSelection,
+    request: crate::LineSelectionRequest,
     quantize: bool,
     scratch: &mut ShapeContext,
+    roles: &mut standalone::RawRoleBasis<'_>,
 ) -> Result<super::FinalizedLine> {
-    use crate::protocol::selection::{LineMetricPolicy, lower_standalone};
-    let selected = lower_standalone(
-        prepared,
-        selection,
-        if quantize {
-            LineMetricPolicy::StandaloneQuantized
-        } else {
-            LineMetricPolicy::Exact
-        },
-    )?;
-    let first = finalize::finalize(
-        Arc::clone(&selected),
-        &vec![0.0; selected.spacing_slots.len()],
-        scratch,
-    )?;
-    let amounts = finalize::standalone_amounts(&selected, &first.data.metrics)?;
-    if amounts.iter().any(|amount| *amount != 0.0) {
-        finalize::finalize(selected, &amounts, scratch)
+    use crate::protocol::selection::{LineMetricPolicy, select};
+    let profile = if quantize {
+        LineMetricPolicy::StandaloneQuantized
     } else {
-        Ok(first)
+        LineMetricPolicy::Exact
+    };
+    let mut request = request;
+    request.context.formatted_line = roles.initial(request.context.end);
+    loop {
+        let selected = select(
+            &crate::PreparedText {
+                inner: Arc::clone(&prepared),
+            },
+            request.clone(),
+            profile,
+        )?
+        .inner;
+        let result = (|| {
+            let first = finalize::finalize(
+                Arc::clone(&selected),
+                &vec![0.0; selected.spacing_slots.len()],
+                scratch,
+            )?;
+            let amounts = finalize::standalone_amounts(
+                &selected,
+                &first.data.metrics,
+                first
+                    .data
+                    .measurements
+                    .as_ref()
+                    .expect("finalized raw measures"),
+            )?;
+            if amounts.iter().any(|amount| *amount != 0.0) {
+                finalize::finalize(selected, &amounts, scratch)
+            } else {
+                Ok(first)
+            }
+        })();
+        match result {
+            Err(error) if missing_raw_role(&error, request.context.formatted_line) => {
+                // A fresh selection owns the next complete spacing table. A
+                // receipt from the failed natural/allocated pass never escapes.
+                request.context.formatted_line =
+                    roles.resolve(&prepared, &request, profile, scratch)?;
+            }
+            result => return result,
+        }
+    }
+}
+
+fn missing_raw_role(error: &crate::Error, context: crate::FormattedLineContext) -> bool {
+    use crate::{ErrorDetail, PhaseTwoContext, ProtocolError};
+    match error.detail() {
+        Some(ErrorDetail::InvalidTextProtocol {
+            reason: ProtocolError::MissingPhaseTwoContext(PhaseTwoContext::FirstFormattedLine),
+        }) => context.first().is_none(),
+        Some(ErrorDetail::InvalidTextProtocol {
+            reason: ProtocolError::MissingPhaseTwoContext(PhaseTwoContext::LastFormattedLine),
+        }) => context.last().is_none(),
+        _ => false,
     }
 }
 
@@ -72,7 +114,7 @@ pub(super) fn finite(field: &'static str, phase: TextNumericPhase, value: f64) -
 
 /// Add an actually required logical contribution at its observation boundary.
 /// Signed cancellation is valid; a requested nonzero adjustment cannot vanish.
-pub(super) fn add(
+pub(crate) fn add(
     field: &'static str,
     phase: TextNumericPhase,
     base: f64,

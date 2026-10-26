@@ -5,12 +5,11 @@ pub(super) type CalcBlockTree = OracleTree;
 pub(super) fn computed_overflow(x: Overflow, y: Overflow) -> ComputedOverflow {
     ComputedOverflow::try_new(x, y).expect("test overflow pair must already be canonical")
 }
-pub(super) fn fri06_atomic_participation<S: LayoutScalar>() -> AtomicInlineParticipationOf<S> {
-    AtomicInlineParticipationOf::try_new(
+pub(super) fn fri06_atomic_participation() -> AtomicInlineParticipation {
+    AtomicInlineParticipation::new(
         BidiLevel::try_new(0).unwrap(),
-        InlineBreakOpportunityOf::allowed(),
+        InlineBreakOpportunity::Allowed,
     )
-    .unwrap()
 }
 
 pub(super) fn lp(absolute_px: Scalar, percent_fraction: Scalar) -> LengthPercentageOf {

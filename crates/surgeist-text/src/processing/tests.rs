@@ -1,11 +1,152 @@
 use super::*;
 use crate::{Id, Size};
 
+#[test]
+fn actual_space_preservation_survives_coalescence_without_source_local_plaintext_tokens() {
+    for (mode, expected, preserved) in [
+        (WhiteSpace::Collapse, "A B C D", vec![]),
+        (WhiteSpace::Preserve, "A  B\tC\nD", vec![Range::new(1, 3)]),
+        (
+            WhiteSpace::PreserveSpaces,
+            "A  B C D",
+            vec![Range::new(1, 3), Range::new(4, 5), Range::new(6, 7)],
+        ),
+        (WhiteSpace::Discard, "ABCD", vec![]),
+        (WhiteSpace::PreserveBreaks, "A B C\nD", vec![]),
+        (
+            WhiteSpace::BreakSpaces,
+            "A  B\tC\nD",
+            vec![Range::new(1, 3)],
+        ),
+    ] {
+        let source = Source::new("A  B\tC\nD");
+        let result = process_source_whitespace(
+            source.clone(),
+            Style {
+                white_space: mode,
+                ..Style::default()
+            },
+            DocumentSegmentBreaks::LineFeedDefault,
+        )
+        .unwrap();
+        assert_eq!(result.processed_text(), &Text::from(expected));
+        assert_eq!(result.preserved_spaces, preserved);
+        assert_eq!(
+            plaintext(&result),
+            expected.encode_utf16().collect::<Vec<_>>()
+        );
+        assert!(result.plaintext_tokens.is_empty());
+        assert_eq!(result.source(), &source);
+        for (index, &unit) in result.processed_text().code_units().iter().enumerate() {
+            if result.preserves_space_at(index) {
+                assert_eq!(unit, 0x20);
+            }
+        }
+        assert!(!result.preserves_space_at(result.processed_text().len()));
+    }
+    let mut source = Source::new(" A B C ");
+    source.span(
+        Range::new(2, 5),
+        Style {
+            white_space: WhiteSpace::Preserve,
+            ..Style::default()
+        },
+    );
+    let result = process_source_whitespace(
+        source.clone(),
+        Style {
+            white_space: WhiteSpace::Collapse,
+            ..Style::default()
+        },
+        DocumentSegmentBreaks::LineFeedDefault,
+    )
+    .unwrap();
+    assert_eq!(result.processed_text(), source.text());
+    assert_eq!(
+        result.operations().len(),
+        1,
+        "actual Copy coalescence does not erase token eligibility"
+    );
+    assert_eq!(
+        result.preserved_spaces,
+        [Range::new(2, 3), Range::new(4, 5)]
+    );
+    let raw = identity(
+        source.clone(),
+        Style {
+            white_space: WhiteSpace::Discard,
+            ..Style::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(raw.processed_text(), source.text());
+    assert_eq!(
+        raw.preserved_spaces,
+        [
+            Range::new(0, 1),
+            Range::new(2, 3),
+            Range::new(4, 5),
+            Range::new(6, 7)
+        ]
+    );
+    assert!(raw.plaintext_tokens.is_empty());
+}
+
 fn discard() -> Style {
     Style {
         white_space: WhiteSpace::Discard,
         ..Style::default()
     }
+}
+
+#[test]
+fn exact_coverage_plaintext_reuses_executed_mapping_without_filling_holes() {
+    let processed = process_source_whitespace(
+        Source::new("A  B C"),
+        Style {
+            white_space: WhiteSpace::Collapse,
+            ..Style::default()
+        },
+        DocumentSegmentBreaks::LineFeedDefault,
+    )
+    .unwrap();
+    assert_eq!(
+        processed.processed_text().code_units(),
+        "A B C".encode_utf16().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        processed
+            .plaintext_for_coverage(&[Range::new(0, 1), Range::new(3, 4)])
+            .unwrap()
+            .code_units(),
+        [0x41, 0x42]
+    );
+    // Two selected original pieces from the same executed collapse contribute
+    // its one real processed SPACE once, rather than inventing another pass.
+    assert_eq!(
+        processed
+            .plaintext_for_coverage(&[Range::new(1, 2), Range::new(2, 3)])
+            .unwrap()
+            .code_units(),
+        [0x20]
+    );
+    assert!(processed.plaintext_for_coverage(&[]).unwrap().is_empty());
+    let processed = process_source_whitespace(
+        Source::new(Text::from_code_units(vec![0x41, 0xd800, 0x42])),
+        Style {
+            white_space: WhiteSpace::Preserve,
+            ..Style::default()
+        },
+        DocumentSegmentBreaks::LineFeedDefault,
+    )
+    .unwrap();
+    assert_eq!(
+        processed
+            .plaintext_for_coverage(&[Range::new(1, 2)])
+            .unwrap()
+            .code_units(),
+        [0xd800]
+    );
 }
 fn process(source: Source, breaks: DocumentSegmentBreaks) -> ProcessedSource {
     process_source_whitespace(source, discard(), breaks).unwrap()

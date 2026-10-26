@@ -1,4 +1,4 @@
-<test name="grid_justify_items_sized_center__content_box_rtl" use-rounding="true">
+<test name="grid_justify_items_sized_center__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" box-sizing="content-box" direction="rtl" justify-items="center" width="120px" height="120px" grid-template-rows="40px 40px 40px" grid-template-columns="40px 40px 40px">

@@ -2,7 +2,6 @@ use super::{
     AvailableOf, CacheKeyContext, DefaultScalar, Edges, LayoutScalar, NonNegativeFiniteOf,
     NonNegativeFiniteScalarErrorOf, PhysicalAxis, Point, ScrollGeometryOf, ScrollRectOf, Size,
 };
-use crate::InlineSegmentId;
 use crate::geometry::{FlowAxes, PhysicalSide};
 use crate::scroll::SettledAutoScrollbarState;
 
@@ -114,6 +113,7 @@ pub struct ComputeInputOf<S: LayoutScalar = DefaultScalar> {
     parent: Size<Option<S>>,
     containing_layout_context: ContainingLayoutContext,
     available: Size<AvailableOf<S>>,
+    block_indent_context: Option<crate::text_indent::BlockIndentContext<S>>,
     // Settlement owned by the node being computed.
     settled_auto_scrollbars: SettledAutoScrollbarState,
     // Settlement of the immediate containing formatting pass that produced this request.
@@ -141,6 +141,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             parent: validate_optional_size(parent)?,
             containing_layout_context,
             available: validate_root_available_size(available)?,
+            block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
         })
@@ -164,6 +165,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             parent: validate_optional_size(parent)?,
             containing_layout_context,
             available: validate_root_available_size(available)?,
+            block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
         })
@@ -233,6 +235,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             parent,
             containing_layout_context,
             available,
+            block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
         }
@@ -258,6 +261,20 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
     ) -> Self {
         Self::hidden(containing_layout_context)
             .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass)
+    }
+
+    pub(crate) const fn block_indent_context(
+        &self,
+    ) -> Option<crate::text_indent::BlockIndentContext<S>> {
+        self.block_indent_context
+    }
+
+    pub(crate) const fn with_block_indent_context(
+        mut self,
+        context: crate::text_indent::BlockIndentContext<S>,
+    ) -> Self {
+        self.block_indent_context = Some(context);
+        self
     }
 
     #[must_use]
@@ -1125,115 +1142,120 @@ impl<S: LayoutScalar> Default for NodeOutputOf<S> {
     }
 }
 
-/// Immutable geometry for one indivisible shaped inline segment on one line.
+/// Immutable geometry associated with one actual Text-issued fragment.
 ///
-/// Layout constructs this output after line selection. Callers can inspect but
-/// cannot construct or mutate it, so source identity and phase geometry remain
-/// associated.
-///
-/// ```compile_fail
-/// use surgeist_layout::{InlineFragmentOutput, InlineSegmentId, Point, ScrollRect, Size};
-/// let _ = InlineFragmentOutput::new(
-///     InlineSegmentId::new(1),
-///     ScrollRect::try_new(Point::ZERO, Size::ZERO).unwrap(),
-///     Point::ZERO,
-///     0,
-///     0,
-///     None,
-/// );
-/// ```
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// The retained handle identifies the exact finalized line and origin, control,
+/// virtual separator or alternative occurrence, including empty occurrences. The association table
+/// does not supply a mixed visual-order ordinal. No glyph packet or caller-local
+/// segment ID is copied into this Layout output.
+#[derive(Clone, Debug, PartialEq)]
 pub struct InlineFragmentOutputOf<S: LayoutScalar = DefaultScalar> {
-    segment_id: InlineSegmentId,
-    rect: ScrollRectOf<S>,
+    fragment: surgeist_text::FinalizedFragment,
+    rect: Option<ScrollRectOf<S>>,
     baseline: Point<S>,
     line_index: usize,
-    visual_index: usize,
-    replacement_inline_extent: Option<S>,
 }
 
 pub type InlineFragmentOutput = InlineFragmentOutputOf<DefaultScalar>;
 
 impl<S: LayoutScalar> InlineFragmentOutputOf<S> {
-    pub(crate) const fn new(
-        segment_id: InlineSegmentId,
-        rect: ScrollRectOf<S>,
+    pub(crate) fn new(
+        fragment: surgeist_text::FinalizedFragment,
+        rect: Option<ScrollRectOf<S>>,
         baseline: Point<S>,
         line_index: usize,
-        visual_index: usize,
-        replacement_inline_extent: Option<S>,
     ) -> Self {
         Self {
-            segment_id,
+            fragment,
             rect,
             baseline,
             line_index,
-            visual_index,
-            replacement_inline_extent,
         }
     }
 
+    /// The exact issued fragment and its retained finalized-line owner.
     #[must_use]
-    pub const fn segment_id(&self) -> InlineSegmentId {
-        self.segment_id
+    pub fn finalized_fragment(&self) -> &surgeist_text::FinalizedFragment {
+        &self.fragment
     }
 
+    /// Physical bounds in the paragraph container's coordinate system.
     #[must_use]
-    pub const fn rect(&self) -> ScrollRectOf<S> {
+    pub const fn rect(&self) -> Option<ScrollRectOf<S>> {
         self.rect
     }
-
+    /// Physical baseline anchor in the same paragraph-container-local coordinates.
     #[must_use]
     pub const fn baseline(&self) -> Point<S> {
         self.baseline
     }
-
     #[must_use]
     pub const fn line_index(&self) -> usize {
         self.line_index
     }
-
-    #[must_use]
-    pub const fn visual_index(&self) -> usize {
-        self.visual_index
-    }
-
-    #[must_use]
-    pub const fn replacement_inline_extent(&self) -> Option<S> {
-        self.replacement_inline_extent
-    }
 }
 
-/// Associates one immutable inline fragment with its source layout node.
-///
-/// Completed batches order entries by source-tree order and then segment source
-/// order. [`InlineFragmentOutputOf::visual_index`] records visual order without
-/// changing that public identity order.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// The actual semantic owner of one retained finalized fragment.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum InlineFragmentOwner<Node> {
+    Node(Node),
+    Scope(crate::TextScopeBinding<Node>),
+}
+
+/// Associates one retained finalized fragment with its actual semantic owner.
+#[derive(Clone, Debug, PartialEq)]
 pub struct InlineFragmentOutputEntryOf<Node, S: LayoutScalar = DefaultScalar> {
-    node: Node,
+    owner: InlineFragmentOwner<Node>,
     fragment: InlineFragmentOutputOf<S>,
 }
 
 pub type InlineFragmentOutputEntry<Node> = InlineFragmentOutputEntryOf<Node, DefaultScalar>;
 
-impl<Node, S> InlineFragmentOutputEntryOf<Node, S>
-where
-    Node: Copy,
-    S: LayoutScalar,
-{
-    pub(crate) const fn new(node: Node, fragment: InlineFragmentOutputOf<S>) -> Self {
-        Self { node, fragment }
+impl<Node: Copy, S: LayoutScalar> InlineFragmentOutputEntryOf<Node, S> {
+    pub(crate) fn new(
+        owner: InlineFragmentOwner<Node>,
+        fragment: InlineFragmentOutputOf<S>,
+    ) -> Self {
+        Self { owner, fragment }
     }
-
     #[must_use]
-    pub const fn node(&self) -> Node {
-        self.node
+    pub const fn owner(&self) -> &InlineFragmentOwner<Node> {
+        &self.owner
     }
-
     #[must_use]
-    pub const fn fragment(&self) -> InlineFragmentOutputOf<S> {
-        self.fragment
+    pub fn fragment(&self) -> &InlineFragmentOutputOf<S> {
+        &self.fragment
+    }
+}
+
+/// The exact placed Text result published with its containing Layout node.
+#[derive(Clone, Debug)]
+pub struct PlacedTextOutput<Node> {
+    container: Node,
+    nodes: Vec<Node>,
+    layout: surgeist_text::Layout,
+}
+
+impl<Node: Copy> PlacedTextOutput<Node> {
+    pub(crate) fn new(container: Node, nodes: Vec<Node>, layout: surgeist_text::Layout) -> Self {
+        Self {
+            container,
+            nodes,
+            layout,
+        }
+    }
+    #[must_use]
+    pub const fn container(&self) -> Node {
+        self.container
+    }
+    /// Exact captured run membership, retaining the node-to-placement join.
+    #[must_use]
+    pub fn nodes(&self) -> &[Node] {
+        &self.nodes
+    }
+    #[must_use]
+    pub fn layout(&self) -> &surgeist_text::Layout {
+        &self.layout
     }
 }
 
@@ -1334,7 +1356,7 @@ where
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CompletedLayoutBatchOf<Node, S: LayoutScalar = DefaultScalar> {
     unrounded_entries: Vec<LayoutOutputEntryOf<Node, S>>,
     final_entries: Vec<LayoutOutputEntryOf<Node, S>>,
@@ -1343,6 +1365,7 @@ pub struct CompletedLayoutBatchOf<Node, S: LayoutScalar = DefaultScalar> {
     cache_store_entries: Vec<LayoutCacheStoreEntryOf<Node, S>>,
     cache_clear_entries: Vec<LayoutCacheClearEntry<Node>>,
     invalidated_nodes: Vec<Node>,
+    placed_text: Vec<PlacedTextOutput<Node>>,
 }
 
 pub type CompletedLayoutBatch<Node> = CompletedLayoutBatchOf<Node, DefaultScalar>;
@@ -1368,7 +1391,19 @@ where
             cache_store_entries,
             cache_clear_entries,
             invalidated_nodes,
+            placed_text: Vec::new(),
         }
+    }
+
+    pub(crate) fn with_placed_text(mut self, placed_text: Vec<PlacedTextOutput<Node>>) -> Self {
+        self.placed_text = placed_text;
+        self
+    }
+
+    /// Actual Text layouts retained in the same atomic node/cache batch.
+    #[must_use]
+    pub fn placed_text(&self) -> &[PlacedTextOutput<Node>] {
+        &self.placed_text
     }
 
     /// Returns staged entries in computation order.

@@ -1,4 +1,4 @@
-<test name="wrapped_column_max_height_flex__content_box_ltr" use-rounding="true">
+<test name="wrapped_column_max_height_flex__content_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" flex-direction="column" flex-wrap="wrap" align-items="center" align-content="center" justify-content="center" width="700px" height="500px">

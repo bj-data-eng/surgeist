@@ -8,7 +8,8 @@ optional `text-accessibility` feature.
 It records source-level dependency attribution, not a resolved binary, release,
 or transitive dependency inventory. A dependency declaration does not establish
 that its code is redistributed in a particular artifact. Upstream example and
-test assets are not bundled except for the Ahem font identified below.
+test assets are not bundled except for the Ahem font and BudouX marked quality
+rows identified below.
 
 The project's own MIT license remains in [LICENSE](LICENSE). Keep this notice
 and its accompanying `licenses/` files together.
@@ -27,6 +28,25 @@ This product depends on accesskit, distributed by The AccessKit contributors:
 This optional dependency is enabled by `text-accessibility`. AccessKit contains
 code derived from Chromium and kurbo; the accompanying source notices retain
 those attributions and their applicable license terms.
+
+### BudouX 0.9.3 adapted source and Japanese model
+
+This product includes Japanese phrase inference adapted from Google BudouX,
+distributed by Google LLC, and its unchanged Japanese model and marked quality
+rows at commit `25946bbbb271dc8a53bb5b04082c6859abc5c847`.
+Copyright 2021 Google LLC.
+
+* License: [Apache License 2.0](licenses/budoux/LICENSE)
+* Homepage: [BudouX](https://github.com/google/budoux)
+* Exact source, data and modifications: [phrase-model guide](tools/automatic-phrase/README.md)
+
+The safe Rust adaptation uses decoded semantic positions, checked integer scoring
+and fallible cut storage. Text owns language admission, CSS eligibility, scope
+custody and source correspondence. The checked-in table is generated offline from
+the retained model. The quality rows are upstream-authored regression fixtures;
+they do not establish general linguistic quality. Training data and training
+software are not bundled, and the model license does not establish permission
+to redistribute that underlying corpus. The project license remains unchanged.
 
 ### fontique 0.9.0
 
@@ -50,6 +70,41 @@ This product depends on the maintained Harfrust source in this repository:
 
 Text consumes its safe shaping interface and explicit completion/refusal status.
 
+### hypher 0.1.8
+
+This product depends on Hypher, distributed by Laurenz:
+
+* License: [MIT](licenses/hypher/LICENSE-MIT) or
+  [Apache License 2.0](licenses/hypher/LICENSE-APACHE)
+* Homepage: [Hypher](https://github.com/typst/hypher)
+* American-English data: [copyright and permission notice](licenses/hypher/DATA-NOTICE.txt)
+
+Only the allocation and English features are enabled. The American-English
+2005-05-30 patterns and source exceptions carry Gerard D.C. Kuiken's separate
+copyright and notice-preserving permission, retained with this distribution.
+Text owns checked source correspondence and exception integration; this resource
+does not establish other English dialects or languages.
+
+### icu_casemap 2.2.0
+
+This product depends on ICU4X full casing data, distributed by Unicode, Inc.:
+
+* License: [Unicode License 3.0](licenses/icu4x/LICENSE)
+* Homepage: [ICU4X](https://icu4x.unicode.org/)
+
+Text reads the safe public baked trie and checked full-mapping exceptions. Its
+source-attributed contextual traversal is described below.
+
+### icu_locale 2.2.0
+
+This product depends on ICU4X locale identifiers and compiled likely subtags:
+
+* License: [Unicode License 3.0](licenses/icu4x/LICENSE)
+* Homepage: [ICU4X](https://icu4x.unicode.org/)
+
+The extended paired data supplies the native implied-script policy without
+overriding an authored explicit script or inventing an unknown language.
+
 ### icu_normalizer 2.2.0
 
 This product depends on ICU4X normalization, distributed by the ICU4X Project Developers:
@@ -68,6 +123,16 @@ This product depends on ICU4X properties, distributed by the ICU4X Project Devel
 
 Source-local whitespace processing uses compiled Unicode bidi-control,
 East Asian Width and Script properties.
+
+### icu_provider 2.2.0
+
+This product depends directly on the safe ICU4X data-provider interface:
+
+* License: [Unicode License 3.0](licenses/icu4x/LICENSE)
+* Homepage: [ICU4X](https://icu4x.unicode.org/)
+
+It loads the qualified baked casing payload; Text does not decode unsafe wire
+representations or accept a mutable provider during finalization.
 
 ### icu_segmenter 2.2.0
 
@@ -139,3 +204,67 @@ it for deterministic Text tests, copied from the existing Render fixture:
 
 The font and license files are unchanged. The fixture is not a production font
 or evidence of general script, variation or shaping conformance.
+
+The original [Kern Ahem derivative](tests/fixtures/fonts/kern-ahem/PROVENANCE.md)
+retains Ahem's cmap, outlines and metrics, changes its family identity and adds
+one horizontal kerning pair for deterministic Text tests. Its
+[COPYING](tests/fixtures/fonts/kern-ahem/COPYING) and
+[upstream README](tests/fixtures/fonts/kern-ahem/UPSTREAM-README) are unchanged
+copies of the original notices. The local generator and provenance identify
+the exact source and modifications.
+
+## CSS Text small-kana mapping
+
+The full-size-kana mapping facts in `src/transform.rs` and the independent
+literal test vectors derive from Appendix G of CSS Text Module Level 4,
+Working Draft 14 August 2026, distributed by the World Wide Web Consortium.
+Copyright © 2026 World Wide Web Consortium.
+
+* License: [W3C Software and Document License 2023](licenses/w3c/software-license-2023.txt)
+* Original: [CSS Text Module Level 4, Appendix G](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#small-kana)
+
+The table is transcribed into Rust scalar matching and literal expectations;
+Surgeist owns execution, original-source correspondence and composed consumers.
+The crate's own license remains unchanged. This table does not supply casing or
+width-mapping data.
+
+## ICU4X contextual casing adaptation
+
+The Text-owned contextual casing traversal and Greek uppercase helper adapt
+`components/casemap/src/internals.rs` and `src/greek_to_me/{mod,data}.rs` from
+ICU4X 2.2.0, revision `c9fac4e625ccb2c6a7aa35079fff9709db4385ac`, distributed
+by Unicode, Inc. The exact Greek table remains in
+`src/transform/greek_data.rs`; the adapted helpers are in
+`src/transform/{casing,greek}.rs`.
+
+* License: [Unicode License 3.0](licenses/icu4x/LICENSE)
+* Homepage: [ICU4X](https://icu4x.unicode.org/)
+* Source: [ICU4X casing internals](https://github.com/unicode-org/icu4x/blob/c9fac4e625ccb2c6a7aa35079fff9709db4385ac/components/casemap/src/internals.rs)
+
+The adaptation reads the paired ICU4X public baked trie and checked exception
+decoder. Text traverses immutable original components and retains each actual
+emission or removal's correspondence. It does not copy the provider's unsafe
+wire representation or reconstruct provenance from a mapped string. ICU4X
+locale data supplies native implied-script resolution; the authored language
+tag remains unchanged. The crate's own license remains unchanged.
+
+## MathML Core italic mapping
+
+This crate includes an unmodified Appendix C.1 table excerpt from
+Mathematical Markup Language (MathML) Core, W3C Candidate Recommendation
+Snapshot 24 June 2025, distributed by the World Wide Web Consortium.
+[Copyright](https://www.w3.org/policies/#copyright) © 2025
+[World Wide Web Consortium](https://www.w3.org/). W3C®
+[liability](https://www.w3.org/policies/#Legal_Disclaimer),
+[trademark](https://www.w3.org/policies/#W3C_Trademarks) and
+[permissive document license](https://www.w3.org/copyright/software-license-2023/)
+rules apply.
+
+* License: [W3C Software and Document License, 2023](licenses/w3c/software-license-2023.txt)
+* Original: [MathML Core, Appendix C.1](https://www.w3.org/TR/2025/CR-mathml-core-20250624/#italic-mappings)
+* Source and adaptation: [mapping guide](tools/math-auto/README.md)
+
+The original HTML table is unchanged. The private generated Rust table adapts
+its original/italic columns into sorted numeric pairs; the generator is owned
+by Text. Retain this source-specific notice and the full accompanying license
+with copied or derived material. The crate's own license remains unchanged.

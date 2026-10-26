@@ -2,7 +2,10 @@ use super::layout::decoration_top;
 use super::*;
 
 mod catalogue;
+mod kern_font;
+mod phrase_font;
 mod utf16;
+mod whitespace_line_height;
 
 #[test]
 fn rejects_out_of_bounds_unit_span() {
@@ -272,8 +275,8 @@ fn flow_policy_support_matrix_keeps_behavior_gaps_unsupported() {
         TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresTextFlowPolicy)
     );
     assert_eq!(
-        TextStyleFeature::TextTransform.support(crate::TextStylePhase::Standalone),
-        TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresTextFlowPolicy)
+        TextStyleFeature::FullSizeKana.support(crate::TextStylePhase::Standalone),
+        TextStyleSupport::Supported
     );
     assert_eq!(
         TextStyleFeature::WhiteSpaceCollapse.support(crate::TextStylePhase::Standalone),
@@ -562,14 +565,27 @@ fn text_style_support_matrix_reports_current_support() {
 }
 
 #[test]
+fn automatic_phrase_capability_names_its_contextual_executor() {
+    assert!(TextStyleFeature::ALL.contains(&TextStyleFeature::NativeAutomaticPhrases));
+    assert_eq!(
+        TextStyleFeature::NativeAutomaticPhrases.support(TextStylePhase::ProcessedParagraph),
+        TextStyleSupport::Supported,
+    );
+    assert_eq!(
+        TextStyleFeature::NativeAutomaticPhrases.support(TextStylePhase::Standalone),
+        TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresProcessedSourceLayout),
+    );
+}
+
+#[test]
 fn default_flow_policy_values_are_explicit_noops() {
-    assert_eq!(Style::default().text_transform, TextTransform::None);
+    assert_eq!(Style::default().text_transform, TextTransform::none());
     assert_eq!(Options::default().text_overflow, TextOverflow::Clip);
     assert_eq!(Options::default().text_align_last, TextAlignLast::Auto);
 
     let mut system = System::default();
     let style = Style {
-        text_transform: TextTransform::None,
+        text_transform: TextTransform::none(),
         ..Style::default()
     };
     let options = Options {
@@ -599,7 +615,7 @@ fn default_flow_policy_values_preserve_cache_identity() {
 
     let mut second = system.builder("flow");
     second.default_style(Style {
-        text_transform: TextTransform::None,
+        text_transform: TextTransform::none(),
         ..Style::default()
     });
     second.options(Options {

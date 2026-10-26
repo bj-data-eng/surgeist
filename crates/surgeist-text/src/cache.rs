@@ -110,7 +110,7 @@ impl Key {
     ) -> Self {
         Self::from_parts(
             analyzed.processed.source(),
-            analyzed.processed.base_style(),
+            analyzed.paragraph.base_style(&analyzed.processed),
             options,
             font_catalogue,
         )
@@ -155,7 +155,7 @@ impl Key {
     pub(crate) fn from_placement(request: &crate::PlacementRequest) -> Self {
         let analyzed = &request.prepared.inner.analyzed;
         let source = analyzed.processed.source();
-        let style = analyzed.processed.base_style();
+        let style = analyzed.paragraph.base_style(&analyzed.processed);
         Self {
             source: SourceKey::new(source.id(), source.revision(), stable_hash_source(source)),
             styles: StyleKey::new(0, stable_hash_style(style, source)),
@@ -380,6 +380,9 @@ fn hash_inline_box<H: Hasher>(box_: InlineBox, hasher: &mut H) {
 }
 
 fn hash_style<H: Hasher>(style: &Style, hasher: &mut H) {
+    style.hanging_punctuation.hash(hasher);
+    hash_f64(style.tab_size.value(), hasher);
+    style.tab_size.is_spaces().hash(hasher);
     hash_font(&style.font, hasher);
     hash_f32(style.size, hasher);
     hash_line_height(style.line_height, hasher);
@@ -392,9 +395,15 @@ fn hash_style<H: Hasher>(style: &Style, hasher: &mut H) {
     style.direction.hash(hasher);
     style.white_space.hash(hasher);
     style.word_break.hash(hasher);
+    style.line_break.hash(hasher);
     style.wrap.hash(hasher);
     style.overflow_wrap.hash(hasher);
     style.text_transform.hash(hasher);
+    style.word_space_transform.hash(hasher);
+    style.hyphens.hash(hasher);
+    style.hyphenate_limit_chars.hash(hasher);
+    style.hyphenate_character.hash(hasher);
+    style.native_hyphenation_convention.hash(hasher);
 }
 
 fn hash_font<H: Hasher>(font: &Font, hasher: &mut H) {

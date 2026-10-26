@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 
+pub(crate) mod contextual;
 mod lexical;
+pub use contextual::*;
 
 use crate::{
     Affinity, DocumentSegmentBreakError, Error, ErrorCode, ErrorDetail, InlineBox, InlineBoxKind,
@@ -75,6 +77,7 @@ pub(crate) enum DeletionCause {
     DuplicateSegmentBreak,
     ContextualSegmentBreak,
     CollapsedSpace,
+    Trim,
 }
 
 #[derive(Debug)]
@@ -95,11 +98,24 @@ impl MappingPiece {
     }
 }
 
+/// Token facts survive mapping coalescence. In particular PreserveSpaces tab
+/// output and a collapsed delimiter's output can both be U+0020 without having
+/// the same lexical eligibility or line-context effect.
+#[derive(Debug)]
+pub(super) struct PlaintextToken {
+    pub(super) processed: Range,
+    pub(super) domain: usize,
+    pub(super) collapsible: bool,
+    pub(super) reset: bool,
+    pub(super) transparent: bool,
+}
+
 /// Immutable captured source and its exact executed whitespace correspondence.
 ///
-/// This source-local phase performs no fonts, shaping, opportunity analysis,
-/// trimming, line selection or complete document serialization. Actual in-flow
-/// boxes remain adjacency barriers independently of equal projected offsets.
+/// The source-local front executes Phase I; the contextual front first trims
+/// actual scopes and freezes issued paragraph coverage. Neither performs fonts,
+/// shaping, opportunity analysis, line selection or document serialization.
+/// Actual in-flow boxes remain barriers independently of equal mapped offsets.
 #[derive(Debug)]
 pub struct ProcessedSource {
     source: Source,
@@ -108,9 +124,13 @@ pub struct ProcessedSource {
     processed: Text,
     map: Vec<MappingPiece>,
     box_order: Vec<usize>,
+    pub(crate) paragraphs: Vec<contextual::ParagraphRecord>,
+    plaintext_tokens: Vec<PlaintextToken>,
+    /// Actual preserved U+0020 output, in Phase-I coordinates.
+    preserved_spaces: Vec<Range>,
 }
 
-/// Executes source-local Collapse, Discard, Preserve or PreserveSpaces.
+/// Executes the selected source-local whitespace mode.
 ///
 /// Intrinsic source and document-delimiter validation precedes execution.
 /// Collapse uses actual Unicode context and preserves lexical deletion causes;
@@ -139,7 +159,7 @@ pub fn process_source_whitespace(
     base_style: Style,
     segment_breaks: DocumentSegmentBreaks,
 ) -> Result<ProcessedSource> {
-    process_with_boundaries(source, base_style, segment_breaks, &[])
+    process_with_boundaries(source, base_style, segment_breaks, &[], None)
 }
 
 pub(crate) fn process_paragraph(
@@ -175,7 +195,13 @@ pub(crate) fn process_paragraph(
     }
     barriers.sort_unstable();
     barriers.dedup();
-    process_with_boundaries(source, base_style, segment_breaks, &barriers)
+    process_with_boundaries(
+        source,
+        base_style,
+        segment_breaks,
+        &barriers,
+        Some(paragraph),
+    )
 }
 
 fn delimiter_crosses(breaks: &DocumentSegmentBreaks, at: usize) -> bool {
@@ -193,6 +219,7 @@ fn process_with_boundaries(
     base_style: Style,
     segment_breaks: DocumentSegmentBreaks,
     barriers: &[usize],
+    paragraph: Option<&crate::protocol::paragraph::ParagraphData>,
 ) -> Result<ProcessedSource> {
     crate::source_model::validate_structure(&source)?;
     validate_delimiters(&source, &segment_breaks)?;
@@ -203,8 +230,36 @@ fn process_with_boundaries(
     validate_crossings(&source, &segment_breaks, &box_order)?;
     let modes = effective_modes(&source, &base_style)?;
     validate_modes(&modes, &segment_breaks)?;
+    if let Some(paragraph) = paragraph {
+        for (index, origin) in paragraph.origins.iter().enumerate() {
+            admit_text_node(
+                &source,
+                origin.aggregate,
+                origin.text_node.as_ref(),
+                index,
+                &base_style,
+                &modes,
+            )?;
+        }
+    }
 
-    let (units, map) = lexical::execute(&source, &segment_breaks, &modes, &box_order, barriers)?;
+    let mut decode_boundaries = Vec::new();
+    if let Some(paragraph) = paragraph {
+        reserve(&mut decode_boundaries, paragraph.controls.len())?;
+        decode_boundaries.extend(paragraph.wbr_decode_boundaries());
+        decode_boundaries.sort_unstable();
+        decode_boundaries.dedup();
+    }
+    let (units, map, tokens) =
+        lexical::execute(lexical::ValidatedProcessingRequest::SourceLocal {
+            source: &source,
+            breaks: &segment_breaks,
+            modes: &modes,
+            box_order: &box_order,
+            barriers,
+            decode_boundaries: &decode_boundaries,
+        })?;
+    let preserved_spaces = preserved_spaces(&units, &tokens)?;
     Ok(ProcessedSource {
         source,
         base_style,
@@ -212,6 +267,9 @@ fn process_with_boundaries(
         processed: Text::from_code_units(units),
         map,
         box_order,
+        paragraphs: Vec::new(),
+        plaintext_tokens: Vec::new(),
+        preserved_spaces,
     })
 }
 
@@ -231,6 +289,12 @@ pub(crate) fn identity(source: Source, base_style: Style) -> Result<ProcessedSou
             kind: MappingKind::Copy,
         }]
     };
+    let mut preserved_spaces = Vec::new();
+    for (index, &unit) in source.text().code_units().iter().enumerate() {
+        if unit == 0x20 {
+            preserve_space(&mut preserved_spaces, index)?;
+        }
+    }
     Ok(ProcessedSource {
         processed: source.text().clone(),
         source,
@@ -238,10 +302,19 @@ pub(crate) fn identity(source: Source, base_style: Style) -> Result<ProcessedSou
         segment_breaks: DocumentSegmentBreaks::Defined(Vec::new()),
         map,
         box_order,
+        paragraphs: Vec::new(),
+        plaintext_tokens: Vec::new(),
+        preserved_spaces,
     })
 }
 
 impl ProcessedSource {
+    pub(crate) fn preserves_space_at(&self, processed: usize) -> bool {
+        let end = self
+            .preserved_spaces
+            .partition_point(|range| range.start <= processed);
+        end != 0 && self.preserved_spaces[end - 1].contains(processed)
+    }
     pub(crate) fn operations(&self) -> &[MappingPiece] {
         &self.map
     }
@@ -372,15 +445,103 @@ impl ProcessedSource {
     /// is inserted, and this partial query does not serialize a whole document.
     /// OutOfFlow anchors inside a contraction appear before its output unit for
     /// Before and after it for After. Both retain the exact original anchor;
-    /// neither creates an adjacency barrier. Text slices partition the same
-    /// processed backing exactly once under either choice.
+    /// neither creates an adjacency barrier. Contextual plaintext additionally
+    /// omits leading collapsible tokens at actual block/forced-break starts,
+    /// using retained lexical eligibility. These extra deletions leave the
+    /// processed backing and layout correspondence unchanged. No block separator,
+    /// atomic alternate content or presentation replacement is serialized.
     pub fn plaintext_items(&self, affinity: Affinity) -> PlaintextItems<'_> {
         PlaintextItems {
             source: self,
             affinity,
             next_box: 0,
             text_cursor: 0,
+            deletions: self.plaintext_deletions(),
         }
+    }
+
+    /// Projects already normalized exact original coverage through this
+    /// owner's executed Phase-I and plaintext decisions. Selection does not
+    /// repeat trimming/collapse or replace holes with an enclosing range.
+    pub(crate) fn plaintext_for_coverage(&self, coverage: &[Range]) -> Result<Text> {
+        if coverage
+            .iter()
+            .any(|range| range.start > range.end || range.end > self.source.text().len())
+            || coverage.windows(2).any(|pair| pair[0].end > pair[1].start)
+        {
+            return Err(Error::new(
+                ErrorCode::InvalidRange,
+                "invalid normalized plaintext coverage",
+            ));
+        }
+        let mut selected: Vec<Range> = Vec::new();
+        for piece in &self.map {
+            for range in coverage
+                .iter()
+                .filter(|range| range.start < piece.source.end && piece.source.start < range.end)
+            {
+                let start = piece.source.start.max(range.start);
+                let end = piece.source.end.min(range.end);
+                let mapped = match piece.kind {
+                    MappingKind::Copy => Range::new(
+                        piece.processed + start - piece.source.start,
+                        piece.processed + end - piece.source.start,
+                    ),
+                    MappingKind::Replace => Range::new(piece.processed, piece.processed + 1),
+                    MappingKind::Delete(_) => continue,
+                };
+                if let Some(previous) = selected
+                    .last_mut()
+                    .filter(|previous| previous.end >= mapped.start)
+                {
+                    previous.end = previous.end.max(mapped.end);
+                } else {
+                    reserve(&mut selected, 1)?;
+                    selected.push(mapped);
+                }
+            }
+        }
+        let mut units = Vec::new();
+        for item in self.plaintext_items(Affinity::Before) {
+            let PlaintextItem::Text(text) = item else {
+                continue;
+            };
+            let visible = Range::new(text.range.start.0, text.range.end.0);
+            for range in selected
+                .iter()
+                .filter(|range| range.start < visible.end && visible.start < range.end)
+            {
+                let start = visible.start.max(range.start);
+                let end = visible.end.min(range.end);
+                reserve(&mut units, end - start)?;
+                units.extend_from_slice(&self.processed.code_units()[start..end]);
+            }
+        }
+        Ok(Text::from_code_units(units))
+    }
+
+    fn plaintext_deletions(&self) -> Vec<Range> {
+        let mut leading = std::collections::BTreeMap::new();
+        let mut deleted = Vec::new();
+        for token in &self.plaintext_tokens {
+            let start = leading.entry(token.domain).or_insert(true);
+            if token.reset {
+                *start = true;
+            }
+            if token.transparent {
+                continue;
+            }
+            if token.processed.is_empty() {
+                *start = false;
+                continue;
+            }
+            if *start && token.collapsible {
+                deleted.push(token.processed);
+            } else if !token.reset {
+                *start = false;
+            }
+        }
+        deleted
     }
 
     pub(crate) fn project(&self, at: usize, affinity: Affinity) -> usize {
@@ -403,6 +564,36 @@ impl ProcessedSource {
             source: self,
         }
     }
+}
+
+fn preserved_spaces(units: &[u16], tokens: &[PlaintextToken]) -> Result<Vec<Range>> {
+    let mut ranges = Vec::new();
+    for token in tokens
+        .iter()
+        .filter(|token| !token.collapsible && !token.transparent)
+    {
+        for (offset, &unit) in units[token.processed.start..token.processed.end]
+            .iter()
+            .enumerate()
+        {
+            if unit == 0x20 {
+                preserve_space(&mut ranges, token.processed.start + offset)?;
+            }
+        }
+    }
+    Ok(ranges)
+}
+
+fn preserve_space(ranges: &mut Vec<Range>, index: usize) -> Result<()> {
+    // The index belongs to an actual emitted UTF-16 unit, hence index + 1
+    // is bounded by the admitted backing length.
+    if let Some(last) = ranges.last_mut().filter(|range| range.end == index) {
+        last.end = index + 1;
+    } else {
+        reserve(ranges, 1)?;
+        ranges.push(Range::new(index, index + 1));
+    }
+    Ok(())
 }
 
 /// Borrowed original span and its projected range.
@@ -495,33 +686,55 @@ pub struct PlaintextItems<'a> {
     affinity: Affinity,
     next_box: usize,
     text_cursor: usize,
+    deletions: Vec<Range>,
 }
 impl<'a> Iterator for PlaintextItems<'a> {
     type Item = PlaintextItem<'a>;
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(&ordinal) = self.source.box_order.get(self.next_box) {
-            let original = &self.source.source.boxes()[ordinal];
-            let at = self.source.project(original.index(), self.affinity);
-            if self.text_cursor < at {
-                return Some(self.text_to(at));
-            }
+        let next_box = self.source.box_order.get(self.next_box).copied();
+        let end = next_box.map_or(self.source.processed.len(), |ordinal| {
+            self.source
+                .project(self.source.source.boxes()[ordinal].index(), self.affinity)
+        });
+        if self.text_cursor < end
+            && let Some(text) = self.text_to(end)
+        {
+            return Some(text);
+        }
+        if let Some(ordinal) = next_box {
             self.next_box += 1;
             return Some(PlaintextItem::InlineBox(
-                self.source.box_view(ordinal, original),
+                self.source
+                    .box_view(ordinal, &self.source.source.boxes()[ordinal]),
             ));
         }
-        (self.text_cursor < self.source.processed.len())
-            .then(|| self.text_to(self.source.processed.len()))
+        None
     }
 }
+
 impl<'a> PlaintextItems<'a> {
-    fn text_to(&mut self, end: usize) -> PlaintextItem<'a> {
-        let start = self.text_cursor;
-        self.text_cursor = end;
-        PlaintextItem::Text(ProcessedText {
-            units: &self.source.processed.code_units()[start..end],
-            range: processed_range(start, end),
-        })
+    fn text_to(&mut self, end: usize) -> Option<PlaintextItem<'a>> {
+        loop {
+            let next = self
+                .deletions
+                .iter()
+                .find(|range| range.end > self.text_cursor);
+            if let Some(range) = next.filter(|range| range.start <= self.text_cursor) {
+                self.text_cursor = range.end.min(end);
+                if self.text_cursor == end {
+                    return None;
+                }
+                continue;
+            }
+            let start = self.text_cursor;
+            self.text_cursor = next.map_or(end, |range| end.min(range.start));
+            return (start < self.text_cursor).then(|| {
+                PlaintextItem::Text(ProcessedText {
+                    units: &self.source.processed.code_units()[start..self.text_cursor],
+                    range: processed_range(start, self.text_cursor),
+                })
+            });
+        }
     }
 }
 
@@ -658,6 +871,73 @@ fn effective_modes(source: &Source, base: &Style) -> Result<Vec<EffectiveInterva
     Ok(intervals)
 }
 
+/// Uses the already admitted winning span, never resource styles or hidden spans.
+fn admit_text_node(
+    source: &Source,
+    range: Range,
+    node: Option<&crate::CompleteTextNodeContribution>,
+    origin: usize,
+    base: &Style,
+    modes: &[EffectiveInterval],
+) -> Result<()> {
+    if range.is_empty() || node.is_some() {
+        return Ok(());
+    }
+    let first = modes.partition_point(|interval| interval.range.end <= range.start);
+    if modes[first..]
+        .iter()
+        .take_while(|interval| interval.range.start < range.end)
+        .any(|interval| {
+            interval
+                .span
+                .map_or(base, |i| source.spans()[i].style())
+                .text_transform
+                == crate::TextTransform::MathAuto
+        })
+    {
+        return Err(Error::new(
+            ErrorCode::UnsupportedFeature,
+            "math-auto requires complete original Text-node context",
+        )
+        .with_detail(ErrorDetail::TextTransform {
+            reason: crate::TextTransformError::MissingTextNodeContext { origin },
+        }));
+    }
+    Ok(())
+}
+
+/// Split the same aggregate winners by genuine contextual domains once, before
+/// admission and the shared lexer consume these exact intervals.
+fn contextual_modes(
+    source: &Source,
+    context: &contextual::ProcessingContext,
+) -> Result<Vec<EffectiveInterval>> {
+    let effective = effective_modes(source, &context.domains[0].style)?;
+    let mut modes = Vec::new();
+    for (range, domain) in &context.origins {
+        let first = effective.partition_point(|interval| interval.range.end <= range.start);
+        for interval in effective[first..]
+            .iter()
+            .take_while(|interval| interval.range.start < range.end)
+        {
+            reserve(&mut modes, 1)?;
+            modes.push(EffectiveInterval {
+                range: Range::new(
+                    range.start.max(interval.range.start),
+                    range.end.min(interval.range.end),
+                ),
+                mode: interval
+                    .span
+                    .map_or(context.domains[*domain].style.white_space, |_| {
+                        interval.mode
+                    }),
+                ..*interval
+            });
+        }
+    }
+    Ok(modes)
+}
+
 fn validate_modes(intervals: &[EffectiveInterval], breaks: &DocumentSegmentBreaks) -> Result<()> {
     let mut delimiter = 0;
     for (ordinal, interval) in intervals.iter().enumerate() {
@@ -721,3 +1001,6 @@ fn overflow() -> Error {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod contextual_tests;

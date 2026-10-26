@@ -1293,13 +1293,10 @@ fn fri06_c07_subgrid_rtl_tree<S: LayoutScalar>(
             direction: Direction::Rtl,
             grid_template_columns: vec![TrackComponentOf::px(scalar(100.0))],
             grid_auto_rows: vec![TrackComponentOf::px(scalar(100.0))],
-            atomic_inline_participation: Some(
-                AtomicInlineParticipationOf::try_new(
-                    BidiLevel::try_new(1).expect("RTL bidi level is valid"),
-                    InlineBreakOpportunityOf::prohibited(),
-                )
-                .expect("atomic inline participation is valid"),
-            ),
+            atomic_inline_participation: Some(AtomicInlineParticipation::new(
+                BidiLevel::try_new(1).expect("RTL bidi level is valid"),
+                InlineBreakOpportunity::Prohibited,
+            )),
             ..NodeInputOf::default()
         };
         inputs.insert(inline_grid_node, inline_grid);
@@ -5442,7 +5439,7 @@ fn lane_axis_margin_box_measurement_resolves_affine_margins_against_grid_axis() 
         },
     );
 
-    assert_eq!(measured, Ok(80.0));
+    assert_eq!(measured.expect("lane margin measurement succeeds"), 80.0);
     let input = tree
         .last_input
         .expect("measurement should compute the child");
@@ -5593,11 +5590,11 @@ fn grid_lane_track_base_rejects_positive_invalid_affine_numeric_result() {
 
     assert_eq!(error.site(), LayoutErrorSite::Standalone);
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
         &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidNumeric {
             value: f32::INFINITY,
-        })
+        }),
     );
 }
 
@@ -5619,11 +5616,11 @@ fn grid_lane_track_base_rejects_signed_invalid_affine_numeric_result() {
 
     assert_eq!(error.site(), LayoutErrorSite::Standalone);
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
         &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidNumeric {
             value: f32::NEG_INFINITY,
-        })
+        }),
     );
 }
 
@@ -5656,12 +5653,11 @@ fn grid_lane_track_base_rejects_positive_and_signed_invalid_f64_affine_numeric_r
             LayoutOperation::ValueResolution,
             "{label} operation"
         );
-        assert_eq!(
+        crate::test_support::assert_error_kind(
             error.kind(),
             &LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
                 value: expected,
             }),
-            "{label} numeric detail"
         );
     }
 }

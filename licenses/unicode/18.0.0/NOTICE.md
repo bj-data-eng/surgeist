@@ -7,4 +7,13 @@ This repository includes Unicode 18.0.0 Derived Bidi Class data, distributed by 
 - Source: [DerivedBidiClass.txt](https://www.unicode.org/Public/18.0.0/ucd/extracted/DerivedBidiClass.txt).
 - Retained data: [Unicode 18.0.0 Derived Bidi Class](../../../references/unicode-derived-bidi-class--18.0.0.md).
 
+`surgeist-text` also includes the necessary unchanged wide/narrow records from
+[UnicodeData.txt](https://www.unicode.org/Public/18.0.0/ucd/UnicodeData.txt)
+and a private mapping table derived from those records. The
+[retained excerpt](../../../crates/surgeist-text/data/UnicodeData-width-18.0.0.txt)
+records its complete-source and excerpt identities; the
+[offline generator](../../../crates/surgeist-text/tools/full-width/README.md)
+owns the derived table. The same exact 1991–2026 copyright and permission notice
+applies to this data and is retained in the linked license.
+
 The version directory retains the notice applicable to this selected data; the older repository Unicode license has different copyright years. The data license is not permission to reproduce the separately copyrighted UAX #9 report. Only [report metadata](../../../references/uax9--18.0.0--rev52-metadata.md) is included for that report.

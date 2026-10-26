@@ -19,7 +19,7 @@ constrained test bridge, not another CSS front door.
 | --- | --- |
 | Package identity, dependencies, features and targets | [Cargo.toml](Cargo.toml) |
 | Public front door and reexports | [src/lib.rs](src/lib.rs) and the definitions it reexports |
-| Mixed inline ordering/edge producer | [surgeist-text supplied lines](../surgeist-text/src/supplied_line.rs); [Layout adapter](src/inline/mod.rs) retains fitting and placement |
+| Prepared Text and inline geometry | [Text protocol](../surgeist-text/src/protocol/mod.rs), [concrete capture/adapter](src/text_layout/mod.rs), and [box/control-only numeric fitter](src/inline/mod.rs); [supplied lines](../surgeist-text/src/supplied_line.rs) own canonical numeric ordering |
 | Implemented behavior and module ownership | [src/](src/); human navigation in [README.md](README.md) and [docs/](docs/) |
 | Host traversal, measurement, cache, and batch-application contracts | [src/tree.rs](src/tree.rs), [src/measurement.rs](src/measurement.rs), [src/cache.rs](src/cache.rs), [src/output.rs](src/output.rs), and [src/engine/](src/engine/) |
 | Focused verification | Tracked test modules under [src/](src/), [src/test_support/](src/test_support/), and the [tests/layout.rs](tests/layout.rs) integration target |
@@ -43,7 +43,8 @@ a browser or source cache. Follow the [corpus guide](tests/layout/browser_parity
 for refreshes; never hand-edit generated XML/reports. `Justfile` and `scripts/`
 retain composed recipes, including recipes that clear filters and overrides.
 The [audit tool](tools/surgeist-layout-audits/README.md) retains a separate nightly
-workspace and is opt-in. Full parity is ignored; execute it only when selected.
+workspace and is opt-in. Full checked-in XML parity runs in ordinary tests and
+requires no browser or fixture regeneration.
 The two deep-nesting tests in `src/sizing.rs` each construct 100,000 nodes; isolate
 them from an initial bounded test run under the root resource policy.
 
@@ -55,7 +56,7 @@ cargo fmt -p surgeist-layout -- --check
 ```
 
 ```sh
-env -u SURGEIST_PARITY_FILTER cargo test -j 1 --offline --locked -p surgeist-layout --test layout runs_all_checked_in_browser_parity_xml -- --ignored
+env -u SURGEIST_PARITY_FILTER cargo test -j 1 --offline --locked -p surgeist-layout --test layout runs_all_checked_in_browser_parity_xml
 ```
 
 ```sh

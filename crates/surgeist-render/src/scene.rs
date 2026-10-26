@@ -94,17 +94,17 @@ impl Scene {
         self
     }
 
-    /// Appends one shared, already prepared outline run with run-local paint.
+    /// Appends one shared, already admitted glyph run with run-local paint.
     /// Geometry and font resources remain owned independently of the caller.
     /// Numeric backend composition is checked before frame publication.
-    pub fn prepared_outline(
+    pub fn prepared_glyph_run(
         &mut self,
-        outline: PreparedOutline,
+        run: PreparedGlyphRun,
         transform: Transform,
         paint: TextPaint,
     ) -> &mut Self {
-        self.commands.push(Command::PreparedOutline {
-            outline,
+        self.commands.push(Command::PreparedGlyphRun {
+            run,
             transform,
             paint,
         });
@@ -218,8 +218,8 @@ impl Scene {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Command {
-    PreparedOutline {
-        outline: PreparedOutline,
+    PreparedGlyphRun {
+        run: PreparedGlyphRun,
         transform: Transform,
         paint: TextPaint,
     },

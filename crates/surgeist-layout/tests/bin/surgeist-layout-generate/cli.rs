@@ -580,12 +580,14 @@ impl Manifest {
             vec![
                 relative("scripts/gentest/test_helper.js")?,
                 relative("scripts/gentest/test_base_style.css")?,
+                relative("fonts/Ahem.ttf")?,
+                relative("fonts/PROVENANCE.md")?,
             ],
             vec![relative(SOURCE_ATTESTATION)?],
         )
         .map_err(message)?
         .with_expected_counts(self.expected_counts()?)
-        .with_exact_input_roots(vec![relative("scripts/gentest")?])
+        .with_exact_input_roots(vec![relative("scripts/gentest")?, relative("fonts")?])
         .map_err(message)?;
         Ok(corpus)
     }

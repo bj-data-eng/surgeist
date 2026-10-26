@@ -1,4 +1,4 @@
-<test name="grid_available_space_greater_than_max_content__border_box_ltr" use-rounding="true">
+<test name="grid_available_space_greater_than_max_content__border_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="400px" height="max-content" root-context="flex-item" parent-writing-mode="horizontal-tb" parent-direction="ltr" host-inline-size="160px"/>
   <input>
     <div source-tag="div" display="grid" direction="ltr" grid-template-columns="auto auto">

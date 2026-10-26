@@ -1,4 +1,4 @@
-<test name="grid_lanes_named_placement__content_box_rtl" use-rounding="true">
+<test name="grid_lanes_named_placement__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid-lanes" box-sizing="content-box" direction="rtl" grid-template-columns="[lane] 20px [lane] 30px [lane] 40px [lane]">

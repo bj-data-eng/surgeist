@@ -1,4 +1,4 @@
-<test name="block_direction_rtl_with_br__border_box_ltr" use-rounding="true">
+<test name="block_direction_rtl_with_br__border_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="block" direction="rtl" font-size="0px" line-height="0px" width="100px">

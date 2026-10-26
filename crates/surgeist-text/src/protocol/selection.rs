@@ -13,6 +13,21 @@ pub(crate) struct SelectedData {
     pub(crate) presentation: super::prepared::SelectedPresentation,
     pub(crate) spacing_slots: Vec<SpacingSlotData>,
     pub(crate) metric_policy: LineMetricPolicy,
+    pub(crate) boundaries: super::boundary::Resolved,
+}
+
+impl SelectedData {
+    pub(crate) fn presentation_input(&self) -> super::input::PresentationInput<'_> {
+        super::input::PresentationInput {
+            prepared: &self.prepared,
+            presentation: &self.presentation,
+            boundaries: &self.boundaries,
+            start: self.request.start.index,
+            computed: self.request.alternative.is_some() || self.request.incoming.is_some(),
+            metric_policy: self.metric_policy,
+            controls: &self.request.controls,
+        }
+    }
 }
 
 /// A supported logical space contribution, before any provider-independent delta.
@@ -26,7 +41,7 @@ pub(crate) struct SpacingSlotData {
 }
 
 /// Existing standalone pixel metric policy is not a preparation input.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum LineMetricPolicy {
     Native,
     Exact,
@@ -37,10 +52,9 @@ use std::collections::BTreeSet;
 
 use super::prepared::{ParticipantData, PreparedBreakKind};
 use super::{
-    AtomicAllocation, HangingContext, LineContext, LineEnd, LineOrientation, LineStart,
-    ParagraphBaseDirection, PreparedParticipant, PreparedText, PresentationRange,
-    ProtocolContextField, ProtocolError, ProtocolHandleKind, SelectedLine, SpacingPolicy,
-    TabContext, protocol_error,
+    AtomicAllocation, LineContext, LineEnd, LineOrientation, LineStart, ParagraphBaseDirection,
+    PreparedParticipant, PreparedText, PresentationRange, ProtocolContextField, ProtocolError,
+    ProtocolHandleKind, SelectedLine, SpacingPolicy, TabContext, protocol_error,
 };
 use crate::{InlineBoxKind, Result, TextNumericError, TextNumericPhase};
 
@@ -50,13 +64,199 @@ impl PreparedText {
     pub fn select(&self, request: LineSelectionRequest) -> Result<SelectedLine> {
         select(self, request, LineMetricPolicy::Native)
     }
+
+    /// Return the first actual off-selection endpoint still needed by retained
+    /// shaping context. No shaping or font catalogue query is performed.
+    pub fn boundary_context_demand(
+        &self,
+        request: &LineSelectionRequest,
+    ) -> Result<Option<super::PreparedControl>> {
+        let mut presentation = admit(self, request)?;
+        super::boundary::resolve(self, request.into(), &mut presentation)
+            .map(|(_, missing)| missing)
+    }
 }
 
-fn select(
+pub(crate) fn select(
     prepared: &PreparedText,
     request: LineSelectionRequest,
     metric_policy: LineMetricPolicy,
 ) -> Result<SelectedLine> {
+    let mut presentation = admit(prepared, &request)?;
+    let (boundaries, missing) =
+        super::boundary::resolve(prepared, (&request).into(), &mut presentation)?;
+    if let Some(missing) = missing {
+        return Err(protocol_error(ProtocolError::MissingBoundaryContext {
+            occurrence: missing.index,
+        }));
+    }
+    let spacing_slots = if request.context.spacing == SpacingPolicy::Spaces {
+        presentation
+            .units
+            .iter()
+            .enumerate()
+            .filter(|(_, unit)| unit.eligible_space)
+            .map(|(index, unit)| SpacingSlotData {
+                unit: index,
+                participant: unit.participant,
+                presentation: PresentationRange {
+                    start: unit.presentation.start,
+                    end: unit.presentation.end,
+                },
+                source: unit.source,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    Ok(SelectedLine {
+        inner: Arc::new(SelectedData {
+            prepared: Arc::clone(&prepared.inner),
+            request,
+            presentation,
+            spacing_slots,
+            metric_policy,
+            boundaries,
+        }),
+    })
+}
+
+fn admit(
+    prepared: &PreparedText,
+    request: &LineSelectionRequest,
+) -> Result<super::prepared::SelectedPresentation> {
+    let input = super::input::RequestInput::from(request);
+    let (start, end) = admit_range(prepared, input)?;
+    let tables = &prepared.inner.tables;
+    let bounds_error = || {
+        protocol_error(ProtocolError::InvalidBoundaryRange {
+            start: request.start.index,
+            end: request.end.index,
+            participants: tables.participants.len(),
+        })
+    };
+    let ordinary = match &request.termination {
+        super::PreparedTermination::Ordinary(termination) => {
+            require_prepared(
+                prepared,
+                &termination.prepared,
+                ProtocolHandleKind::Opportunity,
+                termination.index,
+            )?;
+            let opportunity = tables.opportunities.get(termination.index).ok_or_else(|| {
+                protocol_error(ProtocolError::IllegalOpportunity {
+                    opportunity: termination.index,
+                })
+            })?;
+            if opportunity.boundary != request.end.index {
+                return Err(protocol_error(ProtocolError::IllegalOpportunity {
+                    opportunity: termination.index,
+                }));
+            }
+            Some((termination.index, opportunity))
+        }
+        super::PreparedTermination::Conditional(termination) => {
+            termination.validate(prepared, request)?;
+            None
+        }
+        super::PreparedTermination::PhraseMeasurement(portion) => {
+            portion.validate(prepared, request)?;
+            None
+        }
+        super::PreparedTermination::Measurement(portion) => {
+            portion.validate(prepared, request)?;
+            None
+        }
+    };
+    // Opportunities are issued in mixed-boundary order. A mandatory break
+    // consumed by this interval must be its actual termination, even when a
+    // paragraph-end opportunity shares that final boundary. Breaks at start
+    // have already been consumed by the preceding selected line.
+    let first = tables
+        .opportunities
+        .partition_point(|row| tables.boundaries[row.boundary].participant <= start.participant);
+    if tables
+        .opportunities
+        .iter()
+        .enumerate()
+        .skip(first)
+        .take_while(|(_, row)| tables.boundaries[row.boundary].participant <= end.participant)
+        .find(|(_, row)| row.kind == PreparedBreakKind::Forced)
+        .is_some_and(|(index, _)| ordinary.is_none_or(|(actual, _)| index != actual))
+    {
+        return Err(protocol_error(match ordinary {
+            Some((opportunity, _)) => ProtocolError::IllegalOpportunity { opportunity },
+            None => ProtocolError::InvalidConditionalSelection {
+                start: request.start.index,
+                end: request.end.index,
+            },
+        }));
+    }
+    if start.participant == end.participant
+        && ordinary.is_none_or(|(_, row)| row.kind != PreparedBreakKind::ParagraphEnd)
+    {
+        return Err(bounds_error());
+    }
+    let actual_end = match ordinary.map(|(_, row)| row.kind) {
+        None | Some(PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary) => LineEnd::Soft,
+        Some(PreparedBreakKind::Forced) => LineEnd::Forced,
+        Some(PreparedBreakKind::ParagraphEnd) => LineEnd::Paragraph,
+    };
+    if request.context.end != actual_end {
+        return Err(protocol_error(ProtocolError::MismatchedContext {
+            field: ProtocolContextField::LineEnd,
+        }));
+    }
+    let actual_start = if start.participant == 0 {
+        LineStart::Paragraph
+    } else {
+        LineStart::Continuation
+    };
+    if request.context.start != actual_start {
+        return Err(protocol_error(ProtocolError::MismatchedContext {
+            field: ProtocolContextField::LineStart,
+        }));
+    }
+    if let Some((index, opportunity)) = ordinary
+        && opportunity.kind == PreparedBreakKind::Discretionary
+        && request.alternative.is_none()
+    {
+        return Err(protocol_error(ProtocolError::MissingAlternative {
+            opportunity: index,
+        }));
+    }
+    if let Some(alternative) = &request.alternative
+        && let Some((index, opportunity)) = ordinary
+    {
+        require_prepared(
+            prepared,
+            &alternative.prepared,
+            ProtocolHandleKind::Alternative,
+            alternative.index,
+        )?;
+        if !opportunity.alternatives.contains(&alternative.index)
+            || tables
+                .alternatives
+                .get(alternative.index)
+                .is_none_or(|row| row.opportunity != Some(index))
+        {
+            return Err(protocol_error(ProtocolError::ForeignAlternative {
+                alternative: alternative.index,
+                opportunity: index,
+            }));
+        }
+    }
+    admit_geometry(prepared, input)
+}
+
+pub(crate) fn admit_range<'a>(
+    prepared: &'a PreparedText,
+    request: super::input::RequestInput<'_>,
+) -> Result<(
+    &'a super::prepared::BoundaryData,
+    &'a super::prepared::BoundaryData,
+)> {
+    super::continuation::validate(prepared, request.start, request.incoming)?;
     let tables = &prepared.inner.tables;
     require_prepared(
         prepared,
@@ -110,6 +310,15 @@ fn select(
                 ProtocolHandleKind::Atomic,
                 value.index == *index,
             ),
+            (
+                PreparedParticipant::ComputedLineBoundary(value),
+                ParticipantData::ComputedLineBoundary(index),
+            ) => (
+                &value.prepared,
+                value.index,
+                ProtocolHandleKind::ComputedLineBoundary,
+                value.index == *index,
+            ),
             (PreparedParticipant::Control(value), ParticipantData::Control(index)) => (
                 &value.prepared,
                 value.index,
@@ -129,98 +338,17 @@ fn select(
             }));
         }
     }
-    require_prepared(
-        prepared,
-        &request.termination.prepared,
-        ProtocolHandleKind::Opportunity,
-        request.termination.index,
-    )?;
-    let opportunity = tables
-        .opportunities
-        .get(request.termination.index)
-        .ok_or_else(|| {
-            protocol_error(ProtocolError::IllegalOpportunity {
-                opportunity: request.termination.index,
-            })
-        })?;
-    if opportunity.boundary != request.end.index {
-        return Err(protocol_error(ProtocolError::IllegalOpportunity {
-            opportunity: request.termination.index,
-        }));
-    }
-    // Opportunities are issued in mixed-boundary order. A mandatory break
-    // consumed by this interval must be its actual termination, even when a
-    // paragraph-end opportunity shares that final boundary. Breaks at start
-    // have already been consumed by the preceding selected line.
-    let first = tables
-        .opportunities
-        .partition_point(|row| tables.boundaries[row.boundary].participant <= start.participant);
-    if tables
-        .opportunities
-        .iter()
-        .enumerate()
-        .skip(first)
-        .take_while(|(_, row)| tables.boundaries[row.boundary].participant <= end.participant)
-        .find(|(_, row)| row.kind == PreparedBreakKind::Forced)
-        .is_some_and(|(index, _)| index != request.termination.index)
-    {
-        return Err(protocol_error(ProtocolError::IllegalOpportunity {
-            opportunity: request.termination.index,
-        }));
-    }
-    if start.participant == end.participant && opportunity.kind != PreparedBreakKind::ParagraphEnd {
-        return Err(bounds_error());
-    }
-    let actual_end = match opportunity.kind {
-        PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary => LineEnd::Soft,
-        PreparedBreakKind::Forced => LineEnd::Forced,
-        PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
-    };
-    if request.context.end != actual_end {
-        return Err(protocol_error(ProtocolError::MismatchedContext {
-            field: ProtocolContextField::LineEnd,
-        }));
-    }
-    let actual_start = if start.participant == 0 {
-        LineStart::Paragraph
-    } else {
-        LineStart::Continuation
-    };
-    if request.context.start != actual_start {
-        return Err(protocol_error(ProtocolError::MismatchedContext {
-            field: ProtocolContextField::LineStart,
-        }));
-    }
-    if opportunity.kind == PreparedBreakKind::Discretionary && request.alternative.is_none() {
-        return Err(protocol_error(ProtocolError::MissingAlternative {
-            opportunity: request.termination.index,
-        }));
-    }
-    if let Some(alternative) = &request.alternative {
-        require_prepared(
-            prepared,
-            &alternative.prepared,
-            ProtocolHandleKind::Alternative,
-            alternative.index,
-        )?;
-        if !opportunity.alternatives.contains(&alternative.index)
-            || tables
-                .alternatives
-                .get(alternative.index)
-                .is_none_or(|row| row.opportunity != request.termination.index)
-        {
-            return Err(protocol_error(ProtocolError::ForeignAlternative {
-                alternative: alternative.index,
-                opportunity: request.termination.index,
-            }));
-        }
-    }
-    validate_context(
-        &request.context,
-        prepared.inner.analyzed.analysis.base_level,
-    )?;
+    Ok((start, end))
+}
+
+pub(crate) fn admit_geometry(
+    prepared: &PreparedText,
+    request: super::input::RequestInput<'_>,
+) -> Result<super::prepared::SelectedPresentation> {
+    let tables = &prepared.inner.tables;
+    validate_context(request.context, prepared.inner.analyzed.analysis.base_level)?;
     let mut expected_atomics = BTreeSet::new();
-    for participant in &request.participants {
+    for participant in request.participants {
         if let PreparedParticipant::Atomic(atomic) = participant
             && !expected_atomics.insert(atomic.index)
         {
@@ -230,7 +358,7 @@ fn select(
         }
     }
     let mut observed_atomics = BTreeSet::new();
-    for allocation in &request.atomics {
+    for allocation in request.atomics {
         let atomic = &allocation.occurrence;
         require_prepared(
             prepared,
@@ -280,7 +408,7 @@ fn select(
         })
         .collect();
     let mut observed_controls = BTreeSet::new();
-    for allocation in &request.controls {
+    for allocation in request.controls {
         let control = &allocation.occurrence;
         require_prepared(
             prepared,
@@ -298,6 +426,22 @@ fn select(
                 occurrence: control.index,
             }));
         }
+        let kind = &prepared.inner.analyzed.paragraph.controls
+            [tables.controls[control.index].occurrence]
+            .kind;
+        if super::boundary::is_endpoint(kind) {
+            if allocation.boundary.is_none() {
+                return Err(protocol_error(
+                    ProtocolError::MissingControlBoundaryGeometry {
+                        occurrence: control.index,
+                    },
+                ));
+            }
+        } else if allocation.boundary.is_some() {
+            return Err(protocol_error(ProtocolError::InvalidControlGeometry {
+                occurrence: control.index,
+            }));
+        }
         if let Some(strut) = allocation.strut {
             finite("control baseline", strut.baseline)?;
             finite("control line extent", strut.line_extent)?;
@@ -306,7 +450,9 @@ fn select(
                     occurrence: control.index,
                 }));
             }
-            let kind = tables.controls[control.index].kind;
+            let kind = &prepared.inner.analyzed.paragraph.controls
+                [tables.controls[control.index].occurrence]
+                .kind;
             if !matches!(
                 kind,
                 super::paragraph::ParagraphControlKind::ForcedBreak
@@ -324,6 +470,15 @@ fn select(
             occurrence: *occurrence,
         }));
     }
+    for allocation in request.line_box_struts {
+        finite("line box baseline", allocation.metrics.baseline)?;
+        finite("line box extent", allocation.metrics.line_extent)?;
+        if allocation.metrics.baseline < 0.0
+            || allocation.metrics.line_extent < allocation.metrics.baseline
+        {
+            return Err(protocol_error(ProtocolError::InvalidLineStrut));
+        }
+    }
     if let Some(strut) = request.line_strut {
         finite("empty line baseline", strut.baseline)?;
         finite("empty line extent", strut.line_extent)?;
@@ -331,7 +486,19 @@ fn select(
             return Err(protocol_error(ProtocolError::InvalidLineStrut));
         }
     }
-    let presentation = super::prepared::select_presentation(&prepared.inner, &request)?;
+    if matches!(
+        (&request.context.tabs, prepared.inner.options.tabs()),
+        (TabContext::FontAdvance, crate::TabPreparation::CssStops)
+            | (
+                TabContext::CssStops { .. } | TabContext::IntrinsicCssStops,
+                crate::TabPreparation::FontAdvance
+            )
+    ) {
+        return Err(protocol_error(ProtocolError::MismatchedContext {
+            field: ProtocolContextField::TabPreparation,
+        }));
+    }
+    let presentation = super::prepared::select_presentation(&prepared.inner, request)?;
     if request.context.tabs == TabContext::NoTabs
         && presentation
             .units
@@ -342,37 +509,10 @@ fn select(
             field: ProtocolContextField::TabStops,
         }));
     }
-    let spacing_slots = if request.context.spacing == SpacingPolicy::Spaces {
-        presentation
-            .units
-            .iter()
-            .enumerate()
-            .filter(|(_, unit)| unit.eligible_space)
-            .map(|(index, unit)| SpacingSlotData {
-                unit: index,
-                participant: unit.participant,
-                presentation: PresentationRange {
-                    start: unit.presentation.start,
-                    end: unit.presentation.end,
-                },
-                source: unit.source,
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
-    Ok(SelectedLine {
-        inner: Arc::new(SelectedData {
-            prepared: Arc::clone(&prepared.inner),
-            request,
-            presentation,
-            spacing_slots,
-            metric_policy,
-        }),
-    })
+    Ok(presentation)
 }
 
-fn require_prepared(
+pub(super) fn require_prepared(
     expected: &PreparedText,
     actual: &Arc<PreparedData>,
     kind: ProtocolHandleKind,
@@ -404,14 +544,15 @@ fn validate_context(context: &LineContext, base_level: u8) -> Result<()> {
             field: ProtocolContextField::Orientation,
         }));
     }
-    if matches!(context.tabs, TabContext::Stops { .. }) {
-        return Err(protocol_error(ProtocolError::UnsupportedContext {
-            field: ProtocolContextField::TabStops,
-        }));
+    if let TabContext::CssStops {
+        origin: Some(origin),
+    } = context.tabs
+    {
+        finite("tab origin", origin)?;
     }
-    if context.hanging != HangingContext::None {
-        return Err(protocol_error(ProtocolError::UnsupportedContext {
-            field: ProtocolContextField::Hanging,
+    if context.tabs == TabContext::IntrinsicCssStops && context.available_inline.is_some() {
+        return Err(protocol_error(ProtocolError::MismatchedContext {
+            field: ProtocolContextField::TabStops,
         }));
     }
     if let Some(value) = context.available_inline {
@@ -480,53 +621,46 @@ fn numeric(field: &'static str, category: TextNumericError, value: f64) -> crate
     crate::error::text_numeric_error(field, TextNumericPhase::Selection, category, value)
 }
 
-/// Lower only the characterized identity-processing standalone chooser. Native
-/// paragraph capture always supplies its actual issued boundaries directly.
-pub(crate) fn lower_standalone(
+/// Build the actual raw operation request at genuine issued mixed boundaries.
+/// Native callers supply their own allocations; raw boxes retain Source geometry.
+pub(crate) fn standalone_request(
     prepared: Arc<PreparedData>,
-    selection: crate::engine::LineSelection,
-    metric_policy: LineMetricPolicy,
-) -> Result<Arc<SelectedData>> {
-    use super::{
-        AtomicBoxAllocation, AtomicFlowAllocation, PreparedAtomic, PreparedBoundary,
-        PreparedOpportunity,
+    start: usize,
+    termination: super::PreparedTermination,
+    alternative: Option<super::PreparedAlternative>,
+    available: Option<f64>,
+    indent: f64,
+    alignment: crate::Alignment,
+) -> Result<LineSelectionRequest> {
+    use super::PreparedBoundary;
+    let end = match &termination {
+        super::PreparedTermination::Ordinary(offer) => offer.view().boundary().index,
+        super::PreparedTermination::Conditional(cut) => cut.boundary().index,
+        super::PreparedTermination::Measurement(portion) => portion.end,
+        super::PreparedTermination::PhraseMeasurement(portion) => portion.end,
     };
     let tables = &prepared.tables;
     let invalid = || {
         protocol_error(ProtocolError::InvalidBoundaryRange {
-            start: selection.items.start,
-            end: selection.items.end,
+            start,
+            end,
             participants: tables.participants.len(),
         })
     };
-    if prepared.analyzed.paragraph.base_direction.is_some() {
+    if tables.profile != crate::engine::PreparationProfile::Standalone {
         return Err(invalid());
     }
-    let start = tables
-        .boundaries
-        .iter()
-        .position(|row| row.preliminary_item == Some(selection.items.start))
-        .ok_or_else(invalid)?;
-    let end = tables
-        .boundaries
-        .iter()
-        .rposition(|row| row.preliminary_item == Some(selection.items.end))
-        .ok_or_else(invalid)?;
-    if tables.boundaries[start].source_after != selection.source.start
-        || tables.boundaries[end].source_before != selection.source.end
-    {
-        return Err(invalid());
-    }
-    let kind = match selection.break_kind {
-        crate::engine::BreakKind::Soft => PreparedBreakKind::Allowed,
-        crate::engine::BreakKind::Explicit => PreparedBreakKind::Forced,
-        crate::engine::BreakKind::End => PreparedBreakKind::ParagraphEnd,
+    let ending = match &termination {
+        super::PreparedTermination::Ordinary(offer) => match tables.opportunities[offer.index].kind
+        {
+            PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary => LineEnd::Soft,
+            PreparedBreakKind::Forced => LineEnd::Forced,
+            PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
+        },
+        super::PreparedTermination::Measurement(_)
+        | super::PreparedTermination::PhraseMeasurement(_)
+        | super::PreparedTermination::Conditional(_) => LineEnd::Soft,
     };
-    let termination = tables
-        .opportunities
-        .iter()
-        .position(|row| row.boundary == end && row.kind == kind)
-        .ok_or_else(|| protocol_error(ProtocolError::IllegalOpportunity { opportunity: end }))?;
     let from = tables.boundaries[start].participant;
     let to = tables.boundaries[end].participant;
     if from > to {
@@ -536,7 +670,74 @@ pub(crate) fn lower_standalone(
         inner: Arc::clone(&prepared),
     };
     let participants = handle.participants().skip(from).take(to - from).collect();
-    let atomics = tables
+    let atomics = standalone_atomics(&prepared, start, end)?;
+    let request = LineSelectionRequest {
+        boundary_context: Vec::new(),
+        incoming: None,
+        start: PreparedBoundary {
+            prepared: Arc::clone(&prepared),
+            index: start,
+        },
+        end: PreparedBoundary {
+            prepared: Arc::clone(&prepared),
+            index: end,
+        },
+        participants,
+        termination,
+        alternative,
+        context: LineContext {
+            formatted_line: super::FormattedLineContext::default(),
+            base_direction: if prepared.analyzed.analysis.base_level & 1 == 0 {
+                ParagraphBaseDirection::LeftToRight
+            } else {
+                ParagraphBaseDirection::RightToLeft
+            },
+            // Raw Standalone owns one container and explicitly retains its
+            // resolved raw bidi profile as the line-box geometry policy.
+            line_box_direction: if prepared.analyzed.analysis.base_level & 1 == 0 {
+                super::LineBoxDirection::LeftToRight
+            } else {
+                super::LineBoxDirection::RightToLeft
+            },
+            orientation: LineOrientation::Horizontal,
+            start: if from == 0 {
+                LineStart::Paragraph
+            } else {
+                LineStart::Continuation
+            },
+            end: ending,
+            available_inline: available,
+            indent,
+            alignment,
+            tabs: TabContext::FontAdvance,
+
+            spacing: SpacingPolicy::Spaces,
+        },
+        atomics,
+        controls: Vec::new(),
+        line_box_struts: Vec::new(),
+        line_strut: None,
+    };
+    Ok(request)
+}
+
+/// Actual raw Source-box allocations shared by selection and nonplaceable flow.
+pub(crate) fn standalone_atomics(
+    prepared: &Arc<PreparedData>,
+    start: usize,
+    end: usize,
+) -> Result<Vec<AtomicAllocation>> {
+    let tables = &prepared.tables;
+    if tables.profile != crate::engine::PreparationProfile::Standalone
+        || start > end
+        || end >= tables.boundaries.len()
+    {
+        return Err(protocol_error(ProtocolError::InvalidMeasurementFlow));
+    }
+    let from = tables.boundaries[start].participant;
+    let to = tables.boundaries[end].participant;
+    use super::{AtomicBoxAllocation, AtomicFlowAllocation, PreparedAtomic};
+    Ok(tables
         .atomics
         .iter()
         .enumerate()
@@ -547,7 +748,7 @@ pub(crate) fn lower_standalone(
             let in_flow = item.kind() == InlineBoxKind::InFlow;
             AtomicAllocation {
                 occurrence: PreparedAtomic {
-                    prepared: Arc::clone(&prepared),
+                    prepared: Arc::clone(prepared),
                     index,
                 },
                 allocation: if in_flow {
@@ -571,49 +772,5 @@ pub(crate) fn lower_standalone(
                 },
             }
         })
-        .collect();
-    let request = LineSelectionRequest {
-        start: PreparedBoundary {
-            prepared: Arc::clone(&prepared),
-            index: start,
-        },
-        end: PreparedBoundary {
-            prepared: Arc::clone(&prepared),
-            index: end,
-        },
-        participants,
-        termination: PreparedOpportunity {
-            prepared: Arc::clone(&prepared),
-            index: termination,
-        },
-        alternative: None,
-        context: LineContext {
-            base_direction: if prepared.analyzed.analysis.base_level & 1 == 0 {
-                ParagraphBaseDirection::LeftToRight
-            } else {
-                ParagraphBaseDirection::RightToLeft
-            },
-            orientation: LineOrientation::Horizontal,
-            start: if from == 0 {
-                LineStart::Paragraph
-            } else {
-                LineStart::Continuation
-            },
-            end: match kind {
-                PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary => LineEnd::Soft,
-                PreparedBreakKind::Forced => LineEnd::Forced,
-                PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
-            },
-            available_inline: selection.available,
-            indent: selection.indent,
-            alignment: selection.alignment,
-            tabs: TabContext::FontAdvance,
-            hanging: HangingContext::None,
-            spacing: SpacingPolicy::Spaces,
-        },
-        atomics,
-        controls: Vec::new(),
-        line_strut: None,
-    };
-    Ok(select(&handle, request, metric_policy)?.inner)
+        .collect())
 }

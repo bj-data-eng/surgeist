@@ -156,9 +156,18 @@ pub(crate) fn collect_stats(
             Command::Image { image, .. } => {
                 collect_image_stats(image, stats, uploaded_images);
             }
-            Command::PreparedOutline { outline, paint, .. } => {
+            Command::PreparedGlyphRun {
+                run: outline,
+                paint,
+                ..
+            } => {
                 stats.glyphs = stats.glyphs.saturating_add(outline.glyphs().len());
                 collect_paint_stats(paint.fill(), stats, uploaded_images);
+                for operation in outline.paints() {
+                    if let crate::text::GlyphPaint::Bitmap { image, .. } = operation {
+                        collect_image_stats(image, stats, uploaded_images);
+                    }
+                }
             }
             Command::TextRun { glyphs, .. } => {
                 stats.glyphs = stats.glyphs.saturating_add(glyphs.len());
@@ -212,9 +221,18 @@ pub(crate) fn collect_render_stats(
             RenderCommand::Image { image, .. } => {
                 collect_image_stats(image, stats, uploaded_images);
             }
-            RenderCommand::PreparedOutline { outline, paint, .. } => {
+            RenderCommand::PreparedGlyphRun {
+                run: outline,
+                paint,
+                ..
+            } => {
                 stats.glyphs = stats.glyphs.saturating_add(outline.glyphs().len());
                 collect_paint_stats(paint.fill(), stats, uploaded_images);
+                for operation in outline.paints() {
+                    if let crate::text::GlyphPaint::Bitmap { image, .. } = operation {
+                        collect_image_stats(image, stats, uploaded_images);
+                    }
+                }
             }
             RenderCommand::TextRun { glyphs, .. } => {
                 stats.glyphs = stats.glyphs.saturating_add(glyphs.len());

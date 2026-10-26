@@ -19,6 +19,7 @@ CPU-visible headless pixels require explicit readback.
 | --- | --- |
 | Package identity, dependencies, features and targets | [Cargo.toml](Cargo.toml) |
 | Public front door and exported contracts | [src/lib.rs](src/lib.rs) and the reexported definitions |
+| Headless glyph admission and placed Text adapter | [Prepared glyphs](src/text/prepared.rs) and [Text adapter](src/text_layout.rs) |
 | Authored commands and normalization | [src/scene.rs](src/scene.rs), [src/command.rs](src/command.rs), and [src/style/](src/style/) |
 | Planning, execution, and publication | [src/frame/](src/frame/), [src/renderer/](src/renderer/), [src/pass/](src/pass/), [src/gpu_transaction/](src/gpu_transaction/), and [src/backend/](src/backend/) |
 | GPU resources, shaders, and internal raster engine | [src/resource/](src/resource/), [src/shader/](src/shader/), [src/shaders/](src/shaders/), and [src/vello_engine/](src/vello_engine/) |
@@ -36,7 +37,7 @@ run from this crate directory.
 
 Native host feature combinations are default, `render-window`, `render-web`, and
 `render-window,render-web`. The independent optional `render-text` feature owns
-standalone Text-layout consumption; its focused tests are in
+immutable placed Text-layout consumption; its focused tests are in
 `src/tests/text_layout_adapter.rs`. Native tests include real GPU execution and require
 a compatible adapter; serial test threads do not bound GPU allocation. Select
 `tests::platform::real_gpu_smoke_emits_no_uncaptured_error` for the initial 2×2

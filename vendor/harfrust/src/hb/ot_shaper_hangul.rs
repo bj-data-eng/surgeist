@@ -163,7 +163,7 @@ fn preprocess_text_hangul(_: &hb_ot_shape_plan_t, face: &hb_font_t, buffer: &mut
     let mut start = 0;
     let mut end = 0;
     buffer.idx = 0;
-    while buffer.idx < buffer.len {
+    while buffer.idx < buffer.len && buffer.successful {
         let u = buffer.cur(0).glyph_id;
         let c = buffer.cur(0).as_codepoint();
 
@@ -244,6 +244,9 @@ fn preprocess_text_hangul(_: &hb_ot_shape_plan_t, face: &hb_font_t, buffer: &mut
                     if face.has_glyph(s) {
                         let n = if t != 0 { 3 } else { 2 };
                         buffer.replace_glyphs(n, 1, &[s]);
+                        if buffer.successful {
+                            buffer.prev_mut().di_normal();
+                        }
                         end = start + 1;
                         continue;
                     }
@@ -287,6 +290,9 @@ fn preprocess_text_hangul(_: &hb_ot_shape_plan_t, face: &hb_font_t, buffer: &mut
 
                 if face.has_glyph(new_s) {
                     buffer.replace_glyphs(2, 1, &[new_s]);
+                    if buffer.successful {
+                        buffer.prev_mut().di_normal();
+                    }
                     end = start + 1;
                     continue;
                 } else {
@@ -308,11 +314,17 @@ fn preprocess_text_hangul(_: &hb_ot_shape_plan_t, face: &hb_font_t, buffer: &mut
                 {
                     let mut s_len = if tindex != 0 { 3 } else { 2 };
                     buffer.replace_glyphs(1, s_len, &decomposed);
+                    if !buffer.successful {
+                        break;
+                    }
 
                     // If we decomposed an LV because of a non-combining T following,
                     // we want to include this T in the syllable.
                     if has_glyph && tindex == 0 {
                         buffer.next_glyph();
+                        if !buffer.successful {
+                            break;
+                        }
                         s_len += 1;
                     }
 

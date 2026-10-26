@@ -4,7 +4,7 @@ use super::inline::{
     AtomicInlineBoxParticipant, ForcedLineBreakControlOf, InlineBoundaryControlOf,
     InlineControlAlignment, InlineFlowOf, InlineParticipantKindOf, InlineParticipantProjection,
     LogicalLineBandQueryResultOf, MixedInlineParticipantOf, MixedInlineRunInputOf,
-    ShapedTextParticipantOf, layout_mixed_inline_run_with_band_source,
+    layout_mixed_inline_run_with_formatted_observation,
 };
 use super::value::{ResolvedLengthAutoOf, UnresolvedLengthReason};
 use super::{
@@ -14,7 +14,7 @@ use super::{
     LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutOperation, LayoutResultOf, LayoutScalar,
     LengthAutoOf, LineBreakInputOf, NodeOutputOf, Overflow, ParentFormattingContext,
     PhysicalBlockMarginCollapseOf, Point, Position, RequestedAxis, RunMode, Size, SizingAlgorithm,
-    SizingMode, TextAlign, Traverse, VerticalAlign,
+    SizingMode, TextAlign, TextAlignLast, TextJustification, Traverse, VerticalAlign,
 };
 use crate::error::{
     AtomicInlineParticipationRoleError, layout_child_geometry_error, layout_own_geometry_error,
@@ -34,6 +34,7 @@ use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
 use super::{LengthOf, NodeInputOf, WritingMode};
 
 mod absolute;
+mod float_text;
 mod floats;
 mod in_flow;
 mod inline_run;
@@ -96,35 +97,45 @@ fn compute_block_with_optional_inherited_float_exclusions<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let scrollbar_width = block_container_projection::<Tree, M>(tree, node)
-        .scrollbar_width
-        .get();
-    let mut pass_input = input;
-    loop {
-        let output = compute_block_inner::<Tree, Tree::Scalar, M>(
-            tree,
-            node,
-            pass_input,
-            inherited.as_ref(),
-        )?;
-        if !input.run_mode().is_perform_layout() {
-            return Ok(output);
+    let anonymous = tree.node_input(node).block_generation == crate::BlockGeneration::Anonymous;
+    let formatted = tree
+        .text_computation()
+        .is_some_and(|text| text.formatted_begin_block(node, input, anonymous));
+    let result = (|| {
+        let scrollbar_width = block_container_projection::<Tree, M>(tree, node)
+            .scrollbar_width
+            .get();
+        let mut pass_input = input;
+        loop {
+            let output = compute_block_inner::<Tree, Tree::Scalar, M>(
+                tree,
+                node,
+                pass_input,
+                inherited.as_ref(),
+            )?;
+            if !input.run_mode().is_perform_layout() {
+                return Ok(output);
+            }
+            let Some(geometry) = output.scroll_geometry else {
+                return Ok(output);
+            };
+            let next_state = pass_input.settled_auto_scrollbars().transition(geometry);
+            if next_state == pass_input.settled_auto_scrollbars()
+                || scrollbar_width == Tree::Scalar::ZERO
+                || !crate::scroll::settled_auto_scrollbars_change_available_geometry(
+                    geometry, next_state,
+                )
+                .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?
+            {
+                return Ok(output);
+            }
+            pass_input = input.with_settled_auto_scrollbars(next_state);
         }
-        let Some(geometry) = output.scroll_geometry else {
-            return Ok(output);
-        };
-        let next_state = pass_input.settled_auto_scrollbars().transition(geometry);
-        if next_state == pass_input.settled_auto_scrollbars()
-            || scrollbar_width == Tree::Scalar::ZERO
-            || !crate::scroll::settled_auto_scrollbars_change_available_geometry(
-                geometry, next_state,
-            )
-            .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?
-        {
-            return Ok(output);
-        }
-        pass_input = input.with_settled_auto_scrollbars(next_state);
+    })();
+    if formatted && let Some(text) = tree.text_computation() {
+        text.formatted_end_block(node, input, anonymous, result.is_ok());
     }
+    result
 }
 
 fn compute_block_inner<'input, Tree, S, M>(
@@ -140,8 +151,12 @@ where
     let style = block_container_projection::<Tree, M>(tree, node);
     let constants = Constants::from_projection::<Tree, M>(tree, node, &style, input)?;
     let children = tree.children(node).collect::<Vec<_>>();
+    let observe_formatted = tree
+        .text_computation()
+        .is_some_and(|text| text.formatted_active());
 
     if children.is_empty()
+        && !observe_formatted
         && input.run_mode() == RunMode::ComputeSize
         && let Size {
             width: Some(width),
@@ -153,6 +168,7 @@ where
         )));
     }
     if input.run_mode() == RunMode::ComputeSize
+        && !observe_formatted
         && let Size {
             width: Some(width),
             height: Some(height),
@@ -243,6 +259,9 @@ where
     } else {
         (constants, intrinsic_pass)
     };
+    if let Some(text) = tree.text_computation() {
+        text.formatted_record_flow(final_pass.formatted.clone());
+    }
     let logical_output_size = LogicalSizeOf::new(
         provisional_logical_output_size.inline,
         constants
@@ -356,7 +375,15 @@ struct Constants<S: LayoutScalar> {
     node_min_size: Size<Option<S>>,
     node_max_size: Size<Option<S>>,
     direction: Direction,
+    line_box_direction_policy: crate::LineBoxDirectionPolicy,
+    text_indent: crate::TextIndentOf<S>,
+    hyphenate_limit_lines: crate::HyphenateLimitLines,
+    hyphenate_limit_last: crate::HyphenateLimitLast,
+    hyphenate_limit_zone: crate::LengthPercentageOf<S>,
+    first_formatted: bool,
     text_align: TextAlign,
+    text_align_last: TextAlignLast,
+    text_justification: TextJustification,
     border: Edges<S>,
     padding: Edges<S>,
     effective_border: Edges<S>,
@@ -601,7 +628,36 @@ impl<S: LayoutScalar> Constants<S> {
         let logical_style_size = flow_axes.logical_size(style_size);
         let logical_margin = flow_axes.logical_edges(margin);
 
+        let first_formatted = match style.block_generation {
+            crate::BlockGeneration::Principal => true,
+            crate::BlockGeneration::Anonymous => {
+                let context = input.block_indent_context().ok_or_else(|| {
+                    crate::LayoutErrorOf::new(
+                        crate::LayoutErrorSiteOf::Node(node),
+                        crate::LayoutOperation::ChildLayout,
+                        crate::LayoutErrorKindOf::MissingContext(
+                            crate::LayoutMissingContext::AnonymousGeneratingBlock,
+                        ),
+                    )
+                })?;
+                if context.inherited != style.text_indent {
+                    return Err(crate::LayoutErrorOf::new(
+                        crate::LayoutErrorSiteOf::Node(node),
+                        crate::LayoutOperation::ChildLayout,
+                        crate::LayoutErrorKindOf::InvalidInput(
+                            crate::LayoutInvalidInputOf::AnonymousIndentMismatch,
+                        ),
+                    ));
+                }
+                context.first_formatted
+            }
+        };
         Ok(Self {
+            text_indent: style.text_indent,
+            hyphenate_limit_lines: style.hyphenate_limit_lines,
+            hyphenate_limit_last: style.hyphenate_limit_last,
+            hyphenate_limit_zone: style.hyphenate_limit_zone,
+            first_formatted,
             flow_axes,
             node_outer_size,
             node_inner_size,
@@ -610,7 +666,10 @@ impl<S: LayoutScalar> Constants<S> {
             node_min_size: min_size,
             node_max_size: max_size,
             direction: flow_axes.direction(),
+            line_box_direction_policy: style.line_box_direction_policy,
             text_align: style.text_align,
+            text_align_last: style.text_align_last,
+            text_justification: style.text_justification,
             border,
             padding,
             effective_border,
@@ -802,11 +861,11 @@ mod fri06_c13_t06_characterization_tests {
         .expect_err("padding failure must precede the distinct border failure");
         assert_eq!(error.site(), LayoutErrorSiteOf::Node(7));
         assert_eq!(error.operation(), LayoutOperation::ValueResolution);
-        assert_eq!(
+        crate::test_support::assert_error_kind(
             error.kind(),
             &LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
                 value: S::INFINITY,
-            })
+            }),
         );
     }
 

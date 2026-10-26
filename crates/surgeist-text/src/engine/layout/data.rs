@@ -43,6 +43,7 @@ impl Whitespace {
 pub(crate) struct RunMetrics {
     pub(crate) ascent: f64,
     pub(crate) descent: f64,
+    /// Initial run-style/default strut height; actual components retain their own.
     pub(crate) line_height: f64,
     /// Distance from baseline to the underline's top, positive upward.
     pub(crate) underline_top: f64,
@@ -69,13 +70,37 @@ pub(crate) struct PreparedRun {
     pub(crate) metrics: RunMetrics,
 }
 
+/// Actual font-backed provider output or a glyph-free CSS positioning control.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ClusterContent {
+    Provider(usize),
+    CssTab(Option<usize>),
+}
+impl ClusterContent {
+    pub(crate) fn font_run(self) -> Option<usize> {
+        match self {
+            Self::Provider(i) => Some(i),
+            Self::CssTab(i) => i,
+        }
+    }
+}
+
 /// A logical shaped cluster. Ligature components retain separate source associations.
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedCluster {
+    /// Owning component style resolved against its actual font instance.
+    /// Font-free controls have no strut contribution.
+    pub(crate) line_height: f64,
+    /// Actual provider contribution before caller-owned spacing.
+    pub(crate) shaped_advance: f64,
+    /// Executed letter, word, and selected allocation terms, without regrouping.
+    pub(crate) logical_adjustments: [f64; 3],
     pub(crate) source: Range,
     pub(crate) atoms: IndexRange<usize>,
+    /// Actual provider group before scalar component extraction.
+    pub(crate) provider_group: IndexRange<usize>,
     pub(crate) glyphs: IndexRange<usize>,
-    pub(crate) run: usize,
+    pub(crate) content: ClusterContent,
     pub(crate) style: usize,
     pub(crate) level: u8,
     pub(crate) advance: f64,
@@ -97,12 +122,12 @@ pub(crate) enum ShapedItem {
     /// Actual zero-presentation selected unit; it owns no synthetic glyph/metrics.
     Anchor {
         unit: usize,
-        level: u8,
     },
 }
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ShapedData {
+    pub(crate) font_queries: Vec<super::super::shape::FontQueryWitness>,
     pub(crate) runs: Vec<PreparedRun>,
     pub(crate) clusters: Vec<PreparedCluster>,
     pub(crate) glyphs: Vec<GlyphData>,
@@ -154,9 +179,20 @@ pub(crate) struct FinalizedGlyph {
 
 #[derive(Clone, Debug)]
 pub(crate) struct FinalizedCluster {
+    /// The actually selected component's resolved font-backed line height.
+    pub(crate) line_height: f64,
+    /// Actual provider contribution before caller-owned spacing.
+    pub(crate) shaped_advance: f64,
+    /// Executed letter, word, and selected allocation terms, without regrouping.
+    pub(crate) logical_adjustments: [f64; 3],
+    /// Actual provider membership retained independently of operation-specific units.
+    pub(crate) provider_atoms: IndexRange<usize>,
+    pub(crate) disposition: crate::SpacingSlotDisposition,
     pub(crate) source: Range,
     pub(crate) presentation: Range,
-    pub(crate) run: usize,
+    pub(crate) content: ClusterContent,
+    #[cfg(feature = "text-accessibility")]
+    pub(crate) style: usize,
     pub(crate) x: f64,
     pub(crate) advance: f64,
     pub(crate) level: u8,
@@ -205,6 +241,7 @@ pub(crate) struct FinalizedAnchor {
     pub(crate) unit: usize,
     pub(crate) slot: crate::Point,
     pub(crate) level: u8,
+    pub(crate) inline_end: f64,
 }
 
 /// The actual allocation target joined by finalization, in selected-slot order.
@@ -217,6 +254,7 @@ pub(crate) struct FinalizedSpacingSlot {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FinalizedLineData {
+    pub(crate) measurements: Option<crate::LineMeasurements>,
     pub(crate) font_runs: Vec<PreparedRun>,
     pub(crate) runs: Vec<FinalizedRun>,
     /// Logical cluster order; each row records its actual visual position.
@@ -228,6 +266,7 @@ pub(crate) struct FinalizedLineData {
     pub(crate) anchors: Vec<FinalizedAnchor>,
     pub(crate) spacing_slots: Vec<FinalizedSpacingSlot>,
     pub(crate) metrics: LineMetrics,
+    pub(crate) prefix: crate::protocol::prefix::PrefixData,
     pub(crate) fragments: Vec<FinalizedFragmentData>,
 }
 

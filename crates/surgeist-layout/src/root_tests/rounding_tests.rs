@@ -3,14 +3,14 @@ use super::fixtures::{
     assert_fri06_c08_float_line_final_height, assert_positive_physical_range,
     assert_public_scroll_geometry_error_without_batch, computed_overflow,
     fri05_c03_root_all_flow_axes, fri05_c03_root_gutter_at, fri06_c02_final_node,
-    fri06_c02_segment, fri06_c02_text_batch, fri06_c04_front_door_batch,
-    fri06_c12_t08_forced_break_fallback_batch, logical_flex_leaf, public_flow_output,
-    root_test_scroll_geometry, root_writing_mode_directions, scalar,
+    fri06_c04_front_door_batch, fri06_c12_t08_forced_break_fallback_batch, logical_flex_leaf,
+    prepared_source_batch, public_flow_output, root_test_scroll_geometry,
+    root_writing_mode_directions, scalar,
 };
 use super::*;
 
 #[test]
-fn fri06_c04_float_scroll_rounding_preserves_mapped_side_band_and_position_identity_all_flows_both_scalars()
+fn atomic_float_scroll_rounding_preserves_mapped_side_band_and_source_identity_all_flows_both_scalars()
  {
     fn assert_lane<S: LayoutScalar>() {
         for (writing_mode, direction) in root_writing_mode_directions() {
@@ -36,13 +36,19 @@ fn fri06_c04_float_scroll_rounding_preserves_mapped_side_band_and_position_ident
                         .map(PreferredSizeOf::px),
                     ..NodeInputOf::default()
                 };
-                let text = InlineTextInputOf::try_new(vec![fri06_c02_segment(
-                    951,
-                    10.25,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
-                )])
-                .unwrap();
+                let atomic = NodeInputOf {
+                    display: Display::InlineBlock,
+                    writing_mode,
+                    direction,
+                    size: flow_axes
+                        .physical_size(LogicalSizeOf::new(S::from_f64(10.25), S::from_f64(10.0)))
+                        .map(PreferredSizeOf::px),
+                    atomic_inline_participation: Some(AtomicInlineParticipation::new(
+                        BidiLevel::try_new(0).unwrap(),
+                        InlineBreakOpportunity::Prohibited,
+                    )),
+                    ..NodeInputOf::default()
+                };
                 let batch = fri06_c04_front_door_batch(
                     root_style,
                     LogicalSizeOf::new(
@@ -59,8 +65,8 @@ fn fri06_c04_float_scroll_rounding_preserves_mapped_side_band_and_position_ident
                         ),
                         (
                             2,
-                            LayoutInputOf::inline_text(text),
-                            NodeInputOf::non_box(),
+                            LayoutInputOf::box_input(atomic.clone()),
+                            atomic,
                             Vec::new(),
                         ),
                     ],
@@ -86,20 +92,11 @@ fn fri06_c04_float_scroll_rounding_preserves_mapped_side_band_and_position_ident
                     }
                     assert_eq!(line_origin.block, S::ZERO);
                 }
-                let unrounded_fragment = batch.unrounded_inline_fragments()[0].fragment();
-                let rounded_fragment = batch.final_inline_fragments()[0].fragment();
                 assert_eq!(
-                    (
-                        unrounded_fragment.segment_id(),
-                        unrounded_fragment.line_index(),
-                        unrounded_fragment.visual_index(),
-                    ),
-                    (
-                        rounded_fragment.segment_id(),
-                        rounded_fragment.line_index(),
-                        rounded_fragment.visual_index(),
-                    ),
+                    public_flow_output(batch.unrounded_entries(), 2).source_index,
+                    public_flow_output(batch.final_entries(), 2).source_index
                 );
+                assert!(batch.final_inline_fragments().is_empty());
             }
         }
     }
@@ -109,25 +106,25 @@ fn fri06_c04_float_scroll_rounding_preserves_mapped_side_band_and_position_ident
 }
 
 #[test]
-fn fri06_c08_float_line_border_box_ltr_rounds_final_height_to_63() {
+fn fri06_c08_float_line_border_box_ltr_rounds_final_height_to_66() {
     assert_fri06_c08_float_line_final_height::<f32>(Direction::Ltr, BoxSizing::BorderBox);
     assert_fri06_c08_float_line_final_height::<f64>(Direction::Ltr, BoxSizing::BorderBox);
 }
 
 #[test]
-fn fri06_c08_float_line_border_box_rtl_rounds_final_height_to_63() {
+fn fri06_c08_float_line_border_box_rtl_rounds_final_height_to_66() {
     assert_fri06_c08_float_line_final_height::<f32>(Direction::Rtl, BoxSizing::BorderBox);
     assert_fri06_c08_float_line_final_height::<f64>(Direction::Rtl, BoxSizing::BorderBox);
 }
 
 #[test]
-fn fri06_c08_float_line_content_box_ltr_rounds_final_height_to_63() {
+fn fri06_c08_float_line_content_box_ltr_rounds_final_height_to_66() {
     assert_fri06_c08_float_line_final_height::<f32>(Direction::Ltr, BoxSizing::ContentBox);
     assert_fri06_c08_float_line_final_height::<f64>(Direction::Ltr, BoxSizing::ContentBox);
 }
 
 #[test]
-fn fri06_c08_float_line_content_box_rtl_rounds_final_height_to_63() {
+fn fri06_c08_float_line_content_box_rtl_rounds_final_height_to_66() {
     assert_fri06_c08_float_line_final_height::<f32>(Direction::Rtl, BoxSizing::ContentBox);
     assert_fri06_c08_float_line_final_height::<f64>(Direction::Rtl, BoxSizing::ContentBox);
 }
@@ -192,70 +189,79 @@ fn fri06_c12_t08_fractional_forced_break_fallback_preserves_unrounded_envelope()
 }
 
 #[test]
-fn fri06_c02_rounding_fractional_fragments_round_once_without_identity_drift_both_scalars() {
+fn prepared_text_fractional_rounding_preserves_issued_owner_and_selected_alternative_both_scalars()
+{
     fn assert_lane<S: LayoutScalar>() {
-        let replacement =
-            InlineBreakOpportunityOf::try_allowed_with_replacement(S::from_f64(0.75)).unwrap();
-        let batch = fri06_c02_text_batch(
+        use surgeist_text::{
+            FinalizedFragmentOwner, ParagraphReplacement, ParagraphReplacementDefinition, Range,
+            Source, Text,
+        };
+        let style = crate::test_support::text::ahem_style(8.25, 10.0);
+        // Ahem X and hyphen have one-em advance. A real SHY replacement makes
+        // the first line24.75px; the three following Xs require another line.
+        let batch = prepared_source_batch::<S>(
+            Source::new("XX\u{ad}XXX"),
+            style,
+            AvailableOf::definite(S::from_f64(25.0)),
+            WritingMode::HorizontalTb,
+            Direction::Ltr,
+            TextAlign::Start,
             vec![
-                fri06_c02_segment(71, 8.25, InlineWhitespaceEdge::Preserve, replacement),
-                fri06_c02_segment(
-                    72,
-                    8.25,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
+                ParagraphReplacement::resolved_native_logical_before(
+                    ParagraphReplacementDefinition::Source {
+                        origin: 0,
+                        source: Range::new(2, 3),
+                    },
+                    3,
+                    vec![Text::from("-")],
+                )
+                .unwrap(),
             ],
-            AvailableOf::definite(S::from_f64(10.5)),
-        );
+        )
+        .unwrap();
         let unrounded = batch.unrounded_inline_fragments();
-        let final_fragments = batch.final_inline_fragments();
-        assert_eq!(unrounded.len(), 2);
-        assert_eq!(final_fragments.len(), 2);
-        assert_eq!(
-            unrounded
-                .iter()
-                .map(|entry| {
-                    let fragment = entry.fragment();
-                    (
-                        entry.node(),
-                        fragment.segment_id(),
-                        fragment.line_index(),
-                        fragment.visual_index(),
-                        fragment.replacement_inline_extent(),
-                    )
-                })
-                .collect::<Vec<_>>(),
-            final_fragments
-                .iter()
-                .map(|entry| {
-                    let fragment = entry.fragment();
-                    (
-                        entry.node(),
-                        fragment.segment_id(),
-                        fragment.line_index(),
-                        fragment.visual_index(),
-                        fragment.replacement_inline_extent(),
-                    )
-                })
-                .collect::<Vec<_>>()
-        );
-        assert_eq!(
-            unrounded[0].fragment().rect().size().width,
-            S::from_f64(8.25)
-        );
-        assert_eq!(
-            final_fragments[0].fragment().rect().size().width,
-            S::from_f64(8.0)
-        );
-        assert_eq!(unrounded[0].fragment().baseline().y, S::from_f64(8.0));
-        assert_eq!(final_fragments[0].fragment().baseline().y, S::from_f64(8.0));
-        assert_eq!(
-            unrounded[0].fragment().replacement_inline_extent(),
-            Some(S::from_f64(0.75))
-        );
+        let rounded = batch.final_inline_fragments();
+        assert_eq!(unrounded.len(), rounded.len());
+        assert!(unrounded.iter().any(|entry| matches!(
+            entry.fragment().finalized_fragment().view().owner(),
+            FinalizedFragmentOwner::Alternative(_)
+        )));
+        for (before, after) in unrounded.iter().zip(rounded) {
+            assert_eq!(before.owner(), after.owner());
+            assert_eq!(
+                before.fragment().finalized_fragment(),
+                after.fragment().finalized_fragment()
+            );
+            assert_eq!(
+                before.fragment().line_index(),
+                after.fragment().line_index()
+            );
+        }
+        let source = unrounded
+            .iter()
+            .find(|entry| {
+                entry
+                    .fragment()
+                    .finalized_fragment()
+                    .view()
+                    .origin()
+                    .is_some()
+            })
+            .unwrap()
+            .fragment();
+        assert_eq!(source.rect().unwrap().size().width, S::from_f64(8.25));
+        let final_source = rounded
+            .iter()
+            .find(|entry| entry.fragment().finalized_fragment() == source.finalized_fragment())
+            .unwrap()
+            .fragment();
+        assert_eq!(final_source.rect().unwrap().size().width, S::from_f64(8.25));
+        // .8*8.25 + half-leading(10-8.25)/2 =7.475.
+        let natural = source.finalized_fragment().finalized_line().feedback();
+        assert!((natural.baseline - 7.475).abs() < 0.00001);
+        assert_eq!(source.baseline().y, S::from_f64(7.0));
+        assert_eq!(final_source.baseline().y, S::from_f64(7.0));
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
@@ -662,9 +668,9 @@ fn round_layout_diagnostics_rejects_invalid_rounded_scroll_geometry() {
 
     assert_eq!(error.site(), LayoutErrorSite::Node(0));
     assert_eq!(error.operation(), LayoutOperation::RoundingFinalization);
-    assert_eq!(
+    crate::test_support::assert_error_kind(
         error.kind(),
-        &LayoutErrorKind::InternalInvariant(LayoutInternalInvariant::InvalidRoundedScrollGeometry)
+        &LayoutErrorKind::InternalInvariant(LayoutInternalInvariant::InvalidRoundedScrollGeometry),
     );
     assert_eq!(tree.final_layout(0), None);
 }

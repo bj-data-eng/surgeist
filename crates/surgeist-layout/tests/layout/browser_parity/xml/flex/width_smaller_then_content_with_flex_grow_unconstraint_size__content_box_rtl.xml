@@ -1,4 +1,4 @@
-<test name="width_smaller_then_content_with_flex_grow_unconstraint_size__content_box_rtl" use-rounding="true">
+<test name="width_smaller_then_content_with_flex_grow_unconstraint_size__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" box-sizing="content-box" direction="rtl">

@@ -62,12 +62,21 @@
 //! [`LayoutErrorOf`] with no partial public result. Recursive compute modes are
 //! internal.
 //!
-//! The current text boundary accepts validated [`InlineTextInputOf`] segments.
-//! Layout owns break selection, box/float constraints, placement and its consuming
-//! Text adapter. Text owns shaping and source mappings; Render owns paint
-//! conversion and Runtime owns coherent publication. The fixed-segment input
-//! does not yet carry Text preparation or finalized-line identities. Authored
-//! text, glyph data and rendering do not enter this implemented boundary.
+//! [`LayoutFlowInput`] binds immutable Text paragraphs and declared
+//! [`WrappingScopeInput`] boxes to one borrowed tree. Numeric box/control flow
+//! can supply no Text paragraphs. [`compute_layout_with_flow`] consumes that
+//! checked flow and selects Text-issued candidates when present. It retains the exact
+//! placed [`surgeist_text::Layout`] in each [`PlacedTextOutput`], alongside
+//! source-associated fragment handles and canonical atomic allocations.
+//! Text owns shaping and source mappings; Layout owns fitting and placement,
+//! Render owns paint conversion, and Runtime owns coherent publication.
+//! The prepared-text profile supports horizontal LTR and RTL flow, signed
+//! indentation, and font-advance or CSS-stop tabs. [`TextAlign`] and
+//! [`TextAlignLast`] select line alignment. [`TextJustification::Spaces`] permits
+//! explicit expansion of actual retained U+0020 slots during justification;
+//! [`TextJustification::None`]
+//! adds no expansion. Text owns line-edge and trailing-space decisions.
+//! Other Text orientations return a precise unsupported error.
 //! [`NodeInputOf::non_box`] is the canonical tree companion for text and inline
 //! controls.
 //!
@@ -204,12 +213,31 @@ mod error;
 mod flex;
 mod geometry;
 mod grid;
+mod hyphenation;
 mod inline;
 mod layout_math;
 mod measurement;
 mod node_input;
 mod node_projection;
 mod output;
+#[cfg(test)]
+#[path = "../tests/layout/browser_parity/pinned_font.rs"]
+mod pinned_font;
+pub use hyphenation::{HyphenateLimitLast, HyphenateLimitLines};
+mod inline_wrapping;
+mod line_box;
+mod text_indent;
+mod text_layout;
+pub use inline_wrapping::{
+    ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
+    InlineBoxRef, InlineChildOrderInput, WrapEdge, WrapEdges, WrapInside, WrappingInput,
+    WrappingScopeError, WrappingScopeInput,
+};
+pub use text_layout::{
+    LayoutFlowInput, TextAtomicBinding, TextBindingError, TextControlBinding,
+    TextControlParticipation, TextOriginBinding, TextParagraphBinding, TextParticipation,
+    TextScopeAssociation, TextScopeBinding,
+};
 mod scalar;
 mod scroll;
 mod sizing;
@@ -238,14 +266,17 @@ pub(crate) use engine::contracts::{Round, compute_cached};
 pub(crate) use engine::round_layout;
 #[cfg(test)]
 pub(crate) use engine::{compute_hidden, compute_root};
-pub use engine::{compute_layout, compute_layout_invalidated};
+pub use engine::{
+    compute_layout, compute_layout_invalidated, compute_layout_with_flow,
+    compute_layout_with_flow_invalidated,
+};
 pub use error::{
     AtomicInlineParticipationRoleError, CalcSizeBehaviorBasis, FloatExclusionRoleError,
     InvalidMeasurementOutput, InvalidMeasurementOutputOf, LayoutError, LayoutErrorKind,
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSite, LayoutErrorSiteOf, LayoutInternalInvariant,
     LayoutInvalidInput, LayoutInvalidInputOf, LayoutMissingContext, LayoutOperation, LayoutResult,
-    LayoutResultOf, LayoutUnsupportedCapability, NonBoxNodeRoleError, SizingAlgorithm,
-    SizingBehavior, SizingProperty, UnsupportedSizingBehavior,
+    LayoutResultOf, LayoutTextNumericError, LayoutUnsupportedCapability, NonBoxNodeRoleError,
+    SizingAlgorithm, SizingBehavior, SizingProperty, UnsupportedSizingBehavior,
 };
 #[cfg(test)]
 pub(crate) use flex::compute_flex;
@@ -268,35 +299,33 @@ pub use measurement::{
     MeasurementAvailable, MeasurementAvailableOf, compute_leaf,
 };
 pub use node_input::{
-    AlignContent, AlignItems, AtomicInlineParticipation, AtomicInlineParticipationError,
-    AtomicInlineParticipationErrorOf, AtomicInlineParticipationOf, BoxSizing, Clear,
+    AlignContent, AlignItems, AtomicInlineParticipation, BlockGeneration, BoxSizing, Clear,
     ComputedOverflow, ComputedOverflowError, Direction, Display, FlexDirection, FlexGrow,
     FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap, Float, FloatExclusion,
     FloatExclusionInterval, FloatExclusionIntervalError, FloatExclusionIntervalErrorOf,
     FloatExclusionIntervalOf, FloatExclusionQuery, FloatExclusionQueryOf, GridAutoFlow,
-    GridFlowTolerance, GridFlowToleranceOf, GridPlacement, InlineBoundaryInput,
-    InlineBoundaryInputOf, InlineBoundaryKind, InlineBreakKind, InlineBreakOpportunity,
-    InlineBreakOpportunityOf, InlineMetrics, InlineMetricsError, InlineMetricsOf, InlineSegmentId,
-    InlineTextInput, InlineTextInputError, InlineTextInputErrorOf, InlineTextInputOf, ItemOrder,
-    LayoutInput, LayoutInputOf, LayoutInputView, LayoutInputViewOf, LineBreakDisplay,
-    LineBreakInput, LineBreakInputOf, NodeInput, NodeInputOf, Overflow, OverflowClipBox,
-    OverflowClipMargin, OverflowClipMarginOf, Position, RawGridLine, RawGridPlacement,
-    ScrollMargin, ScrollMarginError, ScrollMarginErrorOf, ScrollMarginOf, ScrollPadding,
-    ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf, ScrollSnapAlign,
+    GridFlowTolerance, GridFlowToleranceOf, GridPlacement, InlineBoundaryEdge,
+    InlineBoundaryEdgeOf, InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind,
+    InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf, ItemOrder,
+    LayoutInput, LayoutInputOf, LayoutInputView, LayoutInputViewOf, LineBoxDirectionPolicy,
+    LineBreakDisplay, LineBreakInput, LineBreakInputOf, NodeInput, NodeInputOf, Overflow,
+    OverflowClipBox, OverflowClipMargin, OverflowClipMarginOf, Position, RawGridLine,
+    RawGridPlacement, ScrollMargin, ScrollMarginError, ScrollMarginErrorOf, ScrollMarginOf,
+    ScrollPadding, ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf, ScrollSnapAlign,
     ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType,
-    ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, ShapedInlineSegment, ShapedInlineSegmentOf,
-    TextAlign, VerticalAlign, WritingMode,
+    ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, TextAlign, TextAlignLast, TextIndent,
+    TextIndentOf, TextJustification, VerticalAlign, WritingMode,
 };
 pub use output::{
     Baselines, BaselinesOf, CollapsibleMargin, CollapsibleMarginOf, CompletedLayoutBatch,
     CompletedLayoutBatchOf, ComputeInput, ComputeInputOf, ComputeOutput, ComputeOutputOf,
     ContainingLayoutContext, FlexItemRootContext, FlexItemRootContextOf, InlineFragmentOutput,
     InlineFragmentOutputEntry, InlineFragmentOutputEntryOf, InlineFragmentOutputOf,
-    LayoutCacheClearEntry, LayoutCacheStoreEntry, LayoutCacheStoreEntryOf, LayoutOutputEntry,
-    LayoutOutputEntryOf, LayoutRootContext, LayoutRootContextOf, LayoutRootRequest,
-    LayoutRootRequestOf, LayoutRoundingMode, NodeOutput, NodeOutputOf, ParentFormattingContext,
-    PhysicalBlockMarginCollapse, PhysicalBlockMarginCollapseOf, RootAvailabilityError,
-    RootAvailabilityErrorOf, SourceIndex,
+    InlineFragmentOwner, LayoutCacheClearEntry, LayoutCacheStoreEntry, LayoutCacheStoreEntryOf,
+    LayoutOutputEntry, LayoutOutputEntryOf, LayoutRootContext, LayoutRootContextOf,
+    LayoutRootRequest, LayoutRootRequestOf, LayoutRoundingMode, NodeOutput, NodeOutputOf,
+    ParentFormattingContext, PhysicalBlockMarginCollapse, PhysicalBlockMarginCollapseOf,
+    PlacedTextOutput, RootAvailabilityError, RootAvailabilityErrorOf, SourceIndex,
 };
 pub(crate) use output::{RequestedAxis, RunMode, SizingMode};
 /// Supported scalar contract for generic layout APIs.

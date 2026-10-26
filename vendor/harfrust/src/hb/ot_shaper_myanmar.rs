@@ -80,7 +80,11 @@ static MYANMAR_FEATURES: &[hb_tag_t] = &[
 impl GlyphInfo {
     fn set_myanmar_properties(&mut self) {
         let u = self.glyph_id;
-        let (cat, _) = crate::hb::ot_shaper_indic_table::get_categories(u);
+        let (cat, _) = if self.is_ordinary_symbol() {
+            (ot_category_t::OT_X, 0)
+        } else {
+            crate::hb::ot_shaper_indic_table::get_categories(u)
+        };
 
         self.set_myanmar_category(cat);
     }

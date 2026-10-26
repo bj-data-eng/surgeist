@@ -1,4 +1,4 @@
-<test name="subgrid_gap_percentage_border_bottom__content_box_rtl" use-rounding="true">
+<test name="subgrid_gap_percentage_border_bottom__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="800px" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" box-sizing="content-box" direction="ltr" font-family="monospace" font-size="12px" line-height="12px" align-content="start" justify-content="start" border-top="1px" border-left="1px" border-bottom="1px" border-right="1px" grid-template-rows="repeat(4, auto)" grid-template-columns="repeat(5, auto)">

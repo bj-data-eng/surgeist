@@ -15,6 +15,11 @@ pub struct System {
 }
 
 impl System {
+    #[cfg(test)]
+    pub(crate) fn shape_cache_hits(&self) -> [usize; 3] {
+        self.shape_context.cache_hits()
+    }
+
     pub fn new(options: SystemOptions) -> Result<Self> {
         Ok(Self {
             catalogue: Catalogue::new(options.font_catalogue),
@@ -99,7 +104,10 @@ impl System {
         let prepared = engine::prepare(
             &mut self.catalogue,
             analyzed,
-            crate::PreparationOptions::try_new(options.authored().scale)?,
+            crate::PreparationOptions::try_new(
+                options.authored().scale,
+                crate::TabPreparation::FontAdvance,
+            )?,
             engine::PreparationProfile::Standalone,
             &mut self.shape_context,
         )?;
@@ -150,9 +158,8 @@ impl System {
 
     fn install_catalogue(&mut self, candidate: Catalogue) {
         let old_catalogue = std::mem::replace(&mut self.catalogue, candidate);
-        let old_cache = std::mem::take(&mut self.cache);
-        self.stats.record_invalidations(old_cache.len());
-        drop(old_cache);
+        self.stats.record_invalidations(self.cache.len());
+        self.cache = HashMap::new();
         drop(old_catalogue);
     }
 

@@ -32,6 +32,22 @@ pub(crate) struct VelloScene {
 }
 
 impl VelloScene {
+    pub(crate) fn fill_elements<'a>(
+        &mut self,
+        transform: kurbo::Affine,
+        brush: impl Into<BrushRef<'a>>,
+        elements: &[kurbo::PathEl],
+    ) {
+        self.encoding
+            .encode_transform(VelloTransform::from_kurbo(&transform));
+        self.encoding.encode_fill_style(Fill::NonZero);
+        if self
+            .encoding
+            .encode_path_elements(elements.iter().copied(), true)
+        {
+            self.encoding.encode_brush(brush, 1.0);
+        }
+    }
     pub(crate) fn fill<'a>(
         &mut self,
         style: Fill,
@@ -421,10 +437,14 @@ impl VelloSceneObservation<'_> {
                 .collect(),
         )
     }
+
+    pub(crate) fn path_geometry_for_test(&self) -> Option<Vec<EncodedVelloPathForTest>> {
+        decode_vello_paths_for_test(self.encoding)
+    }
 }
 
 #[cfg(test)]
-type EncodedVelloPathForTest = (
+pub(crate) type EncodedVelloPathForTest = (
     [f32; 6],
     VelloFillRuleObservationForTest,
     Vec<VelloPathElementObservationForTest>,
@@ -438,6 +458,7 @@ fn decode_vello_paths_for_test(encoding: &Encoding) -> Option<Vec<EncodedVelloPa
     let mut transform_index = 0;
     let mut style_index = 0;
     let mut current_transform = None;
+    let mut geometry_transform = None;
     let mut current_fill_rule = None;
     let mut starts_subpath = true;
     let mut subpath_start = None;
@@ -463,7 +484,7 @@ fn decode_vello_paths_for_test(encoding: &Encoding) -> Option<Vec<EncodedVelloPa
                 return None;
             }
             paths.push((
-                current_transform?,
+                geometry_transform.take().or(current_transform)?,
                 current_fill_rule?,
                 std::mem::take(&mut geometry),
             ));
@@ -471,6 +492,13 @@ fn decode_vello_paths_for_test(encoding: &Encoding) -> Option<Vec<EncodedVelloPa
             if !tag.is_f32() {
                 return None;
             }
+            // Geometry uses the transform at its segment tags. A subsequent
+            // brush transform immediately before PATH belongs to the paint.
+            let transform = current_transform?;
+            if geometry_transform.is_some_and(|actual| actual != transform) {
+                return None;
+            }
+            geometry_transform = Some(transform);
             if starts_subpath {
                 let start = read_vello_point_for_test(&encoding.path_data, &mut path_data_index)?;
                 geometry.push(VelloPathElementObservationForTest::MoveTo(start));

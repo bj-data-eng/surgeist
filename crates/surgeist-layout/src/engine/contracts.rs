@@ -4,12 +4,31 @@ use crate::{
     LayoutScalar, NodeInputOf, NodeOutputOf, RunMode, Traverse,
 };
 
+pub(crate) type WrappingContextLoan<'a, Node> = (
+    &'a std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>,
+    &'a crate::engine::validation::ValidationGraph<Node>,
+);
+
 // Input loans refer to immutable request storage, independently of temporary
 // borrows of the mutable output/cache computation facade.
-pub(crate) trait Compute<'input, M = core::convert::Infallible>: Traverse {
+pub(crate) trait Compute<'input, M = core::convert::Infallible>:
+    Traverse<Node: 'input>
+{
     fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<Self::Scalar>;
     fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'input, Self::Scalar>;
+    /// Immutable normalized scope authority, separate from optional Text progress.
+    fn wrapping_context(&self) -> Option<WrappingContextLoan<'_, Self::Node>> {
+        None
+    }
     fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutputOf<Self::Scalar>);
+    // Absence is the actual box-only profile, not a successful no-op finalizer.
+    fn text_computation(
+        &mut self,
+    ) -> Option<&mut crate::text_layout::state::TextComputation<'input, Self::Node, Self::Scalar>>
+    {
+        None
+    }
+
     fn set_unrounded_inline_fragment_state(
         &mut self,
         _node: Self::Node,
@@ -35,6 +54,30 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>: Traverse {
         M,
     >;
 
+    /// Prepared-text floats require the actual session's disposable staging
+    /// owner. Box-only executors have no captured Text publication to merge.
+    fn probe_float_child(
+        &mut self,
+        node: Self::Node,
+        _input: ComputeInputOf<Self::Scalar>,
+    ) -> super::session::FloatProbeResult<Self, M> {
+        Err(crate::LayoutErrorOf::new(
+            crate::LayoutErrorSiteOf::Node(node),
+            crate::LayoutOperation::ChildLayout,
+            crate::LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::TextCapture),
+        ))
+    }
+    fn accept_float_child(
+        &mut self,
+        packet: &super::session::FloatChildPacket<Self::Node, Self::Scalar>,
+    ) -> LayoutResultOf<Self::Node, (), Self::Scalar, M> {
+        Err(crate::LayoutErrorOf::new(
+            crate::LayoutErrorSiteOf::Node(packet.node),
+            crate::LayoutOperation::ChildLayout,
+            crate::LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::TextCapture),
+        ))
+    }
+
     fn float_exclusion_interval(
         &self,
         _node: Self::Node,
@@ -45,6 +88,13 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>: Traverse {
 }
 
 pub(crate) trait Round<M = core::convert::Infallible>: Traverse {
+    fn is_prepared_text(&self, _node: Self::Node) -> bool {
+        false
+    }
+    fn canonical_text_atomic_origin(&self, _node: Self::Node) -> Option<crate::Point<f64>> {
+        None
+    }
+
     fn unrounded(
         &self,
         node: Self::Node,
@@ -69,7 +119,6 @@ pub(crate) trait Round<M = core::convert::Infallible>: Traverse {
 
 pub(crate) enum UnroundedInlineFragmentState<'a, S: LayoutScalar> {
     Absent,
-    Missing,
     Present(&'a [InlineFragmentOutputOf<S>]),
 }
 
@@ -91,6 +140,15 @@ pub(crate) trait CacheAccess<M = core::convert::Infallible> {
         context: CacheKeyContext,
         output: ComputeOutputOf<Self::Scalar>,
     );
+    /// Restore invocation-local semantic receipts accompanying an admitted
+    /// geometry hit. Box-only executors have no such additional state.
+    fn cache_restore_semantics(
+        &mut self,
+        _node: Self::Node,
+        _input: &ComputeInputOf<Self::Scalar>,
+    ) -> bool {
+        true
+    }
     fn cache_clear(&mut self, node: Self::Node);
 }
 
@@ -114,7 +172,9 @@ where
     }
 
     let context = tree.cache_context();
-    if let Some(output) = tree.cache_get(node, &input, context) {
+    if let Some(output) = tree.cache_get(node, &input, context)
+        && tree.cache_restore_semantics(node, &input)
+    {
         return Ok(output);
     }
 

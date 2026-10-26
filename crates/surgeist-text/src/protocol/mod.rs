@@ -10,24 +10,64 @@ use crate::engine::PreparedData;
 use crate::{Alignment, FontCatalogueIdentity, Point, Range, Rect, Result};
 use selection::SelectedData;
 
+pub(crate) mod boundary;
+mod conditional;
+pub(crate) use conditional::request_context;
+mod continuation;
+mod direction;
+mod wrapping_scope;
+pub use wrapping_scope::{
+    CapturedScopeIncidence, PreparedBoundaryIncidence, WrappingScopeQueryError,
+};
+pub(crate) mod flow;
+pub(crate) mod input;
+pub use direction::LineDirectionFacts;
+pub use flow::{
+    FlowObservation, FlowObservationRequest, FlowSegmentRole, PreparedFlowSegment,
+    PreparedMeasurementFlow,
+};
 pub(crate) mod finalized;
+mod hyphenation;
+pub(crate) mod measurements;
+mod phrase;
+pub use phrase::{
+    PreparedPhrase, PreparedPhrasePiece, PreparedPhrasePieceOwner, PreparedPhrasePortion,
+    PreparedPhraseProvenance,
+};
 pub(crate) mod paragraph;
 pub(crate) mod placement;
+pub(crate) mod prefix;
 pub(crate) mod prepared;
 pub(crate) mod readback;
 pub(crate) mod selection;
+pub use continuation::HyphenationContinuation;
 
-pub use paragraph::{ParagraphBaseDirection, ParagraphInput};
+pub use conditional::{
+    ConditionalDisposition, ConditionalPurpose, ConditionalStage, PhraseOverflowDecision,
+    PreparedConditionalBatch, PreparedConditionalOpportunity, PreparedConditionalSearch,
+};
+pub use hyphenation::{
+    HyphenationCounts, HyphenationProvenance, HyphenationResource, HyphenationSourcePieceView,
+    PreparedHyphenationCutView, PreparedWordPortion, PreparedWordView,
+};
+pub use measurements::{
+    InlineMeasure, LineEdgeDisposition, LineEdgeOwner, LineEdgeSide, LineEdgeUnitView,
+    LineMeasurements,
+};
+pub use paragraph::{ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge};
 pub use prepared::PreparedBreakKind;
 
 /// Provider-dependent preparation inputs, independent of line choice/placement.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PreparationOptions {
     scale: f32,
+    tabs: crate::TabPreparation,
 }
 
 impl PreparationOptions {
-    pub fn try_new(scale: f32) -> Result<Self> {
+    /// Select one tab resource operation for the complete original/alternative inventory.
+    /// CSS preparation fails atomically if a potentially selectable tab lacks required capture or metrics.
+    pub fn try_new(scale: f32, tabs: crate::TabPreparation) -> Result<Self> {
         if !scale.is_finite() || scale <= 0.0 {
             return Err(crate::error::text_numeric_error(
                 "preparation scale",
@@ -40,7 +80,11 @@ impl PreparationOptions {
                 f64::from(scale),
             ));
         }
-        Ok(Self { scale })
+        Ok(Self { scale, tabs })
+    }
+    #[must_use]
+    pub const fn tabs(self) -> crate::TabPreparation {
+        self.tabs
     }
     #[must_use]
     pub const fn scale(self) -> f32 {
@@ -49,7 +93,10 @@ impl PreparationOptions {
 }
 impl Default for PreparationOptions {
     fn default() -> Self {
-        Self { scale: 1.0 }
+        Self {
+            scale: 1.0,
+            tabs: crate::TabPreparation::FontAdvance,
+        }
     }
 }
 
@@ -75,6 +122,21 @@ impl Hash for PreparedText {
     }
 }
 impl PreparedText {
+    /// Exact preparation demand retained with this immutable allocation.
+    #[must_use]
+    pub fn preparation_options(&self) -> PreparationOptions {
+        self.inner.options
+    }
+    /// Actual captured nearest block authority, when supplied by the producer.
+    #[must_use]
+    pub fn tab_reference(&self) -> Option<&crate::ParagraphTabReference> {
+        self.inner.analyzed.paragraph.tab_reference.as_ref()
+    }
+    /// Actual captured end role, independent of numeric coverage and completion.
+    #[must_use]
+    pub fn terminal_edge(&self) -> ParagraphTerminalEdge {
+        self.inner.analyzed.paragraph.terminal_edge
+    }
     #[must_use]
     pub fn analyzed_source(&self) -> crate::AnalyzedSource {
         crate::AnalyzedSource::from_inner(Arc::clone(&self.inner.analyzed))
@@ -122,12 +184,17 @@ macro_rules! prepared_handle {
 }
 prepared_handle!(
     PreparedOrigin,
+    PreparedScope,
+    PreparedVirtualSeparator,
     PreparedUnit,
     PreparedAtomic,
     PreparedControl,
+    PreparedComputedLineBoundary,
     PreparedBoundary,
     PreparedOpportunity,
-    PreparedAlternative
+    PreparedAlternative,
+    PreparedWord,
+    PreparedHyphenationCut
 );
 
 /// The complete logical mixed sequence, using distinct issued occurrence roles.
@@ -136,6 +203,7 @@ pub enum PreparedParticipant {
     Text(PreparedUnit),
     Atomic(PreparedAtomic),
     Control(PreparedControl),
+    ComputedLineBoundary(PreparedComputedLineBoundary),
 }
 
 /// Supported physical shaping basis. Other requested bases refuse explicitly.
@@ -157,21 +225,30 @@ pub enum LineEnd {
     Paragraph,
 }
 
+/// Resolved inline direction of the line box, independent of body bidi order.
+///
+/// The consumer resolves this basis for alignment and indentation. It does not
+/// replace the captured paragraph base used for Unicode bidi resolution.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum LineBoxDirection {
+    LeftToRight,
+    RightToLeft,
+}
+
 /// Actual tab context; `NoTabs` is validated against the selected sequence.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TabContext {
     NoTabs,
     /// Actual retained-font shaping advance, without a tab-stop algorithm.
     FontAdvance,
-    Stops {
-        origin: f64,
-        positions: Vec<f64>,
+    /// Physical nearest-block start relative to unaligned paragraph start.
+    /// None means the actual used origin is unavailable; only nonzero tabs consume it.
+    CssStops {
+        origin: Option<f64>,
     },
-}
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum HangingContext {
-    None,
-    Requested { start: f64, end: f64 },
+    /// Logical grid at the unindented paragraph line-start for unconstrained
+    /// intrinsic measurement, advancing in paragraph progression.
+    IntrinsicCssStops,
 }
 /// The selected profile exposes only actual supported inter-space allocation.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -182,7 +259,10 @@ pub enum SpacingPolicy {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LineContext {
+    pub formatted_line: FormattedLineContext,
     pub base_direction: ParagraphBaseDirection,
+    /// Independently resolved alignment and indentation basis.
+    pub line_box_direction: LineBoxDirection,
     pub orientation: LineOrientation,
     pub start: LineStart,
     pub end: LineEnd,
@@ -190,8 +270,40 @@ pub struct LineContext {
     pub indent: f64,
     pub alignment: Alignment,
     pub tabs: TabContext,
-    pub hanging: HangingContext,
     pub spacing: SpacingPolicy,
+}
+
+/// Actual formatting-container roles; unknown is distinct from affirmative false.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct FormattedLineContext {
+    first: Option<bool>,
+    last: Option<bool>,
+}
+impl FormattedLineContext {
+    pub const fn new(first: Option<bool>, last: Option<bool>) -> Self {
+        Self { first, last }
+    }
+    pub const fn first(self) -> Option<bool> {
+        self.first
+    }
+    pub const fn last(self) -> Option<bool> {
+        self.last
+    }
+}
+
+/// Roles actually consumed by emitted line measurements, including false roles.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct FormattedLineUsage {
+    pub(crate) first: bool,
+    pub(crate) last: bool,
+}
+impl FormattedLineUsage {
+    pub const fn first(self) -> bool {
+        self.first
+    }
+    pub const fn last(self) -> bool {
+        self.last
+    }
 }
 
 /// Signed flow contributions, distinct from nonnegative border/content sizes.
@@ -249,6 +361,49 @@ pub struct ControlStrut {
 pub struct ControlAllocation {
     pub occurrence: PreparedControl,
     pub strut: Option<ControlStrut>,
+    pub boundary: Option<InlineBoundaryAllocation>,
+}
+
+/// One endpoint's actual used inline advance, already resolved by its consumer.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct InlineBoundaryAllocation {
+    advance: f64,
+}
+impl InlineBoundaryAllocation {
+    pub const ZERO: Self = Self { advance: 0.0 };
+
+    pub fn try_new(advance: f64) -> Result<Self> {
+        let category = if !advance.is_finite() {
+            Some(crate::TextNumericError::NonFinite)
+        } else if advance < 0.0 {
+            Some(crate::TextNumericError::OutOfRange)
+        } else {
+            None
+        };
+        if let Some(category) = category {
+            return Err(crate::error::text_numeric_error(
+                "inline boundary advance",
+                crate::TextNumericPhase::Selection,
+                category,
+                advance,
+            ));
+        }
+        Ok(Self {
+            advance: if advance == 0.0 { 0.0 } else { advance },
+        })
+    }
+
+    #[must_use]
+    pub const fn advance(&self) -> f64 {
+        self.advance
+    }
+}
+
+/// A demanded off-selection endpoint fact; it allocates no flow or output.
+#[derive(Clone, Debug, PartialEq)]
+pub struct InlineBoundaryContextAllocation {
+    pub occurrence: PreparedControl,
+    pub boundary: InlineBoundaryAllocation,
 }
 
 /// Actual per-line allocated geometry, combined with body and paragraph struts.
@@ -258,6 +413,31 @@ pub struct LineStrut {
     pub line_extent: f64,
 }
 
+/// One actual allocated line-box contribution, independent of a control.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LineBoxStrut {
+    pub metrics: LineStrut,
+    pub alignment: LineBoxAlignment,
+}
+
+/// Whether an indication is an ordinary offer or only staged restoration data.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum PreparedAlternativeAvailability {
+    Ordinary,
+    AutoPhraseSuppressed,
+}
+
+/// An actual ordinary opportunity or an interval-bound conditional capability.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum PreparedTermination {
+    Ordinary(PreparedOpportunity),
+    Conditional(PreparedConditionalOpportunity),
+    /// Exact lexical portion trial through the shared finalizer; never placeable.
+    Measurement(PreparedWordPortion),
+    /// Authentic whole remaining phrase trial; never a placeable termination.
+    PhraseMeasurement(PreparedPhrasePortion),
+}
+
 /// Complete request; all capabilities and numerical/context facts are checked
 /// together by `PreparedText::select` before a selected result is issued.
 #[derive(Clone, Debug, PartialEq)]
@@ -265,12 +445,17 @@ pub struct LineSelectionRequest {
     pub start: PreparedBoundary,
     pub end: PreparedBoundary,
     pub participants: Vec<PreparedParticipant>,
-    pub termination: PreparedOpportunity,
+    pub termination: PreparedTermination,
     pub alternative: Option<PreparedAlternative>,
+    /// Exact choice whose nonempty After emission is owed by the preceding selection.
+    pub incoming: Option<HyphenationContinuation>,
     pub context: LineContext,
     pub atomics: Vec<AtomicAllocation>,
     pub controls: Vec<ControlAllocation>,
+    pub boundary_context: Vec<InlineBoundaryContextAllocation>,
     pub line_strut: Option<LineStrut>,
+    /// Actual additional box contributions; empty means none are allocated.
+    pub line_box_struts: Vec<LineBoxStrut>,
 }
 
 #[derive(Clone)]
@@ -422,8 +607,13 @@ pub struct LineFeedback {
     pub advance: f64,
     pub occupied_start: f64,
     pub occupied_end: f64,
+    /// Descriptive retained trailing whitespace; never a general subtraction
+    /// instruction. Use the owner-issued purpose-specific measurements.
     pub trailing_whitespace: f64,
+    /// Signed excluded contribution at the physical start edge. Physical
+    /// outward overlap is observed separately through `edge_units()`.
     pub hanging_start: f64,
+    /// Signed excluded contribution at the physical end edge.
     pub hanging_end: f64,
     pub ascent: f64,
     pub descent: f64,
@@ -441,12 +631,16 @@ pub struct AtomicSlotFeedback {
 /// Semantic capability kind used by an exact protocol admission diagnostic.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProtocolHandleKind {
+    WordPortion,
     Origin,
     Unit,
     Atomic,
     Control,
+    ComputedLineBoundary,
     Boundary,
+    BoundaryIncidence,
     Opportunity,
+    ConditionalOpportunity,
     Alternative,
     Fragment,
 }
@@ -457,12 +651,32 @@ pub enum ProtocolContextField {
     LineStart,
     LineEnd,
     TabStops,
-    Hanging,
+    TabPreparation,
+    TabReference,
+    TabMetrics,
+    CssParagraphBoundary,
     Spacing,
 }
 /// Actual invalid association or incomplete input; no caller ordinal issues a capability.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolError {
+    WrappingScopeQuery {
+        reason: WrappingScopeQueryError,
+    },
+    InvalidMeasurementFlow,
+    /// The queried range does not belong to one canonical body bidi context.
+    InvalidLineDirectionQuery,
+    InvalidWordPortion,
+    MeasurementNotPlaceable,
+    InvalidPhrasePortion,
+    InvalidConditionalStage,
+    /// Missing actual context for CSS Text Phase II: Trimming and Positioning.
+    MissingPhaseTwoContext(PhaseTwoContext),
+    /// The occurrence-qualified original seam is not represented by this line.
+    OutsideFinalizedLine,
+    InvalidOriginSeam {
+        position: usize,
+    },
     ForeignPreparation {
         kind: ProtocolHandleKind,
         occurrence: usize,
@@ -501,6 +715,11 @@ pub enum ProtocolError {
         policy: usize,
         at: usize,
     },
+    /// A second group claims the same genuine defining occurrence.
+    DuplicateReplacement {
+        alternative: usize,
+        prior: usize,
+    },
     InvalidReplacement {
         alternative: usize,
         source: Range,
@@ -521,6 +740,38 @@ pub enum ProtocolError {
     },
     IllegalOpportunity {
         opportunity: usize,
+    },
+    InvalidConditionalQuery {
+        start: usize,
+        ceiling: usize,
+    },
+    InvalidConditionalSelection {
+        start: usize,
+        end: usize,
+    },
+    InvalidConditionalContext {
+        purpose: ConditionalPurpose,
+    },
+    InvalidConditionalReceipt {
+        receipt: usize,
+        opportunity: usize,
+    },
+    RetainedConditionalPrefix {
+        opportunity: usize,
+        alternative: Option<usize>,
+    },
+    UnsupportedWrappingAnalysis,
+    MissingWrappingPolicy {
+        relation: usize,
+    },
+    ForeignWrappingRelation {
+        relation: usize,
+    },
+    DuplicateWrappingPolicy {
+        relation: usize,
+    },
+    ConflictingWrappingPolicy {
+        relation: usize,
     },
     ForeignAlternative {
         alternative: usize,
@@ -556,6 +807,18 @@ pub enum ProtocolError {
         occurrence: usize,
     },
     MissingControl {
+        occurrence: usize,
+    },
+    MissingControlBoundaryGeometry {
+        occurrence: usize,
+    },
+    MissingBoundaryContext {
+        occurrence: usize,
+    },
+    DuplicateBoundaryContext {
+        occurrence: usize,
+    },
+    UnexpectedBoundaryContext {
         occurrence: usize,
     },
     DuplicateControl {
@@ -599,6 +862,16 @@ pub enum ProtocolError {
     },
 }
 
+/// Actual structural fact consumed by native CSS Text Phase II (Trimming and
+/// Positioning) measurements, not an implementation or delivery-stage marker.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PhaseTwoContext {
+    FirstFormattedLine,
+    LastFormattedLine,
+    TerminalBlockEdge,
+    TabOrigin,
+}
+
 pub(crate) fn protocol_error(reason: ProtocolError) -> crate::Error {
     crate::Error::new(
         crate::ErrorCode::InvalidTextProtocol,
@@ -638,7 +911,8 @@ mod option_tests {
     #[test]
     fn preparation_options_classifies_actual_input_domain_without_conversion_loss() {
         for value in [0.0_f32, -0.0, -1.0] {
-            let error = PreparationOptions::try_new(value).unwrap_err();
+            let error =
+                PreparationOptions::try_new(value, crate::TabPreparation::FontAdvance).unwrap_err();
             assert!(
                 matches!(error.detail(), Some(crate::ErrorDetail::InvalidTextNumeric {
                 category: crate::TextNumericError::OutOfRange, value: actual, ..
@@ -646,7 +920,8 @@ mod option_tests {
             );
         }
         for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            let error = PreparationOptions::try_new(value).unwrap_err();
+            let error =
+                PreparationOptions::try_new(value, crate::TabPreparation::FontAdvance).unwrap_err();
             assert!(matches!(
                 error.detail(),
                 Some(crate::ErrorDetail::InvalidTextNumeric {
@@ -655,7 +930,12 @@ mod option_tests {
                 })
             ));
         }
-        assert_eq!(PreparationOptions::try_new(0.5).unwrap().scale(), 0.5);
+        assert_eq!(
+            PreparationOptions::try_new(0.5, crate::TabPreparation::FontAdvance)
+                .unwrap()
+                .scale(),
+            0.5
+        );
     }
 }
 

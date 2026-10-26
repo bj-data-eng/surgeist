@@ -11,14 +11,17 @@ mod analyzed;
 mod cache;
 mod catalogue;
 mod composer;
+mod control;
 mod edit;
 mod engine;
 mod error;
 mod font;
 mod geometry;
+mod hyphenation;
 mod id;
 mod layout;
 mod options;
+mod phrase;
 mod processing;
 mod projection;
 mod protocol;
@@ -30,7 +33,9 @@ mod style_support;
 mod supplied_line;
 mod system;
 mod text;
+mod transform;
 mod views;
+mod wrapping;
 
 #[cfg(feature = "text-accessibility")]
 pub use accessibility::Accessibility;
@@ -43,7 +48,7 @@ pub use error::{
     DocumentSegmentBreakError, Error, ErrorCode, ErrorDetail, FontMetricField,
     FontMetricNumericError, FontMetricPhase, FontMetricTable, FontMetricTableError,
     NumericRequirement, ProcessingCapacityError, Result, ShapingBoundary, ShapingRefusalReason,
-    TextNumericError, TextNumericPhase,
+    TextNumericError, TextNumericPhase, TextTransformError,
 };
 pub use font::{
     EffectiveFontInstance, FontData, FontFace, FontMetrics, FontOutlineCapability,
@@ -54,38 +59,61 @@ pub use id::Id;
 pub use layout::{
     Affinity, BaselineShiftFact, Cluster, Cursor, CursorGeometry, DecorationKind, DecorationRun,
     Glyph, Hit, InlineBoxMetricFact, InlineMetricFacts, Layout, Line, LineMetricFact, Metrics,
-    Movement, PaintedSelectionGeometry, PaintedSelectionRect, PlacedPosition, PositionedInlineBox,
-    Run, RunMetricFact, RunMetrics, Selection, SelectionGeometry, SelectionRect,
+    Movement, PaintedSelectionGeometry, PaintedSelectionRect, PlacedPosition, PlacedSelection,
+    PlacedSelectionPiece, PositionedInlineBox, Run, RunMetricFact, RunMetrics, Selection,
+    SelectionGeometry, SelectionRect,
 };
 pub use options::{Alignment, Indent, Options, TextAlignLast, TextOverflow, ValidatedOptions};
 pub use processing::{
-    DocumentSegmentBreaks, PlaintextItem, PlaintextItems, ProcessedInlineBox, ProcessedPosition,
-    ProcessedRange, ProcessedSource, ProcessedSpan, ProcessedText, process_source_whitespace,
+    CapturedComputedLineBoundary, CapturedComputedLineBoundaryTarget, CapturedControl,
+    CapturedDomainDefinition, CapturedEventPosition, CapturedFlowEvent, CapturedParagraph,
+    CapturedScope, CapturedScopeIntersection, ComputedLineBoundaryError, ComputedLineBoundaryInput,
+    ContextualSourceInput, DocumentSegmentBreaks, PlaintextItem, PlaintextItems,
+    ProcessedInlineBox, ProcessedParagraph, ProcessedPosition, ProcessedRange, ProcessedSource,
+    ProcessedSpan, ProcessedText, ScopeRole, SourceBoxSide, SourceProcessingConnection,
+    SourceProcessingEnvelope, SourceProcessingError, SourceProcessingEvent,
+    SourceProcessingParagraph, SourceProcessingScope, SourceProcessingScopeBoundaries,
+    SourceProcessingTopology, WhiteSpaceTrim, process_contextual_source, process_source_whitespace,
 };
 pub use protocol::paragraph::{
-    ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
-    ParagraphConnection, ParagraphConnectionKind, ParagraphControl, ParagraphControlKind,
-    ParagraphOrigin, ParagraphOriginKind, ParagraphReplacement, ParagraphReplacementDefinition,
-    ParagraphStrut,
+    CompleteTextNodeContribution, ParagraphAnchor, ParagraphAnchorItem,
+    ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnection,
+    ParagraphConnectionKind, ParagraphControl, ParagraphControlKind, ParagraphOrigin,
+    ParagraphOriginKind, ParagraphReplacement, ParagraphReplacementDefinition, ParagraphStrut,
 };
+pub use protocol::prefix::{FinalizedPrefixView, FinalizedSharedUnitView, TextSeam};
 pub use protocol::readback::{
     FinalizedControlView, FinalizedFragmentOwner, FinalizedFragmentView, FinalizedGlyphView,
     FinalizedRunView, LineOutlineInk, PreparedAlternativeDefinition, PreparedAlternativeView,
-    PreparedAtomicView, PreparedBoundaryView, PreparedControlView, PreparedOpportunityView,
-    PreparedOriginIntersectionView, PreparedOriginView, PreparedUnitView, PresentationMappingKind,
-    SelectedMappingView,
+    PreparedAtomicView, PreparedBoundaryView, PreparedComputedLineBoundaryView,
+    PreparedControlView, PreparedOpportunityView, PreparedOriginIntersectionView,
+    PreparedOriginView, PreparedScopeView, PreparedUnitView, PreparedVirtualSeparatorView,
+    PresentationMappingKind, SelectedMappingView,
 };
 pub use protocol::{
     AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
-    AtomicPlacement, AtomicSlotFeedback, ControlAllocation, ControlStrut, FinalizedFragment,
-    FinalizedLine, HangingContext, LineAnchor, LineBoxAlignment, LineContext, LineEnd,
-    LineFeedback, LineOrientation, LinePlacement, LineSelectionRequest, LineStart, LineStrut,
-    ParagraphBaseDirection, ParagraphInput, PlacementCoverage, PlacementRequest,
-    PreparationOptions, PreparedAlternative, PreparedAtomic, PreparedBoundary, PreparedBreakKind,
-    PreparedControl, PreparedOpportunity, PreparedOrigin, PreparedParticipant, PreparedText,
-    PreparedUnit, PresentationRange, ProtocolContextField, ProtocolError, ProtocolHandleKind,
-    SelectedLine, SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlot,
-    SpacingSlotDisposition, SpacingSlotFeedback, SpacingSlotOwner, TabContext,
+    AtomicPlacement, AtomicSlotFeedback, CapturedScopeIncidence, ConditionalDisposition,
+    ConditionalPurpose, ConditionalStage, ControlAllocation, ControlStrut, FinalizedFragment,
+    FinalizedLine, FlowObservation, FlowObservationRequest, FlowSegmentRole, FormattedLineContext,
+    FormattedLineUsage, HyphenationContinuation, HyphenationCounts, HyphenationProvenance,
+    HyphenationResource, HyphenationSourcePieceView, InlineBoundaryAllocation,
+    InlineBoundaryContextAllocation, InlineMeasure, LineAnchor, LineBoxAlignment, LineBoxDirection,
+    LineBoxStrut, LineContext, LineDirectionFacts, LineEdgeDisposition, LineEdgeOwner,
+    LineEdgeSide, LineEdgeUnitView, LineEnd, LineFeedback, LineMeasurements, LineOrientation,
+    LinePlacement, LineSelectionRequest, LineStart, LineStrut, ParagraphBaseDirection,
+    ParagraphInput, ParagraphTerminalEdge, PhaseTwoContext, PhraseOverflowDecision,
+    PlacementCoverage, PlacementRequest, PreparationOptions, PreparedAlternative,
+    PreparedAlternativeAvailability, PreparedAtomic, PreparedBoundary, PreparedBoundaryIncidence,
+    PreparedBreakKind, PreparedComputedLineBoundary, PreparedConditionalBatch,
+    PreparedConditionalOpportunity, PreparedConditionalSearch, PreparedControl,
+    PreparedFlowSegment, PreparedHyphenationCut, PreparedHyphenationCutView,
+    PreparedMeasurementFlow, PreparedOpportunity, PreparedOrigin, PreparedParticipant,
+    PreparedPhrase, PreparedPhrasePiece, PreparedPhrasePieceOwner, PreparedPhrasePortion,
+    PreparedPhraseProvenance, PreparedScope, PreparedTermination, PreparedText, PreparedUnit,
+    PreparedVirtualSeparator, PreparedWord, PreparedWordPortion, PreparedWordView,
+    PresentationRange, ProtocolContextField, ProtocolError, ProtocolHandleKind, SelectedLine,
+    SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlot, SpacingSlotDisposition,
+    SpacingSlotFeedback, SpacingSlotOwner, TabContext, WrappingScopeQueryError,
 };
 pub use range::{Range, SourcePosition, SourceRange};
 pub use source_model::{
@@ -93,10 +121,11 @@ pub use source_model::{
     ValidatedSource, VerticalAlign,
 };
 pub use style::{
-    Brush, Decoration, DecorationBrush, DecorationOffset, DecorationOffsetValue,
+    Brush, CaseTransform, Decoration, DecorationBrush, DecorationOffset, DecorationOffsetValue,
     DecorationThickness, DecorationThicknessValue, Direction, Font, FontVariant, FontWeightValue,
-    FontWidthRatio, LineHeight, OverflowWrap, SelectionPaint, Slant, Style, TextTransform,
-    ValidatedStyle, Weight, WhiteSpace, Width, WordBreak, Wrap,
+    FontWidthRatio, HangingPunctuation, HangingPunctuationEnd, LineBreak, LineHeight, OverflowWrap,
+    SelectionPaint, Slant, Style, TextTransform, TextTransformSet, ValidatedStyle, Weight,
+    WhiteSpace, Width, WordBreak, WordSpaceTransform, Wrap,
 };
 pub use style_support::{
     TextStyleFeature, TextStylePhase, TextStyleSupport, UnsupportedTextStyleReason,
@@ -108,9 +137,31 @@ pub use supplied_line::{
 pub use system::{Builder, System, SystemOptions};
 pub use text::Text;
 pub use views::{GlyphPlacement, RunView};
+pub use wrapping::{
+    AnalyzedWrappingRelation, AnalyzedWrappingRelationView, WrappingNeighbor, WrappingPolicy,
+};
 
 #[cfg(test)]
 mod tests;
 
 #[cfg(test)]
 mod test_fonts;
+#[cfg(test)]
+mod test_wrapping;
+
+#[cfg(test)]
+#[path = "test_fonts/shaping.rs"]
+mod shaping_test_fonts;
+
+mod range_fragments;
+pub use range_fragments::{
+    SourceRangeFragmentError, SourceRangeFragments, SourceRangePiece, SourceRangeUnit,
+};
+
+pub use hyphenation::{
+    HyphenateCharacter, HyphenateLimitChars, HyphenationError, HyphenationMinimum,
+    HyphenationPlacement, Hyphens, NativeHyphenationConvention,
+};
+
+mod tabs;
+pub use tabs::{ParagraphTabReference, TabPreparation, TabSize};

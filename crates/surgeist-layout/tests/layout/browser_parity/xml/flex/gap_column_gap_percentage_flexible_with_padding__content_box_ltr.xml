@@ -1,4 +1,4 @@
-<test name="gap_column_gap_percentage_flexible_with_padding__content_box_ltr" use-rounding="true">
+<test name="gap_column_gap_percentage_flexible_with_padding__content_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" box-sizing="content-box" direction="ltr" width="100px" height="100px" row-gap="20px" column-gap="10%" padding-top="10px" padding-left="10px" padding-bottom="10px" padding-right="10px">

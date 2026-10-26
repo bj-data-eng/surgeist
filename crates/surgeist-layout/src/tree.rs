@@ -1,8 +1,8 @@
 use crate::measurement::LeafMeasureInputOf;
 use crate::{
     CacheKeyContext, CompletedLayoutBatchOf, ComputeInputOf, ComputeOutputOf,
-    FloatExclusionIntervalOf, FloatExclusionQueryOf, InlineFragmentOutputOf, LayoutInputViewOf,
-    LayoutScalar, NodeInputOf, NodeOutputOf, Size,
+    FloatExclusionIntervalOf, FloatExclusionQueryOf, LayoutInputViewOf, LayoutScalar, NodeInputOf,
+    NodeOutputOf, Size,
 };
 
 type FloatExclusionProviderResultOf<S, M> = Result<Option<FloatExclusionIntervalOf<S>>, M>;
@@ -73,18 +73,6 @@ pub trait LayoutTree: Traverse {
         _node: Self::Node,
         _query: FloatExclusionQueryOf<Self::Scalar>,
     ) -> Option<FloatExclusionProviderResultOf<Self::Scalar, Self::MeasureError>> {
-        None
-    }
-
-    /// Returns the committed unrounded fragments for an inline-text node.
-    ///
-    /// `Some(&[])` is a committed empty fragment state. `None` is absence of
-    /// committed state and becomes an invariant error when a warm inline-text
-    /// node reaches rounding.
-    fn unrounded_inline_fragments(
-        &self,
-        _node: Self::Node,
-    ) -> Option<&[InlineFragmentOutputOf<Self::Scalar>]> {
         None
     }
 }

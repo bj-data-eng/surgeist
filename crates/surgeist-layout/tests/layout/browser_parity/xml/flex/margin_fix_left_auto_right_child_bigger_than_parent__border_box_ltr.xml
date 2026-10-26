@@ -1,4 +1,4 @@
-<test name="margin_fix_left_auto_right_child_bigger_than_parent__border_box_ltr" use-rounding="true">
+<test name="margin_fix_left_auto_right_child_bigger_than_parent__border_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" direction="ltr" justify-content="center" width="52px" height="52px">

@@ -31,3 +31,5 @@ mod intrinsic_absolute_scroll;
 mod items;
 #[path = "flex_tests/lines_distribution_tests.rs"]
 mod lines_distribution;
+#[path = "flex_tests/wrap_edges_tests.rs"]
+mod wrap_edges_tests;

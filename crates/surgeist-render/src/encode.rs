@@ -133,22 +133,58 @@ fn encode_vello_commands(
             RenderCommand::Image { image, rect, fit } => {
                 encode_image(scene, transform, image, *rect, *fit)?
             }
-            RenderCommand::PreparedOutline {
-                outline,
+            RenderCommand::PreparedGlyphRun {
+                run: outline,
                 transform: run_transform,
                 paint,
             } => {
                 let transform = transform * kurbo::Affine::from(*run_transform);
-                crate::text::qualify_outline_placement(transform, outline)?;
-                let brush = glyph_paint_brush(paint.fill())?;
-                // One path/brush draw preserves overlap and run-local paint semantics.
-                scene.fill(
-                    peniko::Fill::NonZero,
-                    transform,
-                    &brush,
-                    None,
-                    outline.path(),
-                );
+                crate::text::qualify_glyph_placement(transform, outline)?;
+                for operation in outline.paints() {
+                    match operation {
+                        crate::text::GlyphPaint::Fill {
+                            elements,
+                            color,
+                            clip,
+                        } => {
+                            let brush = match color {
+                                Some(color) => peniko::Brush::Solid((*color).into()),
+                                None => glyph_paint_brush(paint.fill())?,
+                            };
+                            if let Some(clip) = clip {
+                                scene.push_clip_layer(
+                                    peniko::Fill::NonZero,
+                                    transform,
+                                    &kurbo::Rect::from(*clip),
+                                );
+                            }
+                            scene.fill_elements(
+                                transform,
+                                &brush,
+                                &outline.path().elements()[elements.clone()],
+                            );
+                            if clip.is_some() {
+                                scene.pop_layer();
+                            }
+                        }
+                        crate::text::GlyphPaint::Bitmap {
+                            image,
+                            rect,
+                            brush_transform,
+                        } => {
+                            // The admitted endpoint quad is the geometry. A
+                            // rounded sampling matrix cannot rebuild/expand it.
+                            let brush = image_brush(image);
+                            scene.fill(
+                                peniko::Fill::NonZero,
+                                transform,
+                                &brush,
+                                Some(*brush_transform),
+                                &kurbo::Rect::from(*rect),
+                            );
+                        }
+                    }
+                }
             }
             RenderCommand::TextRun {
                 font,

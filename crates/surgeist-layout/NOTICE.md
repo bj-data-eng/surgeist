@@ -31,6 +31,13 @@ Its embedded bytes are retained from Taffy's pinned browser-test support.
 The included `COPYING` is the original declaration from
 [Kozea/Ahem revision `7f4a69f546fd7bb7ba7031536d8470fbe87f4e26`](https://github.com/Kozea/Ahem/tree/7f4a69f546fd7bb7ba7031536d8470fbe87f4e26).
 
+The prepared-text corpus also includes an unchanged W3C-distributed
+[Ahem.ttf](tests/layout/browser_parity/fonts/Ahem.ttf), copied from the existing
+Text fixture. Its [provenance](tests/layout/browser_parity/fonts/PROVENANCE.md)
+records the exact hash and source. The upstream README credits Todd Fahrner and
+Myles C. Maxfield and is retained in [licenses/ahem/UPSTREAM-README](licenses/ahem/UPSTREAM-README).
+The same public-domain/CC0 declaration applies to these TTF bytes.
+
 ### Proptest
 
 This product depends on Proptest 1.11.0, authored by Jason Lingle:
@@ -60,8 +67,8 @@ Tryzelaar and David Tolnay:
 * Homepages: [Serde](https://serde.rs) and [Serde JSON](https://github.com/serde-rs/json)
 
 The `serde` crate, with `derive`, and `serde_json`, with `raw_value`, are optional
-dependencies enabled by `layout-golden-generate`. The `serde_json` crate is also
-a development dependency. The two selected releases carry identical license
+dependencies enabled by `layout-golden-generate`. Both crates are also
+development dependencies. The two selected releases carry identical license
 text and share the included license files.
 
 ### serde_path_to_error
@@ -73,6 +80,16 @@ This product depends on serde_path_to_error 0.1.20, authored by David Tolnay:
 
 The crate is an optional dependency enabled by `layout-golden-generate` for
 reporting paths in deserialization errors.
+
+### sha2
+
+This product depends on sha2 0.10.9, distributed by RustCrypto Developers:
+
+* License: [MIT](licenses/rustcrypto-hashes/LICENSE-MIT) OR [Apache-2.0](licenses/rustcrypto-hashes/LICENSE-APACHE)
+* Homepage: [sha2](https://github.com/RustCrypto/hashes)
+
+The crate is a development dependency for checking exact browser/Text fixture
+font bytes. Its source is not vendored here.
 
 ### surgeist-generator
 

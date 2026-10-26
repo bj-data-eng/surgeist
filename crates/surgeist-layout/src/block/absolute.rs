@@ -44,6 +44,7 @@ pub(super) fn layout_absolute_children<'input, Tree, S, M>(
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
+    <Tree as Traverse>::Node: 'input,
     S: LayoutScalar,
 {
     let area_start_x = constants.effective_border.left + constants.scrollbar_gutter.left;
@@ -270,6 +271,21 @@ where
         contributions
             .include_current_out_of_flow_geometry(location, margin, scroll_geometry)
             .map_err(|error| layout_child_geometry_error(container_node, child, error))?;
+        if let Some(state) = tree.text_computation()
+            && state.paragraphs.iter().any(|paragraph| {
+                paragraph.atomics.iter().any(|binding| {
+                    binding.node == child
+                        && binding.occurrence.view().original_box().kind()
+                            == surgeist_text::InlineBoxKind::OutOfFlow
+                })
+            })
+        {
+            let selected = output
+                .baselines()
+                .first_or_synthesize_block(constants.flow_axes, final_size)
+                .to_f64();
+            state.record_absolute_baseline(child, selected);
+        }
         tree.set_unrounded(
             child,
             NodeOutputOf::<S> {

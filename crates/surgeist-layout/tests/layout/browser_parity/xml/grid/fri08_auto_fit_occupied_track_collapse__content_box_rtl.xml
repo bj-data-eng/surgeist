@@ -1,4 +1,4 @@
-<test name="fri08_auto_fit_occupied_track_collapse__content_box_rtl" use-rounding="true">
+<test name="fri08_auto_fit_occupied_track_collapse__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" box-sizing="content-box" direction="rtl" align-content="start" justify-content="start" width="240px" height="20px" column-gap="10px" grid-template-rows="20px" grid-template-columns="repeat(auto-fit, [slot] 40px)">

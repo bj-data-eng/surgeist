@@ -1,8 +1,9 @@
 use crate::node_projection::CommonBoxProjection;
 use crate::scroll::{ScrollBoxProjection, ScrollTargetProjection};
 use crate::{
-    AtomicInlineParticipationOf, Clear, Compute, Display, Float, FloatExclusion, LayoutScalar,
-    NodeInputOf, ScrollbarGutter, ScrollbarWidthOf, TextAlign, Traverse, VerticalAlign,
+    AtomicInlineParticipation, Clear, Compute, Display, Float, FloatExclusion, LayoutScalar,
+    NodeInputOf, ScrollbarGutter, ScrollbarWidthOf, TextAlign, TextAlignLast, TextJustification,
+    Traverse, VerticalAlign,
 };
 
 /// Block-container facts settled at the block algorithm entry.
@@ -10,7 +11,15 @@ use crate::{
 pub(crate) struct BlockContainerProjection<'a, S: LayoutScalar> {
     pub(super) common: CommonBoxProjection<'a, S>,
     pub(super) display: Display,
+    pub(super) block_generation: crate::BlockGeneration,
+    pub(super) text_indent: crate::TextIndentOf<S>,
+    pub(super) line_box_direction_policy: crate::LineBoxDirectionPolicy,
+    pub(super) hyphenate_limit_lines: crate::HyphenateLimitLines,
+    pub(super) hyphenate_limit_last: crate::HyphenateLimitLast,
+    pub(super) hyphenate_limit_zone: crate::LengthPercentageOf<S>,
     pub(super) text_align: TextAlign,
+    pub(super) text_align_last: TextAlignLast,
+    pub(super) text_justification: TextJustification,
     pub(super) scrollbar_gutter: ScrollbarGutter,
     pub(super) scrollbar_width: ScrollbarWidthOf<S>,
 }
@@ -21,7 +30,15 @@ impl<'a, S: LayoutScalar> BlockContainerProjection<'a, S> {
         Self {
             common: CommonBoxProjection::from_node(input),
             display: input.display,
+            block_generation: input.block_generation,
+            text_indent: input.text_indent,
+            line_box_direction_policy: input.line_box_direction_policy,
+            hyphenate_limit_lines: input.hyphenate_limit_lines,
+            hyphenate_limit_last: input.hyphenate_limit_last,
+            hyphenate_limit_zone: input.hyphenate_limit_zone,
             text_align: input.text_align,
+            text_align_last: input.text_align_last,
+            text_justification: input.text_justification,
             scrollbar_gutter: input.scrollbar_gutter,
             scrollbar_width: input.scrollbar_width,
         }
@@ -36,7 +53,7 @@ pub(crate) struct BlockChildProjection<'a, S: LayoutScalar> {
     pub(super) float: Float,
     pub(super) clear: Clear,
     pub(super) float_exclusion: FloatExclusion,
-    pub(super) atomic_inline_participation: Option<AtomicInlineParticipationOf<S>>,
+    pub(super) atomic_inline_participation: Option<AtomicInlineParticipation>,
     pub(super) vertical_align: VerticalAlign,
     pub(super) scrollbar_width: ScrollbarWidthOf<S>,
 }
@@ -94,7 +111,7 @@ mod tests {
     use crate::inline::{InlineParticipantKindOf, InlineParticipantProjection};
     use crate::{
         AspectRatioOf, BidiLevel, BoxSizing, ComputeInputOf, ComputeOutputOf, ComputedOverflow,
-        Direction, Edges, FlowAxes, InlineBreakOpportunityOf, LayoutInputOf, LayoutResultOf,
+        Direction, Edges, FlowAxes, InlineBreakOpportunity, LayoutInputOf, LayoutResultOf,
         LengthAutoOf, LengthOf, LengthPercentageOf, MaxSizeOf, MinSizeOf, NodeOutputOf, Overflow,
         Position, PreferredSizeOf, Size, WritingMode,
     };
@@ -208,13 +225,10 @@ mod tests {
             .expect("canonical scrollable overflow pair");
         let expected_scrollbar_width =
             ScrollbarWidthOf::try_new(scalar(32.0)).expect("finite non-negative scrollbar width");
-        let expected_atomic_inline_participation = Some(
-            AtomicInlineParticipationOf::try_new(
-                BidiLevel::try_new(3).expect("valid bidi level"),
-                InlineBreakOpportunityOf::mandatory(),
-            )
-            .expect("atomic participation cannot replace inline extent"),
-        );
+        let expected_atomic_inline_participation = Some(AtomicInlineParticipation::new(
+            BidiLevel::try_new(3).expect("valid bidi level"),
+            InlineBreakOpportunity::Mandatory,
+        ));
 
         let input = NodeInputOf::<S> {
             display: Display::InlineBlock,

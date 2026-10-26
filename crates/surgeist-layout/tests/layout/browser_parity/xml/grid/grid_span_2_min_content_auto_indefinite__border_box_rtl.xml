@@ -1,4 +1,4 @@
-<test name="grid_span_2_min_content_auto_indefinite__border_box_rtl" use-rounding="true">
+<test name="grid_span_2_min_content_auto_indefinite__border_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="grid" direction="rtl" grid-template-rows="40px" grid-template-columns="min-content auto">

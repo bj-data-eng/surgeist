@@ -1,4 +1,4 @@
-<test name="block_br_vertical_rl_empty_lines_metrics__content_box_rtl" use-rounding="true">
+<test name="block_br_vertical_rl_empty_lines_metrics__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="block" box-sizing="content-box" direction="ltr" writing-mode="vertical-rl" font-size="20px" line-height="30px" width="80px">

@@ -25,7 +25,10 @@ pub use hb::buffer::{
     GlyphBuffer, GlyphInfo, GlyphPosition, ShapingRefusal, ShapingStatus, UnicodeBuffer,
 };
 pub use hb::common::{script, Direction, Feature, Language, Script, Variation};
+pub use hb::default_ignorable::DefaultIgnorableReceipt;
 pub use hb::face::{hb_font_t as Shaper, ShaperBuilder, ShaperData, ShaperInstance};
+pub use hb::ordinary_symbol::OrdinarySymbolInputError;
+pub use hb::original_joining::{JoiningInputError, JoiningSource, JoiningSourceError};
 pub use hb::ot_shape_plan::{hb_ot_shape_plan_t as ShapePlan, ShapePlanKey};
 
 /// Type alias for a normalized variation coordinate.

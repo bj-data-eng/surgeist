@@ -692,6 +692,41 @@ impl InsertionCtx<'_> {
     const MARKED_INSERT_BEFORE: u16 = 0x0400;
     const CURRENT_INSERT_COUNT: u16 = 0x03E0;
     const MARKED_INSERT_COUNT: u16 = 0x001F;
+
+    fn preflight(
+        buffer: &mut crate::hb::buffer::hb_buffer_t,
+        mark: Option<usize>,
+        count: usize,
+        before: bool,
+        dont_advance: bool,
+    ) -> bool {
+        let end = buffer.out_len;
+        let planned = (|| {
+            let mut plan = buffer.copy_plan();
+            if let Some(mark) = mark {
+                plan.move_to(mark)?;
+            }
+            let copy_anchor = plan.has_input() && !before;
+            if copy_anchor {
+                plan.copy_glyph()?;
+            }
+            plan.inserted_glyphs(count)?;
+            if copy_anchor {
+                plan.skip_glyph()?;
+            }
+            let target = if mark.is_none() && dont_advance {
+                end
+            } else {
+                end.checked_add(count).ok_or(ShapingRefusal::GrowthLimit)?
+            };
+            plan.move_to(target)?;
+            Ok::<_, ShapingRefusal>(plan)
+        })();
+        match planned {
+            Ok(plan) => buffer.admit_copy_plan(&plan),
+            Err(reason) => crate::hb::default_ignorable::fail(buffer, reason),
+        }
+    }
 }
 
 impl DriverContext<InsertionEntryData> for InsertionCtx<'_> {
@@ -727,6 +762,16 @@ impl DriverContext<InsertionEntryData> for InsertionCtx<'_> {
             ac.buffer.max_ops -= i32::from(count);
             if ac.buffer.max_ops <= 0 {
                 ac.buffer.refuse(ShapingRefusal::WorkLimit);
+                return Some(());
+            }
+
+            if !Self::preflight(
+                ac.buffer,
+                Some(self.mark as usize),
+                usize::from(count),
+                flags & Self::MARKED_INSERT_BEFORE != 0,
+                false,
+            ) {
                 return Some(());
             }
 
@@ -771,6 +816,16 @@ impl DriverContext<InsertionEntryData> for InsertionCtx<'_> {
             ac.buffer.max_ops -= i32::from(count);
             if ac.buffer.max_ops < 0 {
                 ac.buffer.refuse(ShapingRefusal::WorkLimit);
+                return Some(());
+            }
+
+            if !Self::preflight(
+                ac.buffer,
+                None,
+                usize::from(count),
+                flags & Self::CURRENT_INSERT_BEFORE != 0,
+                flags & Self::DONT_ADVANCE != 0,
+            ) {
                 return Some(());
             }
 
@@ -941,9 +996,48 @@ impl DriverContext<BigEndian<u16>> for LigatureCtx<'_> {
                         None => break,
                     };
 
+                    let mut di = ac.buffer.cur(0).default_ignorable;
+                    for component in cursor + 1..self.match_length {
+                        let position = self.position(component, ac.buffer);
+                        let other = if position < ac.buffer.out_len {
+                            ac.buffer.out_info()[position].default_ignorable
+                        } else {
+                            ac.buffer.info[ac.buffer.idx + position - ac.buffer.out_len]
+                                .default_ignorable
+                        };
+                        let Some(combined) =
+                            crate::hb::default_ignorable::union(ac.buffer, di, other)
+                        else {
+                            return Some(());
+                        };
+                        di = combined;
+                    }
+                    let lig_end = self.position(self.match_length - 1, ac.buffer) + 1;
+                    let first_position = self.position(cursor, ac.buffer);
+                    let planned = (|| {
+                        let mut plan = ac.buffer.copy_plan();
+                        plan.replace_glyph()?;
+                        for component in (cursor + 1..self.match_length).rev() {
+                            plan.move_to(self.position(component, ac.buffer))?;
+                            plan.replace_glyph()?;
+                        }
+                        plan.move_to(lig_end)?;
+                        plan.merge_out_clusters(first_position, ac.buffer.cluster_level)?;
+                        if action & Self::LIG_ACTION_LAST != 0 {
+                            plan.move_to(end)?;
+                        }
+                        Ok::<_, ShapingRefusal>(plan)
+                    })();
+                    let admitted = match planned {
+                        Ok(plan) => ac.buffer.admit_copy_plan(&plan),
+                        Err(reason) => crate::hb::default_ignorable::fail(ac.buffer, reason),
+                    };
+                    if !admitted {
+                        return Some(());
+                    }
+                    ac.buffer.cur_mut(0).default_ignorable = di;
                     ac.replace_glyph(u32::from(lig.to_u16()));
 
-                    let lig_end = self.position(self.match_length - 1, ac.buffer) + 1;
                     // Now go and delete all subsequent components.
                     while self.match_length - 1 > cursor {
                         self.match_length -= 1;

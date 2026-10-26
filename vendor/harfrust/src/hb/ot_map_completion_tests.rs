@@ -236,7 +236,7 @@ fn mask_independent_native_crossstream_and_format4_do_not_refuse() {
     with_font(|font| gid = font.get_nominal_glyph('A' as u32).unwrap().to_u32() as u16);
     let mut machine = words(&[4, 8, 14, 18, gid, 1]);
     machine.extend_from_slice(&[1, 0, 0, 1, 1, 1]);
-    machine.extend(words(&[14, 0, 14, 0x8000 | 26, 3]));
+    machine.extend(words(&[14, 0, 14, 0x8000 | 0x001a, 3]));
     let mut kern = words(&[0, 1, 0, 34, 0x0105]);
     kern.extend(machine);
     let mut bodies = Vec::new();

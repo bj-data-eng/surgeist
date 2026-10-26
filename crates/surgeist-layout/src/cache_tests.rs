@@ -501,10 +501,9 @@ fn cached_compute_uses_tree_cache_before_running_expensive_layout() {
         Ok(ComputeOutput::from_outer_size(Size::new(10.0, 10.0)))
     });
 
-    assert_eq!(
-        first,
-        Ok(ComputeOutput::from_outer_size(Size::new(80.0, 24.0)))
-    );
+    let first = first.expect("first cache request computes");
+    let second = second.expect("second cache request reuses the result");
+    assert_eq!(first, ComputeOutput::from_outer_size(Size::new(80.0, 24.0)));
     assert_eq!(second, first);
     assert_eq!(probe.calls, 1);
 }
@@ -862,4 +861,57 @@ fn fri05_c05_grid_auto_cache_partitions_local_and_containing_pass_state() {
         containing.settled_auto_scrollbars(),
         crate::scroll::SettledAutoScrollbarState::INITIAL
     );
+}
+
+#[test]
+fn cache_distinguishes_actual_anonymous_indent_policy_and_first_child_context() {
+    fn lane<S: LayoutScalar>() {
+        let input = ComputeInputOf::leaf_layout(
+            Size::NONE,
+            Size::NONE,
+            ContainingLayoutContext::new(
+                FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                ParentFormattingContext::BlockFlow,
+            ),
+            Size::splat(AvailableOf::MAX_CONTENT),
+        )
+        .unwrap();
+        let context = crate::text_indent::BlockIndentContext {
+            inherited: TextIndentOf::ZERO,
+            first_formatted: true,
+        };
+        let initial = input.with_block_indent_context(context);
+        let output =
+            ComputeOutputOf::from_outer_size(Size::new(S::from_f64(20.0), S::from_f64(10.0)));
+        let mut cache = CacheOf::<S>::new();
+        cache.store_with_context(&initial, CacheKeyContext::new(), output);
+        assert_eq!(
+            cache.get_with_context(&initial, CacheKeyContext::new()),
+            Some(output)
+        );
+        for changed in [
+            crate::text_indent::BlockIndentContext {
+                first_formatted: false,
+                ..context
+            },
+            crate::text_indent::BlockIndentContext {
+                inherited: TextIndentOf {
+                    amount: LengthPercentageOf::px(S::from_f64(5.0)).unwrap(),
+                    each_line: true,
+                    hanging: false,
+                },
+                ..context
+            },
+        ] {
+            assert_eq!(
+                cache.get_with_context(
+                    &input.with_block_indent_context(changed),
+                    CacheKeyContext::new()
+                ),
+                None
+            );
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
 }

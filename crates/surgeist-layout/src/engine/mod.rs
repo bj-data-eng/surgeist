@@ -2,7 +2,8 @@ pub(crate) mod contracts;
 mod root;
 mod rounding;
 mod session;
-mod validation;
+pub(crate) use session::FloatChildPacket;
+pub(crate) mod validation;
 
 use crate::error::LayoutResultOf;
 use crate::{
@@ -46,9 +47,18 @@ pub fn compute_layout_invalidated<Tree>(
 where
     Tree: LayoutTree,
 {
-    let invalidated_nodes = validation::validate_layout_request(tree, root, changed_nodes)?;
-
-    compute_validated_layout(tree, root, request, invalidated_nodes)
+    let (graph, invalidated_nodes) =
+        validation::validate_layout_request_with_text_graph(tree, root, changed_nodes, &[])?;
+    let wrapping = crate::inline_wrapping::WrappingContext::new(tree, &graph, &[], &[], &[])
+        .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
+    compute_validated_layout(
+        tree,
+        root,
+        request,
+        invalidated_nodes,
+        &graph,
+        std::sync::Arc::new(wrapping),
+    )
 }
 
 fn compute_validated_layout<Tree>(
@@ -56,11 +66,14 @@ fn compute_validated_layout<Tree>(
     root: Tree::Node,
     request: LayoutRootRequestOf<Tree::Scalar>,
     invalidated_nodes: Vec<Tree::Node>,
+    graph: &validation::ValidationGraph<Tree::Node>,
+    wrapping: std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>,
 ) -> ComputeLayoutResult<Tree>
 where
     Tree: LayoutTree,
 {
     let mut session = session::ComputeSession::new(tree, invalidated_nodes);
+    session.install_wrapping(wrapping, graph);
     match request.context() {
         LayoutRootContextOf::Viewport => {
             compute_root(&mut session, root, request.available())?;
@@ -75,4 +88,90 @@ where
     }
 
     Ok(session.complete_for_root(root))
+}
+
+/// Computes checked immutable inline flow, including numeric-only flow.
+/// Text paragraphs retain their actual finalized layouts; old geometry caches
+/// cannot stand in for Text finalization.
+pub fn compute_layout_with_flow<Tree>(
+    capture: &crate::LayoutFlowInput<'_, Tree>,
+    root: Tree::Node,
+    request: LayoutRootRequestOf<Tree::Scalar>,
+) -> ComputeLayoutResult<Tree>
+where
+    Tree: LayoutTree,
+{
+    compute_layout_with_flow_invalidated(capture, root, request, &[])
+}
+
+/// Checked inline-flow computation with the source-owned invalidation closure.
+pub fn compute_layout_with_flow_invalidated<Tree>(
+    capture: &crate::LayoutFlowInput<'_, Tree>,
+    root: Tree::Node,
+    request: LayoutRootRequestOf<Tree::Scalar>,
+    changed_nodes: &[Tree::Node],
+) -> ComputeLayoutResult<Tree>
+where
+    Tree: LayoutTree,
+{
+    if root != capture.root {
+        return Err(crate::LayoutErrorOf::new(
+            crate::LayoutErrorSiteOf::Node(root),
+            crate::LayoutOperation::TextCapture,
+            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::TextBinding(
+                crate::TextBindingError::RootMismatch,
+            )),
+        ));
+    }
+    let mut invalidation_seeds = changed_nodes.to_vec();
+    invalidation_seeds.extend(capture.invalidated.iter().copied());
+    let invalidated = capture.graph.invalidation(&invalidation_seeds)?;
+    let mut session = session::ComputeSession::with_flow(capture, invalidated);
+    if capture.paragraphs.is_empty() {
+        match request.context() {
+            LayoutRootContextOf::Viewport => compute_root(&mut session, root, request.available())?,
+            LayoutRootContextOf::FlexItemUnderViewport(context) => {
+                compute_flex_item_root(&mut session, root, request.available(), context)?;
+            }
+        }
+        match request.rounding_mode() {
+            crate::LayoutRoundingMode::NearestCssPixel => {
+                rounding::round_layout(&mut session, root)?
+            }
+        }
+        return Ok(session.complete_for_root(root));
+    }
+    let mut rejected_bases = Vec::new();
+    loop {
+        match request.context() {
+            LayoutRootContextOf::Viewport => {
+                compute_root(&mut session, root, request.available())?;
+            }
+            LayoutRootContextOf::FlexItemUnderViewport(context) => {
+                compute_flex_item_root(&mut session, root, request.available(), context)?;
+            }
+        }
+        match request.rounding_mode() {
+            crate::LayoutRoundingMode::NearestCssPixel => {
+                rounding::round_layout(&mut session, root)?
+            }
+        }
+        let frames = session.canonical_frames(root)?;
+        let basis = session.text_pass_basis(frames.clone());
+        if frames == session.text_basis()
+            && rejected_bases.last() == Some(&basis)
+            && session.formatted_text_valid()
+        {
+            return session.complete_with_text(root);
+        }
+        if rejected_bases.contains(&basis) {
+            return Err(crate::LayoutErrorOf::new(
+                crate::LayoutErrorSiteOf::Node(root),
+                crate::LayoutOperation::TextPlacement,
+                crate::LayoutErrorKindOf::TextFeedbackCycle,
+            ));
+        }
+        rejected_bases.push(basis);
+        session.begin_text_pass(frames);
+    }
 }

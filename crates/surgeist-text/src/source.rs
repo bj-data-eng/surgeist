@@ -91,26 +91,33 @@ impl ValidatedSource {
     }
 }
 
-impl ValidatedSource {
-    /// Validates original span facts after actual source processing, without
-    /// changing their authored whitespace modes or original coordinate ranges.
-    pub(crate) fn for_processed(source: Source) -> Result<Self> {
-        validate_structure(&source)?;
-        let span_styles = source
-            .spans
-            .iter()
-            .map(|span| {
-                Ok(ValidatedSpan {
-                    range: span.range,
-                    style: ValidatedStyle::for_processed(span.style.clone())?,
+/// Validates the intrinsic styles of spans incident to this original-piece view.
+/// The aggregate source itself remains whole; no partially validated public
+/// `ValidatedSource` is manufactured for a contextual paragraph.
+pub(crate) fn processed_span_styles(
+    source: &Source,
+    coverage: Option<&[Range]>,
+) -> Result<Vec<ValidatedSpan>> {
+    validate_structure(source)?;
+    source
+        .spans
+        .iter()
+        .filter(|span| {
+            coverage.is_none_or(|pieces| {
+                pieces.iter().any(|piece| {
+                    !piece.is_empty()
+                        && piece.start < span.range.end
+                        && span.range.start < piece.end
                 })
             })
-            .collect::<Result<Vec<_>>>()?;
-        Ok(Self {
-            source,
-            span_styles,
         })
-    }
+        .map(|span| {
+            Ok(ValidatedSpan {
+                range: span.range,
+                style: ValidatedStyle::for_processed(span.style.clone())?,
+            })
+        })
+        .collect()
 }
 
 impl TryFrom<Source> for ValidatedSource {

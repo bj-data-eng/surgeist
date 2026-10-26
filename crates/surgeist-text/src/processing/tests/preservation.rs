@@ -33,6 +33,118 @@ fn inverse(result: &ProcessedSource, affinity: Affinity) -> Vec<usize> {
 }
 
 #[test]
+fn preserve_breaks_collapses_spaces_but_keeps_each_original_delimiter() {
+    let source = Source::identified("中 \t\n \n\t 文\t X\rY", Id::from_u64(6401), 2);
+    let result = preserved(
+        source.clone(),
+        WhiteSpace::PreserveBreaks,
+        DocumentSegmentBreaks::LineFeedDefault,
+    );
+    assert_eq!(result.processed_text(), &Text::from("中\n\n文 X Y"));
+    assert_eq!(
+        plaintext(&result),
+        "中\n\n文 X Y".encode_utf16().collect::<Vec<_>>()
+    );
+    assert_eq!(result.source(), &source);
+    assert!(!result.operations().iter().any(|piece| matches!(
+        piece.kind,
+        MappingKind::Delete(
+            DeletionCause::DuplicateSegmentBreak | DeletionCause::ContextualSegmentBreak
+        )
+    )));
+    let contracted = preserved(
+        Source::new("A\r\n\r\nB"),
+        WhiteSpace::PreserveBreaks,
+        DocumentSegmentBreaks::Defined(vec![Range::new(1, 3), Range::new(3, 5)]),
+    );
+    assert_eq!(contracted.processed_text().code_units(), [65, 10, 10, 66]);
+    assert_eq!(
+        projected(&contracted, Affinity::Before),
+        [0, 1, 1, 2, 2, 3, 4]
+    );
+    assert_eq!(
+        projected(&contracted, Affinity::After),
+        [0, 1, 2, 2, 3, 3, 4]
+    );
+}
+
+#[test]
+fn preserve_breaks_and_collapse_share_space_collapsing_across_mode_spans() {
+    let mut source = Source::new("A \t  B");
+    source.span(
+        Range::new(2, 4),
+        Style {
+            white_space: WhiteSpace::Collapse,
+            ..Style::default()
+        },
+    );
+    let result = preserved(
+        source.clone(),
+        WhiteSpace::PreserveBreaks,
+        DocumentSegmentBreaks::LineFeedDefault,
+    );
+    assert_eq!(result.processed_text().code_units(), [65, 32, 66]);
+    assert_eq!(result.source(), &source);
+    assert_eq!(
+        result
+            .operations()
+            .iter()
+            .filter_map(|piece| match piece.kind {
+                MappingKind::Delete(DeletionCause::CollapsedSpace) => Some(piece.source),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        [Range::new(2, 5)]
+    );
+}
+
+#[test]
+fn new_modes_keep_raw_standalone_admission_explicit() {
+    for (mode, feature) in [
+        (
+            WhiteSpace::PreserveBreaks,
+            crate::TextStyleFeature::WhiteSpacePreserveBreaks,
+        ),
+        (
+            WhiteSpace::BreakSpaces,
+            crate::TextStyleFeature::WhiteSpaceBreakSpaces,
+        ),
+    ] {
+        assert_eq!(
+            feature.support(crate::TextStylePhase::ProcessedParagraph),
+            crate::TextStyleSupport::Supported
+        );
+        assert_eq!(
+            feature.support(crate::TextStylePhase::Standalone),
+            crate::TextStyleSupport::Unsupported(
+                crate::UnsupportedTextStyleReason::RequiresProcessedSourceLayout
+            )
+        );
+        let mut system = crate::System::new(crate::SystemOptions {
+            font_catalogue: crate::FontCatalogueMode::RegisteredOnly,
+        })
+        .unwrap();
+        let error = system
+            .layout(
+                Source::new("A B"),
+                Style {
+                    white_space: mode,
+                    ..Style::default()
+                },
+                crate::Options::default(),
+            )
+            .unwrap_err();
+        assert_eq!(
+            error.detail(),
+            Some(&ErrorDetail::UnsupportedTextStyle {
+                feature,
+                reason: crate::UnsupportedTextStyleReason::RequiresProcessedSourceLayout
+            })
+        );
+    }
+}
+
+#[test]
 fn contraction_affinity_and_incident_inverse_do_not_invent_interior_roundtrips() {
     let mut source = Source::identified("A\r\nB", Id::from_u64(72), 51);
     source.span(Range::new(1, 2), Style::default());

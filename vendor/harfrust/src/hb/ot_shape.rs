@@ -323,6 +323,14 @@ pub struct hb_ot_shape_context_t<'a> {
 
 // Pull it all together!
 pub fn shape_internal(ctx: &mut hb_ot_shape_context_t) {
+    let initial_vars = ctx.buffer.allocated_var_bits;
+    if !ordinary_symbol::begin(ctx.buffer) {
+        return;
+    }
+    original_joining::begin(ctx.buffer);
+    if !ctx.buffer.successful && ctx.buffer.joining.request.is_some() {
+        return;
+    }
     ctx.buffer.allocate_unicode_vars();
 
     initialize_masks(ctx);
@@ -334,10 +342,25 @@ pub fn shape_internal(ctx: &mut hb_ot_shape_context_t) {
     ensure_native_direction(ctx.buffer);
 
     if let Some(func) = ctx.plan.shaper.preprocess_text {
+        // At most one synthetic repair output per original scalar. Admit its
+        // carrier work before generated vowel-constraint helpers run; ordinary
+        // moves and real normalization outputs retain their own work charges.
+        if !default_ignorable::copy_work(ctx.buffer, ctx.buffer.len) {
+            ctx.buffer.allocated_var_bits = initial_vars;
+            ctx.buffer.direction = ctx.target_direction;
+            return;
+        }
         func(ctx.plan, ctx.face, ctx.buffer);
     }
 
-    substitute_pre(ctx);
+    if !substitute_pre(ctx) {
+        // The new refusal can precede every shaper's GSUB cleanup pause.
+        // This invocation owns all phase-local allocations since entry;
+        // discard them together before publishing the refused lifecycle.
+        ctx.buffer.allocated_var_bits = initial_vars;
+        ctx.buffer.direction = ctx.target_direction;
+        return;
+    }
     position(ctx);
     substitute_post(ctx);
 
@@ -348,8 +371,10 @@ pub fn shape_internal(ctx: &mut hb_ot_shape_context_t) {
     ctx.buffer.direction = ctx.target_direction;
 }
 
-fn substitute_pre(ctx: &mut hb_ot_shape_context_t) {
-    hb_ot_substitute_default(ctx);
+fn substitute_pre(ctx: &mut hb_ot_shape_context_t) -> bool {
+    if !hb_ot_substitute_default(ctx) {
+        return false;
+    }
 
     ctx.buffer.allocate_gsubgpos_vars();
 
@@ -358,6 +383,7 @@ fn substitute_pre(ctx: &mut hb_ot_shape_context_t) {
     if ctx.plan.apply_morx && ctx.plan.apply_gpos {
         aat::layout::remove_deleted_glyphs(ctx.buffer);
     }
+    true
 }
 
 fn substitute_post(ctx: &mut hb_ot_shape_context_t) {
@@ -373,7 +399,7 @@ fn substitute_post(ctx: &mut hb_ot_shape_context_t) {
     }
 }
 
-fn hb_ot_substitute_default(ctx: &mut hb_ot_shape_context_t) {
+fn hb_ot_substitute_default(ctx: &mut hb_ot_shape_context_t) -> bool {
     rotate_chars(ctx);
 
     ctx.buffer
@@ -382,6 +408,12 @@ fn hb_ot_substitute_default(ctx: &mut hb_ot_shape_context_t) {
     ot_shape_normalize::_hb_ot_shape_normalize(ctx.plan, ctx.buffer, ctx.face);
 
     setup_masks(ctx);
+    original_joining::finish_masks(ctx.buffer);
+    if !ctx.buffer.successful && ctx.buffer.joining.request.is_some() {
+        ctx.buffer
+            .deallocate_var(GlyphInfo::NORMALIZER_GLYPH_INDEX_VAR);
+        return false;
+    }
 
     // This is unfortunate to go here, but necessary...
     if ctx.plan.fallback_mark_positioning {
@@ -394,6 +426,7 @@ fn hb_ot_substitute_default(ctx: &mut hb_ot_shape_context_t) {
 
     ctx.buffer
         .deallocate_var(GlyphInfo::NORMALIZER_GLYPH_INDEX_VAR);
+    true
 }
 
 fn hb_ot_substitute_plan(ctx: &mut hb_ot_shape_context_t) {
@@ -702,6 +735,7 @@ fn insert_dotted_circle(buffer: &mut hb_buffer_t, face: &hb_font_t) {
             cluster: buffer.cur(0).cluster,
             ..GlyphInfo::default()
         };
+        info.set_joining_lineage(original_joining::synthetic(buffer, 0x25cc));
 
         info.init_unicode_props(&mut buffer.scratch_flags);
         buffer.clear_output();
@@ -774,6 +808,13 @@ fn ensure_native_direction(buffer: &mut hb_buffer_t) {
     }
 }
 
+pub(crate) fn prepare_joining_source(buffer: &mut hb_buffer_t) {
+    buffer.allocate_unicode_vars();
+    set_unicode_props(buffer);
+    form_clusters(buffer);
+    ensure_native_direction(buffer);
+}
+
 fn rotate_chars(ctx: &mut hb_ot_shape_context_t) {
     let len = ctx.buffer.len;
 
@@ -838,7 +879,7 @@ fn hb_synthesize_glyph_classes(buffer: &mut hb_buffer_t) {
 }
 
 fn zero_width_default_ignorables(buffer: &mut hb_buffer_t) {
-    if buffer.scratch_flags & HB_BUFFER_SCRATCH_FLAG_HAS_DEFAULT_IGNORABLES != 0
+    if buffer.default_ignorables.has_candidates()
         && !buffer
             .flags
             .contains(BufferFlags::PRESERVE_DEFAULT_IGNORABLES)
@@ -847,8 +888,11 @@ fn zero_width_default_ignorables(buffer: &mut hb_buffer_t) {
             .contains(BufferFlags::REMOVE_DEFAULT_IGNORABLES)
     {
         let len = buffer.len;
+        if !default_ignorable::copy_work(buffer, len) {
+            return;
+        }
         for (info, pos) in buffer.info[..len].iter().zip(&mut buffer.pos[..len]) {
-            if info.is_default_ignorable() {
+            if info.di_residual() {
                 pos.x_advance = 0;
                 pos.y_advance = 0;
                 if buffer.direction.is_horizontal() {
@@ -904,7 +948,7 @@ fn zero_mark_widths_by_gdef(buffer: &mut hb_buffer_t, adjust_offsets: bool) {
 }
 
 fn hide_default_ignorables(buffer: &mut hb_buffer_t, face: &hb_font_t) {
-    if buffer.scratch_flags & HB_BUFFER_SCRATCH_FLAG_HAS_DEFAULT_IGNORABLES != 0
+    if buffer.default_ignorables.has_candidates()
         && !buffer
             .flags
             .contains(BufferFlags::PRESERVE_DEFAULT_IGNORABLES)
@@ -918,8 +962,11 @@ fn hide_default_ignorables(buffer: &mut hb_buffer_t, face: &hb_font_t) {
                 .or_else(|| face.get_nominal_glyph(u32::from(' ')))
             {
                 let len = buffer.len;
+                if !default_ignorable::copy_work(buffer, len) {
+                    return;
+                }
                 for info in &mut buffer.info[..len] {
-                    if info.is_default_ignorable() {
+                    if info.di_residual() {
                         info.glyph_id = invisible.to_u32();
                     }
                 }
@@ -927,7 +974,12 @@ fn hide_default_ignorables(buffer: &mut hb_buffer_t, face: &hb_font_t) {
             }
         }
 
-        buffer.delete_glyphs_inplace(GlyphInfo::is_default_ignorable);
+        if buffer
+            .flags
+            .contains(BufferFlags::REMOVE_DEFAULT_IGNORABLES)
+        {
+            buffer.delete_glyphs_inplace(GlyphInfo::di_residual);
+        }
     }
 }
 

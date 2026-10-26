@@ -1,6 +1,35 @@
 //! Functional qualification of the new public phase front.
 
+mod after_continuation;
+mod after_standalone;
+mod allocated_box_metrics;
+mod auto_phrase;
+mod automatic_model;
+mod automatic_opportunities;
+mod casing;
+mod computed_boundaries;
+mod conditional;
+mod count_admission;
+mod hyphenation_limits;
+mod hyphenation_policy;
+mod incidence_cost;
+mod joining_context;
+mod joining_positioning;
+mod kana;
+mod line_box_direction;
 mod mandatory_breaks;
+mod manual_hyphenation;
+mod math;
+mod metric_heights;
+mod negative_tabs;
+mod phase_two;
+mod raw_automatic_hyphenation;
+mod scope_incidence_locality;
+mod separators;
+mod tab_stops;
+mod wbr;
+mod whitespace_edges;
+mod width;
 
 use super::*;
 use crate::{
@@ -28,6 +57,8 @@ fn style() -> Style {
 fn prepared(system: &mut System, text: &str, whitespace: WhiteSpace) -> PreparedText {
     let source = Source::new(text);
     let input = ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        tab_reference: None,
         source: source.clone(),
         paragraph_strut: ParagraphStrut::DefaultFont,
         base_style: Style {
@@ -37,6 +68,7 @@ fn prepared(system: &mut System, text: &str, whitespace: WhiteSpace) -> Prepared
         segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: crate::Range::new(0, text.encode_utf16().count()),
             aggregate: crate::Range::new(0, text.encode_utf16().count()),
@@ -57,7 +89,10 @@ fn prepared(system: &mut System, text: &str, whitespace: WhiteSpace) -> Prepared
     };
     system
         .prepare(
-            &AnalyzedSource::from_paragraph(input).unwrap(),
+            &crate::test_wrapping::bind_missing(
+                &AnalyzedSource::from_paragraph(input).unwrap(),
+                crate::Wrap::Word,
+            ),
             PreparationOptions::default(),
         )
         .unwrap()
@@ -70,16 +105,21 @@ fn request(prepared: &PreparedText) -> LineSelectionRequest {
         .unwrap()
         .handle();
     LineSelectionRequest {
+        boundary_context: Vec::new(),
+        incoming: None,
         start,
         end: termination.view().boundary(),
-        termination,
+        termination: crate::PreparedTermination::Ordinary(termination),
         alternative: None,
         participants: prepared.participants().collect(),
         atomics: vec![],
         controls: vec![],
+        line_box_struts: Vec::new(),
         line_strut: None,
         context: LineContext {
+            formatted_line: crate::FormattedLineContext::default(),
             base_direction: ParagraphBaseDirection::LeftToRight,
+            line_box_direction: crate::LineBoxDirection::LeftToRight,
             orientation: LineOrientation::Horizontal,
             start: LineStart::Paragraph,
             end: LineEnd::Paragraph,
@@ -87,7 +127,7 @@ fn request(prepared: &PreparedText) -> LineSelectionRequest {
             indent: 0.0,
             alignment: crate::Alignment::Left,
             tabs: TabContext::NoTabs,
-            hanging: HangingContext::None,
+
             spacing: SpacingPolicy::Spaces,
         },
     }
@@ -351,6 +391,8 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
         },
     );
     let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        tab_reference: None,
         source: source.clone(),
         base_style: Style {
             size: 10.0,
@@ -360,6 +402,7 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
         paragraph_strut: policy,
         base_direction: ParagraphBaseDirection::LeftToRight,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: crate::Range::new(0, 1),
             aggregate: crate::Range::new(0, 1),
@@ -401,29 +444,41 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
     let controls = participants
         .iter()
         .filter_map(|item| match item {
-            PreparedParticipant::Control(control) => Some(ControlAllocation {
-                occurrence: control.clone(),
-                strut: if policy == ParagraphStrut::AllocatedContributions {
-                    Some(ControlStrut {
-                        baseline: 0.0,
-                        line_extent: 0.0,
-                        alignment: LineBoxAlignment::Baseline,
-                    })
-                } else {
-                    None
-                },
+            PreparedParticipant::Control(control) => Some({
+                let occurrence = control.clone();
+                ControlAllocation {
+                    boundary: matches!(
+                        occurrence.view().kind(),
+                        crate::ParagraphControlKind::InlineBoundaryStart
+                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                    )
+                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    occurrence,
+                    strut: if policy == ParagraphStrut::AllocatedContributions {
+                        Some(ControlStrut {
+                            baseline: 0.0,
+                            line_extent: 0.0,
+                            alignment: LineBoxAlignment::Baseline,
+                        })
+                    } else {
+                        None
+                    },
+                }
             }),
             _ => None,
         })
         .collect();
     p.select(LineSelectionRequest {
+        boundary_context: Vec::new(),
+        incoming: None,
         start: p.boundary_views().next().unwrap().handle(),
         end,
-        termination,
+        termination: crate::PreparedTermination::Ordinary(termination),
         alternative: None,
         participants,
         atomics: vec![],
         controls,
+        line_box_struts: Vec::new(),
         line_strut: None,
         context: LineContext {
             end: LineEnd::Forced,
@@ -537,3 +592,144 @@ fn raw_out_of_flow_crlf_anchor_keeps_the_published_scalar_line_and_rectangle() {
         assert_eq!(layout.source().boxes()[0].index(), anchor);
     }
 }
+
+#[test]
+fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
+    fn logical_glyphs(line: &FinalizedLine, fixture: &[u8]) -> Vec<(crate::Range, u32)> {
+        let mut glyphs = Vec::new();
+        for run in line.run_views() {
+            assert_eq!(run.face().bytes(), fixture);
+            assert_eq!(run.font_size(), 20.0);
+            let instance = run.effective_instance().unwrap();
+            assert!(instance.face().is_same_face(&run.face()));
+            assert_eq!(instance.font_size(), 20.0);
+            glyphs.extend(run.glyphs().map(|glyph| (glyph.range(), glyph.id())));
+        }
+        // RTL paint order cannot identify which logical side of the cut owns a form.
+        glyphs.sort_by_key(|(source, _)| (source.start, source.end));
+        glyphs
+    }
+
+    let fixture = crate::shaping_test_fonts::arabic_ahem();
+    let mut system = System::new(SystemOptions {
+        font_catalogue: FontCatalogueMode::RegisteredOnly,
+    })
+    .unwrap();
+    system.register_fonts(fixture.clone()).unwrap();
+    let source = Source::new("\u{628}\u{628}\u{628}");
+    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        tab_reference: None,
+        source: source.clone(),
+        base_style: Style {
+            word_break: crate::WordBreak::BreakAll,
+            ..style()
+        },
+        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+        base_direction: ParagraphBaseDirection::RightToLeft,
+        paragraph_strut: ParagraphStrut::DefaultFont,
+        origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
+            source,
+            local: crate::Range::new(0, 3),
+            aggregate: crate::Range::new(0, 3),
+            kind: paragraph::ParagraphOriginKind::Authored,
+        }],
+        connections: vec![],
+        controls: vec![],
+        boundary_policies: vec![],
+        replacements: vec![],
+        anchor_order: vec![],
+    })
+    .unwrap();
+    assert_eq!(
+        analyzed.graphemes().collect::<Vec<_>>(),
+        [
+            crate::Range::new(0, 1),
+            crate::Range::new(1, 2),
+            crate::Range::new(2, 3)
+        ]
+    );
+    let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
+    let prepared = system
+        .prepare(&analyzed, PreparationOptions::default())
+        .unwrap();
+    drop(system);
+    let mut whole_request = request(&prepared);
+    whole_request.context.base_direction = ParagraphBaseDirection::RightToLeft;
+    whole_request.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+    let whole = prepared
+        .select(whole_request.clone())
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    // arabic_ahem's literal Beh forms are isol35/init100/medi277/fina82.
+    // CSS Text4 §6.5 requires joining forms as if the word remained whole
+    // across an unforced within-word wrap (pinned reference, line3200).
+    assert_eq!(
+        logical_glyphs(&whole, &fixture),
+        [
+            (crate::Range::new(0, 1), 100),
+            (crate::Range::new(1, 2), 277),
+            (crate::Range::new(2, 3), 82),
+        ]
+    );
+    let soft = prepared
+        .opportunity_views()
+        .find(|offer| {
+            offer.kind() == PreparedBreakKind::Allowed
+                && offer.boundary().view().source_before()
+                    == crate::SourcePosition::try_new(analyzed.source().text(), 1).unwrap()
+        })
+        .unwrap()
+        .handle();
+    let cut = soft.view().boundary();
+    let offset = cut.view().participant_offset();
+    let participants: Vec<_> = prepared.participants().collect();
+    assert!(offset > 0 && offset < participants.len());
+    let mut first_request = whole_request.clone();
+    first_request.end = cut.clone();
+    first_request.termination = crate::PreparedTermination::Ordinary(soft);
+    first_request.participants = participants[..offset].to_vec();
+    first_request.context.end = LineEnd::Soft;
+    first_request.context.available_inline = Some(20.0);
+    let first = prepared
+        .select(first_request)
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    let mut continuation_request = whole_request;
+    continuation_request.start = cut;
+    continuation_request.participants = participants[offset..].to_vec();
+    continuation_request.context.start = LineStart::Continuation;
+    continuation_request.context.available_inline = Some(40.0);
+    let continuation = prepared
+        .select(continuation_request)
+        .unwrap()
+        .finalize(SpacingAllocations::None)
+        .unwrap();
+    assert_eq!(first.selected_line().request().context.end, LineEnd::Soft);
+    assert_eq!(
+        continuation.selected_line().request().context.start,
+        LineStart::Continuation
+    );
+    assert_eq!(
+        prepared.analyzed_source().source().text().code_units(),
+        &[0x628, 0x628, 0x628]
+    );
+    assert_eq!(
+        [
+            logical_glyphs(&first, &fixture),
+            logical_glyphs(&continuation, &fixture)
+        ],
+        [
+            vec![(crate::Range::new(0, 1), 100)],
+            vec![
+                (crate::Range::new(1, 2), 277),
+                (crate::Range::new(2, 3), 82)
+            ]
+        ]
+    );
+}
+
+mod line_box_struts;

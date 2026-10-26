@@ -1,4 +1,4 @@
-//! Font-independent analysis of exact original source and its logical units.
+//! Font-independent semantic analysis with exact original-source custody.
 
 use std::{
     fmt,
@@ -28,7 +28,8 @@ impl fmt::Debug for AnalyzedSource {
 }
 
 impl AnalyzedSource {
-    /// Validates authored source/styles and analyzes original Unicode facts.
+    /// Validates source/styles and analyzes the post-transform semantic stream.
+    /// Exact original source and Phase-I correspondence remain separately owned.
     /// No font discovery, selection, glyph shaping or placement occurs.
     pub fn new(source: Source, style: Style) -> Result<Self> {
         let source = ValidatedSource::try_from(source)?;
@@ -63,7 +64,11 @@ impl AnalyzedSource {
     /// Captured default authored style; actual span winners are retained too.
     #[must_use]
     pub fn style(&self) -> &Style {
-        self.inner.processed.base_style()
+        self.inner
+            .paragraph
+            .domain_style
+            .as_ref()
+            .unwrap_or(self.inner.processed.base_style())
     }
 
     /// Opaque identity of this analysis allocation, independent of content equality.
@@ -75,12 +80,17 @@ impl AnalyzedSource {
     }
 
     /// Original-source grapheme extents from the actual retained analysis.
-    pub fn graphemes(&self) -> impl ExactSizeIterator<Item = Range> + '_ {
+    pub fn graphemes(&self) -> impl Iterator<Item = Range> + '_ {
         self.inner
             .host_projection
             .graphemes
             .windows(2)
             .map(|pair| Range::new(pair[0], pair[1]))
+            .filter(|range| {
+                self.inner
+                    .paragraph
+                    .contains(self.inner.processed.source(), *range)
+            })
     }
 
     /// Resolved original-source paragraph direction, before glyph substitution.

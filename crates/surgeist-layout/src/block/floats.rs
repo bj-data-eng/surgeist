@@ -11,7 +11,9 @@ use crate::{
     LayoutScalar, NodeOutputOf, Point, ScrollGeometryOf, ScrollRectOf, Size, Traverse,
 };
 
+#[derive(Clone)]
 pub(super) struct PendingFloat<Node, S: LayoutScalar> {
+    pub(super) accepted: Option<AcceptedFloatPlacement<S>>,
     pub(super) node: Node,
     pub(super) source_index: usize,
     pub(super) side: Float,
@@ -24,6 +26,91 @@ pub(super) struct PendingFloat<Node, S: LayoutScalar> {
     pub(super) margin: Edges<S>,
     pub(super) float_exclusion: FloatExclusion,
     pub(super) child_compute_geometry: Option<ScrollGeometryOf<S>>,
+}
+
+/// The real inline-space role of this placement invocation. Intrinsic Max
+/// has independent side frontiers, not a finite zero-width containing line.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum FloatInlineSpace {
+    Finite,
+    IntrinsicMaximum,
+}
+
+/// A resolved logical placement; publishing transforms this exact plan and
+/// never repeats placement without its preceding-inline constraint.
+#[derive(Clone, Debug)]
+pub(super) struct AcceptedFloatPlacement<S: LayoutScalar> {
+    pub(super) logical_origin: LogicalPointOf<S>,
+    pub(super) inline_space: FloatInlineSpace,
+    pub(super) margin_block_start: S,
+    pub(super) intrinsic_inline_demand: Option<S>,
+    pub(super) prefix: f64,
+    pub(super) observation: AcceptedFloatPrefix,
+    pub(super) line: surgeist_text::FinalizedLine,
+}
+
+/// Distinct authentic receipts: a represented original seam, or the genuine
+/// empty ParagraphEnd after an already consumed terminal mandatory boundary.
+#[derive(Clone, Debug)]
+pub(super) enum AcceptedFloatPrefix {
+    Seam(surgeist_text::TextSeam),
+    EmptyParagraphEnd {
+        boundary: surgeist_text::PreparedBoundary,
+        original: surgeist_text::TextSeam,
+    },
+}
+impl AcceptedFloatPrefix {
+    pub(super) fn observe(
+        &self,
+        line: &surgeist_text::FinalizedLine,
+    ) -> Result<(f64, bool), crate::text_layout::fit::FitError> {
+        use crate::text_layout::fit::FitError;
+        match self {
+            Self::Seam(seam) => {
+                let observation = line.prefix_at(seam)?;
+                Ok((
+                    observation.advance(),
+                    observation.has_retained_flow_participation(),
+                ))
+            }
+            Self::EmptyParagraphEnd { boundary, original } => {
+                let selected = line.selected_line();
+                let request = selected.request();
+                let owner = match original {
+                    surgeist_text::TextSeam::Origin { origin, .. } => origin.prepared_text(),
+                    surgeist_text::TextSeam::BeforeParticipant(participant)
+                    | surgeist_text::TextSeam::AfterParticipant(participant) => match participant {
+                        surgeist_text::PreparedParticipant::Text(p) => p.prepared_text(),
+                        surgeist_text::PreparedParticipant::Atomic(p) => p.prepared_text(),
+                        surgeist_text::PreparedParticipant::Control(p) => p.prepared_text(),
+                        surgeist_text::PreparedParticipant::ComputedLineBoundary(p) => {
+                            p.prepared_text()
+                        }
+                    },
+                };
+                if owner != line.prepared_text()
+                    || request.start != *boundary
+                    || request.end != *boundary
+                    || !request.participants.is_empty()
+                    || request.context.end != surgeist_text::LineEnd::Paragraph
+                {
+                    return Err(FitError::InvalidGeometry);
+                }
+                // This is the actual complete empty-line fold, not a guessed
+                // source-origin mapping or a borrowed previous-line prefix.
+                Ok((line.feedback().advance, false))
+            }
+        }
+    }
+}
+
+/// Both coordinates are issued by the same actual ledger placement. Keeping
+/// the original logical result avoids reversing a scalar frame transform.
+pub(super) struct FloatPlacement<S: LayoutScalar> {
+    pub(super) margin_block_start: S,
+    pub(super) intrinsic_inline_demand: Option<S>,
+    pub(super) logical: LogicalPointOf<S>,
+    pub(super) physical: Point<S>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -152,8 +239,80 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         }
     }
 
+    /// Rebase this actual influencing float ledger to the preceding canonical
+    /// pass. Inherited entries keep their genuine node and side provenance.
+    pub(super) fn canonical_for_text(
+        &self,
+        container: Node,
+        frames: &[crate::text_layout::state::CanonicalFrame<Node, S>],
+    ) -> Result<Option<Self>, crate::text_layout::fit::FitError>
+    where
+        Node: Eq,
+    {
+        let Some(container) = frames.iter().find(|frame| frame.node == container) else {
+            return Ok(None);
+        };
+        let content = container
+            .output
+            .scroll_geometry
+            .ok_or(crate::text_layout::fit::FitError::InvalidGeometry)?
+            .content_box();
+        let logical_content_origin =
+            self.flow_axes
+                .logical_point(content.origin(), content.size(), container.output.size);
+        let logical_content = self.flow_axes.logical_size(content.size());
+        let mut result = self.clone();
+        result.containing_size = container.output.size;
+        result.containing_inline_start = logical_content_origin.inline;
+        result.containing_inline_end = logical_content_origin.inline + logical_content.inline;
+        for entry in &mut result.ledger {
+            let frame = frames
+                .iter()
+                .find(|frame| frame.node == entry.node)
+                .ok_or(crate::text_layout::fit::FitError::InvalidGeometry)?;
+            let margin = frame.output.margin;
+            let origin = Point::new(
+                crate::text_layout::run::number::<S>(
+                    frame.origin.x - container.origin.x - margin.left.to_f64(),
+                )?,
+                crate::text_layout::run::number::<S>(
+                    frame.origin.y - container.origin.y - margin.top.to_f64(),
+                )?,
+            );
+            let size = Size::new(
+                crate::text_layout::run::number::<S>(
+                    frame.output.size.width.to_f64() + margin.left.to_f64() + margin.right.to_f64(),
+                )?,
+                crate::text_layout::run::number::<S>(
+                    frame.output.size.height.to_f64()
+                        + margin.top.to_f64()
+                        + margin.bottom.to_f64(),
+                )?,
+            );
+            let logical_origin = self
+                .flow_axes
+                .logical_point(origin, size, result.containing_size);
+            let logical_size = self.flow_axes.logical_size(size);
+            entry.physical_margin_box = PhysicalMarginBox { origin, size };
+            entry.inline_start = logical_origin.inline;
+            entry.inline_end = logical_origin.inline + logical_size.inline;
+            entry.block_start = logical_origin.block;
+            entry.block_end = logical_origin.block + logical_size.block;
+        }
+        Ok(Some(result))
+    }
+
     pub(super) fn is_empty(&self) -> bool {
         self.ledger.is_empty()
+    }
+
+    /// Every entry in an encounter's incoming ledger precedes that source
+    /// window. Its actual margin-box top is a constraint even after expiry.
+    pub(super) fn preceding_float_top(&self) -> Option<S> {
+        self.ledger
+            .iter()
+            .map(|entry| entry.block_start)
+            .reduce(S::max)
     }
 
     pub(super) fn for_ordinary_child(
@@ -235,6 +394,81 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
+        self.place_float_for_line(provider, float, None)
+            .map(|placement| placement.physical)
+    }
+
+    /// Record an already accepted border-box origin in this exact ledger frame.
+    /// The same operation serves ordinary placement and publication of a plan
+    /// that was accepted with its real preceding-inline constraint.
+    fn record_placement(&mut self, float: &PendingFloat<Node, S>, border: LogicalPointOf<S>) {
+        let margin = self.flow_axes.logical_edges(float.margin);
+        let size = self.flow_axes.logical_size(float.size);
+        let origin = LogicalPointOf::new(
+            border.inline - margin.inline_start,
+            border.block - margin.block_start,
+        );
+        let size = LogicalSizeOf::new(
+            size.inline + margin.inline_sum(),
+            size.block + margin.block_sum(),
+        );
+        self.ledger.push(FloatLedgerEntry {
+            node: float.node,
+            side: FloatLedgerSide::from_float(float.side),
+            exclusion: float.float_exclusion,
+            physical_margin_box: PhysicalMarginBox {
+                origin: self
+                    .flow_axes
+                    .physical_point(origin, size, self.containing_size),
+                size: self.flow_axes.physical_size(size),
+            },
+            inline_start: origin.inline,
+            inline_end: origin.inline + size.inline,
+            block_start: origin.block,
+            block_end: origin.block + size.block,
+            ledger_order: FloatLedgerOrder(self.ledger.len()),
+        });
+    }
+
+    pub(super) fn place_float_for_line<'input, Tree, M>(
+        &mut self,
+        provider: ProviderBandContext<'_, Tree, Node>,
+        float: &PendingFloat<Node, S>,
+        line: Option<(f64, S)>,
+    ) -> LayoutResultOf<Node, FloatPlacement<S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        self.place_float_in_space(provider, float, line, FloatInlineSpace::Finite)
+    }
+
+    pub(super) fn place_float_intrinsic<'input, Tree, M>(
+        &mut self,
+        provider: ProviderBandContext<'_, Tree, Node>,
+        float: &PendingFloat<Node, S>,
+    ) -> LayoutResultOf<Node, FloatPlacement<S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
+        self.place_float_in_space(provider, float, None, FloatInlineSpace::IntrinsicMaximum)
+    }
+
+    /// End-side occupation from the same raw, height-qualified ledger query.
+    /// Reversed intrinsic frontiers remain meaningful independent distances.
+    pub(super) fn end_occupation(&self, band: &FloatBand<S>) -> S {
+        self.containing_inline_end - band.inline_end
+    }
+
+    fn place_float_in_space<'input, Tree, M>(
+        &mut self,
+        provider: ProviderBandContext<'_, Tree, Node>,
+        float: &PendingFloat<Node, S>,
+        line: Option<(f64, S)>,
+        inline_space: FloatInlineSpace,
+    ) -> LayoutResultOf<Node, FloatPlacement<S>, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    {
         let side = FloatLedgerSide::from_float(float.side);
         let logical_size = self.flow_axes.logical_size(float.size);
         let logical_margin = self.flow_axes.logical_edges(float.margin);
@@ -257,42 +491,54 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
                 self.query_physical_margin_box_collisions(candidate_block, candidate_block_end)
             };
             let available_inline = (band.inline_end - band.inline_start).max(S::ZERO);
-            if margin_box_size.inline <= available_inline || band.next_transition.is_none() {
+            if inline_space == FloatInlineSpace::Finite
+                && let Some((prefix, line_end)) = line
+                && candidate_block < line_end
+                && margin_box_size.block > S::ZERO
+                && prefix + margin_box_size.inline.to_f64() > available_inline.to_f64()
+            {
+                candidate_block = line_end;
+                continue;
+            }
+            if inline_space == FloatInlineSpace::IntrinsicMaximum
+                || margin_box_size.inline <= available_inline
+                || band.next_transition.is_none()
+            {
                 let margin_box_inline = match side {
                     FloatLedgerSide::LineStart => band.inline_start,
                     FloatLedgerSide::LineEnd => band.inline_end - margin_box_size.inline,
                 };
-                let margin_box_origin = LogicalPointOf::new(margin_box_inline, candidate_block);
                 let content_origin = LogicalPointOf::new(
                     margin_box_inline + logical_margin.inline_start,
                     candidate_block + logical_margin.block_start,
                 );
-                let physical_margin_origin = self.flow_axes.physical_point(
-                    margin_box_origin,
-                    margin_box_size,
-                    self.containing_size,
-                );
-                let physical_margin_size = self.flow_axes.physical_size(margin_box_size);
-                let ledger_order = FloatLedgerOrder(self.ledger.len());
-                self.ledger.push(FloatLedgerEntry {
-                    node: float.node,
-                    side,
-                    exclusion: float.float_exclusion,
-                    physical_margin_box: PhysicalMarginBox {
-                        origin: physical_margin_origin,
-                        size: physical_margin_size,
-                    },
-                    inline_start: margin_box_inline,
-                    inline_end: margin_box_inline + margin_box_size.inline,
-                    block_start: candidate_block,
-                    block_end: candidate_block + margin_box_size.block,
-                    ledger_order,
+                // This is the float's own actual collision-height query, not
+                // a fabricated height for a zero-height Text line. Each side's
+                // raw occupation belongs to this exact source/clear cohort.
+                let intrinsic_inline_demand = if inline_space == FloatInlineSpace::IntrinsicMaximum
+                {
+                    let demand = band.inline_start - self.containing_inline_start
+                        + margin_box_size.inline
+                        + self.end_occupation(&band);
+                    Some(
+                        crate::text_layout::run::number::<S>(demand.to_f64()).map_err(|error| {
+                            super::inline_run::text_run_error(provider.container, error)
+                        })?,
+                    )
+                } else {
+                    None
+                };
+                self.record_placement(float, content_origin);
+                return Ok(FloatPlacement {
+                    margin_block_start: candidate_block,
+                    intrinsic_inline_demand,
+                    logical: content_origin,
+                    physical: self.flow_axes.physical_point(
+                        content_origin,
+                        logical_size,
+                        self.containing_size,
+                    ),
                 });
-                return Ok(self.flow_axes.physical_point(
-                    content_origin,
-                    logical_size,
-                    self.containing_size,
-                ));
             }
             candidate_block = band
                 .next_transition
@@ -661,14 +907,39 @@ where
     );
 
     for float in floats {
-        let location = float_exclusions.place_float(
-            ProviderBandContext {
-                tree,
-                container,
-                enabled: true,
-            },
-            float,
-        )?;
+        let location = if let Some(accepted) = &float.accepted {
+            if accepted.inline_space != FloatInlineSpace::Finite {
+                return Err(super::inline_run::text_run_error(
+                    container,
+                    crate::text_layout::fit::FitError::InvalidGeometry,
+                ));
+            }
+            let (advance, _) = accepted
+                .observation
+                .observe(&accepted.line)
+                .map_err(|error| super::inline_run::text_run_error(container, error))?;
+            if advance != accepted.prefix {
+                return Err(super::inline_run::text_run_error(
+                    container,
+                    crate::text_layout::fit::FitError::InvalidGeometry,
+                ));
+            }
+            float_exclusions.record_placement(float, accepted.logical_origin);
+            constants.flow_axes.physical_point(
+                accepted.logical_origin,
+                constants.flow_axes.logical_size(float.size),
+                container_size,
+            )
+        } else {
+            float_exclusions.place_float(
+                ProviderBandContext {
+                    tree,
+                    container,
+                    enabled: true,
+                },
+                float,
+            )?
+        };
         let scroll_geometry = with_block_scroll_projections::<Tree, M, _>(
             tree,
             float.node,
@@ -743,6 +1014,21 @@ impl<S: LayoutScalar> FloatIntrinsics<S> {
                     Float::Right => self.line_end = self.line_end + width,
                 }
                 self.contribution = self.contribution.max(self.line_start + self.line_end);
+            }
+        }
+    }
+
+    /// Captured Text-line and float-query receipts own Max cohort composition.
+    /// Neither a global side sum nor an artificial Text height participates.
+    pub(super) fn add_captured(&mut self, width: S, intrinsic_demand: Option<S>) {
+        match self.available_inline {
+            AvailableOf::Definite(_) => {}
+            AvailableOf::MinContent => self.contribution = self.contribution.max(width),
+            AvailableOf::MaxContent => {
+                self.contribution = self.contribution.max(width);
+                if let Some(demand) = intrinsic_demand {
+                    self.contribution = self.contribution.max(demand);
+                }
             }
         }
     }

@@ -68,6 +68,18 @@ This product depends on log 0.4.33, distributed by The Rust Project Developers:
 
 This is a direct library dependency.
 
+### miniz_oxide
+
+This product depends on miniz_oxide 0.8.9:
+
+* License: [MIT](LICENSES/miniz-oxide/LICENSE-MIT.md) OR [Zlib](LICENSES/miniz-oxide/LICENSE-ZLIB.md) OR [Apache-2.0](LICENSES/miniz-oxide/LICENSE-APACHE.md)
+* Homepage: [miniz_oxide](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide)
+
+This direct library dependency has default features disabled. Prepared bitmap
+admission uses its safe, fixed-state inflater with caller-owned bounded output.
+The upstream [LICENSE](LICENSES/miniz-oxide/LICENSE) and alternative texts retain
+the original copyright notices. No inflater source is copied into this crate.
+
 ### peniko
 
 This product depends on peniko 0.6.1:

@@ -198,7 +198,12 @@ impl BrowserCorpusAdapter for LayoutAdapter {
             Ok(paths) => ResourceDependencies::Paths(paths),
             Err(reason) => ResourceDependencies::Invalid { reason },
         };
-        let setup = helper_setup_expression(helper)?;
+        let font_path = RelativePath::new("fonts/Ahem.ttf")
+            .map_err(|error| AdapterError::Preparation(error.to_string()))?;
+        let font_bytes = input.input_bytes(&font_path).ok_or_else(|| {
+            AdapterError::Preparation("captured pinned font resource is missing".into())
+        })?;
+        let setup = helper_setup_expression(helper, font_bytes)?;
         PreparedFixture::new(
             document,
             "document.readyState !== 'loading' && !!document.body".to_string(),
@@ -334,12 +339,20 @@ fn resolve_reference(source: &RelativePath, reference: &str) -> Result<RelativeP
     RelativePath::new(path.to_string_lossy().replace('\\', "/")).map_err(|error| error.to_string())
 }
 
-fn helper_setup_expression(helper: &str) -> Result<String, AdapterError> {
+fn helper_setup_expression(helper: &str, bytes: &[u8]) -> Result<String, AdapterError> {
     let helper = serde_json::to_string(helper).map_err(|error| {
         AdapterError::Preparation(format!("failed to encode helper script: {error}"))
     })?;
+    let digest = surgeist_generator::Sha256Digest::from_bytes(bytes);
+    if digest.to_string() != "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc" {
+        return Err(AdapterError::Preparation(
+            "pinned Ahem fixture resource changed".into(),
+        ));
+    }
+    let bytes = serde_json::to_string(bytes)
+        .map_err(|error| AdapterError::Preparation(error.to_string()))?;
     Ok(format!(
-        "if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT}"
+        "(async () => {{ const pinnedFontBytes = {bytes}; if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT}\nif (typeof preparePinnedTextFont === 'function') {{ await preparePinnedTextFont(pinnedFontBytes); }} return true; }})()"
     ))
 }
 
@@ -391,7 +404,10 @@ mod tests {
 
     fn envelope(nodes: [Value; 4]) -> Value {
         let mut fields = serde_json::Map::new();
-        fields.insert("schemaVersion".to_string(), Value::from(1));
+        fields.insert(
+            "schemaVersion".to_string(),
+            Value::from(crate::envelope::VERSION),
+        );
         for ((_, key), node) in fixture_cases().into_iter().zip(nodes) {
             fields.insert(key.to_string(), node);
         }
@@ -500,8 +516,16 @@ mod tests {
             "function getTestData() {{ return {}; }} function describeElement() {{ return {{ style: {{}} }}; }}",
             serde_json::to_string(&legacy.to_string()).unwrap(),
         );
-        let original = helper_setup_expression(&original).unwrap();
-        let replacement = helper_setup_expression(TEST_HELPER_SOURCE).unwrap();
+        let original = helper_setup_expression(
+            &original,
+            include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf"),
+        )
+        .unwrap();
+        let replacement = helper_setup_expression(
+            TEST_HELPER_SOURCE,
+            include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf"),
+        )
+        .unwrap();
         let script = format!(
             "global.window={{}}; const vm=require('node:vm'); vm.runInThisContext({}); const before=getTestData; vm.runInThisContext({}); if(getTestData!==before) throw Error('preloaded helper replaced'); process.stdout.write(getTestData());",
             serde_json::to_string(&original).unwrap(),
@@ -533,7 +557,7 @@ mod tests {
     }
 
     #[test]
-    fn adapter_requires_a_closed_version_one_measurement_envelope() {
+    fn adapter_requires_a_closed_version_two_measurement_envelope() {
         let variants = fixture_cases()
             .into_iter()
             .map(|(_, key)| format!("\"{key}\":{{\"layoutInput\":\"unsupported\",\"unsupportedReason\":\"known unsupported\"}}"))
@@ -541,11 +565,11 @@ mod tests {
             .join(",");
         for extra in [
             "",
-            "\"schemaVersion\":2,",
-            "\"schemaVersion\":1.0,",
+            "\"schemaVersion\":3,",
+            "\"schemaVersion\":2.0,",
             "\"schemaVersion\":null,",
-            "\"schemaVersion\":1,\"unexpected\":true,",
-            "\"schemaVersion\":1,\"schemaVersion\":1,",
+            "\"schemaVersion\":2,\"unexpected\":true,",
+            "\"schemaVersion\":2,\"schemaVersion\":2,",
         ] {
             let payload = format!("{{{extra}{variants}}}");
             assert!(
@@ -573,7 +597,7 @@ mod tests {
         let error = LayoutAdapter
             .lower(
                 &fixture(),
-                Value::String("{\"schemaVersion\":1}".to_string()),
+                Value::String("{\"schemaVersion\":2}".to_string()),
             )
             .unwrap_err();
         assert_eq!(
@@ -596,7 +620,10 @@ mod tests {
                 )
             })
             .collect::<serde_json::Map<_, _>>();
-        description.insert("schemaVersion".to_string(), Value::from(1));
+        description.insert(
+            "schemaVersion".to_string(),
+            Value::from(crate::envelope::VERSION),
+        );
         let outcomes = LayoutAdapter
             .lower(
                 &fixture(),
@@ -660,10 +687,54 @@ mod tests {
     }
 
     #[test]
+    fn captured_font_bytes_are_authenticated_before_browser_setup() {
+        let original = include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf");
+        assert!(helper_setup_expression(TEST_HELPER_SOURCE, original).is_ok());
+        let mut changed = original.to_vec();
+        changed[0] ^= 1;
+        assert!(matches!(
+            helper_setup_expression(TEST_HELPER_SOURCE, &changed),
+            Err(AdapterError::Preparation(_))
+        ));
+        assert!(helper_setup_expression(TEST_HELPER_SOURCE, &[]).is_err());
+    }
+
+    #[test]
+    fn setup_loads_authenticated_font_without_browser_webcrypto() {
+        // The document.write browser profile has no secure-context WebCrypto.
+        // This load/add/ready recorder qualifies exact-byte transport; real
+        // browser execution independently qualifies FontFace decoding/loading.
+        let font = include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf");
+        let setup = helper_setup_expression(TEST_HELPER_SOURCE, font).unwrap();
+        let script = format!(
+            r#"const assert=require('node:assert/strict'); const vm=require('node:vm');
+const expected={}; const loaded=[]; const faces=[]; faces.add=face=>faces.push(face); faces.ready=Promise.resolve();
+const context=vm.createContext({{window:{{}},document:{{querySelector:()=>({{}}),fonts:faces}},
+FontFace:class{{constructor(family,buffer,descriptors){{this.family=family;this.status='unloaded';this.bytes=Array.from(new Uint8Array(buffer));this.descriptors=descriptors;loaded.push(this);}}async load(){{this.status='loaded';return this;}}}}}});
+(async()=>{{await vm.runInContext({},context);assert.equal(loaded.length,1);assert.equal(faces.length,1);assert.equal(faces[0],loaded[0]);assert.deepEqual(loaded[0].bytes,expected);assert.equal(loaded[0].family,'SurgeistParityAhem');assert.equal(loaded[0].status,'loaded');assert.deepEqual(JSON.parse(JSON.stringify(loaded[0].descriptors)),{{style:'normal',weight:'400',stretch:'normal',featureSettings:'normal',variationSettings:'normal'}});}})().catch(error=>{{console.error(error);process.exitCode=1;}});"#,
+            serde_json::to_string(font.as_slice()).unwrap(),
+            serde_json::to_string(&setup).unwrap(),
+        );
+        let output = std::process::Command::new("node")
+            .arg("-e")
+            .arg(script)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
     fn setup_injects_a_missing_helper_and_preserves_an_existing_helper() {
-        let first = helper_setup_expression("function getTestData() { return 'original'; } function describeElement() { return { style: {} }; }").unwrap();
-        let second =
-            helper_setup_expression("function getTestData() { return 'replacement'; }").unwrap();
+        let first = helper_setup_expression("function getTestData() { return 'original'; } function describeElement() { return { style: {} }; }",include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf")).unwrap();
+        let second = helper_setup_expression(
+            "function getTestData() { return 'replacement'; }",
+            include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf"),
+        )
+        .unwrap();
         let script = format!(
             "global.window = {{}}; const vm = require('node:vm'); vm.runInThisContext({}); if (getTestData() !== 'original') throw Error('missing helper was not loaded'); const original = describeElement; vm.runInThisContext({}); if (getTestData() !== 'original' || describeElement !== original) throw Error('existing helper was replaced');",
             serde_json::to_string(&first).unwrap(),

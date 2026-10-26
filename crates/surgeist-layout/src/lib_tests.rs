@@ -329,6 +329,10 @@ fn fri06_c01_contract_float_exclusion_public_aliases_and_operations_are_exact() 
         LayoutOperation::FloatExclusionQuery => "float-exclusion",
         LayoutOperation::RoundingFinalization => "round",
         LayoutOperation::GridLanePlacement => "grid-lanes",
+        LayoutOperation::TextCapture => "text-capture",
+        LayoutOperation::TextSelection => "text-selection",
+        LayoutOperation::TextPlacement => "text-placement",
+        LayoutOperation::InlineWrapping => "inline-wrapping",
     };
     assert_eq!(
         operation_name(LayoutOperation::FloatExclusionQuery),

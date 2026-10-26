@@ -137,3 +137,4 @@ fn kerx_stack_overflow_reset_pop_and_invalid_values_are_distinct() {
         }
     });
 }
+use alloc::vec::Vec;

@@ -9,35 +9,13 @@ use crate::inline::{
 };
 use crate::*;
 
-fn mr02_text<S: LayoutScalar>(
-    source_index: usize,
-    id: u64,
-    extent: f64,
-    bidi_level: u8,
-    whitespace_edge: InlineWhitespaceEdge,
-    following_break: InlineBreakOpportunityOf<S>,
-) -> MixedInlineParticipantOf<S> {
-    MixedInlineParticipantOf::ShapedText(crate::inline::ShapedTextParticipantOf {
-        source_index,
-        segment: ShapedInlineSegmentOf::try_new(
-            InlineSegmentId::new(id),
-            S::from_f64(extent),
-            InlineMetricsOf::from_ascent_descent(S::from_f64(8.0), S::from_f64(2.0)).unwrap(),
-            BidiLevel::try_new(bidi_level).unwrap(),
-            whitespace_edge,
-            following_break,
-        )
-        .unwrap(),
-    })
-}
-
 fn mr02_atomic<S: LayoutScalar>(
     source_index: usize,
     extent: f64,
     block_extent: f64,
     baseline: f64,
     bidi_level: u8,
-    following_break: InlineBreakOpportunityOf<S>,
+    following_break: InlineBreakOpportunity,
 ) -> MixedInlineParticipantOf<S> {
     MixedInlineParticipantOf::Atomic {
         item: AtomicInlineBoxParticipant {
@@ -51,11 +29,10 @@ fn mr02_atomic<S: LayoutScalar>(
             first_baseline: Some(S::from_f64(baseline)),
             alignment: InlineControlAlignment::Baseline,
         },
-        participation: AtomicInlineParticipationOf::try_new(
+        participation: AtomicInlineParticipation::new(
             BidiLevel::try_new(bidi_level).unwrap(),
             following_break,
-        )
-        .unwrap(),
+        ),
     }
 }
 
@@ -64,11 +41,99 @@ fn mr02_input<S: LayoutScalar>(
     participants: Vec<MixedInlineParticipantOf<S>>,
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
+        line_box_context: crate::line_box::LineBoxContext::new(
+            crate::LineBoxDirectionPolicy::Normal,
+            Direction::Ltr,
+        ),
+        observe_tail: false,
+        wrapping: None,
         available_inline_extent,
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-        text_align: TextAlign::Auto,
+        text_align: TextAlign::Start,
+        text_align_last: crate::TextAlignLast::Auto,
+        indent: crate::text_indent::ResolvedTextIndent::ZERO,
+        indent_state: crate::text_indent::IndentLineState::default(),
         participants,
     }
+}
+
+#[test]
+fn authored_atomic_shape_band_break_target_keeps_34_38_then_42_46_both_scalars() {
+    fn assert_lane<S: LayoutScalar>() {
+        let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+        let run = |break_after| {
+            let mut participants = vec![mixed_boundary(
+                100,
+                flow,
+                InlineMetricsOf::from_ascent_descent(S::from_f64(16.0), S::from_f64(4.0)).unwrap(),
+            )];
+            // Every extent is an authored box allocation. The first 48px box
+            // does not represent the historical fixture's measured text.
+            for (index, width) in [48.0, 34.0, 38.0, 42.0, 46.0].into_iter().enumerate() {
+                participants.push(mr02_atomic(
+                    index,
+                    width,
+                    16.0,
+                    16.0,
+                    0,
+                    if index == break_after {
+                        InlineBreakOpportunity::Allowed
+                    } else {
+                        InlineBreakOpportunity::Prohibited
+                    },
+                ));
+            }
+            layout_mixed_inline_run_with_band_source(
+                mr02_input(AvailableOf::definite(S::from_f64(180.0)), participants),
+                |start, _| LogicalLineBandQueryResultOf {
+                    inline_start: if start < S::from_f64(40.0) {
+                        S::from_f64(44.0)
+                    } else {
+                        S::ZERO
+                    },
+                    inline_end: S::from_f64(180.0),
+                    next_transition: if start < S::from_f64(40.0) {
+                        Some(S::from_f64(40.0))
+                    } else {
+                        None
+                    },
+                },
+                |block, _| block,
+            )
+            .unwrap()
+        };
+        // The first band is 136px: 48+34+38=120 fits, adding 42 does not.
+        // The actual allowed endpoint after 38 commits 42+46 on the next band.
+        let actual = run(2);
+        assert_eq!(
+            actual
+                .atomics
+                .iter()
+                .map(|row| (row.item.source_index, row.line_index, row.inline_start))
+                .collect::<Vec<_>>(),
+            vec![
+                (0, 0, S::from_f64(44.0)),
+                (1, 0, S::from_f64(92.0)),
+                (2, 0, S::from_f64(126.0)),
+                (3, 1, S::from_f64(44.0)),
+                (4, 1, S::from_f64(86.0))
+            ]
+        );
+        assert_eq!(actual.line_bands.len(), 2);
+        assert_eq!(actual.line_bands[1].block_start, S::from_f64(20.0));
+        assert_eq!(actual.block_extent, S::from_f64(40.0));
+        let wrong = run(3);
+        assert_eq!(
+            wrong
+                .atomics
+                .iter()
+                .map(|row| (row.item.source_index, row.line_index))
+                .collect::<Vec<_>>(),
+            vec![(0, 0), (1, 0), (2, 0), (3, 0), (4, 1)]
+        );
+    }
+    assert_lane::<f32>();
+    assert_lane::<f64>();
 }
 
 #[test]
@@ -80,14 +145,14 @@ fn fri06_mr02_inline_linear_empty_strut_and_forced_clear_preserve_metrics_both_s
         let report = layout_mixed_inline_run(mr02_input(
             AvailableOf::MAX_CONTENT,
             vec![mixed_forced_line_break(7, flow_axes, metrics, Clear::Both)],
-        ));
+        ))
+        .unwrap();
 
         assert_eq!(report.inline_extent, S::ZERO);
         assert_eq!(report.block_extent, S::from_f64(24.0));
         assert_eq!(report.first_baseline, Some(S::from_f64(9.0)));
         assert_eq!(report.last_baseline, Some(S::from_f64(21.0)));
-        assert!(report.fragments.is_empty());
-        assert!(report.anchors.is_empty());
+        assert!(report.atomics.is_empty());
         assert_eq!(report.controls.len(), 1);
         assert_eq!(report.controls[0].source_index, 7);
         assert_eq!(report.controls[0].line_index, 0);
@@ -103,120 +168,178 @@ fn fri06_mr02_inline_linear_empty_strut_and_forced_clear_preserve_metrics_both_s
 }
 
 #[test]
-fn fri06_mr02_inline_linear_discard_break_replacement_and_overwide_progress_both_scalars() {
+fn supplied_edges_and_real_atomic_overflow_preserve_discard_and_endpoint_roles_both_scalars() {
+    use surgeist_text::{SuppliedInlineParticipant, SuppliedLine};
+    let slots = [
+        SuppliedInlineParticipant::Text {
+            level: BidiLevel::try_new(0).unwrap(),
+            edge: InlineWhitespaceEdge::DiscardAtLineStart,
+        },
+        SuppliedInlineParticipant::Text {
+            level: BidiLevel::try_new(0).unwrap(),
+            edge: InlineWhitespaceEdge::Preserve,
+        },
+        SuppliedInlineParticipant::Text {
+            level: BidiLevel::try_new(0).unwrap(),
+            edge: InlineWhitespaceEdge::DiscardAtLineEnd,
+        },
+    ];
+    let edges = SuppliedLine::new(&slots).edges();
+    assert_eq!(
+        (0..3)
+            .map(|index| edges.is_discarded(index))
+            .collect::<Vec<_>>(),
+        [Some(true), Some(false), Some(true)]
+    );
     fn assert_lane<S: LayoutScalar>() {
-        let discarded = layout_mixed_inline_run(mr02_input(
+        let report = layout_mixed_inline_run(mr02_input(
             AvailableOf::definite(S::from_f64(15.0)),
             vec![
-                mr02_text(
-                    10,
-                    10,
-                    4.0,
-                    0,
-                    InlineWhitespaceEdge::DiscardAtLineStart,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
-                mr02_text(
-                    11,
-                    11,
-                    10.0,
-                    0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::allowed(),
-                ),
-                mr02_text(
-                    12,
-                    12,
-                    5.0,
-                    0,
-                    InlineWhitespaceEdge::DiscardAtLineEnd,
-                    InlineBreakOpportunityOf::allowed(),
-                ),
-                mr02_text(
-                    13,
-                    13,
-                    30.0,
-                    0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
+                mr02_atomic(11, 10.0, 10.0, 8.0, 0, InlineBreakOpportunity::Allowed),
+                mr02_atomic(13, 30.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
             ],
-        ));
-        assert_eq!(discarded.fragments.len(), 2);
-        assert_eq!(discarded.fragments[0].source_index, 11);
-        assert_eq!(discarded.fragments[0].inline_start, S::ZERO);
-        assert_eq!(discarded.fragments[0].line_index, 0);
-        assert_eq!(discarded.fragments[1].source_index, 13);
-        assert_eq!(discarded.fragments[1].line_index, 1);
-        assert_eq!(discarded.fragments[1].inline_extent, S::from_f64(30.0));
-        assert_eq!(discarded.anchors.len(), 4);
-        assert_eq!(discarded.anchors[0].source_index, 10);
-        assert_eq!(discarded.anchors[0].inline_start, S::ZERO);
-        assert_eq!(discarded.anchors[2].source_index, 12);
-        assert_eq!(discarded.anchors[2].inline_start, S::from_f64(10.0));
-        assert_eq!(discarded.line_bands.len(), 2);
-
-        let replacement = S::from_f64(4.0);
-        let replaced = layout_mixed_inline_run(mr02_input(
-            AvailableOf::definite(S::from_f64(15.0)),
-            vec![
-                mr02_text(
-                    20,
-                    20,
-                    12.0,
-                    0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::try_allowed_with_replacement(replacement).unwrap(),
-                ),
-                mr02_text(
-                    21,
-                    21,
-                    20.0,
-                    0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
-            ],
-        ));
-        assert_eq!(replaced.fragments.len(), 2);
-        assert_eq!(replaced.fragments[0].line_index, 0);
+        ))
+        .unwrap();
+        assert_eq!(report.atomics.len(), 2);
         assert_eq!(
-            replaced.fragments[0].replacement_inline_extent,
-            Some(replacement)
+            (
+                report.atomics[0].item.source_index,
+                report.atomics[0].line_index,
+                report.atomics[0].inline_start
+            ),
+            (11, 0, S::ZERO)
         );
-        assert_eq!(replaced.fragments[1].line_index, 1);
-        assert_eq!(replaced.fragments[1].replacement_inline_extent, None);
-        assert_eq!(replaced.inline_extent, S::from_f64(20.0));
-
+        assert_eq!(
+            (
+                report.atomics[1].item.source_index,
+                report.atomics[1].line_index,
+                report.atomics[1].item.size.width
+            ),
+            (13, 1, S::from_f64(30.0))
+        );
         let endpoint_breaks = layout_mixed_inline_run(mr02_input(
             AvailableOf::definite(S::from_f64(5.0)),
             vec![
-                mr02_text(
-                    30,
-                    30,
-                    5.0,
-                    0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::allowed(),
-                ),
-                mr02_text(
-                    31,
-                    31,
-                    6.0,
-                    0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::mandatory(),
-                ),
+                mr02_atomic(30, 5.0, 10.0, 8.0, 0, InlineBreakOpportunity::Allowed),
+                mr02_atomic(31, 6.0, 10.0, 8.0, 0, InlineBreakOpportunity::Mandatory),
             ],
-        ));
-        assert_eq!(endpoint_breaks.fragments.len(), 2);
-        assert_eq!(endpoint_breaks.fragments[0].line_index, 0);
-        assert_eq!(endpoint_breaks.fragments[1].line_index, 1);
+        ))
+        .unwrap();
+        assert_eq!(endpoint_breaks.atomics.len(), 2);
+        assert_eq!(endpoint_breaks.atomics[0].line_index, 0);
+        assert_eq!(endpoint_breaks.atomics[1].line_index, 1);
         assert_eq!(endpoint_breaks.line_bands.len(), 3);
         assert_eq!(endpoint_breaks.first_baseline, Some(S::from_f64(8.0)));
         assert_eq!(endpoint_breaks.last_baseline, Some(S::from_f64(28.0)));
     }
+    assert_lane::<f32>();
+    assert_lane::<f64>();
+}
 
+/// Edge flags remain a Text semantic fact. The real Layout consumer must retain
+/// the original association while finalizing only the surviving Ahem glyph.
+#[test]
+fn actual_prepared_collapse_keeps_original_source_while_suppressing_line_edges_both_scalars() {
+    fn assert_lane<S: LayoutScalar>() {
+        use crate::test_support::{
+            layout_tree::PublicLayoutTreeOf,
+            text::{PreparedParagraph, ahem_style},
+        };
+        let source = surgeist_text::Source::new("  X  ");
+        let style = surgeist_text::Style {
+            white_space: surgeist_text::WhiteSpace::Collapse,
+            ..ahem_style(10.0, 10.0)
+        };
+        let paragraph = PreparedParagraph::plain(1, source.clone(), style);
+        let origin = paragraph.origin(1);
+        assert_eq!(origin.view().local_range(), surgeist_text::Range::new(0, 5));
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(0, [1])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Block,
+                    ..NodeInputOf::default()
+                },
+            )
+            .input(1, paragraph.text_input(1));
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![paragraph.binding(0)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
+        let batch = compute_layout_with_flow(
+            &capture,
+            0,
+            LayoutRootRequestOf::viewport(Size::new(
+                AvailableOf::definite(S::from_f64(15.0)),
+                AvailableOf::MAX_CONTENT,
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+        let layout = batch.placed_text()[0].layout();
+        assert_eq!(
+            layout.source().text().code_units(),
+            source.text().code_units()
+        );
+        assert_eq!(layout.metrics().line_count(), 1);
+        // The supplied line owns its 15-unit allocation; the collapsed X
+        // retains its independent one-em 10-unit shaping/fit contribution.
+        assert_eq!(layout.lines()[0].bounds().size.width, 15.0);
+        assert_eq!(
+            layout
+                .glyph_runs()
+                .iter()
+                .map(|run| run.advance())
+                .sum::<f64>(),
+            10.0
+        );
+        let glyphs: Vec<_> = layout
+            .glyph_runs()
+            .iter()
+            .flat_map(|run| run.glyphs().iter().copied())
+            .collect();
+        assert_eq!(glyphs.len(), 1);
+        assert_eq!(glyphs[0].range(), surgeist_text::Range::new(2, 3));
+        assert_eq!(glyphs[0].advance(), 10.0);
+        let source_fragment = batch
+            .final_inline_fragments()
+            .iter()
+            .find(|entry| {
+                entry
+                    .fragment()
+                    .finalized_fragment()
+                    .view()
+                    .origin()
+                    .as_ref()
+                    == Some(&origin)
+            })
+            .unwrap();
+        assert_eq!(
+            source_fragment
+                .fragment()
+                .finalized_fragment()
+                .finalized_line()
+                .feedback()
+                .advance,
+            10.0
+        );
+        assert!(batch.final_inline_fragments().iter().any(|entry| {
+            entry
+                .fragment()
+                .finalized_fragment()
+                .view()
+                .origin()
+                .as_ref()
+                == Some(&origin)
+        }));
+    }
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
@@ -229,54 +352,33 @@ fn fri06_mr02_inline_linear_bidi_mixed_sources_preserve_visual_order_and_baselin
         let report = layout_mixed_inline_run(mr02_input(
             AvailableOf::MAX_CONTENT,
             vec![
-                mr02_text(
-                    40,
-                    40,
-                    10.0,
-                    1,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
+                mr02_atomic(40, 10.0, 10.0, 8.0, 1, InlineBreakOpportunity::Prohibited),
                 mixed_boundary(
                     41,
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Rtl),
                     boundary_metrics,
                 ),
-                mr02_atomic(
-                    42,
-                    5.0,
-                    12.0,
-                    9.0,
-                    2,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
-                mr02_text(
-                    43,
-                    43,
-                    7.0,
-                    1,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
+                mr02_atomic(42, 5.0, 12.0, 9.0, 2, InlineBreakOpportunity::Prohibited),
+                mr02_atomic(43, 7.0, 10.0, 8.0, 1, InlineBreakOpportunity::Prohibited),
             ],
-        ));
+        ))
+        .unwrap();
 
         assert_eq!(report.inline_extent, S::from_f64(22.0));
         assert_eq!(report.block_extent, S::from_f64(12.0));
         assert_eq!(report.first_baseline, Some(S::from_f64(9.0)));
         assert_eq!(report.last_baseline, Some(S::from_f64(9.0)));
-        assert_eq!(report.fragments.len(), 2);
-        assert_eq!(report.fragments[0].source_index, 40);
-        assert_eq!(report.fragments[0].inline_start, S::from_f64(12.0));
-        assert_eq!(report.fragments[0].block_start, S::from_f64(1.0));
-        assert_eq!(report.fragments[0].visual_index, 3);
-        assert_eq!(report.fragments[1].source_index, 43);
-        assert_eq!(report.fragments[1].inline_start, S::ZERO);
-        assert_eq!(report.fragments[1].visual_index, 0);
-        assert_eq!(report.atomics.len(), 1);
-        assert_eq!(report.atomics[0].item.source_index, 42);
-        assert_eq!(report.atomics[0].inline_start, S::from_f64(7.0));
-        assert_eq!(report.atomics[0].visual_index, 1);
+        assert_eq!(report.atomics.len(), 3);
+        assert_eq!(report.atomics[0].item.source_index, 40);
+        assert_eq!(report.atomics[0].inline_start, S::from_f64(12.0));
+        assert_eq!(report.atomics[0].block_start, S::from_f64(1.0));
+        assert_eq!(report.atomics[0].visual_index, Some(3));
+        assert_eq!(report.atomics[2].item.source_index, 43);
+        assert_eq!(report.atomics[2].inline_start, S::ZERO);
+        assert_eq!(report.atomics[2].visual_index, Some(0));
+        assert_eq!(report.atomics[1].item.source_index, 42);
+        assert_eq!(report.atomics[1].inline_start, S::from_f64(7.0));
+        assert_eq!(report.atomics[1].visual_index, Some(1));
         assert_eq!(report.controls.len(), 1);
         assert_eq!(report.controls[0].source_index, 41);
         assert_eq!(report.controls[0].inline_start, S::from_f64(12.0));
@@ -288,57 +390,26 @@ fn fri06_mr02_inline_linear_bidi_mixed_sources_preserve_visual_order_and_baselin
 }
 
 fn mr02_intrinsic_extents<S: LayoutScalar>() -> (S, S) {
-    let replacement = S::from_f64(0.05);
-    let participants = vec![
-        mr02_text(
-            50,
-            50,
-            100.0,
-            0,
-            InlineWhitespaceEdge::DiscardAtLineStart,
-            InlineBreakOpportunityOf::prohibited(),
-        ),
-        mr02_text(
-            51,
-            51,
-            0.1,
-            0,
-            InlineWhitespaceEdge::Preserve,
-            InlineBreakOpportunityOf::prohibited(),
-        ),
-        mr02_text(
-            52,
-            52,
-            0.2,
-            0,
-            InlineWhitespaceEdge::Preserve,
-            InlineBreakOpportunityOf::try_allowed_with_replacement(replacement).unwrap(),
-        ),
-        mr02_text(
-            53,
-            53,
-            0.3,
-            0,
-            InlineWhitespaceEdge::Preserve,
-            InlineBreakOpportunityOf::mandatory(),
-        ),
-        mixed_forced_line_break(
-            54,
-            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-            InlineMetricsOf::from_ascent_descent(S::from_f64(8.0), S::from_f64(2.0)).unwrap(),
-            Clear::None,
-        ),
-        mr02_text(
-            55,
-            55,
-            0.4,
-            0,
-            InlineWhitespaceEdge::DiscardAtLineEnd,
-            InlineBreakOpportunityOf::prohibited(),
-        ),
-    ];
-    let min = layout_mixed_inline_run(mr02_input(AvailableOf::MIN_CONTENT, participants.clone()));
-    let max = layout_mixed_inline_run(mr02_input(AvailableOf::MAX_CONTENT, participants));
+    // These are genuine numeric boxes. Text replacement semantics are exercised
+    // separately through an actual prepared paragraph, never a replacement width.
+    let min = layout_mixed_inline_run(mr02_input(
+        AvailableOf::MIN_CONTENT,
+        vec![
+            mr02_atomic(51, 0.1, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
+            mr02_atomic(52, 0.2, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
+            mr02_atomic(53, 0.05, 10.0, 8.0, 0, InlineBreakOpportunity::Allowed),
+        ],
+    ))
+    .unwrap();
+    let max = layout_mixed_inline_run(mr02_input(
+        AvailableOf::MAX_CONTENT,
+        vec![
+            mr02_atomic(51, 0.1, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
+            mr02_atomic(52, 0.2, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
+            mr02_atomic(53, 0.3, 10.0, 8.0, 0, InlineBreakOpportunity::Mandatory),
+        ],
+    ))
+    .unwrap();
     (min.inline_extent, max.inline_extent)
 }
 
@@ -365,16 +436,9 @@ fn fri06_mr02_inline_linear_float_band_retry_preserves_queries_and_reselection_b
             mr02_input(
                 AvailableOf::definite(S::from_f64(100.0)),
                 vec![
-                    mr02_atomic(60, 30.0, 10.0, 8.0, 0, InlineBreakOpportunityOf::allowed()),
-                    mr02_atomic(61, 30.0, 10.0, 8.0, 0, InlineBreakOpportunityOf::allowed()),
-                    mr02_atomic(
-                        62,
-                        30.0,
-                        10.0,
-                        8.0,
-                        0,
-                        InlineBreakOpportunityOf::prohibited(),
-                    ),
+                    mr02_atomic(60, 30.0, 10.0, 8.0, 0, InlineBreakOpportunity::Allowed),
+                    mr02_atomic(61, 30.0, 10.0, 8.0, 0, InlineBreakOpportunity::Allowed),
+                    mr02_atomic(62, 30.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
                 ],
             ),
             |block_start, block_end| {
@@ -400,7 +464,8 @@ fn fri06_mr02_inline_linear_float_band_retry_preserves_queries_and_reselection_b
                 }
             },
             |block, _| block,
-        );
+        )
+        .unwrap();
 
         assert_eq!(
             queries,
@@ -431,13 +496,14 @@ fn mr02_candidate_scan_work(participant_count: usize) -> usize {
                 10.0,
                 8.0,
                 0,
-                InlineBreakOpportunityOf::prohibited(),
+                InlineBreakOpportunity::Prohibited,
             )
         })
         .collect();
     reset_inline_candidate_scan_visits();
     let report =
-        layout_mixed_inline_run(mr02_input(AvailableOf::definite(1_000_000.0), participants));
+        layout_mixed_inline_run(mr02_input(AvailableOf::definite(1_000_000.0), participants))
+            .unwrap();
     assert_eq!(report.atomics.len(), participant_count);
     inline_candidate_scan_visits()
 }
@@ -491,6 +557,7 @@ fn inline_boundary_control(
         crate::inline::InlineFlowOf::new(writing_mode, direction, Available::MAX_CONTENT),
         metrics,
         alignment,
+        crate::InlineBoundaryEdgeOf::ZERO,
     )
 }
 
@@ -536,11 +603,12 @@ fn fri06_c12_t07_endpoint_break_private_line_membership() -> (usize, usize, usiz
     let report = layout_mixed_inline_run(mr02_input(
         Available::MAX_CONTENT,
         vec![
-            mr02_atomic(0, 20.0, 10.0, 8.0, 0, InlineBreakOpportunity::prohibited()),
+            mr02_atomic(0, 20.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
             mixed_forced_line_break(1, flow_axes, metrics, Clear::None),
-            mr02_atomic(2, 20.0, 10.0, 8.0, 0, InlineBreakOpportunity::prohibited()),
+            mr02_atomic(2, 20.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
         ],
-    ));
+    ))
+    .unwrap();
     let previous_line = report
         .atomics
         .iter()
@@ -587,6 +655,7 @@ fn mixed_boundary<S: LayoutScalar>(
         ),
         metrics,
         crate::inline::InlineControlAlignment::Baseline,
+        crate::InlineBoundaryEdgeOf::ZERO,
     ))
 }
 
@@ -633,14 +702,24 @@ fn fri06_c03_strut_private_builder_retains_control_baselines_and_post_line_inten
             InlineMetricsOf::from_line_height_and_baseline(S::from_f64(20.0), S::from_f64(15.0))
                 .unwrap();
         let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+            line_box_context: crate::line_box::LineBoxContext::new(
+                crate::LineBoxDirectionPolicy::Normal,
+                flow_axes.direction(),
+            ),
+            observe_tail: false,
+            wrapping: None,
             available_inline_extent: AvailableOf::MAX_CONTENT,
             flow_axes,
-            text_align: TextAlign::Auto,
+            text_align: TextAlign::Start,
+            text_align_last: crate::TextAlignLast::Auto,
+            indent: crate::text_indent::ResolvedTextIndent::ZERO,
+            indent_state: crate::text_indent::IndentLineState::default(),
             participants: vec![
                 mixed_boundary(0, flow_axes, boundary_metrics),
                 mixed_forced_line_break(1, flow_axes, break_metrics, Clear::Both),
             ],
-        });
+        })
+        .unwrap();
 
         assert_eq!(report.block_extent, S::from_f64(40.0));
         assert_eq!(report.first_baseline, Some(S::from_f64(15.0)));
@@ -674,22 +753,30 @@ fn fri06_c04_line_band_private_callback_retries_transition_and_reselects_same_cu
                 first_baseline: Some(S::from_f64(8.0)),
                 alignment: InlineControlAlignment::Baseline,
             },
-            participation: AtomicInlineParticipationOf::try_new(
+            participation: AtomicInlineParticipation::new(
                 BidiLevel::try_new(0).unwrap(),
                 following_break,
-            )
-            .unwrap(),
+            ),
         };
         let mut queries = Vec::new();
         let report = layout_mixed_inline_run_with_band_source(
             MixedInlineRunInputOf {
+                line_box_context: crate::line_box::LineBoxContext::new(
+                    crate::LineBoxDirectionPolicy::Normal,
+                    flow_axes.direction(),
+                ),
+                observe_tail: false,
+                wrapping: None,
                 available_inline_extent: AvailableOf::definite(S::from_f64(100.0)),
                 flow_axes,
-                text_align: TextAlign::Auto,
+                text_align: TextAlign::Start,
+                text_align_last: crate::TextAlignLast::Auto,
+                indent: crate::text_indent::ResolvedTextIndent::ZERO,
+                indent_state: crate::text_indent::IndentLineState::default(),
                 participants: vec![
-                    participant(0, InlineBreakOpportunityOf::allowed()),
-                    participant(1, InlineBreakOpportunityOf::allowed()),
-                    participant(2, InlineBreakOpportunityOf::prohibited()),
+                    participant(0, InlineBreakOpportunity::Allowed),
+                    participant(1, InlineBreakOpportunity::Allowed),
+                    participant(2, InlineBreakOpportunity::Prohibited),
                 ],
             },
             |block_start, block_end| {
@@ -715,7 +802,8 @@ fn fri06_c04_line_band_private_callback_retries_transition_and_reselects_same_cu
                 }
             },
             |block, _| block,
-        );
+        )
+        .unwrap();
 
         assert_eq!(
             queries,
@@ -1719,13 +1807,10 @@ mod root_layout_oracle {
     }
 
     fn atomic_inline_node_input(display: Display, size: Size<f32>) -> NodeInput {
-        let atomic_inline_participation = Some(
-            AtomicInlineParticipation::try_new(
-                BidiLevel::try_new(0).unwrap(),
-                InlineBreakOpportunity::allowed(),
-            )
-            .unwrap(),
-        );
+        let atomic_inline_participation = Some(AtomicInlineParticipation::new(
+            BidiLevel::try_new(0).unwrap(),
+            InlineBreakOpportunity::Allowed,
+        ));
         match display.inner_display() {
             Display::Grid => NodeInput {
                 display,
@@ -1797,53 +1882,27 @@ fn resolved_bidi_level_126_preserves_l2_mixed_line_order_both_scalars() {
         let report = layout_mixed_inline_run(mr02_input(
             AvailableOf::<S>::MAX_CONTENT,
             vec![
-                mr02_text(
-                    0,
-                    700,
-                    3.0,
-                    125,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
-                mr02_atomic(
-                    1,
-                    5.0,
-                    10.0,
-                    8.0,
-                    126,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
-                mr02_text(
-                    2,
-                    702,
-                    7.0,
-                    125,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::prohibited(),
-                ),
+                mr02_atomic(0, 3.0, 10.0, 8.0, 125, InlineBreakOpportunity::Prohibited),
+                mr02_atomic(1, 5.0, 10.0, 8.0, 126, InlineBreakOpportunity::Prohibited),
+                mr02_atomic(2, 7.0, 10.0, 8.0, 125, InlineBreakOpportunity::Prohibited),
             ],
-        ));
+        ))
+        .unwrap();
         // L2 first reverses the singleton 126, then the whole 125-or-higher run.
         // Visual order is therefore [2,1,0], independently of scalar precision.
         let mut visual: Vec<_> = report
-            .fragments
+            .atomics
             .iter()
-            .map(|fragment| (fragment.visual_index, fragment.source_index))
+            .map(|atomic| (atomic.visual_index, atomic.item.source_index))
             .collect();
-        visual.extend(
-            report
-                .atomics
-                .iter()
-                .map(|atomic| (atomic.visual_index, atomic.item.source_index)),
-        );
         visual.sort_by_key(|&(index, _)| index);
-        assert_eq!(visual, [(0, 2), (1, 1), (2, 0)]);
+        assert_eq!(visual, [(Some(0), 2), (Some(1), 1), (Some(2), 0)]);
         assert_eq!(report.inline_extent, S::from_f64(15.0));
-        assert_eq!(report.fragments[0].source_index, 0);
-        assert_eq!(report.fragments[0].inline_start, S::from_f64(12.0));
-        assert_eq!(report.fragments[1].source_index, 2);
-        assert_eq!(report.fragments[1].inline_start, S::ZERO);
-        assert_eq!(report.atomics[0].inline_start, S::from_f64(7.0));
+        assert_eq!(report.atomics[0].item.source_index, 0);
+        assert_eq!(report.atomics[0].inline_start, S::from_f64(12.0));
+        assert_eq!(report.atomics[2].item.source_index, 2);
+        assert_eq!(report.atomics[2].inline_start, S::ZERO);
+        assert_eq!(report.atomics[1].inline_start, S::from_f64(7.0));
     }
     assert_line::<f32>();
     assert_line::<f64>();
@@ -1855,20 +1914,14 @@ fn supplied_line_projection_and_forced_break_queries_visit_linear_real_formatter
     for count in [64, 128] {
         let participants = (0..count)
             .map(|index| {
-                mr02_atomic::<f64>(
-                    index,
-                    1.0,
-                    10.0,
-                    8.0,
-                    0,
-                    InlineBreakOpportunityOf::prohibited(),
-                )
+                mr02_atomic::<f64>(index, 1.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited)
             })
             .collect();
         reset_inline_work_visits();
         reset_inline_candidate_scan_visits();
         let report =
-            layout_mixed_inline_run(mr02_input(AvailableOf::definite(1_000_000.0), participants));
+            layout_mixed_inline_run(mr02_input(AvailableOf::definite(1_000_000.0), participants))
+                .unwrap();
         assert_eq!(report.atomics.len(), count);
         assert_eq!(
             report.inline_extent,
@@ -1882,62 +1935,43 @@ fn supplied_line_projection_and_forced_break_queries_visit_linear_real_formatter
         let participants = (0..count)
             .flat_map(|index| {
                 [
-                    mr02_text(
-                        index * 2,
-                        u64::try_from(index).unwrap(),
-                        1.0,
-                        1,
-                        InlineWhitespaceEdge::DiscardAtBoth,
-                        InlineBreakOpportunityOf::prohibited(),
-                    ),
+                    mixed_boundary(index * 2, axes, metrics),
                     mixed_forced_line_break(index * 2 + 1, axes, metrics, Clear::None),
                 ]
             })
             .collect();
         reset_inline_work_visits();
         let report =
-            layout_mixed_inline_run(mr02_input(AvailableOf::definite(100.0), participants));
-        assert!(report.fragments.is_empty());
-        assert_eq!(report.anchors.len(), count);
+            layout_mixed_inline_run(mr02_input(AvailableOf::definite(100.0), participants))
+                .unwrap();
+        assert!(report.atomics.is_empty());
+        assert_eq!(report.controls.len(), count * 2);
         assert_eq!(report.inline_extent, 0.0);
         assert_eq!(inline_work_visits(), [count * 2, count * 2, count * 2]);
-        assert_eq!(report.anchors.first().unwrap().source_index, 0);
-        assert_eq!(report.anchors.last().unwrap().source_index, (count - 1) * 2);
+        assert_eq!(report.controls.first().unwrap().source_index, 0);
+        assert_eq!(report.controls.last().unwrap().source_index, count * 2 - 1);
 
         let participants = (0..count)
             .map(|index| {
-                mr02_text::<f64>(
-                    index,
-                    u64::try_from(index).unwrap(),
-                    1.0,
-                    0,
-                    InlineWhitespaceEdge::Preserve,
-                    InlineBreakOpportunityOf::allowed(),
-                )
+                mr02_atomic::<f64>(index, 1.0, 10.0, 8.0, 0, InlineBreakOpportunity::Allowed)
             })
             .collect();
         reset_inline_work_visits();
-        let report = layout_mixed_inline_run(mr02_input(AvailableOf::definite(1.0), participants));
-        assert_eq!(report.fragments.len(), count);
-        assert_eq!(report.fragments.last().unwrap().line_index, count - 1);
-        assert_eq!(report.fragments.last().unwrap().inline_start, 0.0);
+        let report =
+            layout_mixed_inline_run(mr02_input(AvailableOf::definite(1.0), participants)).unwrap();
+        assert_eq!(report.atomics.len(), count);
+        assert_eq!(report.atomics.last().unwrap().line_index, count - 1);
+        assert_eq!(report.atomics.last().unwrap().inline_start, 0.0);
         assert_eq!(inline_work_visits(), [count, count, count * 2]);
     }
 }
 
-fn assert_mandatory_discard_queries_are_confined_to_each_actual_line<S: LayoutScalar>() {
+fn assert_mandatory_atomic_queries_are_confined_to_each_actual_line<S: LayoutScalar>() {
     use crate::inline::{inline_leading_query_units, inline_work_visits, reset_inline_work_visits};
     for count in [4, 8] {
         let participants = (0..count)
             .map(|index| {
-                mr02_text::<S>(
-                    index,
-                    u64::try_from(index).unwrap(),
-                    1.0,
-                    1,
-                    InlineWhitespaceEdge::DiscardAtBoth,
-                    InlineBreakOpportunityOf::mandatory(),
-                )
+                mr02_atomic::<S>(index, 1.0, 10.0, 8.0, 1, InlineBreakOpportunity::Mandatory)
             })
             .collect();
         reset_inline_work_visits();
@@ -1945,58 +1979,279 @@ fn assert_mandatory_discard_queries_are_confined_to_each_actual_line<S: LayoutSc
         let report = layout_mixed_inline_run(mr02_input(
             AvailableOf::definite(S::from_f64(100.0)),
             participants,
-        ));
-        assert!(report.fragments.is_empty());
-        assert_eq!(report.anchors.len(), count);
-        assert_eq!(report.inline_extent, S::ZERO);
-        // Each mandatory break carries the discarded segment's 8+2 strut to
-        // the next line. The first line has no strut; the final empty line does.
+        ))
+        .unwrap();
+        assert_eq!(report.atomics.len(), count);
+        assert_eq!(report.inline_extent, S::ONE);
         assert_eq!(
             report.block_extent,
-            S::from_f64(f64::from(u32::try_from(count).unwrap()) * 10.0)
+            S::from_f64(f64::from(u32::try_from(count + 1).unwrap()) * 10.0)
         );
         assert_eq!(report.line_bands.len(), count + 1);
-        assert_eq!(report.first_baseline, Some(S::ZERO));
-        if count == 4 {
-            assert_eq!(
-                report
-                    .anchors
-                    .iter()
-                    .map(|anchor| anchor.baseline)
-                    .collect::<Vec<_>>(),
-                [0.0, 8.0, 18.0, 28.0].map(S::from_f64)
-            );
-            assert_eq!(
-                report
-                    .line_bands
-                    .iter()
-                    .map(|band| (band.block_start, band.block_end))
-                    .collect::<Vec<_>>(),
-                [
-                    (0.0, 0.0),
-                    (0.0, 10.0),
-                    (10.0, 20.0),
-                    (20.0, 30.0),
-                    (30.0, 40.0)
-                ]
-                .map(|(start, end)| (S::from_f64(start), S::from_f64(end)))
-            );
-            assert_eq!(report.last_baseline, Some(S::from_f64(38.0)));
-        }
+        assert_eq!(report.first_baseline, Some(S::from_f64(8.0)));
+        assert_eq!(
+            report.last_baseline,
+            Some(S::from_f64(
+                f64::from(u32::try_from(count).unwrap()) * 10.0 + 8.0
+            ))
+        );
+        assert_eq!(
+            report
+                .atomics
+                .iter()
+                .map(|item| item.line_index)
+                .collect::<Vec<_>>(),
+            (0..count).collect::<Vec<_>>()
+        );
         assert_eq!(inline_candidate_scan_visits(), count * 2);
         assert_eq!(inline_work_visits(), [count, count, count * 2]);
-        // This observes actual slice lengths passed at the production Text call,
-        // not inferred private Text visits. All slots are discardable, for which
-        // the Text owner's own scan test establishes one read per passed slot.
         assert_eq!(inline_leading_query_units(), count * 2);
+        // Text remains the actual edge owner. A separately supplied line of
+        // discardable text slots retains each logical slot while suppressing ink.
+        let text = vec![
+            surgeist_text::SuppliedInlineParticipant::Text {
+                level: BidiLevel::try_new(1).unwrap(),
+                edge: InlineWhitespaceEdge::DiscardAtBoth
+            };
+            count
+        ];
+        let edges = surgeist_text::SuppliedLine::new(&text).edges();
+        assert_eq!(
+            surgeist_text::SuppliedLine::new(&text).leading_discard_len(),
+            count
+        );
+        assert!((0..count).all(|index| edges.is_discarded(index) == Some(true)));
     }
 }
 
 #[test]
-fn mandatory_discard_line_queries_are_bounded_in_f32() {
-    assert_mandatory_discard_queries_are_confined_to_each_actual_line::<f32>();
+fn mandatory_atomic_line_queries_are_bounded_in_f32() {
+    assert_mandatory_atomic_queries_are_confined_to_each_actual_line::<f32>();
 }
 #[test]
-fn mandatory_discard_line_queries_are_bounded_in_f64() {
-    assert_mandatory_discard_queries_are_confined_to_each_actual_line::<f64>();
+fn mandatory_atomic_line_queries_are_bounded_in_f64() {
+    assert_mandatory_atomic_queries_are_confined_to_each_actual_line::<f64>();
+}
+
+#[test]
+fn numeric_unexpandable_alignment_uses_actual_last_line_policy_both_scalars() {
+    fn lane<S: LayoutScalar>() {
+        for rtl in [false, true] {
+            for (align, expected) in [
+                (TextAlign::Start, 0.0),
+                (TextAlign::End, 30.0),
+                (TextAlign::Left, if rtl { 30.0 } else { 0.0 }),
+                (TextAlign::Right, if rtl { 0.0 } else { 30.0 }),
+                (TextAlign::Center, 15.0),
+            ] {
+                let mut input = mr02_input(
+                    AvailableOf::definite(S::from_f64(50.0)),
+                    vec![mr02_atomic(
+                        0,
+                        20.0,
+                        10.0,
+                        8.0,
+                        if rtl { 1 } else { 0 },
+                        InlineBreakOpportunity::Prohibited,
+                    )],
+                );
+                input.flow_axes = FlowAxes::new(
+                    WritingMode::HorizontalTb,
+                    if rtl { Direction::Rtl } else { Direction::Ltr },
+                );
+                input.line_box_context = crate::line_box::LineBoxContext::new(
+                    crate::LineBoxDirectionPolicy::Normal,
+                    input.flow_axes.direction(),
+                );
+                input.text_align = align;
+                let report = layout_mixed_inline_run(input).unwrap();
+                assert_eq!(
+                    report.atomics[0].inline_start,
+                    S::from_f64(expected),
+                    "{align:?}/{rtl}"
+                );
+            }
+        }
+
+        for (last, expected) in [
+            (TextAlignLast::Auto, 0.0),
+            (TextAlignLast::End, 30.0),
+            (TextAlignLast::Justify, 15.0),
+        ] {
+            let mut input = mr02_input(
+                AvailableOf::definite(S::from_f64(50.0)),
+                vec![mr02_atomic(
+                    0,
+                    20.0,
+                    10.0,
+                    8.0,
+                    0,
+                    InlineBreakOpportunity::Prohibited,
+                )],
+            );
+            input.text_align = TextAlign::Justify;
+            input.text_align_last = last;
+            let report = layout_mixed_inline_run(input).unwrap();
+            assert_eq!(report.atomics[0].inline_start, S::from_f64(expected));
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+fn assert_numeric_mandatory_atomic_last_alignment<S: LayoutScalar>() {
+    // A mandatory break after the first actual 20px atomic is a hard line
+    // ending even though it does not contain a separate break control.
+    // A later 10px atomic makes that first hard line nonterminal.
+    for (last, first_x, second_x) in [
+        (TextAlignLast::Auto, 0.0, 0.0),
+        (TextAlignLast::End, 30.0, 40.0),
+    ] {
+        let mut input = mr02_input(
+            AvailableOf::definite(S::from_f64(50.0)),
+            vec![
+                mr02_atomic(0, 20.0, 10.0, 8.0, 0, InlineBreakOpportunity::Mandatory),
+                mr02_atomic(1, 10.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
+            ],
+        );
+        input.text_align = TextAlign::Start;
+        input.text_align_last = last;
+        let report = layout_mixed_inline_run(input).unwrap();
+        assert_eq!(report.atomics.len(), 2);
+        assert_eq!(report.line_bands.len(), 2);
+        assert_eq!(report.atomics[0].block_start, S::ZERO);
+        assert_eq!(report.atomics[1].block_start, S::from_f64(10.0));
+        assert_eq!(
+            report.atomics[0].inline_start,
+            S::from_f64(first_x),
+            "nonterminal mandatory line/{last:?}"
+        );
+        assert_eq!(
+            report.atomics[1].inline_start,
+            S::from_f64(second_x),
+            "paragraph end/{last:?}"
+        );
+    }
+}
+
+#[test]
+fn numeric_mandatory_atomic_end_uses_last_alignment_before_more_source_f32() {
+    assert_numeric_mandatory_atomic_last_alignment::<f32>();
+}
+
+#[test]
+fn numeric_mandatory_atomic_end_uses_last_alignment_before_more_source_f64() {
+    assert_numeric_mandatory_atomic_last_alignment::<f64>();
+}
+
+#[test]
+fn last_tail_observations_keep_actual_numeric_endings_and_zero_atomic_content() {
+    fn check<S: LayoutScalar>() {
+        let observe = |mut input: MixedInlineRunInputOf<S>| {
+            input.observe_tail = true;
+            layout_mixed_inline_run(input).unwrap()
+        };
+        let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+        let metrics =
+            InlineMetricsOf::from_ascent_descent(S::from_f64(8.0), S::from_f64(2.0)).unwrap();
+        let report = observe(mr02_input(
+            AvailableOf::MaxContent,
+            vec![
+                mixed_boundary(0, flow, metrics),
+                mixed_forced_line_break(1, flow, metrics, Clear::None),
+            ],
+        ));
+        assert_eq!(
+            report
+                .lines
+                .iter()
+                .map(|line| (line.end, line.content, line.hyphenated))
+                .collect::<Vec<_>>(),
+            [
+                (surgeist_text::LineEnd::Forced, false, false),
+                (surgeist_text::LineEnd::Paragraph, false, false)
+            ]
+        );
+        assert_eq!(report.line_bands.len(), 2);
+        let report = observe(mr02_input(
+            AvailableOf::definite(S::ZERO),
+            vec![
+                mr02_atomic(0, 0.0, 0.0, 0.0, 0, InlineBreakOpportunity::Mandatory),
+                mr02_atomic(1, 0.0, 0.0, 0.0, 0, InlineBreakOpportunity::Prohibited),
+            ],
+        ));
+        assert_eq!(
+            report
+                .lines
+                .iter()
+                .map(|line| (line.end, line.content, line.hyphenated))
+                .collect::<Vec<_>>(),
+            [
+                (surgeist_text::LineEnd::Forced, true, false),
+                (surgeist_text::LineEnd::Paragraph, true, false)
+            ]
+        );
+        assert_eq!(report.atomics.len(), 2);
+    }
+    check::<f32>();
+    check::<f64>();
+}
+
+#[test]
+fn positive_numeric_endpoint_contributes_once_to_intrinsics_and_retries_a_real_float_band() {
+    fn lane<S: LayoutScalar>() {
+        let participants = |edge| {
+            vec![
+                mr02_atomic(0, 10.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
+                MixedInlineParticipantOf::Boundary(crate::inline::InlineBoundaryControlOf::new(
+                    1,
+                    InlineBoundaryKind::Start,
+                    crate::inline::InlineFlowOf::new(
+                        WritingMode::HorizontalTb,
+                        Direction::Ltr,
+                        AvailableOf::MAX_CONTENT,
+                    ),
+                    InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                    InlineControlAlignment::Baseline,
+                    edge,
+                )),
+                mr02_atomic(2, 10.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
+            ]
+        };
+        let edge = InlineBoundaryEdgeOf::try_new(S::from_f64(3.0), S::from_f64(5.0)).unwrap();
+        for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
+            let report =
+                layout_mixed_inline_run(mr02_input(available, participants(edge))).unwrap();
+            assert_eq!(report.inline_extent, S::from_f64(28.0));
+            assert_eq!(report.atomics[1].inline_start, S::from_f64(18.0));
+            assert_eq!(report.controls[0].inline_extent, S::from_f64(8.0));
+        }
+        for (edge, width, expected_y) in
+            [(InlineBoundaryEdgeOf::ZERO, 20.0, 0.0), (edge, 28.0, 20.0)]
+        {
+            let report = layout_mixed_inline_run_with_band_source(
+                mr02_input(AvailableOf::definite(S::from_f64(40.0)), participants(edge)),
+                |start, _| LogicalLineBandQueryResultOf {
+                    inline_start: S::ZERO,
+                    inline_end: S::from_f64(if start < S::from_f64(20.0) {
+                        20.0
+                    } else {
+                        40.0
+                    }),
+                    next_transition: (start < S::from_f64(20.0)).then_some(S::from_f64(20.0)),
+                },
+                |block, _| block,
+            )
+            .unwrap();
+            assert_eq!(report.inline_extent, S::from_f64(width));
+            assert_eq!(report.line_bands.len(), 1);
+            assert_eq!(report.line_bands[0].block_start, S::from_f64(expected_y));
+            assert_eq!(
+                report.atomics[1].inline_start,
+                S::from_f64(10.0) + edge.advance()
+            );
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
 }

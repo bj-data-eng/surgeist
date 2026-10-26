@@ -1,4 +1,6 @@
 use super::*;
+use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
+use surgeist_text::{ParagraphBaseDirection, ParagraphControlKind, Source};
 
 pub(super) fn computed_overflow(x: Overflow, y: Overflow) -> ComputedOverflow {
     ComputedOverflow::try_new(x, y).expect("test overflow pair must already be canonical")
@@ -18,12 +20,11 @@ pub(super) fn public_layout_tree<S: LayoutScalar>(
     tree
 }
 
-pub(super) fn fri06_atomic_participation<S: LayoutScalar>() -> AtomicInlineParticipationOf<S> {
-    AtomicInlineParticipationOf::try_new(
+pub(super) fn fri06_atomic_participation() -> AtomicInlineParticipation {
+    AtomicInlineParticipation::new(
         BidiLevel::try_new(0).unwrap(),
-        InlineBreakOpportunityOf::prohibited(),
+        InlineBreakOpportunity::Prohibited,
     )
-    .unwrap()
 }
 
 pub(super) struct RootTestScrollGeometryFacts<S: LayoutScalar> {
@@ -72,110 +73,144 @@ pub(super) fn root_test_scroll_geometry<S: LayoutScalar>(
     .expect("canonical root-test source facts produce geometry")
 }
 
-pub(super) fn fri06_c02_segment<S: LayoutScalar>(
-    id: u64,
-    extent: f64,
-    whitespace: InlineWhitespaceEdge,
-    following_break: InlineBreakOpportunityOf<S>,
-) -> ShapedInlineSegmentOf<S> {
-    fri06_c02_segment_with_level(id, extent, 0, whitespace, following_break)
-}
-
-pub(super) fn fri06_c02_segment_with_level<S: LayoutScalar>(
-    id: u64,
-    extent: f64,
-    bidi_level: u8,
-    whitespace: InlineWhitespaceEdge,
-    following_break: InlineBreakOpportunityOf<S>,
-) -> ShapedInlineSegmentOf<S> {
-    ShapedInlineSegmentOf::try_new(
-        InlineSegmentId::new(id),
-        S::from_f64(extent),
-        InlineMetricsOf::from_ascent_descent(S::from_f64(8.0), S::from_f64(2.0)).unwrap(),
-        BidiLevel::try_new(bidi_level).unwrap(),
-        whitespace,
-        following_break,
-    )
-    .unwrap()
-}
-
-pub(super) fn fri06_c02_segment_with_metrics<S: LayoutScalar>(
-    id: u64,
-    extent: f64,
-    ascent: f64,
-    descent: f64,
-) -> ShapedInlineSegmentOf<S> {
-    ShapedInlineSegmentOf::try_new(
-        InlineSegmentId::new(id),
-        S::from_f64(extent),
-        InlineMetricsOf::from_ascent_descent(S::from_f64(ascent), S::from_f64(descent)).unwrap(),
-        BidiLevel::try_new(0).unwrap(),
-        InlineWhitespaceEdge::Preserve,
-        InlineBreakOpportunityOf::prohibited(),
-    )
-    .unwrap()
-}
-
-pub(super) fn fri06_c02_text_batch<S: LayoutScalar>(
-    segments: Vec<ShapedInlineSegmentOf<S>>,
-    available_inline: AvailableOf<S>,
-) -> CompletedLayoutBatchOf<u32, S> {
-    fri06_c02_text_batch_with_flow(
-        segments,
-        available_inline,
-        WritingMode::HorizontalTb,
-        Direction::Ltr,
-        TextAlign::Auto,
-    )
-}
-
-pub(super) fn fri06_c02_text_batch_with_flow<S: LayoutScalar>(
-    segments: Vec<ShapedInlineSegmentOf<S>>,
-    available_inline: AvailableOf<S>,
+// Actual box geometry exercises the retained production BOX/CONTROL fitter.
+// It does not preserve an obsolete shaped-text mode or create a Text paragraph.
+pub(super) fn numeric_atomic_fit_with_flow<S: LayoutScalar>(
+    items: Vec<(f64, u8, InlineBreakOpportunity)>,
+    available: AvailableOf<S>,
     writing_mode: WritingMode,
     direction: Direction,
     text_align: TextAlign,
-) -> CompletedLayoutBatchOf<u32, S> {
-    let root_input = NodeInputOf {
-        display: Display::Block,
-        writing_mode,
-        direction,
+) -> crate::inline::MixedInlineRunReportOf<S> {
+    let axes = FlowAxes::new(writing_mode, direction);
+    crate::inline::layout_mixed_inline_run(crate::inline::MixedInlineRunInputOf {
+        wrapping: None,
+        line_box_context: crate::line_box::LineBoxContext::new(
+            crate::LineBoxDirectionPolicy::Normal,
+            direction,
+        ),
+        observe_tail: false,
+        available_inline_extent: available,
+        flow_axes: axes,
         text_align,
-        ..NodeInputOf::default()
-    };
-    let mut inputs = HashMap::new();
-    inputs.insert(0, LayoutInputOf::box_input(root_input));
-    inputs.insert(
-        1,
-        LayoutInputOf::inline_text(InlineTextInputOf::try_new(segments).unwrap()),
-    );
-    let tree = public_layout_tree(inputs, HashMap::from([(0, vec![1]), (1, Vec::new())]));
-
-    let viewport = FlowAxes::new(writing_mode, direction).physical_size(LogicalSizeOf::new(
-        available_inline,
-        AvailableOf::MAX_CONTENT,
-    ));
-    compute_layout(&tree, 0, LayoutRootRequestOf::viewport(viewport).unwrap()).unwrap()
+        text_align_last: crate::TextAlignLast::Auto,
+        indent: crate::text_indent::ResolvedTextIndent::ZERO,
+        indent_state: crate::text_indent::IndentLineState::default(),
+        participants: items
+            .into_iter()
+            .enumerate()
+            .map(|(source_index, (width, level, following_break))| {
+                let size =
+                    axes.physical_size(LogicalSizeOf::new(S::from_f64(width), S::from_f64(10.0)));
+                crate::inline::MixedInlineParticipantOf::Atomic {
+                    item: crate::inline::AtomicInlineBoxParticipant {
+                        source_index,
+                        size,
+                        content_size: size,
+                        margin: Edges::ZERO,
+                        padding: Edges::ZERO,
+                        border: Edges::ZERO,
+                        scrollbar_size: Size::ZERO,
+                        first_baseline: Some(S::from_f64(8.0)),
+                        alignment: crate::inline::InlineControlAlignment::Baseline,
+                    },
+                    participation: AtomicInlineParticipation::new(
+                        BidiLevel::try_new(level).unwrap(),
+                        following_break,
+                    ),
+                }
+            })
+            .collect(),
+    })
+    .unwrap()
 }
 
-pub(super) fn fri06_c02_text_nodes_batch<S: LayoutScalar>(
-    text_nodes: Vec<(u32, Vec<ShapedInlineSegmentOf<S>>)>,
-    root_input: NodeInputOf<S>,
-    available: Size<AvailableOf<S>>,
-) -> CompletedLayoutBatchOf<u32, S> {
-    let children = text_nodes.iter().map(|(node, _)| *node).collect::<Vec<_>>();
-    let mut inputs = HashMap::from([(0, LayoutInputOf::box_input(root_input))]);
-    let mut tree_children = HashMap::from([(0, children)]);
-    for (node, segments) in text_nodes {
-        inputs.insert(
-            node,
-            LayoutInputOf::inline_text(InlineTextInputOf::try_new(segments).unwrap()),
-        );
-        tree_children.insert(node, Vec::new());
-    }
-    let tree = public_layout_tree(inputs, tree_children);
+pub(super) fn prepared_source_batch<S: LayoutScalar>(
+    source: surgeist_text::Source,
+    style: surgeist_text::Style,
+    available: AvailableOf<S>,
+    writing_mode: WritingMode,
+    direction: Direction,
+    text_align: TextAlign,
+    replacements: Vec<surgeist_text::ParagraphReplacement>,
+) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, S>, S, core::convert::Infallible> {
+    let paragraph = PreparedParagraph::with_replacements(
+        vec![ParagraphPart::text(1, source, style.clone())],
+        style,
+        if direction == Direction::Rtl {
+            ParagraphBaseDirection::RightToLeft
+        } else {
+            ParagraphBaseDirection::LeftToRight
+        },
+        replacements,
+    );
+    let inputs = HashMap::from([
+        (
+            0,
+            LayoutInputOf::box_input(NodeInputOf {
+                display: Display::Block,
+                writing_mode,
+                direction,
+                text_align,
+                ..NodeInputOf::default()
+            }),
+        ),
+        (1, paragraph.text_input(1)),
+    ]);
+    let tree = public_layout_tree(inputs, HashMap::from([(0, vec![1]), (1, Vec::new())]));
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )?;
+    let available = FlowAxes::new(writing_mode, direction)
+        .physical_size(LogicalSizeOf::new(available, AvailableOf::MAX_CONTENT));
+    compute_layout_with_flow(
+        &capture,
+        0,
+        LayoutRootRequestOf::viewport(available).unwrap(),
+    )
+}
 
-    compute_layout(&tree, 0, LayoutRootRequestOf::viewport(available).unwrap()).unwrap()
+pub(super) type OriginFragmentAssociation<S> = (
+    u32,
+    surgeist_text::PreparedOrigin,
+    surgeist_text::Range,
+    Option<ScrollRectOf<S>>,
+    Point<S>,
+    usize,
+);
+
+pub(super) fn origin_fragment_associations<S: LayoutScalar>(
+    entries: &[InlineFragmentOutputEntryOf<u32, S>],
+) -> Vec<OriginFragmentAssociation<S>> {
+    entries
+        .iter()
+        .filter_map(|entry| {
+            let fragment = entry.fragment();
+            let original = fragment.finalized_fragment().view();
+            let surgeist_text::FinalizedFragmentOwner::Origin(origin) = original.owner() else {
+                return None;
+            };
+            let crate::InlineFragmentOwner::Node(node) = entry.owner() else {
+                panic!("original fragment owns a node")
+            };
+            Some((
+                *node,
+                origin,
+                original
+                    .local_range()
+                    .expect("actual original occurrence range"),
+                fragment.rect(),
+                fragment.baseline(),
+                fragment.line_index(),
+            ))
+        })
+        .collect()
 }
 
 pub(super) fn fri06_c02_final_node<S: LayoutScalar>(
@@ -190,12 +225,11 @@ pub(super) fn fri06_c02_final_node<S: LayoutScalar>(
         .output()
 }
 
-pub(super) fn fri06_c03_atomic_participation<S: LayoutScalar>(
+pub(super) fn fri06_c03_atomic_participation(
     level: u8,
-    following_break: InlineBreakOpportunityOf<S>,
-) -> AtomicInlineParticipationOf<S> {
-    AtomicInlineParticipationOf::try_new(BidiLevel::try_new(level).unwrap(), following_break)
-        .unwrap()
+    following_break: InlineBreakOpportunity,
+) -> AtomicInlineParticipation {
+    AtomicInlineParticipation::new(BidiLevel::try_new(level).unwrap(), following_break)
 }
 
 pub(super) fn fri06_c03_atomic_style<S: LayoutScalar>(
@@ -204,7 +238,7 @@ pub(super) fn fri06_c03_atomic_style<S: LayoutScalar>(
     inline_margin_start: f64,
     inline_margin_end: f64,
     level: u8,
-    following_break: InlineBreakOpportunityOf<S>,
+    following_break: InlineBreakOpportunity,
 ) -> NodeInputOf<S> {
     NodeInputOf {
         display: Display::InlineBlock,
@@ -218,6 +252,29 @@ pub(super) fn fri06_c03_atomic_style<S: LayoutScalar>(
             ..Edges::all(LengthAutoOf::ZERO)
         },
         atomic_inline_participation: Some(fri06_c03_atomic_participation(level, following_break)),
+        ..NodeInputOf::default()
+    }
+}
+
+pub(super) fn prepared_atomic_style<S: LayoutScalar>(
+    inline: f64,
+    block: f64,
+    margin_start: f64,
+    margin_end: f64,
+) -> NodeInputOf<S> {
+    NodeInputOf {
+        display: Display::InlineBlock,
+        size: Size::new(
+            PreferredSizeOf::px(S::from_f64(inline)),
+            PreferredSizeOf::px(S::from_f64(block)),
+        ),
+        margin: Edges {
+            left: LengthAutoOf::px(S::from_f64(margin_start)),
+            right: LengthAutoOf::px(S::from_f64(margin_end)),
+            ..Edges::all(LengthAutoOf::ZERO)
+        },
+        // The authentic PreparedAtomic owns the level and opportunities.
+        atomic_inline_participation: None,
         ..NodeInputOf::default()
     }
 }
@@ -252,17 +309,104 @@ pub(super) fn fri06_c03_mixed_batch_with_root<S: LayoutScalar>(
     .unwrap()
 }
 
-pub(super) fn fri06_c03_text_input<S: LayoutScalar>(
-    segments: Vec<ShapedInlineSegmentOf<S>>,
-) -> LayoutInputOf<S> {
-    LayoutInputOf::inline_text(InlineTextInputOf::try_new(segments).unwrap())
+pub(super) fn prepared_mixed_batch<S: LayoutScalar>(
+    paragraph: &PreparedParagraph,
+    children: Vec<(u32, LayoutInputOf<S>, NodeInputOf<S>)>,
+    available_inline: AvailableOf<S>,
+    root: NodeInputOf<S>,
+) -> CompletedLayoutBatchOf<u32, S> {
+    let root = NodeInputOf {
+        display: Display::Block,
+        ..root
+    };
+    let mut inputs = HashMap::from([(0, LayoutInputOf::box_input(root.clone()))]);
+    let mut tree_children = HashMap::from([(0, children.iter().map(|row| row.0).collect())]);
+    for (node, input, _) in children {
+        inputs.insert(node, input);
+        tree_children.insert(node, Vec::new());
+    }
+    let tree = public_layout_tree(inputs, tree_children);
+    let mut binding = paragraph.binding(0);
+    // Associate the one authored paragraph with its actual normalized run.
+    // Hidden/absolute subjects keep slots; preceding floats are outside it.
+    let children: Vec<_> = Traverse::children(&tree, 0).collect();
+    binding.nodes = crate::inline::run_ranges(&children, |node| tree.layout_input(node))
+        .into_iter()
+        .find_map(|range| {
+            let run = &children[range];
+            binding
+                .nodes
+                .iter()
+                .all(|node| run.contains(node))
+                .then(|| run.to_vec())
+        })
+        .expect("all explicitly prepared occurrences belong to one actual run");
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
+    compute_layout_with_flow(
+        &capture,
+        0,
+        LayoutRootRequestOf::viewport(Size::new(available_inline, AvailableOf::MAX_CONTENT))
+            .unwrap(),
+    )
+    .unwrap()
+}
+
+pub(super) fn prepared_tree_batch<S: LayoutScalar>(
+    inputs: HashMap<u32, LayoutInputOf<S>>,
+    children: HashMap<u32, Vec<u32>>,
+    paragraphs: Vec<TextParagraphBinding<u32>>,
+    request: LayoutRootRequestOf<S>,
+) -> CompletedLayoutBatchOf<u32, S> {
+    let tree = public_layout_tree(inputs, children);
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        paragraphs,
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
+    compute_layout_with_flow(&capture, 0, request).unwrap()
+}
+
+pub(super) fn prepared_front_door_batch<S: LayoutScalar>(
+    root_style: NodeInputOf<S>,
+    logical_available: LogicalSizeOf<AvailableOf<S>>,
+    root_children: Vec<u32>,
+    nodes: Vec<Fri06C04FrontDoorNode<S>>,
+    paragraphs: Vec<TextParagraphBinding<u32>>,
+) -> CompletedLayoutBatchOf<u32, S> {
+    let axes = FlowAxes::new(root_style.writing_mode, root_style.direction);
+    let mut inputs = HashMap::from([(0, LayoutInputOf::box_input(root_style))]);
+    let mut children = HashMap::from([(0, root_children)]);
+    for (node, input, _, node_children) in nodes {
+        inputs.insert(node, input);
+        children.insert(node, node_children);
+    }
+    prepared_tree_batch(
+        inputs,
+        children,
+        paragraphs,
+        LayoutRootRequestOf::viewport(axes.physical_size(logical_available)).unwrap(),
+    )
 }
 
 pub(super) fn fri06_c04_line_box<S: LayoutScalar>(
     flow_axes: FlowAxes,
     logical_size: LogicalSizeOf<S>,
     float: Float,
-    participation: Option<AtomicInlineParticipationOf<S>>,
+    participation: Option<AtomicInlineParticipation>,
 ) -> NodeInputOf<S> {
     NodeInputOf {
         display: if float.is_none() {
@@ -383,137 +527,128 @@ pub(super) fn fri06_c04_logical_origin<S: LayoutScalar>(
 }
 
 pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
-    flow_axes: FlowAxes,
+    axes: FlowAxes,
     box_sizing: BoxSizing,
 ) {
-    let logical_root_size = LogicalSizeOf::new(S::from_f64(100.0), S::from_f64(160.0));
-    let root_size = flow_axes.physical_size(logical_root_size);
-    let root_input = NodeInputOf {
-        display: Display::Block,
-        writing_mode: flow_axes.writing_mode(),
-        direction: flow_axes.direction(),
-        box_sizing,
-        size: root_size.map(PreferredSizeOf::px),
-        ..NodeInputOf::default()
+    use crate::inline::{
+        AtomicInlineBoxParticipant, InlineBoundaryControlOf, InlineControlAlignment, InlineFlowOf,
+        MixedInlineParticipantOf as Participant, MixedInlineRunInputOf, layout_mixed_inline_run,
     };
-    let boundary_metrics =
-        InlineMetricsOf::from_ascent_descent(S::from_f64(8.0), S::from_f64(2.0)).unwrap();
-    let boundary = |kind| {
-        InlineBoundaryInputOf::new(kind, boundary_metrics)
-            .with_writing_mode(flow_axes.writing_mode())
-            .with_direction(flow_axes.direction())
+    let atomic = |source_index, width, height, baseline, level| Participant::Atomic {
+        item: AtomicInlineBoxParticipant {
+            source_index,
+            size: axes.physical_size(LogicalSizeOf::new(S::from_f64(width), S::from_f64(height))),
+            content_size: Size::ZERO,
+            margin: Edges::ZERO,
+            padding: Edges::ZERO,
+            border: Edges::ZERO,
+            scrollbar_size: Size::ZERO,
+            first_baseline: Some(S::from_f64(baseline)),
+            alignment: InlineControlAlignment::Baseline,
+        },
+        participation: fri06_c03_atomic_participation(level, InlineBreakOpportunity::Prohibited),
     };
-    let atomic = fri06_c04_line_box(
-        flow_axes,
-        LogicalSizeOf::new(S::from_f64(5.0), S::from_f64(12.0)),
-        Float::None,
-        Some(fri06_c03_atomic_participation(
-            2,
-            InlineBreakOpportunityOf::prohibited(),
-        )),
-    );
-    let children = vec![
-        (
-            1,
-            fri06_c03_text_input(vec![fri06_c02_segment_with_level(
-                901,
-                10.0,
-                1,
-                InlineWhitespaceEdge::Preserve,
-                InlineBreakOpportunityOf::prohibited(),
-            )]),
-            NodeInputOf::non_box(),
+    let boundary = |source_index, kind| {
+        Participant::Boundary(InlineBoundaryControlOf::new(
+            source_index,
+            kind,
+            InlineFlowOf::new(
+                axes.writing_mode(),
+                axes.direction(),
+                AvailableOf::definite(S::from_f64(100.0)),
+            ),
+            InlineMetricsOf::from_ascent_descent(S::from_f64(8.0), S::from_f64(2.0)).unwrap(),
+            InlineControlAlignment::Baseline,
+            crate::InlineBoundaryEdgeOf::ZERO,
+        ))
+    };
+    let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+        wrapping: None,
+        line_box_context: crate::line_box::LineBoxContext::new(
+            crate::LineBoxDirectionPolicy::Normal,
+            axes.direction(),
         ),
-        (
-            2,
-            LayoutInputOf::inline_boundary(boundary(InlineBoundaryKind::Start)),
-            NodeInputOf::non_box(),
-        ),
-        (3, LayoutInputOf::box_input(atomic.clone()), atomic),
-        (
-            4,
-            LayoutInputOf::inline_boundary(boundary(InlineBoundaryKind::End)),
-            NodeInputOf::non_box(),
-        ),
-        (
-            5,
-            fri06_c03_text_input(vec![fri06_c02_segment_with_level(
-                902,
-                7.0,
-                1,
-                InlineWhitespaceEdge::Preserve,
-                InlineBreakOpportunityOf::prohibited(),
-            )]),
-            NodeInputOf::non_box(),
-        ),
-    ];
-    let child_nodes = children
-        .iter()
-        .map(|(node, _, _)| *node)
-        .collect::<Vec<_>>();
-    let mut inputs = HashMap::from([(0, LayoutInputOf::box_input(root_input))]);
-    let mut tree_children = HashMap::from([(0, child_nodes)]);
-    for (node, layout_input, _node_input) in children {
-        inputs.insert(node, layout_input);
-        tree_children.insert(node, Vec::new());
-    }
-    let tree = public_layout_tree(inputs, tree_children);
-    let batch = compute_layout(
-        &tree,
-        0,
-        LayoutRootRequestOf::viewport(root_size.map(AvailableOf::definite)).unwrap(),
-    )
+        observe_tail: false,
+        available_inline_extent: AvailableOf::definite(S::from_f64(100.0)),
+        flow_axes: axes,
+        text_align: TextAlign::Start,
+        text_align_last: crate::TextAlignLast::Auto,
+        indent: crate::text_indent::ResolvedTextIndent::ZERO,
+        indent_state: crate::text_indent::IndentLineState::default(),
+        participants: vec![
+            atomic(0, 10.0, 10.0, 8.0, 1),
+            boundary(1, InlineBoundaryKind::Start),
+            atomic(2, 5.0, 12.0, 12.0, 2),
+            boundary(3, InlineBoundaryKind::End),
+            atomic(4, 7.0, 10.0, 8.0, 1),
+        ],
+    })
     .unwrap();
-
-    let source_starts = if flow_axes.direction() == Direction::Rtl {
+    let starts = if axes.direction() == Direction::Rtl {
         [12.0, 12.0, 7.0, 7.0, 0.0]
     } else {
         [0.0, 10.0, 10.0, 15.0, 15.0]
     };
-    let logical_rects = [
-        (source_starts[0], 4.0, 10.0, 10.0),
-        (source_starts[1], 12.0, 0.0, 0.0),
-        (source_starts[2], 0.0, 5.0, 12.0),
-        (source_starts[3], 12.0, 0.0, 0.0),
-        (source_starts[4], 4.0, 7.0, 10.0),
-    ];
-    for (index, logical_rect) in logical_rects.into_iter().enumerate() {
-        let node = u32::try_from(index + 1).unwrap();
-        let output = fri06_c02_final_node(&batch, node);
-        let (expected_origin, expected_size) = fri06_c02_expected_physical_rect(
-            (flow_axes.writing_mode(), flow_axes.direction()),
-            logical_rect,
-            (100.0, 160.0),
+    let containing = axes.physical_size(LogicalSizeOf::new(S::from_f64(100.0), S::from_f64(160.0)));
+    for (slot, block, width, height) in [
+        (0, 4.0, 10.0, 10.0),
+        (2, 0.0, 5.0, 12.0),
+        (4, 4.0, 7.0, 10.0),
+    ] {
+        let actual = report
+            .atomics
+            .iter()
+            .find(|entry| entry.item.source_index == slot)
+            .unwrap();
+        let rect = axes.physical_rect(
+            crate::geometry::LogicalRectOf::new(
+                LogicalPointOf::new(actual.inline_start, actual.block_start),
+                axes.logical_size(actual.item.size),
+            ),
+            containing,
         );
         assert_eq!(
-            (output.location, output.size, output.source_index.get()),
-            (expected_origin, expected_size, index),
-            "{flow_axes:?} {box_sizing:?} source unit {index}"
+            rect,
+            fri06_c02_expected_physical_rect(
+                (axes.writing_mode(), axes.direction()),
+                (starts[slot], block, width, height),
+                (100.0, 160.0)
+            ),
+            "{axes:?} {box_sizing:?} actual atomic slot{slot}"
         );
     }
-
-    assert_eq!(
-        batch
-            .final_inline_fragments()
+    for slot in [1, 3] {
+        let actual = report
+            .controls
             .iter()
-            .map(|entry| (
-                entry.node(),
-                entry.fragment().segment_id(),
-                entry.fragment().visual_index(),
-            ))
+            .find(|entry| entry.source_index == slot)
+            .unwrap();
+        assert_eq!(
+            axes.physical_point(
+                LogicalPointOf::new(actual.inline_start, actual.block_start),
+                LogicalSizeOf::new(S::ZERO, S::ZERO),
+                containing
+            ),
+            fri06_c02_expected_physical_rect(
+                (axes.writing_mode(), axes.direction()),
+                (starts[slot], 12.0, 0.0, 0.0),
+                (100.0, 160.0)
+            )
+            .0
+        );
+    }
+    assert_eq!(
+        report
+            .atomics
+            .iter()
+            .filter(|entry| [0, 4].contains(&entry.item.source_index))
+            .map(|entry| (entry.item.source_index, entry.visual_index))
             .collect::<Vec<_>>(),
-        if flow_axes.direction() == Direction::Rtl {
-            vec![
-                (1, InlineSegmentId::new(901), 4),
-                (5, InlineSegmentId::new(902), 0),
-            ]
+        if axes.direction() == Direction::Rtl {
+            vec![(0, Some(4)), (4, Some(0))]
         } else {
-            vec![
-                (1, InlineSegmentId::new(901), 0),
-                (5, InlineSegmentId::new(902), 4),
-            ]
-        },
-        "{flow_axes:?} {box_sizing:?} stable fragment identities"
+            vec![(0, Some(0)), (4, Some(4))]
+        }
     );
 }
 
@@ -522,23 +657,9 @@ pub(super) fn assert_fri06_c08_mixed_inline_atomic_x<S: LayoutScalar>(
     box_sizing: BoxSizing,
     expected_x: f64,
 ) {
-    let mut leading_atomic = fri06_c03_atomic_style(
-        18.0,
-        18.0,
-        0.0,
-        0.0,
-        1,
-        InlineBreakOpportunityOf::prohibited(),
-    );
+    let mut leading_atomic = prepared_atomic_style(18.0, 18.0, 0.0, 0.0);
     leading_atomic.box_sizing = box_sizing;
-    let mut atomic = fri06_c03_atomic_style(
-        12.0,
-        18.0,
-        0.0,
-        0.0,
-        1,
-        InlineBreakOpportunityOf::prohibited(),
-    );
+    let mut atomic = prepared_atomic_style(12.0, 18.0, 0.0, 0.0);
     atomic.box_sizing = box_sizing;
     atomic.margin = match direction {
         Direction::Ltr => Edges {
@@ -561,29 +682,49 @@ pub(super) fn assert_fri06_c08_mixed_inline_atomic_x<S: LayoutScalar>(
         ),
         ..NodeInputOf::default()
     };
-    let batch = fri06_c03_mixed_batch_with_root(
+    let mut whitespace = ahem_style(10.0, 10.0);
+    whitespace.white_space = surgeist_text::WhiteSpace::Collapse;
+    // The original numeric fixture's75px gap is an actual10px Ahem space
+    // plus65px authored word spacing, retaining the10px font metrics.
+    whitespace.word_spacing = 65.0;
+    let paragraph = PreparedParagraph::new(
+        vec![
+            ParagraphPart::Atomic {
+                node: 1,
+                size: surgeist_text::Size::new(18.0, 18.0),
+            },
+            ParagraphPart::text(2, Source::new(" "), whitespace),
+            ParagraphPart::Atomic {
+                node: 3,
+                size: surgeist_text::Size::new(12.0, 18.0),
+            },
+        ],
+        ahem_style(10.0, 10.0),
+        if direction == Direction::Rtl {
+            ParagraphBaseDirection::RightToLeft
+        } else {
+            ParagraphBaseDirection::LeftToRight
+        },
+    );
+    let batch = prepared_mixed_batch(
+        &paragraph,
         vec![
             (
                 1,
                 LayoutInputOf::box_input(leading_atomic.clone()),
                 leading_atomic,
             ),
-            (
-                2,
-                fri06_c03_text_input(vec![fri06_c02_segment_with_level(
-                    801,
-                    75.0,
-                    0,
-                    InlineWhitespaceEdge::DiscardAtBoth,
-                    InlineBreakOpportunityOf::prohibited(),
-                )]),
-                NodeInputOf::non_box(),
-            ),
+            (2, paragraph.text_input(2), NodeInputOf::non_box()),
             (3, LayoutInputOf::box_input(atomic.clone()), atomic),
         ],
         AvailableOf::definite(S::from_f64(210.0)),
         root,
     );
+
+    let space = batch.placed_text()[0].layout().clusters();
+    assert_eq!(space.len(), 1);
+    assert_eq!(space[0].range(), surgeist_text::Range::new(0, 1));
+    assert_eq!(space[0].bounds().size.width, 75.0);
 
     assert_eq!(
         fri06_c02_final_node(&batch, 3).location.x,
@@ -618,6 +759,7 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
             )),
         );
         style.box_sizing = box_sizing;
+        style.atomic_inline_participation = None;
         style
     };
     let (physical_left_side, physical_right_side) = match direction {
@@ -626,14 +768,15 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
     };
     let left_float = float(physical_left_side, 42.0, 42.0);
     let right_float = float(physical_right_side, 50.0, 62.0);
-    let first_atomic = atomic(28.0, InlineBreakOpportunityOf::allowed());
-    let second_atomic = atomic(32.0, InlineBreakOpportunityOf::allowed());
-    let third_atomic = atomic(36.0, InlineBreakOpportunityOf::allowed());
-    let fourth_atomic = atomic(40.0, InlineBreakOpportunityOf::prohibited());
+    let first_atomic = atomic(28.0, InlineBreakOpportunity::Allowed);
+    let second_atomic = atomic(32.0, InlineBreakOpportunity::Allowed);
+    let third_atomic = atomic(36.0, InlineBreakOpportunity::Allowed);
+    let fourth_atomic = atomic(40.0, InlineBreakOpportunity::Prohibited);
     let line_strut = InlineBoundaryInputOf::new(
         InlineBoundaryKind::Start,
         InlineMetricsOf::from_line_height_and_baseline(S::from_f64(20.0), S::from_f64(12.0))
             .unwrap(),
+        crate::InlineBoundaryEdgeOf::ZERO,
     )
     .with_writing_mode(WritingMode::HorizontalTb)
     .with_direction(direction);
@@ -648,7 +791,41 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
         ),
         ..NodeInputOf::default()
     };
-    let batch = fri06_c03_mixed_batch_with_root(
+    let mut text_style = ahem_style(16.0, 20.0);
+    text_style.letter_spacing = 24.0;
+    let paragraph = PreparedParagraph::new(
+        vec![
+            ParagraphPart::text(3, Source::new("X"), text_style.clone()),
+            ParagraphPart::Control {
+                node: 8,
+                kind: ParagraphControlKind::InlineBoundaryStart,
+            },
+            ParagraphPart::Atomic {
+                node: 4,
+                size: surgeist_text::Size::new(28.0, 16.0),
+            },
+            ParagraphPart::Atomic {
+                node: 5,
+                size: surgeist_text::Size::new(32.0, 16.0),
+            },
+            ParagraphPart::Atomic {
+                node: 6,
+                size: surgeist_text::Size::new(36.0, 16.0),
+            },
+            ParagraphPart::Atomic {
+                node: 7,
+                size: surgeist_text::Size::new(40.0, 16.0),
+            },
+        ],
+        text_style,
+        if direction == Direction::Rtl {
+            ParagraphBaseDirection::RightToLeft
+        } else {
+            ParagraphBaseDirection::LeftToRight
+        },
+    );
+    let batch = prepared_mixed_batch(
+        &paragraph,
         vec![
             (1, LayoutInputOf::box_input(left_float.clone()), left_float),
             (
@@ -656,11 +833,7 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
                 LayoutInputOf::box_input(right_float.clone()),
                 right_float,
             ),
-            (
-                3,
-                fri06_c03_text_input(vec![fri06_c02_segment_with_metrics(4, 40.0, 14.8, 5.2)]),
-                NodeInputOf::non_box(),
-            ),
+            (3, paragraph.text_input(3), NodeInputOf::non_box()),
             (
                 8,
                 LayoutInputOf::inline_boundary(line_strut),
@@ -708,6 +881,12 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
         batch
             .final_inline_fragments()
             .iter()
+            .filter(|entry| entry
+                .fragment()
+                .finalized_fragment()
+                .view()
+                .origin()
+                .is_some())
             .map(|entry| entry.fragment().line_index())
             .collect::<Vec<_>>(),
         [0],
@@ -723,7 +902,35 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
         ],
         "{direction:?} {box_sizing:?} atomic sizes"
     );
-    for (node, expected) in [4, 5, 6, 7].into_iter().zip([0.0, 21.2, 21.2, 42.0]) {
+    // The first allocated control contributes12px before/8px after, while
+    // the actual atomic contributes16px before: one24px initial line.
+    // Later lines retain Ahem16/LH20's14.8/5.2 strut plus atomic-before16.
+    let lines = batch.placed_text()[0].layout().lines();
+    assert_eq!(lines.len(), 3);
+    for (line, (start, baseline, height)) in
+        lines
+            .iter()
+            .zip([(0.0, 16.0, 24.0), (24.0, 40.0, 21.2), (45.0, 61.0, 21.2)])
+    {
+        assert!((line.bounds().origin.y - start).abs() < 0.0001);
+        assert_eq!(line.baseline(), baseline);
+        assert!((line.bounds().size.height - height).abs() < 0.0001);
+    }
+    let first_line = batch.final_inline_fragments()[0]
+        .fragment()
+        .finalized_fragment()
+        .finalized_line();
+    let first_metrics = first_line.feedback();
+    assert_eq!(
+        (
+            first_metrics.ascent,
+            first_metrics.descent,
+            first_metrics.baseline,
+            first_metrics.line_height
+        ),
+        (16.0, 8.0, 16.0, 24.0)
+    );
+    for (node, expected) in [4, 5, 6, 7].into_iter().zip([0.0, 24.0, 24.0, 45.0]) {
         let actual = public_flow_output(batch.unrounded_entries(), node)
             .location
             .y;
@@ -733,9 +940,23 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
              node {node} expected {expected}, got {actual:?}"
         );
     }
+    for node in [5, 6] {
+        let atomic = paragraph
+            .prepared
+            .atomic_views()
+            .find(|atomic| atomic.original_box().id() == surgeist_text::Id::from_u64(node))
+            .unwrap();
+        assert_eq!(
+            atomic.level(),
+            BidiLevel::try_new(u8::from(direction == Direction::Rtl)).unwrap()
+        );
+    }
+    // Both RTL atomics have level1, so L2 places logical node6 before node5
+    // physically. Their real widths36/32 end at the float band's right edge130:
+    // node6 occupies62..98 and node5 occupies98..130.
     let expected_second_line_atomic_x = match direction {
         Direction::Ltr => [42.0, 74.0],
-        Direction::Rtl => [62.0, 94.0],
+        Direction::Rtl => [98.0, 62.0],
     };
     assert_eq!(
         [5, 6].map(|node| {
@@ -755,14 +976,19 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
         S::from_f64(expected_terminal_x),
         "{direction:?} {box_sizing:?} terminal atomic physical placement"
     );
+    // Logical allocations stack at0/24/45.2:24+21.2+21.2=66.4.
+    // Their rigid physical anchors above instead put the last metric top at45
+    // and bottom at66.2; that translation does not shorten normal flow.
+    let terminal_metrics = lines.last().unwrap().bounds();
+    assert!((terminal_metrics.origin.y + terminal_metrics.size.height - 66.2).abs() < 0.0001);
     assert_eq!(
         public_flow_output(batch.unrounded_entries(), 0).size,
-        Size::new(S::from_f64(180.0), S::from_f64(62.5)),
+        Size::new(S::from_f64(180.0), S::from_f64(66.4)),
         "{direction:?} {box_sizing:?} unrounded block geometry"
     );
     assert_eq!(
         public_flow_output(batch.final_entries(), 0).size,
-        Size::new(S::from_f64(180.0), S::from_f64(63.0)),
+        Size::new(S::from_f64(180.0), S::from_f64(66.0)),
         "{direction:?} {box_sizing:?} final block geometry"
     );
 }
@@ -771,14 +997,8 @@ pub(super) fn fri06_c12_t08_forced_break_fallback_batch<S: LayoutScalar>(
     line_break_baseline: f64,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let atomic = |node| {
-        let style = fri06_c03_atomic_style(
-            24.0,
-            16.0,
-            0.0,
-            0.0,
-            0,
-            InlineBreakOpportunityOf::prohibited(),
-        );
+        let style =
+            fri06_c03_atomic_style(24.0, 16.0, 0.0, 0.0, 0, InlineBreakOpportunity::Prohibited);
         (
             node,
             LayoutInputOf::box_input(style.clone()),
@@ -916,37 +1136,37 @@ pub(super) enum Fri06C05ShapeProvider<S: LayoutScalar> {
 #[derive(Clone, Debug)]
 pub(super) struct Fri06C02StatefulTextTree<S: LayoutScalar> {
     pub(super) inputs: HashMap<u32, LayoutInputOf<S>>,
+    pub(super) text: TextParagraphBinding<u32>,
     pub(super) node_inputs: HashMap<u32, NodeInputOf<S>>,
     pub(super) children: HashMap<u32, Vec<u32>>,
     pub(super) retained: Fri06C02RetainedTextState<S>,
-    pub(super) fragment_readbacks: Cell<usize>,
     pub(super) reject_preparation: bool,
     pub(super) shape_provider: Fri06C05ShapeProvider<S>,
     pub(super) shape_queries: Cell<usize>,
+    pub(super) shape_query_inputs: RefCell<Vec<FloatExclusionQueryOf<S>>>,
     pub(super) cache_queries: RefCell<Vec<(u32, bool)>>,
 }
 
 impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
-    pub(super) fn new(segments: Vec<ShapedInlineSegmentOf<S>>) -> Self {
+    pub(super) fn new(source: Source, style: surgeist_text::Style) -> Self {
         let root_input = NodeInputOf {
             display: Display::Block,
             ..NodeInputOf::default()
         };
+        let paragraph = PreparedParagraph::plain(1, source, style);
         Self {
             inputs: HashMap::from([
                 (0, LayoutInputOf::box_input(root_input)),
-                (
-                    1,
-                    LayoutInputOf::inline_text(InlineTextInputOf::try_new(segments).unwrap()),
-                ),
+                (1, paragraph.text_input(1)),
             ]),
+            text: paragraph.binding(0),
             node_inputs: HashMap::from([(1, NodeInputOf::non_box())]),
             children: HashMap::from([(0, vec![1]), (1, Vec::new())]),
             retained: Fri06C02RetainedTextState::default(),
-            fragment_readbacks: Cell::new(0),
             reject_preparation: false,
             shape_provider: Fri06C05ShapeProvider::Disabled,
             shape_queries: Cell::new(0),
+            shape_query_inputs: RefCell::new(Vec::new()),
             cache_queries: RefCell::new(Vec::new()),
         }
     }
@@ -961,24 +1181,34 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
             overflow: ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap(),
             ..NodeInputOf::default()
         };
-        let text = InlineTextInputOf::try_new(vec![fri06_c02_segment(
-            91,
-            9.25,
-            InlineWhitespaceEdge::Preserve,
-            InlineBreakOpportunityOf::allowed(),
-        )])
-        .unwrap();
-        let atomic = fri06_c03_atomic_style(
-            25.25,
-            10.5,
-            0.0,
-            0.0,
-            0,
-            InlineBreakOpportunityOf::prohibited(),
+        let mut style = ahem_style(10.0, 10.0);
+        style.letter_spacing = -0.75; // actual one-em X advance10 plus authored spacing
+        let paragraph = PreparedParagraph::new(
+            vec![
+                ParagraphPart::text(1, Source::new("X"), style.clone()),
+                ParagraphPart::Atomic {
+                    node: 2,
+                    size: surgeist_text::Size::new(25.25, 10.5),
+                },
+                ParagraphPart::Control {
+                    node: 3,
+                    kind: ParagraphControlKind::InlineBoundaryStart,
+                },
+                ParagraphPart::Control {
+                    node: 4,
+                    kind: ParagraphControlKind::ForcedBreak,
+                },
+            ],
+            style,
+            ParagraphBaseDirection::LeftToRight,
         );
+        let text = paragraph.text_input(1);
+        let binding = paragraph.binding(0);
+        let atomic = prepared_atomic_style(25.25, 10.5, 0.0, 0.0);
         let boundary = InlineBoundaryInputOf::new(
             InlineBoundaryKind::Start,
             InlineMetricsOf::from_ascent_descent(S::from_f64(6.25), S::from_f64(3.75)).unwrap(),
+            crate::InlineBoundaryEdgeOf::ZERO,
         );
         let line_break = LineBreakInputOf::new().with_metrics(
             InlineMetricsOf::from_ascent_descent(S::from_f64(8.25), S::from_f64(1.75)).unwrap(),
@@ -986,11 +1216,12 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
         Self {
             inputs: HashMap::from([
                 (0, LayoutInputOf::box_input(root_input)),
-                (1, LayoutInputOf::inline_text(text)),
+                (1, text),
                 (2, LayoutInputOf::box_input(atomic)),
                 (3, LayoutInputOf::inline_boundary(boundary)),
                 (4, LayoutInputOf::line_break(line_break)),
             ]),
+            text: binding,
             node_inputs: HashMap::from([
                 (1, NodeInputOf::non_box()),
                 (3, NodeInputOf::non_box()),
@@ -1004,10 +1235,10 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
                 (4, Vec::new()),
             ]),
             retained: Fri06C02RetainedTextState::default(),
-            fragment_readbacks: Cell::new(0),
             reject_preparation: false,
             shape_provider: Fri06C05ShapeProvider::Disabled,
             shape_queries: Cell::new(0),
+            shape_query_inputs: RefCell::new(Vec::new()),
             cache_queries: RefCell::new(Vec::new()),
         }
     }
@@ -1031,26 +1262,24 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
             ),
             ..NodeInputOf::default()
         };
-        let text = InlineTextInputOf::try_new(vec![fri06_c02_segment(
-            93,
-            20.25,
-            InlineWhitespaceEdge::Preserve,
-            InlineBreakOpportunityOf::prohibited(),
-        )])
-        .unwrap();
+        let mut style = ahem_style(10.0, 10.0);
+        style.letter_spacing = 10.25; // actual Ahem X advance10 plus authored spacing
+        let paragraph = PreparedParagraph::plain(2, Source::new("X"), style);
+        let text = paragraph.text_input(2);
         Self {
             inputs: HashMap::from([
                 (0, LayoutInputOf::box_input(root_input)),
                 (1, LayoutInputOf::box_input(float)),
-                (2, LayoutInputOf::inline_text(text)),
+                (2, text),
             ]),
+            text: paragraph.binding(0),
             node_inputs: HashMap::from([(2, NodeInputOf::non_box())]),
             children: HashMap::from([(0, vec![1, 2]), (1, Vec::new()), (2, Vec::new())]),
             retained: Fri06C02RetainedTextState::default(),
-            fragment_readbacks: Cell::new(0),
             reject_preparation: false,
             shape_provider: Fri06C05ShapeProvider::Disabled,
             shape_queries: Cell::new(0),
+            shape_query_inputs: RefCell::new(Vec::new()),
             cache_queries: RefCell::new(Vec::new()),
         }
     }
@@ -1078,6 +1307,7 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
     }
 
     pub(super) fn add_failing_float_path_control(&mut self) {
+        self.bind_failing_control(2, 9);
         self.inputs
             .insert(9, LayoutInputOf::line_break(LineBreakInputOf::new()));
         self.node_inputs.insert(9, NodeInputOf::default());
@@ -1090,28 +1320,55 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
         self.node_inputs.remove(&9);
         self.children.get_mut(&0).unwrap().retain(|node| *node != 9);
         self.children.remove(&9);
+        self.restore_plain_text(2);
     }
 
     pub(super) fn replace_atomic_inline_extent(&mut self, extent: f64) {
-        let style = fri06_c03_atomic_style(
-            extent,
-            10.5,
-            0.0,
-            0.0,
-            0,
-            InlineBreakOpportunityOf::prohibited(),
-        );
+        let style = prepared_atomic_style(extent, 10.5, 0.0, 0.0);
         self.inputs.insert(2, LayoutInputOf::box_input(style));
     }
 
-    pub(super) fn replace_text(&mut self, segments: Vec<ShapedInlineSegmentOf<S>>) {
-        self.inputs.insert(
-            1,
-            LayoutInputOf::inline_text(InlineTextInputOf::try_new(segments).unwrap()),
-        );
+    pub(super) fn replace_text(&mut self, source: Source, style: surgeist_text::Style) {
+        let paragraph = PreparedParagraph::plain(1, source, style);
+        self.inputs.insert(1, paragraph.text_input(1));
+        self.text = paragraph.binding(0);
+    }
+
+    pub(super) fn compute(
+        &self,
+        request: LayoutRootRequestOf<S>,
+    ) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, S>, S, ()> {
+        let capture = LayoutFlowInput::try_new(
+            self,
+            0,
+            vec![self.text.clone()],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )?;
+        compute_layout_with_flow(&capture, 0, request)
+    }
+
+    pub(super) fn compute_invalidated(
+        &self,
+        request: LayoutRootRequestOf<S>,
+        dirty: &[u32],
+    ) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, S>, S, ()> {
+        let capture = LayoutFlowInput::try_new(
+            self,
+            0,
+            vec![self.text.clone()],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )?;
+        compute_layout_with_flow_invalidated(&capture, 0, request, dirty)
     }
 
     pub(super) fn add_failing_noncanonical_control(&mut self) {
+        self.bind_failing_control(1, 2);
         self.inputs
             .insert(2, LayoutInputOf::line_break(LineBreakInputOf::new()));
         self.node_inputs.insert(2, NodeInputOf::default());
@@ -1124,6 +1381,34 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
         self.node_inputs.remove(&2);
         self.children.insert(0, vec![1]);
         self.children.remove(&2);
+        self.restore_plain_text(1);
+    }
+
+    fn bind_failing_control(&mut self, text_node: u32, control_node: u32) {
+        let source = self.text.origins[0].origin.view().source().clone();
+        let style = self.text.prepared.analyzed_source().style().clone();
+        let paragraph = PreparedParagraph::new(
+            vec![
+                ParagraphPart::text(text_node, source, style.clone()),
+                ParagraphPart::Control {
+                    node: control_node,
+                    kind: ParagraphControlKind::ForcedBreak,
+                },
+            ],
+            style,
+            ParagraphBaseDirection::LeftToRight,
+        );
+        self.inputs
+            .insert(text_node, paragraph.text_input(text_node));
+        self.text = paragraph.binding(0);
+    }
+
+    fn restore_plain_text(&mut self, node: u32) {
+        let source = self.text.origins[0].origin.view().source().clone();
+        let style = self.text.prepared.analyzed_source().style().clone();
+        let paragraph = PreparedParagraph::plain(node, source, style);
+        self.inputs.insert(node, paragraph.text_input(node));
+        self.text = paragraph.binding(0);
     }
 }
 
@@ -1187,21 +1472,13 @@ impl<S: LayoutScalar> LayoutTree for Fri06C02StatefulTextTree<S> {
         self.retained.unrounded_nodes.get(&node).copied()
     }
 
-    fn unrounded_inline_fragments(&self, node: Self::Node) -> Option<&[InlineFragmentOutputOf<S>]> {
-        self.fragment_readbacks
-            .set(self.fragment_readbacks.get() + 1);
-        self.retained
-            .unrounded_fragments
-            .get(&node)
-            .map(Vec::as_slice)
-    }
-
     fn float_exclusion_interval(
         &self,
         _node: Self::Node,
         query: FloatExclusionQueryOf<S>,
     ) -> Option<Result<Option<FloatExclusionIntervalOf<S>>, Self::MeasureError>> {
         self.shape_queries.set(self.shape_queries.get() + 1);
+        self.shape_query_inputs.borrow_mut().push(query);
         match self.shape_provider {
             Fri06C05ShapeProvider::Disabled => None,
             Fri06C05ShapeProvider::Empty => Some(Ok(None)),
@@ -1248,18 +1525,24 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri06C02StatefulTextTree<S> {
             }
         }
         for entry in batch.unrounded_inline_fragments() {
+            let crate::InlineFragmentOwner::Node(node) = entry.owner() else {
+                panic!("fixture contains node fragments")
+            };
             prepared
                 .unrounded_fragments
-                .entry(entry.node())
+                .entry(*node)
                 .or_default()
-                .push(entry.fragment());
+                .push(entry.fragment().clone());
         }
         for entry in batch.final_inline_fragments() {
+            let crate::InlineFragmentOwner::Node(node) = entry.owner() else {
+                panic!("fixture contains node fragments")
+            };
             prepared
                 .final_fragments
-                .entry(entry.node())
+                .entry(*node)
                 .or_default()
-                .push(entry.fragment());
+                .push(entry.fragment().clone());
         }
         for entry in batch.cache_clear_entries() {
             prepared.caches.remove(&entry.node());
@@ -1637,9 +1920,10 @@ pub(super) fn assert_public_scroll_geometry_error_without_batch(
 
     let expected_kind = LayoutErrorKind::InternalInvariant(expected_invariant);
     assert_eq!(
-        (error.site(), error.operation(), error.kind()),
-        (expected_site, expected_operation, &expected_kind)
+        (error.site(), error.operation()),
+        (expected_site, expected_operation)
     );
+    crate::test_support::assert_error_kind(error.kind(), &expected_kind);
 }
 
 pub(super) fn fri06_mr02_geometry_error_largest_finite<S: LayoutScalar>() -> S {

@@ -4,6 +4,59 @@ The reference collection records the full selected source scope of [CSS Snapshot
 
 This mapping describes the repository at `104bff510075d1acb59c23bb9491c7a368b7d05a`. The [catalog](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/specs/catalog.json) selects editions under its existing 2026-09-10 publication-cutoff policy; [conformance metadata](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/src/conformance.rs) records source attribution and declared subsets. They are separate evidence: catalog membership and a registry entry do not prove implementation. The full pinned Snapshot scope remains the target even where the catalog or implementation has no corresponding production. The [source catalog](SOURCE-CATALOG.md) identifies each retained text or metadata-only representation.
 
+## AutoPhrase overflow and intrinsic sizing
+
+The [AutoPhrase intrinsic determination](text-auto-phrase-intrinsic--determination-20261025.md)
+retains independently eligible Anywhere intrinsic opportunities without a
+fabricated finite failure, excludes restored Normal/hyphen cuts from min-content,
+and preserves the ordered finite relaxation and actual opportunity owners.
+
+## Missing lexical capability and KeepAll
+
+The [lexical fallback determination](text-lexical-fallback--determination-20261025.md)
+preserves required Thai/Lao missing-capability opportunities under KeepAll as an
+explicit precedence policy, distinguishes supported empty analysis and Manual,
+and records ordinary permission ownership and source limits for #65.
+
+## Small-kana and word-break precedence
+
+The [small-kana determination](text-small-kana-precedence--determination-20261025.md)
+distinguishes BreakAll's effective CJ-to-ID treatment from CSS Normal's CJ
+restriction, preserves named punctuation rules and required Loose opportunities,
+and records the real full-size-kana facade acceptance matrix for #65.
+
+## Anywhere, hyphenation owners and atomic glue
+
+The [Anywhere precedence determination](text-anywhere-owner-precedence--determination-20261025.md)
+records current CSSWG resolutions and pinned browser evidence for #65. It
+explicitly retains actual-owner hyphenation exclusion and the specific atomic
+non-NBSP glue restriction, without extending text/text Anywhere authority to
+atomic relations or transferring independent break ownership.
+
+## Break-all and hyphenation ownership
+
+The [break-all hyphenation determination](text-break-all-hyphenation--determination-20261024.md)
+records current CSSWG and browser evidence for #65, separates hyphenation-owner
+suppression from ordinary after-SHY permission, and defines the exact native
+cut and mixed-style policies. It also supplies a genuine Wbr plus automatic
+hyphenation fixture to replace the conflicting break-all test oracle.
+
+## Incoming hyphenation indications at inline edges
+
+The [incoming indication custody determination](text-incoming-indication-edge--determination-20261024.md)
+records CSS Text 4, CSSWG and pinned WebKit evidence for #64 and explicitly
+selects receiver-side mixed-event insertion as Surgeist policy. Directional
+attachment and geometric placement agree without transferring style ownership.
+
+## BreakSpaces and protected Unicode boundaries
+
+The [BreakSpaces glue reconciliation](css-text-break-spaces-glue--source-reconciliation-20261024.md)
+records current CSS Text 4 clauses, CSSWG checks, current WPT expectations and
+pinned browser witnesses for #64. The selected interpretation retains GL
+protection for U+2007/U+202F as well as neighboring joiner and typographic-unit
+constraints. It distinguishes the repository's UAX14 revision 55 from revision
+57's changed BA-before-GL rule; no Unicode baseline upgrade is implied.
+
 ## DOM memory-layout implementation witness
 
 The [Blink element-data sharing witness](blink-element-data-sharing--4ea1cdf4aa65.md)
@@ -153,7 +206,7 @@ Each question below selects the named current capture for its operative clause e
 
 | Owning source issue | Operative clauses and implementation evidence | Selected result and category | Open implementation consumers |
 | --- | --- | --- | --- |
-| [#74 whitespace gaps](https://github.com/bj-data-eng/surgeist/issues/74) | [Text 4 §§4.1/4.3](css-text-4-whitespace-alignment-hyphenation--editor-capture-20261010--2b0d3e0d5174.md#white-space-collapsing), including [Phase II](css-text-4-whitespace-alignment-hyphenation--editor-capture-20261010--2b0d3e0d5174.md#white-space-phase-2); [WebKit](webkit-text-source-gaps-hyphenation--73aa6c89e2cb.md) and [Blink](blink-text-source-gaps--7984f9d11800.md) bounded value absence | **Authorized product policy:** discard removes its own opportunities; preserve-spaces uses preserve-equivalent hanging with wrapping, conditional forced/end hanging and nowrap bypass, retaining advances. | #64/#65/#71 |
+| [#74 whitespace gaps](https://github.com/bj-data-eng/surgeist/issues/74) | [Text 4 §§4.1/4.3](css-text-4-whitespace-alignment-hyphenation--editor-capture-20261010--2b0d3e0d5174.md#white-space-collapsing), including [Phase II](css-text-4-whitespace-alignment-hyphenation--editor-capture-20261010--2b0d3e0d5174.md#white-space-phase-2); [WebKit](webkit-text-source-gaps-hyphenation--73aa6c89e2cb.md) and [Blink](blink-text-source-gaps--7984f9d11800.md) bounded value absence | **Authorized product policy:** discard removes its own opportunities; [surviving Discard characters retain ordinary advance without whitespace-rule hanging](text-word-space-generation--native-determination.md#surviving-discard-characters-in-phase-ii). Preserve-spaces uses preserve-equivalent hanging with wrapping, conditional forced/end hanging and nowrap bypass, retaining advances. | #64/#65/#71 |
 | [#76 character-alignment gaps](https://github.com/bj-data-eng/surgeist/issues/76) | [Text 4 §7.2](css-text-4-whitespace-alignment-hyphenation--editor-capture-20261010--2b0d3e0d5174.md#character-alignment); pinned [WebKit](webkit-text-source-gaps-hyphenation--73aa6c89e2cb.md) and [Blink](blink-text-source-gaps--7984f9d11800.md) string-alignment absence | **Authorized product policy:** shaped advance midpoint; first logical match in eligible in-flow text whose containing block is the cell; measurement-only virtual character uses the cell font context. Defined fallbacks and #48’s separate questions remain. | #68 |
 | [#77 emergency-hyphenation interaction](https://github.com/bj-data-eng/surgeist/issues/77) | [Text 4 §6.3.5](css-text-4-whitespace-alignment-hyphenation--editor-capture-20261010--2b0d3e0d5174.md#hyphenate-line-limits); [WebKit committed-line state](webkit-text-source-gaps-hyphenation--73aa6c89e2cb.md#inlinelayoutstateh) and complete breaker chain | **Pinned browser compatibility precedent**, completed by **authorized product policy** for uncovered exceptional endings: committed hyphenation endings increment the successive counter, other endings reset; arbitrary unhyphenated emergency wraps re-enable automatic opportunities; trial candidates are pure. | #66 |
 | [#415 decoration ambiguity](https://github.com/bj-data-eng/surgeist/issues/415) | [Text Decoration 4 §2.5](css-text-decor-4-position-controls--editor-capture-20261010--8820547faa34.md#line-position), [§2.4 thickness](css-text-decor-4-position-controls--editor-capture-20261010--8820547faa34.md#text-decoration-thickness-property) and [§2.8 offset](css-text-decor-4-position-controls--editor-capture-20261010--8820547faa34.md#underline-offset); [browser decorating metrics](browser-font-width-decoration--pinned-20261010.md); [Skrifa metric excerpt](parley-0.9-text-contract-witness.md#supporting-provider-skrifa-0421-metricsrs) | **Normative interpretation:** compute base position/adjustments, then local offset; originating controls select thickness. **Authorized product policy:** an empty considered-text fragment uses its decorating box’s resolved strikeout center; provider normalization/fallback follows the named metric contract. | #407/#408 and text-metric provider work |
@@ -1233,3 +1286,206 @@ two-clause notice. The [Text/Render contract](../docs/text-layout-contract.md#co
 selects the corresponding horizontal translated-contour operation and owns its
 numerical and admission rules. This is an implementation-source determination,
 not a CSS edition change or native CoreText raster-equivalence claim.
+
+## Hyphenation indication conventions
+
+The [pinned WebKit indication metadata](webkit-hyphen-indication--73aa6c89e2cb-metadata.md)
+identifies the primary-font character choice and logical trailing placement at
+revision `73aa6c89e2cb77c46184a81aec944e4ab99d114d`, including its unfinished
+locale handling. No implementation excerpt is retained. The
+[Text/Layout contract](../docs/text-layout-contract.md#hyphenation-policy-and-indication-ownership)
+selects that mechanism only as an explicit unknown-convention fallback, with
+the governing style's actual primary-font authority. The pinned Text 4 hyphens,
+hyphenate-character and Appendix F writing-system rules remain normative;
+automatic opportunity resources and supported language/script conventions need
+their own evidence. This bounded determination does not establish implementation
+completion or all-language behavior.
+
+## Conditional hanging after spacing allocation
+
+The selected [Text 4 hanging clause](css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#hanging)
+decides conditional activation before justification and permits hanging content
+to participate in justification. It does not uniquely specify how a partially
+excluded advance changes under an explicit allocation. #74's preserve-spaces
+determination retains advances but adds no such remapping rule.
+
+Source-only inspection of preferred WebKit
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d` found conditional state selection in
+[InlineLine.cpp](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/layout/formattingContexts/inline/InlineLine.cpp#L207),
+while [InlineContentAligner.cpp](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/layout/formattingContexts/inline/InlineContentAligner.cpp#L201)
+excludes trailing hanging whitespace from expansion opportunities. That path does
+not decide the explicit-allocation case. No browser execution or implementation
+excerpt is retained for this determination.
+
+The [native Text/Layout contract](../docs/text-layout-contract.md#native-whitespace-edges-and-hanging)
+adopts fixed natural eligibility, edge/frame and terminal groups, then remaps the
+signed exclusion using allocated geometry. The remapping and signed extension
+are explicit native policy completing this gap, not uniquely mandated CSS or a
+claim of browser equivalence. Fit and intrinsic inclusion retain their separate
+normative roles.
+
+## Native box-edge wrapping
+
+The [native wrap-edge determination](text-wrap-edges--native-determination.md)
+separates Text 4 applicability and imported box propagation from explicit native
+edge/inside conflict policy and early hard-boundary completion. Layout owns the
+effective box plan; Text admits computed mandatory causes before processing.
+Actual box-order and final source/plan custody remain required. The determination
+selects semantics without asserting implementation completion or browser equivalence.
+
+## Hanging punctuation composition
+
+The [native punctuation determination](text-hanging-punctuation--native-determination.md)
+selects actual attributed advance, union measurement with inline-start placement
+priority for one TCU eligible at both edges, and effective Appendix-E eligibility
+before literal exceptions. It distinguishes CSS requirements from these bounded
+native choices and records the qualified Unicode and prospective kern examples.
+Its [current-line BP determination](text-hanging-punctuation--native-determination.md#current-line-border-and-padding-incidence)
+separates actual intervening line-fragment decoration from off-selected joining
+context; captured enclosure alone does not establish a hanging barrier.
+It does not establish feature availability or browser equivalence.
+
+## Preserved CSS tab stops
+
+The [Text/Layout contract](../docs/text-layout-contract.md#preserved-css-tab-stops)
+selects the native preserved-tab operation. Normative authority remains the
+selected [Text 4 Phase II](css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#white-space-phase-2),
+[tab-size](css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#tab-size-property)
+and [ordering](css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#order),
+[Writing Modes 4 inline direction](css-writing-modes-4--CR-css-writing-modes-4-20190730--30a59de49343.md#inline-base-direction),
+[Values 4 ch](css-values-4--WD-css-values-4-20240312--7b6b68c34d00.md#ch)
+and the [UAX #9 revision 52 metadata](uax9--18.0.0--rev52-metadata.md).
+The horizontal ch fallback is 0.5em, so its half-ch threshold is 0.25em.
+
+The selected horizontal metric profile shapes an isolated scalar using Text's
+existing Common-to-Latin script fallback. Isolated ZERO retains LTR numeric
+direction in either paragraph direction; isolated SPACE follows the block's
+captured used direction. Text's own bidi analysis and the retained Harfrust
+direction-feature selection distinguish these cases. Font features, locale and
+effective instance remain active. The normative clauses do not mandate a
+nominal-only metric algorithm; this bounded profile does not establish arbitrary
+contextual or vertical metric coverage.
+
+Source-only inspection at WebKit `73aa6c89e2cb77c46184a81aec944e4ab99d114d`
+covered `FontCascadeInlines.h`, `TabSize.h`, `WidthIterator.cpp` and `TextRun.h`.
+Their tab helper and line-relative position do not establish a clamp for a
+negative spacing-derived interval. `IntrinsicWidthHandler.cpp` (lines 284–350)
+and `InlineLineBuilder.cpp` (lines 1050–1103) show intrinsic measurement modes,
+without establishing the indefinite opposite-edge phase. No WebKit implementation
+excerpts are retained or browser equivalence claimed.
+
+Source-only WPT inspection at `69f2bba61ce7e9469ccbce53de4644a89f6b7dff`
+covered `css/css-text/white-space/tab-bidi-001.html` and
+`css/css-text/tab-size/tab-size-spacing-002.html` / `003.html`. These cover bidi
+embeddings/overrides and positive spacing; they do not establish plaintext
+direction mismatch or negative-interval behavior. No browser execution is claimed.
+The signed grid beyond block edges is an explicit native policy. The
+[negative spacing-derived interval determination](https://github.com/bj-data-eng/surgeist/issues/64#issuecomment-6374973383)
+adopts the same stop set with the magnitude of a finite nonzero interval,
+traversed strictly forward in paragraph progression. Retain the signed metric
+and provenance; apply exactly one half-ch bump. This completes a source gap as
+native policy, without a browser-equivalence or CSSWG-resolution claim.
+
+The [intrinsic-phase determination](https://github.com/bj-data-eng/surgeist/issues/64#issuecomment-6389474658)
+supersedes the earlier unresolved opposite-edge convention. The
+[pinned Blink capture](blink-intrinsic-tab-phase--daf70f9ddee4.md) traces real
+min/max line measurement through indent-based position initialization, TAB
+dispatch, tabulation shaping and the forward tab resolver. Its static two-TAB/X
+test supports accumulation, not opposite-edge parity; no browser or upstream test
+was executed. For unconstrained min-/max-content measurement, the native contract
+selects a logical grid at the unindented paragraph line-start with applicable
+indent, independently of the opposite block edge. Used layout retains the real
+block content-start origin.
+This is an adopted measurement policy, not a located CSSWG resolution. Surgeist's
+half-ch and signed-derived-period policies remain unchanged; Blink's half-SPACE
+threshold is not adopted. Implementation qualification remains with #64.
+
+## Visible control-character presentation
+
+The [control source determination](text-control-presentation--native-determination.md)
+records pinned Text3/Text4 visibility, CSSWG's retained NUL requirement and a
+static WPT witness. The [native contract](../docs/text-layout-contract.md#native-control-character-presentation)
+owns the selected real-font presentation and explicit ordinary-symbol property
+profile; the latter completes an underspecified detail rather than claiming a
+CSSWG-selected tuple. Implementation qualification remains in #64.
+
+## Nonempty formatting-unit Range geometry
+
+The [Blink Range witness](blink-formatting-unit-range--daf70f9ddee4.md) identifies
+bounded rectangle, caret and grapheme-based advance-allocation operations at Chromium
+`daf70f9ddee4b45d4f8870f574fbde61c0db4ca7`, corresponding to the executed
+Chrome 149.0.7827.115 probe. It is metadata-only corroboration, without copied
+implementation text or an inferred PDI branch. For the current Range contribution,
+the [complete §9 editor capture](cssom-view-range--editor-capture-20261022.md)
+selects the 8 October 2026 Editor's Draft section retrieved on 22 October, full
+HTML SHA-256 `71d9ce94f21ec00a5a333ee5a20d2b0f999a862d3543fbdb85cd4d1d3dcac176`.
+The historical dated CSSOM View edition remains available; this is a bounded
+operative section selection, not a complete-module refresh. The
+[resolution and test audit](range-geometry-csswg-tests--20261022.md) records the
+inspected discussions and immutable test identities. No adopted resolution was
+found there for the remaining deleted-only, LF, SHY or PDI endpoint choices;
+collapsed whitespace assertions and relative newline ordering do not decide
+their exact nonempty geometry. Participant proposals are not resolutions.
+The [Text range contract](../docs/text-layout-contract.md#nonempty-text-range-fragments)
+selects finalized-position, actual-font-metric rectangles for independently
+retained zero-advance formatting units. This resolves a policy gap while keeping
+the two authenticated RTL browser differences visible under #1450; it does not
+claim that the new query or #860's full consumer has been implemented. Range units
+remain operation-specific and EGC-based under CSS Text, distinct from the float
+prefix's provider-cluster closure. The same contract selects a bounded equal-share
+fallback for otherwise unpartitioned shaped advances while retaining actual
+spacing ownership. This is a Surgeist policy supported by the pinned mechanism,
+not a CSS-mandated fraction. Native fallback choices remain distinct from full
+web Range membership, shadow-tree, nested Text, selected-element and aggregation
+requirements. The surrogate test supports partial-unit expansion; the inspected
+collapsed RTL-ligature test does not establish exact nonempty advance fractions.
+
+## Text full-width mapping data
+
+The pinned [CSS Text 4 full-width rule](css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#valdef-text-transform-full-width)
+uses the raw Unicode wide/narrow decomposition relation and names no separate
+width-data edition. Text selects UnicodeData 18.0.0 for this bounded mapping:
+[complete upstream source](https://www.unicode.org/Public/18.0.0/ucd/UnicodeData.txt),
+SHA-256 `0736451de439ae7baf1425136617da495e09ee5afbe6e394374db7009ea08950`.
+The [unchanged source excerpt](../crates/surgeist-text/data/UnicodeData-width-18.0.0.txt)
+contains 104 `<wide>` and 122 `<narrow>` records. Reversing wide records and
+applying narrow records forward gives 226 single-scalar mappings; this is not
+recursive compatibility normalization. The
+[offline generator](../crates/surgeist-text/tools/full-width/README.md) owns the
+private table and its reproducibility check. This selection does not change the
+Unicode editions used by ICU casing, segmentation or other property providers.
+The [Unicode 18 notice](../licenses/unicode/18.0.0/NOTICE.md) applies.
+
+## Separator-generated SPACE and full-width
+
+For #63/#72, the [native source determination](text-word-space-generation--native-determination.md)
+selects full-width eligibility for eligible separator-generated U+0020 in every
+whitespace mode. This completes the pinned Text 4 generation/preservation
+classification ambiguity without changing original SPACE preservation or
+later Phase-II style/character rules. Pinned WPT supports the operation order;
+its identified reference defects are not imported as exact-output oracles.
+This determination does not establish wbr/phrase execution or browser parity.
+
+## Text math-auto mapping data
+
+The pinned CSS Text 4 math-auto rule delegates to
+[MathML Core section 4.2](https://www.w3.org/TR/2025/CR-mathml-core-20250624/#math-auto-transform),
+W3C Candidate Recommendation Snapshot 24 June 2025, and its referenced
+[Appendix C.1](https://www.w3.org/TR/2025/CR-mathml-core-20250624/#italic-mappings).
+The complete official HTML has SHA-256
+`f61ebea74ba54c489646e6969983ef977f448c26602edff75ec4e3ba77216373`.
+The [unchanged table excerpt](../crates/surgeist-text/data/MathMLCore-20250624-italic-mappings.html)
+has SHA-256 `cdf7adc6b280864a1080ae523209bb285d9d13baf4ae3c1014eacb09eb7d9ab7`.
+Its 112 directed pairs select the specified italic targets, including U+210E
+for h; they do not invert all Unicode font decompositions or normalize text.
+The [offline generator](../crates/surgeist-text/tools/math-auto/README.md) owns
+the private numeric table. The source's 2025 W3C copyright and full applicable
+license are retained in [Text's notice](../crates/surgeist-text/NOTICE.md#mathml-core-italic-mapping).
+
+The [native cardinality determination](https://github.com/bj-data-eng/surgeist/issues/63#issuecomment-6378219209)
+selects complete original Text-node content for eligibility and substitutes
+only its surviving post-Phase-I contribution. That interpretation resolves a
+source precision gap as native policy, separately from the pinned table and
+the actual MathML default-style adapter. The
+[Text/Layout contract](../docs/text-layout-contract.md#text-transformations-and-correspondence)
+owns the execution boundary.

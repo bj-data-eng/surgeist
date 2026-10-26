@@ -1,4 +1,4 @@
-<test name="gridflex_kitchen_sink_minimise3__border_box_ltr" use-rounding="true">
+<test name="gridflex_kitchen_sink_minimise3__border_box_ltr" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
     <div source-tag="div" display="flex" direction="ltr" width="50px">

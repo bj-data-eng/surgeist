@@ -4,12 +4,15 @@ fn with_forced_control(text: &str, at: usize) -> PreparedText {
     let mut system = system();
     let source = Source::new(text);
     let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        tab_reference: None,
         source: source.clone(),
         base_style: style(),
         segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
         base_direction: ParagraphBaseDirection::LeftToRight,
         paragraph_strut: ParagraphStrut::DefaultFont,
         origins: vec![paragraph::ParagraphOrigin {
+            text_node: None,
             source,
             local: crate::Range::new(0, text.encode_utf16().count()),
             aggregate: crate::Range::new(0, text.encode_utf16().count()),
@@ -48,9 +51,18 @@ fn selected_request(
         .participants
         .iter()
         .filter_map(|participant| match participant {
-            PreparedParticipant::Control(control) => Some(ControlAllocation {
-                occurrence: control.clone(),
-                strut: None,
+            PreparedParticipant::Control(control) => Some({
+                let occurrence = control.clone();
+                ControlAllocation {
+                    boundary: matches!(
+                        occurrence.view().kind(),
+                        crate::ParagraphControlKind::InlineBoundaryStart
+                            | crate::ParagraphControlKind::InlineBoundaryEnd
+                    )
+                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    occurrence,
+                    strut: None,
+                }
             }),
             _ => None,
         })
@@ -65,7 +77,7 @@ fn selected_request(
         PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
         _ => unreachable!(),
     };
-    value.termination = termination;
+    value.termination = crate::PreparedTermination::Ordinary(termination);
     value
 }
 
@@ -205,6 +217,151 @@ fn consumed_terminal_forced_boundary_accepts_a_real_empty_paragraph_end_line() {
                 .lines()
                 .len(),
             2
+        );
+    }
+}
+
+#[test]
+fn authored_forced_break_stops_rtl_receiver_neutral_context() {
+    const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
+    fn prepare_rtl(forced: bool) -> PreparedText {
+        let source = Source::new("A.A");
+        let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            source: source.clone(),
+            base_style: Style {
+                white_space: WhiteSpace::Preserve,
+                ..style()
+            },
+            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::RightToLeft,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            origins: vec![paragraph::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: crate::Range::new(0, 3),
+                aggregate: crate::Range::new(0, 3),
+                kind: paragraph::ParagraphOriginKind::Authored,
+            }],
+            connections: Vec::new(),
+            controls: forced
+                .then_some(paragraph::ParagraphControl {
+                    at: 1,
+                    kind: paragraph::ParagraphControlKind::ForcedBreak,
+                })
+                .into_iter()
+                .collect(),
+            boundary_policies: Vec::new(),
+            replacements: Vec::new(),
+            anchor_order: forced
+                .then_some(paragraph::ParagraphAnchor {
+                    item: paragraph::ParagraphAnchorItem::Control(0),
+                    affinity: crate::Affinity::After,
+                })
+                .into_iter()
+                .collect(),
+        })
+        .unwrap();
+        system()
+            .prepare(&analyzed, PreparationOptions::default())
+            .unwrap()
+    }
+
+    for forced in [false, true] {
+        let p = prepare_rtl(forced);
+        assert_eq!(
+            p.analyzed_source().source().text().code_units(),
+            [65, 46, 65]
+        );
+        let levels = p
+            .unit_views()
+            .map(|unit| (unit.source_range(), unit.level().get()))
+            .collect::<Vec<_>>();
+        let ending = if forced {
+            let control = p.control_views().next().unwrap();
+            assert_eq!(
+                control.kind(),
+                &paragraph::ParagraphControlKind::ForcedBreak
+            );
+            assert_eq!(control.source_position().get(), 1);
+            let offer = opportunity(&p, PreparedBreakKind::Forced);
+            assert_eq!(offer.view().boundary().view().source_after().get(), 1);
+            offer
+        } else {
+            assert!(p.control_views().next().is_none());
+            assert!(
+                !p.opportunity_views()
+                    .any(|offer| offer.kind() == PreparedBreakKind::Forced)
+            );
+            opportunity(&p, PreparedBreakKind::ParagraphEnd)
+        };
+        let finish = |start, ending| {
+            let mut request = selected_request(&p, start, ending);
+            request.context.base_direction = ParagraphBaseDirection::RightToLeft;
+            request.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
+            p.select(request)
+                .unwrap()
+                .finalize(SpacingAllocations::None)
+                .unwrap()
+        };
+        let first = finish(p.boundary_views().next().unwrap().handle(), ending);
+        let mut lines = vec![first];
+        if forced {
+            lines.push(finish(
+                lines[0].selected_line().request().end.clone(),
+                opportunity(&p, PreparedBreakKind::ParagraphEnd),
+            ));
+        }
+        let mut glyphs = Vec::new();
+        for line in &lines {
+            for run in line.run_views() {
+                assert_eq!(run.face().bytes(), AHEM);
+                assert_eq!(run.font_size(), 20.0);
+                glyphs.extend(
+                    run.glyphs()
+                        .map(|glyph| (glyph.range(), glyph.id(), glyph.advance())),
+                );
+            }
+        }
+        glyphs.sort_by_key(|(range, _, _)| range.start);
+        assert_eq!(
+            glyphs,
+            [
+                (crate::Range::new(0, 1), 35, 20.0),
+                (crate::Range::new(1, 2), 16, 20.0),
+                (crate::Range::new(2, 3), 35, 20.0),
+            ]
+        );
+        let placed = placed_lines(p, PlacementCoverage::WholeParagraph, lines).unwrap();
+        assert_eq!(placed.source().text().code_units(), [65, 46, 65]);
+        assert_eq!(
+            placed
+                .lines()
+                .iter()
+                .map(|line| line.range())
+                .collect::<Vec<_>>(),
+            if forced {
+                vec![crate::Range::new(0, 1), crate::Range::new(1, 3)]
+            } else {
+                vec![crate::Range::new(0, 3)]
+            }
+        );
+        // Pinned Writing Modes4 §2.4 (bidi-algo/HL1) keeps base RTL but
+        // separates the UBA paragraphs at the authored B control. UAX9 rev52
+        // P1 retains B with the first paragraph; receiver ON then has sos R
+        // and following L. N2 resolves it R, so I2 leaves its level at1.
+        // Without B, L ON L resolves ON to L by N1 and I2 gives level2.
+        // https://www.unicode.org/reports/tr9/tr9-52.html#P1
+        // https://www.unicode.org/reports/tr9/tr9-52.html#N2
+        assert_eq!(
+            levels,
+            [
+                (crate::Range::new(0, 1), 2),
+                (crate::Range::new(1, 2), if forced { 1 } else { 2 }),
+                (crate::Range::new(2, 3), 2),
+            ],
+            "authored ForcedBreak = {forced}"
         );
     }
 }

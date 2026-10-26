@@ -6,7 +6,7 @@ use read_fonts::types::{GlyphId, GlyphId16};
 
 use super::buffer::glyph_flag::{SAFE_TO_INSERT_TATWEEL, UNSAFE_TO_BREAK, UNSAFE_TO_CONCAT};
 use super::face::hb_glyph_extents_t;
-use super::unicode::CharExt;
+use super::unicode::{CharExt, GeneralCategory};
 use super::{hb_font_t, hb_mask_t};
 use crate::hb::set_digest::hb_set_digest_t;
 use crate::hb::unicode::Codepoint;
@@ -122,6 +122,9 @@ pub struct GlyphPosition {
     /// not affect how much the line advances.
     pub y_offset: i32,
     pub(crate) var: u32,
+    // Keep the interchangeable Info/Position allocation layouts equal.
+    pub(crate) _joining_reserved: u32,
+    pub(crate) _default_ignorable_reserved: u32,
 }
 
 impl GlyphPosition {
@@ -177,6 +180,11 @@ pub struct GlyphInfo {
     /// [Read more on clusters](https://harfbuzz.github.io/clusters.html).
     pub cluster: u32,
     pub(crate) vars: [u32; 2],
+    // Low 31 bits: independent scalar lineage while normalization is active.
+    // High bit: closed ordinary-symbol presentation of the actual scalar.
+    // Neither field is derived from caller cluster numbers.
+    pub(crate) joining_lineage: u32,
+    pub(crate) default_ignorable: u32,
 }
 
 #[allow(dead_code)]
@@ -334,6 +342,10 @@ impl GlyphInfo {
     }
 
     pub(crate) fn init_unicode_props(&mut self, scratch_flags: &mut hb_buffer_scratch_flags_t) {
+        if self.is_ordinary_symbol() {
+            self.set_unicode_props(GeneralCategory::OTHER_SYMBOL.0 as u16);
+            return;
+        }
         let u = self.as_codepoint();
         let gc = u.general_category();
         let mut props = gc.0 as u16;
@@ -429,9 +441,21 @@ pub enum ShapingRefusal {
     FeatureCapacityLimit,
     /// A ligature action required overwritten bounded component history.
     ComponentHistoryLimit,
+    /// A bound original source no longer corresponds to the final input.
+    JoiningInput,
+    /// Normalization has no unambiguous original joining-bearing correspondence.
+    JoiningCorrespondence,
+    /// The selected shaping profile cannot consume the requested source actions.
+    JoiningProfile,
+    /// Bound ordinary-symbol metadata no longer matches the Unicode input.
+    OrdinarySymbolInput,
 }
 
 pub struct hb_buffer_t {
+    pub(crate) default_ignorables: super::default_ignorable::State,
+    pub(crate) default_ignorables_temporary: usize,
+    pub(crate) joining: super::original_joining::JoiningState,
+    pub(crate) ordinary_symbol_input_len: Option<usize>,
     // Information about how the text in the buffer should be treated.
     pub flags: BufferFlags,
     pub cluster_level: hb_buffer_cluster_level_t,
@@ -479,7 +503,135 @@ pub struct hb_buffer_t {
     pub max_ops: i32,
 }
 
+/// Allocation-free preflight of a known native copy/move sequence. This holds
+/// only cursor geometry and work, never glyphs, identities or carrier sets.
+pub(crate) struct BufferCopyPlan {
+    idx: usize,
+    len: usize,
+    out_len: usize,
+    separate: bool,
+    required: usize,
+    work: usize,
+}
+
+impl BufferCopyPlan {
+    fn add_work(&mut self, count: usize) -> Result<(), ShapingRefusal> {
+        self.work = self
+            .work
+            .checked_add(count)
+            .ok_or(ShapingRefusal::WorkLimit)?;
+        Ok(())
+    }
+
+    fn room(&mut self, num_in: usize, num_out: usize) -> Result<(), ShapingRefusal> {
+        let out_end = self
+            .out_len
+            .checked_add(num_out)
+            .ok_or(ShapingRefusal::GrowthLimit)?;
+        let in_end = self
+            .idx
+            .checked_add(num_in)
+            .ok_or(ShapingRefusal::GrowthLimit)?;
+        self.required = self.required.max(out_end);
+        if !self.separate && out_end > in_end {
+            self.add_work(self.out_len)?;
+            self.separate = true;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn move_to(&mut self, target: usize) -> Result<(), ShapingRefusal> {
+        if target > self.out_len {
+            let count = target - self.out_len;
+            self.room(count, count)?;
+            self.add_work(count)?;
+            self.idx = self
+                .idx
+                .checked_add(count)
+                .ok_or(ShapingRefusal::GrowthLimit)?;
+            self.out_len = target;
+        } else {
+            let count = self.out_len - target;
+            if self.idx < count {
+                let shift = count - self.idx;
+                self.add_work(self.len - self.idx)?;
+                self.len = self
+                    .len
+                    .checked_add(shift)
+                    .ok_or(ShapingRefusal::GrowthLimit)?;
+                self.idx += shift;
+                self.required = self.required.max(self.len);
+            }
+            self.add_work(count)?;
+            self.idx -= count;
+            self.out_len = target;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn has_input(&self) -> bool {
+        self.idx < self.len
+    }
+
+    pub(crate) fn copy_glyph(&mut self) -> Result<(), ShapingRefusal> {
+        self.room(0, 1)?;
+        self.add_work(1)?;
+        self.out_len += 1;
+        Ok(())
+    }
+
+    /// Insertion outputs are already debited by the native morx count guard.
+    pub(crate) fn inserted_glyphs(&mut self, count: usize) -> Result<(), ShapingRefusal> {
+        for _ in 0..count {
+            self.room(0, 1)?;
+            self.out_len += 1;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn skip_glyph(&mut self) -> Result<(), ShapingRefusal> {
+        self.add_work(1)?;
+        self.idx = self.idx.checked_add(1).ok_or(ShapingRefusal::GrowthLimit)?;
+        Ok(())
+    }
+
+    pub(crate) fn replace_glyph(&mut self) -> Result<(), ShapingRefusal> {
+        self.room(1, 1)?;
+        self.add_work(1)?;
+        self.idx = self.idx.checked_add(1).ok_or(ShapingRefusal::GrowthLimit)?;
+        self.out_len += 1;
+        Ok(())
+    }
+
+    pub(crate) fn merge_out_clusters(
+        &mut self,
+        start: usize,
+        level: u32,
+    ) -> Result<(), ShapingRefusal> {
+        let count = self.out_len - start;
+        if count >= 2 && BufferClusterLevel::new(level).is_monotone() {
+            self.add_work(count)?;
+        }
+        Ok(())
+    }
+}
+
 impl hb_buffer_t {
+    pub(crate) fn copy_plan(&self) -> BufferCopyPlan {
+        BufferCopyPlan {
+            idx: self.idx,
+            len: self.len,
+            out_len: self.out_len,
+            separate: self.have_separate_output,
+            required: self.len,
+            work: 0,
+        }
+    }
+
+    pub(crate) fn admit_copy_plan(&mut self, plan: &BufferCopyPlan) -> bool {
+        !self.default_ignorables.active
+            || (self.ensure(plan.required) && super::default_ignorable::can_copy(self, plan.work))
+    }
     pub const MAX_LEN_FACTOR: usize = 256;
     pub const MAX_LEN_MIN: usize = 65536;
     // Shaping more than a billion chars? Let us know!
@@ -493,6 +645,10 @@ impl hb_buffer_t {
     /// Creates a new `Buffer`.
     pub fn new() -> Self {
         hb_buffer_t {
+            default_ignorables: super::default_ignorable::State::default(),
+            default_ignorables_temporary: 0,
+            joining: super::original_joining::JoiningState::default(),
+            ordinary_symbol_input_len: None,
             flags: BufferFlags::empty(),
             cluster_level: HB_BUFFER_CLUSTER_LEVEL_DEFAULT,
             invisible: None,
@@ -642,6 +798,10 @@ impl hb_buffer_t {
     }
 
     fn clear(&mut self) {
+        self.default_ignorables = super::default_ignorable::State::default();
+        self.default_ignorables_temporary = 0;
+        self.joining = super::original_joining::JoiningState::default();
+        self.ordinary_symbol_input_len = None;
         self.direction = Direction::Invalid;
         self.script = None;
         self.language = None;
@@ -716,6 +876,9 @@ impl hb_buffer_t {
     }
 
     pub fn reverse_range(&mut self, start: usize, end: usize) {
+        if !super::default_ignorable::copy_work(self, end.saturating_sub(start)) {
+            return;
+        }
         if end - start < 2 {
             return;
         }
@@ -857,6 +1020,26 @@ impl hb_buffer_t {
     }
 
     pub fn replace_glyphs(&mut self, num_in: usize, num_out: usize, glyph_data: &[u32]) {
+        let mut di = self.info[self.idx].default_ignorable;
+        for i in 1..num_in {
+            let Some(combined) = super::default_ignorable::union(
+                self,
+                di,
+                self.info[self.idx + i].default_ignorable,
+            ) else {
+                return;
+            };
+            di = combined;
+        }
+        if !super::default_ignorable::output_room(
+            self,
+            num_in,
+            num_out,
+            num_in.saturating_add(num_out),
+        ) || !super::default_ignorable::copy_work(self, num_in.saturating_add(num_out))
+        {
+            return;
+        }
         if !self.make_room_for(num_in, num_out) {
             return;
         }
@@ -865,7 +1048,16 @@ impl hb_buffer_t {
 
         self.merge_clusters(self.idx, self.idx + num_in);
 
-        let orig_info = self.info[self.idx];
+        let mut orig_info = self.info[self.idx];
+        orig_info.default_ignorable = di;
+        for i in 1..num_in {
+            let lineage = super::original_joining::union(
+                self,
+                orig_info.joining_lineage(),
+                self.info[self.idx + i].joining_lineage(),
+            );
+            orig_info.set_joining_lineage(lineage);
+        }
         for i in 0..num_out {
             let ii = self.out_len + i;
             self.set_out_info(ii, orig_info);
@@ -877,6 +1069,9 @@ impl hb_buffer_t {
     }
 
     pub fn replace_glyph(&mut self, glyph_index: u32) {
+        if !super::default_ignorable::copy_work(self, 1) {
+            return;
+        }
         if self.have_separate_output || self.out_len != self.idx {
             if !self.make_room_for(1, 1) {
                 return;
@@ -893,6 +1088,8 @@ impl hb_buffer_t {
     }
 
     pub fn output_glyph(&mut self, glyph_index: u32) {
+        // Semantic output owners admit work before this primitive. Generated
+        // Unicode repair helpers rely on the output row existing on return.
         if !self.make_room_for(0, 1) {
             return;
         }
@@ -915,6 +1112,9 @@ impl hb_buffer_t {
     }
 
     pub fn output_info(&mut self, glyph_info: GlyphInfo) {
+        if !super::default_ignorable::copy_work(self, 1) {
+            return;
+        }
         if !self.make_room_for(0, 1) {
             return;
         }
@@ -925,6 +1125,9 @@ impl hb_buffer_t {
 
     /// Copies glyph at idx to output but doesn't advance idx.
     pub fn copy_glyph(&mut self) {
+        if !super::default_ignorable::copy_work(self, 1) {
+            return;
+        }
         if !self.make_room_for(0, 1) {
             return;
         }
@@ -938,9 +1141,16 @@ impl hb_buffer_t {
     /// If there's no output, just advance idx.
     #[inline(always)]
     pub fn next_glyph(&mut self) {
+        if !super::default_ignorable::copy_work(self, 1) {
+            // Generated preprocessing loops require input progress. The first
+            // refusal is already latched; no receipt can admit this output.
+            self.idx += 1;
+            return;
+        }
         if self.have_output {
             if self.have_separate_output || self.out_len != self.idx {
                 if !self.ensure(self.out_len + 1) {
+                    self.idx += 1;
                     return;
                 }
 
@@ -958,9 +1168,14 @@ impl hb_buffer_t {
     ///
     /// If there's no output, just advance idx.
     pub fn next_glyphs(&mut self, n: usize) {
+        if !super::default_ignorable::copy_work(self, n) {
+            self.idx += n;
+            return;
+        }
         if self.have_output {
             if self.have_separate_output || self.out_len != self.idx {
                 if !self.ensure(self.out_len + n) {
+                    self.idx += n;
                     return;
                 }
 
@@ -977,6 +1192,10 @@ impl hb_buffer_t {
 
     /// Advance idx without copying to output.
     pub fn skip_glyph(&mut self) {
+        if !super::default_ignorable::copy_work(self, 1) {
+            self.idx += 1;
+            return;
+        }
         self.idx += 1;
     }
 
@@ -1189,6 +1408,9 @@ impl hb_buffer_t {
     }
 
     pub fn delete_glyphs_inplace(&mut self, filter: impl Fn(&GlyphInfo) -> bool) {
+        if !super::default_ignorable::copy_work(self, self.len) {
+            return;
+        }
         // Merge clusters and delete filtered glyphs.
         // NOTE! We can't use out-buffer as we have positioning data.
         let mut j = 0;
@@ -1244,6 +1466,17 @@ impl hb_buffer_t {
             start,
             end,
             Some(true),
+            None,
+        );
+    }
+
+    /// Conservative dependencies of the dual-channel joining operation.
+    pub(crate) fn joining_dependencies(&mut self) {
+        self._set_glyph_flags(
+            UNSAFE_TO_BREAK | UNSAFE_TO_CONCAT,
+            None,
+            None,
+            Some(false),
             None,
         );
     }
@@ -1377,6 +1610,18 @@ impl hb_buffer_t {
 
         debug_assert!(i <= self.out_len + (self.len - self.idx));
 
+        // Admit every copied row, including a required shifted input tail,
+        // before changing a cursor, row, or output-buffer mode.
+        let mut plan = self.copy_plan();
+        if let Err(reason) = plan.move_to(i) {
+            return super::default_ignorable::fail(self, reason);
+        }
+        if !self.admit_copy_plan(&plan)
+            || !super::default_ignorable::copy_work(self, self.out_len.abs_diff(i))
+        {
+            return false;
+        }
+
         if self.out_len < i {
             let count = i - self.out_len;
             if !self.make_room_for(count, count) {
@@ -1420,6 +1665,10 @@ impl hb_buffer_t {
     #[must_use]
     #[inline(always)]
     pub fn ensure(&mut self, size: usize) -> bool {
+        if !super::original_joining::room(self, size, 0) {
+            self.successful = false;
+            return false;
+        }
         if size <= self.info.len() {
             true
         } else {
@@ -1435,6 +1684,44 @@ impl hb_buffer_t {
             return false;
         }
 
+        if self.joining.request.is_some() || self.default_ignorables.active {
+            let old_info = if size > self.info.capacity() {
+                self.info.capacity()
+            } else {
+                0
+            };
+            let old_pos = if size > self.pos.capacity() {
+                self.pos.capacity()
+            } else {
+                0
+            };
+            let overlap = old_info
+                .checked_mul(size_of::<GlyphInfo>())
+                .zip(old_pos.checked_mul(size_of::<GlyphPosition>()))
+                .map(|(info, pos)| info.max(pos));
+            let Some(overlap) = overlap else {
+                self.refuse(ShapingRefusal::GrowthLimit);
+                self.successful = false;
+                return false;
+            };
+            let relocation = (if old_info == 0 { 0 } else { self.info.len() })
+                .checked_add(if old_pos == 0 { 0 } else { self.pos.len() });
+            let Some(relocation) = relocation else {
+                self.refuse(ShapingRefusal::WorkLimit);
+                self.successful = false;
+                return false;
+            };
+            if !super::original_joining::room(self, size, overlap)
+                || !super::original_joining::work(self, relocation)
+            {
+                return false;
+            }
+            // Explicit bounded capacity requests avoid hidden geometric growth
+            // of the normalization row buffers alongside joining metadata.
+            self.info
+                .reserve_exact(size.saturating_sub(self.info.len()));
+            self.pos.reserve_exact(size.saturating_sub(self.pos.len()));
+        }
         self.info.resize(size, GlyphInfo::default());
         self.pos.resize(size, GlyphPosition::default());
         true
@@ -1449,6 +1736,9 @@ impl hb_buffer_t {
         if !self.have_separate_output && self.out_len + num_out > self.idx + num_in {
             debug_assert!(self.have_output);
 
+            if !super::default_ignorable::copy_work(self, self.out_len) {
+                return false;
+            }
             self.have_separate_output = true;
             for i in 0..self.out_len {
                 self.set_out_info(i, self.info[i]);
@@ -1800,6 +2090,69 @@ pub const HB_BUFFER_SCRATCH_FLAG_SHAPER0: u32 = 0x0100_0000;
 pub struct UnicodeBuffer(pub(crate) hb_buffer_t);
 
 impl UnicodeBuffer {
+    /// Present selected nonexempt Cc scalars as ordinary nonjoining symbols.
+    ///
+    /// Positions are strictly increasing scalar indices in this complete input,
+    /// independent of caller cluster values. Actual code points remain unchanged
+    /// for nominal font lookup. The closed profile has category So, combining
+    /// class zero and no control, default-ignorable, mark or whitespace roles.
+    /// Text-level bidi, script and segmentation remain the caller's authority.
+    /// Admission is atomic; failure preserves the prior binding. An empty slice
+    /// removes the binding. Appending after a nonempty binding refuses shaping
+    /// as `OrdinarySymbolInput`; rebinding the final input is permitted. Both
+    /// Unicode and glyph-buffer clear dispose this metadata.
+    ///
+    /// # Errors
+    /// Returns the exact invalid scalar index/order/character or logical input
+    /// bound, before mutating any existing semantic metadata.
+    pub fn set_ordinary_symbol_positions(
+        &mut self,
+        positions: &[u32],
+    ) -> Result<(), crate::OrdinarySymbolInputError> {
+        super::ordinary_symbol::install(&mut self.0, positions)
+    }
+
+    /// Bind both genuine Unicode joining domains to this emitted Unicode body.
+    ///
+    /// `original_map` contains strictly increasing original-domain scalar
+    /// indices, or `None` for computed presentation. `presentation_map` contains
+    /// strictly increasing scalar indices in the full actual selected-line
+    /// presentation domain. Both domains have the actual script and direction;
+    /// all mapped code points and ordinary-symbol presentation roles must match
+    /// the emitted body exactly.
+    /// Admission is atomic. Shaping revalidates the final input and profile, so
+    /// appending after binding cannot silently retain stale correspondence.
+    /// Clearing the buffer clears this request; cluster changes do not identify
+    /// source scalars and do not invalidate it.
+    /// Normalization must prove exact joining-bearing correspondence on both
+    /// channels. The operation preserves joint substitution and positioning,
+    /// conservatively marks every emitted boundary unsafe, and refuses a
+    /// requested positive tatweel-safety capability as `JoiningProfile`.
+    ///
+    /// # Errors
+    /// Returns a typed profile, count, order, code-point or logical growth
+    /// admission error, leaving any existing binding unchanged. Normalization
+    /// ambiguity is instead a `JoiningCorrespondence` shaping refusal.
+    /// Admission includes the logical borrowed correspondence spans while
+    /// copying them. Arbitrary caller-held capacity and allocator overhead
+    /// beyond those spans are outside this provider-owned storage guarantee.
+    pub fn set_joining_sources(
+        &mut self,
+        original: &crate::JoiningSource,
+        original_map: &[Option<usize>],
+        presentation: &crate::JoiningSource,
+        presentation_map: &[usize],
+    ) -> Result<(), crate::JoiningInputError> {
+        let request = super::original_joining::JoiningRequest::new(
+            &self.0,
+            original,
+            original_map,
+            presentation,
+            presentation_map,
+        )?;
+        self.0.joining = super::original_joining::JoiningState::bound(request)?;
+        Ok(())
+    }
     /// Create a new `UnicodeBuffer`.
     #[inline]
     pub fn new() -> UnicodeBuffer {
@@ -1988,11 +2341,23 @@ impl GlyphBuffer {
         self.0.shaping_status()
     }
 
-    /// Returns the length of the data of the buffer.
+    /// Returns immutable default-ignorable custody for this complete result.
     ///
-    /// When called before shaping this is the number of unicode codepoints
-    /// contained in the buffer. When called after shaping it returns the number
-    /// of glyphs stored.
+    /// Refused partial output never admits a receipt. Input indices are original
+    /// body scalar ordinals; glyph indices use the final returned array order.
+    ///
+    /// # Errors
+    /// Returns the first latched shaping refusal for this buffer lifecycle.
+    pub fn default_ignorable_receipt(
+        &self,
+    ) -> Result<crate::DefaultIgnorableReceipt<'_>, ShapingRefusal> {
+        match self.shaping_status() {
+            ShapingStatus::Refused(reason) => Err(reason),
+            ShapingStatus::Complete => Ok(self.0.default_ignorables.receipt()),
+        }
+    }
+
+    /// Returns the number of final glyphs in this buffer.
     #[inline]
     pub fn len(&self) -> usize {
         self.0.len

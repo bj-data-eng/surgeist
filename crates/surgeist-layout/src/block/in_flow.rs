@@ -20,6 +20,7 @@ where
         let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
         let style = match projection.kind() {
             InlineParticipantKindOf::InlineText(_) => return true,
+            InlineParticipantKindOf::TextControl(_) => return true,
             InlineParticipantKindOf::Box(style) => style,
             InlineParticipantKindOf::LineBreak(input) => {
                 return !input.display().is_none()
@@ -43,6 +44,7 @@ where
 }
 
 pub(super) struct InFlowResult<Node, S: LayoutScalar> {
+    pub(super) formatted: Option<crate::text_layout::formatted::FormattedFlow<Node, S>>,
     pub(super) content_size: LogicalSizeOf<S>,
     pub(super) scroll_content_size: LogicalSizeOf<S>,
     pub(super) owned_float_block_end: S,
@@ -175,92 +177,139 @@ where
     let mut contributions = ScrollContributionAccumulatorOf::new(contribution_seed);
 
     let mut index = 0;
+    if let Some(text) = tree.text_computation() {
+        text.formatted_begin_flow(
+            input,
+            inner_inline.map(AvailableOf::definite).unwrap_or(
+                constants
+                    .flow_axes
+                    .logical_size(constants.available_content)
+                    .inline,
+            ),
+            set_layout,
+        );
+    }
+    let mut formatted = tree
+        .text_computation()
+        .and_then(|text| text.formatted_new_flow());
+    let mut first_in_flow = true;
+    let mut inline_indent_state = None;
+    let mut line_box_context = crate::line_box::LineBoxContext::new(
+        constants.line_box_direction_policy,
+        constants.direction,
+    );
+    let mut hyphenation_state =
+        crate::hyphenation::LineHyphenationState::new(constants.hyphenate_limit_lines);
+    let tail_active = constants.hyphenate_limit_last == crate::HyphenateLimitLast::Always
+        && matches!(
+            inner_inline.map(AvailableOf::definite).unwrap_or(
+                constants
+                    .flow_axes
+                    .logical_size(constants.available_content)
+                    .inline
+            ),
+            AvailableOf::Definite(_)
+        );
+    let mut tail_ledger = crate::hyphenation::BlockTailLedger::default();
     while index < children.len() {
         let source_index = index;
         let child = children[index];
         let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
-        let child_start = match projection.kind() {
-            InlineParticipantKindOf::Box(style) => {
-                if style.display == crate::Display::None {
-                    if set_layout {
-                        tree.set_unrounded(
-                            child,
-                            NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(
-                                source_index,
-                            )),
-                        );
-                        tree.compute_child(
-                            child,
-                            ComputeInputOf::<S>::hidden_in_containing_pass(
-                                ContainingLayoutContext::new(
-                                    constants.flow_axes,
-                                    ParentFormattingContext::BlockFlow,
+        // Dispatch the complete admitted capture before transparent-leading
+        // nodes are handled individually. The run owner retains their normal
+        // hidden computation and absolute static-position side effects.
+        let captured_start = tree
+            .text_computation()
+            .is_some_and(|state| state.paragraph_starting(node, &children[index..]).is_some());
+        let child_start = if captured_start {
+            let run_start = index;
+            index = inline_run_end(tree, node, children, constants, index + 1)?;
+            InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(run_start, index))
+        } else {
+            match projection.kind() {
+                InlineParticipantKindOf::Box(style) => {
+                    if style.display == crate::Display::None {
+                        if set_layout {
+                            tree.set_unrounded(
+                                child,
+                                NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(
+                                    source_index,
+                                )),
+                            );
+                            tree.compute_child(
+                                child,
+                                ComputeInputOf::<S>::hidden_in_containing_pass(
+                                    ContainingLayoutContext::new(
+                                        constants.flow_axes,
+                                        ParentFormattingContext::BlockFlow,
+                                    ),
+                                    input.settled_auto_scrollbars(),
                                 ),
-                                input.settled_auto_scrollbars(),
-                            ),
-                        )?;
+                            )?;
+                        }
+                        index += 1;
+                        continue;
                     }
-                    index += 1;
-                    continue;
+                    if style.common.position == Position::Absolute {
+                        static_positions.push((
+                            child,
+                            absolute_static_position(
+                                cursor_block + active_margin.resolve(),
+                                constants,
+                                constants.containing_size(logical_node_inner_size),
+                            ),
+                        ));
+                        index += 1;
+                        continue;
+                    }
+                    if crate::inline::starts_run(tree.layout_input(child)) {
+                        let run_start = index;
+                        index = inline_run_end(tree, node, children, constants, index + 1)?;
+                        InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
+                            run_start, index,
+                        ))
+                    } else {
+                        InFlowChildStart::FlowBox(style)
+                    }
                 }
-                if style.common.position == Position::Absolute {
-                    static_positions.push((
-                        child,
-                        absolute_static_position(
-                            cursor_block + active_margin.resolve(),
-                            constants,
-                            constants.containing_size(logical_node_inner_size),
-                        ),
-                    ));
-                    index += 1;
-                    continue;
-                }
-                if style.display.is_inline_level() && style.float.is_none() {
+                InlineParticipantKindOf::InlineText(_)
+                | InlineParticipantKindOf::TextControl(_) => {
                     let run_start = index;
                     index = inline_run_end(tree, node, children, constants, index + 1)?;
                     InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
                         run_start, index,
                     ))
-                } else {
-                    InFlowChildStart::FlowBox(style)
                 }
-            }
-            InlineParticipantKindOf::InlineText(_) => {
-                let run_start = index;
-                index = inline_run_end(tree, node, children, constants, index + 1)?;
-                InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
-                    run_start, index,
-                ))
-            }
-            InlineParticipantKindOf::LineBreak(line_break) => {
-                if line_break.display().is_none() {
-                    if set_layout {
-                        tree.set_unrounded(
-                            child,
-                            NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(
-                                source_index,
-                            )),
-                        );
+                InlineParticipantKindOf::LineBreak(line_break) => {
+                    if line_break.display().is_none() {
+                        if set_layout {
+                            tree.set_unrounded(
+                                child,
+                                NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(
+                                    source_index,
+                                )),
+                            );
+                        }
+                        index += 1;
+                        continue;
                     }
-                    index += 1;
-                    continue;
+                    visible_line_break_in_flow(tree, node, child, constants.flow_axes)?;
+
+                    let run_start = index;
+                    index = inline_run_end(tree, node, children, constants, index + 1)?;
+                    InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
+                        run_start, index,
+                    ))
                 }
-                visible_line_break_in_flow(tree, node, child, constants.flow_axes)?;
+                InlineParticipantKindOf::InlineBoundary(_) => {
+                    visible_inline_boundary_in_flow(tree, node, child, constants.flow_axes)?;
 
-                let run_start = index;
-                index = inline_run_end(tree, node, children, constants, index + 1)?;
-                InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
-                    run_start, index,
-                ))
-            }
-            InlineParticipantKindOf::InlineBoundary(_) => {
-                visible_inline_boundary_in_flow(tree, node, child, constants.flow_axes)?;
-
-                let run_start = index;
-                index = inline_run_end(tree, node, children, constants, index + 1)?;
-                InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
-                    run_start, index,
-                ))
+                    let run_start = index;
+                    index = inline_run_end(tree, node, children, constants, index + 1)?;
+                    InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
+                        run_start, index,
+                    ))
+                }
             }
         };
         let child_style = match child_start {
@@ -270,6 +319,25 @@ where
                     node,
                     children,
                     InlineRunContext {
+                        tail: if !tail_active {
+                            crate::text_layout::fit::TailContext::Unrestricted
+                        } else if children[transition.end..].iter().all(|&node| {
+                            match InlineParticipantProjection::lookup::<Tree, M>(tree, node).kind()
+                            {
+                                InlineParticipantKindOf::Box(style) => {
+                                    style.display == crate::Display::None
+                                        || style.common.position == Position::Absolute
+                                        || !style.float.is_none()
+                                }
+                                _ => false,
+                            }
+                        }) {
+                            crate::text_layout::fit::TailContext::CompleteBlock
+                        } else {
+                            crate::text_layout::fit::TailContext::Unresolved
+                        },
+                        hyphenation_state,
+                        line_box_context,
                         source_index_start: transition.start,
                         cursor_block,
                         owned_float_block_end,
@@ -277,8 +345,18 @@ where
                         input,
                         node_inner_size,
                         set_layout,
+                        indent_state: inline_indent_state.unwrap_or_else(|| {
+                            crate::text_indent::IndentLineState::new(
+                                first_in_flow && constants.first_formatted,
+                            )
+                        }),
                     },
                     InlineRunTransitionState {
+                        formatted: &mut formatted,
+                        indent_state: &mut inline_indent_state,
+                        line_box_context: &mut line_box_context,
+                        hyphenation_state: &mut hyphenation_state,
+                        tail_ledger: &mut tail_ledger,
                         cursor_block: &mut cursor_block,
                         content_size: &mut content_size,
                         scroll_content_size: &mut scroll_content_size,
@@ -291,14 +369,30 @@ where
                             &mut active_margin_can_collapse_with_parent,
                         all_in_flow_children_can_collapse_through:
                             &mut all_in_flow_children_can_collapse_through,
-                        float_exclusions: &float_exclusions,
+                        float_exclusions: &mut float_exclusions,
+                        float_intrinsics: &mut float_intrinsics,
+                        pending_floats: &mut pending_floats,
+                        owned_float_block_end: &mut owned_float_block_end,
                         contributions: &mut contributions,
                     },
                 )?;
+                first_in_flow &= inline_indent_state.is_none();
                 continue;
             }
             InFlowChildStart::FlowBox(style) => style,
         };
+
+        let child_indent_context = crate::text_indent::BlockIndentContext {
+            inherited: constants.text_indent,
+            first_formatted: first_in_flow && constants.first_formatted,
+        };
+        if child_style.float.is_none() {
+            if tail_active {
+                tail_ledger.child_block();
+            }
+            first_in_flow = false;
+            inline_indent_state = None;
+        }
 
         let unresolved_margin = constants.flow_axes.zip_physical_edges_with_inline_extent(
             *child_style.common.margin,
@@ -362,7 +456,8 @@ where
                 AvailableOf::<S>::MAX_CONTENT,
             )),
         )
-        .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars());
+        .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
+        .with_block_indent_context(child_indent_context);
         let avoids_float_exclusions = block_child_avoids_float_exclusions(&child_style);
         let inherits_float_exclusions = set_layout
             && child_style.float.is_none()
@@ -532,7 +627,8 @@ where
                     ),
                     band_available,
                 )
-                .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars());
+                .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
+                .with_block_indent_context(child_indent_context);
             }
 
             output = tree.compute_child(child, child_input)?;
@@ -555,6 +651,7 @@ where
                 continue;
             }
             let pending_float = PendingFloat {
+                accepted: None,
                 node: child,
                 source_index,
                 side: child_style.float,
@@ -600,6 +697,18 @@ where
             continue;
         }
         resolved_terminal_float_block_end = None;
+        if child_style.display.inner_display() == crate::Display::Block
+            && let Some(flow) = &mut formatted
+        {
+            let anonymous =
+                tree.node_input(child).block_generation == crate::BlockGeneration::Anonymous;
+            if let Some(item) = tree
+                .text_computation()
+                .and_then(|text| text.formatted_child(child, child_input, anonymous))
+            {
+                flow.items.push(item);
+            }
+        }
         let inset_offset = relative_inset_offset(
             constants
                 .flow_axes
@@ -786,7 +895,17 @@ where
         index += 1;
     }
 
+    if tail_active && tail_ledger.needs_continuation() {
+        return Err(super::inline_run::text_run_error(
+            node,
+            crate::text_layout::fit::FitError::MissingBlockTail,
+        ));
+    }
+    if let Some(text) = tree.text_computation() {
+        text.formatted_record_traversal(&formatted);
+    }
     Ok(InFlowResult {
+        formatted,
         content_size,
         scroll_content_size,
         owned_float_block_end,
@@ -853,7 +972,7 @@ fn set_parent_inline_available<S: LayoutScalar>(
     clippy::type_complexity,
     reason = "the private child-size helper preserves the session's generic error envelope"
 )]
-fn in_flow_child_known_size<'input, Tree, M>(
+pub(super) fn in_flow_child_known_size<'input, Tree, M>(
     tree: &Tree,
     child: <Tree as Traverse>::Node,
     style: &BlockChildProjection<'_, Tree::Scalar>,
@@ -923,7 +1042,7 @@ where
     Ok(child_flow_axes.physical_size(known))
 }
 
-fn in_flow_child_available_inline<S: LayoutScalar>(
+pub(super) fn in_flow_child_available_inline<S: LayoutScalar>(
     style: &BlockChildProjection<'_, S>,
     child_flow_axes: crate::geometry::FlowAxes,
     available_inline: Option<S>,
@@ -1004,7 +1123,9 @@ fn resolved_length_auto_or<S: LayoutScalar>(value: ResolvedLengthAutoOf<S>, auto
     }
 }
 
-fn resolved_length_auto_fallback_zero<S: LayoutScalar>(value: ResolvedLengthAutoOf<S>) -> S {
+pub(super) fn resolved_length_auto_fallback_zero<S: LayoutScalar>(
+    value: ResolvedLengthAutoOf<S>,
+) -> S {
     resolved_length_auto_or(value, S::ZERO)
 }
 
@@ -1030,7 +1151,12 @@ fn in_flow_child_inline_offset<S: LayoutScalar>(
     if item_outer_inline < container_inner_inline {
         let free_space = container_inner_inline - item_outer_inline;
         match constants.text_align {
-            TextAlign::Auto => {}
+            TextAlign::Start
+            | TextAlign::End
+            | TextAlign::Left
+            | TextAlign::Right
+            | TextAlign::Center
+            | TextAlign::Justify => {}
             TextAlign::LegacyCenter => inline = inline + free_space / S::from_f64(2.0),
             TextAlign::LegacyLeft
                 if constants

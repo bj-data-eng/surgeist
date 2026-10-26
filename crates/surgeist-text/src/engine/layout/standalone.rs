@@ -1,18 +1,209 @@
 // Copyright 2021 the Parley Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Greedy standalone policy adapted from Parley 0.9 `layout/line_break.rs`.
-//! Preliminary rows nominate only real eligible endpoints. Their actual fit is
-//! measured by the selected-line finalizer. Progress is a mixed-item endpoint, including zero-source
-//! atomic occurrences; no mutable paragraph or guessed convergence count exists.
-
+//! The raw chooser retains its own ordinary/emergency policy and metric profile.
+//! Every candidate uses the same selected-line finalizer and genuine mixed cuts.
+use super::super::{FinalizedLine, PreparedData, shape::ShapeContext};
+use super::{data::*, finalize_standalone, placement};
+use crate::protocol::prepared::AlternativeDefinition;
+use crate::protocol::selection::standalone_request;
+use crate::protocol::{
+    PreparedAlternative, PreparedBreakKind, PreparedOpportunity, PreparedTermination,
+};
+use crate::{Result, ValidatedOptions, Wrap};
 use std::sync::Arc;
 
-use super::super::{
-    BreakKind, FinalizedLine, LineSelection, PreparedData, analysis::Boundary, shape::ShapeContext,
-};
-use super::{data::*, finalize_standalone, finite, placement};
-use crate::{InlineBoxKind, OverflowWrap, Range, Result, TextNumericPhase, ValidatedOptions, Wrap};
+/// Raw emitted history stays invocation-local. Indentation's each-line state is
+/// separate from this actual first-formatted-line observation.
+struct RawAcceptedLine {
+    line: FinalizedLine,
+    first: bool,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct RawEntry<'a> {
+    start: usize,
+    incoming: Option<&'a crate::HyphenationContinuation>,
+    accepted: &'a [RawAcceptedLine],
+}
+
+pub(super) enum RawRoleBasis<'a> {
+    Actual { first: bool },
+    Prospective { entry: RawEntry<'a> },
+}
+
+impl RawRoleBasis<'_> {
+    pub(super) fn initial(&self, end: crate::LineEnd) -> crate::FormattedLineContext {
+        match self {
+            Self::Actual { first } => crate::FormattedLineContext::new(
+                Some(*first),
+                Some(end == crate::LineEnd::Paragraph),
+            ),
+            // A measurement can describe a receiving line even while its query
+            // is on the actual first line. Never copy the query's role flags.
+            Self::Prospective { .. } => crate::FormattedLineContext::default(),
+        }
+    }
+
+    pub(super) fn resolve(
+        &self,
+        prepared: &Arc<PreparedData>,
+        request: &crate::LineSelectionRequest,
+        profile: crate::protocol::selection::LineMetricPolicy,
+        scratch: &mut ShapeContext,
+    ) -> Result<crate::FormattedLineContext> {
+        use crate::{FlowSegmentRole, LineEnd};
+        let Self::Prospective { entry } = self else {
+            return Ok(self.initial(request.context.end));
+        };
+        let target = &request.termination;
+        if !matches!(
+            target,
+            PreparedTermination::Measurement(_) | PreparedTermination::PhraseMeasurement(_)
+        ) {
+            return Err(invalid_raw_flow());
+        }
+        let handle = crate::PreparedText {
+            inner: Arc::clone(prepared),
+        };
+        let query_start = crate::PreparedBoundary {
+            prepared: Arc::clone(prepared),
+            index: entry.start,
+        };
+        let flow = handle.measurement_flow(&query_start, entry.incoming, target)?;
+        let phrase = matches!(target, PreparedTermination::PhraseMeasurement(_));
+        let mut first = if phrase {
+            entry.accepted.is_empty()
+        } else {
+            manual_entry_first(prepared, *entry, &flow.entry())?
+        };
+        let mut observations = Vec::new();
+        for segment in flow.segments() {
+            let mut context = request.context.clone();
+            context.formatted_line = crate::FormattedLineContext::default();
+            context.start = if segment.start().view().participant_offset() == 0 {
+                crate::LineStart::Paragraph
+            } else {
+                crate::LineStart::Continuation
+            };
+            context.end = if segment.role() == FlowSegmentRole::Target {
+                LineEnd::Soft
+            } else {
+                segment
+                    .mandatory_end()
+                    .map_or(LineEnd::Soft, |offer| match offer.view().kind() {
+                        PreparedBreakKind::Forced => LineEnd::Forced,
+                        PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
+                        _ => LineEnd::Soft,
+                    })
+            };
+            let observation_request = crate::FlowObservationRequest {
+                context,
+                atomics: crate::protocol::selection::standalone_atomics(
+                    prepared,
+                    segment.start().index,
+                    segment.end().index,
+                )?,
+                controls: Vec::new(),
+                line_box_struts: Vec::new(),
+                line_strut: None,
+                boundary_context: Vec::new(),
+            };
+            observations.push(super::flow::observe(
+                &handle,
+                &segment,
+                &observation_request,
+                profile,
+                scratch,
+            )?);
+        }
+        flow.validate_observations(&observations)?;
+        let mut later_line = false;
+        for observation in &observations {
+            let segment = observation.segment();
+            let forced = segment
+                .mandatory_end()
+                .is_some_and(|offer| offer.view().kind() == PreparedBreakKind::Forced);
+            match segment.role() {
+                FlowSegmentRole::EntryPrefix => {
+                    let preceding = observation.has_retained_flow_participation() || forced;
+                    if phrase && preceding {
+                        return Err(invalid_raw_flow());
+                    }
+                    first &= !preceding;
+                }
+                FlowSegmentRole::PriorPartition => {
+                    // This is Raw's admission + emitted-line contract, not an
+                    // assertion that Native retained participation emits a line.
+                    let admitted = segment.mandatory_end().is_some()
+                        || raw_soft_admitted(prepared, segment.start().index, segment.end().index);
+                    first &= !admitted;
+                }
+                FlowSegmentRole::Target => {
+                    // A genuine manual cut schedules the receiving Paragraph
+                    // even if its indication is Before-only/empty at body end.
+                    later_line |=
+                        segment.alternative().is_some() || segment.outgoing().is_some() || forced;
+                }
+                FlowSegmentRole::Remaining => {
+                    // Neutral trailing custody can close this hypothetical
+                    // unbroken line. A real break or receiving prefix cannot.
+                    later_line |= observation.has_retained_flow_participation()
+                        || forced
+                        || segment.incoming().is_some();
+                }
+            }
+        }
+        // The raw call owns the complete single container. Its recipe completion
+        // has no external child tail; actual trailing Forced/empty work above is
+        // still required and never erased by a Soft measurement API ending.
+        Ok(crate::FormattedLineContext::new(
+            Some(first),
+            Some(!later_line),
+        ))
+    }
+}
+
+fn invalid_raw_flow() -> crate::Error {
+    crate::protocol::protocol_error(crate::ProtocolError::InvalidMeasurementFlow)
+}
+
+fn manual_entry_first(
+    prepared: &Arc<PreparedData>,
+    entry: RawEntry<'_>,
+    word_entry: &crate::PreparedBoundary,
+) -> Result<bool> {
+    let at = word_entry.view().participant_offset();
+    for row in entry.accepted {
+        let request = &row.line.selected.request;
+        let from = request.start.view().participant_offset();
+        let to = request.end.view().participant_offset();
+        if from <= at && at < to {
+            if !row.first {
+                return Ok(false);
+            }
+            if from == at {
+                return Ok(true);
+            }
+            let participant = crate::PreparedText {
+                inner: Arc::clone(prepared),
+            }
+            .participants()
+            .nth(at)
+            .ok_or_else(invalid_raw_flow)?;
+            let line = receipt(&row.line);
+            return Ok(!line
+                .prefix_at(&crate::TextSeam::BeforeParticipant(participant))?
+                .has_retained_flow_participation());
+        }
+    }
+    if at < prepared.tables.boundaries[entry.start].participant {
+        // A backwards whole-word hypothesis needs the actual containing prefix
+        // receipt. Its absence is not permission to guess first/nonfirst.
+        return Err(invalid_raw_flow());
+    }
+    Ok(entry.accepted.is_empty())
+}
 
 pub(super) fn layout(
     prepared: Arc<PreparedData>,
@@ -22,354 +213,527 @@ pub(super) fn layout(
     let authored = options.authored();
     let mut lines = Vec::new();
     let mut start = 0;
-    let mut source_start = 0;
     let mut paragraph_start = true;
+    let mut incoming = None;
     loop {
         let scope = lines.is_empty() || (authored.indent.each_line && paragraph_start);
         let enabled =
             authored.indent.first_line || authored.indent.each_line || authored.indent.hanging;
         let indent = if enabled && (scope ^ authored.indent.hanging) {
-            finite(
-                "text indent",
-                TextNumericPhase::Finalization,
-                authored.indent.amount,
-            )?
+            authored.indent.amount
         } else {
             0.0
         };
-        let line = choose(&prepared, start, source_start, indent, options, scratch)?;
-        let end = line.selection.items.end;
-        source_start = line.selection.source.end;
-        paragraph_start = line.selection.break_kind == BreakKind::Explicit;
-        let done = line.selection.break_kind == BreakKind::End;
-        lines.push(line);
+        let line = choose(
+            &prepared,
+            RawEntry {
+                start,
+                incoming: incoming.as_ref(),
+                accepted: &lines,
+            },
+            indent,
+            options,
+            scratch,
+        )?;
+        let request = &line.selected.request;
+        incoming = request
+            .alternative
+            .clone()
+            .and_then(crate::HyphenationContinuation::from_alternative);
+        start = request.end.index;
+        paragraph_start = request.context.end == crate::LineEnd::Forced;
+        let done = request.context.end == crate::LineEnd::Paragraph;
+        let first = lines.is_empty();
+        lines.push(RawAcceptedLine { line, first });
         if done {
             break;
         }
-        start = end;
     }
-    // An unconstrained paragraph still has one real shared alignment width.
-    // Boundary selection does not depend on that later alignment choice. Re-run
-    // the very same finalizer with complete context; never mutate prepared rows.
     if authored.width.is_none() {
         let width = lines
             .iter()
-            .map(|line| {
-                let metrics = line.finalized.data.metrics;
-                (metrics.advance + line.selection.indent.max(0.0) - metrics.trailing_whitespace)
-                    .max(0.0)
+            .map(|row| {
+                (row.line
+                    .data
+                    .measurements
+                    .as_ref()
+                    .expect("finalized raw measures")
+                    .max_content_contribution()
+                    .advance()
+                    + row.line.selected.request.context.indent.max(0.0))
+                .max(0.0)
             })
             .fold(0.0, f64::max);
         let mut resolved = Vec::with_capacity(lines.len());
-        for line in lines {
-            let mut selection = line.selection;
-            selection.available = Some(width);
-            resolved.push(ChosenLine {
-                finalized: finalize_standalone(
-                    Arc::clone(&prepared),
-                    selection.clone(),
-                    authored.quantize,
-                    scratch,
-                )?,
-                selection,
-            });
+        for row in lines {
+            let mut request = row.line.selected.request.clone();
+            request.context.available_inline = Some(width);
+            resolved.push(finalize_standalone(
+                Arc::clone(&prepared),
+                request,
+                authored.quantize,
+                scratch,
+                &mut RawRoleBasis::Actual { first: row.first },
+            )?);
         }
-        lines = resolved;
+        return placement::place(resolved.into_iter().map(Arc::new).collect());
     }
-    placement::place(
-        lines
-            .into_iter()
-            .map(|line| Arc::new(line.finalized))
-            .collect(),
-    )
+    placement::place(lines.into_iter().map(|row| Arc::new(row.line)).collect())
 }
 
-/// Only actual break candidates are ever sent to the shaping finalizer.
-/// Preliminary advances nominate the existing greedy endpoint; they never
-/// supply committed geometry or establish that a selected line fits.
-fn choose(
+fn fits(line: &FinalizedLine, width: Option<f64>) -> Result<bool> {
+    let Some(width) = width else { return Ok(true) };
+    let available = super::finite(
+        "raw available span",
+        crate::TextNumericPhase::Finalization,
+        width - line.selected.request.context.indent,
+    )?;
+    let measure = line
+        .data
+        .measurements
+        .as_ref()
+        .expect("finalized raw measures")
+        .fit();
+    let occupied = super::finite(
+        "raw occupied span",
+        crate::TextNumericPhase::Finalization,
+        measure.occupied_end() - measure.occupied_start(),
+    )?;
+    Ok(measure.advance() <= available && occupied <= available)
+}
+
+/// Raw's actual nonmandatory admission is intentionally distinct from Native's
+/// post-discard Soft participation rule.
+fn raw_soft_admitted(prepared: &PreparedData, start: usize, end: usize) -> bool {
+    use crate::protocol::prepared::ParticipantData;
+    let tables = &prepared.tables;
+    let from = tables.boundaries[start].participant;
+    let to = tables.boundaries[end].participant;
+    to != tables.participants.len()
+        && tables.participants[from..to]
+            .iter()
+            .any(|participant| match *participant {
+                ParticipantData::Text(i) => !tables.units[i].atoms.is_empty(),
+                ParticipantData::Atomic(i) => {
+                    prepared.analyzed.processed.source().boxes()[tables.atomics[i].occurrence]
+                        .kind()
+                        == crate::InlineBoxKind::InFlow
+                }
+                ParticipantData::Control(_) | ParticipantData::ComputedLineBoundary(_) => false,
+            })
+}
+
+fn automatic_allowed(
     prepared: &Arc<PreparedData>,
-    start: usize,
-    source_start: usize,
+    alternative: usize,
+    entry: RawEntry<'_>,
     indent: f64,
     options: ValidatedOptions,
     scratch: &mut ShapeContext,
-) -> Result<ChosenLine> {
-    let mut nomination = nominate(prepared, start, indent, options)?;
-    if nomination.end == prepared.shaped.items.len() && nomination.kind != BreakKind::Explicit {
-        nomination.kind = BreakKind::End;
-    }
-    loop {
-        let selection = select(
-            prepared,
-            start,
-            nomination.end,
-            source_start,
+    conditional: Option<&crate::PreparedConditionalOpportunity>,
+) -> Result<bool> {
+    let AlternativeDefinition::Automatic { cut, .. } =
+        prepared.tables.alternatives[alternative].definition
+    else {
+        return Ok(true);
+    };
+    let word = prepared.tables.hyphenation_cuts[cut]
+        .word
+        .expect("automatic cut has a lexical owner");
+    let handle = crate::PreparedWord {
+        prepared: Arc::clone(prepared),
+        index: word,
+    };
+    let portions = if let Some(conditional) = conditional {
+        conditional.manual_portions()?
+    } else {
+        handle.view().portions()?
+    };
+    for portion in portions {
+        if !portion.has_manual_partition()
+            || prepared.tables.hyphenation_cuts[cut].boundary <= portion.start
+            || prepared.tables.hyphenation_cuts[cut].boundary > portion.end
+        {
+            continue;
+        }
+        let mut request = standalone_request(
+            Arc::clone(prepared),
+            portion.start,
+            PreparedTermination::Measurement(portion.clone()),
+            portion.alternative(),
+            options.authored().width,
             indent,
-            nomination.kind,
-            options,
-        );
+            options.authored().alignment,
+        )?;
+        request.incoming = portion.incoming();
         let line = finalize_standalone(
             Arc::clone(prepared),
-            selection.clone(),
+            request,
             options.authored().quantize,
             scratch,
+            &mut RawRoleBasis::Prospective { entry },
         )?;
-        let fits = options.authored().width.is_none_or(|width| {
-            line.data.metrics.advance - line.data.metrics.trailing_whitespace <= width - indent
+        if fits(&line, options.authored().width)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn choose(
+    prepared: &Arc<PreparedData>,
+    entry: RawEntry<'_>,
+    indent: f64,
+    options: ValidatedOptions,
+    scratch: &mut ShapeContext,
+) -> Result<FinalizedLine> {
+    let RawEntry {
+        start, incoming, ..
+    } = entry;
+    let tables = &prepared.tables;
+    let mut ordinary = None;
+    let mut first = None;
+    let mut emergency = None;
+    let mut emergency_first = None;
+    for (index, offer) in
+        tables
+            .opportunities
+            .iter()
+            .enumerate()
+            .skip(tables.opportunities.partition_point(|row| {
+                tables.boundaries[row.boundary].participant < tables.boundaries[start].participant
+            }))
+    {
+        let boundary = tables.boundaries[offer.boundary];
+        if boundary.participant < tables.boundaries[start].participant
+            || (boundary.participant == tables.boundaries[start].participant
+                && offer.kind != PreparedBreakKind::ParagraphEnd)
+        {
+            continue;
+        }
+        let mandatory = matches!(
+            offer.kind,
+            PreparedBreakKind::Forced | PreparedBreakKind::ParagraphEnd
+        );
+        if !mandatory && !raw_soft_admitted(prepared, start, offer.boundary) {
+            continue;
+        }
+        if options.authored().width.is_none() && !mandatory {
+            continue;
+        }
+        let previous = boundary.atom.checked_sub(1);
+        let wrapping = previous.is_none_or(|atom| {
+            prepared.analyzed.styles[prepared.analyzed.analysis.infos[atom].1]
+                .style
+                .authored()
+                .wrap
+                == Wrap::Word
         });
-        if fits
-            || nomination.unwrapped
-            || initial_atomic_overflow(prepared, &line, nomination.initial_box)
-        {
-            return Ok(ChosenLine {
-                finalized: line,
-                selection,
+        if !wrapping && !mandatory {
+            continue;
+        }
+        let atomic = tables
+            .participants
+            .get(boundary.participant)
+            .is_some_and(|row| {
+                matches!(row, crate::protocol::prepared::ParticipantData::Atomic(_))
+            })
+            || boundary.participant.checked_sub(1).is_some_and(|i| {
+                matches!(
+                    tables.participants[i],
+                    crate::protocol::prepared::ParticipantData::Atomic(_)
+                )
             });
-        }
-        // These are source-eligible endpoints, not receipts for previously
-        // shaped prefixes. Each retry strictly decreases the actual endpoint,
-        // so no complete candidate/context is revisited and no pass cap exists.
-        nomination.regular.retain(|end| *end < nomination.end);
-        nomination.emergency.retain(|end| *end < nomination.end);
-        if let Some(end) = nomination
-            .regular
-            .pop()
-            .or_else(|| nomination.emergency.pop())
-        {
-            nomination.end = end;
-            nomination.kind = BreakKind::Soft;
-            nomination.initial_box = None;
-        } else {
-            // No earlier permitted boundary exists in this first fragment.
-            // Existing standalone policy deliberately accepts its overflow.
-            return Ok(ChosenLine {
-                finalized: line,
-                selection,
-            });
-        }
-    }
-}
-
-/// Transient private chooser state; only the finalized selected owner is published.
-struct ChosenLine {
-    finalized: FinalizedLine,
-    selection: LineSelection,
-}
-
-struct Nomination {
-    end: usize,
-    kind: BreakKind,
-    regular: Vec<usize>,
-    emergency: Vec<usize>,
-    initial_box: Option<usize>,
-    unwrapped: bool,
-}
-
-fn nominate(
-    prepared: &PreparedData,
-    start: usize,
-    indent: f64,
-    options: ValidatedOptions,
-) -> Result<Nomination> {
-    let items = &prepared.shaped.items;
-    let mut result = Nomination {
-        end: items.len(),
-        kind: BreakKind::End,
-        regular: Vec::new(),
-        emergency: Vec::new(),
-        initial_box: None,
-        unwrapped: false,
-    };
-    if options.authored().width.is_none() {
-        if let Some(offset) = items[start..].iter().position(|item| matches!(*item,
-            ShapedItem::TextCluster(index) if prepared.shaped.clusters[index].whitespace==Whitespace::Newline)) {
-            result.end=start+offset+1;
-            result.kind=BreakKind::Explicit;
-        }
-        return Ok(result);
-    }
-    let available = finite(
-        "standalone available span",
-        TextNumericPhase::Finalization,
-        options.authored().width.unwrap() - indent,
-    )?;
-    let mut cursor = start;
-    let mut advance = 0.0;
-    let mut previous_wrap = Wrap::Word;
-    let mut any_text = false;
-    let mut any_wrapped_text = false;
-    while cursor < items.len() {
-        let mut end = cursor + 1;
-        match items[cursor] {
-            ShapedItem::Anchor { .. } => {}
-            ShapedItem::InlineBox { occurrence, .. } => {
-                let item = prepared.analyzed.processed.source().boxes()[occurrence];
-                let delta = if item.kind() == InlineBoxKind::InFlow {
-                    item.size().width
-                } else {
-                    0.0
-                };
-                let next = finite(
-                    "standalone preliminary atomic advance",
-                    TextNumericPhase::Finalization,
-                    advance + delta,
-                )?;
-                if next <= available || previous_wrap != Wrap::Word {
-                    advance = next;
-                    // Cached standalone policy permits a break after either
-                    // box kind. OutOfFlow still contributes no width and is
-                    // not an analysis/shaping barrier.
-                    record(&mut result.regular, end, start);
-                } else {
-                    if advance == 0.0 {
-                        result.end = end;
-                        result.initial_box = Some(occurrence);
-                    } else {
-                        result.end = cursor;
-                    }
-                    result.kind = BreakKind::Soft;
-                    return Ok(result);
+        let is_emergency = offer.kind == PreparedBreakKind::Allowed
+            && offer.alternatives.is_empty()
+            && !atomic
+            && boundary.atom < prepared.analyzed.analysis.infos.len()
+            && !prepared.analyzed.analysis.infos[boundary.atom]
+                .0
+                .has_ordinary_line_candidate();
+        let variants = (offer.kind != PreparedBreakKind::Discretionary)
+            .then_some(None)
+            .into_iter()
+            .chain(offer.alternatives.iter().copied().map(Some));
+        for variant in variants {
+            if let Some(alternative) = variant
+                && !automatic_allowed(prepared, alternative, entry, indent, options, scratch, None)?
+            {
+                continue;
+            }
+            let mut request = standalone_request(
+                Arc::clone(prepared),
+                start,
+                PreparedTermination::Ordinary(PreparedOpportunity {
+                    prepared: Arc::clone(prepared),
+                    index,
+                }),
+                variant.map(|index| PreparedAlternative {
+                    prepared: Arc::clone(prepared),
+                    index,
+                }),
+                options.authored().width,
+                indent,
+                options.authored().alignment,
+            )?;
+            request.incoming = incoming.cloned();
+            let line = finalize_standalone(
+                Arc::clone(prepared),
+                request,
+                options.authored().quantize,
+                scratch,
+                &mut RawRoleBasis::Actual {
+                    first: entry.accepted.is_empty(),
+                },
+            )?;
+            let actual_fit = fits(&line, options.authored().width)?;
+            if is_emergency {
+                if actual_fit {
+                    emergency = Some(line);
+                } else if emergency_first.is_none() {
+                    emergency_first = Some(line);
+                }
+            } else {
+                if actual_fit {
+                    ordinary = Some(line);
+                } else if first.is_none() {
+                    first = Some(line);
                 }
             }
-            ShapedItem::TextCluster(index) => {
-                let cluster = &prepared.shaped.clusters[index];
-                let style = &prepared.styles[cluster.style].style;
-                let wrapping = previous_wrap == Wrap::Word;
-                previous_wrap = style.wrap;
-                any_text = true;
-                any_wrapped_text |= style.wrap == Wrap::Word;
-                if wrapping && !cluster.ligature_component && advance != 0.0 {
-                    if cluster.boundary == Boundary::Line {
-                        record(&mut result.regular, cursor, start);
-                    } else if style.overflow_wrap != OverflowWrap::Normal {
-                        record(&mut result.emergency, cursor, start);
-                    }
-                }
-                if cluster.whitespace == Whitespace::Newline {
-                    result.end = end;
-                    result.kind = BreakKind::Explicit;
-                    result.unwrapped = any_text && !any_wrapped_text;
-                    return Ok(result);
-                }
-                let mut delta = cluster.advance;
-                if cluster.ligature_start {
-                    while end < items.len() {
-                        let ShapedItem::TextCluster(next) = items[end] else {
-                            break;
-                        };
-                        let next = &prepared.shaped.clusters[next];
-                        if !next.ligature_component || next.run != cluster.run {
-                            break;
-                        }
-                        delta = finite(
-                            "standalone preliminary ligature advance",
-                            TextNumericPhase::Finalization,
-                            delta + next.advance,
-                        )?;
-                        end += 1;
-                    }
-                }
-                let next = finite(
-                    "standalone preliminary text advance",
-                    TextNumericPhase::Finalization,
-                    advance + delta,
-                )?;
-                if next <= available || !wrapping {
-                    advance = next;
-                } else if cluster.whitespace.is_space_or_nbsp() {
-                    result.end = end;
-                    result.kind = BreakKind::Soft;
-                    return Ok(result);
-                } else if let Some(&end) = result.regular.last().or_else(|| result.emergency.last())
-                {
-                    result.end = end;
-                    result.kind = BreakKind::Soft;
-                    return Ok(result);
-                } else {
-                    advance = next;
-                }
+            if actual_fit {
+                break;
             }
         }
-        cursor = end;
+        if mandatory {
+            break;
+        }
     }
-    result.unwrapped = any_text && !any_wrapped_text;
-    Ok(result)
-}
-
-fn record(endpoints: &mut Vec<usize>, end: usize, start: usize) {
-    if end > start && endpoints.last() != Some(&end) {
-        endpoints.push(end);
+    if ordinary.is_none()
+        && options.authored().width.is_some()
+        && let Some(frame) = first.as_ref()
+        && tables.auto_phrase_between(start, frame.selected.request.end.index)
+        && let Some(line) = choose_phrase(prepared, entry, indent, options, scratch, frame)?
+    {
+        return Ok(line);
     }
-}
-
-fn initial_atomic_overflow(
-    prepared: &PreparedData,
-    line: &FinalizedLine,
-    occurrence: Option<usize>,
-) -> bool {
-    let Some(occurrence) = occurrence else {
-        return false;
-    };
-    let text: f64 = line
-        .data
-        .clusters
-        .iter()
-        .map(|cluster| cluster.advance)
-        .sum();
-    let other_boxes: f64 = line
-        .data
-        .boxes
-        .iter()
-        .filter(|item| item.occurrence != occurrence)
-        .filter(|item| {
-            prepared.analyzed.processed.source().boxes()[item.occurrence].kind()
-                == InlineBoxKind::InFlow
+    ordinary
+        .or(emergency)
+        .or(emergency_first)
+        .or(first)
+        .ok_or_else(|| {
+            crate::Error::new(
+                crate::ErrorCode::LayoutFailed,
+                "raw inventory has no terminating candidate",
+            )
         })
-        .map(|item| item.flow_advance())
-        .sum();
-    text + other_boxes == 0.0
 }
 
-fn select(
-    prepared: &PreparedData,
-    start: usize,
-    end: usize,
-    source_start: usize,
+fn receipt(line: &FinalizedLine) -> crate::FinalizedLine {
+    crate::FinalizedLine {
+        inner: Arc::new(FinalizedLine {
+            selected: Arc::clone(&line.selected),
+            mapping: Arc::clone(&line.mapping),
+            data: line.data.clone(),
+        }),
+    }
+}
+
+fn choose_phrase(
+    prepared: &Arc<PreparedData>,
+    entry: RawEntry<'_>,
     indent: f64,
-    kind: BreakKind,
     options: ValidatedOptions,
-) -> LineSelection {
-    let mut source_end = source_start;
-    for item in &prepared.shaped.items[start..end] {
-        match *item {
-            ShapedItem::Anchor { .. } => {}
-            ShapedItem::TextCluster(index) => {
-                source_end = source_end.max(prepared.shaped.clusters[index].source.end);
-            }
-            ShapedItem::InlineBox { occurrence, .. } => {
-                source_end = source_end
-                    .max(prepared.analyzed.processed.source().boxes()[occurrence].index());
-            }
+    scratch: &mut ShapeContext,
+    frame: &FinalizedLine,
+) -> Result<Option<FinalizedLine>> {
+    use crate::{
+        ConditionalDisposition, ConditionalPurpose, ConditionalStage, PhraseOverflowDecision,
+    };
+    let RawEntry {
+        start, incoming, ..
+    } = entry;
+    let handle = crate::PreparedText {
+        inner: Arc::clone(prepared),
+    };
+    let PreparedTermination::Ordinary(ceiling) = &frame.selected.request.termination else {
+        return Ok(None);
+    };
+    // Every earlier ordinary variant is an actual rejected hyphen alternative:
+    // a meaningful None variant would already have been the first failed frame.
+    let mut skipped = Vec::new();
+    for (index, offer) in prepared
+        .tables
+        .opportunities
+        .iter()
+        .enumerate()
+        .take(ceiling.index)
+        .skip(
+            prepared
+                .tables
+                .opportunities
+                .partition_point(|row| row.boundary <= start),
+        )
+    {
+        if offer.boundary <= start {
+            continue;
+        }
+        for alternative in &offer.alternatives {
+            let mut request = standalone_request(
+                Arc::clone(prepared),
+                start,
+                PreparedTermination::Ordinary(PreparedOpportunity {
+                    prepared: Arc::clone(prepared),
+                    index,
+                }),
+                Some(PreparedAlternative {
+                    prepared: Arc::clone(prepared),
+                    index: *alternative,
+                }),
+                options.authored().width,
+                indent,
+                options.authored().alignment,
+            )?;
+            request.incoming = incoming.cloned();
+            let line = finalize_standalone(
+                Arc::clone(prepared),
+                request,
+                options.authored().quantize,
+                scratch,
+                &mut RawRoleBasis::Actual {
+                    first: entry.accepted.is_empty(),
+                },
+            )?;
+            skipped.push(ConditionalDisposition::ConsumerHyphenationPolicy(receipt(
+                &line,
+            )));
         }
     }
-    if kind == BreakKind::End {
-        source_end = prepared.analyzed.processed.source().text().len();
+    let search = handle.conditional_search(
+        &crate::PreparedBoundary {
+            prepared: Arc::clone(prepared),
+            index: start,
+        },
+        incoming,
+        ceiling,
+        ConditionalPurpose::Overflow,
+        &skipped,
+        Some(&receipt(frame)),
+    )?;
+    let mut decisions = Vec::new();
+    for portion in search.phrase_portions() {
+        let authored = options.authored();
+        let enabled =
+            authored.indent.first_line || authored.indent.each_line || authored.indent.hanging;
+        let fresh_indent = if portion.start().index == start {
+            indent
+        } else if enabled && authored.indent.hanging {
+            authored.indent.amount
+        } else {
+            0.0
+        };
+        let mut request = standalone_request(
+            Arc::clone(prepared),
+            portion.start().index,
+            PreparedTermination::PhraseMeasurement(portion.clone()),
+            None,
+            authored.width,
+            fresh_indent,
+            authored.alignment,
+        )?;
+        request.incoming = portion.incoming();
+        let line = finalize_standalone(
+            Arc::clone(prepared),
+            request,
+            authored.quantize,
+            scratch,
+            &mut RawRoleBasis::Prospective { entry },
+        )?;
+        decisions.push(if fits(&line, authored.width)? {
+            PhraseOverflowDecision::Fits(receipt(&line))
+        } else {
+            PhraseOverflowDecision::Overflows(receipt(&line))
+        });
     }
-    LineSelection {
-        items: start..end,
-        source: Range::new(source_start, source_end),
-        break_kind: kind,
-        available: options.authored().width,
-        indent,
-        alignment: options.authored().alignment,
+    let mut batch = search.begin(&decisions)?;
+    let mut restored_fallback = None;
+    loop {
+        let mut best = None;
+        let mut first = None;
+        let mut exhausted = Vec::new();
+        for candidate in batch.opportunities() {
+            let alternative = candidate.alternative();
+            let allowed = if let Some(alternative) = &alternative {
+                automatic_allowed(
+                    prepared,
+                    alternative.index,
+                    entry,
+                    indent,
+                    options,
+                    scratch,
+                    Some(candidate),
+                )?
+            } else {
+                true
+            };
+            let mut request = standalone_request(
+                Arc::clone(prepared),
+                start,
+                PreparedTermination::Conditional(candidate.clone()),
+                alternative,
+                options.authored().width,
+                indent,
+                options.authored().alignment,
+            )?;
+            request.incoming = incoming.cloned();
+            let line = finalize_standalone(
+                Arc::clone(prepared),
+                request,
+                options.authored().quantize,
+                scratch,
+                &mut RawRoleBasis::Actual {
+                    first: entry.accepted.is_empty(),
+                },
+            )?;
+            let actual_fit = fits(&line, options.authored().width)?;
+            if allowed && actual_fit {
+                best = Some(line);
+            } else {
+                exhausted.push(if allowed {
+                    ConditionalDisposition::Exhausted(receipt(&line))
+                } else {
+                    ConditionalDisposition::ConsumerHyphenationPolicy(receipt(&line))
+                });
+                if allowed && first.is_none() {
+                    first = Some(line);
+                }
+            }
+        }
+        if best.is_some() {
+            return Ok(best);
+        }
+        if batch.stage() == ConditionalStage::Arbitrary {
+            return Ok(first.or(restored_fallback));
+        }
+        if restored_fallback.is_none() {
+            restored_fallback = first;
+        }
+        let Some(next) = batch.advance(&exhausted)? else {
+            return Ok(None);
+        };
+        batch = next;
     }
 }
 
 #[cfg(test)]
+mod punctuation_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Font, FontCatalogueMode, Source, Style, System, SystemOptions};
+    use crate::{
+        Font, FontCatalogueMode, InlineBoxKind, OverflowWrap, Range, Source, Style, System,
+        SystemOptions,
+    };
 
     fn system() -> (System, Style) {
         let mut system = System::new(SystemOptions {
@@ -385,6 +749,85 @@ mod tests {
             ..Style::default()
         };
         (system, style)
+    }
+
+    #[test]
+    fn phrase_relaxation_uses_normal_prefixes_and_real_nonfitting_progress() {
+        let (mut system, mut style) = system();
+        system
+            .register_fonts(
+                include_bytes!("../../../tests/fixtures/fonts/phrase-ahem/PhraseAhem.ttf").to_vec(),
+            )
+            .unwrap();
+        style.font = Font::new().family("Surgeist Phrase Ahem");
+        style.locale = Some("ja".to_owned());
+        style.word_break = crate::WordBreak::AutoPhrase;
+        style.size = 10.0;
+        for (width, expected) in [
+            (20.0, vec![Range::new(0, 2), Range::new(2, 3)]),
+            (
+                5.0,
+                vec![Range::new(0, 1), Range::new(1, 2), Range::new(2, 3)],
+            ),
+        ] {
+            let output = system
+                .layout(
+                    Source::new("日本へ"),
+                    style.clone(),
+                    crate::Options {
+                        width: Some(width),
+                        quantize: false,
+                        ..crate::Options::default()
+                    },
+                )
+                .unwrap();
+            assert_eq!(
+                output
+                    .lines()
+                    .iter()
+                    .map(|line| line.range())
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            assert!(output.inner.lines.iter().all(|line| Arc::ptr_eq(
+                &output.inner.prepared,
+                &line.finalized.selected.prepared
+            )));
+        }
+    }
+
+    #[test]
+    fn unsupported_phrase_locale_restores_authored_hyphen_before_raw_arbitrary_cuts() {
+        let (mut system, mut style) = system();
+        style.size = 10.0;
+        style.word_break = crate::WordBreak::AutoPhrase;
+        style.hyphens = crate::Hyphens::Manual;
+        style.hyphenate_character = crate::HyphenateCharacter::String(crate::Text::from("A"));
+        style.overflow_wrap = OverflowWrap::Anywhere;
+        let output = system
+            .layout(
+                Source::new("AB\u{ad}CD"),
+                style,
+                crate::Options {
+                    width: Some(30.0),
+                    quantize: false,
+                    ..crate::Options::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            output
+                .lines()
+                .iter()
+                .map(|line| line.range())
+                .collect::<Vec<_>>(),
+            [Range::new(0, 3), Range::new(3, 5)]
+        );
+        assert_eq!(output.inner.lines[0].finalized.data.metrics.advance, 30.0);
+        assert!(
+            matches!(output.inner.lines[0].finalized.selected.request.termination,
+            PreparedTermination::Conditional(ref cut) if cut.stage()==crate::ConditionalStage::Hyphens)
+        );
     }
 
     #[test]
@@ -464,6 +907,79 @@ mod tests {
                 .unwrap()
                 .level,
             1
+        );
+    }
+
+    #[test]
+    fn trailing_out_of_flow_anchors_do_not_stop_original_l1_whitespace_reset() {
+        let mut observed = Vec::new();
+        for (kind, at) in [
+            (None, 6),
+            (Some(InlineBoxKind::OutOfFlow), 6),
+            (Some(InlineBoxKind::OutOfFlow), 5),
+            (Some(InlineBoxKind::InFlow), 6),
+        ] {
+            let (mut system, style) = system();
+            let mut source = Source::new("X\u{202b}\u{05d0}  \u{202c}");
+            if let Some(kind) = kind {
+                source.inline_box(crate::InlineBox::new(
+                    crate::Id::from_u64(91222),
+                    kind,
+                    at,
+                    crate::Size::new(0.0, 0.0),
+                ));
+            }
+            let output = system
+                .layout(
+                    source,
+                    style,
+                    crate::Options {
+                        quantize: false,
+                        ..crate::Options::default()
+                    },
+                )
+                .unwrap();
+            assert_eq!(
+                output.source().text().code_units(),
+                [88, 0x202b, 0x5d0, 32, 32, 0x202c]
+            );
+            let line = &output.inner.lines[0];
+            assert_eq!(output.inner.prepared.analyzed.analysis.base_level, 0);
+            assert_eq!(
+                line.finalized
+                    .data
+                    .clusters
+                    .iter()
+                    .find(|c| c.source.start == 2)
+                    .unwrap()
+                    .level,
+                1
+            );
+            let whitespace: Vec<_> = [3, 4]
+                .into_iter()
+                .map(|i| {
+                    let c = line
+                        .finalized
+                        .data
+                        .clusters
+                        .iter()
+                        .find(|c| c.source.start == i)
+                        .unwrap();
+                    assert_eq!(c.advance, 20.0);
+                    c.level
+                })
+                .collect();
+            assert_eq!(line.finalized.data.boxes.len(), usize::from(kind.is_some()));
+            observed.push((kind, at, whitespace));
+        }
+        assert_eq!(
+            observed,
+            [
+                (None, 6, vec![0, 0]),
+                (Some(InlineBoxKind::OutOfFlow), 6, vec![0, 0]),
+                (Some(InlineBoxKind::OutOfFlow), 5, vec![0, 0]),
+                (Some(InlineBoxKind::InFlow), 6, vec![1, 1])
+            ]
         );
     }
 

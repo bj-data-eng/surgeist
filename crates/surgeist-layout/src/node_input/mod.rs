@@ -22,7 +22,7 @@ pub use alignment::{AlignContent, AlignItems, AlignSelf, ItemOrder, JustifyConte
 pub use box_model::{
     BoxSizing, Clear, Direction, Display, Float, FloatExclusion, FloatExclusionInterval,
     FloatExclusionIntervalError, FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf,
-    FloatExclusionQuery, FloatExclusionQueryOf, Position,
+    FloatExclusionQuery, FloatExclusionQueryOf, LineBoxDirectionPolicy, Position,
 };
 pub use flex::{
     FlexDirection, FlexGrow, FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap,
@@ -32,12 +32,11 @@ pub use grid::{
     RawGridPlacement,
 };
 pub use inline::{
-    AtomicInlineParticipation, AtomicInlineParticipationError, AtomicInlineParticipationErrorOf,
-    AtomicInlineParticipationOf, InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind,
-    InlineBreakKind, InlineBreakOpportunity, InlineBreakOpportunityOf, InlineMetrics,
-    InlineMetricsError, InlineMetricsOf, InlineSegmentId, InlineTextInput, InlineTextInputError,
-    InlineTextInputErrorOf, InlineTextInputOf, LineBreakDisplay, LineBreakInput, LineBreakInputOf,
-    ShapedInlineSegment, ShapedInlineSegmentOf, TextAlign, VerticalAlign, WritingMode,
+    AtomicInlineParticipation, BlockGeneration, InlineBoundaryEdge, InlineBoundaryEdgeOf,
+    InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind, InlineBreakOpportunity,
+    InlineMetrics, InlineMetricsError, InlineMetricsOf, LineBreakDisplay, LineBreakInput,
+    LineBreakInputOf, TextAlign, TextAlignLast, TextIndent, TextIndentOf, TextJustification,
+    VerticalAlign, WritingMode,
 };
 pub use scroll::{
     ComputedOverflow, ComputedOverflowError, Overflow, OverflowClipBox, OverflowClipMargin,
@@ -63,8 +62,9 @@ fn validate_numeric_property<S: LayoutScalar>(
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
+    pub wrap_edges: crate::WrapEdges,
     pub display: Display,
-    pub atomic_inline_participation: Option<AtomicInlineParticipationOf<S>>,
+    pub atomic_inline_participation: Option<AtomicInlineParticipation>,
     pub float_exclusion: FloatExclusion,
     pub item_is_table: bool,
     pub item_is_replaced: bool,
@@ -78,7 +78,18 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     pub flex_item_collapse: FlexItemCollapse,
     pub box_sizing: BoxSizing,
     pub direction: Direction,
+    pub line_box_direction_policy: LineBoxDirectionPolicy,
+    pub block_generation: BlockGeneration,
+    pub text_indent: TextIndentOf<S>,
+    /// Block-owned computed successive-line limit; defaults to no limit.
+    pub hyphenate_limit_lines: crate::HyphenateLimitLines,
+    /// Unfragmented element-terminal restriction; defaults to no restriction.
+    pub hyphenate_limit_last: crate::HyphenateLimitLast,
+    /// Computed signed length/percentage, resolved against the natural fallback line box.
+    pub hyphenate_limit_zone: crate::LengthPercentageOf<S>,
     pub text_align: TextAlign,
+    pub text_align_last: TextAlignLast,
+    pub text_justification: TextJustification,
     pub vertical_align: VerticalAlign,
     pub writing_mode: WritingMode,
     /// Atomic normalized computed overflow supplied by style lowering.
@@ -164,6 +175,7 @@ pub type NodeInput = NodeInputOf<DefaultScalar>;
 
 impl NodeInputOf<DefaultScalar> {
     pub const DEFAULT: Self = Self {
+        wrap_edges: crate::WrapEdges::AUTO,
         display: Display::Flex,
         atomic_inline_participation: None,
         float_exclusion: FloatExclusion::MarginBox,
@@ -173,7 +185,15 @@ impl NodeInputOf<DefaultScalar> {
         flex_item_collapse: FlexItemCollapse::Normal,
         box_sizing: BoxSizing::BorderBox,
         direction: Direction::Ltr,
-        text_align: TextAlign::Auto,
+        line_box_direction_policy: LineBoxDirectionPolicy::Normal,
+        block_generation: BlockGeneration::Principal,
+        text_indent: TextIndentOf::ZERO,
+        hyphenate_limit_lines: crate::HyphenateLimitLines::NoLimit,
+        hyphenate_limit_last: crate::HyphenateLimitLast::None,
+        hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+        text_align: TextAlign::Start,
+        text_align_last: TextAlignLast::Auto,
+        text_justification: TextJustification::None,
         vertical_align: VerticalAlign::Baseline,
         writing_mode: WritingMode::HorizontalTb,
         overflow: ComputedOverflow::VISIBLE,
@@ -241,6 +261,7 @@ impl NodeInputOf<DefaultScalar> {
 impl<S: LayoutScalar> Default for NodeInputOf<S> {
     fn default() -> Self {
         Self {
+            wrap_edges: crate::WrapEdges::AUTO,
             display: Display::Flex,
             atomic_inline_participation: None,
             float_exclusion: FloatExclusion::MarginBox,
@@ -250,7 +271,15 @@ impl<S: LayoutScalar> Default for NodeInputOf<S> {
             flex_item_collapse: FlexItemCollapse::Normal,
             box_sizing: BoxSizing::BorderBox,
             direction: Direction::Ltr,
-            text_align: TextAlign::Auto,
+            line_box_direction_policy: LineBoxDirectionPolicy::Normal,
+            block_generation: BlockGeneration::Principal,
+            text_indent: TextIndentOf::ZERO,
+            hyphenate_limit_lines: crate::HyphenateLimitLines::NoLimit,
+            hyphenate_limit_last: crate::HyphenateLimitLast::None,
+            hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+            text_align: TextAlign::Start,
+            text_align_last: TextAlignLast::Auto,
+            text_justification: TextJustification::None,
             vertical_align: VerticalAlign::Baseline,
             writing_mode: WritingMode::HorizontalTb,
             overflow: ComputedOverflow::VISIBLE,
@@ -387,7 +416,8 @@ mod property_field_migration_tests {
 #[derive(Clone, Debug, PartialEq)]
 pub enum LayoutInputOf<S: LayoutScalar = DefaultScalar> {
     Box(std::boxed::Box<NodeInputOf<S>>),
-    InlineText(InlineTextInputOf<S>),
+    InlineText(crate::text_layout::TextParticipation),
+    TextControl(crate::text_layout::TextControlParticipation),
     LineBreak(LineBreakInputOf<S>),
     InlineBoundary(InlineBoundaryInputOf<S>),
 }
@@ -422,7 +452,8 @@ pub enum LayoutInputOf<S: LayoutScalar = DefaultScalar> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LayoutInputViewOf<'input, S: LayoutScalar = DefaultScalar> {
     Box(&'input NodeInputOf<S>),
-    InlineText(&'input InlineTextInputOf<S>),
+    InlineText(&'input crate::text_layout::TextParticipation),
+    TextControl(&'input crate::text_layout::TextControlParticipation),
     LineBreak(LineBreakInputOf<S>),
     InlineBoundary(InlineBoundaryInputOf<S>),
 }
@@ -434,15 +465,30 @@ impl<'input, S: LayoutScalar> LayoutInputViewOf<'input, S> {
     pub const fn as_box(self) -> Option<&'input NodeInputOf<S>> {
         match self {
             Self::Box(input) => Some(input),
-            Self::InlineText(_) | Self::LineBreak(_) | Self::InlineBoundary(_) => None,
+            Self::InlineText(_)
+            | Self::TextControl(_)
+            | Self::LineBreak(_)
+            | Self::InlineBoundary(_) => None,
         }
     }
 
     #[must_use]
-    pub const fn as_inline_text(self) -> Option<&'input InlineTextInputOf<S>> {
+    pub const fn as_inline_text(self) -> Option<&'input crate::text_layout::TextParticipation> {
         match self {
             Self::InlineText(input) => Some(input),
-            Self::Box(_) | Self::LineBreak(_) | Self::InlineBoundary(_) => None,
+            Self::Box(_) | Self::TextControl(_) | Self::LineBreak(_) | Self::InlineBoundary(_) => {
+                None
+            }
+        }
+    }
+
+    #[must_use]
+    pub const fn as_text_control(
+        self,
+    ) -> Option<&'input crate::text_layout::TextControlParticipation> {
+        match self {
+            Self::TextControl(input) => Some(input),
+            _ => None,
         }
     }
 
@@ -450,7 +496,9 @@ impl<'input, S: LayoutScalar> LayoutInputViewOf<'input, S> {
     pub const fn as_line_break(self) -> Option<LineBreakInputOf<S>> {
         match self {
             Self::LineBreak(input) => Some(input),
-            Self::Box(_) | Self::InlineText(_) | Self::InlineBoundary(_) => None,
+            Self::Box(_) | Self::InlineText(_) | Self::TextControl(_) | Self::InlineBoundary(_) => {
+                None
+            }
         }
     }
 
@@ -458,7 +506,7 @@ impl<'input, S: LayoutScalar> LayoutInputViewOf<'input, S> {
     pub const fn as_inline_boundary(self) -> Option<InlineBoundaryInputOf<S>> {
         match self {
             Self::InlineBoundary(input) => Some(input),
-            Self::Box(_) | Self::InlineText(_) | Self::LineBreak(_) => None,
+            Self::Box(_) | Self::InlineText(_) | Self::TextControl(_) | Self::LineBreak(_) => None,
         }
     }
 }
@@ -472,6 +520,7 @@ impl<S: LayoutScalar> LayoutInputOf<S> {
         match self {
             Self::Box(input) => LayoutInputViewOf::Box(input),
             Self::InlineText(input) => LayoutInputViewOf::InlineText(input),
+            Self::TextControl(input) => LayoutInputViewOf::TextControl(input),
             Self::LineBreak(input) => LayoutInputViewOf::LineBreak(*input),
             Self::InlineBoundary(input) => LayoutInputViewOf::InlineBoundary(*input),
         }
@@ -488,8 +537,13 @@ impl<S: LayoutScalar> LayoutInputOf<S> {
     }
 
     #[must_use]
-    pub const fn inline_text(input: InlineTextInputOf<S>) -> Self {
+    pub const fn inline_text(input: crate::text_layout::TextParticipation) -> Self {
         Self::InlineText(input)
+    }
+
+    #[must_use]
+    pub const fn text_control(input: crate::text_layout::TextControlParticipation) -> Self {
+        Self::TextControl(input)
     }
 
     #[must_use]
@@ -501,22 +555,37 @@ impl<S: LayoutScalar> LayoutInputOf<S> {
     pub fn as_box(&self) -> Option<&NodeInputOf<S>> {
         match self {
             Self::Box(input) => Some(input.as_ref()),
-            Self::InlineText(_) | Self::LineBreak(_) | Self::InlineBoundary(_) => None,
+            Self::InlineText(_)
+            | Self::TextControl(_)
+            | Self::LineBreak(_)
+            | Self::InlineBoundary(_) => None,
         }
     }
 
     #[must_use]
-    pub const fn as_inline_text(&self) -> Option<&InlineTextInputOf<S>> {
+    pub const fn as_inline_text(&self) -> Option<&crate::text_layout::TextParticipation> {
         match self {
             Self::InlineText(input) => Some(input),
-            Self::Box(_) | Self::LineBreak(_) | Self::InlineBoundary(_) => None,
+            Self::Box(_) | Self::TextControl(_) | Self::LineBreak(_) | Self::InlineBoundary(_) => {
+                None
+            }
+        }
+    }
+
+    #[must_use]
+    pub const fn as_text_control(&self) -> Option<&crate::text_layout::TextControlParticipation> {
+        match self {
+            Self::TextControl(input) => Some(input),
+            _ => None,
         }
     }
 
     #[must_use]
     pub const fn as_line_break(&self) -> Option<LineBreakInputOf<S>> {
         match self {
-            Self::Box(_) | Self::InlineText(_) | Self::InlineBoundary(_) => None,
+            Self::Box(_) | Self::InlineText(_) | Self::TextControl(_) | Self::InlineBoundary(_) => {
+                None
+            }
             Self::LineBreak(input) => Some(*input),
         }
     }
@@ -524,7 +593,7 @@ impl<S: LayoutScalar> LayoutInputOf<S> {
     #[must_use]
     pub const fn as_inline_boundary(&self) -> Option<InlineBoundaryInputOf<S>> {
         match self {
-            Self::Box(_) | Self::InlineText(_) | Self::LineBreak(_) => None,
+            Self::Box(_) | Self::InlineText(_) | Self::TextControl(_) | Self::LineBreak(_) => None,
             Self::InlineBoundary(input) => Some(*input),
         }
     }

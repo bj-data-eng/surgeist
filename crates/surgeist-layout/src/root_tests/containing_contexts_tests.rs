@@ -3,12 +3,10 @@ use super::fixtures::{
     assert_fri06_c08_mixed_inline_atomic_x, assert_fri06_c08_r1_mixed_unit_traversal,
     computed_overflow, fri05_c03_root_all_flow_axes, fri05_c03_root_gutter_at,
     fri05_c03_tree_leaf_layout, fri06_atomic_participation, fri06_c02_expected_physical_rect,
-    fri06_c02_final_node, fri06_c02_segment, fri06_c02_segment_with_level,
-    fri06_c02_segment_with_metrics, fri06_c02_text_batch_with_flow, fri06_c03_atomic_participation,
-    fri06_c03_mixed_batch_with_root, fri06_c03_text_input, fri06_c04_bfc_batch,
-    fri06_c04_front_door_batch, fri06_c04_line_batch, fri06_c04_line_box, fri06_c04_logical_origin,
-    logical_flex_leaf, public_flow_output, public_layout_tree, root_writing_mode_directions,
-    scalar, single_final_output,
+    fri06_c02_final_node, fri06_c03_atomic_participation, fri06_c03_mixed_batch_with_root,
+    fri06_c04_bfc_batch, fri06_c04_front_door_batch, fri06_c04_line_batch, fri06_c04_line_box,
+    fri06_c04_logical_origin, logical_flex_leaf, numeric_atomic_fit_with_flow, public_flow_output,
+    public_layout_tree, root_writing_mode_directions, scalar, single_final_output,
 };
 use super::*;
 
@@ -30,7 +28,7 @@ fn root_and_hidden_contexts_are_explicit_in_both_scalar_lanes() {
 fn fri06_c03_projection_batch<S: LayoutScalar>(
     flow: FlowAxes,
     text_align: TextAlign,
-    logical_atomics: &[(f64, f64, InlineBreakKind)],
+    logical_atomics: &[(f64, f64, InlineBreakOpportunity)],
     available_inline: f64,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let root_input = NodeInputOf {
@@ -45,14 +43,6 @@ fn fri06_c03_projection_batch<S: LayoutScalar>(
     let mut root_children = Vec::new();
     for (offset, (inline, block, following_break)) in logical_atomics.iter().copied().enumerate() {
         let node = u32::try_from(offset + 1).unwrap();
-        let following_break = match following_break {
-            InlineBreakKind::Prohibited => InlineBreakOpportunityOf::prohibited(),
-            InlineBreakKind::Allowed => InlineBreakOpportunityOf::allowed(),
-            InlineBreakKind::Mandatory => InlineBreakOpportunityOf::mandatory(),
-            InlineBreakKind::AllowedWithReplacement => {
-                panic!("atomic projection fixtures never carry replacement breaks")
-            }
-        };
         let physical_size =
             flow.physical_size(LogicalSizeOf::new(S::from_f64(inline), S::from_f64(block)));
         let style = NodeInputOf {
@@ -90,7 +80,14 @@ fn fri06_c03_projection_soft_and_forced_unequal_atomic_lines_align_per_line_in_a
             TextAlign::LegacyLeft if decreases => free,
             TextAlign::LegacyRight if !decreases => free,
             TextAlign::LegacyCenter => free / 2.0,
-            TextAlign::Auto | TextAlign::LegacyLeft | TextAlign::LegacyRight => 0.0,
+            TextAlign::Start
+            | TextAlign::End
+            | TextAlign::Left
+            | TextAlign::Right
+            | TextAlign::Center
+            | TextAlign::Justify
+            | TextAlign::LegacyLeft
+            | TextAlign::LegacyRight => 0.0,
         }
     }
 
@@ -107,9 +104,9 @@ fn fri06_c03_projection_soft_and_forced_unequal_atomic_lines_align_per_line_in_a
                     flow,
                     align,
                     &[
-                        (30.0, 10.0, InlineBreakKind::Allowed),
-                        (30.0, 10.0, InlineBreakKind::Allowed),
-                        (10.0, 10.0, InlineBreakKind::Prohibited),
+                        (30.0, 10.0, InlineBreakOpportunity::Allowed),
+                        (30.0, 10.0, InlineBreakOpportunity::Allowed),
+                        (10.0, 10.0, InlineBreakOpportunity::Prohibited),
                     ],
                     40.0,
                 );
@@ -160,8 +157,8 @@ fn fri06_c03_projection_soft_and_forced_unequal_atomic_lines_align_per_line_in_a
                     flow,
                     align,
                     &[
-                        (30.0, 10.0, InlineBreakKind::Mandatory),
-                        (10.0, 10.0, InlineBreakKind::Prohibited),
+                        (30.0, 10.0, InlineBreakOpportunity::Mandatory),
+                        (10.0, 10.0, InlineBreakOpportunity::Prohibited),
                     ],
                     100.0,
                 );
@@ -237,7 +234,7 @@ fn fri06_c03_percentage_definite_physical_and_logical_block_basis_without_indefi
             size: flow_axes.physical_size(atomic_logical_size),
             atomic_inline_participation: Some(fri06_c03_atomic_participation(
                 0,
-                InlineBreakOpportunityOf::prohibited(),
+                InlineBreakOpportunity::Prohibited,
             )),
             ..NodeInputOf::default()
         };
@@ -396,14 +393,9 @@ impl<'input, S: LayoutScalar> Compute<'input, ()> for Fri06C07DirectTree<'input,
                 assert_eq!(style.display.inner_display(), Display::Block);
                 compute_block(self, node, input)
             }
-            crate::LayoutInputViewOf::InlineText(_) => {
-                let size = Size::new(
-                    input.known().width.unwrap_or(S::ZERO),
-                    input.known().height.unwrap_or(S::ZERO),
-                );
-                Ok(ComputeOutputOf::from_sizes(size, size))
-            }
-            crate::LayoutInputViewOf::LineBreak(_)
+            crate::LayoutInputViewOf::InlineText(_)
+            | crate::LayoutInputViewOf::TextControl(_)
+            | crate::LayoutInputViewOf::LineBreak(_)
             | crate::LayoutInputViewOf::InlineBoundary(_) => {
                 unreachable!("block layout consumes controls without child computation")
             }
@@ -508,12 +500,17 @@ fn fri06_c07_logical_clear_vertical_control_and_float_projection_both_scalars() 
             Float::Left,
             None,
         );
-        let text = fri06_c03_text_input(vec![fri06_c02_segment(
-            470,
-            10.0,
-            InlineWhitespaceEdge::Preserve,
-            InlineBreakOpportunityOf::prohibited(),
-        )]);
+        let adjacent = NodeInputOf {
+            display: Display::InlineBlock,
+            writing_mode: WritingMode::VerticalRl,
+            direction: row.direction,
+            size: flow_axes
+                .physical_size(LogicalSizeOf::new(S::from_f64(10.0), S::from_f64(10.0)))
+                .map(PreferredSizeOf::px),
+            atomic_inline_participation: Some(fri06_atomic_participation()),
+            ..NodeInputOf::default()
+        };
+        let text = LayoutInputOf::box_input(adjacent);
         let metrics =
             InlineMetricsOf::from_line_height_and_baseline(S::from_f64(20.0), S::from_f64(15.0))
                 .unwrap();
@@ -804,8 +801,8 @@ fn fri06_c04_line_clear_all_flows_values_and_matching_sides_both_scalars() {
                             Some(fri06_c03_atomic_participation(0, following_break)),
                         )
                     };
-                    let first = atomic_style(InlineBreakOpportunityOf::prohibited());
-                    let second = atomic_style(InlineBreakOpportunityOf::prohibited());
+                    let first = atomic_style(InlineBreakOpportunity::Prohibited);
+                    let second = atomic_style(InlineBreakOpportunity::Prohibited);
                     let metrics = InlineMetricsOf::from_line_height_and_baseline(
                         S::from_f64(10.0),
                         S::from_f64(8.0),
@@ -813,7 +810,7 @@ fn fri06_c04_line_clear_all_flows_values_and_matching_sides_both_scalars() {
                     .unwrap();
                     let batch = fri06_c04_line_batch(
                         flow_axes,
-                        TextAlign::Auto,
+                        TextAlign::Start,
                         vec![
                             (
                                 1,
@@ -896,7 +893,7 @@ fn fri06_c04_line_alignment_legacy_values_use_each_final_band_all_flows_both_sca
                         Float::None,
                         Some(fri06_c03_atomic_participation(
                             0,
-                            InlineBreakOpportunityOf::prohibited(),
+                            InlineBreakOpportunity::Prohibited,
                         )),
                     )
                 };
@@ -937,7 +934,14 @@ fn fri06_c04_line_alignment_legacy_values_use_each_final_band_all_flows_both_sca
                         TextAlign::LegacyCenter => free / 2.0,
                         TextAlign::LegacyLeft if inline_decreases => free,
                         TextAlign::LegacyRight if !inline_decreases => free,
-                        TextAlign::LegacyLeft | TextAlign::LegacyRight | TextAlign::Auto => 0.0,
+                        TextAlign::LegacyLeft
+                        | TextAlign::LegacyRight
+                        | TextAlign::Start
+                        | TextAlign::End
+                        | TextAlign::Left
+                        | TextAlign::Right
+                        | TextAlign::Center
+                        | TextAlign::Justify => 0.0,
                     };
                     S::from_f64(30.0 + offset)
                 };
@@ -1031,7 +1035,7 @@ fn fri06_c04_bfc_nested_bfc_floating_and_atomic_contexts_trap_internal_floats_bo
         let atomic = NodeInputOf {
             atomic_inline_participation: Some(fri06_c03_atomic_participation(
                 0,
-                InlineBreakOpportunityOf::prohibited(),
+                InlineBreakOpportunity::Prohibited,
             )),
             ..fixed(Display::InlineBlock, 30.0, 20.0)
         };
@@ -1184,270 +1188,191 @@ fn fri06_c02_inline_decreases(writing_mode: WritingMode, direction: Direction) -
 }
 
 #[test]
-fn fri06_c02_alignment_uses_each_unequal_line_extent_and_clamps_overflow_in_all_flows_both_scalars()
-{
-    fn expected_offset(
-        align: TextAlign,
-        decreases: bool,
-        containing_inline: f64,
-        used_inline: f64,
-    ) -> f64 {
-        let free = (containing_inline - used_inline).max(0.0);
+fn numeric_fitter_alignment_uses_each_unequal_line_and_clamps_overflow_all_flows_both_scalars() {
+    fn offset(align: TextAlign, decreases: bool, used: f64) -> f64 {
+        let free = (100.0 - used).max(0.0);
         match align {
-            TextAlign::Auto => 0.0,
+            TextAlign::Start => 0.0,
             TextAlign::LegacyLeft if decreases => free,
             TextAlign::LegacyRight if !decreases => free,
             TextAlign::LegacyCenter => free / 2.0,
-            TextAlign::LegacyLeft | TextAlign::LegacyRight => 0.0,
+            _ => 0.0,
         }
     }
-
     fn assert_lane<S: LayoutScalar>() {
         for (writing_mode, direction) in fri06_c02_flow_mappings() {
+            let axes = FlowAxes::new(writing_mode, direction);
             let decreases = fri06_c02_inline_decreases(writing_mode, direction);
             for align in [
-                TextAlign::Auto,
+                TextAlign::Start,
                 TextAlign::LegacyLeft,
                 TextAlign::LegacyRight,
                 TextAlign::LegacyCenter,
             ] {
-                let batch = fri06_c02_text_batch_with_flow(
+                let report = numeric_atomic_fit_with_flow(
                     vec![
-                        fri06_c02_segment_with_level(
-                            1,
-                            30.0,
-                            0,
-                            InlineWhitespaceEdge::Preserve,
-                            InlineBreakOpportunityOf::mandatory(),
-                        ),
-                        fri06_c02_segment_with_level(
-                            2,
-                            10.0,
-                            0,
-                            InlineWhitespaceEdge::Preserve,
-                            InlineBreakOpportunityOf::prohibited(),
-                        ),
+                        (30.0, 0, InlineBreakOpportunity::Mandatory),
+                        (10.0, 0, InlineBreakOpportunity::Prohibited),
                     ],
                     AvailableOf::definite(S::from_f64(100.0)),
                     writing_mode,
                     direction,
                     align,
                 );
-                let fragments = batch.final_inline_fragments();
-                for (fragment, (used_inline, block_start)) in
-                    fragments.iter().zip([(30.0, 0.0), (10.0, 10.0)])
+                assert_eq!(report.block_extent, S::from_f64(20.0));
+                for (fragment, (used, block)) in
+                    report.atomics.iter().zip([(30.0, 0.0), (10.0, 10.0)])
                 {
-                    let expected = fri06_c02_expected_physical_rect(
-                        (writing_mode, direction),
-                        (
-                            expected_offset(align, decreases, 100.0, used_inline),
-                            block_start,
-                            used_inline,
-                            10.0,
+                    let actual = axes.physical_rect(
+                        crate::geometry::LogicalRectOf::new(
+                            LogicalPointOf::new(fragment.inline_start, fragment.block_start),
+                            LogicalSizeOf::new(
+                                axes.logical_size(fragment.item.size).inline,
+                                axes.logical_size(fragment.item.size).block,
+                            ),
                         ),
-                        (100.0, 20.0),
+                        axes.physical_size(LogicalSizeOf::new(
+                            S::from_f64(100.0),
+                            report.block_extent,
+                        )),
                     );
                     assert_eq!(
-                        (
-                            fragment.fragment().rect().origin(),
-                            fragment.fragment().rect().size()
+                        actual,
+                        fri06_c02_expected_physical_rect(
+                            (writing_mode, direction),
+                            (offset(align, decreases, used), block, used, 10.0),
+                            (100.0, 20.0)
                         ),
-                        expected,
                         "{writing_mode:?} {direction:?} {align:?}"
                     );
                 }
             }
-
-            let overflow = fri06_c02_text_batch_with_flow(
+            let report = numeric_atomic_fit_with_flow(
                 vec![
-                    fri06_c02_segment_with_level(
-                        3,
-                        120.0,
-                        0,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::mandatory(),
-                    ),
-                    fri06_c02_segment_with_level(
-                        4,
-                        10.0,
-                        0,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    ),
+                    (120.0, 0, InlineBreakOpportunity::Mandatory),
+                    (10.0, 0, InlineBreakOpportunity::Prohibited),
                 ],
                 AvailableOf::definite(S::from_f64(100.0)),
                 writing_mode,
                 direction,
                 TextAlign::LegacyCenter,
             );
-            for (fragment, (inline_start, inline_extent, block_start)) in overflow
-                .final_inline_fragments()
+            for (fragment, (start, extent, block)) in report
+                .atomics
                 .iter()
                 .zip([(0.0, 120.0, 0.0), (45.0, 10.0, 10.0)])
             {
-                let expected = fri06_c02_expected_physical_rect(
-                    (writing_mode, direction),
-                    (inline_start, block_start, inline_extent, 10.0),
-                    (100.0, 20.0),
-                );
                 assert_eq!(
-                    (
-                        fragment.fragment().rect().origin(),
-                        fragment.fragment().rect().size()
+                    axes.physical_rect(
+                        crate::geometry::LogicalRectOf::new(
+                            LogicalPointOf::new(fragment.inline_start, fragment.block_start),
+                            LogicalSizeOf::new(
+                                axes.logical_size(fragment.item.size).inline,
+                                axes.logical_size(fragment.item.size).block
+                            )
+                        ),
+                        axes.physical_size(LogicalSizeOf::new(
+                            S::from_f64(100.0),
+                            report.block_extent
+                        ))
                     ),
-                    expected,
-                    "overflow {writing_mode:?} {direction:?}"
+                    fri06_c02_expected_physical_rect(
+                        (writing_mode, direction),
+                        (start, block, extent, 10.0),
+                        (100.0, 20.0)
+                    )
                 );
             }
         }
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
 
 #[test]
-fn fri06_c02_flow_projects_rect_baseline_anchor_and_run_extents_in_all_mappings_both_scalars() {
+fn numeric_fitter_flow_projects_rect_baseline_and_empty_anchor_all_mappings_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         for (writing_mode, direction) in fri06_c02_flow_mappings() {
-            let batch = fri06_c02_text_batch_with_flow(
+            let axes = FlowAxes::new(writing_mode, direction);
+            let report = numeric_atomic_fit_with_flow(
                 vec![
-                    fri06_c02_segment_with_level(
-                        1,
-                        10.0,
-                        1,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    ),
-                    fri06_c02_segment_with_level(
-                        2,
-                        10.0,
-                        1,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::mandatory(),
-                    ),
-                    fri06_c02_segment_with_level(
-                        3,
-                        4.0,
-                        1,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    ),
-                    fri06_c02_segment_with_level(
-                        4,
-                        6.0,
-                        1,
-                        InlineWhitespaceEdge::Preserve,
-                        InlineBreakOpportunityOf::prohibited(),
-                    ),
+                    (10.0, 1, InlineBreakOpportunity::Prohibited),
+                    (10.0, 1, InlineBreakOpportunity::Mandatory),
+                    (4.0, 1, InlineBreakOpportunity::Prohibited),
+                    (6.0, 1, InlineBreakOpportunity::Prohibited),
                 ],
                 AvailableOf::definite(S::from_f64(100.0)),
                 writing_mode,
                 direction,
                 TextAlign::LegacyCenter,
             );
-            let fragments = batch.final_inline_fragments();
+            assert_eq!(report.block_extent, S::from_f64(20.0));
             assert_eq!(
-                fragments
+                report
+                    .atomics
                     .iter()
-                    .map(|entry| entry.fragment().visual_index())
+                    .map(|f| f.visual_index)
                     .collect::<Vec<_>>(),
-                vec![1, 0, 1, 0]
+                [Some(1), Some(0), Some(1), Some(0)]
             );
-            let logical_fragments = [
+            let containing =
+                axes.physical_size(LogicalSizeOf::new(S::from_f64(100.0), report.block_extent));
+            for (fragment, (start, extent, block, baseline)) in report.atomics.iter().zip([
                 (50.0, 10.0, 0.0, 8.0),
                 (40.0, 10.0, 0.0, 8.0),
                 (51.0, 4.0, 10.0, 18.0),
                 (45.0, 6.0, 10.0, 18.0),
-            ];
-            for (fragment, (inline_start, inline_extent, block_start, baseline_block)) in
-                fragments.iter().zip(logical_fragments)
-            {
-                let expected_rect = fri06_c02_expected_physical_rect(
-                    (writing_mode, direction),
-                    (inline_start, block_start, inline_extent, 10.0),
-                    (100.0, 20.0),
-                );
-                let expected_baseline = fri06_c02_expected_physical_rect(
-                    (writing_mode, direction),
-                    (inline_start, baseline_block, 0.0, 0.0),
-                    (100.0, 20.0),
-                )
-                .0;
+            ]) {
                 assert_eq!(
-                    (
-                        fragment.fragment().rect().origin(),
-                        fragment.fragment().rect().size()
+                    axes.physical_rect(
+                        crate::geometry::LogicalRectOf::new(
+                            LogicalPointOf::new(fragment.inline_start, fragment.block_start),
+                            LogicalSizeOf::new(
+                                axes.logical_size(fragment.item.size).inline,
+                                axes.logical_size(fragment.item.size).block
+                            )
+                        ),
+                        containing
                     ),
-                    expected_rect,
-                    "rect {writing_mode:?} {direction:?}"
+                    fri06_c02_expected_physical_rect(
+                        (writing_mode, direction),
+                        (start, block, extent, 10.0),
+                        (100.0, 20.0)
+                    )
                 );
                 assert_eq!(
-                    fragment.fragment().baseline(),
-                    expected_baseline,
-                    "baseline {writing_mode:?} {direction:?}"
+                    axes.physical_point(
+                        LogicalPointOf::new(
+                            fragment.inline_start,
+                            fragment.block_start + S::from_f64(8.0)
+                        ),
+                        LogicalSizeOf::new(S::ZERO, S::ZERO),
+                        containing
+                    ),
+                    fri06_c02_expected_physical_rect(
+                        (writing_mode, direction),
+                        (start, baseline, 0.0, 0.0),
+                        (100.0, 20.0)
+                    )
+                    .0
                 );
             }
-
-            let minimum = fragments
-                .iter()
-                .fold(None, |minimum, entry| {
-                    let origin = entry.fragment().rect().origin();
-                    Some(minimum.map_or(origin, |current: Point<S>| {
-                        Point::new(current.x.min(origin.x), current.y.min(origin.y))
-                    }))
-                })
-                .unwrap();
-            let maximum = fragments
-                .iter()
-                .fold(None, |maximum, entry| {
-                    let rect = entry.fragment().rect();
-                    let point = Point::new(
-                        rect.origin().x + rect.size().width,
-                        rect.origin().y + rect.size().height,
-                    );
-                    Some(maximum.map_or(point, |current: Point<S>| {
-                        Point::new(current.x.max(point.x), current.y.max(point.y))
-                    }))
-                })
-                .unwrap();
-            let text = fri06_c02_final_node(&batch, 1);
-            assert_eq!(text.location, minimum);
-            assert_eq!(
-                text.size,
-                Size::new(maximum.x - minimum.x, maximum.y - minimum.y)
+            let anchor = axes.physical_point(
+                LogicalPointOf::new(S::ZERO, S::ZERO),
+                LogicalSizeOf::new(S::ZERO, S::ZERO),
+                axes.physical_size(LogicalSizeOf::new(S::from_f64(100.0), S::from_f64(10.0))),
             );
             assert_eq!(
-                fri06_c02_final_node(&batch, 0).size,
-                FlowAxes::new(writing_mode, direction)
-                    .physical_size(LogicalSizeOf::new(S::from_f64(100.0), S::from_f64(20.0)))
+                anchor,
+                fri06_c02_expected_physical_rect(
+                    (writing_mode, direction),
+                    (0.0, 0.0, 0.0, 0.0),
+                    (100.0, 10.0)
+                )
+                .0
             );
-
-            let anchor_batch = fri06_c02_text_batch_with_flow(
-                vec![fri06_c02_segment_with_level(
-                    9,
-                    5.0,
-                    0,
-                    InlineWhitespaceEdge::DiscardAtBoth,
-                    InlineBreakOpportunityOf::mandatory(),
-                )],
-                AvailableOf::definite(S::from_f64(100.0)),
-                writing_mode,
-                direction,
-                TextAlign::Auto,
-            );
-            let expected_anchor = fri06_c02_expected_physical_rect(
-                (writing_mode, direction),
-                (0.0, 0.0, 0.0, 0.0),
-                (100.0, 10.0),
-            )
-            .0;
-            let anchor = fri06_c02_final_node(&anchor_batch, 1);
-            assert_eq!(anchor.location, expected_anchor);
-            assert_eq!(anchor.size, Size::ZERO);
         }
     }
-
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
@@ -1464,19 +1389,23 @@ fn fri06_c02_block_text_containing_baselines_align_flex_items_both_scalars() {
             display: Display::Block,
             ..NodeInputOf::default()
         };
-        let text_one =
-            InlineTextInputOf::try_new(vec![fri06_c02_segment_with_metrics(51, 10.0, 8.0, 2.0)])
-                .unwrap();
-        let text_two =
-            InlineTextInputOf::try_new(vec![fri06_c02_segment_with_metrics(52, 10.0, 4.0, 6.0)])
-                .unwrap();
+        let first = crate::test_support::text::PreparedParagraph::plain(
+            3,
+            surgeist_text::Source::new("X"),
+            crate::test_support::text::ahem_style(10.0, 10.0),
+        );
+        let second = crate::test_support::text::PreparedParagraph::plain(
+            4,
+            surgeist_text::Source::new("XX"),
+            crate::test_support::text::ahem_style(5.0, 10.0),
+        );
         let tree = public_layout_tree(
             HashMap::from([
                 (0, LayoutInputOf::box_input(root.clone())),
                 (1, LayoutInputOf::box_input(item.clone())),
                 (2, LayoutInputOf::box_input(item.clone())),
-                (3, LayoutInputOf::inline_text(text_one)),
-                (4, LayoutInputOf::inline_text(text_two)),
+                (3, first.text_input(3)),
+                (4, second.text_input(4)),
             ]),
             HashMap::from([
                 (0, vec![1, 2]),
@@ -1486,8 +1415,18 @@ fn fri06_c02_block_text_containing_baselines_align_flex_items_both_scalars() {
                 (4, Vec::new()),
             ]),
         );
-        let batch = compute_layout(
+        let capture = LayoutFlowInput::try_new(
             &tree,
+            0,
+            vec![first.binding(1), second.binding(2)],
+            crate::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
+        let batch = compute_layout_with_flow(
+            &capture,
             0,
             LayoutRootRequestOf::viewport(Size::new(
                 AvailableOf::definite(S::from_f64(100.0)),
@@ -1501,13 +1440,13 @@ fn fri06_c02_block_text_containing_baselines_align_flex_items_both_scalars() {
         let first_fragment = batch
             .final_inline_fragments()
             .iter()
-            .find(|entry| entry.node() == 3)
+            .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(3))
             .unwrap()
             .fragment();
         let second_fragment = batch
             .final_inline_fragments()
             .iter()
-            .find(|entry| entry.node() == 4)
+            .find(|entry| entry.owner() == &crate::InlineFragmentOwner::Node(4))
             .unwrap()
             .fragment();
         assert_eq!(

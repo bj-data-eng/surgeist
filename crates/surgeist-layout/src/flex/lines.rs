@@ -1,5 +1,6 @@
 use super::items::CollectedFlexItem;
 use super::{AvailableOf, Constants, LayoutScalar};
+use crate::inline_wrapping::{AvoidClass, EdgePreferences, WrappingScopeError};
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct FlexLine<S: LayoutScalar> {
@@ -77,12 +78,12 @@ pub(super) fn collect_flex_lines<Node, S: LayoutScalar>(
     items: &[CollectedFlexItem<Node, S>],
     constants: &Constants<S>,
     round: FlexLineCollectionRound,
-) -> Vec<FlexLine<S>>
+) -> Result<Vec<FlexLine<S>>, WrappingScopeError>
 where
     Node: Copy,
 {
     if !constants.wraps {
-        return vec![FlexLine::new(0, items.len())];
+        return Ok(vec![FlexLine::new(0, items.len())]);
     }
 
     let container_main_size = match flex_line_collection_size(constants) {
@@ -90,21 +91,50 @@ where
         None => match constants.available_main {
             AvailableOf::Definite(size) => size,
             AvailableOf::MinContent => {
-                return (0..items.len())
+                return Ok((0..items.len())
                     .map(|index| FlexLine::new(index, index + 1))
-                    .collect();
+                    .collect());
             }
-            AvailableOf::MaxContent => return vec![FlexLine::new(0, items.len())],
+            AvailableOf::MaxContent => {
+                let mut lines = Vec::new();
+                let mut start = 0;
+                for cut in 1..items.len() {
+                    if forced_boundary(items, cut) {
+                        lines.push(FlexLine::new(start, cut));
+                        start = cut;
+                    }
+                }
+                lines.push(FlexLine::new(start, items.len()));
+                return Ok(lines);
+            }
         },
     };
 
+    let has_avoid = constants.available_main != AvailableOf::MinContent
+        && items
+            .windows(2)
+            .any(|pair| pair[0].wrap_after.avoided || pair[1].wrap_before.avoided);
+    let preferences = if has_avoid {
+        Some(EdgePreferences::new(
+            items
+                .len()
+                .checked_mul(2)
+                .ok_or(WrappingScopeError::InconsistentIncidence)?,
+        ))
+    } else {
+        None
+    };
     let mut lines = Vec::new();
     let mut start = 0;
     while start < items.len() {
         let mut line_main_size = S::ZERO;
         let mut end = start;
+        let mut frontier = preferences.as_ref().map(EdgePreferences::frontier);
 
         while end < items.len() {
+            if end > start && forced_boundary(items, end) {
+                break;
+            }
             let gap = if end == start {
                 S::ZERO
             } else {
@@ -124,8 +154,21 @@ where
 
             line_main_size = line_main_size + next_size;
             end += 1;
+            if end < items.len()
+                && !forced_boundary(items, end)
+                && line_main_size <= container_main_size
+                && let (Some(preferences), Some(frontier)) = (&preferences, &mut frontier)
+            {
+                frontier.consider(boundary_class(items, end, preferences)?, end)?;
+            }
         }
 
+        if end < items.len()
+            && !forced_boundary(items, end)
+            && let Some(preferred) = frontier.and_then(|frontier| frontier.into_preferred())
+        {
+            end = preferred;
+        }
         lines.push(FlexLine::new(start, end));
         start = end;
     }
@@ -133,7 +176,36 @@ where
     if lines.is_empty() {
         lines.push(FlexLine::new(0, 0));
     }
-    lines
+    Ok(lines)
+}
+
+fn forced_boundary<Node, S: LayoutScalar>(
+    items: &[CollectedFlexItem<Node, S>],
+    cut: usize,
+) -> bool {
+    cut > 0
+        && cut < items.len()
+        && (items[cut - 1].wrap_after.forced || items[cut].wrap_before.forced)
+}
+
+fn boundary_class<Node, S: LayoutScalar>(
+    items: &[CollectedFlexItem<Node, S>],
+    cut: usize,
+    preferences: &EdgePreferences,
+) -> Result<AvoidClass, WrappingScopeError> {
+    // Each side identifies its actual occurrence in this sorted inventory.
+    // Adjacent declarations are independent constraints on their shared cut.
+    let mut sides = [0; 2];
+    let mut count = 0;
+    if items[cut - 1].wrap_after.avoided {
+        sides[count] = 2 * (cut - 1) + 1;
+        count += 1;
+    }
+    if items[cut].wrap_before.avoided {
+        sides[count] = 2 * cut;
+        count += 1;
+    }
+    preferences.class(&sides[..count])
 }
 
 fn flex_line_collection_size<S: LayoutScalar>(constants: &Constants<S>) -> Option<S> {

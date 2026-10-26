@@ -9,54 +9,18 @@ It requires a compatible GPU; browser execution and application/window lifecycle
 belong to the integrating host. The current style-facing exports and intended
 crate boundary are described in the [architecture guide](docs/explanation.md).
 
-`FontData::prepare_outline` prepares an owned outline run without a GPU. It
-supports simple glyf contours, static XY-translation composites and dense simple
-gvar tuples at the actual face's exact F2Dot14 instance. Unscaled HarfBuzz contour interpretation is followed by checked
-f64 size/UPEM scaling, skew, y reflection and local glyph placement, rounded once
-into the retained canonical f32 path. Composite variation, nonidentity component
-transforms, point attachment, metric overrides, sparse IUP, CFF/CFF2 and VARC
-return typed unsupported capabilities; they never use static/default or
-alternate-format outlines. Malformed present selection/variation metadata and
-unrepresentable active delta arithmetic refuse the whole preparation. Complete
-raw contour/flag/program extents are checked before decoding. Structurally valid
-flag encodings outside the installed decoder's faithful domain return a typed
-provider refusal. [Outline admission](docs/reference.md#outline-admission) defines
-the bounded composite domain.
+`FontData::prepare_glyph_run` admits immutable glyph resources without a GPU.
+It retains qualified outline paths, COLR paint operations or decoded sbix PNG
+pixels, with representation-derived `Ink` or proven `Empty` bounds. Direct and
+graph drawing consume those same resources. The [glyph admission
+reference](docs/reference.md#glyph-admission) defines the supported formats,
+effective instances, numeric rules and explicit resource limits.
 
-The result retains its font, executed `TextInstance`, original `TextGlyph` facts,
-combined run-local path and derived `Ink` or source-proved `Empty` bounds. Explicit
-`OutlineLimits` bound glyphs, path elements, temporary storage and retained logical
-custody, including the font's boxed byte extent, conservative owner headers and
-path reallocation overlap. They are not an allocator measurement or CPU-time
-bound. `Scene::prepared_outline` shares the same immutable path with direct and
-graph rendering as one NonZero fill, preserving run-local Color/Gradient/Image
-paint and overlap semantics. It does not shape text or use advance boxes as ink.
-Concrete positive emboldening appends a scaled local-x contour copy to the same
-one-fill path under the [selected outline policy](../../docs/text-layout-contract.md#concrete-outline-synthesis).
-Selected color/bitmap representations explicitly refuse.
-Color/bitmap selection metadata is checked; unsupported paint/image payloads are
-not executed or claimed to be validated. The authored `TextRun` path retains its
-existing provider behavior, with `Unspecified` bounds permitted only by its direct
-route. Broader outline/representation/synthesis support remains separate work.
-
-The optional `render-text` feature adds `prepare_text_layout`, consuming the
-actual immutable standalone `surgeist_text::Layout` without reshaping or choosing
-lines. Its result borrows that exact snapshot and owns the complete Scene. Text
-qualifies the real face and effective normalized coordinates, including
-source-proved default axes; unresolved faux-bold or skew refuse explicitly.
-One `TextLayoutLimits` budget covers all runs, font copies, mapping buffers,
-prepared paths and decoration command storage. The adapter publishes no prefix
-when a later item refuses. Failure diagnostic allocations are outside those
-successful-work limits. Font copies are shared only within that invocation;
-the caller's original Text storage remains an input loan.
-
-Glyph placement already includes Text's offsets and baselines. Existing
-rectangle decorations follow glyphs; a nonidentity placement uses one admitted
-decoration transform layer. Both glyph ink and decoration geometry receive
-numeric placement qualification. Generic Scene copies retain owned paint
-resources but carry no authority to join another Text snapshot. This standalone
-adapter does not implement #72 finalized inline fragments or captured style/text
-joins; it preserves the existing outline capability limits.
+The optional `render-text` feature adds `prepare_text_layout`. It consumes the
+exact immutable placed `surgeist_text::Layout`, preserving its font instances,
+glyphs, lines and positions. One `TextLayoutLimits` budget covers the complete
+Scene; a later refusal publishes no prefix. Text shaping, line selection and
+live computed-style authentication belong to their producing subsystems.
 
 ## Start
 

@@ -2,12 +2,14 @@
 //! Literal geometry comes from retained Ahem tables (UPEM1000, ascent800,
 //! descent-200, A/X advance1000), not another adapter invocation.
 mod composed;
+mod control_paint;
+mod endpoint_paint;
 
 use surgeist_text as text;
 
 use crate::{
-    Color, Error, OutlineCapability, OutlineLimits, OutlineNumericPhase, OutlinePreparationError,
-    OutlineResource, OutlineSynthesis, PreparedOutline, Rect, TextGlyph, TextLayoutCause,
+    Color, Error, GlyphCapability, GlyphNumericPhase, GlyphPreparationError, GlyphResource,
+    GlyphRunLimits, GlyphSynthesis, PreparedGlyphRun, Rect, TextGlyph, TextLayoutCause,
     TextLayoutError, TextLayoutLimits, TextLayoutLocation, TextLayoutResource, Transform,
     prepare_text_layout, scene::Command,
 };
@@ -53,7 +55,7 @@ fn bounded(
     decorations: usize,
 ) -> TextLayoutLimits {
     TextLayoutLimits::new(
-        OutlineLimits::new(glyphs, paths, ROOM, retained),
+        GlyphRunLimits::new(glyphs, paths, ROOM, retained),
         runs,
         coordinates,
         decorations,
@@ -78,9 +80,11 @@ fn split_source() -> text::Source {
     source
 }
 
-fn outline(command: &Command) -> (&PreparedOutline, Transform) {
-    let Command::PreparedOutline {
-        outline, transform, ..
+fn outline(command: &Command) -> (&PreparedGlyphRun, Transform) {
+    let Command::PreparedGlyphRun {
+        run: outline,
+        transform,
+        ..
     } = command
     else {
         panic!("expected an actual prepared-outline command, got {command:?}");
@@ -98,7 +102,7 @@ fn refuse(layout: &text::Layout, placement: Transform, limits: TextLayoutLimits)
 fn diagnostic(error: &Error) -> &TextLayoutError {
     assert_eq!(error.code(), crate::ErrorCode::TextLayout);
     assert!(error.invalid_value_diagnostic().is_none());
-    assert!(error.outline_preparation_diagnostic().is_none());
+    assert!(error.glyph_preparation_diagnostic().is_none());
     error
         .text_layout_diagnostic()
         .expect("typed adapter refusal")
@@ -154,7 +158,7 @@ fn actual_registered_layout_preserves_face_instance_glyphs_ink_and_single_placem
     assert_eq!(run.font().index(), 0);
     assert_eq!(run.instance().size(), 20.0);
     assert!(run.instance().coordinates().is_empty());
-    assert_eq!(run.instance().synthesis(), OutlineSynthesis::none());
+    assert_eq!(run.instance().synthesis(), GlyphSynthesis::none());
     assert_eq!(
         run.glyphs(),
         [
@@ -166,7 +170,7 @@ fn actual_registered_layout_preserves_face_instance_glyphs_ink_and_single_placem
         run.bounds().ink_rect(),
         Some(Rect::try_new(0.0, -16.0, 40.0, 20.0).unwrap())
     );
-    let Command::PreparedOutline { paint, .. } = &prepared.scene().commands[0] else {
+    let Command::PreparedGlyphRun { paint, .. } = &prepared.scene().commands[0] else {
         unreachable!()
     };
     assert_eq!(
@@ -510,9 +514,9 @@ fn actual_zero_area_decoration_is_noop_but_positive_extent_cannot_disappear() {
     let error = refuse(&positive, placement, limits());
     let cause = item_render(&error, TextLayoutLocation::Decoration { decoration: 0 });
     assert!(matches!(
-        cause.outline_preparation_diagnostic(),
-        Some(OutlinePreparationError::Numeric {
-            phase: OutlineNumericPhase::Placement,
+        cause.glyph_preparation_diagnostic(),
+        Some(GlyphPreparationError::Numeric {
+            phase: GlyphNumericPhase::Placement,
             ..
         })
     ));
@@ -560,9 +564,9 @@ fn aggregate_limits_cover_actual_multiple_runs_and_raised_retry() {
     let error = refuse(&input, Transform::identity(), bounded(2, 9, ROOM, 2, 0, 0));
     let cause = item_render(&error, TextLayoutLocation::Run { line: 0, run: 1 });
     assert!(matches!(
-        cause.outline_preparation_diagnostic(),
-        Some(OutlinePreparationError::Limit {
-            resource: OutlineResource::PathElements,
+        cause.glyph_preparation_diagnostic(),
+        Some(GlyphPreparationError::Limit {
+            resource: GlyphResource::PathElements,
             required: 5,
             limit: 4,
         })
@@ -570,7 +574,7 @@ fn aggregate_limits_cover_actual_multiple_runs_and_raised_retry() {
     let error = refuse(
         &input,
         Transform::identity(),
-        TextLayoutLimits::new(OutlineLimits::new(2, 10, 0, ROOM), 2, 0, 0),
+        TextLayoutLimits::new(GlyphRunLimits::new(2, 10, 0, ROOM), 2, 0, 0),
     );
     assert!(matches!(
         diagnostic(&error),
@@ -646,9 +650,9 @@ fn actual_late_nonidentity_composite_refusal_exposes_no_batch_and_keeps_input_fo
     let error = refuse(&input, Transform::identity(), limits());
     let cause = item_render(&error, TextLayoutLocation::Run { line: 0, run: 1 });
     assert_eq!(
-        cause.outline_preparation_diagnostic(),
-        Some(&OutlinePreparationError::UnsupportedOutline {
-            capability: OutlineCapability::CompositeGlyph,
+        cause.glyph_preparation_diagnostic(),
+        Some(&GlyphPreparationError::UnsupportedOutline {
+            capability: GlyphCapability::CompositeGlyph,
         })
     );
     assert_eq!(input.source().text().code_units(), [0x41, 0x58]);
@@ -680,7 +684,7 @@ fn actual_italic_synthesis_is_executed_from_the_same_effective_instance() {
     let (italic, transform) = outline(&prepared.scene().commands[1]);
     assert_eq!(
         italic.instance().synthesis(),
-        OutlineSynthesis::try_new(actual.x_shear(), 0.0).unwrap()
+        GlyphSynthesis::try_new(actual.x_shear(), 0.0).unwrap()
     );
     assert_eq!(transform, Transform::translation(20.0, 16.0).unwrap());
     // Literal Ahem top 800/bottom -200, scaled to size 20, sheared before y reflection.
@@ -762,7 +766,7 @@ fn minimum_retained(input: &text::Layout, placement: Transform) -> usize {
                     ..
                 }
             ) || matches!(diagnostic(&error), TextLayoutError::Item { cause: TextLayoutCause::Render(cause), .. }
-                    if matches!(cause.outline_preparation_diagnostic(), Some(OutlinePreparationError::Limit { resource: OutlineResource::RetainedBytes, .. })));
+                    if matches!(cause.glyph_preparation_diagnostic(), Some(GlyphPreparationError::Limit { resource: GlyphResource::RetainedBytes, .. })));
             assert!(
                 retained,
                 "threshold probe must refuse retained storage: {error:?}"
@@ -779,7 +783,7 @@ fn empty_and_actual_space_do_not_acquire_fabricated_ink() {
     let prepared = prepare_text_layout(
         &empty,
         Transform::identity(),
-        TextLayoutLimits::new(OutlineLimits::new(0, 0, ROOM, ROOM), 0, 0, 0),
+        TextLayoutLimits::new(GlyphRunLimits::new(0, 0, ROOM, ROOM), 0, 0, 0),
     )
     .unwrap();
     assert!(prepared.scene().commands.is_empty());
@@ -968,7 +972,7 @@ fn adapter_scene_real_gpu_direct_and_base_graph_use_the_same_layout_resources() 
     }
 }
 
-// Authored Ahem derivatives reuse the existing prepared_outline.rs fixture
+// Authored Ahem derivatives reuse the existing prepared_glyph_run.rs fixture
 // construction. Their literal tables, not a provider output, define the oracle.
 fn u16_at(bytes: &[u8], offset: usize) -> u16 {
     u16::from_be_bytes(bytes[offset..offset + 2].try_into().unwrap())

@@ -1,7 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use crate::pinned_font;
 use surgeist_layout as layout;
+#[path = "prepared_source.rs"]
+mod prepared_source;
 use surgeist_layout::{ComputeInput, ComputeOutput, GridSpan, LayoutTree as _};
 
 type Scalar = layout::Scalar;
@@ -48,6 +51,15 @@ impl Golden {
         let input = one_child(test, "input")?;
         let expectations = one_child(test, "expectations")?;
 
+        if test
+            .descendants()
+            .any(|node| node.has_tag_name("prepared-paragraph"))
+            && test.attribute("measurement-version") != Some("2")
+        {
+            return Err(Error::new(
+                "native source capture requires measurement-version=2",
+            ));
+        }
         let name = required_attr(test, "name")?.to_string();
         let root = parse_node(one_element_child(input)?)?;
         validate_fri06_c08r_explicit_input(&root, true)?;
@@ -114,8 +126,22 @@ pub fn assert_surgeist_matches_with_endpoint_accounting(
     );
 
     let request = root_request(available, golden.viewport.root_context)?;
-    let batch = layout::compute_layout(&tree, 0, request)
-        .map_err(|error| Error::new(format!("{}: layout failed: {error:?}", golden.name)))?;
+    let batch = if tree.paragraphs.is_empty() {
+        layout::compute_layout(&tree, 0, request)
+    } else {
+        let capture = layout::LayoutFlowInput::try_new(
+            &tree,
+            0,
+            tree.paragraphs.clone(),
+            surgeist_layout::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .map_err(|error| Error::new(format!("{}: capture failed: {error:?}", golden.name)))?;
+        layout::compute_layout_with_flow(&capture, 0, request)
+    }
+    .map_err(|error| Error::new(format!("{}: layout failed: {error:?}", golden.name)))?;
     tree.apply_completed_batch(&batch);
 
     compare_expectation_with_endpoint_accounting(
@@ -186,13 +212,39 @@ pub struct Node {
     pub style: StyleAttrs,
     pub text: Option<String>,
     pub children: Vec<Node>,
-    inline_text: Option<layout::InlineTextInput>,
+    // Historical measured tuples remain schema data only, never production Text.
+    inline_text: Option<MeasuredInlineText>,
+    prepared_occurrence: Option<usize>,
+    prepared_origin: Option<surgeist_text::PreparedOrigin>,
+    prepared_control: Option<surgeist_text::PreparedControl>,
+    prepared: Option<prepared_source::Capture>,
     atomic_inline_participation: Option<layout::AtomicInlineParticipation>,
     shape_bands: Option<Vec<FixtureShapeBand>>,
     inline_boundary: Option<layout::InlineBoundaryKind>,
     atomic_line_strut: Option<layout::InlineMetrics>,
     anonymous_grid_text_wrapper: bool,
     layout_ready_inline_root: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct MeasuredInlineText {
+    segments: Vec<MeasuredSegment>,
+}
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct MeasuredSegment {
+    id: u64,
+    extent: Scalar,
+    metrics: layout::InlineMetrics,
+    level: surgeist_text::BidiLevel,
+    edge: surgeist_text::InlineWhitespaceEdge,
+    following: MeasuredBreak,
+}
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum MeasuredBreak {
+    Prohibited,
+    Allowed,
+    Mandatory,
+    Replacement(Scalar),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -246,7 +298,7 @@ pub struct Expectation {
     pub height: Option<Scalar>,
     pub scroll_size: Option<Size>,
     pub fragments: Option<Vec<InlineFragmentExpectation>>,
-    pub range_inks: Option<Vec<InlineRangeInkExpectation>>,
+    pub range_rectangles: Option<Vec<InlineRangeRectangleExpectation>>,
     pub browser_control: Option<BrowserControlExpectation>,
     pub children: Vec<Expectation>,
 }
@@ -255,7 +307,8 @@ pub struct Expectation {
 pub struct InlineFragmentExpectation {
     pub source_segment_id: u64,
     pub line_index: usize,
-    pub visual_index: usize,
+    /// Historical numeric XML only; native Text has no fragment-table visual ordinal.
+    pub historical_visual_index: Option<usize>,
     pub x: Scalar,
     pub y: Scalar,
     pub width: Scalar,
@@ -273,7 +326,7 @@ pub enum PhysicalStartEdge {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct InlineRangeInkExpectation {
+pub struct InlineRangeRectangleExpectation {
     pub source_segment_id: u64,
     pub line_index: usize,
     pub physical_start_edge: PhysicalStartEdge,
@@ -400,6 +453,36 @@ fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
     };
 
     if let Some(layout_input) = xml.attribute("layout-input") {
+        if kind == NodeKind::Text && layout_input == "prepared-text" {
+            if xml
+                .attributes()
+                .any(|attr| !["layout-input", "occurrence"].contains(&attr.name()))
+                || xml.children().any(|child| {
+                    child.is_element() || child.text().is_some_and(|value| !value.trim().is_empty())
+                })
+            {
+                return Err(Error::new(
+                    "prepared text leaf accepts only its original occurrence reference",
+                ));
+            }
+            return Ok(Node {
+                kind,
+                style: StyleAttrs::default(),
+                text: None,
+                children: Vec::new(),
+                inline_text: None,
+                prepared_occurrence: Some(parse_inline_integer(xml, "occurrence")?),
+                prepared_origin: None,
+                prepared_control: None,
+                prepared: None,
+                atomic_inline_participation: None,
+                shape_bands: None,
+                inline_boundary: None,
+                atomic_line_strut: None,
+                anonymous_grid_text_wrapper: false,
+                layout_ready_inline_root: false,
+            });
+        }
         if kind != NodeKind::Text || layout_input != "inline-text" {
             return Err(Error::new(format!(
                 "invalid `layout-input` on `<{}>`: `{layout_input}`",
@@ -475,7 +558,9 @@ fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
         .children()
         .filter(roxmltree::Node::is_element)
         .filter(|child| {
-            !child.has_tag_name("atomic-placeholder") && !child.has_tag_name("shape-bands")
+            !child.has_tag_name("atomic-placeholder")
+                && !child.has_tag_name("shape-bands")
+                && !child.has_tag_name("prepared-paragraph")
         })
         .map(parse_node)
         .collect::<Result<Vec<_>, _>>()?;
@@ -502,7 +587,59 @@ fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
         child.atomic_inline_participation = Some(participation);
     }
 
+    let captures: Vec<_> = xml
+        .children()
+        .filter(|child| child.has_tag_name("prepared-paragraph"))
+        .collect();
+    if captures.len() > 1 {
+        return Err(Error::new(
+            "only one prepared paragraph capture is allowed per container",
+        ));
+    }
+    let prepared = captures
+        .first()
+        .map(|capture| {
+            if capture.attributes().any(|attr| attr.name() != "capture")
+                || capture.children().any(|child| {
+                    child.is_element() || child.text().is_some_and(|text| !text.trim().is_empty())
+                })
+            {
+                return Err(Error::new(
+                    "prepared paragraph capture has unexpected fields or payload",
+                ));
+            }
+            let capture = prepared_source::Capture::parse(
+                required_attr(*capture, "capture")?,
+                children.len(),
+            )?;
+            for (index, (child, origin)) in capture.origins.iter().enumerate() {
+                if children[*child].prepared_occurrence != Some(index)
+                    || children[*child].inline_text.is_some()
+                {
+                    return Err(Error::new(
+                        "prepared source origin does not match its exact native leaf",
+                    ));
+                }
+                children[*child].prepared_origin = Some(origin.clone());
+            }
+            for (child, control) in &capture.controls {
+                children[*child].prepared_control = Some(control.clone());
+            }
+            Ok(capture)
+        })
+        .transpose()?;
+    if prepared.is_none()
+        && children
+            .iter()
+            .any(|child| child.prepared_occurrence.is_some())
+    {
+        return Err(Error::new("prepared leaf has no containing source capture"));
+    }
     Ok(Node {
+        prepared_occurrence: None,
+        prepared_origin: None,
+        prepared_control: None,
+        prepared,
         kind,
         style: StyleAttrs { attrs },
         text,
@@ -562,6 +699,10 @@ fn parse_inline_boundary_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Erro
         }
     };
     Ok(Node {
+        prepared_occurrence: None,
+        prepared_origin: None,
+        prepared_control: None,
+        prepared: None,
         kind: NodeKind::Div,
         style: StyleAttrs::default(),
         text: None,
@@ -574,6 +715,61 @@ fn parse_inline_boundary_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Erro
         anonymous_grid_text_wrapper: false,
         layout_ready_inline_root: false,
     })
+}
+
+fn validate_native_control_topology(node: &Node) -> Result<(), Error> {
+    use surgeist_text::ParagraphControlKind;
+    let mut depth = 0_usize;
+    for child in &node.children {
+        let Some(control) = &child.prepared_control else {
+            if child.inline_boundary.is_some() {
+                return Err(Error::new(
+                    "native inline boundary has no captured control occurrence",
+                ));
+            }
+            validate_fri06_c08r_explicit_input(child, false)?;
+            continue;
+        };
+        if child.atomic_line_strut.is_some()
+            || child.prepared_occurrence.is_some()
+            || child.inline_text.is_some()
+            || child.atomic_inline_participation.is_some()
+            || !child.children.is_empty()
+        {
+            return Err(Error::new(
+                "native control cannot carry a second payload or invented strut",
+            ));
+        }
+        match control.view().kind() {
+            ParagraphControlKind::InlineBoundaryStart
+                if child.inline_boundary == Some(layout::InlineBoundaryKind::Start) =>
+            {
+                depth = depth
+                    .checked_add(1)
+                    .ok_or_else(|| Error::new("native boundary depth overflow"))?;
+            }
+            ParagraphControlKind::InlineBoundaryEnd
+                if child.inline_boundary == Some(layout::InlineBoundaryKind::End) =>
+            {
+                depth = depth
+                    .checked_sub(1)
+                    .ok_or_else(|| Error::new("misplaced native end inline boundary"))?;
+            }
+            ParagraphControlKind::ForcedBreak
+                if child.inline_boundary.is_none()
+                    && child.style.get("source-tag") == Some("br")
+                    && child.style.get("display") == Some("inline") => {}
+            _ => {
+                return Err(Error::new(
+                    "captured control role does not match its exact native leaf",
+                ));
+            }
+        }
+    }
+    if depth != 0 {
+        return Err(Error::new("unclosed native start inline boundary"));
+    }
+    Ok(())
 }
 
 fn validate_fri06_c08r_explicit_input(node: &Node, is_root: bool) -> Result<bool, Error> {
@@ -613,6 +809,16 @@ fn validate_fri06_c08r_explicit_input(node: &Node, is_root: bool) -> Result<bool
         ));
     }
 
+    if node.prepared.is_some() {
+        if !node.layout_ready_inline_root {
+            return Err(Error::new(
+                "native paragraph requires its explicit layout-ready containing root",
+            ));
+        }
+        validate_native_control_topology(node)?;
+        return Ok(true);
+    }
+
     let mut index = 0;
     while index < node.children.len() {
         let child = &node.children[index];
@@ -648,7 +854,7 @@ fn validate_fri06_c08r_explicit_input(node: &Node, is_root: bool) -> Result<bool
                         "start inline boundary requires a typed-text payload and end boundary",
                     )
                 })?;
-                if text.inline_text.is_none()
+                if (text.inline_text.is_none() && text.prepared_occurrence.is_none())
                     || text.inline_boundary.is_some()
                     || !text.children.is_empty()
                     || end.inline_boundary != Some(layout::InlineBoundaryKind::End)
@@ -708,13 +914,18 @@ fn parse_inline_text_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
     if segments.is_empty() {
         return Err(Error::new("inline text requires at least one `<segment>`"));
     }
-    let inline_text = layout::InlineTextInput::try_new(segments).map_err(|error| match error {
-        layout::InlineTextInputError::DuplicateSegmentId { segment_id } => {
-            Error::new(format!("duplicate segment id `{}`", segment_id.get()))
+    let mut ids = BTreeSet::new();
+    for segment in &segments {
+        if !ids.insert(segment.id) {
+            return Err(Error::new(format!("duplicate segment id `{}`", segment.id)));
         }
-        _ => Error::new(format!("invalid inline text input: {error:?}")),
-    })?;
+    }
+    let inline_text = MeasuredInlineText { segments };
     Ok(Node {
+        prepared_occurrence: None,
+        prepared_origin: None,
+        prepared_control: None,
+        prepared: None,
         kind: NodeKind::Text,
         style: StyleAttrs::default(),
         text: None,
@@ -729,9 +940,7 @@ fn parse_inline_text_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
     })
 }
 
-fn parse_inline_segment(
-    xml: roxmltree::Node<'_, '_>,
-) -> Result<layout::ShapedInlineSegment, Error> {
+fn parse_inline_segment(xml: roxmltree::Node<'_, '_>) -> Result<MeasuredSegment, Error> {
     expect_tag(xml, "segment")?;
     const ATTRIBUTES: &[&str] = &[
         "id",
@@ -753,7 +962,7 @@ fn parse_inline_segment(
         )));
     }
     validate_inline_payload(xml)?;
-    let segment_id = layout::InlineSegmentId::new(parse_inline_integer(xml, "id")?);
+    let id = parse_inline_integer(xml, "id")?;
     let inline_extent = parse_inline_nonnegative_number(xml, "inline-extent")?;
     let baseline = parse_inline_nonnegative_number(xml, "inline-baseline")?;
     let line_height = parse_inline_nonnegative_number(xml, "inline-line-height")?;
@@ -775,15 +984,21 @@ fn parse_inline_segment(
         }
     };
     let following_break = parse_inline_break(xml, "segment")?;
-    layout::ShapedInlineSegment::try_new(
-        segment_id,
-        inline_extent,
+    if matches!(following_break, MeasuredBreak::Replacement(_))
+        && whitespace_edge != surgeist_text::InlineWhitespaceEdge::Preserve
+    {
+        return Err(Error::new(
+            "invalid segment replacement: replacement requires preserved whitespace",
+        ));
+    }
+    Ok(MeasuredSegment {
+        id,
+        extent: inline_extent,
         metrics,
-        bidi_level,
-        whitespace_edge,
-        following_break,
-    )
-    .map_err(|error| Error::new(format!("invalid segment replacement: {error:?}")))
+        level: bidi_level,
+        edge: whitespace_edge,
+        following: following_break,
+    })
 }
 
 fn parse_atomic_placeholder(
@@ -808,25 +1023,30 @@ fn parse_atomic_placeholder(
     let child_index = parse_inline_integer(xml, "child-index")?;
     let bidi_level = parse_bidi_level(xml, "atomic-placeholder")?;
     let following_break = parse_inline_break(xml, "atomic-placeholder")?;
-    let participation = layout::AtomicInlineParticipation::try_new(bidi_level, following_break)
-        .map_err(|_| Error::new("atomic placeholder break replacement is not allowed"))?;
+    let following = match following_break {
+        MeasuredBreak::Prohibited => layout::InlineBreakOpportunity::Prohibited,
+        MeasuredBreak::Allowed => layout::InlineBreakOpportunity::Allowed,
+        MeasuredBreak::Mandatory => layout::InlineBreakOpportunity::Mandatory,
+        MeasuredBreak::Replacement(_) => {
+            return Err(Error::new(
+                "atomic placeholder break replacement is not allowed",
+            ));
+        }
+    };
+    let participation = layout::AtomicInlineParticipation::new(bidi_level, following);
     Ok((child_index, participation))
 }
 
-fn parse_inline_break(
-    xml: roxmltree::Node<'_, '_>,
-    tag: &str,
-) -> Result<layout::InlineBreakOpportunity, Error> {
+fn parse_inline_break(xml: roxmltree::Node<'_, '_>, tag: &str) -> Result<MeasuredBreak, Error> {
     let raw = required_attr(xml, "following-break")?;
     let replacement = xml.attribute("replacement-inline-extent");
     match (raw, replacement) {
-        ("prohibited", None) => Ok(layout::InlineBreakOpportunity::prohibited()),
-        ("allowed", None) => Ok(layout::InlineBreakOpportunity::allowed()),
-        ("mandatory", None) => Ok(layout::InlineBreakOpportunity::mandatory()),
+        ("prohibited", None) => Ok(MeasuredBreak::Prohibited),
+        ("allowed", None) => Ok(MeasuredBreak::Allowed),
+        ("mandatory", None) => Ok(MeasuredBreak::Mandatory),
         ("allowed-with-replacement", Some(_)) => {
             let extent = parse_inline_nonnegative_number(xml, "replacement-inline-extent")?;
-            layout::InlineBreakOpportunity::try_allowed_with_replacement(extent)
-                .map_err(|_| Error::new("invalid `replacement-inline-extent`"))
+            Ok(MeasuredBreak::Replacement(extent))
         }
         ("allowed-with-replacement", None) => Err(Error::new(
             "missing `replacement-inline-extent` for replacement break",
@@ -1069,7 +1289,7 @@ fn parse_expectation(xml: roxmltree::Node<'_, '_>) -> Result<Expectation, Error>
     };
 
     let mut fragments = None;
-    let mut range_inks = None;
+    let mut range_rectangles = None;
     let mut browser_control = None;
     let mut children = Vec::new();
     for child in xml.children().filter(roxmltree::Node::is_element) {
@@ -1083,8 +1303,12 @@ fn parse_expectation(xml: roxmltree::Node<'_, '_>) -> Result<Expectation, Error>
                     "expected at most one `<fragments>` child on `<node>`",
                 ));
             }
-            "range-inks" if range_inks.is_none() => {
-                range_inks = Some(parse_range_ink_expectations(child)?);
+            "range-fragments" if range_rectangles.is_none() => {
+                range_rectangles = Some(parse_native_range_fragments(child)?);
+            }
+            "range-fragments" => return Err(Error::new("duplicate range rectangle category")),
+            "range-inks" if range_rectangles.is_none() => {
+                range_rectangles = Some(parse_range_rectangle_expectations(child)?);
             }
             "range-inks" => {
                 return Err(Error::new(
@@ -1106,12 +1330,12 @@ fn parse_expectation(xml: roxmltree::Node<'_, '_>) -> Result<Expectation, Error>
             }
         }
     }
-    if fragments.is_some() && range_inks.is_some() {
+    if fragments.is_some() && range_rectangles.is_some() {
         return Err(Error::new(
-            "model fragments and Range ink are distinct expectation categories",
+            "model fragments and Range rectangle are distinct expectation categories",
         ));
     }
-    if browser_control.is_some() && (fragments.is_some() || range_inks.is_some()) {
+    if browser_control.is_some() && (fragments.is_some() || range_rectangles.is_some()) {
         return Err(Error::new(
             "browser control observations and fragment observations are distinct categories",
         ));
@@ -1124,19 +1348,19 @@ fn parse_expectation(xml: roxmltree::Node<'_, '_>) -> Result<Expectation, Error>
         height: optional_number_attr(xml, "height")?,
         scroll_size,
         fragments,
-        range_inks,
+        range_rectangles,
         browser_control,
         children,
     };
     validate_observation_expectation_category(&expectation)?;
-    if (expectation.range_inks.is_some() || expectation.browser_control.is_some())
+    if (expectation.range_rectangles.is_some() || expectation.browser_control.is_some())
         && let Some(attribute) = xml.attributes().find(|attribute| {
             !["x", "y", "width", "height", "scroll_width", "scroll_height"]
                 .contains(&attribute.name())
         })
     {
         return Err(Error::new(format!(
-            "unsupported Range ink node expectation attribute `{}`",
+            "unsupported Range rectangle node expectation attribute `{}`",
             attribute.name()
         )));
     }
@@ -1144,7 +1368,7 @@ fn parse_expectation(xml: roxmltree::Node<'_, '_>) -> Result<Expectation, Error>
 }
 
 fn validate_observation_expectation_category(expectation: &Expectation) -> Result<(), Error> {
-    if expectation.range_inks.is_none() && expectation.browser_control.is_none() {
+    if expectation.range_rectangles.is_none() && expectation.browser_control.is_none() {
         return Ok(());
     }
     if expectation.x.is_some()
@@ -1152,35 +1376,35 @@ fn validate_observation_expectation_category(expectation: &Expectation) -> Resul
         || expectation.width.is_some()
         || expectation.height.is_some()
     {
-        return Err(Error::new(if expectation.range_inks.is_some() {
-            "Range ink must not include node geometry"
+        return Err(Error::new(if expectation.range_rectangles.is_some() {
+            "Range rectangle must not include node geometry"
         } else {
             "browser control observations must not include model control geometry"
         }));
     }
     if expectation.scroll_size.is_some() {
-        return Err(Error::new(if expectation.range_inks.is_some() {
-            "Range ink must not include scroll geometry"
+        return Err(Error::new(if expectation.range_rectangles.is_some() {
+            "Range rectangle must not include scroll geometry"
         } else {
             "browser control observations must not include scroll geometry"
         }));
     }
     if expectation.fragments.is_some() {
-        let message = if expectation.range_inks.is_some() {
-            "model fragments and Range ink are distinct expectation categories"
+        let message = if expectation.range_rectangles.is_some() {
+            "model fragments and Range rectangle are distinct expectation categories"
         } else {
             "browser control observations and fragment observations are distinct categories"
         };
         return Err(Error::new(message));
     }
-    if expectation.range_inks.is_some() && expectation.browser_control.is_some() {
+    if expectation.range_rectangles.is_some() && expectation.browser_control.is_some() {
         return Err(Error::new(
             "browser control observations and fragment observations are distinct categories",
         ));
     }
     if !expectation.children.is_empty() {
-        return Err(Error::new(if expectation.range_inks.is_some() {
-            "Range ink must not include child geometry expectations"
+        return Err(Error::new(if expectation.range_rectangles.is_some() {
+            "Range rectangle must not include child geometry expectations"
         } else {
             "browser control observations must not include child geometry expectations"
         }));
@@ -1258,9 +1482,56 @@ where
         .map_err(|_| Error::new(format!("invalid `{name}` on `<{tag}>`: `{raw}`")))
 }
 
-fn parse_range_ink_expectations(
+fn parse_native_range_fragments(
     xml: roxmltree::Node<'_, '_>,
-) -> Result<Vec<InlineRangeInkExpectation>, Error> {
+) -> Result<Vec<InlineRangeRectangleExpectation>, Error> {
+    if xml.attributes().len() != 0 {
+        return Err(Error::new("range-fragments has unexpected attributes"));
+    }
+    let mut result = Vec::new();
+    for node in xml.children() {
+        if node.is_text() && node.text().is_some_and(|value| !value.trim().is_empty()) {
+            return Err(Error::new("range-fragments has unexpected text"));
+        }
+        if !node.is_element() {
+            continue;
+        }
+        if !node.has_tag_name("range-fragment") {
+            return Err(Error::new("range-fragments has unexpected child"));
+        }
+        const KEYS: &[&str] = &["origin", "line", "physical_start_edge", "start", "advance"];
+        if node.attributes().len() != KEYS.len()
+            || node
+                .attributes()
+                .any(|attribute| !KEYS.contains(&attribute.name()))
+        {
+            return Err(Error::new(
+                "range-fragment requires its complete closed rectangle association",
+            ));
+        }
+        validate_fragment_payload(node, None)?;
+        let integer = |name| parse_inline_integer(node, name);
+        result.push(InlineRangeRectangleExpectation {
+            source_segment_id: integer("origin")?,
+            line_index: usize::try_from(integer("line")?)
+                .map_err(|_| Error::new("range fragment line index out of range"))?,
+            physical_start_edge: match required_attr(node, "physical_start_edge")? {
+                "left" => PhysicalStartEdge::Left,
+                "right" => PhysicalStartEdge::Right,
+                "top" => PhysicalStartEdge::Top,
+                "bottom" => PhysicalStartEdge::Bottom,
+                _ => return Err(Error::new("invalid physical Range rectangle edge")),
+            },
+            start: parse_number(required_attr(node, "start")?)?,
+            advance: parse_inline_nonnegative_number(node, "advance")?,
+        });
+    }
+    Ok(result)
+}
+
+fn parse_range_rectangle_expectations(
+    xml: roxmltree::Node<'_, '_>,
+) -> Result<Vec<InlineRangeRectangleExpectation>, Error> {
     expect_tag(xml, "range-inks")?;
     if let Some(attribute) = xml.attributes().next() {
         return Err(Error::new(format!(
@@ -1271,13 +1542,13 @@ fn parse_range_ink_expectations(
     validate_fragment_payload(xml, Some("range-ink"))?;
     xml.children()
         .filter(roxmltree::Node::is_element)
-        .map(parse_range_ink_expectation)
+        .map(parse_range_rectangle_expectation)
         .collect()
 }
 
-fn parse_range_ink_expectation(
+fn parse_range_rectangle_expectation(
     xml: roxmltree::Node<'_, '_>,
-) -> Result<InlineRangeInkExpectation, Error> {
+) -> Result<InlineRangeRectangleExpectation, Error> {
     expect_tag(xml, "range-ink")?;
     let physical_start_edge = match required_attr(xml, "physical_start_edge")? {
         "left" => PhysicalStartEdge::Left,
@@ -1290,12 +1561,12 @@ fn parse_range_ink_expectation(
             )));
         }
     };
-    let expectation = InlineRangeInkExpectation {
-        source_segment_id: parse_range_ink_integer(xml, "source_segment_id")?,
-        line_index: parse_range_ink_integer(xml, "line_index")?,
+    let expectation = InlineRangeRectangleExpectation {
+        source_segment_id: parse_range_rectangle_integer(xml, "source_segment_id")?,
+        line_index: parse_range_rectangle_integer(xml, "line_index")?,
         physical_start_edge,
-        start: parse_range_ink_number(xml, "start", false)?,
-        advance: parse_range_ink_number(xml, "advance", true)?,
+        start: parse_range_rectangle_number(xml, "start", false)?,
+        advance: parse_range_rectangle_number(xml, "advance", true)?,
     };
     const ATTRIBUTES: &[&str] = &[
         "source_segment_id",
@@ -1317,7 +1588,7 @@ fn parse_range_ink_expectation(
     Ok(expectation)
 }
 
-fn parse_range_ink_integer<T>(xml: roxmltree::Node<'_, '_>, name: &str) -> Result<T, Error>
+fn parse_range_rectangle_integer<T>(xml: roxmltree::Node<'_, '_>, name: &str) -> Result<T, Error>
 where
     T: std::str::FromStr,
 {
@@ -1331,7 +1602,7 @@ where
         .map_err(|_| Error::new(format!("invalid `{name}` on `<range-ink>`: `{raw}`")))
 }
 
-fn parse_range_ink_number(
+fn parse_range_rectangle_number(
     xml: roxmltree::Node<'_, '_>,
     name: &str,
     nonnegative: bool,
@@ -1370,7 +1641,7 @@ fn parse_fragment_expectation(
     let expectation = InlineFragmentExpectation {
         source_segment_id: parse_fragment_integer(xml, "source_segment_id")?,
         line_index: parse_fragment_integer(xml, "line_index")?,
-        visual_index: parse_fragment_integer(xml, "visual_index")?,
+        historical_visual_index: Some(parse_fragment_integer(xml, "visual_index")?),
         x: parse_fragment_number(xml, "x", false)?,
         y: parse_fragment_number(xml, "y", false)?,
         width: parse_fragment_number(xml, "width", true)?,
@@ -1624,6 +1895,7 @@ struct TestNode {
 #[derive(Clone, Debug, Default)]
 struct TestTree {
     nodes: Vec<TestNode>,
+    paragraphs: Vec<layout::TextParagraphBinding<usize>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1639,6 +1911,10 @@ struct InheritedTextContext {
 }
 
 impl TestTree {
+    fn unrounded_inline_fragments(&self, node: usize) -> Option<&[layout::InlineFragmentOutput]> {
+        self.nodes[node].unrounded_inline_fragments.as_deref()
+    }
+
     fn from_golden(root: &Node) -> Result<Self, Error> {
         let mut tree = Self::default();
         tree.push_node(
@@ -1671,27 +1947,60 @@ impl TestTree {
             None => inherited.line_height,
         };
         let resolved_line_height = line_height.resolve(font_size);
-        let mut layout_input = match (node.inline_boundary, &node.inline_text) {
-            (Some(kind), None) => {
+        let mut layout_input = if let Some(origin) = &node.prepared_origin {
+            layout::LayoutInput::inline_text(layout::TextParticipation::new(origin.clone()))
+        } else if node.prepared_control.is_some() {
+            if let Some(kind) = node.inline_boundary {
                 let flow = inherited.containing_flow.ok_or_else(|| {
-                    Error::new("synthetic inline boundary requires a containing flow")
+                    Error::new("captured neutral boundary requires a containing flow")
                 })?;
-                let metrics = node
-                    .atomic_line_strut
-                    .map(Ok)
-                    .unwrap_or_else(|| fixture_inline_metrics(font_size, resolved_line_height))?;
+                // Native fixture validation forbids an authored strut here,
+                // and the boundary schema admits no decoration properties.
+                // These are genuine zero contributions, not absent Style facts.
+                let metrics = layout::InlineMetrics::try_new(0.0, 0.0)
+                    .map_err(|error| Error::new(format!("invalid neutral metrics: {error:?}")))?;
                 layout::LayoutInput::inline_boundary(
-                    layout::InlineBoundaryInput::new(kind, metrics)
+                    layout::InlineBoundaryInput::new(
+                        kind,
+                        metrics,
+                        layout::InlineBoundaryEdge::ZERO,
+                    )
+                    .with_direction(flow.direction())
+                    .with_writing_mode(flow.writing_mode()),
+                )
+            } else {
+                to_layout_input_in_flow(&node.style, inherited.containing_flow)?
+            }
+        } else {
+            match (node.inline_boundary, &node.inline_text) {
+                (Some(kind), None) => {
+                    let flow = inherited.containing_flow.ok_or_else(|| {
+                        Error::new("synthetic inline boundary requires a containing flow")
+                    })?;
+                    let metrics = node.atomic_line_strut.map(Ok).unwrap_or_else(|| {
+                        fixture_inline_metrics(font_size, resolved_line_height)
+                    })?;
+                    layout::LayoutInput::inline_boundary(
+                        layout::InlineBoundaryInput::new(
+                            kind,
+                            metrics,
+                            layout::InlineBoundaryEdgeOf::ZERO,
+                        )
                         .with_direction(flow.direction())
                         .with_writing_mode(flow.writing_mode()),
-                )
-            }
-            (None, Some(input)) => layout::LayoutInput::inline_text(input.clone()),
-            (None, None) => to_layout_input_in_flow(&node.style, inherited.containing_flow)?,
-            (Some(_), Some(_)) => {
-                return Err(Error::new(
-                    "fixture node cannot be both inline text and an inline boundary",
-                ));
+                    )
+                }
+                (None, Some(_)) => {
+                    return Err(Error::new(
+                        "historical measured-width text has no original source/font capture; it cannot enter production Text",
+                    ));
+                }
+                (None, None) => to_layout_input_in_flow(&node.style, inherited.containing_flow)?,
+                (Some(_), Some(_)) => {
+                    return Err(Error::new(
+                        "fixture node cannot be both inline text and an inline boundary",
+                    ));
+                }
             }
         };
         if let Some(participation) = node.atomic_inline_participation {
@@ -1814,6 +2123,9 @@ impl TestTree {
             )?);
             self.nodes[id].text = None;
         }
+        if let Some(prepared) = &node.prepared {
+            self.paragraphs.push(prepared.binding(id, &children)?);
+        }
         self.nodes[id].children = children;
         Ok(id)
     }
@@ -1900,43 +2212,39 @@ impl TestTree {
         Ok(id)
     }
 
-    fn measure(&self, node: usize, input: layout::LeafMeasureInput) -> layout::Size {
+    fn measure(&self, node: usize, input: layout::LeafMeasureInput, text: &str) -> layout::Size {
         let known = input.known_content_size();
         let available = input
             .available_content_size()
             .map(layout::MeasurementAvailable::into_available);
-        if let Some(text) = &self.nodes[node].text {
-            let text = TextMeasure::new(
-                text,
-                self.nodes[node].font_family,
-                self.nodes[node].font_size,
-                self.nodes[node].line_height,
-                self.nodes[node].preserve_fractional_min_content,
-                self.nodes[node].use_tighter_monospace_wrap,
-            );
-            if self.box_node_input(node).writing_mode.is_vertical() {
-                let height = known.height.unwrap_or_else(|| match available.height {
-                    layout::Available::Definite(height) => height,
-                    layout::Available::MinContent => text.min_content_width(),
-                    layout::Available::MaxContent => text.max_content_width(),
-                });
-                let width = known.width.unwrap_or_else(|| text.width_for_height(height));
-                return layout::Size::new(width, height);
-            }
-
-            let width = known.width.unwrap_or_else(|| match available.width {
-                layout::Available::Definite(width) => text
-                    .max_content_width()
-                    .min(width)
-                    .max(text.min_content_width()),
+        let text = TextMeasure::new(
+            text,
+            self.nodes[node].font_family,
+            self.nodes[node].font_size,
+            self.nodes[node].line_height,
+            self.nodes[node].preserve_fractional_min_content,
+            self.nodes[node].use_tighter_monospace_wrap,
+        );
+        if self.box_node_input(node).writing_mode.is_vertical() {
+            let height = known.height.unwrap_or_else(|| match available.height {
+                layout::Available::Definite(height) => height,
                 layout::Available::MinContent => text.min_content_width(),
                 layout::Available::MaxContent => text.max_content_width(),
             });
-            let height = known.height.unwrap_or_else(|| text.height_for_width(width));
+            let width = known.width.unwrap_or_else(|| text.width_for_height(height));
             return layout::Size::new(width, height);
         }
 
-        layout::Size::new(known.width.unwrap_or(0.0), known.height.unwrap_or(0.0))
+        let width = known.width.unwrap_or_else(|| match available.width {
+            layout::Available::Definite(width) => text
+                .max_content_width()
+                .min(width)
+                .max(text.min_content_width()),
+            layout::Available::MinContent => text.min_content_width(),
+            layout::Available::MaxContent => text.max_content_width(),
+        });
+        let height = known.height.unwrap_or_else(|| text.height_for_width(width));
+        layout::Size::new(width, height)
     }
 
     fn apply_completed_batch(&mut self, batch: &layout::CompletedLayoutBatch<usize>) {
@@ -1949,10 +2257,6 @@ impl TestTree {
             .as_box()
             .unwrap_or(&self.nodes[node].non_box_input)
     }
-}
-
-fn can_use_leaf_measurement(display: layout::Display, child_count: usize, has_text: bool) -> bool {
-    child_count == 0 && (has_text || !display.establishes_grid_formatting_context())
 }
 
 fn fixture_inline_metrics(
@@ -2250,22 +2554,11 @@ impl layout::LayoutTree for TestTree {
         }
     }
 
-    fn unrounded_inline_fragments(
-        &self,
-        node: Self::Node,
-    ) -> Option<&[layout::InlineFragmentOutput]> {
-        self.nodes[node].unrounded_inline_fragments.as_deref()
-    }
-
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
-        if self.nodes[node].layout_input.as_box().is_none() {
-            return false;
-        }
-        can_use_leaf_measurement(
-            self.box_node_input(node).display,
-            self.nodes[node].children.len(),
-            self.nodes[node].text.is_some(),
-        )
+        let node = &self.nodes[node];
+        // Only fixture text supplies intrinsic content measurements. Empty
+        // ordinary boxes retain their native container formatting algorithm.
+        node.layout_input.as_box().is_some() && node.children.is_empty() && node.text.is_some()
     }
 
     fn measure_leaf(
@@ -2273,8 +2566,11 @@ impl layout::LayoutTree for TestTree {
         node: Self::Node,
         input: layout::LeafMeasureInput,
     ) -> Option<Result<layout::Size, Self::MeasureError>> {
-        self.nodes[node].layout_input.as_box()?;
-        Some(Ok(self.measure(node, input)))
+        if !self.has_leaf_measurement(node) {
+            return None;
+        }
+        let text = self.nodes[node].text.as_deref()?;
+        Some(Ok(self.measure(node, input, text)))
     }
 }
 
@@ -2315,16 +2611,22 @@ impl layout::LayoutBatchSink<usize, Scalar> for TestTree {
             }
         }
         for entry in batch.unrounded_inline_fragments() {
-            prepared[entry.node()]
+            let layout::InlineFragmentOwner::Node(node) = entry.owner() else {
+                panic!("fixture contains node fragments")
+            };
+            prepared[*node]
                 .unrounded_inline_fragments
                 .get_or_insert_with(Vec::new)
-                .push(entry.fragment());
+                .push(entry.fragment().clone());
         }
         for entry in batch.final_inline_fragments() {
-            prepared[entry.node()]
+            let layout::InlineFragmentOwner::Node(node) = entry.owner() else {
+                panic!("fixture contains node fragments")
+            };
+            prepared[*node]
                 .final_inline_fragments
                 .get_or_insert_with(Vec::new)
-                .push(entry.fragment());
+                .push(entry.fragment().clone());
         }
         for entry in batch.cache_store_entries() {
             prepared[entry.node()].cache.store_with_context(
@@ -2382,7 +2684,6 @@ fn compare_expectation_with_endpoint_accounting(
                 next: 0,
             },
         },
-        range_line_registries: RangeLineRegistries::default(),
         strict_geometry_nodes: BTreeSet::new(),
         pending_browser_controls: Vec::new(),
     };
@@ -2402,8 +2703,8 @@ fn compare_expectation_with_endpoint_accounting(
         .get(comparison_state.fragment_cursors.unrounded.next)
     {
         return Err(Error::new(format!(
-            "{path}: unexpected unrounded fragment source association at node {}",
-            entry.node()
+            "{path}: unexpected unrounded fragment source association at owner {:?}",
+            entry.owner()
         )));
     }
     if let Some(entry) = comparison_state
@@ -2413,8 +2714,8 @@ fn compare_expectation_with_endpoint_accounting(
         .get(comparison_state.fragment_cursors.final_output.next)
     {
         return Err(Error::new(format!(
-            "{path}: unexpected fragment source association at node {}",
-            entry.node()
+            "{path}: unexpected fragment source association at owner {:?}",
+            entry.owner()
         )));
     }
     let mut result = ComparisonResult::default();
@@ -2445,43 +2746,8 @@ struct FragmentCursors<'a> {
 
 struct ComparisonState<'a> {
     fragment_cursors: FragmentCursors<'a>,
-    range_line_registries: RangeLineRegistries,
     strict_geometry_nodes: BTreeSet<usize>,
     pending_browser_controls: Vec<PendingBrowserControl>,
-}
-
-#[derive(Default)]
-struct RangeLineRegistries {
-    roots: BTreeMap<usize, Vec<Scalar>>,
-}
-
-impl RangeLineRegistries {
-    fn line_index(&mut self, root: usize, coordinate: Scalar) -> Result<usize, Error> {
-        const TOLERANCE: Scalar = 0.1;
-        if !coordinate.is_finite() {
-            return Err(Error::new(
-                "Range line identity requires a finite root-local block coordinate",
-            ));
-        }
-        let anchors = self.roots.entry(root).or_default();
-        let matches = anchors
-            .iter()
-            .enumerate()
-            .filter(|(_, anchor)| (**anchor - coordinate).abs() <= TOLERANCE)
-            .map(|(line_index, _)| line_index)
-            .collect::<Vec<_>>();
-        if matches.len() > 1 {
-            return Err(Error::new(format!(
-                "ambiguous Range line identity at root-local block coordinate {coordinate}"
-            )));
-        }
-        if let Some(line_index) = matches.first() {
-            return Ok(*line_index);
-        }
-        let line_index = anchors.len();
-        anchors.push(coordinate);
-        Ok(line_index)
-    }
 }
 
 impl<'a> FragmentCursor<'a> {
@@ -2490,7 +2756,7 @@ impl<'a> FragmentCursor<'a> {
         while self
             .entries
             .get(self.next)
-            .is_some_and(|entry| entry.node() == node)
+            .is_some_and(|entry| entry.owner() == &layout::InlineFragmentOwner::Node(node))
         {
             self.next += 1;
         }
@@ -2603,14 +2869,13 @@ fn compare_expectation_in_source_order(
     if let Some(expected_fragments) = &expected.fragments {
         compare_fragment_expectations(path, final_fragments, expected_fragments)?;
     }
-    if let Some(expected_range_inks) = &expected.range_inks {
-        compare_range_ink_expectations(
+    if let Some(expected_range_rectangles) = &expected.range_rectangles {
+        compare_range_rectangle_expectations(
             tree,
             node,
             path,
             unrounded_fragments,
-            expected_range_inks,
-            &mut comparison_state.range_line_registries,
+            expected_range_rectangles,
         )?;
     }
     if let Some(expected_browser_control) = expected.browser_control {
@@ -2634,11 +2899,16 @@ fn compare_expectation_in_source_order(
         )));
     }
 
-    for (index, (&child, expected_child)) in children.iter().zip(expected_children).enumerate() {
+    let mut index = 0;
+    for child in comparison_source_children(tree, node) {
+        if unobserved_inline_boundary(&tree.nodes[child].layout_input) {
+            consume_unobserved_boundary(tree, child, path, comparison_state)?;
+            continue;
+        }
         compare_expectation_in_source_order(
             tree,
             child,
-            expected_child,
+            expected_children[index],
             &format!("{path}/{index}"),
             use_rounding,
             comparison_state,
@@ -2648,24 +2918,86 @@ fn compare_expectation_in_source_order(
                 siblings: &children,
             }),
         )?;
+        index += 1;
     }
 
     Ok(())
 }
 
-fn comparison_children(tree: &TestTree, node: usize) -> Vec<usize> {
+fn unobserved_inline_boundary(input: &layout::LayoutInput) -> bool {
+    match input {
+        layout::LayoutInput::InlineBoundary(_) => true,
+        layout::LayoutInput::TextControl(control) => matches!(
+            control.occurrence().view().kind(),
+            surgeist_text::ParagraphControlKind::InlineBoundaryStart
+                | surgeist_text::ParagraphControlKind::InlineBoundaryEnd
+        ),
+        _ => false,
+    }
+}
+
+fn consume_unobserved_boundary(
+    tree: &TestTree,
+    node: usize,
+    path: &str,
+    comparison: &mut ComparisonState<'_>,
+) -> Result<(), Error> {
+    let unrounded = comparison.fragment_cursors.unrounded.take_for_node(node);
+    let final_output = comparison.fragment_cursors.final_output.take_for_node(node);
+    if let Some(control) = tree
+        .paragraphs
+        .iter()
+        .flat_map(|paragraph| &paragraph.controls)
+        .find(|row| row.node == node)
+    {
+        let actual_control = |entry: &layout::InlineFragmentOutputEntry<usize>| {
+            matches!(entry.fragment().finalized_fragment().view().owner(),
+                surgeist_text::FinalizedFragmentOwner::Control(owner)
+                    if owner == control.occurrence)
+        };
+        if unrounded.is_empty()
+            || !unrounded.iter().all(actual_control)
+            || !final_output.iter().all(actual_control)
+            || unrounded.iter().any(|entry| {
+                !final_output.iter().any(|output| {
+                    output.fragment().finalized_fragment() == entry.fragment().finalized_fragment()
+                })
+            })
+            || final_output.iter().any(|entry| {
+                !unrounded.iter().any(|output| {
+                    output.fragment().finalized_fragment() == entry.fragment().finalized_fragment()
+                })
+            })
+        {
+            return Err(Error::new(format!(
+                "{path}: unobserved boundary lost its actual finalized control custody"
+            )));
+        }
+    } else if !unrounded.is_empty() || !final_output.is_empty() {
+        return Err(Error::new(format!(
+            "{path}: legacy boundary cannot own native Text fragments"
+        )));
+    }
+    Ok(())
+}
+
+fn comparison_source_children(tree: &TestTree, node: usize) -> Vec<usize> {
     let mut children = Vec::new();
     for child in tree.nodes[node].children.iter().copied() {
         if tree.nodes[child].synthetic {
-            children.extend(comparison_children(tree, child));
-        } else if !matches!(
-            tree.nodes[child].layout_input,
-            layout::LayoutInput::InlineBoundary(_)
-        ) {
+            children.extend(comparison_source_children(tree, child));
+        } else {
             children.push(child);
         }
     }
     children
+}
+
+fn comparison_children(tree: &TestTree, node: usize) -> Vec<usize> {
+    comparison_source_children(tree, node)
+        .into_iter()
+        .filter(|child| !unobserved_inline_boundary(&tree.nodes[*child].layout_input))
+        .collect()
 }
 
 fn comparison_expected_children<'a>(
@@ -2681,13 +3013,25 @@ fn comparison_expected_children<'a>(
         .iter()
         .zip(expected)
         .filter_map(|(&child, expectation)| {
-            (!matches!(
-                tree.nodes[child].layout_input,
-                layout::LayoutInput::InlineBoundary(_)
-            ))
-            .then_some(expectation)
+            (!unobserved_inline_boundary(&tree.nodes[child].layout_input)).then_some(expectation)
         })
         .collect()
+}
+
+/// Fixture identity is the actual origin's ordinal in its retained preparation;
+/// observed rectangles and numeric IDs cannot mint that association.
+fn fragment_source_id(fragment: &layout::InlineFragmentOutput) -> Result<u64, Error> {
+    let issued = fragment.finalized_fragment();
+    let origin = issued
+        .view()
+        .origin()
+        .ok_or_else(|| Error::new("Range rectangle requires an actual source-owned fragment"))?;
+    let prepared = issued.finalized_line().prepared_text();
+    let index = prepared
+        .origin_views()
+        .position(|view| view.handle() == origin)
+        .ok_or_else(|| Error::new("fragment origin does not belong to its retained preparation"))?;
+    u64::try_from(index).map_err(|_| Error::new("origin index exceeds fixture integer range"))
 }
 
 fn compare_fragment_expectations(
@@ -2695,6 +3039,14 @@ fn compare_fragment_expectations(
     actual: &[layout::InlineFragmentOutputEntry<usize>],
     expected: &[InlineFragmentExpectation],
 ) -> Result<(), Error> {
+    if expected
+        .iter()
+        .any(|fragment| fragment.historical_visual_index.is_some())
+    {
+        return Err(Error::new(format!(
+            "{path}: historical fragment visual_index has no native ordering equivalent"
+        )));
+    }
     if actual.len() != expected.len() {
         return Err(Error::new(format!(
             "{path}: fragment count mismatch, expected {}, got {}",
@@ -2709,7 +3061,7 @@ fn compare_fragment_expectations(
             path,
             index,
             "source segment id",
-            fragment.segment_id().get(),
+            fragment_source_id(fragment)?,
             expected.source_segment_id,
         )?;
         compare_fragment_identity(
@@ -2719,15 +3071,10 @@ fn compare_fragment_expectations(
             fragment.line_index(),
             expected.line_index,
         )?;
-        compare_fragment_identity(
-            path,
-            index,
-            "visual index",
-            fragment.visual_index(),
-            expected.visual_index,
-        )?;
 
-        let rect = fragment.rect();
+        let rect = fragment
+            .rect()
+            .ok_or_else(|| Error::new("source fragment has no range rectangle"))?;
         compare_number(
             path,
             &format!("fragment[{index}] rect x"),
@@ -2769,130 +3116,315 @@ fn compare_fragment_expectations(
     Ok(())
 }
 
-fn compare_range_ink_expectations(
+fn compare_range_rectangle_expectations(
     tree: &TestTree,
     owner: usize,
     path: &str,
     actual: &[layout::InlineFragmentOutputEntry<usize>],
-    expected: &[InlineRangeInkExpectation],
-    range_line_registries: &mut RangeLineRegistries,
+    expected: &[InlineRangeRectangleExpectation],
 ) -> Result<(), Error> {
-    let actual_line_indices = actual
+    let root = range_rectangle_root(tree, owner)?;
+    let binding = tree
+        .paragraphs
         .iter()
-        .map(|entry| {
-            range_ink_root_line_index(tree, owner, entry.fragment(), range_line_registries)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    compare_range_ink_expectations_with_translation(
-        path,
-        actual,
-        expected,
-        &actual_line_indices,
-        |edge| range_ink_ancestor_translation(tree, owner, edge),
-    )
+        .find(|binding| binding.container == root)
+        .ok_or_else(|| Error::new("Range inline root has no authenticated captured paragraph"))?;
+    if actual.iter().any(|entry| {
+        entry
+            .fragment()
+            .finalized_fragment()
+            .finalized_line()
+            .prepared_text()
+            != binding.prepared
+    }) {
+        return Err(Error::new(
+            "Range fragment belongs to another captured paragraph",
+        ));
+    }
+    compare_range_rectangle_expectations_with_translation(path, actual, expected, |edge| {
+        range_rectangle_ancestor_translation(tree, owner, edge)
+    })
 }
 
-fn compare_range_ink_expectations_with_translation(
+/// One browser Range rectangle assembled from genuine source intersections.
+/// These are allocation/range rectangles, not glyph ink bounds.
+struct NativeRangeRectangle {
+    origin: surgeist_text::PreparedOrigin,
+    line: surgeist_text::FinalizedLine,
+    source: surgeist_text::Range,
+    source_segment_id: u64,
+    line_index: usize,
+    rect: layout::ScrollRect,
+}
+
+struct NativeRangeLender<'a> {
+    origin: surgeist_text::PreparedOrigin,
+    line: surgeist_text::FinalizedLine,
+    entries: Vec<&'a layout::InlineFragmentOutputEntry<usize>>,
+}
+
+/// The pinned Ahem profile retains a glyph row for a preserved U+0020 even
+/// when logical spacing makes its allocation zero. An executed edge discard
+/// instead retains its source fragment but emits no glyph. Read that result;
+/// do not repeat Text's whitespace winner or selected-edge algorithm here.
+fn unpainted_source_space(
+    fragment: &surgeist_text::FinalizedFragment,
+    line: &surgeist_text::FinalizedLine,
+) -> bool {
+    let view = fragment.view();
+    let (Some(origin), Some(processed), Some(source)) = (
+        view.origin(),
+        view.processed_range(),
+        view.aggregate_range(),
+    ) else {
+        return false;
+    };
+    let analyzed = origin.prepared_text().analyzed_source();
+    let units = analyzed.processed_source().processed_text().code_units();
+    units.get(processed.start().get()..processed.end().get()) == Some(&[0x20][..])
+        && !line.run_views().any(|run| {
+            run.glyphs().any(|glyph| {
+                let glyph_source = glyph.range();
+                glyph_source.start < source.end && source.start < glyph_source.end
+            })
+        })
+}
+
+fn native_range_rectangles(
     path: &str,
     actual: &[layout::InlineFragmentOutputEntry<usize>],
-    expected: &[InlineRangeInkExpectation],
-    actual_line_indices: &[usize],
+) -> Result<Vec<NativeRangeRectangle>, Error> {
+    let mut groups = Vec::<NativeRangeLender<'_>>::new();
+    let mut seen = Vec::new();
+    for entry in actual {
+        let issued = entry.fragment().finalized_fragment();
+        if seen.contains(&issued) {
+            return Err(Error::new(format!(
+                "{path}: duplicate actual Range source fragment"
+            )));
+        }
+        seen.push(issued);
+        let surgeist_text::FinalizedFragmentOwner::Origin(origin) = issued.view().owner() else {
+            return Err(Error::new(
+                "Range rectangle requires an actual source-owned fragment",
+            ));
+        };
+        let line = issued.finalized_line();
+        if let Some(group) = groups
+            .iter_mut()
+            .find(|group| group.origin == origin && group.line == line)
+        {
+            group.entries.push(entry);
+        } else {
+            groups.push(NativeRangeLender {
+                origin,
+                line,
+                entries: vec![entry],
+            });
+        }
+    }
+    let mut rectangles: Vec<NativeRangeRectangle> = Vec::new();
+    for NativeRangeLender {
+        origin,
+        line,
+        mut entries,
+    } in groups
+    {
+        let canonical = line.fragments().filter(|fragment|
+            matches!(fragment.view().owner(), surgeist_text::FinalizedFragmentOwner::Origin(owner)
+                if owner == origin)).collect::<Vec<_>>();
+        if canonical.iter().any(|issued| {
+            !entries
+                .iter()
+                .any(|entry| entry.fragment().finalized_fragment() == issued)
+        }) {
+            return Err(Error::new(format!(
+                "{path}: incomplete actual Range source coverage"
+            )));
+        }
+        entries.sort_by_key(|entry| {
+            let source = entry
+                .fragment()
+                .finalized_fragment()
+                .view()
+                .aggregate_range()
+                .unwrap();
+            (source.start, source.end)
+        });
+        let mut invisible = None::<surgeist_text::Range>;
+        for entry in entries {
+            let fragment = entry.fragment();
+            let mut source = fragment
+                .finalized_fragment()
+                .view()
+                .aggregate_range()
+                .ok_or_else(|| Error::new("Range source fragment has no original interval"))?;
+            let rect = fragment.rect().filter(|rect| {
+                rect.size().width != 0.0
+                    || !unpainted_source_space(fragment.finalized_fragment(), &line)
+            });
+            let Some(rect) = rect else {
+                // Genuine non-geometric source intervals retain custody and may
+                // bridge adjacent rectangles; absent records never do. The same
+                // holds for a source space with actual executed glyph suppression.
+                if let Some(last) = rectangles.last_mut()
+                    && last.origin == origin
+                    && last.line == line
+                    && last.source.end == source.start
+                {
+                    last.source.end = source.end;
+                } else if let Some(pending) = &mut invisible
+                    && pending.end == source.start
+                {
+                    pending.end = source.end;
+                } else {
+                    invisible = Some(source);
+                }
+                continue;
+            };
+            if let Some(pending) = invisible.take()
+                && pending.end == source.start
+            {
+                source.start = pending.start;
+            }
+            let next = NativeRangeRectangle {
+                origin: origin.clone(),
+                line: line.clone(),
+                source,
+                source_segment_id: fragment_source_id(fragment)?,
+                line_index: fragment.line_index(),
+                rect,
+            };
+            if let Some(last) = rectangles.last_mut()
+                && merge_native_range_rectangles(last, &next)?
+            {
+                continue;
+            }
+            rectangles.push(next);
+        }
+    }
+    Ok(rectangles)
+}
+
+fn merge_native_range_rectangles(
+    previous: &mut NativeRangeRectangle,
+    next: &NativeRangeRectangle,
+) -> Result<bool, Error> {
+    if previous.origin != next.origin
+        || previous.line != next.line
+        || previous.line_index != next.line_index
+        || previous.source.end != next.source.start
+    {
+        return Ok(false);
+    }
+    let a = previous.rect;
+    let b = next.rect;
+    // Preserve zero-width directional-control rectangles. In this closed
+    // horizontal profile only positive, exactly adjacent rectangles in the
+    // same physical band coalesce; overlapping/gapped bands never become a hull.
+    if a.size().width <= 0.0
+        || b.size().width <= 0.0
+        || a.origin().y != b.origin().y
+        || a.size().height != b.size().height
+        || !(a.origin().x + a.size().width == b.origin().x
+            || b.origin().x + b.size().width == a.origin().x)
+    {
+        return Ok(false);
+    }
+    previous.rect = layout::ScrollRect::try_new(
+        layout::Point::new(a.origin().x.min(b.origin().x), a.origin().y),
+        layout::Size::new(a.size().width + b.size().width, a.size().height),
+    )
+    .map_err(|_| Error::new("coalesced Range rectangle is not finite"))?;
+    previous.source.end = next.source.end;
+    Ok(true)
+}
+
+fn range_rectangle_values(rect: layout::ScrollRect, edge: PhysicalStartEdge) -> (Scalar, Scalar) {
+    match edge {
+        PhysicalStartEdge::Left => (rect.origin().x, rect.size().width),
+        PhysicalStartEdge::Right => (rect.origin().x + rect.size().width, rect.size().width),
+        PhysicalStartEdge::Top => (rect.origin().y, rect.size().height),
+        PhysicalStartEdge::Bottom => (rect.origin().y + rect.size().height, rect.size().height),
+    }
+}
+
+fn compare_range_rectangle_expectations_with_translation(
+    path: &str,
+    actual: &[layout::InlineFragmentOutputEntry<usize>],
+    expected: &[InlineRangeRectangleExpectation],
     mut translation: impl FnMut(PhysicalStartEdge) -> Result<Scalar, Error>,
 ) -> Result<(), Error> {
+    let actual = native_range_rectangles(path, actual)?;
     if actual.len() != expected.len() {
         return Err(Error::new(format!(
-            "{path}: Range ink count mismatch, expected {}, got {}",
+            "{path}: Range rectangle count mismatch, expected {}, got {}",
             expected.len(),
             actual.len()
         )));
     }
-
     let mut matched = vec![false; actual.len()];
     for (index, expected) in expected.iter().enumerate() {
+        let offset = translation(expected.physical_start_edge)?;
+        let identity = |row: &NativeRangeRectangle| {
+            row.source_segment_id == expected.source_segment_id
+                && row.line_index == expected.line_index
+        };
         let actual_index = actual
             .iter()
             .enumerate()
-            .find(|(actual_index, entry)| {
-                !matched[*actual_index]
-                    && entry.fragment().segment_id().get() == expected.source_segment_id
-                    && actual_line_indices[*actual_index] == expected.line_index
+            .find(|(i, row)| {
+                let (start, advance) =
+                    range_rectangle_values(row.rect, expected.physical_start_edge);
+                !matched[*i]
+                    && identity(row)
+                    && ComparisonTolerance::browser_parity()
+                        .contains(start + offset - expected.start)
+                    && ComparisonTolerance::browser_parity().contains(advance - expected.advance)
             })
-            .map(|(actual_index, _)| actual_index)
+            .or_else(|| {
+                actual
+                    .iter()
+                    .enumerate()
+                    .find(|(i, row)| !matched[*i] && identity(row))
+            })
+            .map(|(i, _)| i)
             .or_else(|| matched.iter().position(|matched| !matched))
-            .expect("equal Range observation counts leave an unmatched model fragment");
+            .expect("equal Range observation counts leave an unmatched source rectangle");
         matched[actual_index] = true;
-        let entry = &actual[actual_index];
-        let fragment = entry.fragment();
-        compare_range_ink_identity(
+        let row = &actual[actual_index];
+        compare_range_rectangle_identity(
             path,
             index,
             "source segment id",
-            fragment.segment_id().get(),
+            row.source_segment_id,
             expected.source_segment_id,
         )?;
-        compare_range_ink_identity(
+        compare_range_rectangle_identity(
             path,
             index,
             "line index",
-            actual_line_indices[actual_index],
+            row.line_index,
             expected.line_index,
         )?;
-        let rect = fragment.rect();
-        let (owner_start, advance) = match expected.physical_start_edge {
-            PhysicalStartEdge::Left => (rect.origin().x, rect.size().width),
-            PhysicalStartEdge::Right => (rect.origin().x + rect.size().width, rect.size().width),
-            PhysicalStartEdge::Top => (rect.origin().y, rect.size().height),
-            PhysicalStartEdge::Bottom => (rect.origin().y + rect.size().height, rect.size().height),
-        };
-        let start = owner_start + translation(expected.physical_start_edge)?;
+        let (start, advance) = range_rectangle_values(row.rect, expected.physical_start_edge);
         compare_number(
             path,
-            &format!("Range ink[{index}] physical flow-inline start"),
-            start,
+            &format!("Range rectangle[{index}] physical flow-inline start"),
+            start + offset,
             expected.start,
         )?;
         compare_number(
             path,
-            &format!("Range ink[{index}] advance"),
+            &format!("Range rectangle[{index}] advance"),
             advance,
             expected.advance,
         )?;
     }
-
     Ok(())
 }
 
-fn range_ink_root_line_index(
-    tree: &TestTree,
-    owner: usize,
-    fragment: layout::InlineFragmentOutput,
-    registries: &mut RangeLineRegistries,
-) -> Result<usize, Error> {
-    let root = range_ink_root(tree, owner)?;
-    let root_node = &tree.nodes[root];
-    let flow = root_node
-        .layout_input
-        .as_box()
-        .map(|input| layout::FlowAxes::new(input.writing_mode, input.direction))
-        .ok_or_else(|| Error::new("Range inline root must be a box input"))?;
-    let rect = fragment.rect();
-    let edge = match flow.block_start() {
-        layout::PhysicalSide::Top => PhysicalStartEdge::Top,
-        layout::PhysicalSide::Right => PhysicalStartEdge::Right,
-        layout::PhysicalSide::Bottom => PhysicalStartEdge::Bottom,
-        layout::PhysicalSide::Left => PhysicalStartEdge::Left,
-    };
-    let local_coordinate = match edge {
-        PhysicalStartEdge::Left => rect.origin().x,
-        PhysicalStartEdge::Right => rect.origin().x + rect.size().width,
-        PhysicalStartEdge::Top => rect.origin().y,
-        PhysicalStartEdge::Bottom => rect.origin().y + rect.size().height,
-    };
-    let coordinate = local_coordinate + range_ink_ancestor_translation(tree, owner, edge)?;
-    registries.line_index(root, coordinate)
-}
-
-fn range_ink_root(tree: &TestTree, owner: usize) -> Result<usize, Error> {
+fn range_rectangle_root(tree: &TestTree, owner: usize) -> Result<usize, Error> {
     let owner_node = tree
         .nodes
         .get(owner)
@@ -2914,7 +3446,7 @@ fn range_ink_root(tree: &TestTree, owner: usize) -> Result<usize, Error> {
     Ok(root)
 }
 
-fn range_ink_ancestor_translation(
+fn range_rectangle_ancestor_translation(
     tree: &TestTree,
     owner: usize,
     edge: PhysicalStartEdge,
@@ -2923,7 +3455,7 @@ fn range_ink_ancestor_translation(
         .nodes
         .get(owner)
         .ok_or_else(|| Error::new(format!("Range owner node `{owner}` is missing")))?;
-    let root = range_ink_root(tree, owner)?;
+    let root = range_rectangle_root(tree, owner)?;
 
     let mut current = owner_node.parent.ok_or_else(|| {
         Error::new(format!(
@@ -3266,7 +3798,7 @@ where
     }
 }
 
-fn compare_range_ink_identity<T>(
+fn compare_range_rectangle_identity<T>(
     path: &str,
     index: usize,
     field: &str,
@@ -3280,7 +3812,7 @@ where
         Ok(())
     } else {
         Err(Error::new(format!(
-            "{path}: Range ink[{index}] {field} mismatch, expected {expected}, got {actual}"
+            "{path}: Range rectangle[{index}] {field} mismatch, expected {expected}, got {actual}"
         )))
     }
 }
@@ -5382,6 +5914,576 @@ fn collect_files_with_extension(
 
 #[cfg(test)]
 mod tests {
+    /// Authored source/style facts for reader tests, never measured widths.
+    fn native_test_golden(parts: &[(&str, f32, f64)], boundaries: bool) -> Golden {
+        use serde_json::json;
+        let style = |size: f32, spacing: f64| json!({"fontSize":size,"lineHeight":10.5,"whitespace":"preserve","wrap":"word","letterSpacing":spacing,"wordSpacing":0.0,"color":[0.0,0.0,0.0,1.0],"locale":null});
+        let mut origins = Vec::new();
+        let mut controls = Vec::new();
+        let mut order = Vec::new();
+        let mut children = String::new();
+        let mut at = 0;
+        let mut child = 0;
+        for (index, (source, size, spacing)) in parts.iter().enumerate() {
+            if boundaries && index == 1 {
+                controls.push(json!({"child":child,"at":at,"kind":"inline-boundary-start"}));
+                order.push(json!({"kind":"control","index":0,"affinity":"before"}));
+                children.push_str("<inline-boundary kind=\"start\"/>");
+                child += 1;
+            }
+            let units: Vec<_> = source.encode_utf16().collect();
+            origins.push(json!({"child":child,"units":units,"start":at,"end":at+units.len(),"style":style(*size,*spacing)}));
+            order.push(json!({"kind":"origin","index":index,"affinity":"before"}));
+            at += units.len();
+            child += 1;
+            children.push_str(&format!(
+                "<text layout-input=\"prepared-text\" occurrence=\"{index}\"/>"
+            ));
+            if boundaries && index == 1 {
+                controls.push(json!({"child":child,"at":at,"kind":"inline-boundary-end"}));
+                order.push(json!({"kind":"control","index":1,"affinity":"before"}));
+                children.push_str("<inline-boundary kind=\"end\"/>");
+                child += 1;
+            }
+        }
+        let connections:Vec<_>=(1..parts.len()).map(|index|json!({"preceding":index-1,"following":index,"kind":"continuous","precedingWrap":"word","followingWrap":"word","ancestorWrap":"word"})).collect();
+        let capture = json!({"font":{"id":pinned_font::ID,"sha256":pinned_font::SHA256,"faceIndex":0,"family":"SurgeistParityAhem","style":"normal","weight":400,"stretch":"normal","features":"normal","variations":"normal","synthesis":"none","loaded":true},
+            "direction":"ltr","writingMode":"horizontal-tb","baseStyle":style(10.0,0.0),"origins":origins,"connections":connections,"atomics":[],"controls":controls,"order":order});
+        let capture = capture
+            .to_string()
+            .replace('&', "&amp;")
+            .replace('"', "&quot;")
+            .replace('<', "&lt;");
+        Golden::parse(&format!("<test name=\"native-reader\" measurement-version=\"2\" use-rounding=\"true\"><viewport width=\"100\" height=\"max-content\"/><input><div display=\"block\" layout-ready-inline-root=\"true\"><prepared-paragraph capture=\"{capture}\"/>{children}</div></input><expectations><node/></expectations></test>")).unwrap()
+    }
+    #[test]
+    fn prepared_empty_transparent_controls_round_trip_without_fabricated_origin() {
+        // Exact producer-shaped source channel for the genuinely empty marked
+        // span: two controls, no text occurrence, and no observed metrics.
+        let style = serde_json::json!({"fontSize":16.0,"lineHeight":20.0,"whitespace":"collapse","wrap":"word","letterSpacing":0.0,"wordSpacing":0.0,"color":[0.0,0.0,0.0,1.0],"locale":null});
+        let capture = serde_json::json!({"font":{"id":pinned_font::ID,"sha256":pinned_font::SHA256,"faceIndex":0,"family":"SurgeistParityAhem","style":"normal","weight":400,"stretch":"normal","features":"normal","variations":"normal","synthesis":"none","loaded":true},"direction":"ltr","writingMode":"horizontal-tb","baseStyle":style,"origins":[],"connections":[],"atomics":[],"controls":[{"child":0,"at":0,"kind":"inline-boundary-start"},{"child":1,"at":0,"kind":"inline-boundary-end"}],"order":[{"kind":"control","index":0,"affinity":"before"},{"kind":"control","index":1,"affinity":"before"}]});
+        let capture = capture
+            .to_string()
+            .replace('&', "&amp;")
+            .replace('"', "&quot;")
+            .replace('<', "&lt;");
+        let golden=Golden::parse(&format!("<test name=\"native-empty-transparent\" measurement-version=\"2\" use-rounding=\"false\"><viewport width=\"100\" height=\"max-content\"/><input><div display=\"block\" layout-ready-inline-root=\"true\"><prepared-paragraph capture=\"{capture}\"/><inline-boundary kind=\"start\"/><inline-boundary kind=\"end\"/></div></input><expectations><node/></expectations></test>"))
+            .expect("authenticated native empty control topology must parse");
+        let captured = golden.root.prepared.as_ref().unwrap();
+        assert!(captured.origins.is_empty());
+        assert_eq!(captured.controls.len(), 2);
+        let mut wrong_role = golden.root.clone();
+        wrong_role.children[0].inline_boundary = Some(layout::InlineBoundaryKind::End);
+        assert_eq!(
+            validate_fri06_c08r_explicit_input(&wrong_role, true)
+                .unwrap_err()
+                .to_string(),
+            "captured control role does not match its exact native leaf"
+        );
+        let mut unbound = golden.root.clone();
+        unbound.children[0].prepared_control = None;
+        assert_eq!(
+            validate_fri06_c08r_explicit_input(&unbound, true)
+                .unwrap_err()
+                .to_string(),
+            "native inline boundary has no captured control occurrence"
+        );
+        let tree = TestTree::from_golden(&golden.root).unwrap();
+        let batch = native_tree_compute(&tree, fri06_c06_inline_request());
+        assert_eq!(batch.unrounded_inline_fragments().len(), 2);
+        for entry in batch.unrounded_inline_fragments() {
+            let line = entry.fragment().finalized_fragment().finalized_line();
+            assert!(!line.has_in_flow_content());
+            for row in &line.selected_line().request().controls {
+                assert_eq!(
+                    row.boundary,
+                    Some(surgeist_text::InlineBoundaryAllocation::ZERO)
+                );
+                let strut = row.strut.unwrap();
+                assert_eq!((strut.baseline, strut.line_extent), (0.0, 0.0));
+            }
+            assert!(matches!(
+                entry.fragment().finalized_fragment().view().owner(),
+                surgeist_text::FinalizedFragmentOwner::Control(_)
+            ));
+        }
+    }
+
+    fn generated_native_golden(name: &str) -> Golden {
+        Golden::parse_file(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/layout/browser_parity/xml/block")
+                .join(format!("{name}.xml")),
+        )
+        .unwrap()
+    }
+
+    fn generated_native_batch(golden: &Golden) -> (TestTree, layout::CompletedLayoutBatch<usize>) {
+        let tree = TestTree::from_golden(&golden.root).unwrap();
+        let request = root_request(
+            layout::Size::new(
+                to_layout_available(golden.viewport.width),
+                to_layout_available(golden.viewport.height),
+            ),
+            golden.viewport.root_context,
+        )
+        .unwrap();
+        let batch = native_tree_compute(&tree, request);
+        (tree, batch)
+    }
+
+    #[test]
+    fn native_browser_boundaries_keep_control_custody_without_observed_children() {
+        let golden = generated_native_golden("prepared_text_continuity_bidi__border_box_ltr");
+        let (tree, batch) = generated_native_batch(&golden);
+        let controls = tree
+            .paragraphs
+            .iter()
+            .flat_map(|paragraph| {
+                paragraph
+                    .controls
+                    .iter()
+                    .map(|row| (row.node, &row.occurrence))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            controls
+                .iter()
+                .map(|(_, control)| control.view().kind().clone())
+                .collect::<Vec<_>>(),
+            vec![
+                surgeist_text::ParagraphControlKind::InlineBoundaryStart,
+                surgeist_text::ParagraphControlKind::InlineBoundaryEnd
+            ]
+        );
+        for (node, control) in controls {
+            let input = tree.nodes[node].layout_input.as_inline_boundary().unwrap();
+            assert_eq!(input.edge(), layout::InlineBoundaryEdge::ZERO);
+            assert_eq!(input.metrics().baseline(), 0.0);
+            assert_eq!(input.metrics().line_extent(), 0.0);
+            assert!(
+                batch.unrounded_inline_fragments().iter().any(|entry| {
+                    entry.owner() == &layout::InlineFragmentOwner::Node(node)
+                        && matches!(entry.fragment().finalized_fragment().view().owner(),
+                    surgeist_text::FinalizedFragmentOwner::Control(actual) if actual == *control)
+                }),
+                "a transparent semantic control must retain its actual finalized owner"
+            );
+        }
+        // Chrome observes the three source occurrences, not rectangles for the
+        // two metricless boundary controls. Their custody was checked above.
+        assert_surgeist_matches(&golden).unwrap();
+    }
+
+    #[test]
+    fn native_browser_range_rectangles_cover_actual_origin_intersections() {
+        let golden = generated_native_golden("fri06_inline_mixed_text_atomic_wrap__border_box_ltr");
+        let (_, batch) = generated_native_batch(&golden);
+        let origin = golden.root.children[0].prepared_origin.as_ref().unwrap();
+        let mut covered = Vec::new();
+        let mut line = None;
+        for entry in batch.unrounded_inline_fragments() {
+            let issued = entry.fragment().finalized_fragment();
+            let view = issued.view();
+            if view.origin().as_ref() != Some(origin) {
+                continue;
+            }
+            let source = view.aggregate_range().unwrap();
+            let rect = entry.fragment().rect().unwrap();
+            // Original "text" is four covered Ahem letters at16px, one em each.
+            // This qualifies every authentic source intersection independently
+            // of whether Text chooses one or several fragment rows.
+            assert_eq!(rect.origin().x, 16.0 * source.start as f32);
+            assert_eq!(rect.size().width, 16.0 * source.len() as f32);
+            if let Some(previous) = &line {
+                assert_eq!(previous, &issued.finalized_line());
+            } else {
+                line = Some(issued.finalized_line());
+            }
+            covered.push((source.start, source.end));
+        }
+        covered.sort_unstable();
+        let mut end = 0;
+        for (start, next) in covered {
+            assert_eq!(start, end);
+            end = next;
+        }
+        assert_eq!(end, 4);
+        // One browser Range rectangle may cover several contiguous, genuinely
+        // associated Text intersections on the same finalized line.
+        assert_surgeist_matches(&golden).unwrap();
+    }
+
+    #[test]
+    fn native_browser_range_normalization_rejects_wrong_owner_extent_and_source_gaps() {
+        let golden = generated_native_golden("fri06_inline_mixed_text_atomic_wrap__border_box_ltr");
+        let (_, batch) = generated_native_batch(&golden);
+        let origin = golden.root.children[0].prepared_origin.as_ref().unwrap();
+        let actual = batch
+            .unrounded_inline_fragments()
+            .iter()
+            .filter(|entry| {
+                entry
+                    .fragment()
+                    .finalized_fragment()
+                    .view()
+                    .origin()
+                    .as_ref()
+                    == Some(origin)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let expected = golden.expectations.children[0]
+            .range_rectangles
+            .as_ref()
+            .unwrap();
+        compare_range_rectangle_expectations_with_translation(
+            "actual-range",
+            &actual,
+            expected,
+            |_| Ok(0.0),
+        )
+        .unwrap();
+        for field in ["owner", "extent"] {
+            let mut wrong = expected.clone();
+            if field == "owner" {
+                wrong[0].source_segment_id += 1;
+            } else {
+                wrong[0].advance -= 16.0;
+            }
+            assert!(
+                compare_range_rectangle_expectations_with_translation(
+                    "wrong-range",
+                    &actual,
+                    &wrong,
+                    |_| Ok(0.0)
+                )
+                .is_err()
+            );
+        }
+        let first = actual
+            .iter()
+            .find(|entry| {
+                entry
+                    .fragment()
+                    .finalized_fragment()
+                    .view()
+                    .aggregate_range()
+                    == Some(surgeist_text::Range::new(0, 1))
+            })
+            .unwrap();
+        let third = actual
+            .iter()
+            .find(|entry| {
+                entry
+                    .fragment()
+                    .finalized_fragment()
+                    .view()
+                    .aggregate_range()
+                    == Some(surgeist_text::Range::new(2, 3))
+            })
+            .unwrap();
+        // Real nonadjacent source cells cannot be replaced by their48px hull.
+        // The canonical finalized lender independently exposes the omitted rows.
+        let missing = vec![first.clone(), third.clone()];
+        let mut hull = expected.clone();
+        hull[0].advance = 48.0;
+        assert!(
+            compare_range_rectangle_expectations_with_translation(
+                "missing-source",
+                &missing,
+                &hull,
+                |_| Ok(0.0)
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("source coverage")
+        );
+        let one = |entry: &layout::InlineFragmentOutputEntry<usize>| NativeRangeRectangle {
+            origin: origin.clone(),
+            line: entry.fragment().finalized_fragment().finalized_line(),
+            source: entry
+                .fragment()
+                .finalized_fragment()
+                .view()
+                .aggregate_range()
+                .unwrap(),
+            source_segment_id: 0,
+            line_index: entry.fragment().line_index(),
+            rect: entry.fragment().rect().unwrap(),
+        };
+        let mut previous = one(first);
+        assert!(!merge_native_range_rectangles(&mut previous, &one(third)).unwrap());
+        assert_eq!(previous.rect.size().width, 16.0);
+    }
+
+    #[test]
+    fn native_browser_range_normalization_keeps_actual_lines_and_zero_width_controls() {
+        let golden = generated_native_golden("prepared_text_fractional_fit__border_box_ltr");
+        let (_, batch) = generated_native_batch(&golden);
+        let origin = golden.root.children[0].prepared_origin.as_ref().unwrap();
+        let actual = batch
+            .unrounded_inline_fragments()
+            .iter()
+            .filter(|entry| {
+                entry
+                    .fragment()
+                    .finalized_fragment()
+                    .view()
+                    .origin()
+                    .as_ref()
+                    == Some(origin)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let rectangles = native_range_rectangles("actual-lines", &actual).unwrap();
+        assert_eq!(rectangles.len(), 2);
+        assert_eq!(rectangles[0].origin, rectangles[1].origin);
+        assert_ne!(rectangles[0].line, rectangles[1].line);
+        assert_ne!(rectangles[0].rect.origin().y, rectangles[1].rect.origin().y);
+        let mut missing_band = golden.expectations.children[0]
+            .range_rectangles
+            .clone()
+            .unwrap();
+        missing_band.truncate(1);
+        assert!(
+            compare_range_rectangle_expectations_with_translation(
+                "different-bands",
+                &actual,
+                &missing_band,
+                |_| Ok(0.0)
+            )
+            .is_err()
+        );
+
+        let golden = generated_native_golden("prepared_text_continuity_bidi__border_box_ltr");
+        let (_, batch) = generated_native_batch(&golden);
+        let origin = golden.root.children[2].prepared_origin.as_ref().unwrap();
+        let actual = batch
+            .unrounded_inline_fragments()
+            .iter()
+            .filter(|entry| {
+                entry
+                    .fragment()
+                    .finalized_fragment()
+                    .view()
+                    .origin()
+                    .as_ref()
+                    == Some(origin)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let rectangles = native_range_rectangles("directional-controls", &actual).unwrap();
+        assert_eq!(
+            rectangles
+                .iter()
+                .map(|row| row.rect.size().width)
+                .collect::<Vec<_>>(),
+            vec![0.0, 32.0, 0.0]
+        );
+        // Actual RLI and PDI source positions keep separate zero-width Range
+        // observations around the two real16px Ahem glyphs.
+        compare_range_rectangle_expectations_with_translation(
+            "directional-controls",
+            &actual,
+            golden.expectations.children[1]
+                .range_rectangles
+                .as_ref()
+                .unwrap(),
+            |_| Ok(0.0),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn native_browser_range_normalization_keeps_preserved_zero_advance_space() {
+        // Ahem's real space advances one em. Authored logical spacing cancels
+        // that allocation, while Preserve still emits the actual space glyph.
+        let golden = native_test_golden(&[(" ", 16.0, -16.0)], false);
+        let (_, batch) = generated_native_batch(&golden);
+        let actual = batch.unrounded_inline_fragments();
+        assert_eq!(actual.len(), 1);
+        let issued = actual[0].fragment().finalized_fragment();
+        let line = issued.finalized_line();
+        let glyphs = line
+            .run_views()
+            .flat_map(|run| {
+                run.glyphs()
+                    .map(|glyph| (glyph.id(), glyph.advance(), glyph.range()))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(glyphs, vec![(3, 16.0, surgeist_text::Range::new(0, 1))]);
+        assert_eq!(actual[0].fragment().rect().unwrap().size().width, 0.0);
+        assert!(!unpainted_source_space(issued, &line));
+        let rectangles = native_range_rectangles("preserved-zero-space", actual).unwrap();
+        assert_eq!(rectangles.len(), 1);
+        assert_eq!(rectangles[0].source, surgeist_text::Range::new(0, 1));
+        assert_eq!(rectangles[0].rect.size().width, 0.0);
+    }
+
+    #[test]
+    fn native_rtl_pdi_observation_difference_retains_source_line_and_placement_custody() {
+        // This records an executed observation difference, not a parity pass or
+        // unsupported production input. The strict parity runner still fails
+        // these two unchanged XML records. Text's owning test qualifies L1/L2.
+        for variant in ["border_box_rtl", "content_box_rtl"] {
+            let name = format!("prepared_text_continuity_bidi__{variant}");
+            let golden = generated_native_golden(&name);
+            let (_, batch) = generated_native_batch(&golden);
+            let origin = golden.root.children[2].prepared_origin.as_ref().unwrap();
+            assert_eq!(
+                origin.view().source().text().code_units(),
+                [0x2067, 88, 88, 0x2069]
+            );
+            let prepared = origin.prepared_text();
+            let pdi = prepared
+                .unit_views()
+                .find(|unit| unit.source_range() == surgeist_text::Range::new(4, 5))
+                .unwrap();
+            assert_eq!(
+                pdi.level().get(),
+                2,
+                "actual paragraph level precedes selected L1"
+            );
+            let entry = batch
+                .unrounded_inline_fragments()
+                .iter()
+                .find(|entry| {
+                    let view = entry.fragment().finalized_fragment().view();
+                    view.origin().as_ref() == Some(origin)
+                        && view.aggregate_range() == Some(surgeist_text::Range::new(4, 5))
+                })
+                .unwrap();
+            let issued = entry.fragment().finalized_fragment();
+            let finalized = issued.finalized_line();
+            assert_eq!(finalized.prepared_text(), prepared);
+            assert!(finalized.fragments().any(|actual| actual == *issued));
+            assert_eq!(entry.fragment().line_index(), 0);
+            let rect = entry.fragment().rect().unwrap();
+            assert_eq!(
+                (rect.origin().x, rect.size().width, rect.size().height),
+                (24.0, 0.0, 20.0)
+            );
+            let placed = batch
+                .placed_text()
+                .iter()
+                .find(|placed| placed.container() == 0)
+                .unwrap()
+                .layout();
+            assert_eq!(
+                placed.analyzed_source().identity(),
+                prepared.analyzed_source().identity()
+            );
+            let line = placed.lines()[0];
+            let local = issued.view().bounds().unwrap();
+            assert_eq!(
+                rect.origin().y,
+                (line.baseline() + (local.origin().y - finalized.feedback().baseline)) as Scalar
+            );
+            let position = placed
+                .positions()
+                .find(|position| {
+                    position.source_cursor()
+                        == surgeist_text::Cursor::new(4, surgeist_text::Affinity::After)
+                })
+                .unwrap();
+            assert_eq!(
+                placed
+                    .position_geometry(&position)
+                    .unwrap()
+                    .rect()
+                    .origin()
+                    .x,
+                24.0
+            );
+            let retained = placed.clone();
+            assert_eq!(
+                retained.position_geometry(&position).unwrap(),
+                placed.position_geometry(&position).unwrap()
+            );
+            let (_, other) = generated_native_batch(&golden);
+            assert!(
+                other.placed_text()[0]
+                    .layout()
+                    .position_geometry(&position)
+                    .is_err(),
+                "equal inputs do not manufacture placement identity"
+            );
+            assert!(
+                placed
+                    .run_views()
+                    .all(|run| run.face().bytes() == pinned_font::BYTES && run.face().index() == 0)
+            );
+            let glyphs = placed
+                .glyph_runs()
+                .into_iter()
+                .filter(|run| run.line() == 0)
+                .flat_map(|run| {
+                    let origin = run.origin().x;
+                    run.glyphs()
+                        .iter()
+                        .map(|glyph| {
+                            (
+                                glyph.range(),
+                                glyph.id(),
+                                origin + glyph.pen() + f64::from(glyph.x()),
+                                glyph.advance(),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            // Residual PDI/RLI glyph rows are suppressed at Text's provider
+            // boundary. Their original zero Range/source custody remains;
+            // the three real Ahem X glyphs retain these canonical positions.
+            assert_eq!(
+                glyphs,
+                vec![
+                    (surgeist_text::Range::new(0, 1), 58, 24.0, 16.0),
+                    (surgeist_text::Range::new(2, 3), 58, 40.0, 16.0),
+                    (surgeist_text::Range::new(3, 4), 58, 56.0, 16.0)
+                ]
+            );
+            let browser = golden.expectations.children[1]
+                .range_rectangles
+                .as_ref()
+                .unwrap()[2];
+            assert_eq!(
+                (
+                    browser.source_segment_id,
+                    browser.line_index,
+                    browser.start,
+                    browser.advance
+                ),
+                (1, 0, 72.0, 0.0)
+            );
+            let error = assert_surgeist_matches(&golden).unwrap_err();
+            assert!(error.to_string().contains(
+                "Range rectangle[2] physical flow-inline start mismatch, expected 72, got 24"
+            ));
+            println!(
+                "{name}: original PDI4..5, prepared level2, actual issued line0/placement; native zero Range source bounds={rect:?}; browser zero Range observation x72; retained glyphs={glyphs:?}"
+            );
+        }
+    }
+
+    fn native_tree_compute(
+        tree: &TestTree,
+        request: layout::LayoutRootRequest,
+    ) -> layout::CompletedLayoutBatch<usize> {
+        let capture = layout::LayoutFlowInput::try_new(
+            tree,
+            0,
+            tree.paragraphs.clone(),
+            surgeist_layout::WrappingInput {
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+        )
+        .unwrap();
+        layout::compute_layout_with_flow(&capture, 0, request).unwrap()
+    }
     use super::*;
 
     fn test_node_input(attrs: StyleAttrs) -> Result<layout::NodeInput, Error> {
@@ -5864,6 +6966,7 @@ mod tests {
 
     fn line_break_tree(input: layout::LineBreakInput) -> TestTree {
         TestTree {
+            paragraphs: Vec::new(),
             nodes: vec![TestNode {
                 non_box_input: layout::NodeInput::non_box(),
                 layout_input: layout::LayoutInput::LineBreak(input),
@@ -5946,13 +7049,14 @@ mod tests {
                 height: Some(height),
                 scroll_size: None,
                 fragments: None,
-                range_inks: None,
+                range_rectangles: None,
                 browser_control: None,
                 children: Vec::new(),
             }
         }
 
         let tree = TestTree {
+            paragraphs: Vec::new(),
             nodes: vec![
                 node(
                     layout::LayoutInput::box_input(block_input()),
@@ -6012,7 +7116,7 @@ mod tests {
             height: Some(0.0),
             scroll_size: None,
             fragments: None,
-            range_inks: None,
+            range_rectangles: None,
             browser_control: None,
             children: vec![Expectation {
                 x: Some(99.0),
@@ -6021,7 +7125,7 @@ mod tests {
                 height: None,
                 scroll_size: None,
                 fragments: None,
-                range_inks: None,
+                range_rectangles: None,
                 browser_control: None,
                 children: Vec::new(),
             }],
@@ -6045,7 +7149,7 @@ mod tests {
             height: Some(0.0),
             scroll_size: None,
             fragments: None,
-            range_inks: None,
+            range_rectangles: None,
             browser_control: None,
             children: Vec::new(),
         };
@@ -6076,81 +7180,74 @@ mod tests {
         )
     }
 
-    fn fri06_c08_range_ink_golden() -> Golden {
-        Golden::parse(
-            r#"
-            <test name="fri06-c08-range-ink" use-rounding="false">
-                <viewport width="100px" height="max-content" />
-                <input>
-                    <div layout-ready-inline-root="true" display="block" width="100px">
-                        <text layout-input="inline-text">
-                            <segment id="11" inline-extent="10" inline-baseline="8" inline-line-height="10" bidi-level="0" whitespace-edge="preserve" following-break="prohibited" />
-                        </text>
-                    </div>
-                </input>
-                <expectations>
-                    <node>
-                        <node>
-                            <range-inks>
-                                <range-ink source_segment_id="11" line_index="0" physical_start_edge="left" start="0" advance="10" />
-                            </range-inks>
-                        </node>
-                    </node>
-                </expectations>
-            </test>
-            "#,
-        )
-        .expect("Range ink should parse as a distinct finite observation category")
+    fn fri06_c08_range_rectangle_golden() -> Golden {
+        let mut golden = native_test_golden(&[("X", 10.0, 0.0)], false);
+        golden.name = "fri06-c08-range-ink".to_string();
+        golden.expectations.children = vec![Expectation {
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            scroll_size: None,
+            fragments: None,
+            range_rectangles: Some(vec![InlineRangeRectangleExpectation {
+                source_segment_id: 0,
+                line_index: 0,
+                physical_start_edge: PhysicalStartEdge::Left,
+                start: 0.0,
+                advance: 10.0,
+            }]),
+            browser_control: None,
+            children: Vec::new(),
+        }];
+        golden
     }
 
     #[test]
-    fn fri06_c08_range_ink_parser_and_comparator_ignore_browser_block_ink_geometry() {
-        let golden = fri06_c08_range_ink_golden();
+    fn fri06_c08_range_rectangle_parser_and_comparator_ignore_browser_block_ink_geometry() {
+        let golden = fri06_c08_range_rectangle_golden();
 
         assert_surgeist_matches(&golden).expect(
-            "Range ink should compare source/line/visual and flow-inline facts without browser block ink geometry",
+            "Range rectangle should compare source/line/visual and flow-inline facts without browser block ink geometry",
         );
     }
 
     #[test]
-    fn fri06_c08_range_ink_rounded_fixture_compares_unrounded_model_advance() {
-        let golden = Golden::parse(
-            r#"
-            <test name="fri06-c08-unrounded-range-ink" use-rounding="true">
-                <viewport width="100px" height="max-content" />
-                <input>
-                    <div layout-ready-inline-root="true" display="block" width="100px">
-                        <text layout-input="inline-text">
-                            <segment id="11" inline-extent="9.640625" inline-baseline="8" inline-line-height="10" bidi-level="0" whitespace-edge="preserve" following-break="prohibited" />
-                        </text>
-                    </div>
-                </input>
-                <expectations>
-                    <node>
-                        <node>
-                            <range-inks>
-                                <range-ink source_segment_id="11" line_index="0" physical_start_edge="left" start="0" advance="9.640625" />
-                            </range-inks>
-                        </node>
-                    </node>
-                </expectations>
-            </test>
-            "#,
-        )
-        .expect("fractional Range ink should parse");
+    fn fri06_c08_range_rectangle_rounded_fixture_compares_unrounded_model_advance() {
+        // One actual Ahem glyph at canonical size 10 plus authored logical
+        // letter spacing; the independent expected advance is 10 - 23/64.
+        let mut golden = native_test_golden(&[("X", 10.0, -0.359375)], false);
+        golden.expectations.children = vec![Expectation {
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            scroll_size: None,
+            fragments: None,
+            range_rectangles: Some(vec![InlineRangeRectangleExpectation {
+                source_segment_id: 0,
+                line_index: 0,
+                physical_start_edge: PhysicalStartEdge::Left,
+                start: 0.0,
+                advance: 9.640625,
+            }]),
+            browser_control: None,
+            children: Vec::new(),
+        }];
 
         assert_surgeist_matches(&golden)
             .expect("browser Range advance must compare with the unrounded model fragment");
     }
 
     #[test]
-    fn fri06_c08_range_ink_parser_does_not_require_browser_visual_order() {
+    fn fri06_c08_range_rectangle_parser_does_not_require_browser_visual_order() {
         let xml = fri06_c06_fragment_xml(
             r#"<range-inks><range-ink source_segment_id="11" line_index="0" physical_start_edge="left" start="0" advance="10" /></range-inks>"#,
         );
 
-        Golden::parse(&xml)
-            .expect("Range ink should retain source/line/inline facts without a visual index");
+        Golden::parse(&xml).expect(
+            "Range rectangle should retain source/line/inline facts without a visual index",
+        );
     }
 
     #[test]
@@ -6158,80 +7255,60 @@ mod tests {
         let golden = Golden::parse(&fri06_c06_fragment_xml("<range-inks/>"))
             .expect("explicit empty Range evidence should parse");
 
-        assert_eq!(golden.expectations.range_inks, Some(Vec::new()));
+        assert_eq!(golden.expectations.range_rectangles, Some(Vec::new()));
     }
 
     #[test]
     fn fri06_c08r_empty_range_comparator_rejects_unexpected_model_fragment() {
-        let mut golden = fri06_c08_range_ink_golden();
-        golden.expectations.children[0].range_inks = Some(Vec::new());
+        let mut golden = fri06_c08_range_rectangle_golden();
+        golden.expectations.children[0].range_rectangles = Some(Vec::new());
 
         let error = assert_surgeist_matches(&golden)
             .expect_err("explicit empty Range evidence must enforce zero model fragments");
         assert_eq!(
             error.to_string(),
-            "fri06-c08-range-ink/0: Range ink count mismatch, expected 0, got 1"
+            "fri06-c08-range-ink/0: Range rectangle count mismatch, expected 0, got 1"
         );
     }
 
     #[test]
     fn fri06_c08_r0_range_observation_order_does_not_supply_model_visual_order() {
-        let root_input = layout::NodeInput {
-            display: layout::Display::Block,
-            ..layout::NodeInput::default()
-        };
-        let source = Fri06C06FragmentTree {
-            layout_inputs: vec![
-                layout::LayoutInput::box_input(root_input),
-                layout::LayoutInput::inline_text(
-                    layout::InlineTextInput::try_new(vec![
-                        fri06_c06_segment(11, 10.0),
-                        fri06_c06_segment(22, 5.0),
-                    ])
-                    .unwrap(),
-                ),
-            ],
-            node_inputs: vec![layout::NodeInput::non_box(), layout::NodeInput::non_box()],
-            children: vec![vec![1], Vec::new()],
-        };
-        let request = layout::LayoutRootRequest::viewport(layout::Size::new(
-            layout::Available::definite(100.0),
-            layout::Available::MaxContent,
-        ))
-        .unwrap();
-        let batch = layout::compute_layout(&source, 0, request).unwrap();
+        let golden = native_test_golden(&[("X", 10.0, 0.0), ("X", 5.0, 0.0)], false);
+        let tree = TestTree::from_golden(&golden.root).unwrap();
+        let batch = native_tree_compute(&tree, fri06_c06_inline_request());
         let actual = batch
             .unrounded_inline_fragments()
             .iter()
-            .filter(|entry| entry.node() == 1)
+            .filter(|entry| {
+                entry
+                    .fragment()
+                    .finalized_fragment()
+                    .view()
+                    .origin()
+                    .is_some()
+            })
             .cloned()
             .collect::<Vec<_>>();
         assert_eq!(actual.len(), 2);
-
         let mut expected = actual
             .iter()
             .map(|entry| {
                 let fragment = entry.fragment();
-                InlineRangeInkExpectation {
-                    source_segment_id: fragment.segment_id().get(),
+                InlineRangeRectangleExpectation {
+                    source_segment_id: fragment_source_id(fragment).unwrap(),
                     line_index: fragment.line_index(),
                     physical_start_edge: PhysicalStartEdge::Left,
-                    start: fragment.rect().origin().x,
-                    advance: fragment.rect().size().width,
+                    start: fragment.rect().unwrap().origin().x,
+                    advance: fragment.rect().unwrap().size().width,
                 }
             })
             .collect::<Vec<_>>();
-        let actual_line_indices = actual
-            .iter()
-            .map(|entry| entry.fragment().line_index())
-            .collect::<Vec<_>>();
         expected.reverse();
 
-        compare_range_ink_expectations_with_translation(
+        compare_range_rectangle_expectations_with_translation(
             "fri06-c08-r0-range",
             &actual,
             &expected,
-            &actual_line_indices,
             |_| Ok(0.0),
         )
         .expect("Range source order must not become a model visual-index assertion");
@@ -6246,11 +7323,10 @@ mod tests {
                 _ => unreachable!(),
             }
             assert!(
-                compare_range_ink_expectations_with_translation(
+                compare_range_rectangle_expectations_with_translation(
                     "fri06-c08-r0-range",
                     &actual,
                     &changed,
-                    &actual_line_indices,
                     |_| Ok(0.0),
                 )
                 .is_err(),
@@ -6703,37 +7779,40 @@ mod tests {
     }
 
     #[test]
-    fn fri06_c08_range_ink_wrong_identity_or_inline_interval_still_fails() {
+    fn fri06_c08_range_rectangle_wrong_identity_or_inline_interval_still_fails() {
         for (field, expected_diagnostic) in [
             (
                 "source",
-                "Range ink[0] source segment id mismatch, expected 12, got 11",
+                "Range rectangle[0] source segment id mismatch, expected 1, got 0",
             ),
             (
                 "line",
-                "Range ink[0] line index mismatch, expected 1, got 0",
+                "Range rectangle[0] line index mismatch, expected 1, got 0",
             ),
             (
                 "start",
-                "Range ink[0] physical flow-inline start mismatch, expected 1, got 0",
+                "Range rectangle[0] physical flow-inline start mismatch, expected 1, got 0",
             ),
             (
                 "advance",
-                "Range ink[0] advance mismatch, expected 11, got 10",
+                "Range rectangle[0] advance mismatch, expected 11, got 10",
             ),
         ] {
-            let mut golden = fri06_c08_range_ink_golden();
-            let range_ink = &mut golden.expectations.children[0].range_inks.as_mut().unwrap()[0];
+            let mut golden = fri06_c08_range_rectangle_golden();
+            let range_rectangle = &mut golden.expectations.children[0]
+                .range_rectangles
+                .as_mut()
+                .unwrap()[0];
             match field {
-                "source" => range_ink.source_segment_id += 1,
-                "line" => range_ink.line_index += 1,
-                "start" => range_ink.start += 1.0,
-                "advance" => range_ink.advance += 1.0,
+                "source" => range_rectangle.source_segment_id += 1,
+                "line" => range_rectangle.line_index += 1,
+                "start" => range_rectangle.start += 1.0,
+                "advance" => range_rectangle.advance += 1.0,
                 _ => unreachable!(),
             }
 
             let error = assert_surgeist_matches(&golden)
-                .expect_err("wrong Range-ink identity or inline interval should fail");
+                .expect_err("wrong Range-rectangle identity or inline interval should fail");
             assert!(
                 error.to_string().contains(expected_diagnostic),
                 "unexpected {field} diagnostic: {error}"
@@ -6742,7 +7821,7 @@ mod tests {
     }
 
     #[test]
-    fn fri06_c08_range_ink_parser_is_finite_complete_and_category_exclusive() {
+    fn fri06_c08_range_rectangle_parser_is_finite_complete_and_category_exclusive() {
         let complete = r#"<range-ink source_segment_id="11" line_index="0" physical_start_edge="left" start="0" advance="10" />"#;
         for (body, diagnostic) in [
             (
@@ -6763,50 +7842,58 @@ mod tests {
             ),
             (
                 format!(r#"<range-inks>{complete}</range-inks><fragments>{}</fragments>"#, fri06_c06_complete_fragment("")),
-                "model fragments and Range ink are distinct expectation categories",
+                "model fragments and Range rectangle are distinct expectation categories",
             ),
         ] {
             let error = Golden::parse(&fri06_c06_fragment_xml(&body))
-                .expect_err("invalid or mixed Range-ink category should fail closed");
+                .expect_err("invalid or mixed Range-rectangle category should fail closed");
             assert_eq!(error.to_string(), diagnostic);
         }
     }
 
     #[test]
-    fn fri06_c08_range_ink_parser_rejects_mixed_node_scroll_and_nested_geometry() {
-        let range_inks = r#"<range-inks><range-ink source_segment_id="11" line_index="0" physical_start_edge="left" start="0" advance="10" /></range-inks>"#;
+    fn fri06_c08_range_rectangle_parser_rejects_mixed_node_scroll_and_nested_geometry() {
+        let range_rectangles = r#"<range-inks><range-ink source_segment_id="11" line_index="0" physical_start_edge="left" start="0" advance="10" /></range-inks>"#;
         for (node_attributes, nested, diagnostic) in [
-            ("x=\"1\"", "", "Range ink must not include node geometry"),
-            ("y=\"1\"", "", "Range ink must not include node geometry"),
+            (
+                "x=\"1\"",
+                "",
+                "Range rectangle must not include node geometry",
+            ),
+            (
+                "y=\"1\"",
+                "",
+                "Range rectangle must not include node geometry",
+            ),
             (
                 "width=\"1\"",
                 "",
-                "Range ink must not include node geometry",
+                "Range rectangle must not include node geometry",
             ),
             (
                 "height=\"1\"",
                 "",
-                "Range ink must not include node geometry",
+                "Range rectangle must not include node geometry",
             ),
             (
                 "scroll_width=\"1\" scroll_height=\"2\"",
                 "",
-                "Range ink must not include scroll geometry",
+                "Range rectangle must not include scroll geometry",
             ),
             (
                 "content_width=\"1\"",
                 "",
-                "unsupported Range ink node expectation attribute `content_width`",
+                "unsupported Range rectangle node expectation attribute `content_width`",
             ),
             (
                 "",
                 "<fragments />",
-                "model fragments and Range ink are distinct expectation categories",
+                "model fragments and Range rectangle are distinct expectation categories",
             ),
             (
                 "",
                 "<node x=\"1\" />",
-                "Range ink must not include child geometry expectations",
+                "Range rectangle must not include child geometry expectations",
             ),
         ] {
             let xml = format!(
@@ -6815,32 +7902,33 @@ mod tests {
                     <viewport width="100" height="max-content" />
                     <input><div display="block" /></input>
                     <expectations>
-                        <node {node_attributes}>{range_inks}{nested}</node>
+                        <node {node_attributes}>{range_rectangles}{nested}</node>
                     </expectations>
                 </test>
                 "#,
             );
-            let error = Golden::parse(&xml)
-                .expect_err("Range ink mixed with another geometry category should fail closed");
+            let error = Golden::parse(&xml).expect_err(
+                "Range rectangle mixed with another geometry category should fail closed",
+            );
             assert_eq!(error.to_string(), diagnostic);
         }
     }
 
     #[test]
-    fn fri06_c08_range_ink_comparator_rejects_mixed_geometry_before_comparison() {
+    fn fri06_c08_range_rectangle_comparator_rejects_mixed_geometry_before_comparison() {
         for (category, diagnostic) in [
-            ("node", "Range ink must not include node geometry"),
-            ("scroll", "Range ink must not include scroll geometry"),
+            ("node", "Range rectangle must not include node geometry"),
+            ("scroll", "Range rectangle must not include scroll geometry"),
             (
                 "fragments",
-                "model fragments and Range ink are distinct expectation categories",
+                "model fragments and Range rectangle are distinct expectation categories",
             ),
             (
                 "children",
-                "Range ink must not include child geometry expectations",
+                "Range rectangle must not include child geometry expectations",
             ),
         ] {
-            let mut golden = fri06_c08_range_ink_golden();
+            let mut golden = fri06_c08_range_rectangle_golden();
             let expected = &mut golden.expectations.children[0];
             match category {
                 "node" => expected.x = Some(99.0),
@@ -6853,7 +7941,7 @@ mod tests {
                     height: None,
                     scroll_size: None,
                     fragments: None,
-                    range_inks: None,
+                    range_rectangles: None,
                     browser_control: None,
                     children: Vec::new(),
                 }),
@@ -6861,7 +7949,7 @@ mod tests {
             }
 
             let error = assert_surgeist_matches(&golden)
-                .expect_err("mixed Range-ink comparator state should fail closed");
+                .expect_err("mixed Range-rectangle comparator state should fail closed");
             assert!(
                 error.to_string().contains(diagnostic),
                 "unexpected {category} diagnostic: {error}"
@@ -6982,156 +8070,12 @@ mod tests {
         );
     }
 
-    struct Fri06C06FragmentTree {
-        layout_inputs: Vec<layout::LayoutInput>,
-        node_inputs: Vec<layout::NodeInput>,
-        children: Vec<Vec<usize>>,
-    }
-
-    impl layout::Traverse for Fri06C06FragmentTree {
-        type Node = usize;
-        type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, usize>>;
-
-        fn children(&self, node: Self::Node) -> Self::Children<'_> {
-            self.children[node].iter().copied()
-        }
-
-        fn child_count(&self, node: Self::Node) -> usize {
-            self.children[node].len()
-        }
-
-        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
-            self.children[node][index]
-        }
-    }
-
-    impl layout::LayoutTree for Fri06C06FragmentTree {
-        type MeasureError = std::convert::Infallible;
-
-        fn node_input(&self, node: Self::Node) -> &layout::NodeInput {
-            self.layout_inputs[node]
-                .as_box()
-                .unwrap_or(&self.node_inputs[node])
-        }
-
-        fn layout_input(&self, node: Self::Node) -> layout::LayoutInputView<'_> {
-            self.layout_inputs[node].as_view()
-        }
-    }
-
-    fn fri06_c06_segment(id: u64, extent: Scalar) -> layout::ShapedInlineSegment {
-        layout::ShapedInlineSegment::try_new(
-            layout::InlineSegmentId::new(id),
-            extent,
-            layout::InlineMetrics::from_ascent_descent(8.0, 2.0).unwrap(),
-            surgeist_text::BidiLevel::try_new(0).unwrap(),
-            surgeist_text::InlineWhitespaceEdge::Preserve,
-            layout::InlineBreakOpportunity::prohibited(),
-        )
-        .unwrap()
-    }
-
     fn fri06_c06_fragment_observation()
     -> (TestTree, layout::CompletedLayoutBatch<usize>, Expectation) {
-        let root_input = layout::NodeInput {
-            display: layout::Display::Block,
-            ..layout::NodeInput::default()
-        };
-        let text = |id, extent| {
-            layout::LayoutInput::inline_text(
-                layout::InlineTextInput::try_new(vec![fri06_c06_segment(id, extent)]).unwrap(),
-            )
-        };
-        let metrics = layout::InlineMetrics::from_ascent_descent(8.0, 2.0).unwrap();
-        let source = Fri06C06FragmentTree {
-            layout_inputs: vec![
-                layout::LayoutInput::box_input(root_input),
-                text(11, 10.25),
-                layout::LayoutInput::inline_boundary(layout::InlineBoundaryInput::new(
-                    layout::InlineBoundaryKind::Start,
-                    metrics,
-                )),
-                text(22, 5.0),
-            ],
-            node_inputs: vec![
-                layout::NodeInput::non_box(),
-                layout::NodeInput::non_box(),
-                layout::NodeInput::non_box(),
-                layout::NodeInput::non_box(),
-            ],
-            children: vec![vec![1, 2, 3], Vec::new(), Vec::new(), Vec::new()],
-        };
-        let request = layout::LayoutRootRequest::viewport(layout::Size::new(
-            layout::Available::definite(100.0),
-            layout::Available::MaxContent,
-        ))
-        .unwrap();
-        let batch = layout::compute_layout(&source, 0, request).unwrap();
-        let nodes = source
-            .layout_inputs
-            .iter()
-            .enumerate()
-            .map(|(node, layout_input)| TestNode {
-                non_box_input: layout::NodeInput::non_box(),
-                layout_input: layout_input.clone(),
-                is_br_source: false,
-                font_family: FontFamily::Ahem,
-                font_size: TextMeasure::LINE_HEIGHT,
-                line_height: TextMeasure::LINE_HEIGHT,
-                text: None,
-                children: source.children[node].clone(),
-                synthetic: false,
-                parent: (node != 0).then_some(0),
-                range_root: None,
-                explicit_range_root: false,
-                preserve_fractional_min_content: false,
-                use_tighter_monospace_wrap: false,
-                cache: layout::Cache::new(),
-                unrounded: batch
-                    .unrounded_entries()
-                    .iter()
-                    .find(|entry| entry.node() == node)
-                    .map_or_else(layout::NodeOutput::new, |entry| entry.output()),
-                unrounded_present: batch
-                    .unrounded_entries()
-                    .iter()
-                    .any(|entry| entry.node() == node),
-                final_layout: batch
-                    .final_entries()
-                    .iter()
-                    .find(|entry| entry.node() == node)
-                    .map_or_else(layout::NodeOutput::new, |entry| entry.output()),
-                final_layout_present: batch
-                    .final_entries()
-                    .iter()
-                    .any(|entry| entry.node() == node),
-                unrounded_inline_fragments: matches!(
-                    layout_input,
-                    layout::LayoutInput::InlineText(_)
-                )
-                .then(|| {
-                    batch
-                        .unrounded_inline_fragments()
-                        .iter()
-                        .filter(|entry| entry.node() == node)
-                        .map(|entry| entry.fragment())
-                        .collect()
-                }),
-                final_inline_fragments: matches!(layout_input, layout::LayoutInput::InlineText(_))
-                    .then(|| {
-                        batch
-                            .final_inline_fragments()
-                            .iter()
-                            .filter(|entry| entry.node() == node)
-                            .map(|entry| entry.fragment())
-                            .collect()
-                    }),
-                shape_bands: None,
-            })
-            .collect();
-        let tree = TestTree { nodes };
-
+        let golden = native_test_golden(&[("X", 10.0, 0.25), ("X", 5.0, 0.0)], true);
+        let mut tree = TestTree::from_golden(&golden.root).unwrap();
+        let batch = native_tree_compute(&tree, fri06_c06_inline_request());
+        tree.apply_completed_batch(&batch);
         fn expected_for(
             tree: &TestTree,
             batch: &layout::CompletedLayoutBatch<usize>,
@@ -7140,14 +8084,24 @@ mod tests {
             let fragments = batch
                 .final_inline_fragments()
                 .iter()
-                .filter(|entry| entry.node() == node)
+                .filter(|entry| {
+                    entry.owner() == &layout::InlineFragmentOwner::Node(node)
+                        && entry
+                            .fragment()
+                            .finalized_fragment()
+                            .view()
+                            .origin()
+                            .is_some()
+                })
                 .map(|entry| {
                     let fragment = entry.fragment();
-                    let rect = fragment.rect();
+                    let rect = fragment
+                        .rect()
+                        .expect("authored source has actual range geometry");
                     InlineFragmentExpectation {
-                        source_segment_id: fragment.segment_id().get(),
+                        source_segment_id: fragment_source_id(fragment).unwrap(),
                         line_index: fragment.line_index(),
-                        visual_index: fragment.visual_index(),
+                        historical_visual_index: None,
                         x: rect.origin().x,
                         y: rect.origin().y,
                         width: rect.size().width,
@@ -7163,8 +8117,12 @@ mod tests {
                 width: None,
                 height: None,
                 scroll_size: None,
-                fragments: Some(fragments),
-                range_inks: None,
+                fragments: tree.nodes[node]
+                    .layout_input
+                    .as_inline_text()
+                    .is_some()
+                    .then_some(fragments),
+                range_rectangles: None,
                 browser_control: None,
                 children: tree.nodes[node]
                     .children
@@ -7196,34 +8154,103 @@ mod tests {
     }
 
     #[test]
-    fn fri06_c06_comparator_uses_final_source_order_and_preserves_visual_slots() {
+    fn native_comparator_retains_actual_owners_and_finalized_physical_paint_order() {
         let (tree, batch, expected) = fri06_c06_fragment_observation();
-
-        assert_eq!(
-            batch
+        let mut line = None;
+        for (node, source_id, x, width) in [(1, 0, 0.0, 10.25), (3, 1, 10.25, 5.0)] {
+            let fragment = batch
                 .final_inline_fragments()
                 .iter()
-                .map(|entry| (
-                    entry.node(),
-                    entry.fragment().segment_id().get(),
-                    entry.fragment().visual_index(),
-                ))
-                .collect::<Vec<_>>(),
-            [(1, 11, 0), (3, 22, 2)]
-        );
-        assert_ne!(
-            batch.unrounded_inline_fragments()[0].fragment().rect(),
-            batch.final_inline_fragments()[0].fragment().rect()
+                .find(|entry| entry.owner() == &layout::InlineFragmentOwner::Node(node))
+                .unwrap()
+                .fragment();
+            let issued = fragment.finalized_fragment();
+            assert_eq!(
+                issued.view().origin(),
+                Some(tree.paragraphs[0].origins[source_id].origin.clone())
+            );
+            assert_eq!(fragment_source_id(fragment).unwrap(), source_id as u64);
+            let rect = fragment.rect().unwrap();
+            assert_eq!((rect.origin().x, rect.size().width), (x, width));
+            let actual_line = issued.finalized_line();
+            if let Some(previous) = &line {
+                assert_eq!(previous, &actual_line);
+            } else {
+                line = Some(actual_line);
+            }
+        }
+        // Actual finalized paint rows, not association-table enumeration. Ahem X
+        // is glyph58. Logical spacing changes the first run's final advance but
+        // does not rewrite its canonical provider advance or raw offsets.
+        let line = line.unwrap();
+        let paints = line
+            .run_views()
+            .map(|run| {
+                (
+                    run.range(),
+                    run.origin().x,
+                    run.advance(),
+                    run.glyphs()
+                        .map(|glyph| {
+                            (
+                                glyph.id(),
+                                glyph.pen(),
+                                glyph.x(),
+                                glyph.y(),
+                                glyph.advance(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            paints,
+            vec![
+                (
+                    surgeist_text::Range::new(0, 1),
+                    0.0,
+                    10.25,
+                    vec![(58, 0.0, 0.0, 0.0, 10.0)]
+                ),
+                (
+                    surgeist_text::Range::new(1, 2),
+                    10.25,
+                    5.0,
+                    vec![(58, 0.0, 0.0, 0.0, 5.0)]
+                ),
+            ]
         );
         fri06_c06_compare_fragments(&tree, &batch, &expected)
-            .expect("final source-associated fragments should match");
+            .expect("actual source associations and physical geometry should match");
+    }
+
+    #[test]
+    fn historical_fragment_ordinal_stays_schema_only_and_cannot_certify_native_order() {
+        let raw = fri06_c06_fragment_xml(&format!(
+            "<fragments>{}</fragments>",
+            fri06_c06_complete_fragment("")
+        ));
+        let historical = Golden::parse(&raw).unwrap();
+        assert_eq!(
+            historical.expectations.fragments.as_ref().unwrap()[0].historical_visual_index,
+            Some(2)
+        );
+        let (tree, batch, mut native) = fri06_c06_fragment_observation();
+        native.children[0].fragments.as_mut().unwrap()[0].historical_visual_index = Some(2);
+        assert_eq!(
+            fri06_c06_compare_fragments(&tree, &batch, &native)
+                .unwrap_err()
+                .to_string(),
+            "fri06-c06-fragments/0: historical fragment visual_index has no native ordering equivalent"
+        );
     }
 
     #[test]
     fn fri06_c06_comparator_fragment_fields_have_stable_diagnostics() {
         let (tree, batch, expected) = fri06_c06_fragment_observation();
         let actual = batch.final_inline_fragments()[0].fragment();
-        let rect = actual.rect();
+        let rect = actual.rect().unwrap();
         let baseline = actual.baseline();
 
         let mut cases = Vec::new();
@@ -7231,7 +8258,7 @@ mod tests {
         changed.children[0].fragments.as_mut().unwrap()[0].source_segment_id = 12;
         cases.push((
             changed,
-            "fri06-c06-fragments/0: fragment[0] source segment id mismatch, expected 12, got 11"
+            "fri06-c06-fragments/0: fragment[0] source segment id mismatch, expected 12, got 0"
                 .to_string(),
         ));
         let mut changed = expected.clone();
@@ -7244,17 +8271,6 @@ mod tests {
                 actual.line_index()
             ),
         ));
-        let mut changed = expected.clone();
-        changed.children[0].fragments.as_mut().unwrap()[0].visual_index += 1;
-        cases.push((
-            changed,
-            format!(
-                "fri06-c06-fragments/0: fragment[0] visual index mismatch, expected {}, got {}",
-                actual.visual_index() + 1,
-                actual.visual_index()
-            ),
-        ));
-
         for (field, actual_value) in [
             ("rect x", rect.origin().x),
             ("rect y", rect.origin().y),
@@ -7291,17 +8307,17 @@ mod tests {
     }
 
     #[test]
-    fn fri06_c08_r0_range_ink_does_not_relax_explicit_model_line_visual_block_or_baseline() {
+    fn native_range_rectangles_do_not_relax_line_block_or_baseline_geometry() {
         let (tree, batch, expected) = fri06_c06_fragment_observation();
         for (field, diagnostic) in [
-            ("visual", "fragment[0] visual index mismatch"),
+            ("line", "fragment[0] line index mismatch"),
             ("block", "fragment[0] rect y mismatch"),
             ("baseline", "fragment[0] baseline y mismatch"),
         ] {
             let mut changed = expected.clone();
             let fragment = &mut changed.children[0].fragments.as_mut().unwrap()[0];
             match field {
-                "visual" => fragment.visual_index += 1,
+                "line" => fragment.line_index += 1,
                 "block" => fragment.y += 1.0,
                 "baseline" => fragment.baseline_y += 1.0,
                 _ => unreachable!(),
@@ -7324,13 +8340,13 @@ mod tests {
         fri06_c06_compare_fragments(&tree, &batch, &expected)
             .expect("fragment geometry and baseline should use browser tolerance");
 
-        expected.children[0].fragments.as_mut().unwrap()[0].visual_index += 1;
+        expected.children[0].fragments.as_mut().unwrap()[0].source_segment_id += 1;
         let error = fri06_c06_compare_fragments(&tree, &batch, &expected)
-            .expect_err("visual identity remains exact");
+            .expect_err("actual source occurrence identity remains exact");
         assert!(
             error
                 .to_string()
-                .contains("fragment[0] visual index mismatch")
+                .contains("fragment[0] source segment id mismatch")
         );
     }
 
@@ -8899,6 +9915,7 @@ mod tests {
             ..layout::NodeInput::default()
         };
         let mut tree = TestTree {
+            paragraphs: Vec::new(),
             nodes: vec![TestNode {
                 non_box_input: layout::NodeInput::non_box(),
                 layout_input: layout::LayoutInput::box_input(node_input),
@@ -9511,7 +10528,7 @@ mod tests {
     }
 
     #[test]
-    fn fri06_c06_inline_input_valid_shaped_text_uses_production_model_and_non_box_pairing() {
+    fn historical_inline_schema_preserves_numeric_tuples_without_production_admission() {
         let segments = [
             fri06_c06_segment_xml(
                 "11",
@@ -9551,38 +10568,31 @@ mod tests {
             ),
         ]
         .join("");
-        let tree = fri06_c06_lower(&format!(
+        let golden = Golden::parse(&fri06_c06_inline_input_xml(&format!(
             r#"<div display="block">{}</div>"#,
             fri06_c06_inline_text(&segments)
-        ))
-        .expect("reviewed shaped input should lower");
-
-        let layout::LayoutInputView::InlineText(input) = tree.layout_input(1) else {
-            panic!("valid shaped text must lower as LayoutInput::InlineText");
-        };
-        assert_eq!(tree.node_input(1), &layout::NodeInput::non_box());
-        assert!(tree.nodes[1].children.is_empty());
-        assert!(!tree.has_leaf_measurement(1));
-        assert_eq!(tree.nodes[1].text, None);
-        assert!(!tree.nodes[1].synthetic);
-
-        let segments = input.segments();
+        )))
+        .unwrap();
+        let input = golden.root.children[0].inline_text.as_ref().unwrap();
+        let error = TestTree::from_golden(&golden.root).unwrap_err();
+        assert!(error.to_string().contains("historical measured-width text"));
+        let segments = &input.segments;
         assert_eq!(segments.len(), 4);
-        assert_eq!(segments[0].segment_id().get(), 11);
-        assert_eq!(segments[0].inline_extent(), 10.25);
-        assert_eq!(segments[0].metrics().baseline(), 8.0);
-        assert_eq!(segments[0].metrics().line_extent(), 10.0);
-        assert_eq!(segments[1].bidi_level().get(), 1);
+        assert_eq!(segments[0].id, 11);
+        assert_eq!(segments[0].extent, 10.25);
+        assert_eq!(segments[0].metrics.baseline(), 8.0);
+        assert_eq!(segments[0].metrics.line_extent(), 10.0);
+        assert_eq!(segments[1].level.get(), 1);
         assert_eq!(
-            segments[1].whitespace_edge(),
+            segments[1].edge,
             surgeist_text::InlineWhitespaceEdge::DiscardAtLineStart
         );
+        assert_eq!(segments[2].following, MeasuredBreak::Mandatory);
         assert_eq!(
-            segments[2].following_break().kind(),
-            layout::InlineBreakKind::Mandatory
-        );
-        assert_eq!(
-            segments[3].following_break().replacement_inline_extent(),
+            match segments[3].following {
+                MeasuredBreak::Replacement(extent) => Some(extent),
+                _ => None,
+            },
             Some(1.5)
         );
     }
@@ -9655,17 +10665,24 @@ mod tests {
     }
 
     #[test]
-    fn resolved_bidi_126_survives_actual_parity_input_lowering() {
+    fn historical_schema_retains_resolved_bidi_126_without_claiming_native_analysis() {
         let segment = fri06_c06_valid_segment().replace("bidi-level=\"1\"", "bidi-level=\"126\"");
-        let tree = fri06_c06_lower(&format!(
+        let golden = Golden::parse(&fri06_c06_inline_input_xml(&format!(
             r#"<div display="block">{}</div>"#,
             fri06_c06_inline_text(&segment)
-        ))
+        )))
         .unwrap();
-        let layout::LayoutInputView::InlineText(input) = tree.layout_input(1) else {
-            panic!("actual inline text input remains inline text");
-        };
-        assert_eq!(input.segments()[0].bidi_level().get(), 126);
+        assert_eq!(
+            golden.root.children[0]
+                .inline_text
+                .as_ref()
+                .unwrap()
+                .segments[0]
+                .level
+                .get(),
+            126
+        );
+        assert!(TestTree::from_golden(&golden.root).is_err());
     }
 
     #[test]
@@ -9775,22 +10792,7 @@ mod tests {
 
     fn fri06_c06_atomic_fixture(atomic_facts: &str) -> String {
         format!(
-            r#"
-            <div display="block">
-                <div display="inline-block" width="4" height="6" />
-                {}
-                {atomic_facts}
-            </div>
-            "#,
-            fri06_c06_inline_text(&fri06_c06_segment_xml(
-                "22",
-                "5",
-                ("4", "6"),
-                "0",
-                "preserve",
-                "prohibited",
-                None,
-            ))
+            r#"<div display="block"><div display="inline-block" width="4" height="6"/><div display="block" width="5" height="6"/>{atomic_facts}</div>"#
         )
     }
 
@@ -9808,10 +10810,10 @@ mod tests {
             .expect("the referenced atomic child receives participation");
         assert_eq!(participation.bidi_level().get(), 3);
         assert_eq!(
-            participation.following_break().kind(),
-            layout::InlineBreakKind::Mandatory
+            participation.following_break(),
+            layout::InlineBreakOpportunity::Mandatory
         );
-        assert_eq!(tree.node_input(2), &layout::NodeInput::non_box());
+        assert_eq!(tree.node_input(2).display, layout::Display::Block);
     }
 
     #[test]
@@ -9864,70 +10866,106 @@ mod tests {
         .expect("valid inline fixture request")
     }
 
+    fn assert_native_cached_source_geometry(
+        cold: &layout::CompletedLayoutBatch<usize>,
+        warm: &layout::CompletedLayoutBatch<usize>,
+        origin: &surgeist_text::PreparedOrigin,
+    ) {
+        assert_eq!(
+            cold.unrounded_inline_fragments().len(),
+            warm.unrounded_inline_fragments().len()
+        );
+        assert_eq!(
+            cold.final_inline_fragments().len(),
+            warm.final_inline_fragments().len()
+        );
+        for (first, second) in cold
+            .unrounded_inline_fragments()
+            .iter()
+            .zip(warm.unrounded_inline_fragments())
+            .chain(
+                cold.final_inline_fragments()
+                    .iter()
+                    .zip(warm.final_inline_fragments()),
+            )
+        {
+            assert_eq!(first.owner().clone(), second.owner().clone());
+            let first = first.fragment();
+            let second = second.fragment();
+            assert_eq!(first.rect(), second.rect());
+            assert_eq!(first.baseline(), second.baseline());
+            assert_eq!(first.line_index(), second.line_index());
+            // A fresh computation may issue new selected/finalized owners. Both
+            // must retain the SAME actual prepared origin and font/source basis.
+            for fragment in [first, second] {
+                assert_eq!(
+                    fragment.finalized_fragment().view().origin(),
+                    Some(origin.clone())
+                );
+                assert_eq!(
+                    fragment
+                        .finalized_fragment()
+                        .finalized_line()
+                        .prepared_text(),
+                    origin.prepared_text()
+                );
+            }
+        }
+    }
+
     #[test]
     fn fri06_c06_inline_input_fragment_cache_commits_and_restores_nonempty_slices() {
-        let mut tree = fri06_c06_lower(&format!(
-            r#"<div display="block">{}</div>"#,
-            fri06_c06_inline_text(&fri06_c06_segment_xml(
-                "11",
-                "10.25",
-                ("8", "10"),
-                "0",
-                "preserve",
-                "prohibited",
-                None,
-            ))
-        ))
-        .expect("valid shaped fixture should lower");
+        let golden = native_test_golden(&[("X", 10.0, 0.25)], false);
+        let mut tree = TestTree::from_golden(&golden.root).unwrap();
         let request = fri06_c06_inline_request();
-        let cold = layout::compute_layout(&tree, 0, request).expect("cold inline layout succeeds");
+        let cold = native_tree_compute(&tree, request);
         assert_eq!(cold.unrounded_inline_fragments().len(), 1);
         assert_eq!(cold.final_inline_fragments().len(), 1);
-        assert_ne!(
+        assert_eq!(
             cold.unrounded_inline_fragments()[0].fragment().rect(),
             cold.final_inline_fragments()[0].fragment().rect()
         );
 
+        let rect = cold.final_inline_fragments()[0].fragment().rect().unwrap();
+        assert_eq!(
+            (
+                rect.origin().x,
+                rect.origin().y,
+                rect.size().width,
+                rect.size().height
+            ),
+            (0.0, -0.25, 10.25, 10.5)
+        );
         tree.apply_completed_batch(&cold);
         assert_eq!(
             tree.unrounded_inline_fragments(1),
-            Some([cold.unrounded_inline_fragments()[0].fragment()].as_slice())
+            Some([cold.unrounded_inline_fragments()[0].fragment().clone()].as_slice())
         );
 
-        let warm = layout::compute_layout(&tree, 0, request).expect("warm inline layout succeeds");
-        assert_eq!(
-            warm.unrounded_inline_fragments(),
-            cold.unrounded_inline_fragments()
-        );
-        assert_eq!(warm.final_inline_fragments(), cold.final_inline_fragments());
+        let warm = native_tree_compute(&tree, request);
+        assert_native_cached_source_geometry(&cold, &warm, &tree.paragraphs[0].origins[0].origin);
     }
 
     #[test]
-    fn fri06_c06_inline_input_fragment_cache_distinguishes_committed_empty_from_absent() {
-        let mut tree = fri06_c06_lower(&format!(
-            r#"<div display="block">{}</div>"#,
-            fri06_c06_inline_text(&fri06_c06_segment_xml(
-                "11",
-                "3",
-                ("0", "0"),
-                "0",
-                "discard-at-both",
-                "prohibited",
-                None,
-            ))
-        ))
-        .expect("valid discardable shaped fixture should lower");
+    fn native_empty_origin_cache_preserves_real_occurrence_instead_of_fabricating_absence() {
+        let golden = native_test_golden(&[("", 10.0, 0.0)], false);
+        let mut tree = TestTree::from_golden(&golden.root).unwrap();
+        let origin = tree.paragraphs[0].origins[0].origin.clone();
         assert_eq!(tree.unrounded_inline_fragments(1), None);
-
-        let request = fri06_c06_inline_request();
-        let cold = layout::compute_layout(&tree, 0, request).expect("cold empty layout succeeds");
-        assert!(cold.unrounded_inline_fragments().is_empty());
+        let cold = native_tree_compute(&tree, fri06_c06_inline_request());
+        assert_eq!(cold.unrounded_inline_fragments().len(), 1);
+        assert_eq!(
+            cold.unrounded_inline_fragments()[0]
+                .fragment()
+                .finalized_fragment()
+                .view()
+                .origin(),
+            Some(origin)
+        );
         tree.apply_completed_batch(&cold);
-        assert_eq!(tree.unrounded_inline_fragments(1), Some([].as_slice()));
-
-        let warm = layout::compute_layout(&tree, 0, request).expect("warm empty layout succeeds");
-        assert!(warm.unrounded_inline_fragments().is_empty());
-        assert!(warm.final_inline_fragments().is_empty());
+        assert_eq!(tree.unrounded_inline_fragments(1).unwrap().len(), 1);
+        let warm = native_tree_compute(&tree, fri06_c06_inline_request());
+        assert_native_cached_source_geometry(&cold, &warm, &tree.paragraphs[0].origins[0].origin);
     }
 
     fn fri06_c06_shape_input_xml(float_attrs: &str, provider: &str) -> String {

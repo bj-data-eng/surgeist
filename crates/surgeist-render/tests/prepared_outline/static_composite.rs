@@ -150,7 +150,7 @@ fn expect_ink(
     let instance = instance(1000.0, vec![], 0.0);
     let kept = instance.clone();
     let glyph_copy = glyphs.to_vec();
-    let result = font.prepare_outline(&instance, glyphs, limits());
+    let result = font.prepare_glyph_run(&instance, glyphs, limits());
     assert_eq!(font, retained);
     assert_eq!(instance, kept);
     assert_eq!(glyphs, glyph_copy);
@@ -174,7 +174,7 @@ fn expect_error(
     label: &str,
     bytes: &[u8],
     glyphs: &[TextGlyph],
-    expected: OutlinePreparationError,
+    expected: GlyphPreparationError,
     failures: &mut Vec<String>,
 ) {
     let font = font(bytes);
@@ -182,7 +182,7 @@ fn expect_error(
     let instance = instance(1000.0, vec![], 0.0);
     let kept = instance.clone();
     let glyph_copy = glyphs.to_vec();
-    let result = font.prepare_outline(&instance, glyphs, limits());
+    let result = font.prepare_glyph_run(&instance, glyphs, limits());
     assert_eq!(font, retained);
     assert_eq!(instance, kept);
     assert_eq!(glyphs, glyph_copy);
@@ -330,7 +330,7 @@ fn direct_malformed_structure_never_becomes_empty_or_clamped_points() {
             label,
             &replace_glyphs(&[(X as u16, data)]),
             &[at_origin()],
-            OutlinePreparationError::InvalidFont,
+            GlyphPreparationError::InvalidFont,
             &mut failures,
         );
     }
@@ -380,7 +380,7 @@ fn valid_repeat_prefix_outside_provider_domain_never_publishes_unfaithful_geomet
             label,
             &bytes,
             &[at_origin()],
-            OutlinePreparationError::Provider { glyph: X },
+            GlyphPreparationError::Provider { glyph: X },
             &mut failures,
         );
     }
@@ -426,24 +426,24 @@ fn composite_children_share_raw_and_provider_qualification_after_a_valid_glyph()
         (
             "child excess repeat",
             malformed_repeat(),
-            OutlinePreparationError::InvalidFont,
+            GlyphPreparationError::InvalidFont,
         ),
         (
             "child missing zero-contour program",
             missing_zero_contour_program(),
-            OutlinePreparationError::InvalidFont,
+            GlyphPreparationError::InvalidFont,
         ),
         (
             "child one-point repeat0",
             one_point_repeat_zero(),
-            OutlinePreparationError::Provider {
+            GlyphPreparationError::Provider {
                 glyph: u32::from(INNER),
             },
         ),
         (
             "child underconsumed flags",
             underconsumed_flags(),
-            OutlinePreparationError::Provider {
+            GlyphPreparationError::Provider {
                 glyph: u32::from(INNER),
             },
         ),
@@ -489,8 +489,11 @@ fn composite_children_share_raw_and_provider_qualification_after_a_valid_glyph()
             replace_glyphs(&[(X as u16, composite([0, 0, 0, 0], &[(3, 3, 0, 0)], &[]))]),
         ),
     ] {
-        match font(&bytes).prepare_outline(&instance(1000.0, vec![], 0.0), &[at_origin()], limits())
-        {
+        match font(&bytes).prepare_glyph_run(
+            &instance(1000.0, vec![], 0.0),
+            &[at_origin()],
+            limits(),
+        ) {
             Ok(prepared) => {
                 assert_eq!(
                     prepared.bounds().kind(),
@@ -510,8 +513,8 @@ fn composite_children_share_raw_and_provider_qualification_after_a_valid_glyph()
 
 #[test]
 fn unsupported_component_controls_and_whole_run_limit_retry_preserve_inputs() {
-    let unsupported = OutlinePreparationError::UnsupportedOutline {
-        capability: OutlineCapability::CompositeGlyph,
+    let unsupported = GlyphPreparationError::UnsupportedOutline {
+        capability: GlyphCapability::CompositeGlyph,
     };
     let mut failures = Vec::new();
     for (label, flags, tail) in [
@@ -546,20 +549,20 @@ fn unsupported_component_controls_and_whole_run_limit_retry_preserve_inputs() {
     let kept_glyphs = glyphs;
     for (resource, low) in [
         (
-            OutlineResource::PathElements,
-            OutlineLimits::new(16, 0, 1 << 20, 1 << 20),
+            GlyphResource::PathElements,
+            GlyphRunLimits::new(16, 0, 1 << 20, 1 << 20),
         ),
         (
-            OutlineResource::ScratchBytes,
-            OutlineLimits::new(16, 1024, 0, 1 << 20),
+            GlyphResource::ScratchBytes,
+            GlyphRunLimits::new(16, 1024, 0, 1 << 20),
         ),
         (
-            OutlineResource::RetainedBytes,
-            OutlineLimits::new(16, 1024, 1 << 20, 0),
+            GlyphResource::RetainedBytes,
+            GlyphRunLimits::new(16, 1024, 1 << 20, 0),
         ),
     ] {
-        match font.prepare_outline(&instance, &glyphs, low) {
-            Err(error) if matches!(diagnostic(&error),OutlinePreparationError::Limit{resource:actual,..} if actual==resource) =>
+        match font.prepare_glyph_run(&instance, &glyphs, low) {
+            Err(error) if matches!(diagnostic(&error),GlyphPreparationError::Limit{resource:actual,..} if actual==resource) =>
                 {}
             Err(error) => failures.push(format!("limit {resource:?}: {:?}", diagnostic(&error))),
             Ok(_) => failures.push(format!("limit {resource:?}: unexpected preparation")),
@@ -569,7 +572,7 @@ fn unsupported_component_controls_and_whole_run_limit_retry_preserve_inputs() {
         assert_eq!(glyphs, kept_glyphs);
     }
     // Same objects, raised limits, actual original composite facts retained.
-    match font.prepare_outline(&instance, &glyphs, limits()) {
+    match font.prepare_glyph_run(&instance, &glyphs, limits()) {
         Ok(prepared) => {
             assert_eq!(
                 prepared.bounds().ink_rect(),

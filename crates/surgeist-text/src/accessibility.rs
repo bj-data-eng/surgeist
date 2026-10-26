@@ -147,10 +147,13 @@ impl LocaleIndex {
     fn new(styles: &[crate::engine::resolve::AnalyzedStyleRun]) -> Self {
         let mut runs = Vec::new();
         for run in styles {
+            let Some(range) = run.source_range() else {
+                continue;
+            };
             Self::push(
                 &mut runs,
-                run.range.start,
-                run.range.end,
+                range.start,
+                range.end,
                 run.style.authored().locale.clone(),
             );
         }
@@ -268,6 +271,10 @@ pub(crate) fn analyzed_access_position(
         cursor.index(),
         "accessibility cursor",
     )?;
+    analyzed.paragraph.admit(
+        analyzed.processed.source(),
+        Range::new(cursor.index(), cursor.index()),
+    )?;
     let unit = crate::engine::editing::caret_at(
         &analyzed.host_projection.graphemes,
         cursor.index(),
@@ -283,6 +290,9 @@ pub(crate) fn analyzed_access_selection(
 ) -> Result<Option<TextSelection>> {
     validate_binding(state, analyzed, None)?;
     crate::range::validate(analyzed.processed.source().text(), selection.range())?;
+    analyzed
+        .paragraph
+        .admit(analyzed.processed.source(), selection.range())?;
     let (anchor, focus) = if selection.is_collapsed() {
         let point = analyzed_access_position(analyzed, state, selection.focus())?;
         (point, point)
@@ -353,6 +363,56 @@ fn access_stop(state: &Accessibility, unit: usize, affinity: Affinity) -> Option
     })
 }
 
+/// AX inventories actual authored custody, independently from the source
+/// cursor's host-EGC stops. A receiving-only delayed emission may own only one
+/// original component of a larger host grapheme.
+fn placed_source_ranges(layout: &Layout) -> Vec<Range> {
+    let analyzed = &layout.inner.prepared.analyzed;
+    let mut source = Vec::new();
+    for line in &layout.inner.lines {
+        for event in &line
+            .finalized
+            .selected
+            .presentation
+            .selected_relation
+            .events
+        {
+            if let crate::protocol::prepared::SelectedRelationEvent::Base { event } = *event {
+                let range = analyzed.transform.event_source(
+                    event,
+                    &analyzed.paragraph,
+                    analyzed.processed.source(),
+                );
+                if !range.is_empty() {
+                    source.push(range);
+                }
+            }
+        }
+    }
+    source.sort_unstable_by_key(|range| (range.start, range.end));
+    let mut coverage: Vec<Range> = Vec::new();
+    for range in source {
+        if let Some(last) = coverage.last_mut()
+            && range.start <= last.end
+        {
+            last.end = last.end.max(range.end);
+        } else {
+            coverage.push(range);
+        }
+    }
+    analyzed
+        .host_projection
+        .graphemes
+        .windows(2)
+        .flat_map(|pair| {
+            coverage.iter().filter_map(move |range| {
+                let part = Range::new(pair[0].max(range.start), pair[1].min(range.end));
+                (part.start < part.end).then_some(part)
+            })
+        })
+        .collect()
+}
+
 fn update(
     projection: Projection<'_>,
     state: &mut Accessibility,
@@ -372,7 +432,7 @@ fn update(
             let data = &line.finalized.data;
             let metrics = &data.metrics;
             for cluster in &data.clusters {
-                let run = &data.font_runs[cluster.run];
+                let run = cluster.content.font_run().map(|run| &data.font_runs[run]);
                 fragments.push(Fragment {
                     range: cluster.source,
                     bounds: crate::layout::line_rect(
@@ -388,7 +448,26 @@ fn update(
                     rtl: cluster.level & 1 != 0,
                     word: cluster.boundary >= crate::engine::analysis::Boundary::Word
                         && !cluster.whitespace.is_space_or_nbsp(),
-                    metadata: Metadata::from_run(run, locales.uniform(cluster.source)),
+                    metadata: run.map_or_else(
+                        || Metadata {
+                            family: None,
+                            size: line.finalized.selected.prepared.styles[cluster.style]
+                                .style
+                                .font_size,
+                            weight: line.finalized.selected.prepared.styles[cluster.style]
+                                .style
+                                .font_weight
+                                .value(),
+                            italic: matches!(
+                                line.finalized.selected.prepared.styles[cluster.style]
+                                    .style
+                                    .font_style,
+                                fontique::FontStyle::Italic
+                            ),
+                            locale: locales.uniform(cluster.source),
+                        },
+                        |run| Metadata::from_run(run, locales.uniform(cluster.source)),
+                    ),
                 });
             }
         }
@@ -398,15 +477,19 @@ fn update(
             .host_projection
             .graphemes
             .windows(2)
-            .map(|pair| NodeDescriptor {
-                range: Range::new(pair[0], pair[1]),
+            .flat_map(|pair| {
+                analyzed
+                    .paragraph
+                    .intersections(Range::new(pair[0], pair[1]))
+            })
+            .map(|range| NodeDescriptor {
+                range,
                 empty_line: None,
             })
             .collect(),
-        Projection::Placed(layout, _) => layout
-            .inner
-            .interaction
-            .selectable_ranges()
+        Projection::Placed(layout, _) => placed_source_ranges(layout)
+            .into_iter()
+            .flat_map(|range| analyzed.paragraph.intersections(range))
             .map(|range| NodeDescriptor {
                 range,
                 empty_line: None,
@@ -414,15 +497,30 @@ fn update(
             .collect(),
     };
     if matches!(projection, Projection::Analyzed(_))
-        && analyzed.processed.source().text().is_empty()
+        && analyzed.paragraph.extent(&analyzed.processed).is_empty()
     {
         descriptors.push(NodeDescriptor {
-            range: Range::new(0, 0),
+            range: analyzed.paragraph.extent(&analyzed.processed),
             empty_line: None,
         });
     }
     for line in &lines {
-        if line.range().is_empty() {
+        let generated = match projection {
+            Projection::Placed(layout, _) => layout.inner.lines[line.index()]
+                .finalized
+                .selected
+                .presentation
+                .units
+                .iter()
+                .any(|unit| {
+                    matches!(
+                        unit.kind,
+                        crate::protocol::prepared::PresentationUnitKind::GeneratedSeparator { .. }
+                    )
+                }),
+            Projection::Analyzed(_) => false,
+        };
+        if line.range().is_empty() && !generated {
             descriptors.push(NodeDescriptor {
                 range: line.range(),
                 empty_line: Some(line.index()),
@@ -681,6 +779,11 @@ impl Layout {
     ) -> Result<Option<TextSelection>> {
         self.validate_accessibility(state)?;
         super::range::validate(self.source().text(), selection.range())?;
+        self.inner
+            .prepared
+            .analyzed
+            .paragraph
+            .admit(self.source(), selection.range())?;
         crate::engine::editing::position::validate_source(&self.inner, selection.anchor())?;
         crate::engine::editing::position::validate_source(&self.inner, selection.focus())?;
         let (anchor, focus) = if selection.is_collapsed() {
@@ -811,6 +914,8 @@ mod tests {
         connection: crate::ParagraphConnectionKind,
     ) -> crate::AnalyzedSource {
         crate::AnalyzedSource::from_paragraph(crate::ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
             source: Source::new(Text::from_code_units(vec![0xd800, 0xdc00])),
             base_style: Style::default(),
             segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
@@ -818,12 +923,14 @@ mod tests {
             paragraph_strut: crate::ParagraphStrut::AllocatedContributions,
             origins: vec![
                 crate::ParagraphOrigin {
+                    text_node: None,
                     source: Source::new(Text::from_code_units(vec![0xd800])),
                     local: Range::new(0, 1),
                     aggregate: Range::new(0, 1),
                     kind: crate::ParagraphOriginKind::Authored,
                 },
                 crate::ParagraphOrigin {
+                    text_node: None,
                     source: Source::new(Text::from_code_units(vec![0xdc00])),
                     local: Range::new(0, 1),
                     aggregate: Range::new(1, 2),
@@ -1094,7 +1201,12 @@ mod tests {
             ..Style::default()
         })
         .unwrap();
-        let styles = crate::engine::resolve::analyze_styles(&source, &default);
+        let styles = crate::engine::resolve::analyze_styles(
+            source.source(),
+            source.span_styles(),
+            &default,
+            &crate::protocol::paragraph::ParagraphData::standalone(source.source()),
+        );
         let index = LocaleIndex::new(&styles);
         assert_eq!(index.uniform(Range::new(0, 2)).as_deref(), Some("fr"));
         assert_eq!(index.uniform(Range::new(2, 4)).as_deref(), Some("de"));

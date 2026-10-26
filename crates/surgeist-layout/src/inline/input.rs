@@ -1,13 +1,13 @@
 use crate::block::BlockChildProjection;
 use crate::{
-    Compute, InlineBoundaryInputOf, InlineTextInputOf, LayoutInputViewOf, LayoutScalar,
-    LineBreakInputOf, Traverse,
+    Compute, InlineBoundaryInputOf, LayoutInputViewOf, LayoutScalar, LineBreakInputOf, Traverse,
 };
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum InlineParticipantKindOf<'a, S: LayoutScalar> {
     Box(BlockChildProjection<'a, S>),
-    InlineText(&'a InlineTextInputOf<S>),
+    InlineText(&'a crate::text_layout::TextParticipation),
+    TextControl(&'a crate::text_layout::TextControlParticipation),
     LineBreak(LineBreakInputOf<S>),
     InlineBoundary(InlineBoundaryInputOf<S>),
 }
@@ -38,6 +38,7 @@ impl<'input, S: LayoutScalar> InlineParticipantProjection<'input, S> {
                 InlineParticipantKindOf::Box(BlockChildProjection::from_node(input))
             }
             LayoutInputViewOf::InlineText(input) => InlineParticipantKindOf::InlineText(input),
+            LayoutInputViewOf::TextControl(input) => InlineParticipantKindOf::TextControl(input),
             LayoutInputViewOf::LineBreak(input) => InlineParticipantKindOf::LineBreak(input),
             LayoutInputViewOf::InlineBoundary(input) => {
                 InlineParticipantKindOf::InlineBoundary(input)
@@ -46,14 +47,64 @@ impl<'input, S: LayoutScalar> InlineParticipantProjection<'input, S> {
     }
 }
 
+pub(crate) fn starts_run<S: LayoutScalar>(input: LayoutInputViewOf<'_, S>) -> bool {
+    match input {
+        LayoutInputViewOf::Box(input) => {
+            input.display.is_inline_level()
+                && input.position != crate::Position::Absolute
+                && input.float.is_none()
+        }
+        LayoutInputViewOf::InlineText(_)
+        | LayoutInputViewOf::TextControl(_)
+        | LayoutInputViewOf::InlineBoundary(_) => true,
+        LayoutInputViewOf::LineBreak(input) => !input.display().is_none(),
+    }
+}
+
+pub(crate) fn continues_run<S: LayoutScalar>(input: LayoutInputViewOf<'_, S>) -> bool {
+    match input {
+        LayoutInputViewOf::Box(input) => {
+            input.display == crate::Display::None
+                || input.position == crate::Position::Absolute
+                || (input.display.is_inline_level() && input.float.is_none())
+        }
+        LayoutInputViewOf::InlineText(_)
+        | LayoutInputViewOf::TextControl(_)
+        | LayoutInputViewOf::InlineBoundary(_)
+        | LayoutInputViewOf::LineBreak(_) => true,
+    }
+}
+
+pub(crate) fn run_ranges<'input, Node: Copy, S: LayoutScalar>(
+    nodes: &[Node],
+    mut input: impl FnMut(Node) -> LayoutInputViewOf<'input, S>,
+) -> Vec<std::ops::Range<usize>> {
+    let mut ranges = Vec::new();
+    let mut index = 0;
+    while index < nodes.len() {
+        if !starts_run(input(nodes[index])) {
+            index += 1;
+            continue;
+        }
+        let start = index;
+        index += 1;
+        while index < nodes.len() && continues_run(input(nodes[index])) {
+            index += 1;
+        }
+        ranges.push(start..index);
+    }
+    ranges
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::LayoutInputOf;
+    use crate::test_support::text::{PreparedParagraph, ahem_style};
     use crate::{
-        BidiLevel, Clear, Direction, InlineBoundaryKind, InlineBreakOpportunityOf, InlineMetricsOf,
-        InlineSegmentId, InlineWhitespaceEdge, ShapedInlineSegmentOf, VerticalAlign, WritingMode,
+        Clear, Direction, InlineBoundaryKind, InlineMetricsOf, VerticalAlign, WritingMode,
     };
+    use surgeist_text::Source;
 
     fn projection_from_input<S: LayoutScalar>(
         input: &LayoutInputOf<S>,
@@ -63,91 +114,42 @@ mod tests {
         }
     }
 
-    fn assert_inline_kind_reuses_segment_backing<S: LayoutScalar>() {
-        let metrics = InlineMetricsOf::try_new(S::from_f64(7.0), S::from_f64(11.0))
-            .expect("valid inline metrics");
-        let expected_segments = [
-            ShapedInlineSegmentOf::try_new(
-                InlineSegmentId::new(17),
-                S::from_f64(23.0),
-                metrics,
-                BidiLevel::try_new(5).expect("valid bidi level"),
-                InlineWhitespaceEdge::Preserve,
-                InlineBreakOpportunityOf::try_allowed_with_replacement(S::from_f64(2.0))
-                    .expect("valid replacement break"),
-            )
-            .expect("valid first shaped segment"),
-            ShapedInlineSegmentOf::try_new(
-                InlineSegmentId::new(19),
-                S::from_f64(31.0),
-                metrics,
-                BidiLevel::try_new(2).expect("valid bidi level"),
-                InlineWhitespaceEdge::Preserve,
-                InlineBreakOpportunityOf::try_allowed_with_replacement(S::from_f64(3.0))
-                    .expect("valid replacement break"),
-            )
-            .expect("valid second shaped segment"),
-        ];
-        let text = InlineTextInputOf::try_new(expected_segments.to_vec())
-            .expect("nonempty text with distinct segment identities");
-        // Construct the product projection directly to exclude any provider clone.
-        let projection = InlineParticipantProjection {
-            input: LayoutInputViewOf::InlineText(&text),
-        };
-        let original = projection
-            .input
+    fn assert_inline_kind_reuses_occurrence_loan<S: LayoutScalar>() {
+        let paragraph =
+            PreparedParagraph::plain(7, Source::new("actual source"), ahem_style(10.0, 12.0));
+        let input = paragraph.text_input::<S>(7);
+        let projection = projection_from_input(&input);
+        let original = input
             .as_inline_text()
-            .expect("stored inline text");
+            .expect("actual normalized Text occurrence");
         let InlineParticipantKindOf::InlineText(first) = projection.kind() else {
-            panic!("inline text must retain its participant kind");
+            panic!("retained Text role");
         };
         let InlineParticipantKindOf::InlineText(second) = projection.kind() else {
-            panic!("repeated access must retain the inline-text kind");
+            panic!("retained Text role");
         };
-
-        assert_eq!(original.segments(), expected_segments);
-        assert_eq!(first.segments(), expected_segments);
-        assert_eq!(second.segments(), expected_segments);
-        assert!(
-            core::ptr::eq(first.segments(), original.segments()),
-            "kind inspection must reuse the projection's nonempty segment backing"
-        );
-        assert!(core::ptr::eq(second.segments(), original.segments()));
-        assert!(core::ptr::eq(first.segments(), second.segments()));
+        assert!(core::ptr::eq(original, first));
+        assert!(core::ptr::eq(original, second));
+        assert_eq!(first.origin(), &paragraph.origin(7));
     }
 
     #[test]
-    fn inline_kind_reuses_segment_backing_f32() {
-        assert_inline_kind_reuses_segment_backing::<f32>();
+    fn inline_kind_reuses_occurrence_loan_f32() {
+        assert_inline_kind_reuses_occurrence_loan::<f32>();
     }
-
     #[test]
-    fn inline_kind_reuses_segment_backing_f64() {
-        assert_inline_kind_reuses_segment_backing::<f64>();
+    fn inline_kind_reuses_occurrence_loan_f64() {
+        assert_inline_kind_reuses_occurrence_loan::<f64>();
     }
 
     fn assert_non_box_projection_values<S: LayoutScalar>() {
-        let text_metrics = InlineMetricsOf::try_new(S::from_f64(7.0), S::from_f64(11.0))
-            .expect("valid non-default text metrics");
-        let text_segment = ShapedInlineSegmentOf::try_new(
-            InlineSegmentId::new(17),
-            S::from_f64(23.0),
-            text_metrics,
-            BidiLevel::try_new(5).expect("valid bidi level"),
-            InlineWhitespaceEdge::Preserve,
-            InlineBreakOpportunityOf::try_allowed_with_replacement(S::from_f64(2.0))
-                .expect("valid replacement break"),
-        )
-        .expect("valid shaped inline segment");
-        let text = InlineTextInputOf::try_new(vec![text_segment])
-            .expect("nonempty inline text with unique segment identity");
-        let text_input = LayoutInputOf::inline_text(text.clone());
+        let paragraph = PreparedParagraph::plain(17, Source::new("source"), ahem_style(10.0, 11.0));
+        let text_input = paragraph.text_input::<S>(17);
         let text_projection = projection_from_input(&text_input);
         let InlineParticipantKindOf::InlineText(projected_text) = text_projection.kind() else {
-            panic!("inline text input must retain its participant kind");
+            panic!("retained Text role");
         };
-        assert_eq!(projected_text, &text);
-        assert_eq!(projected_text.segments(), &[text_segment]);
+        assert_eq!(projected_text.origin(), &paragraph.origin(17));
 
         let break_metrics = InlineMetricsOf::try_new(S::from_f64(13.0), S::from_f64(19.0))
             .expect("valid non-default line-break metrics");
@@ -173,10 +175,14 @@ mod tests {
 
         let boundary_metrics = InlineMetricsOf::try_new(S::from_f64(29.0), S::from_f64(31.0))
             .expect("valid non-default inline-boundary metrics");
-        let boundary = InlineBoundaryInputOf::new(InlineBoundaryKind::End, boundary_metrics)
-            .with_writing_mode(WritingMode::SidewaysRl)
-            .with_direction(Direction::Rtl)
-            .with_vertical_align(VerticalAlign::Bottom);
+        let boundary = InlineBoundaryInputOf::new(
+            InlineBoundaryKind::End,
+            boundary_metrics,
+            crate::InlineBoundaryEdgeOf::ZERO,
+        )
+        .with_writing_mode(WritingMode::SidewaysRl)
+        .with_direction(Direction::Rtl)
+        .with_vertical_align(VerticalAlign::Bottom);
         let boundary_input = LayoutInputOf::inline_boundary(boundary);
         let boundary_projection = projection_from_input(&boundary_input);
         let InlineParticipantKindOf::InlineBoundary(projected_boundary) =

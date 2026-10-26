@@ -45,7 +45,10 @@ impl PlacedCoverage {
                 prepared: Arc::clone(prepared),
                 index: end,
             },
-            source: Range::new(0, prepared.analyzed.processed.source().text().len()),
+            source: prepared
+                .analyzed
+                .paragraph
+                .extent(&prepared.analyzed.processed),
         })
     }
 }
@@ -115,31 +118,21 @@ pub(crate) fn place_request(
             participants: prepared.tables.participants.len(),
         }));
     }
-    let source = Range::new(
-        request.lines[0]
-            .line
-            .inner
-            .selected
-            .presentation
-            .source
-            .start,
-        request
-            .lines
-            .last()
-            .ok_or_else(|| protocol_error(ProtocolError::EmptyPlacement))?
-            .line
-            .inner
-            .selected
-            .presentation
-            .source
-            .end,
-    );
+    // Semantic line order need not be monotone in original source: a delayed
+    // casing emission can follow a line which already owns a later input row.
+    let source = request
+        .lines
+        .iter()
+        .map(|line| line.line.inner.selected.presentation.source)
+        .reduce(|a, b| Range::new(a.start.min(b.start), a.end.max(b.end)))
+        .ok_or_else(|| protocol_error(ProtocolError::EmptyPlacement))?;
     let coverage = PlacedCoverage {
         start: start.clone(),
         end: end.clone(),
         source,
     };
     let mut next = start;
+    let mut incoming = None;
     let mut seen = BTreeSet::new();
     let count = request.lines.len();
     let mut lines = Vec::with_capacity(count);
@@ -150,6 +143,13 @@ pub(crate) fn place_request(
     let mut stacked_height = 0.0_f64;
     for (ordinal, placement) in request.lines.into_iter().enumerate() {
         let selected = &placement.line.inner.selected;
+        if matches!(
+            selected.request.termination,
+            super::PreparedTermination::Measurement(_)
+                | super::PreparedTermination::PhraseMeasurement(_)
+        ) {
+            return Err(protocol_error(ProtocolError::MeasurementNotPlaceable));
+        }
         if !Arc::ptr_eq(&prepared, &selected.prepared) {
             return Err(protocol_error(ProtocolError::ForeignFinalizedLine {
                 line: ordinal,
@@ -164,6 +164,22 @@ pub(crate) fn place_request(
             return Err(protocol_error(ProtocolError::IncompleteLineCoverage {
                 line: ordinal,
             }));
+        }
+        if (ordinal > 0 || matches!(request.coverage, PlacementCoverage::WholeParagraph))
+            && selected.request.incoming != incoming
+        {
+            return Err(crate::hyphenation::error(
+                crate::HyphenationError::InvalidContinuation,
+            ));
+        }
+        incoming = placement.line.hyphenation_continuation();
+        if ordinal + 1 == count
+            && matches!(request.coverage, PlacementCoverage::WholeParagraph)
+            && incoming.is_some()
+        {
+            return Err(crate::hyphenation::error(
+                crate::HyphenationError::InvalidContinuation,
+            ));
         }
         let from = row(&selected.request.start)?.participant;
         let to = row(&selected.request.end)?.participant;
@@ -230,7 +246,16 @@ pub(crate) fn place_request(
             include(&mut bounds, atomic.border)?;
         }
         let indent = selected.request.context.indent.max(0.0);
-        let visible = (metrics.advance + indent - metrics.trailing_whitespace).max(0.0);
+        let visible = (placed
+            .finalized
+            .data
+            .measurements
+            .as_ref()
+            .expect("finalization installed actual measurements")
+            .alignment()
+            .advance()
+            + indent)
+            .max(0.0);
         let full = (metrics.advance + indent).max(0.0);
         finite("placed visible advance", visible)?;
         finite("placed full advance", full)?;
@@ -253,7 +278,11 @@ pub(crate) fn place_request(
         }));
     }
     if matches!(request.coverage, PlacementCoverage::WholeParagraph)
-        && (source.start != 0 || source.end != prepared.analyzed.processed.source().text().len())
+        && (source
+            != prepared
+                .analyzed
+                .paragraph
+                .extent(&prepared.analyzed.processed))
     {
         return Err(protocol_error(ProtocolError::IncompleteLineCoverage {
             line: count,
@@ -267,7 +296,7 @@ pub(crate) fn place_request(
         }
         PlacementMetricPolicy::Explicit => (flow.size.width, flow.size.width, flow.size.height),
     };
-    let interaction = editing::prepare(&prepared, &lines, &coverage)?;
+    let interaction = editing::prepare(&prepared, &lines)?;
     let placed = PlacedLayout {
         prepared,
         lines,

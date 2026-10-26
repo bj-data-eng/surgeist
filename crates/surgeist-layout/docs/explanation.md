@@ -17,10 +17,13 @@ composition, bootstrap and shared API auditing. See the
 [shared text contract](../../../docs/text-layout-contract.md) for the selected
 preparation and line-finalization boundary.
 
-The implemented text boundary accepts validated shaped segments. Layout selects
-breaks against box/float constraints and constructs line and fragment geometry.
-These fixed segments do not yet carry Text preparation or finalized-line
-identities; source association cannot be reconstructed from segment IDs alone.
+The native Text entry retains actual immutable preparation and finalized-line
+identities through a checked borrowed-tree capture. Layout fits Text-issued
+candidates against box and float constraints, finalizes their actual allocations,
+and places the exact lines only after their canonical frame is stable. Completed
+batches retain the placed Text layout and authentic source fragment handles for
+downstream consumers. Caller-shaped widths and local segment IDs cannot replace
+this preparation.
 Layout does not parse authored CSS or resolve computed style. Its consuming
 adapters own lowering producer facts into these normalized inputs.
 The browser fixture adapter serves this same finite input boundary for tests.

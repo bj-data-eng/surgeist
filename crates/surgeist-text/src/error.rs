@@ -51,6 +51,12 @@ impl error::Error for Error {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ErrorCode {
+    /// Invalid complete contextual source-processing capture.
+    InvalidSourceProcessing,
+    /// Final semantic phrase analysis received invalid retained model data.
+    InvalidPhraseAnalysis,
+    /// Font-independent text analysis could not retain its complete result.
+    TextAnalysisCapacity,
     FontSystemUnavailable,
     /// Font resolution found no usable face for required shaping or metrics.
     NoUsableFontFace,
@@ -87,6 +93,22 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    /// Executed pre-analysis transformation could not retain its operation.
+    TextTransform {
+        reason: TextTransformError,
+    },
+    /// Exact native hyphenation input/resource refusal.
+    Hyphenation {
+        reason: crate::HyphenationError,
+    },
+    /// Admission or retained-association failure for a nonempty source range.
+    SourceRangeFragments {
+        reason: crate::SourceRangeFragmentError,
+    },
+    /// Atomic rejection of contextual source facts or view membership.
+    SourceProcessing {
+        reason: super::SourceProcessingError,
+    },
     /// Actual phase association or request admission failure.
     InvalidTextProtocol {
         reason: super::ProtocolError,
@@ -279,6 +301,50 @@ pub enum ErrorDetail {
         feature: &'static str,
         reason: &'static str,
     },
+}
+
+/// Exact source-transform admission or execution refusal.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextTransformError {
+    InvalidPhraseData,
+    MissingPhraseTopology {
+        at: usize,
+    },
+    MissingPhraseScopeStyle {
+        scope: usize,
+        at: usize,
+    },
+    MissingSeparatorBoundaryContext {
+        control: usize,
+        at: usize,
+        connection: usize,
+    },
+    /// A genuine original separator's forced adjacency depends on an uncaptured
+    /// connection side. The range identifies original text, never a control.
+    MissingOriginalSeparatorBoundaryContext {
+        source: crate::Range,
+        at: usize,
+        connection: usize,
+    },
+    UnrepresentableSeparatorSeam {
+        control: usize,
+        at: usize,
+        retained: crate::Range,
+    },
+    InvalidTextNodeRange {
+        range: crate::Range,
+        text_len: usize,
+    },
+    TextNodeMismatch {
+        origin: usize,
+    },
+    MissingTextNodeContext {
+        origin: usize,
+    },
+    CasingDataUnavailable,
+    InvalidCasingData,
+    InvalidContentLocale,
+    Capacity,
 }
 
 /// Structural invalidity of one supplied document delimiter occurrence.
@@ -487,11 +553,17 @@ pub enum ShapingRefusalReason {
     AttachmentNestingLimit,
     FeatureCapacityLimit,
     ComponentHistoryLimit,
+    JoiningInput,
+    JoiningCorrespondence,
+    JoiningProfile,
+    /// The actual native symbol-presentation input could not be admitted.
+    OrdinarySymbolInput,
 }
 
 /// Operation at which geometry was rejected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextNumericPhase {
+    SourceRangeFragments,
     Selection,
     Preparation,
     Shaping,
@@ -521,6 +593,10 @@ pub(crate) fn shaping_refused(reason: harfrust::ShapingRefusal) -> Error {
         Provider::AttachmentNestingLimit => ShapingRefusalReason::AttachmentNestingLimit,
         Provider::FeatureCapacityLimit => ShapingRefusalReason::FeatureCapacityLimit,
         Provider::ComponentHistoryLimit => ShapingRefusalReason::ComponentHistoryLimit,
+        Provider::JoiningInput => ShapingRefusalReason::JoiningInput,
+        Provider::JoiningCorrespondence => ShapingRefusalReason::JoiningCorrespondence,
+        Provider::JoiningProfile => ShapingRefusalReason::JoiningProfile,
+        Provider::OrdinarySymbolInput => ShapingRefusalReason::OrdinarySymbolInput,
     };
     Error::new(ErrorCode::ShapingRefused, "shaping did not complete")
         .with_detail(ErrorDetail::ShapingRefused { reason })

@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""Generate Text's exact MathML Core italic relation with the Python standard library."""
+
+import argparse
+import hashlib
+from html.parser import HTMLParser
+from pathlib import Path
+import re
+import sys
+
+
+CRATE = Path(__file__).resolve().parents[2]
+INPUT = CRATE / "data/MathMLCore-20250624-italic-mappings.html"
+OUTPUT = CRATE / "src/transform/math_data.rs"
+SOURCE_URL = "https://www.w3.org/TR/2025/CR-mathml-core-20250624/"
+SOURCE_SHA256 = "f61ebea74ba54c489646e6969983ef977f448c26602edff75ec4e3ba77216373"
+TABLE_SHA256 = "cdf7adc6b280864a1080ae523209bb285d9d13baf4ae3c1014eacb09eb7d9ab7"
+PAIRS_SHA256 = "29d715b30b4186423707df44b0552eeef6100672bee18f76a64597433fbe6604"
+CODE_POINT = re.compile(r"(.) U\+([0-9A-F]{4,6})", re.DOTALL)
+
+
+class MappingTable(HTMLParser):
+    """Parse the retained table's explicit structure without executing HTML."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.stack = []
+        self.rows = []
+        self.cells = []
+        self.cell = []
+        self.tables = 0
+        self.bodies = 0
+
+    def handle_starttag(self, tag, attrs):
+        parent = self.stack[-1] if self.stack else None
+        allowed = {"table": None, "tbody": "table", "tr": "tbody", "th": "tr", "td": "tr", "sub": "th"}
+        if tag not in allowed or parent != allowed[tag]:
+            raise ValueError(f"unexpected table structure: {parent}/{tag}")
+        if attrs and not (tag == "tr" and len(attrs) == 1 and attrs[0][0] == "style"):
+            raise ValueError(f"unexpected attributes on {tag}")
+        if tag == "table":
+            self.tables += 1
+        elif tag == "tbody":
+            self.bodies += 1
+        elif tag == "tr":
+            self.cells = []
+        elif tag in ("td", "th"):
+            self.cell = []
+        self.stack.append(tag)
+
+    def handle_endtag(self, tag):
+        if not self.stack or self.stack[-1] != tag:
+            raise ValueError(f"unbalanced closing tag: {tag}")
+        if tag in ("td", "th"):
+            self.cells.append((tag, "".join(self.cell)))
+        elif tag == "tr":
+            self.rows.append(self.cells)
+        self.stack.pop()
+
+    def handle_data(self, data):
+        if any(tag in ("td", "th") for tag in self.stack):
+            self.cell.append(data)
+        elif data.strip():
+            raise ValueError("text outside a table cell")
+
+    def handle_comment(self, data):
+        raise ValueError("unexpected comment in the raw table")
+
+    def handle_decl(self, decl):
+        raise ValueError("unexpected declaration in the raw table")
+
+
+def scalar_cell(value: str) -> int:
+    match = CODE_POINT.fullmatch(value)
+    if not match:
+        raise ValueError("expected a literal character followed by its uppercase U+ code point")
+    number = int(match[2], 16)
+    if number > 0x10FFFF or 0xD800 <= number <= 0xDFFF:
+        raise ValueError("mapping contains a non-scalar code point")
+    if ord(match[1]) != number:
+        raise ValueError("literal character and declared code point differ")
+    return number
+
+
+def mappings(data: bytes) -> list[tuple[int, int]]:
+    table = MappingTable()
+    table.feed(data.decode("utf-8"))
+    table.close()
+    if table.stack or table.tables != 1 or table.bodies != 1:
+        raise ValueError("expected one complete table and body")
+    header = [("th", "Original"), ("th", "italic"), ("th", "Δcode point")]
+    if not table.rows or table.rows[0] != header:
+        raise ValueError("mapping table header differs from C.1")
+    pairs = {}
+    targets = set()
+    for row in table.rows[1:]:
+        if len(row) != 3 or any(tag != "td" for tag, _ in row):
+            raise ValueError("expected three data cells per mapping")
+        original, italic = (scalar_cell(value) for _, value in row[:2])
+        if original > 0xFFFF:
+            raise ValueError("C.1 original must be one BMP scalar")
+        if original in pairs or italic in targets:
+            raise ValueError("duplicate original or italic target")
+        if not re.fullmatch(r"[0-9A-F]+", row[2][1]) or int(row[2][1], 16) != italic - original:
+            raise ValueError("declared code-point delta differs from the directed pair")
+        pairs[original] = italic
+        targets.add(italic)
+    if len(pairs) != 112:
+        raise ValueError(f"expected 112 directed mappings, found {len(pairs)}")
+    if hashlib.sha256(data).hexdigest() != TABLE_SHA256:
+        raise ValueError("raw table checksum differs from the qualified CR excerpt")
+    ordered = sorted(pairs.items())
+    serialized = "".join(f"{original:04X};{italic:04X}\n" for original, italic in ordered)
+    if hashlib.sha256(serialized.encode("ascii")).hexdigest() != PAIRS_SHA256:
+        raise ValueError("directed-pair checksum differs from the qualified relation")
+    return ordered
+
+
+def render(pairs: list[tuple[int, int]]) -> bytes:
+    lines = [
+        "// Generated by tools/math-auto/generate.py; do not edit.",
+        "// Derived from Mathematical Markup Language (MathML) Core, 24 June 2025, C.1.",
+        "// Copyright © 2025 World Wide Web Consortium.",
+        "// Adaptation: original/italic table columns serialized as sorted Rust pairs.",
+        "// License: https://www.w3.org/copyright/software-license-2023/",
+        "// Full local license: ../../licenses/w3c/software-license-2023.txt",
+        f"// Source: {SOURCE_URL}#italic-mappings",
+        f"// Complete source SHA256: {SOURCE_SHA256}",
+        f"// Raw table SHA256: {TABLE_SHA256}",
+        f"// Directed pairs SHA256: {PAIRS_SHA256}",
+        "// Input and provenance: tools/math-auto/README.md.",
+        "",
+        "pub(super) const MAPPINGS: &[(u32, u32)] = &[",
+    ]
+    lines.extend(f"    (0x{original:04x}, 0x{italic:04x})," for original, italic in pairs)
+    lines.append("];\n")
+    return "\n".join(lines).encode("utf-8")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true", help="compare without writing any file")
+    args = parser.parse_args()
+    try:
+        expected = render(mappings(INPUT.read_bytes()))
+        if args.check:
+            if OUTPUT.read_bytes() != expected:
+                print(f"stale generated math-auto table: {OUTPUT}", file=sys.stderr)
+                return 1
+            print("math-auto table is current (112 mappings)")
+        else:
+            OUTPUT.write_bytes(expected)
+            print("generated math-auto table (112 mappings)")
+    except (OSError, ValueError) as error:
+        print(f"math-auto generation failed: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

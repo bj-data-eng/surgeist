@@ -2,6 +2,47 @@
 
 Upstream projects: [Chromium](https://www.chromium.org/) and [Blink](https://www.chromium.org/blink/).
 
+## Intrinsic tab-phase reference
+
+The [intrinsic tab-phase capture](../../references/blink-intrinsic-tab-phase--daf70f9ddee4.md)
+retains bounded unchanged excerpts at Chromium
+`daf70f9ddee4b45d4f8870f574fbde61c0db4ca7`, with complete original notices,
+original file hashes and line locators. These excerpts are documentation;
+they are not compiled or linked into Surgeist.
+
+`core/layout/inline/inline_node.cc`, `line_breaker.cc` and `inline_node_test.cc`
+retain Copyright 2016 The Chromium Authors and the exact project
+[BSD-style license](LICENSE.txt). `platform/fonts/shaping/shape_result.cc`
+retains its file-specific Google/BlackBerry
+[three-clause BSD notice](shape-result-cc-range-license-header.txt).
+`platform/fonts/font.cc` retains its complete named copyright notice in the
+capture and GNU Library GPL version 2-or-later terms, with the full
+[GNU Library GPL v2 text](../webkit/LICENSE-LGPL-2.txt). Its terms are separate
+from the BSD files. The immutable linked originals supply the corresponding
+complete source; headings and omission labels are added documentation.
+
+## Formatting-unit Range reference
+
+The [metadata-only Range witness](../../references/blink-formatting-unit-range--daf70f9ddee4.md)
+identifies `fragment_item.cc` at Chromium
+`daf70f9ddee4b45d4f8870f574fbde61c0db4ca7`, copyright 2019 The Chromium Authors.
+It retains source identity, bounded locators and a factual synopsis, without
+redistributing code excerpts or compiling the source. Its BSD-style project
+license refers to the pinned root [LICENSE](LICENSE.txt), copyright 2015
+The Chromium Authors. The retrieved 1,536-byte root license is byte-identical
+to this existing file, SHA-256
+`368cca1106be99d39ecd32a38d8305585d802a475effb66380b91ffc9bcf709b`;
+no different license text or project-license change is introduced.
+
+The same metadata-only witness identifies
+`third_party/blink/renderer/platform/fonts/shaping/shape_result.cc` at that
+revision for grapheme-based advance allocation. Its file-specific notice names
+Copyright (c) 2012 Google Inc. and Copyright (C) 2013 BlackBerry Limited, with
+three-clause BSD conditions. The [exact original header](shape-result-cc-range-license-header.txt)
+is retained separately; the project license does not replace it. Only source
+identity, bounded locators and a factual synopsis are redistributed, without
+algorithm excerpts or compiled source.
+
 ## HTML dimension-list cursor witness
 
 The [dimension-list witness](../../references/html-dimension-list-cursor--webkit-73aa6c89e2cb-blink-7984f9d11800.md)

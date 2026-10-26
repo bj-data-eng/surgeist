@@ -60,7 +60,8 @@ where
             }
             LayoutInputViewOf::InlineText(_)
             | LayoutInputViewOf::LineBreak(_)
-            | LayoutInputViewOf::InlineBoundary(_) => {
+            | LayoutInputViewOf::InlineBoundary(_)
+            | LayoutInputViewOf::TextControl(_) => {
                 tree.cache_clear(child);
                 tree.set_unrounded_inline_fragment_state(child, None);
                 tree.set_unrounded(

@@ -29,6 +29,7 @@ struct CacheKeyOf<S: LayoutScalar = DefaultScalar> {
     settled_auto_scrollbars: SettledAutoScrollbarState,
     containing_auto_scrollbar_pass: SettledAutoScrollbarState,
     context: CacheKeyContext,
+    block_indent_context: Option<crate::text_indent::BlockIndentContext<S>>,
 }
 
 impl<S: LayoutScalar> CacheKeyOf<S> {
@@ -44,6 +45,7 @@ impl<S: LayoutScalar> CacheKeyOf<S> {
             settled_auto_scrollbars: input.settled_auto_scrollbars(),
             containing_auto_scrollbar_pass: input.containing_auto_scrollbar_pass(),
             context,
+            block_indent_context: input.block_indent_context(),
         }
     }
 }
@@ -192,6 +194,7 @@ fn matches_output<S: LayoutScalar, T>(
         && input.containing_layout_context() == entry.key.containing_layout_context
         && key.settled_auto_scrollbars == entry.key.settled_auto_scrollbars
         && key.containing_auto_scrollbar_pass == entry.key.containing_auto_scrollbar_pass
+        && key.block_indent_context == entry.key.block_indent_context
         && context == entry.key.context
         && (input.known().width == entry.key.known.width
             || input.known().width == Some(cached_size.width))

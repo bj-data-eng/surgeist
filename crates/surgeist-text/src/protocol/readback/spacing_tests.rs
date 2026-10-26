@@ -7,6 +7,8 @@ fn input(text: &str, mode: WhiteSpace) -> ParagraphInput {
     let source = Source::new(text);
     let length = source.text().len();
     ParagraphInput {
+        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+        tab_reference: None,
         source: source.clone(),
         base_style: Style {
             font: Font::new().family("Ahem"),
@@ -23,6 +25,7 @@ fn input(text: &str, mode: WhiteSpace) -> ParagraphInput {
             vec![]
         } else {
             vec![ParagraphOrigin {
+                text_node: None,
                 source,
                 local: Range::new(0, length),
                 aggregate: Range::new(0, length),
@@ -39,6 +42,7 @@ fn input(text: &str, mode: WhiteSpace) -> ParagraphInput {
 
 fn prepare(input: ParagraphInput) -> PreparedText {
     let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,
     })
@@ -52,7 +56,7 @@ fn prepare(input: ParagraphInput) -> PreparedText {
 fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> SelectedLine {
     let termination = alternative
         .as_ref()
-        .map(|row| row.view().opportunity())
+        .map(|row| row.view().opportunity().unwrap())
         .unwrap_or_else(|| {
             prepared
                 .opportunity_views()
@@ -91,9 +95,18 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
         .collect();
     let controls = prepared
         .control_views()
-        .map(|row| ControlAllocation {
-            occurrence: row.handle(),
-            strut: None,
+        .map(|row| {
+            let occurrence = row.handle();
+            ControlAllocation {
+                boundary: matches!(
+                    occurrence.view().kind(),
+                    crate::ParagraphControlKind::InlineBoundaryStart
+                        | crate::ParagraphControlKind::InlineBoundaryEnd
+                )
+                .then_some(crate::InlineBoundaryAllocation::ZERO),
+                occurrence,
+                strut: None,
+            }
         })
         .collect();
     let tabs = if prepared
@@ -109,16 +122,24 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
     };
     prepared
         .select(LineSelectionRequest {
+            boundary_context: Vec::new(),
+            incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
             end: termination.view().boundary(),
-            participants: prepared.participants().collect(),
-            termination,
+            participants: prepared
+                .participants()
+                .take(termination.view().boundary().view().participant_offset())
+                .collect(),
+            termination: crate::PreparedTermination::Ordinary(termination),
             alternative,
             atomics,
             controls,
+            line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
+                formatted_line: crate::FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
+                line_box_direction: crate::LineBoxDirection::LeftToRight,
                 orientation: LineOrientation::Horizontal,
                 start: LineStart::Paragraph,
                 end,
@@ -126,7 +147,7 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
                 indent: 0.0,
                 alignment: Alignment::Start,
                 tabs,
-                hanging: HangingContext::None,
+
                 spacing: SpacingPolicy::Spaces,
             },
         })
@@ -393,24 +414,28 @@ fn neutral_controls_are_transparent_while_real_inflow_allocations_bound_spaces()
 
 #[test]
 fn computed_replacement_spaces_keep_actual_alternative_and_empty_source_anchors() {
-    let mut captured = input("", WhiteSpace::Collapse);
+    let mut captured = input("XXXXX", WhiteSpace::Collapse);
     captured.controls.push(ParagraphControl {
-        at: 0,
-        kind: ParagraphControlKind::DiscretionaryBreak { wrap: Wrap::Word },
+        at: 2,
+        kind: ParagraphControlKind::DiscretionaryBreak {
+            style: Box::new(captured.base_style.clone()),
+        },
     });
     captured.anchor_order.push(ParagraphAnchor {
         item: ParagraphAnchorItem::Control(0),
         affinity: Affinity::Before,
     });
-    captured.replacements.push(ParagraphReplacement {
-        definition: ParagraphReplacementDefinition::Control {
-            control: 0,
-            origin: None,
-        },
-        insertion_anchor: 0,
-        style_anchor: 0,
-        text: Text::from(" X "),
-    });
+    captured.replacements.push(
+        ParagraphReplacement::resolved_native_logical_before(
+            ParagraphReplacementDefinition::Control {
+                control: 0,
+                origin: None,
+            },
+            2,
+            vec![Text::from(" X ")],
+        )
+        .unwrap(),
+    );
     let prepared = prepare(captured);
     let alternative = prepared.alternative_views().next().unwrap().handle();
     let selected = select(&prepared, Some(alternative.clone()));
@@ -422,7 +447,7 @@ fn computed_replacement_spaces_keep_actual_alternative_and_empty_source_anchors(
             slot.owner(),
             SpacingSlotOwner::Alternative(alternative.clone())
         );
-        assert_eq!(slot.source_range(), Range::new(0, 0));
+        assert_eq!(slot.source_range(), Range::new(2, 2));
         assert!(slot.participant().is_none());
     }
     assert_eq!(
@@ -433,12 +458,15 @@ fn computed_replacement_spaces_keep_actual_alternative_and_empty_source_anchors(
                 (range.start(), range.end())
             })
             .collect::<Vec<_>>(),
-        [(0, 1), (2, 3)]
+        [(2, 3), (4, 5)]
     );
     let line = selected.finalize(SpacingAllocations::None).unwrap();
-    assert_eq!(facts(&line), [(EDGE, 0.0), (EDGE, 0.0)]);
-    assert_eq!(line.feedback().advance, 10.0);
-    assert_eq!(prepared.analyzed_source().source().text().code_units(), []);
+    assert_eq!(facts(&line), [(INNER, 10.0), (EDGE, 0.0)]);
+    assert_eq!(line.feedback().advance, 40.0);
+    assert_eq!(
+        prepared.analyzed_source().source().text().code_units(),
+        [88, 88, 88, 88, 88]
+    );
     assert_eq!(
         line.spacing_slots().map(|row| row.slot).collect::<Vec<_>>(),
         slots

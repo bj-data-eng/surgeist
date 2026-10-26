@@ -704,11 +704,11 @@ mod tests {
 
         assert_eq!(error.site(), LayoutErrorSite::Node(41));
         assert_eq!(error.operation(), LayoutOperation::RoundingFinalization);
-        assert_eq!(
+        crate::test_support::assert_error_kind(
             error.kind(),
             &LayoutErrorKind::InternalInvariant(
                 LayoutInternalInvariant::MissingStagedUnroundedOutput,
-            )
+            ),
         );
         assert_eq!(tree.final_layout(41), None);
     }

@@ -4,7 +4,7 @@ use crate::measurement::{Attributes, Node, NodeKind, Observation, ValidatedMeasu
 
 pub(super) fn generate_xml(name: &str, measurement: &ValidatedMeasurement) -> String {
     let mut lines = vec![format!(
-        "<test name=\"{}\" use-rounding=\"{}\">",
+        "<test name=\"{}\" measurement-version=\"2\" use-rounding=\"{}\">",
         escape_attr(name),
         measurement.use_rounding()
     )];
@@ -28,6 +28,12 @@ fn write_input(lines: &mut Vec<String>, node: &Node, indent: usize) {
             lines.push(format!("{pad}<inline-boundary{}/>", attr_text(attrs)));
             return;
         }
+        NodeKind::PreparedText(occurrence) => {
+            lines.push(format!(
+                "{pad}<text layout-input=\"prepared-text\" occurrence=\"{occurrence}\"/>"
+            ));
+            return;
+        }
         NodeKind::InlineText(segments) => {
             lines.push(format!("{pad}<text layout-input=\"inline-text\">"));
             for attrs in segments {
@@ -43,11 +49,22 @@ fn write_input(lines: &mut Vec<String>, node: &Node, indent: usize) {
         NodeKind::Text => "text",
         NodeKind::Box | NodeKind::Control => "div",
     };
-    if node.children().is_empty() && node.text().is_none() && node.bands().is_none() {
+    if node.children().is_empty()
+        && node.text().is_none()
+        && node.bands().is_none()
+        && node.prepared_paragraph().is_none()
+    {
         lines.push(format!("{pad}<{tag}{}/>", attr_text(node.attrs())));
         return;
     }
     lines.push(format!("{pad}<{tag}{}>", attr_text(node.attrs())));
+    if let Some(paragraph) = node.prepared_paragraph() {
+        lines.push(format!(
+            "{}<prepared-paragraph capture=\"{}\"/>",
+            " ".repeat(indent + 2),
+            escape_attr(paragraph)
+        ));
+    }
     for child in node.children() {
         write_input(lines, child, indent + 2);
     }
@@ -100,7 +117,19 @@ fn write_expectation(lines: &mut Vec<String>, node: &Node, indent: usize, is_roo
     let pad = " ".repeat(indent);
     let (geometry, scroll, fragments) = match node.observation() {
         Observation::Boundary => return,
-        Observation::RangeInks(ranges) => {
+        Observation::RangeFragments(ranges) => {
+            lines.push(format!("{pad}<node>"));
+            write_collection(
+                lines,
+                "range-fragments",
+                "range-fragment",
+                ranges,
+                indent + 2,
+            );
+            lines.push(format!("{pad}</node>"));
+            return;
+        }
+        Observation::RangeRectangles(ranges) => {
             lines.push(format!("{pad}<node>"));
             write_collection(lines, "range-inks", "range-ink", ranges, indent + 2);
             lines.push(format!("{pad}</node>"));

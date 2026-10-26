@@ -1,0 +1,1502 @@
+{
+  "scope": "All 124 historical measured-width variants retain exact historical artifact hashes and resource/profile limits. Four deliberately migrated native successors and twelve additional native representatives were executed separately. Fourteen match browser observations; two retain executed observation differences with Range projection unresolved. No exact Range acceptance or issue closure is implied.",
+  "historical_basis": {
+    "repository_commit": "0c78c5d945395a8acf565f9232c3d48cf1fe7b4c",
+    "repository_root": "crates/surgeist-layout/tests/layout/browser_parity",
+    "xml_hashes": "The 124 xml_sha256 values identify original version1 Git blobs at this commit, not current regenerated files.",
+    "source_at_inventory": "source_sha256_at_inventory identifies the source when inventoried; the migrated mixed-wrap source is distinct from its original XML generation source.",
+    "original_source_authority": "The version1 generation report at this commit binds each original XML to its original generation source."
+  },
+  "current_generated_artifact_authority": "xml/generation-reports/all.json",
+  "measurement_version": 2,
+  "historical_version": 1,
+  "browser": {
+    "version": "149.0.7827.115",
+    "configured_cache": "crates/surgeist-layout/tmp/surgeist-browser",
+    "qualification": "Pinned Chrome149.0.7827.115 generated16 native version2 variants. The actual Text/Layout adapter executed all16:14 observation matches and2 RTL PDI observation differences. Strict parity reports both differences. Full browser-generation provenance is separate from native semantic comparison."
+  },
+  "font": {
+    "path": "fonts/Ahem.ttf",
+    "sha256": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+    "face": 0
+  },
+  "counts": {
+    "historical_variants": 124,
+    "source_cases": 31,
+    "migrated_and_executed": 4,
+    "source_migration_pending_browser": 0,
+    "explicit_resource_or_profile_blocked": 120,
+    "silently_superseded": 0,
+    "source_generated_native_pending": 0,
+    "historical_browser_generated": 4
+  },
+  "variants": [
+    {
+      "xml": "xml/block/fri06_atomic_inline_baseline__border_box_ltr.xml",
+      "xml_sha256": "46f1088031ea897f880a657d208fb8dbeb381c44ca97a6bb1d1e4ad5eccdb5a6",
+      "source": "html/block/fri06_atomic_inline_baseline.html",
+      "source_sha256_at_inventory": "8555d794594f6946ba10eeb34c318ade96425658da180a0202e64d0e836ce749",
+      "state": "profile-blocked",
+      "reason": "First atomic has nested text content and content-derived baseline/auto height. Current empty-subtree explicit-pixel atomic profile cannot reproduce its inputs.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/block/fri06_atomic_inline_baseline__border_box_rtl.xml",
+      "xml_sha256": "f4b2e74eca2c254ea91d95f9dd1a3b0e5e0487756f144a6e90e278ca86476a5d",
+      "source": "html/block/fri06_atomic_inline_baseline.html",
+      "source_sha256_at_inventory": "8555d794594f6946ba10eeb34c318ade96425658da180a0202e64d0e836ce749",
+      "state": "profile-blocked",
+      "reason": "First atomic has nested text content and content-derived baseline/auto height. Current empty-subtree explicit-pixel atomic profile cannot reproduce its inputs.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/block/fri06_atomic_inline_baseline__content_box_ltr.xml",
+      "xml_sha256": "ae17ccf33c77ac05a6f45ac9dede8ae5d5188890d18ef14b4d44b2c994cff2d3",
+      "source": "html/block/fri06_atomic_inline_baseline.html",
+      "source_sha256_at_inventory": "8555d794594f6946ba10eeb34c318ade96425658da180a0202e64d0e836ce749",
+      "state": "profile-blocked",
+      "reason": "First atomic has nested text content and content-derived baseline/auto height. Current empty-subtree explicit-pixel atomic profile cannot reproduce its inputs.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/block/fri06_atomic_inline_baseline__content_box_rtl.xml",
+      "xml_sha256": "cdcb4dbf250fa7659535d8eb7644aa3f7651795ddbc5989c0aceea8fdf71780b",
+      "source": "html/block/fri06_atomic_inline_baseline.html",
+      "source_sha256_at_inventory": "8555d794594f6946ba10eeb34c318ade96425658da180a0202e64d0e836ce749",
+      "state": "profile-blocked",
+      "reason": "First atomic has nested text content and content-derived baseline/auto height. Current empty-subtree explicit-pixel atomic profile cannot reproduce its inputs.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/block/fri06_atomic_inline_percentage_block_size__border_box_ltr.xml",
+      "xml_sha256": "72aa5f891e75aa835e696bd3361cdae102494b2be66241e50d4073dbffe649c0",
+      "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
+      "source_sha256_at_inventory": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+      "state": "profile-blocked",
+      "reason": "Atomic height is authored 50%, not an explicit pixel input. Capture must retain percentage/containing-block input, never observed final height.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/block/fri06_atomic_inline_percentage_block_size__border_box_rtl.xml",
+      "xml_sha256": "9d0b898351553f0531f4125e96271ea1f1130f0bbf375347bf798955dfdb05ee",
+      "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
+      "source_sha256_at_inventory": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+      "state": "profile-blocked",
+      "reason": "Atomic height is authored 50%, not an explicit pixel input. Capture must retain percentage/containing-block input, never observed final height.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/block/fri06_atomic_inline_percentage_block_size__content_box_ltr.xml",
+      "xml_sha256": "7fa253f2c3aed0a78dc4d98959a1193d042fca8ea096bd642cb607fc330c95db",
+      "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
+      "source_sha256_at_inventory": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+      "state": "profile-blocked",
+      "reason": "Atomic height is authored 50%, not an explicit pixel input. Capture must retain percentage/containing-block input, never observed final height.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/block/fri06_atomic_inline_percentage_block_size__content_box_rtl.xml",
+      "xml_sha256": "068ed88008131bd58e8a40b0ba0db404b04fcd009b565eea8a3e3d031469af95",
+      "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
+      "source_sha256_at_inventory": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+      "state": "profile-blocked",
+      "reason": "Atomic height is authored 50%, not an explicit pixel input. Capture must retain percentage/containing-block input, never observed final height.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/block/fri06_bidi_mixed_inline__border_box_ltr.xml",
+      "xml_sha256": "d2f15b558d54021e429f0118b952d4912c23e01fa0e4fa08b89c5a400773947f",
+      "source": "html/block/fri06_bidi_mixed_inline.html",
+      "source_sha256_at_inventory": "951ff318db6ab56c0048a85f4fe77bacd4433a98a3fbbb4e54a894cc1fb94d66",
+      "state": "resource-and-profile-blocked",
+      "reason": "Original Hebrew is not covered by retained Ahem; actual bdo override context is outside the first normal-bidi profile. No text substitution permitted.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/block/fri06_bidi_mixed_inline__border_box_rtl.xml",
+      "xml_sha256": "30dedf915c7be883b8aa314311c5dec9070e6a0f5cc37a3cc445e95a96128ade",
+      "source": "html/block/fri06_bidi_mixed_inline.html",
+      "source_sha256_at_inventory": "951ff318db6ab56c0048a85f4fe77bacd4433a98a3fbbb4e54a894cc1fb94d66",
+      "state": "resource-and-profile-blocked",
+      "reason": "Original Hebrew is not covered by retained Ahem; actual bdo override context is outside the first normal-bidi profile. No text substitution permitted.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/block/fri06_bidi_mixed_inline__content_box_ltr.xml",
+      "xml_sha256": "c44e0f5495218edcdf47d835930cd40b98ed585f636c3cf94026b352846a1849",
+      "source": "html/block/fri06_bidi_mixed_inline.html",
+      "source_sha256_at_inventory": "951ff318db6ab56c0048a85f4fe77bacd4433a98a3fbbb4e54a894cc1fb94d66",
+      "state": "resource-and-profile-blocked",
+      "reason": "Original Hebrew is not covered by retained Ahem; actual bdo override context is outside the first normal-bidi profile. No text substitution permitted.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/block/fri06_bidi_mixed_inline__content_box_rtl.xml",
+      "xml_sha256": "8e1a93accfa923fd917147484d92929ada46ac0ccd11266624fd5bbe32e694be",
+      "source": "html/block/fri06_bidi_mixed_inline.html",
+      "source_sha256_at_inventory": "951ff318db6ab56c0048a85f4fe77bacd4433a98a3fbbb4e54a894cc1fb94d66",
+      "state": "resource-and-profile-blocked",
+      "reason": "Original Hebrew is not covered by retained Ahem; actual bdo override context is outside the first normal-bidi profile. No text substitution permitted.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/block/fri06_inline_mixed_text_atomic_wrap__border_box_ltr.xml",
+      "xml_sha256": "b348f676ef15366e499eb0e08247c0b0fd3f145912dcf49c3c68b8a5c87f34e7",
+      "source": "html/block/fri06_inline_mixed_text_atomic_wrap.html",
+      "source_sha256_at_inventory": "f4f719e27435dd55ad3fc4dcfb5476e95ea3c0d6d26a2ebb4a4e0249ff9533c2",
+      "state": "migrated-and-executed",
+      "reason": "Deliberate original-source/pinned-Ahem version2 successor executed and matched. Historical width/font observations remain separate evidence, not a reconstruction input.",
+      "native_executed": false,
+      "successor": {
+        "xml": "xml/block/fri06_inline_mixed_text_atomic_wrap__border_box_ltr.xml",
+        "xml_sha256": "4e17e03830f15eeb189b1237f12b8c4a9cf4fbacd4b6c064802474e320e2a2bd",
+        "measurement_version": 2,
+        "captured_input_sha256": "139fba1c31536b02aa82139a62f4c01908d13f239bec33c611435e05b5f23319",
+        "browser_generated": true,
+        "native_executed": true,
+        "source_sha256": "f4f719e27435dd55ad3fc4dcfb5476e95ea3c0d6d26a2ebb4a4e0249ff9533c2",
+        "font_profile": "ahem-ttf-v1",
+        "native_comparison": "matched"
+      },
+      "native_execution": "successor-only"
+    },
+    {
+      "xml": "xml/block/fri06_inline_mixed_text_atomic_wrap__border_box_rtl.xml",
+      "xml_sha256": "af1ac892f8adc8346d5b399e86421fbdea50c2849037456b41ce45fd2f76da1c",
+      "source": "html/block/fri06_inline_mixed_text_atomic_wrap.html",
+      "source_sha256_at_inventory": "f4f719e27435dd55ad3fc4dcfb5476e95ea3c0d6d26a2ebb4a4e0249ff9533c2",
+      "state": "migrated-and-executed",
+      "reason": "Deliberate original-source/pinned-Ahem version2 successor executed and matched. Historical width/font observations remain separate evidence, not a reconstruction input.",
+      "native_executed": false,
+      "successor": {
+        "xml": "xml/block/fri06_inline_mixed_text_atomic_wrap__border_box_rtl.xml",
+        "xml_sha256": "414bca3027b007ee09666909cf7bfed753d276ad116587702fae173b4dc6bc92",
+        "measurement_version": 2,
+        "captured_input_sha256": "8e5cb2f5427ebc97e53e58f85bb9fbb13cbc42ef5a14541aefc57de74865648c",
+        "browser_generated": true,
+        "native_executed": true,
+        "source_sha256": "f4f719e27435dd55ad3fc4dcfb5476e95ea3c0d6d26a2ebb4a4e0249ff9533c2",
+        "font_profile": "ahem-ttf-v1",
+        "native_comparison": "matched"
+      },
+      "native_execution": "successor-only"
+    },
+    {
+      "xml": "xml/block/fri06_inline_mixed_text_atomic_wrap__content_box_ltr.xml",
+      "xml_sha256": "929a2f4a92456d71ab845647d0a7fa00e15f3fff072947268093bfdc9ac43200",
+      "source": "html/block/fri06_inline_mixed_text_atomic_wrap.html",
+      "source_sha256_at_inventory": "f4f719e27435dd55ad3fc4dcfb5476e95ea3c0d6d26a2ebb4a4e0249ff9533c2",
+      "state": "migrated-and-executed",
+      "reason": "Deliberate original-source/pinned-Ahem version2 successor executed and matched. Historical width/font observations remain separate evidence, not a reconstruction input.",
+      "native_executed": false,
+      "successor": {
+        "xml": "xml/block/fri06_inline_mixed_text_atomic_wrap__content_box_ltr.xml",
+        "xml_sha256": "0a6cc36b6eb0596cb5a0ce191a7ebb42ef4f6563fe8b5ae279e08516cec74d53",
+        "measurement_version": 2,
+        "captured_input_sha256": "139fba1c31536b02aa82139a62f4c01908d13f239bec33c611435e05b5f23319",
+        "browser_generated": true,
+        "native_executed": true,
+        "source_sha256": "f4f719e27435dd55ad3fc4dcfb5476e95ea3c0d6d26a2ebb4a4e0249ff9533c2",
+        "font_profile": "ahem-ttf-v1",
+        "native_comparison": "matched"
+      },
+      "native_execution": "successor-only"
+    },
+    {
+      "xml": "xml/block/fri06_inline_mixed_text_atomic_wrap__content_box_rtl.xml",
+      "xml_sha256": "ba6e0099024986190449d92b7cb12e1e30378966ef8ae09cbd07f54633a07d61",
+      "source": "html/block/fri06_inline_mixed_text_atomic_wrap.html",
+      "source_sha256_at_inventory": "f4f719e27435dd55ad3fc4dcfb5476e95ea3c0d6d26a2ebb4a4e0249ff9533c2",
+      "state": "migrated-and-executed",
+      "reason": "Deliberate original-source/pinned-Ahem version2 successor executed and matched. Historical width/font observations remain separate evidence, not a reconstruction input.",
+      "native_executed": false,
+      "successor": {
+        "xml": "xml/block/fri06_inline_mixed_text_atomic_wrap__content_box_rtl.xml",
+        "xml_sha256": "ed64d99cb28e1b18e1f1dc5f71c2e2f0e8b3e29c7912c3a6fbe28b5a93601014",
+        "measurement_version": 2,
+        "captured_input_sha256": "8e5cb2f5427ebc97e53e58f85bb9fbb13cbc42ef5a14541aefc57de74865648c",
+        "browser_generated": true,
+        "native_executed": true,
+        "source_sha256": "f4f719e27435dd55ad3fc4dcfb5476e95ea3c0d6d26a2ebb4a4e0249ff9533c2",
+        "font_profile": "ahem-ttf-v1",
+        "native_comparison": "matched"
+      },
+      "native_execution": "successor-only"
+    },
+    {
+      "xml": "xml/float/fri06_float_line_exclusion__border_box_ltr.xml",
+      "xml_sha256": "f60408a17e9dceba855b1a75cac3054a34841a50a3067ddfec2115fe510eb8f1",
+      "source": "html/float/fri06_float_line_exclusion.html",
+      "source_sha256_at_inventory": "4583d97bcc6db5550a0c99f3f61fbed02498bb3808c87295b902e89cb146a2ae",
+      "state": "profile-blocked",
+      "reason": "Float and shape-exclusion nodes need genuine box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/float/fri06_float_line_exclusion__border_box_rtl.xml",
+      "xml_sha256": "5d138af23f28ec1b1bd589e754097d40fb51a01d035621dcd93026c303ace4d1",
+      "source": "html/float/fri06_float_line_exclusion.html",
+      "source_sha256_at_inventory": "4583d97bcc6db5550a0c99f3f61fbed02498bb3808c87295b902e89cb146a2ae",
+      "state": "profile-blocked",
+      "reason": "Float and shape-exclusion nodes need genuine box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/float/fri06_float_line_exclusion__content_box_ltr.xml",
+      "xml_sha256": "9172aaa7a27e213b05a1b81f4586a697c4903e5bf93e1f8c2998d2673bde7223",
+      "source": "html/float/fri06_float_line_exclusion.html",
+      "source_sha256_at_inventory": "4583d97bcc6db5550a0c99f3f61fbed02498bb3808c87295b902e89cb146a2ae",
+      "state": "profile-blocked",
+      "reason": "Float and shape-exclusion nodes need genuine box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/float/fri06_float_line_exclusion__content_box_rtl.xml",
+      "xml_sha256": "42384f73388c5f82bff5a6a0c60ff0b4a66fe1507c23f4dca9ec36f14547f300",
+      "source": "html/float/fri06_float_line_exclusion.html",
+      "source_sha256_at_inventory": "4583d97bcc6db5550a0c99f3f61fbed02498bb3808c87295b902e89cb146a2ae",
+      "state": "profile-blocked",
+      "reason": "Float and shape-exclusion nodes need genuine box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/float/fri06_float_shape_exclusion__border_box_ltr.xml",
+      "xml_sha256": "27f0e5eb142e6654de0ad5862858bfdb8dcdb61d23ee73f33093d18df49b9b1a",
+      "source": "html/float/fri06_float_shape_exclusion.html",
+      "source_sha256_at_inventory": "2c11e9fb8f1f7200c4823f0c39ee7b43db238d325d037629ae0fb138d7319cd2",
+      "state": "profile-blocked",
+      "reason": "Float and shape-exclusion nodes need genuine box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/float/fri06_float_shape_exclusion__border_box_rtl.xml",
+      "xml_sha256": "94001e5f1eacbbc0d27d3dc41e2ec6fcd86238d62ace49da017c51b003f0a393",
+      "source": "html/float/fri06_float_shape_exclusion.html",
+      "source_sha256_at_inventory": "2c11e9fb8f1f7200c4823f0c39ee7b43db238d325d037629ae0fb138d7319cd2",
+      "state": "profile-blocked",
+      "reason": "Float and shape-exclusion nodes need genuine box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/float/fri06_float_shape_exclusion__content_box_ltr.xml",
+      "xml_sha256": "d873a878cdff95c9796bea0ec21e0ebf6389d1e1887bec88e096f16f03138218",
+      "source": "html/float/fri06_float_shape_exclusion.html",
+      "source_sha256_at_inventory": "2c11e9fb8f1f7200c4823f0c39ee7b43db238d325d037629ae0fb138d7319cd2",
+      "state": "profile-blocked",
+      "reason": "Float and shape-exclusion nodes need genuine box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/float/fri06_float_shape_exclusion__content_box_rtl.xml",
+      "xml_sha256": "808c93f69f1bfb7119bd7d2a5e003805316990102172ccf1966b73eb6fb3cf6a",
+      "source": "html/float/fri06_float_shape_exclusion.html",
+      "source_sha256_at_inventory": "2c11e9fb8f1f7200c4823f0c39ee7b43db238d325d037629ae0fb138d7319cd2",
+      "state": "profile-blocked",
+      "reason": "Float and shape-exclusion nodes need genuine box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/grid-lanes/grid_lanes_not_inhibited_normal_packing__border_box_ltr.xml",
+      "xml_sha256": "a7fe5ec022f2e0273de580f1e98c99398ec79245dc5dceab5ded6bab8ae0c831",
+      "source": "html/grid-lanes/grid_lanes_not_inhibited_normal_packing.html",
+      "source_sha256_at_inventory": "9dbaeddf1cc0e12bd9887308795cc987413e07fcd2dfa5ac8eae6e0337ad7699",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/grid-lanes/grid_lanes_not_inhibited_normal_packing__border_box_rtl.xml",
+      "xml_sha256": "b4803e04b1fd73fbeaf0b060f85a114da96bd05ce57d32e7c61f33efd8c3e50c",
+      "source": "html/grid-lanes/grid_lanes_not_inhibited_normal_packing.html",
+      "source_sha256_at_inventory": "9dbaeddf1cc0e12bd9887308795cc987413e07fcd2dfa5ac8eae6e0337ad7699",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/grid-lanes/grid_lanes_not_inhibited_normal_packing__content_box_ltr.xml",
+      "xml_sha256": "294ea3ce4325d3e7e5714b0524f55ed23e6f1e1958d983bec36ad1a6145bc7b6",
+      "source": "html/grid-lanes/grid_lanes_not_inhibited_normal_packing.html",
+      "source_sha256_at_inventory": "9dbaeddf1cc0e12bd9887308795cc987413e07fcd2dfa5ac8eae6e0337ad7699",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/grid-lanes/grid_lanes_not_inhibited_normal_packing__content_box_rtl.xml",
+      "xml_sha256": "2f7d811ad3362a9dd187ab82cc39fdc2bd7931f1fddccc5424eb2667c78adb52",
+      "source": "html/grid-lanes/grid_lanes_not_inhibited_normal_packing.html",
+      "source_sha256_at_inventory": "9dbaeddf1cc0e12bd9887308795cc987413e07fcd2dfa5ac8eae6e0337ad7699",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/grid-lanes/grid_lanes_not_inhibited_overflow_hidden_packing__border_box_ltr.xml",
+      "xml_sha256": "bbff40aeee6123fdabcbc7616d6a721b3bf427661bd739287c580b3aadc053dc",
+      "source": "html/grid-lanes/grid_lanes_not_inhibited_overflow_hidden_packing.html",
+      "source_sha256_at_inventory": "3e796e62dd4e2583c54b8a1d4a259e4a22b82f73435c60bdd95fd4c44cf3f473",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/grid-lanes/grid_lanes_not_inhibited_overflow_hidden_packing__border_box_rtl.xml",
+      "xml_sha256": "a1bcb3c619cfc3dae86680c96d077c9307b239bfe9f9353bf394cb652f09f172",
+      "source": "html/grid-lanes/grid_lanes_not_inhibited_overflow_hidden_packing.html",
+      "source_sha256_at_inventory": "3e796e62dd4e2583c54b8a1d4a259e4a22b82f73435c60bdd95fd4c44cf3f473",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/grid-lanes/grid_lanes_not_inhibited_overflow_hidden_packing__content_box_ltr.xml",
+      "xml_sha256": "2e503cbbc8c0c27791d51006ca8ec0f7cd12488cd787947fd1abe92941f0cb26",
+      "source": "html/grid-lanes/grid_lanes_not_inhibited_overflow_hidden_packing.html",
+      "source_sha256_at_inventory": "3e796e62dd4e2583c54b8a1d4a259e4a22b82f73435c60bdd95fd4c44cf3f473",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/grid-lanes/grid_lanes_not_inhibited_overflow_hidden_packing__content_box_rtl.xml",
+      "xml_sha256": "6fbc1bf5050211712f7606e8ce9098045c608ba473b7672fe982067906a1585c",
+      "source": "html/grid-lanes/grid_lanes_not_inhibited_overflow_hidden_packing.html",
+      "source_sha256_at_inventory": "3e796e62dd4e2583c54b8a1d4a259e4a22b82f73435c60bdd95fd4c44cf3f473",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_baseline_baseline_item__border_box_ltr.xml",
+      "xml_sha256": "62f4f0fd9cb0d33d624666440d6bd641039d1a6818192ef5f5c9889125539268",
+      "source": "html/subgrid/subgrid_alignment_baseline_baseline_item.html",
+      "source_sha256_at_inventory": "88a227ec9143fe46a821da8e06c2350453abd3b3f657cce113e77b91802aaeb8",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_baseline_baseline_item__border_box_rtl.xml",
+      "xml_sha256": "05bcc03343f88b4e2d5ac3ab68454db97dcd2a6269ed9a259d2e7017070a2c6a",
+      "source": "html/subgrid/subgrid_alignment_baseline_baseline_item.html",
+      "source_sha256_at_inventory": "88a227ec9143fe46a821da8e06c2350453abd3b3f657cce113e77b91802aaeb8",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_baseline_baseline_item__content_box_ltr.xml",
+      "xml_sha256": "71322eeba4a6a9053e5c193f3ae2c4c03000e3928994f708cd9f747f56bf71fd",
+      "source": "html/subgrid/subgrid_alignment_baseline_baseline_item.html",
+      "source_sha256_at_inventory": "88a227ec9143fe46a821da8e06c2350453abd3b3f657cce113e77b91802aaeb8",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_baseline_baseline_item__content_box_rtl.xml",
+      "xml_sha256": "fd47ac19571a7aee053aa5bc0bbaa5f41b252d8c18c1ad759240dfef233a7135",
+      "source": "html/subgrid/subgrid_alignment_baseline_baseline_item.html",
+      "source_sha256_at_inventory": "88a227ec9143fe46a821da8e06c2350453abd3b3f657cce113e77b91802aaeb8",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_baseline_center_item__border_box_ltr.xml",
+      "xml_sha256": "0a211f70b7750b867d6ac7b027d93d320e583fc80f7e9ba56e2f42682360419d",
+      "source": "html/subgrid/subgrid_alignment_baseline_center_item.html",
+      "source_sha256_at_inventory": "dfdb3be502c8f19c78c38799a1c33334f1abf4bf0401f420609774f1d0a1d77b",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_baseline_center_item__border_box_rtl.xml",
+      "xml_sha256": "095049056ddc76d8287efa792b720b8452763c2353d0e9b40cf828be56662ab0",
+      "source": "html/subgrid/subgrid_alignment_baseline_center_item.html",
+      "source_sha256_at_inventory": "dfdb3be502c8f19c78c38799a1c33334f1abf4bf0401f420609774f1d0a1d77b",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_baseline_center_item__content_box_ltr.xml",
+      "xml_sha256": "5fbc465e16042ce976961a9019c6f554e879abe4099bcdf302975e39e192b858",
+      "source": "html/subgrid/subgrid_alignment_baseline_center_item.html",
+      "source_sha256_at_inventory": "dfdb3be502c8f19c78c38799a1c33334f1abf4bf0401f420609774f1d0a1d77b",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_baseline_center_item__content_box_rtl.xml",
+      "xml_sha256": "63aff16a48c372a1d8787a71f0810cf9ef3a89a0bd8cff78919b1682446247fa",
+      "source": "html/subgrid/subgrid_alignment_baseline_center_item.html",
+      "source_sha256_at_inventory": "dfdb3be502c8f19c78c38799a1c33334f1abf4bf0401f420609774f1d0a1d77b",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_baseline_end_item__border_box_ltr.xml",
+      "xml_sha256": "7d27b0ac6aa4f97565cc9fc3d574e9471b19379b4fdd7829ea02bacee0663158",
+      "source": "html/subgrid/subgrid_alignment_baseline_end_item.html",
+      "source_sha256_at_inventory": "5849fce20bb15562480c3a661a24461631c4a1797542b69c5c9aa49d9c177799",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_baseline_end_item__border_box_rtl.xml",
+      "xml_sha256": "612e4eb3b281125bf4ea274d54d7e0900e869bc29fc4ead31f50a28c315614f5",
+      "source": "html/subgrid/subgrid_alignment_baseline_end_item.html",
+      "source_sha256_at_inventory": "5849fce20bb15562480c3a661a24461631c4a1797542b69c5c9aa49d9c177799",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_baseline_end_item__content_box_ltr.xml",
+      "xml_sha256": "55db3670caef67144430b6992431ddcdd5a3ab8a189d21626555118af80907e6",
+      "source": "html/subgrid/subgrid_alignment_baseline_end_item.html",
+      "source_sha256_at_inventory": "5849fce20bb15562480c3a661a24461631c4a1797542b69c5c9aa49d9c177799",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_baseline_end_item__content_box_rtl.xml",
+      "xml_sha256": "04bce33498a01f2ed1fa1aabdfc3c05a072f8f3ba3b4db662ab2a803fb35c5ea",
+      "source": "html/subgrid/subgrid_alignment_baseline_end_item.html",
+      "source_sha256_at_inventory": "5849fce20bb15562480c3a661a24461631c4a1797542b69c5c9aa49d9c177799",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_baseline_start_item__border_box_ltr.xml",
+      "xml_sha256": "c35d6231402f2c292a43ee8a2389328c82615f7986150e9ca9ecc252bed23aaa",
+      "source": "html/subgrid/subgrid_alignment_baseline_start_item.html",
+      "source_sha256_at_inventory": "d149ec65dea824159d4c746a0631dc921594de866b1f7cbff268dd6ad7b27c85",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_baseline_start_item__border_box_rtl.xml",
+      "xml_sha256": "f86696e8c2b7ff4e054604c10a8d6aafabe8f44c5ee3130eb05739617e039dc6",
+      "source": "html/subgrid/subgrid_alignment_baseline_start_item.html",
+      "source_sha256_at_inventory": "d149ec65dea824159d4c746a0631dc921594de866b1f7cbff268dd6ad7b27c85",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_baseline_start_item__content_box_ltr.xml",
+      "xml_sha256": "3bdf8d37f74b1f2be992f4d4aa1661d0c1df58411ccd4a967cd7f9ab7028e3d0",
+      "source": "html/subgrid/subgrid_alignment_baseline_start_item.html",
+      "source_sha256_at_inventory": "d149ec65dea824159d4c746a0631dc921594de866b1f7cbff268dd6ad7b27c85",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_baseline_start_item__content_box_rtl.xml",
+      "xml_sha256": "8e5b9394dcb53da80ceee4ac5cc9ca474cdb49802e0189754525dcbc36160ec9",
+      "source": "html/subgrid/subgrid_alignment_baseline_start_item.html",
+      "source_sha256_at_inventory": "d149ec65dea824159d4c746a0631dc921594de866b1f7cbff268dd6ad7b27c85",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_center_baseline_item__border_box_ltr.xml",
+      "xml_sha256": "ca665aeb004c240ec74212afc0c22311524a92ea3db330a2f5166dee0e704008",
+      "source": "html/subgrid/subgrid_alignment_center_baseline_item.html",
+      "source_sha256_at_inventory": "245937d10ed1fb4f2e65e0d1db386063fb0404b41ca9543b981aab63aef42a91",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_center_baseline_item__border_box_rtl.xml",
+      "xml_sha256": "cc7d2370f2aef7eab2b986621a9414efa1284ffc34f572df7c9f5f53d8870cea",
+      "source": "html/subgrid/subgrid_alignment_center_baseline_item.html",
+      "source_sha256_at_inventory": "245937d10ed1fb4f2e65e0d1db386063fb0404b41ca9543b981aab63aef42a91",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_center_baseline_item__content_box_ltr.xml",
+      "xml_sha256": "0e9cebc09130351f1b825e6e35113d46d0f70c02a9be0e62e1d77e2ac628020e",
+      "source": "html/subgrid/subgrid_alignment_center_baseline_item.html",
+      "source_sha256_at_inventory": "245937d10ed1fb4f2e65e0d1db386063fb0404b41ca9543b981aab63aef42a91",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_center_baseline_item__content_box_rtl.xml",
+      "xml_sha256": "be06bb361f24ed3a75b9f012206546231ec49b2e4c335d203e9cce03fc292c2b",
+      "source": "html/subgrid/subgrid_alignment_center_baseline_item.html",
+      "source_sha256_at_inventory": "245937d10ed1fb4f2e65e0d1db386063fb0404b41ca9543b981aab63aef42a91",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_center_center_item__border_box_ltr.xml",
+      "xml_sha256": "1ebc1d64926c6af26c52d7d15e89748314bb739ddca897127b1e70e7d78c14f8",
+      "source": "html/subgrid/subgrid_alignment_center_center_item.html",
+      "source_sha256_at_inventory": "9c762c5745fbc77d68ebbb66b99875591f403190486933c4fb1f7055d4900218",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_center_center_item__border_box_rtl.xml",
+      "xml_sha256": "4adc9daa98274fa9af15bbc23f48a8b86f5c361281ac733e1beca27555a6937d",
+      "source": "html/subgrid/subgrid_alignment_center_center_item.html",
+      "source_sha256_at_inventory": "9c762c5745fbc77d68ebbb66b99875591f403190486933c4fb1f7055d4900218",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_center_center_item__content_box_ltr.xml",
+      "xml_sha256": "3adc1447d876c057cdb803570163b9e761672e5b0a418645fc34ad71ec142e75",
+      "source": "html/subgrid/subgrid_alignment_center_center_item.html",
+      "source_sha256_at_inventory": "9c762c5745fbc77d68ebbb66b99875591f403190486933c4fb1f7055d4900218",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_center_center_item__content_box_rtl.xml",
+      "xml_sha256": "bf6b2c2493bd1375e4c22c23ef63fe79b1de574f64beccc3808dc064d8e4c3a9",
+      "source": "html/subgrid/subgrid_alignment_center_center_item.html",
+      "source_sha256_at_inventory": "9c762c5745fbc77d68ebbb66b99875591f403190486933c4fb1f7055d4900218",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_center_end_item__border_box_ltr.xml",
+      "xml_sha256": "5a62d4ab22b9700731eb79a1155325d13fab32391eb2b83c9a6b701f97dab047",
+      "source": "html/subgrid/subgrid_alignment_center_end_item.html",
+      "source_sha256_at_inventory": "854d9dfafefa66bcbc5665c2f723a9b429567efdb36744f4bc6fdc99653c660b",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_center_end_item__border_box_rtl.xml",
+      "xml_sha256": "67442b8c64ad9132fe393e37d94c2c111a30c1a6de4bd708114c23ef3e8d928f",
+      "source": "html/subgrid/subgrid_alignment_center_end_item.html",
+      "source_sha256_at_inventory": "854d9dfafefa66bcbc5665c2f723a9b429567efdb36744f4bc6fdc99653c660b",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_center_end_item__content_box_ltr.xml",
+      "xml_sha256": "d4be02c24a4d488d9afa283960d9f4fea519b0f81b607a6714376433df46ca7a",
+      "source": "html/subgrid/subgrid_alignment_center_end_item.html",
+      "source_sha256_at_inventory": "854d9dfafefa66bcbc5665c2f723a9b429567efdb36744f4bc6fdc99653c660b",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_center_end_item__content_box_rtl.xml",
+      "xml_sha256": "41ed8724067ef29a69b3d3c03d217afd902f576e5bb0aac4f16b8e9a9ca7a601",
+      "source": "html/subgrid/subgrid_alignment_center_end_item.html",
+      "source_sha256_at_inventory": "854d9dfafefa66bcbc5665c2f723a9b429567efdb36744f4bc6fdc99653c660b",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_center_start_item__border_box_ltr.xml",
+      "xml_sha256": "dbd3b9ab81c4acd474bf08d304cb9fec35b4086084ab96652d13c4aaacc30b16",
+      "source": "html/subgrid/subgrid_alignment_center_start_item.html",
+      "source_sha256_at_inventory": "1bc78eb4a8370361dbe34ac0065f82d8a038ea827babc604410d9dec6823645a",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_center_start_item__border_box_rtl.xml",
+      "xml_sha256": "a085bfd95f46cd5f0f8fc99d8eb90473773c03fde497659437c9bb71a011ba22",
+      "source": "html/subgrid/subgrid_alignment_center_start_item.html",
+      "source_sha256_at_inventory": "1bc78eb4a8370361dbe34ac0065f82d8a038ea827babc604410d9dec6823645a",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_center_start_item__content_box_ltr.xml",
+      "xml_sha256": "6d5092d5d23cd72b2925a033f4fb6a2065e7c6ee67b90169b3c9a0fa3599102d",
+      "source": "html/subgrid/subgrid_alignment_center_start_item.html",
+      "source_sha256_at_inventory": "1bc78eb4a8370361dbe34ac0065f82d8a038ea827babc604410d9dec6823645a",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_center_start_item__content_box_rtl.xml",
+      "xml_sha256": "90407a84093198b3361a261c5e23df4ce884b2fd2211f568ad0960b1d88f637c",
+      "source": "html/subgrid/subgrid_alignment_center_start_item.html",
+      "source_sha256_at_inventory": "1bc78eb4a8370361dbe34ac0065f82d8a038ea827babc604410d9dec6823645a",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_end_baseline_item__border_box_ltr.xml",
+      "xml_sha256": "6b2b0b332d8227908ef42914a40f122144fe3216c3264bd95a2fd93b867e6752",
+      "source": "html/subgrid/subgrid_alignment_end_baseline_item.html",
+      "source_sha256_at_inventory": "95bdccdd3a0c3777094640bf7269645d3cb76f915f1c195900248e622b10ce72",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_end_baseline_item__border_box_rtl.xml",
+      "xml_sha256": "391134304c33de3892da0a1428794012eff32bf317307af19f6b54451a7b3bc6",
+      "source": "html/subgrid/subgrid_alignment_end_baseline_item.html",
+      "source_sha256_at_inventory": "95bdccdd3a0c3777094640bf7269645d3cb76f915f1c195900248e622b10ce72",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_end_baseline_item__content_box_ltr.xml",
+      "xml_sha256": "b1c8c8ec41415a067b1ffaa0c503ddc3a62d4d8a49495fced72a04e38443283b",
+      "source": "html/subgrid/subgrid_alignment_end_baseline_item.html",
+      "source_sha256_at_inventory": "95bdccdd3a0c3777094640bf7269645d3cb76f915f1c195900248e622b10ce72",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_end_baseline_item__content_box_rtl.xml",
+      "xml_sha256": "4bc5935997094239ab259140ad1d36650a47c3dd95a376b4c7b672a704650926",
+      "source": "html/subgrid/subgrid_alignment_end_baseline_item.html",
+      "source_sha256_at_inventory": "95bdccdd3a0c3777094640bf7269645d3cb76f915f1c195900248e622b10ce72",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_end_center_item__border_box_ltr.xml",
+      "xml_sha256": "f38892a2be3f1c687bc4dd6503d2c669d5308322324898b26e63cc37bfb1b0d5",
+      "source": "html/subgrid/subgrid_alignment_end_center_item.html",
+      "source_sha256_at_inventory": "5c8619adc867feb3fc8b0ad9fff35feff91e5a382eba99f39668e1f3525054f5",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_end_center_item__border_box_rtl.xml",
+      "xml_sha256": "afbf6ea253a08e9e659de221d0a35e7677c3df2a7523b2a99080cd1f86c07caf",
+      "source": "html/subgrid/subgrid_alignment_end_center_item.html",
+      "source_sha256_at_inventory": "5c8619adc867feb3fc8b0ad9fff35feff91e5a382eba99f39668e1f3525054f5",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_end_center_item__content_box_ltr.xml",
+      "xml_sha256": "87b80be7a453dcda43ce8ae81f85610b7cc2d43f7abb959119c9fabd35064413",
+      "source": "html/subgrid/subgrid_alignment_end_center_item.html",
+      "source_sha256_at_inventory": "5c8619adc867feb3fc8b0ad9fff35feff91e5a382eba99f39668e1f3525054f5",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_end_center_item__content_box_rtl.xml",
+      "xml_sha256": "4a082a324a7d9efb3f8b0e76dd9044152aeef85658699cc8f56ff5120f7c3192",
+      "source": "html/subgrid/subgrid_alignment_end_center_item.html",
+      "source_sha256_at_inventory": "5c8619adc867feb3fc8b0ad9fff35feff91e5a382eba99f39668e1f3525054f5",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_end_end_item__border_box_ltr.xml",
+      "xml_sha256": "014545ace16a13248e847cb5624afdc0e46293ffe473149084ec2812d88833be",
+      "source": "html/subgrid/subgrid_alignment_end_end_item.html",
+      "source_sha256_at_inventory": "c7b2c59b545cf07effc9842fac7d2b58bc66674129af559af2b8e6fc5ea2d480",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_end_end_item__border_box_rtl.xml",
+      "xml_sha256": "74bdf3255ab7d02731687a454829dfc0b16322366a4f5c155e8173949aaed8f1",
+      "source": "html/subgrid/subgrid_alignment_end_end_item.html",
+      "source_sha256_at_inventory": "c7b2c59b545cf07effc9842fac7d2b58bc66674129af559af2b8e6fc5ea2d480",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_end_end_item__content_box_ltr.xml",
+      "xml_sha256": "69f590276ebce7583b2e9b2fd44c4553b10bd6a55328216bbe726437a4970cfb",
+      "source": "html/subgrid/subgrid_alignment_end_end_item.html",
+      "source_sha256_at_inventory": "c7b2c59b545cf07effc9842fac7d2b58bc66674129af559af2b8e6fc5ea2d480",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_end_end_item__content_box_rtl.xml",
+      "xml_sha256": "4427a3ae39d9247bb94da9ac464adf79896dea76dc6924a3c89463011d5246be",
+      "source": "html/subgrid/subgrid_alignment_end_end_item.html",
+      "source_sha256_at_inventory": "c7b2c59b545cf07effc9842fac7d2b58bc66674129af559af2b8e6fc5ea2d480",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_end_start_item__border_box_ltr.xml",
+      "xml_sha256": "e14db29346cc512a59915edcbca363095f733f9e03201525a7a256e2f914cb13",
+      "source": "html/subgrid/subgrid_alignment_end_start_item.html",
+      "source_sha256_at_inventory": "106f899c8d33be5a9e5b2736755724561f9c0df4044afe952e951d0dc48c38d1",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_end_start_item__border_box_rtl.xml",
+      "xml_sha256": "7dfa6ad3abf0abe1688f82314052e50ec20e7e89476f62fc7e80204e120a5283",
+      "source": "html/subgrid/subgrid_alignment_end_start_item.html",
+      "source_sha256_at_inventory": "106f899c8d33be5a9e5b2736755724561f9c0df4044afe952e951d0dc48c38d1",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_end_start_item__content_box_ltr.xml",
+      "xml_sha256": "54ebfadae5dc4a4c668ef2fe9d72925673fd5fc75f039de1d7999891845ac46a",
+      "source": "html/subgrid/subgrid_alignment_end_start_item.html",
+      "source_sha256_at_inventory": "106f899c8d33be5a9e5b2736755724561f9c0df4044afe952e951d0dc48c38d1",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_end_start_item__content_box_rtl.xml",
+      "xml_sha256": "9cdd3a515f2c82453cb196e233f29fc27514639f7f324869327a97f1261de8b1",
+      "source": "html/subgrid/subgrid_alignment_end_start_item.html",
+      "source_sha256_at_inventory": "106f899c8d33be5a9e5b2736755724561f9c0df4044afe952e951d0dc48c38d1",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_start_baseline_item__border_box_ltr.xml",
+      "xml_sha256": "8b846415134909e6fc0a14565d5eb87b616545f12e7a6eecdee49b50104ca382",
+      "source": "html/subgrid/subgrid_alignment_start_baseline_item.html",
+      "source_sha256_at_inventory": "539cfba8ac9421c24fd8f53433cd26897d65c675a3abe91a2b3c7bdc17b77c39",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_start_baseline_item__border_box_rtl.xml",
+      "xml_sha256": "1d350bdcc97710e766f48152b293da8218f60094effec482d7ebf999835c8683",
+      "source": "html/subgrid/subgrid_alignment_start_baseline_item.html",
+      "source_sha256_at_inventory": "539cfba8ac9421c24fd8f53433cd26897d65c675a3abe91a2b3c7bdc17b77c39",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_start_baseline_item__content_box_ltr.xml",
+      "xml_sha256": "01f7b13671dcd2453e9436d40a4efdaf8f1cb2505c251ab932c9e9ad9f768f33",
+      "source": "html/subgrid/subgrid_alignment_start_baseline_item.html",
+      "source_sha256_at_inventory": "539cfba8ac9421c24fd8f53433cd26897d65c675a3abe91a2b3c7bdc17b77c39",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_start_baseline_item__content_box_rtl.xml",
+      "xml_sha256": "09dd19f3d25e2644269e67f060c992c1474ea98bc385192fdbae01f01c4dddfc",
+      "source": "html/subgrid/subgrid_alignment_start_baseline_item.html",
+      "source_sha256_at_inventory": "539cfba8ac9421c24fd8f53433cd26897d65c675a3abe91a2b3c7bdc17b77c39",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_start_center_item__border_box_ltr.xml",
+      "xml_sha256": "6d9f74aff87191e6a81fbfe8d8eddadbbcc38379cacc314d07cf64c63a5ce950",
+      "source": "html/subgrid/subgrid_alignment_start_center_item.html",
+      "source_sha256_at_inventory": "9a36b7dadec630f86f7c31bbf6089309425cd9cc3a5ab09853af9afc938cd404",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_start_center_item__border_box_rtl.xml",
+      "xml_sha256": "a42a1f243e5903e8a4a52b514cc2e11c6ee6275fb34aaff7ddaef158f7be4fc7",
+      "source": "html/subgrid/subgrid_alignment_start_center_item.html",
+      "source_sha256_at_inventory": "9a36b7dadec630f86f7c31bbf6089309425cd9cc3a5ab09853af9afc938cd404",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_start_center_item__content_box_ltr.xml",
+      "xml_sha256": "a999ceb4f69b0cf491f3ab53c55a845b9b10b1ef241358aca1835503cad000e2",
+      "source": "html/subgrid/subgrid_alignment_start_center_item.html",
+      "source_sha256_at_inventory": "9a36b7dadec630f86f7c31bbf6089309425cd9cc3a5ab09853af9afc938cd404",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_start_center_item__content_box_rtl.xml",
+      "xml_sha256": "a43bd547ef3b8ba9b8f9f379ce0b440a7f4502006f51c185fb5f94ed2325a186",
+      "source": "html/subgrid/subgrid_alignment_start_center_item.html",
+      "source_sha256_at_inventory": "9a36b7dadec630f86f7c31bbf6089309425cd9cc3a5ab09853af9afc938cd404",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_start_end_item__border_box_ltr.xml",
+      "xml_sha256": "f01f8841e7e11eb3ee103ce40bc5d7dd759cdd6b80badebd78e57721477be06f",
+      "source": "html/subgrid/subgrid_alignment_start_end_item.html",
+      "source_sha256_at_inventory": "2a1f22434258a6773d63c5a1ddd4820b90506d157c5bd0ccca6db8753c19b370",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_start_end_item__border_box_rtl.xml",
+      "xml_sha256": "276911f218e3a81cb5fadc57f4b8e4e7c1f15add4701ee74d506f1df69c37441",
+      "source": "html/subgrid/subgrid_alignment_start_end_item.html",
+      "source_sha256_at_inventory": "2a1f22434258a6773d63c5a1ddd4820b90506d157c5bd0ccca6db8753c19b370",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_start_end_item__content_box_ltr.xml",
+      "xml_sha256": "ebcbd6a9b3c21e0ea594c9440fe3f3a617bdfa79be47c40e2f2d24c50168eefc",
+      "source": "html/subgrid/subgrid_alignment_start_end_item.html",
+      "source_sha256_at_inventory": "2a1f22434258a6773d63c5a1ddd4820b90506d157c5bd0ccca6db8753c19b370",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_start_end_item__content_box_rtl.xml",
+      "xml_sha256": "0150f9a621f2de52aa9153d26328e3cbbca6e7521c16555c3a08539b66d6238e",
+      "source": "html/subgrid/subgrid_alignment_start_end_item.html",
+      "source_sha256_at_inventory": "2a1f22434258a6773d63c5a1ddd4820b90506d157c5bd0ccca6db8753c19b370",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_start_start_item__border_box_ltr.xml",
+      "xml_sha256": "63d511c2f0812d859caf4ed1c45622267df9aece6d65cde7f5a6544549dd5360",
+      "source": "html/subgrid/subgrid_alignment_start_start_item.html",
+      "source_sha256_at_inventory": "df9d8c18e8984f796b60caac63f99f14b8d658e45048f968ae49c9fa243e3f01",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_start_start_item__border_box_rtl.xml",
+      "xml_sha256": "f3dc93a9d68c11c93fca3d2e9dc8d87d89ae07dede3c728dcae2ec6ffa174ae8",
+      "source": "html/subgrid/subgrid_alignment_start_start_item.html",
+      "source_sha256_at_inventory": "df9d8c18e8984f796b60caac63f99f14b8d658e45048f968ae49c9fa243e3f01",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_start_start_item__content_box_ltr.xml",
+      "xml_sha256": "a902715564e80b715adc6c0dcd72b97336ad7eb0aa2a78c81ccb1c24f84fbedf",
+      "source": "html/subgrid/subgrid_alignment_start_start_item.html",
+      "source_sha256_at_inventory": "df9d8c18e8984f796b60caac63f99f14b8d658e45048f968ae49c9fa243e3f01",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_alignment_start_start_item__content_box_rtl.xml",
+      "xml_sha256": "8a124443d7a0bf0e4ce11756d9c19193612156e188c83706c18757f96a1d63e5",
+      "source": "html/subgrid/subgrid_alignment_start_start_item.html",
+      "source_sha256_at_inventory": "df9d8c18e8984f796b60caac63f99f14b8d658e45048f968ae49c9fa243e3f01",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_auto_track_sizing_min_content_text_runs__border_box_ltr.xml",
+      "xml_sha256": "79677019409db7748b70ed74096858631564613532fe78baee8bff62795c557e",
+      "source": "html/subgrid/subgrid_auto_track_sizing_min_content_text_runs.html",
+      "source_sha256_at_inventory": "6e2a6a4cea108df2fda55e5c3e0f02ff080d1b75dd9ab9c52ab833ddf6d0b754",
+      "state": "profile-blocked",
+      "reason": "Nested anonymous grid-text/subgrid capture must bind the actual prepared paragraph at its formatting container; first direct inline profile does not invent an inline atomic for subgrid text.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_auto_track_sizing_min_content_text_runs__border_box_rtl.xml",
+      "xml_sha256": "ebd0a2769679d60af7f756ba34f788bf83755bfa4af128f2d4d76a9acf943a41",
+      "source": "html/subgrid/subgrid_auto_track_sizing_min_content_text_runs.html",
+      "source_sha256_at_inventory": "6e2a6a4cea108df2fda55e5c3e0f02ff080d1b75dd9ab9c52ab833ddf6d0b754",
+      "state": "profile-blocked",
+      "reason": "Nested anonymous grid-text/subgrid capture must bind the actual prepared paragraph at its formatting container; first direct inline profile does not invent an inline atomic for subgrid text.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_auto_track_sizing_min_content_text_runs__content_box_ltr.xml",
+      "xml_sha256": "5c1a0a8678bbaae3859501b1dd57fbfa9a4ae425d497dd2fba8a33b617eba73f",
+      "source": "html/subgrid/subgrid_auto_track_sizing_min_content_text_runs.html",
+      "source_sha256_at_inventory": "6e2a6a4cea108df2fda55e5c3e0f02ff080d1b75dd9ab9c52ab833ddf6d0b754",
+      "state": "profile-blocked",
+      "reason": "Nested anonymous grid-text/subgrid capture must bind the actual prepared paragraph at its formatting container; first direct inline profile does not invent an inline atomic for subgrid text.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_auto_track_sizing_min_content_text_runs__content_box_rtl.xml",
+      "xml_sha256": "dac23c3f027a2c32c7cbb275c0b4d366e390669789c5d7142e04b013311ed4fd",
+      "source": "html/subgrid/subgrid_auto_track_sizing_min_content_text_runs.html",
+      "source_sha256_at_inventory": "6e2a6a4cea108df2fda55e5c3e0f02ff080d1b75dd9ab9c52ab833ddf6d0b754",
+      "state": "profile-blocked",
+      "reason": "Nested anonymous grid-text/subgrid capture must bind the actual prepared paragraph at its formatting container; first direct inline profile does not invent an inline atomic for subgrid text.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_baseline_auto_columns_first_item__border_box_ltr.xml",
+      "xml_sha256": "cf9e92ee90ef7a385712350796c15a4e904ee0d0f6d8268e96864a694b719c3f",
+      "source": "html/subgrid/subgrid_baseline_auto_columns_first_item.html",
+      "source_sha256_at_inventory": "e61a089de19d3366b1b1c0fd4fd15232d0f302fafacdecb0bc5e1b85fee9c428",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_baseline_auto_columns_first_item__border_box_rtl.xml",
+      "xml_sha256": "26f204096791fe7157c07dbfb0885c7610ddf162fabd0c5bd8132eee7e3cf91c",
+      "source": "html/subgrid/subgrid_baseline_auto_columns_first_item.html",
+      "source_sha256_at_inventory": "e61a089de19d3366b1b1c0fd4fd15232d0f302fafacdecb0bc5e1b85fee9c428",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_baseline_auto_columns_first_item__content_box_ltr.xml",
+      "xml_sha256": "932902eb2a38c953187057c614c6f4c860c6996709e8b2c0646a1893bc244273",
+      "source": "html/subgrid/subgrid_baseline_auto_columns_first_item.html",
+      "source_sha256_at_inventory": "e61a089de19d3366b1b1c0fd4fd15232d0f302fafacdecb0bc5e1b85fee9c428",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_baseline_auto_columns_first_item__content_box_rtl.xml",
+      "xml_sha256": "a0a73127e4872d86981ffe575c292251dcd65879c5d32ce9618c88b8b7a32193",
+      "source": "html/subgrid/subgrid_baseline_auto_columns_first_item.html",
+      "source_sha256_at_inventory": "e61a089de19d3366b1b1c0fd4fd15232d0f302fafacdecb0bc5e1b85fee9c428",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_baseline_auto_columns_second_item__border_box_ltr.xml",
+      "xml_sha256": "91aa20669a5a2276d5357a2811346c081ac70c42cb82c701f193bb55feb712e2",
+      "source": "html/subgrid/subgrid_baseline_auto_columns_second_item.html",
+      "source_sha256_at_inventory": "c29f0a0c153e450c61a430499f488382cbc820b82cb53e448c55cf4e755371e7",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_baseline_auto_columns_second_item__border_box_rtl.xml",
+      "xml_sha256": "539dd08d49766ee1608cc1e266c4550da4507ad4e24c6a1c6160e02c360676e2",
+      "source": "html/subgrid/subgrid_baseline_auto_columns_second_item.html",
+      "source_sha256_at_inventory": "c29f0a0c153e450c61a430499f488382cbc820b82cb53e448c55cf4e755371e7",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_baseline_auto_columns_second_item__content_box_ltr.xml",
+      "xml_sha256": "c76789a44fcb8d99a2a1dae6e28b2e496f15a9f006e68d653f5049727136341a",
+      "source": "html/subgrid/subgrid_baseline_auto_columns_second_item.html",
+      "source_sha256_at_inventory": "c29f0a0c153e450c61a430499f488382cbc820b82cb53e448c55cf4e755371e7",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_baseline_auto_columns_second_item__content_box_rtl.xml",
+      "xml_sha256": "418fac39d9abcac637f3d038b32b47758f1a9329d65c56f238447e16c04ca7c7",
+      "source": "html/subgrid/subgrid_baseline_auto_columns_second_item.html",
+      "source_sha256_at_inventory": "c29f0a0c153e450c61a430499f488382cbc820b82cb53e448c55cf4e755371e7",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_baseline_standalone_axis_first_item__border_box_ltr.xml",
+      "xml_sha256": "fb138f8617affd1d729a3809f8e9b9fec3383c2413acf44ac27136ec8c0dacf7",
+      "source": "html/subgrid/subgrid_baseline_standalone_axis_first_item.html",
+      "source_sha256_at_inventory": "64d21ea29cf2c1e55be087c3b7fea9e2d1f20ecaa6b34a20773d34e7c2adf859",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_baseline_standalone_axis_first_item__border_box_rtl.xml",
+      "xml_sha256": "2c1975b74c9c0a2cd0c2377037812442622cd8f8fa5cda737b45e07428a06d76",
+      "source": "html/subgrid/subgrid_baseline_standalone_axis_first_item.html",
+      "source_sha256_at_inventory": "64d21ea29cf2c1e55be087c3b7fea9e2d1f20ecaa6b34a20773d34e7c2adf859",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_baseline_standalone_axis_first_item__content_box_ltr.xml",
+      "xml_sha256": "d1ae205e1a9c6c17557e850eeb01f2eaf0a431c6aae9d523dfa25f755b4db900",
+      "source": "html/subgrid/subgrid_baseline_standalone_axis_first_item.html",
+      "source_sha256_at_inventory": "64d21ea29cf2c1e55be087c3b7fea9e2d1f20ecaa6b34a20773d34e7c2adf859",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_baseline_standalone_axis_first_item__content_box_rtl.xml",
+      "xml_sha256": "b1930c74a2c1291b50f5db0c37c9b07172fe03acec0f86560737a96bd5c44eeb",
+      "source": "html/subgrid/subgrid_baseline_standalone_axis_first_item.html",
+      "source_sha256_at_inventory": "64d21ea29cf2c1e55be087c3b7fea9e2d1f20ecaa6b34a20773d34e7c2adf859",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_baseline_standalone_axis_second_item__border_box_ltr.xml",
+      "xml_sha256": "ce22d89b5a973e3682b0d7fdfa9f6dd08b7bc959a3a6fdb8ab2c551eee2f9fca",
+      "source": "html/subgrid/subgrid_baseline_standalone_axis_second_item.html",
+      "source_sha256_at_inventory": "3bf53279ac7e74dd7ce9df4bd4b54dc7379df35efa87a829baa27bf1d07777ba",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_baseline_standalone_axis_second_item__border_box_rtl.xml",
+      "xml_sha256": "dfa222fa61ddd162110b5e9aa61b04705d95358fd552264e3618eb20c956f949",
+      "source": "html/subgrid/subgrid_baseline_standalone_axis_second_item.html",
+      "source_sha256_at_inventory": "3bf53279ac7e74dd7ce9df4bd4b54dc7379df35efa87a829baa27bf1d07777ba",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_baseline_standalone_axis_second_item__content_box_ltr.xml",
+      "xml_sha256": "f1a638cc705e5ad680389785436322e5c6193841151013f8fda0e010bb30c5f6",
+      "source": "html/subgrid/subgrid_baseline_standalone_axis_second_item.html",
+      "source_sha256_at_inventory": "3bf53279ac7e74dd7ce9df4bd4b54dc7379df35efa87a829baa27bf1d07777ba",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_baseline_standalone_axis_second_item__content_box_rtl.xml",
+      "xml_sha256": "9cc5e7b5c0b45d2faa023c0971bb0a25a62aa45a39d8b1a4db83181330559831",
+      "source": "html/subgrid/subgrid_baseline_standalone_axis_second_item.html",
+      "source_sha256_at_inventory": "3bf53279ac7e74dd7ce9df4bd4b54dc7379df35efa87a829baa27bf1d07777ba",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_standalone_axis_max_width_clamp__border_box_ltr.xml",
+      "xml_sha256": "fb12b5a221fea19b73cbc6876e0403cc6ee20a01628a3735daad9be9c15696ea",
+      "source": "html/subgrid/subgrid_standalone_axis_max_width_clamp.html",
+      "source_sha256_at_inventory": "c26ed9831e7c5c57dc141195b6f9c435d53e80cb5d72845236da48a96c5e47d8",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_standalone_axis_max_width_clamp__border_box_rtl.xml",
+      "xml_sha256": "d6cb3fd399461ba5fd0b41a986fc4131165335406a9517bfa185abe872c61f3f",
+      "source": "html/subgrid/subgrid_standalone_axis_max_width_clamp.html",
+      "source_sha256_at_inventory": "c26ed9831e7c5c57dc141195b6f9c435d53e80cb5d72845236da48a96c5e47d8",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_standalone_axis_max_width_clamp__content_box_ltr.xml",
+      "xml_sha256": "f269b144254557c1f9c39c2a29bf540da7ca19521761c51bed3d9bcc6064de31",
+      "source": "html/subgrid/subgrid_standalone_axis_max_width_clamp.html",
+      "source_sha256_at_inventory": "c26ed9831e7c5c57dc141195b6f9c435d53e80cb5d72845236da48a96c5e47d8",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_standalone_axis_max_width_clamp__content_box_rtl.xml",
+      "xml_sha256": "d6438f93dda496c50b541db64379ccf7cb4dd96f9c69f6cd04231f2174694cc2",
+      "source": "html/subgrid/subgrid_standalone_axis_max_width_clamp.html",
+      "source_sha256_at_inventory": "c26ed9831e7c5c57dc141195b6f9c435d53e80cb5d72845236da48a96c5e47d8",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_standalone_axis_min_content_wrapping__border_box_ltr.xml",
+      "xml_sha256": "9540129a013219ddef553aa3e1d425ea2d4506c25444556217e3f782bbe0a2d6",
+      "source": "html/subgrid/subgrid_standalone_axis_min_content_wrapping.html",
+      "source_sha256_at_inventory": "0e11df317be33fef883fefcb26f01eb44c8f519876c293e7df0d8e1d9efe2fb2",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_standalone_axis_min_content_wrapping__border_box_rtl.xml",
+      "xml_sha256": "e03b4b27ecc4dd930173d0f19199dde3583e7fb61b9129acb77e68a89f0bb9d7",
+      "source": "html/subgrid/subgrid_standalone_axis_min_content_wrapping.html",
+      "source_sha256_at_inventory": "0e11df317be33fef883fefcb26f01eb44c8f519876c293e7df0d8e1d9efe2fb2",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_standalone_axis_min_content_wrapping__content_box_ltr.xml",
+      "xml_sha256": "e19dcf7497a6f49f9cbe083f66101c1bcd6f941609261220f0af0aec5fe96aa8",
+      "source": "html/subgrid/subgrid_standalone_axis_min_content_wrapping.html",
+      "source_sha256_at_inventory": "0e11df317be33fef883fefcb26f01eb44c8f519876c293e7df0d8e1d9efe2fb2",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    },
+    {
+      "xml": "xml/subgrid/subgrid_standalone_axis_min_content_wrapping__content_box_rtl.xml",
+      "xml_sha256": "64c214b9b216890efc9e72719fe7f7985cabf3c52cac00764b61dc6f2cf4da83",
+      "source": "html/subgrid/subgrid_standalone_axis_min_content_wrapping.html",
+      "source_sha256_at_inventory": "0e11df317be33fef883fefcb26f01eb44c8f519876c293e7df0d8e1d9efe2fb2",
+      "state": "profile-blocked",
+      "reason": "Whitespace origins surround nested nonempty inline-grid/subgrid or grid-lanes subtrees. Current direct empty-atomic profile cannot replace the real nested box/track/baseline inputs with measured atomic dimensions.",
+      "native_executed": false,
+      "successor": null
+    }
+  ],
+  "additional_representatives": [
+    {
+      "source": "html/block/prepared_text_continuity_bidi.html",
+      "source_sha256": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+      "font_profile": "ahem-ttf-v1",
+      "replaces_historical_variants": false,
+      "variants": [
+        {
+          "xml": "xml/block/prepared_text_continuity_bidi__border_box_ltr.xml",
+          "xml_sha256": "95953046fd090fde97bbeed6cfaf3eff838f29838a3a214a2c8e044b8afdc860",
+          "measurement_version": 2,
+          "captured_input_sha256": "b4357c003120d42926d6604afa4b69e009c4fc3c2a8a04e2bd6efba73bf571bb",
+          "browser_generated": true,
+          "native_executed": true,
+          "native_comparison": "matched"
+        },
+        {
+          "xml": "xml/block/prepared_text_continuity_bidi__border_box_rtl.xml",
+          "xml_sha256": "5ac8e10f2cf0c001678c4c7e56817c6b1e7d8373c55d2aeb52a8c524c964f877",
+          "measurement_version": 2,
+          "captured_input_sha256": "8ec079ef15ca5549207be8b4fd10bad6b4f9a4b270553d107c79f308dd80c688",
+          "browser_generated": true,
+          "native_executed": true,
+          "native_comparison": "executed-observation-difference-range-projection-unresolved",
+          "observation_difference": {
+            "original_source_occurrence": 1,
+            "original_aggregate_utf16": [
+              4,
+              5
+            ],
+            "original_code_unit": 8297,
+            "actual_line": 0,
+            "browser_physical_start": 72,
+            "native_physical_start": 24,
+            "advance": 0,
+            "native_source_fragment_height": 20,
+            "browser_block_bounds": "Not retained by version2 Range channel. Separately queried full DOMRects remain diagnostic evidence only, not preparation inputs or substitute native source-fragment metrics.",
+            "native_owner_and_placement_witness": "support.rs::native_rtl_pdi_observation_difference_retains_source_line_and_placement_custody",
+            "disposition": "Retained executed observation difference; not a parity pass, skipped case, unsupported production input, or browser conformance finding. Native L1/L2 is unchanged; DOM Range projection belongs to #850."
+          }
+        },
+        {
+          "xml": "xml/block/prepared_text_continuity_bidi__content_box_ltr.xml",
+          "xml_sha256": "0d8325c41247c8e815632eb658abe0114705c5affcc89ca17d9de3c94c94e995",
+          "measurement_version": 2,
+          "captured_input_sha256": "b4357c003120d42926d6604afa4b69e009c4fc3c2a8a04e2bd6efba73bf571bb",
+          "browser_generated": true,
+          "native_executed": true,
+          "native_comparison": "matched"
+        },
+        {
+          "xml": "xml/block/prepared_text_continuity_bidi__content_box_rtl.xml",
+          "xml_sha256": "41b983a5ba287b4f47ee2a1fc4f05f39237041f7a25ea05d2eebf77b63951b5d",
+          "measurement_version": 2,
+          "captured_input_sha256": "8ec079ef15ca5549207be8b4fd10bad6b4f9a4b270553d107c79f308dd80c688",
+          "browser_generated": true,
+          "native_executed": true,
+          "native_comparison": "executed-observation-difference-range-projection-unresolved",
+          "observation_difference": {
+            "original_source_occurrence": 1,
+            "original_aggregate_utf16": [
+              4,
+              5
+            ],
+            "original_code_unit": 8297,
+            "actual_line": 0,
+            "browser_physical_start": 72,
+            "native_physical_start": 24,
+            "advance": 0,
+            "native_source_fragment_height": 20,
+            "browser_block_bounds": "Not retained by version2 Range channel. Separately queried full DOMRects remain diagnostic evidence only, not preparation inputs or substitute native source-fragment metrics.",
+            "native_owner_and_placement_witness": "support.rs::native_rtl_pdi_observation_difference_retains_source_line_and_placement_custody",
+            "disposition": "Retained executed observation difference; not a parity pass, skipped case, unsupported production input, or browser conformance finding. Native L1/L2 is unchanged; DOM Range projection belongs to #850."
+          }
+        }
+      ]
+    },
+    {
+      "source": "html/block/prepared_text_atomic_controls.html",
+      "source_sha256": "e74014b4240cee8c309e42c7053fc16cdcb038411dee1a237d5f6d943e7aeb6c",
+      "font_profile": "ahem-ttf-v1",
+      "replaces_historical_variants": false,
+      "variants": [
+        {
+          "xml": "xml/block/prepared_text_atomic_controls__border_box_ltr.xml",
+          "xml_sha256": "1cd898b507f118761e57cb995f3ecca1da6ed30c8b73933abca19c70610db361",
+          "measurement_version": 2,
+          "captured_input_sha256": "8494888f229fe20adac86784aa4828d68f1e7437073c13da33b10605c27ea800",
+          "browser_generated": true,
+          "native_executed": true,
+          "native_comparison": "matched"
+        },
+        {
+          "xml": "xml/block/prepared_text_atomic_controls__border_box_rtl.xml",
+          "xml_sha256": "a65e8e98a723f81c39caea7691b99bb308b62fe14b0612f22ebf94fdbc1a1921",
+          "measurement_version": 2,
+          "captured_input_sha256": "7053026b33afa339d3a95f3c2322de6e0fd0270b63dd9335a149ffec405e5452",
+          "browser_generated": true,
+          "native_executed": true,
+          "native_comparison": "matched"
+        },
+        {
+          "xml": "xml/block/prepared_text_atomic_controls__content_box_ltr.xml",
+          "xml_sha256": "e8f0423eb67b29e11068aa5ff77b9aefce45d90089b4c3a2a9d59b43f3f5d150",
+          "measurement_version": 2,
+          "captured_input_sha256": "8494888f229fe20adac86784aa4828d68f1e7437073c13da33b10605c27ea800",
+          "browser_generated": true,
+          "native_executed": true,
+          "native_comparison": "matched"
+        },
+        {
+          "xml": "xml/block/prepared_text_atomic_controls__content_box_rtl.xml",
+          "xml_sha256": "d8bcee4a1b230575845399e3fa18b5f793ab45dd2cf7aa124c92257f993e3237",
+          "measurement_version": 2,
+          "captured_input_sha256": "7053026b33afa339d3a95f3c2322de6e0fd0270b63dd9335a149ffec405e5452",
+          "browser_generated": true,
+          "native_executed": true,
+          "native_comparison": "matched"
+        }
+      ]
+    },
+    {
+      "source": "html/block/prepared_text_fractional_fit.html",
+      "source_sha256": "d1e6d9f293853dbbd023156f7c3c2dedc81358ff198adacbec1c525cbd09aa1c",
+      "font_profile": "ahem-ttf-v1",
+      "replaces_historical_variants": false,
+      "variants": [
+        {
+          "xml": "xml/block/prepared_text_fractional_fit__border_box_ltr.xml",
+          "xml_sha256": "b0646165134fba4eda3c3f6dcffa31ab7557925bc6a85453ccbe2b77129ba5f5",
+          "measurement_version": 2,
+          "captured_input_sha256": "55a8b45b75a0665863ad3d3e6b4dea8a9d500d1d8144fe4d13c381c16050eebb",
+          "browser_generated": true,
+          "native_executed": true,
+          "native_comparison": "matched"
+        },
+        {
+          "xml": "xml/block/prepared_text_fractional_fit__border_box_rtl.xml",
+          "xml_sha256": "c02d9e665e083805cf86da68811f97f8091a4275c644396f302bb4431f3f478f",
+          "measurement_version": 2,
+          "captured_input_sha256": "542cfb792c70b9f07d633782d2dced13dfb3eccf2f695972594fd5caf4596ecf",
+          "browser_generated": true,
+          "native_executed": true,
+          "native_comparison": "matched"
+        },
+        {
+          "xml": "xml/block/prepared_text_fractional_fit__content_box_ltr.xml",
+          "xml_sha256": "53993b688dcfd739c0f0ec34416ff952778cdff70b4f4b7ab974be18c0f963c1",
+          "measurement_version": 2,
+          "captured_input_sha256": "55a8b45b75a0665863ad3d3e6b4dea8a9d500d1d8144fe4d13c381c16050eebb",
+          "browser_generated": true,
+          "native_executed": true,
+          "native_comparison": "matched"
+        },
+        {
+          "xml": "xml/block/prepared_text_fractional_fit__content_box_rtl.xml",
+          "xml_sha256": "93eb494cb71ff932ffa778fb45710d4603d9ccef0a73fe3e7438da7bb6480f60",
+          "measurement_version": 2,
+          "captured_input_sha256": "542cfb792c70b9f07d633782d2dced13dfb3eccf2f695972594fd5caf4596ecf",
+          "browser_generated": true,
+          "native_executed": true,
+          "native_comparison": "matched"
+        }
+      ]
+    }
+  ],
+  "native_comparison": {
+    "executed": 16,
+    "matched": 14,
+    "executed_observation_difference": 2,
+    "range_projection": "unresolved; #1450 exact Range acceptance remains open",
+    "future_dom_range_owner": "#850",
+    "representatives": {
+      "executed": 12,
+      "matched": 10,
+      "executed_observation_difference": 2
+    },
+    "historical_successors": {
+      "executed": 4,
+      "matched": 4,
+      "executed_observation_difference": 0
+    }
+  }
+}

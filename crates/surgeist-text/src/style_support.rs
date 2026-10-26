@@ -1,6 +1,7 @@
 /// Text-owned style-facing feature names for root/style integration.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TextStyleFeature {
+    HangingPunctuation,
     FontFamilyList,
     NamedFontWeight,
     NumericFontWeight,
@@ -25,7 +26,12 @@ pub enum TextStyleFeature {
     WhiteSpaceDiscard,
     /// PreserveSpaces executes in the processed-paragraph phase.
     WhiteSpacePreserveSpaces,
+    /// PreserveBreaks executes in the processed-paragraph phase.
+    WhiteSpacePreserveBreaks,
+    /// BreakSpaces executes in the processed-paragraph phase.
+    WhiteSpaceBreakSpaces,
     WordBreak,
+    LineBreak,
     TextWrap,
     OverflowWrap,
     TextOverflow,
@@ -42,7 +48,16 @@ pub enum TextStyleFeature {
     DecorationStyle,
     ConcreteDecorationColor,
     SymbolicDecorationColor,
-    TextTransform,
+    ExplicitWordSeparators,
+    NativeWbr,
+    /// Japanese automatic phrase expansion with demanded authentic scope capture.
+    NativeAutomaticPhrases,
+    MathAuto,
+    FullSizeKana,
+    FullWidth,
+    Uppercase,
+    Lowercase,
+    Capitalize,
     SelectionColor,
 }
 
@@ -57,6 +72,7 @@ pub enum TextStylePhase {
 
 impl TextStyleFeature {
     pub const ALL: &'static [Self] = &[
+        Self::HangingPunctuation,
         Self::FontFamilyList,
         Self::NamedFontWeight,
         Self::NumericFontWeight,
@@ -79,7 +95,10 @@ impl TextStyleFeature {
         Self::WhiteSpaceCollapse,
         Self::WhiteSpaceDiscard,
         Self::WhiteSpacePreserveSpaces,
+        Self::WhiteSpacePreserveBreaks,
+        Self::WhiteSpaceBreakSpaces,
         Self::WordBreak,
+        Self::LineBreak,
         Self::TextWrap,
         Self::OverflowWrap,
         Self::TextOverflow,
@@ -96,7 +115,15 @@ impl TextStyleFeature {
         Self::DecorationStyle,
         Self::ConcreteDecorationColor,
         Self::SymbolicDecorationColor,
-        Self::TextTransform,
+        Self::ExplicitWordSeparators,
+        Self::NativeWbr,
+        Self::NativeAutomaticPhrases,
+        Self::MathAuto,
+        Self::FullSizeKana,
+        Self::FullWidth,
+        Self::Uppercase,
+        Self::Lowercase,
+        Self::Capitalize,
         Self::SelectionColor,
     ];
 
@@ -105,13 +132,27 @@ impl TextStyleFeature {
         if matches!(phase, TextStylePhase::ProcessedParagraph)
             && matches!(
                 self,
-                Self::WhiteSpaceCollapse | Self::WhiteSpaceDiscard | Self::WhiteSpacePreserveSpaces
+                Self::MathAuto
+                    | Self::NativeWbr
+                    | Self::NativeAutomaticPhrases
+                    | Self::WhiteSpaceCollapse
+                    | Self::WhiteSpaceDiscard
+                    | Self::WhiteSpacePreserveSpaces
+                    | Self::WhiteSpacePreserveBreaks
+                    | Self::WhiteSpaceBreakSpaces
             )
         {
             return TextStyleSupport::Supported;
         }
         match self {
-            Self::FontFamilyList
+            Self::NativeWbr | Self::NativeAutomaticPhrases => TextStyleSupport::Unsupported(
+                UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
+            ),
+            Self::MathAuto => TextStyleSupport::Unsupported(
+                UnsupportedTextStyleReason::RequiresCompleteTextNodeContext,
+            ),
+            Self::HangingPunctuation
+            | Self::FontFamilyList
             | Self::NamedFontWeight
             | Self::NumericFontWeight
             | Self::BasicFontStretch
@@ -128,6 +169,7 @@ impl TextStyleFeature {
             | Self::Locale
             | Self::WhiteSpacePreserve
             | Self::WordBreak
+            | Self::LineBreak
             | Self::TextWrap
             | Self::OverflowWrap
             | Self::TextAlignment
@@ -138,6 +180,12 @@ impl TextStyleFeature {
             | Self::DecorationOffset
             | Self::DecorationThickness
             | Self::ConcreteDecorationColor
+            | Self::ExplicitWordSeparators
+            | Self::FullSizeKana
+            | Self::FullWidth
+            | Self::Uppercase
+            | Self::Lowercase
+            | Self::Capitalize
             | Self::SelectionColor => TextStyleSupport::Supported,
             Self::ExplicitTextDirection => TextStyleSupport::Unsupported(
                 UnsupportedTextStyleReason::RequiresParagraphBaseDirection,
@@ -145,15 +193,16 @@ impl TextStyleFeature {
             Self::WhiteSpaceCollapse => TextStyleSupport::Unsupported(
                 UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
             ),
-            Self::WhiteSpaceDiscard | Self::WhiteSpacePreserveSpaces => {
-                TextStyleSupport::Unsupported(
-                    UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
-                )
-            }
+            Self::WhiteSpaceDiscard
+            | Self::WhiteSpacePreserveSpaces
+            | Self::WhiteSpacePreserveBreaks
+            | Self::WhiteSpaceBreakSpaces => TextStyleSupport::Unsupported(
+                UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
+            ),
             Self::FontVariant => {
                 TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresFontPolicy)
             }
-            Self::TextAlignLast | Self::TextOverflow | Self::TextTransform => {
+            Self::TextAlignLast | Self::TextOverflow => {
                 TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresTextFlowPolicy)
             }
             Self::Overline | Self::DecorationStyle => TextStyleSupport::Unsupported(
@@ -177,6 +226,7 @@ pub enum TextStyleSupport {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum UnsupportedTextStyleReason {
+    RequiresCompleteTextNodeContext,
     RequiresParagraphBaseDirection,
     /// This standalone input requires the explicit processed-paragraph executor.
     RequiresProcessedSourceLayout,

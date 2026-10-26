@@ -1,6 +1,8 @@
 use super::{logical_add, logical_multiply};
 use crate::{ErrorDetail, TextNumericError};
 
+mod selected_context;
+
 #[test]
 fn logical_spacing_retains_values_below_the_provider_float_domain() {
     assert_eq!(
