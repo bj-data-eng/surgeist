@@ -567,3 +567,7 @@ mod tests {
 #[cfg(test)]
 #[path = "fit_balance_completion_tests.rs"]
 mod completion_tests;
+
+#[cfg(test)]
+#[path = "fit_balance_context_tests.rs"]
+mod context_tests;

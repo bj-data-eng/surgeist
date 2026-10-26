@@ -671,3 +671,5 @@ fn balance_keeps_actual_nowrap_source_on_its_original_overflowing_line() {
 mod advanced;
 
 mod numeric;
+
+mod scope_priority;
