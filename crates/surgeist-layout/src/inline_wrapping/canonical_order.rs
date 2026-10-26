@@ -71,7 +71,7 @@ pub(crate) enum CanonicalOrderError {
 
 impl CanonicalOrderInventory {
     pub(crate) fn native_pair(
-        &self,
+        scopes: &[CapturedScope],
         start: CapturedControl,
         end: CapturedControl,
     ) -> Result<CanonicalBox, CanonicalOrderError> {
@@ -83,7 +83,7 @@ impl CanonicalOrderInventory {
         {
             return Err(CanonicalOrderError::Contradiction);
         }
-        for scope in &self.scopes {
+        for scope in scopes {
             let first = scope.entry_control().as_ref() == Some(&start);
             let last = scope.exit_control().as_ref() == Some(&end);
             if first || last {
@@ -97,15 +97,14 @@ impl CanonicalOrderInventory {
     }
 
     pub(crate) fn validate_native(
-        &self,
+        scopes: &[CapturedScope],
         native: &[CanonicalBox],
     ) -> Result<(), CanonicalOrderError> {
         for (i, pair) in native.iter().enumerate() {
             if !matches!(pair, CanonicalBox::NativePair { .. }) {
                 continue;
             }
-            for other in self
-                .scopes
+            for other in scopes
                 .iter()
                 .filter(|scope| scope.role() == ScopeRole::Inline)
                 .cloned()

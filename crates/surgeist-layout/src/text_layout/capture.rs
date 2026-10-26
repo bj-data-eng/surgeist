@@ -328,6 +328,7 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
     paragraphs: &[TextParagraphBinding<Tree::Node>],
     wrapping_scopes: &[WrappingScopeInput<Tree::Node>],
     inventory_scopes: &[CapturedScope],
+    canonical_orders: bool,
 ) -> ResultOf<Tree, CaptureResolution<Tree::Node>> {
     if paragraphs.is_empty() {
         return Ok(CaptureResolution {
@@ -445,7 +446,7 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
         validate_virtuals(paragraph)
             .map_err(|reason| binding_error(paragraph.container, reason))?;
     }
-    let wrapping = proof.wrapping_proofs(!inventory_scopes.is_empty())?;
+    let wrapping = proof.wrapping_proofs(canonical_orders)?;
     proof.result.structural = proof.domains;
     Ok(CaptureResolution {
         associations: proof.result,
@@ -739,6 +740,8 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                 }
             }
         }
+        let mut native_observations = Vec::new();
+        let mut forest_scopes = Vec::new();
         for input in inputs {
             if let WrappingScopeInput::NativePair { start, end, .. } = input {
                 let complete = self.controls.iter().any(|row| {
@@ -746,28 +749,44 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                         && row.captured.paragraph().domain().domain_topology()
                             == surgeist_text::SourceProcessingTopology::Complete
                 });
-                let matching = self.known.iter().any(|scope| {
-                    scope.entry_control().is_some_and(|control| {
-                        self.controls
-                            .iter()
-                            .any(|row| row.captured == control && row.node == *start)
-                    }) && scope.exit_control().is_some_and(|control| {
-                        self.controls
-                            .iter()
-                            .any(|row| row.captured == control && row.node == *end)
-                    })
-                });
-                if complete && !matching {
-                    return Err(crate::inline_wrapping::wrapping_error(
-                        self.graph.nodes[0],
-                        WrappingScopeError::CaptureAssociation,
-                    ));
-                }
                 let source = self
                     .controls
                     .iter()
                     .find(|row| row.node == *start)
                     .zip(self.controls.iter().find(|row| row.node == *end));
+                let observation = source
+                    .filter(|(a, b)| {
+                        a.captured.paragraph().domain() == b.captured.paragraph().domain()
+                    })
+                    .map(|(a, b)| {
+                        CanonicalOrderInventory::native_pair(
+                            &self.known,
+                            a.captured.clone(),
+                            b.captured.clone(),
+                        )
+                    })
+                    .transpose()
+                    .map_err(|_| {
+                        crate::inline_wrapping::wrapping_error(
+                            self.graph.nodes[0],
+                            WrappingScopeError::CaptureAssociation,
+                        )
+                    })?;
+                if complete && observation.is_none() {
+                    return Err(crate::inline_wrapping::wrapping_error(
+                        self.graph.nodes[0],
+                        WrappingScopeError::CaptureAssociation,
+                    ));
+                }
+                let matching = matches!(observation, Some(CanonicalBox::Scope(_)));
+                if let Some(CanonicalBox::Scope(scope)) = &observation {
+                    push_unique(&mut forest_scopes, scope.clone());
+                }
+                if let Some(observation @ CanonicalBox::NativePair { .. }) = observation
+                    && !native_observations.contains(&observation)
+                {
+                    native_observations.push(observation);
+                }
                 if let Some((a, b)) = source.filter(|(a, b)| {
                     a.captured.paragraph().domain() == b.captured.paragraph().domain()
                 }) {
@@ -842,6 +861,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                         || metric_contribution.is_some()
                         || edges.has_effect(crate::inline_wrapping::WrappingMode::Inline),
                 )?;
+                push_unique(&mut forest_scopes, scope.clone());
             }
         }
         let active_inventory = inputs.iter().any(|input| match input {
@@ -869,6 +889,28 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         });
         for scope in inventory_scopes {
             self.activate_scope(scope, active_inventory)?;
+            push_unique(&mut forest_scopes, scope.clone());
+        }
+        // A source box not supplied as a normalized forest row still
+        // constrains a claimed native pair. Declared rows are checked by the
+        // forest itself, preserving its specific CrossingScopes diagnostic.
+        let unrepresented = self
+            .known
+            .iter()
+            .filter(|scope| !forest_scopes.contains(scope))
+            .cloned()
+            .collect::<Vec<_>>();
+        for observation in &native_observations {
+            CanonicalOrderInventory::validate_native(
+                &unrepresented,
+                std::slice::from_ref(observation),
+            )
+            .map_err(|_| {
+                crate::inline_wrapping::wrapping_error(
+                    self.graph.nodes[0],
+                    WrappingScopeError::CaptureAssociation,
+                )
+            })?;
         }
         // Known physical pairing is metadata, not a request to validate every
         // unrelated interior. Resolve only actual supplied endpoint bindings.
@@ -1049,6 +1091,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                     pair: row.pair,
                     start: row.start.clone(),
                     end: row.end.clone(),
+                    order: order.clone(),
                 }),
         );
         Ok(result)

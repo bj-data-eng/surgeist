@@ -481,7 +481,7 @@ fn validate_canonical_orders<Node: Copy + Eq>(
     use super::canonical_order::CanonicalOrderError;
     let Some(bindings) = proofs.iter().find_map(|proof| match proof {
         WrappingScopeProof::Captured(proof) => proof.order.as_ref(),
-        _ => None,
+        WrappingScopeProof::NativePair { order, .. } => order.as_ref(),
     }) else {
         return Ok(());
     };
@@ -492,19 +492,19 @@ fn validate_canonical_orders<Node: Copy + Eq>(
             pair, start, end, ..
         } = proof
         {
-            let fact = bindings
-                .inventory
-                .native_pair(start.clone(), end.clone())
-                .map_err(|_| WrappingScopeError::CaptureAssociation)?;
+            let fact = CanonicalOrderInventory::native_pair(
+                &bindings.inventory.scopes,
+                start.clone(),
+                end.clone(),
+            )
+            .map_err(|_| WrappingScopeError::CaptureAssociation)?;
             if matches!(fact, CanonicalBox::NativePair { .. }) && !native.contains(&fact) {
                 native.push(fact.clone());
             }
             paired.push((*pair, fact));
         }
     }
-    bindings
-        .inventory
-        .validate_native(&native)
+    CanonicalOrderInventory::validate_native(&bindings.inventory.scopes, &native)
         .map_err(|_| WrappingScopeError::CrossingScopes)?;
     let fact = |index: usize| match &boxes[index].box_ {
         GeneratedBoxRef::Inline(InlineBoxRef::Scope(scope)) => {

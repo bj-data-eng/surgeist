@@ -592,6 +592,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
             &paragraphs,
             &wrapping_input.scopes,
             &inventory_scopes,
+            !wrapping_input.child_order.is_empty(),
         )?;
         let wrapping = crate::inline_wrapping::WrappingContext::new(
             tree,

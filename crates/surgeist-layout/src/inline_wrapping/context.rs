@@ -19,6 +19,7 @@ pub(crate) enum WrappingScopeProof<Node> {
         pair: (Node, Node),
         start: surgeist_text::CapturedControl,
         end: surgeist_text::CapturedControl,
+        order: Option<Arc<CanonicalOrderBindings<Node>>>,
     },
 }
 impl<Node> WrappingScopeProof<Node> {
@@ -364,6 +365,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                                             flow: actual,
                                             start: a,
                                             end: b,
+                                            ..
                                         } if *pair == (*start, *end) => Some(if *actual == flow {
                                             SourceExtent::native(a, b)
                                         } else {

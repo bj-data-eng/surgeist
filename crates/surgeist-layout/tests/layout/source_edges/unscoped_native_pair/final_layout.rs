@@ -254,3 +254,5 @@ fn unscoped_native_pair_early_receipt_admits_and_places_real_controls_through_fi
     unscoped_pair_complete_pipeline::<f32>();
     unscoped_pair_complete_pipeline::<f64>();
 }
+
+mod child_order;

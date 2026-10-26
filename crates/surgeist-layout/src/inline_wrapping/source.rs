@@ -786,9 +786,12 @@ impl<Node: Copy + Eq> ResolvedWrapEdges<Node> {
                 .find(|(_, node)| node == end)
                 .and_then(|(i, _)| self.controls.get(*i))
                 .ok_or(WrappingScopeError::SourceAssociation)?;
-            return inventory
-                .native_pair(start.clone(), end.clone())
-                .map_err(|_| WrappingScopeError::SourceAssociation);
+            return CanonicalOrderInventory::native_pair(
+                &inventory.scopes,
+                start.clone(),
+                end.clone(),
+            )
+            .map_err(|_| WrappingScopeError::SourceAssociation);
         }
         self.canonical_box(
             self.captured_box(box_)
@@ -867,8 +870,7 @@ impl<Node: Copy + Eq> ResolvedWrapEdges<Node> {
                 }
             }
         }
-        inventory
-            .validate_native(&native)
+        CanonicalOrderInventory::validate_native(&inventory.scopes, &native)
             .map_err(|_| WrappingScopeError::SourceAssociation)?;
         Ok(native)
     }
