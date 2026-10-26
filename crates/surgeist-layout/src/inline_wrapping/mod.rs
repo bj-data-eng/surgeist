@@ -12,10 +12,16 @@ pub(crate) use declarations::{EdgeEffect, EdgePreferences, WrappingMode};
 use surgeist_text::CapturedScope;
 mod context;
 mod edge_plan;
+mod source;
 pub(crate) use crate::error::wrapping_error;
 pub(crate) use context::{
     CanonicalScopeProof, NumericWrapping, ScopeRow, WrappingContext, WrappingScopeProof,
     native_span,
+};
+pub use source::{
+    ProcessedWrappingSource, ResolvedWrapEdges, SourceOccurrenceAssociations,
+    SourceScopeAssociation, SourceWrappingScopeInput, WrapEdgeSource, WrapEdgeSourceNodeView,
+    process_wrapping_source,
 };
 
 /// Noninherited preference for permitted breaks inside one actual inline box.
@@ -65,6 +71,8 @@ pub enum WrappingScopeError {
     ChildOrder,
     MissingChildOrder,
     SourceProcessingRequired,
+    SourceAssociation,
+    PlanMismatch,
     MissingBoxMetrics,
     InvalidBoxMetrics,
     ConflictingBoxMetrics,

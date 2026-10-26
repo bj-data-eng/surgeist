@@ -230,8 +230,10 @@ mod text_indent;
 mod text_layout;
 pub use inline_wrapping::{
     ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
-    InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, WrapEdge, WrapEdges,
-    WrapInside, WrappingInput, WrappingScopeError, WrappingScopeInput,
+    InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, ProcessedWrappingSource,
+    ResolvedWrapEdges, SourceOccurrenceAssociations, SourceScopeAssociation,
+    SourceWrappingScopeInput, WrapEdge, WrapEdgeSource, WrapEdgeSourceNodeView, WrapEdges,
+    WrapInside, WrappingInput, WrappingScopeError, WrappingScopeInput, process_wrapping_source,
 };
 pub use text_layout::{
     LayoutFlowInput, TextAtomicBinding, TextBindingError, TextControlBinding,

@@ -159,6 +159,32 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
         paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
         wrapping_input: crate::WrappingInput<Tree::Node>,
     ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
+        Self::try_new_inner(tree, root, paragraphs, wrapping_input, None)
+    }
+
+    /// Revalidates an early source receipt against this current host projection,
+    /// then performs the ordinary immutable Text and native association checks.
+    pub fn try_new_with_edges(
+        tree: &'tree Tree,
+        root: Tree::Node,
+        paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
+        wrapping_input: crate::WrappingInput<Tree::Node>,
+        receipt: &crate::ResolvedWrapEdges<Tree::Node>,
+    ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError>
+    where
+        Tree: crate::WrapEdgeSource,
+    {
+        let graph = receipt.validate_final(tree, root, &paragraphs, &wrapping_input)?;
+        Self::try_new_inner(tree, root, paragraphs, wrapping_input, Some(graph))
+    }
+
+    fn try_new_inner(
+        tree: &'tree Tree,
+        root: Tree::Node,
+        paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
+        wrapping_input: crate::WrappingInput<Tree::Node>,
+        source_graph: Option<crate::engine::validation::ValidationGraph<Tree::Node>>,
+    ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
         let mut influencing = Vec::new();
         let mut occupied = Vec::new();
         for paragraph in &paragraphs {
@@ -515,12 +541,23 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 }
             }
         }
-        let (graph, _) = crate::engine::validation::validate_layout_request_with_text_graph(
-            tree,
-            root,
-            &influencing,
-            &paragraphs,
-        )?;
+        let source_validated = source_graph.is_some();
+        let (graph, _) = if let Some(graph) = source_graph {
+            crate::engine::validation::validate_layout_request_with_graph(
+                tree,
+                root,
+                &influencing,
+                &paragraphs,
+                graph,
+            )?
+        } else {
+            crate::engine::validation::validate_layout_request_with_text_graph(
+                tree,
+                root,
+                &influencing,
+                &paragraphs,
+            )?
+        };
         // Every actual prepared-text node under this root must be covered. A
         // partial inventory cannot silently use the box-only compute entry.
         for &node in &graph.nodes {
@@ -564,9 +601,10 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
             &wrapping_input.child_order,
         )
         .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
-        if paragraphs
-            .iter()
-            .any(|p| wrapping.requires_source(p.container))
+        if !source_validated
+            && paragraphs
+                .iter()
+                .any(|p| wrapping.requires_source(p.container))
         {
             return Err(crate::inline_wrapping::wrapping_error(
                 root,

@@ -820,6 +820,14 @@ pub surgeist_layout::WrapEdge::AvoidFlex
 pub surgeist_layout::WrapEdge::AvoidLine
 pub surgeist_layout::WrapEdge::Flex
 pub surgeist_layout::WrapEdge::Line
+pub enum surgeist_layout::WrapEdgeSourceNodeView<'a, S: surgeist_layout::LayoutScalar>
+pub surgeist_layout::WrapEdgeSourceNodeView::Boundary(surgeist_layout::InlineBoundaryInputOf<S>)
+pub surgeist_layout::WrapEdgeSourceNodeView::Box(&'a surgeist_layout::NodeInputOf<S>)
+pub surgeist_layout::WrapEdgeSourceNodeView::LineBreak(surgeist_layout::LineBreakInputOf<S>)
+pub surgeist_layout::WrapEdgeSourceNodeView::SourceControl
+pub surgeist_layout::WrapEdgeSourceNodeView::SourceControl::control: usize
+pub surgeist_layout::WrapEdgeSourceNodeView::SourceOrigin
+pub surgeist_layout::WrapEdgeSourceNodeView::SourceOrigin::origin: usize
 pub enum surgeist_layout::WrapInside
 pub surgeist_layout::WrapInside::Auto
 pub surgeist_layout::WrapInside::Avoid
@@ -842,6 +850,8 @@ pub surgeist_layout::WrappingScopeError::MissingCapture
 pub surgeist_layout::WrappingScopeError::MissingChildOrder
 pub surgeist_layout::WrappingScopeError::NodeNotReachable
 pub surgeist_layout::WrappingScopeError::NonInlineScope
+pub surgeist_layout::WrappingScopeError::PlanMismatch
+pub surgeist_layout::WrappingScopeError::SourceAssociation
 pub surgeist_layout::WrappingScopeError::SourceProcessingRequired
 pub surgeist_layout::WrappingScopeError::UnsupportedIncidence
 pub enum surgeist_layout::WrappingScopeInput<Node>
@@ -1256,6 +1266,7 @@ impl<'tree, Tree: surgeist_layout::LayoutTree> surgeist_layout::LayoutFlowInput<
 pub fn surgeist_layout::LayoutFlowInput<'tree, Tree>::paragraphs(&self) -> &[surgeist_layout::TextParagraphBinding<<Tree as surgeist_layout::Traverse>::Node>]
 pub fn surgeist_layout::LayoutFlowInput<'tree, Tree>::tree(&self) -> &'tree Tree
 pub fn surgeist_layout::LayoutFlowInput<'tree, Tree>::try_new(tree: &'tree Tree, root: <Tree as surgeist_layout::Traverse>::Node, paragraphs: alloc::vec::Vec<surgeist_layout::TextParagraphBinding<<Tree as surgeist_layout::Traverse>::Node>>, wrapping_input: surgeist_layout::WrappingInput<<Tree as surgeist_layout::Traverse>::Node>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, Self, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError>
+pub fn surgeist_layout::LayoutFlowInput<'tree, Tree>::try_new_with_edges(tree: &'tree Tree, root: <Tree as surgeist_layout::Traverse>::Node, paragraphs: alloc::vec::Vec<surgeist_layout::TextParagraphBinding<<Tree as surgeist_layout::Traverse>::Node>>, wrapping_input: surgeist_layout::WrappingInput<<Tree as surgeist_layout::Traverse>::Node>, receipt: &surgeist_layout::ResolvedWrapEdges<<Tree as surgeist_layout::Traverse>::Node>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, Self, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::WrapEdgeSource
 pub struct surgeist_layout::LayoutOutputEntryOf<Node, S: surgeist_layout::LayoutScalar>
 impl<Node, S> surgeist_layout::LayoutOutputEntryOf<Node, S> where Node: core::marker::Copy, S: surgeist_layout::LayoutScalar
 pub const fn surgeist_layout::LayoutOutputEntryOf<Node, S>::node(&self) -> Node
@@ -1527,6 +1538,9 @@ pub const fn surgeist_layout::PreferredSizeOf<S>::is_min_content(&self) -> bool
 pub fn surgeist_layout::PreferredSizeOf<S>::value(value: surgeist_layout::LengthPercentageOf<S>) -> Self
 impl<S: surgeist_layout::LayoutScalar> core::default::Default for surgeist_layout::PreferredSizeOf<S>
 pub fn surgeist_layout::PreferredSizeOf<S>::default() -> Self
+pub struct surgeist_layout::ProcessedWrappingSource<Node>
+impl<Node> surgeist_layout::ProcessedWrappingSource<Node>
+pub fn surgeist_layout::ProcessedWrappingSource<Node>::into_parts(self) -> (surgeist_text::processing::ProcessedSource, surgeist_layout::ResolvedWrapEdges<Node>)
 pub struct surgeist_layout::RawGridPlacement
 pub surgeist_layout::RawGridPlacement::end: surgeist_layout::RawGridLine
 pub surgeist_layout::RawGridPlacement::start: surgeist_layout::RawGridLine
@@ -1538,6 +1552,7 @@ pub const fn surgeist_layout::RawGridPlacement::new(start: surgeist_layout::RawG
 pub const fn surgeist_layout::RawGridPlacement::span(span: usize) -> Self
 impl core::default::Default for surgeist_layout::RawGridPlacement
 pub fn surgeist_layout::RawGridPlacement::default() -> Self
+pub struct surgeist_layout::ResolvedWrapEdges<Node>
 pub struct surgeist_layout::RootAvailabilityErrorOf<S: surgeist_layout::LayoutScalar>
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::RootAvailabilityErrorOf<S>
 pub const fn surgeist_layout::RootAvailabilityErrorOf<S>::axis(&self) -> surgeist_layout::PhysicalAxis
@@ -1650,6 +1665,20 @@ impl surgeist_layout::SourceIndex
 pub const surgeist_layout::SourceIndex::ZERO: Self
 pub const fn surgeist_layout::SourceIndex::get(self) -> usize
 pub const fn surgeist_layout::SourceIndex::new(value: usize) -> Self
+pub struct surgeist_layout::SourceOccurrenceAssociations<Node>
+pub surgeist_layout::SourceOccurrenceAssociations::atomics: alloc::vec::Vec<(usize, Node)>
+pub surgeist_layout::SourceOccurrenceAssociations::controls: alloc::vec::Vec<(usize, Node)>
+pub surgeist_layout::SourceOccurrenceAssociations::origins: alloc::vec::Vec<(usize, Node)>
+impl<Node> core::default::Default for surgeist_layout::SourceOccurrenceAssociations<Node>
+pub fn surgeist_layout::SourceOccurrenceAssociations<Node>::default() -> Self
+pub struct surgeist_layout::SourceScopeAssociation<Node>
+pub surgeist_layout::SourceScopeAssociation::flow: Node
+pub surgeist_layout::SourceScopeAssociation::pair: core::option::Option<(Node, Node)>
+pub surgeist_layout::SourceScopeAssociation::scope: usize
+pub struct surgeist_layout::SourceWrappingScopeInput<Node>
+pub surgeist_layout::SourceWrappingScopeInput::box_: surgeist_layout::InlineBoxRef<Node, usize>
+pub surgeist_layout::SourceWrappingScopeInput::edges: surgeist_layout::WrapEdges
+pub surgeist_layout::SourceWrappingScopeInput::wrap_inside: surgeist_layout::WrapInside
 pub struct surgeist_layout::SubgridTrack
 pub surgeist_layout::SubgridTrack::name_components: alloc::vec::Vec<surgeist_layout::SubgridLineNameComponent>
 impl surgeist_layout::SubgridTrack
@@ -1832,6 +1861,11 @@ pub type surgeist_layout::Traverse::Scalar: surgeist_layout::LayoutScalar
 pub fn surgeist_layout::Traverse::child(&self, node: Self::Node, index: usize) -> Self::Node
 pub fn surgeist_layout::Traverse::child_count(&self, node: Self::Node) -> usize
 pub fn surgeist_layout::Traverse::children(&self, node: Self::Node) -> Self::Children
+pub trait surgeist_layout::WrapEdgeSource: surgeist_layout::Traverse
+pub fn surgeist_layout::WrapEdgeSource::generated_child_order(&self) -> &[surgeist_layout::InlineChildOrderInput<Self::Node, usize>]
+pub fn surgeist_layout::WrapEdgeSource::source_scope_associations(&self) -> &[surgeist_layout::SourceScopeAssociation<Self::Node>]
+pub fn surgeist_layout::WrapEdgeSource::source_wrapping_scopes(&self) -> &[surgeist_layout::SourceWrappingScopeInput<Self::Node>]
+pub fn surgeist_layout::WrapEdgeSource::wrap_edge_source_node(&self, node: Self::Node) -> surgeist_layout::WrapEdgeSourceNodeView<'_, Self::Scalar>
 pub fn surgeist_layout::compute_layout<Tree>(tree: &Tree, root: <Tree as surgeist_layout::Traverse>::Node, request: surgeist_layout::LayoutRootRequestOf<<Tree as surgeist_layout::Traverse>::Scalar>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, surgeist_layout::CompletedLayoutBatchOf<<Tree as surgeist_layout::Traverse>::Node, <Tree as surgeist_layout::Traverse>::Scalar>, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::LayoutTree
 pub fn surgeist_layout::compute_layout_invalidated<Tree>(tree: &Tree, root: <Tree as surgeist_layout::Traverse>::Node, request: surgeist_layout::LayoutRootRequestOf<<Tree as surgeist_layout::Traverse>::Scalar>, changed_nodes: &[<Tree as surgeist_layout::Traverse>::Node]) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, surgeist_layout::CompletedLayoutBatchOf<<Tree as surgeist_layout::Traverse>::Node, <Tree as surgeist_layout::Traverse>::Scalar>, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::LayoutTree
 pub fn surgeist_layout::compute_layout_with_flow<Tree>(capture: &surgeist_layout::LayoutFlowInput<'_, Tree>, root: <Tree as surgeist_layout::Traverse>::Node, request: surgeist_layout::LayoutRootRequestOf<<Tree as surgeist_layout::Traverse>::Scalar>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, surgeist_layout::CompletedLayoutBatchOf<<Tree as surgeist_layout::Traverse>::Node, <Tree as surgeist_layout::Traverse>::Scalar>, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::LayoutTree
@@ -1841,6 +1875,7 @@ pub const fn surgeist_layout::grid_axis_for_lanes(auto_flow: surgeist_layout::Gr
 pub const fn surgeist_layout::lane_axis(auto_flow: surgeist_layout::GridAutoFlow) -> surgeist_layout::GridAxisKind
 pub fn surgeist_layout::lane_intrinsic_sizing<S: surgeist_layout::LayoutScalar>(input: surgeist_layout::LaneIntrinsicSizingInputOf<S>) -> surgeist_layout::LayoutResultOf<(), core::result::Result<surgeist_layout::LaneIntrinsicSizingReportOf<S>, surgeist_layout::LanePlacementError>, S>
 pub fn surgeist_layout::place_lanes<Item, S: surgeist_layout::LayoutScalar>(input: surgeist_layout::LanePlacementInputOf<Item, S>) -> core::result::Result<surgeist_layout::LanePlacementReportOf<Item, S>, surgeist_layout::LanePlacementError>
+pub fn surgeist_layout::process_wrapping_source<Source: surgeist_layout::WrapEdgeSource>(source: &Source, root: <Source as surgeist_layout::Traverse>::Node, input: surgeist_text::processing::contextual::ContextualSourceInput, occurrences: surgeist_layout::SourceOccurrenceAssociations<<Source as surgeist_layout::Traverse>::Node>) -> surgeist_layout::LayoutResultOf<<Source as surgeist_layout::Traverse>::Node, surgeist_layout::ProcessedWrappingSource<<Source as surgeist_layout::Traverse>::Node>, <Source as surgeist_layout::Traverse>::Scalar>
 pub fn surgeist_layout::track_sizing_components(components: &[surgeist_layout::TrackComponent]) -> alloc::vec::Vec<surgeist_layout::TrackSizing>
 pub fn surgeist_layout::track_sizing_components_of<S: surgeist_layout::LayoutScalar>(components: &[surgeist_layout::TrackComponentOf<S>]) -> alloc::vec::Vec<surgeist_layout::TrackSizingOf<S>>
 pub type surgeist_layout::AspectRatio = surgeist_layout::AspectRatioOf<surgeist_layout::DefaultScalar>

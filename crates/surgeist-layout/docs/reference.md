@@ -53,7 +53,9 @@ Sources: [engine](../src/engine/mod.rs), [measurement](../src/measurement.rs),
   flow with optional Text: `LayoutFlowInput`, `compute_layout_with_flow`, and
   `compute_layout_with_flow_invalidated`.
 - Direct leaf measurement: `compute_leaf`.
-- Host contracts: `Traverse`, `LayoutTree`, and `LayoutBatchSink`.
+- Host contracts: `Traverse`, `LayoutTree`, `WrapEdgeSource`, and `LayoutBatchSink`.
+- Early native Text edges: `process_wrapping_source`, `ProcessedWrappingSource`,
+  and `ResolvedWrapEdges`; [source admission](../src/inline_wrapping/source.rs).
 - Cache and failure contracts: `CacheOf`, `LayoutResultOf`, and `LayoutErrorOf`.
 
 ### Node input
@@ -120,10 +122,32 @@ Genuine empty captured boxes can have distinct before/after choices; one choice
 governs every participating scope. Each material box-metric assignment is fitted
 before preference selection. Missing correspondence returns
 `UnsupportedIncidence`; see the [original-cut contract](../../../references/text-wrap-edges--native-determination.md#original-box-cut-incidence).
-A Text-backed `Line` declaration
-requires source processing before preparation and currently returns
-`SourceProcessingRequired` at this late admission boundary. Computed mandatory
-boundaries already prepared by Text retain their separate issued causes.
+A Text-backed `Line` declaration requires source processing before preparation.
+Ordinary `LayoutFlowInput::try_new` returns `SourceProcessingRequired` at this
+late admission boundary. Computed mandatory boundaries already prepared by Text
+retain their separate issued causes.
+
+`process_wrapping_source` accepts a borrowed `WrapEdgeSource` projection and one
+Text `ContextualSourceInput`. Source scopes and occurrence associations refer to
+that input's actual inventories; the early projection needs no prepared handles.
+The operation derives applicable native forces, preserves existing computed
+requests, processes Text once, and authenticates the returned capture before
+issuing `ProcessedWrappingSource`. Its `into_parts` returns the processed source
+and an owned `ResolvedWrapEdges` receipt, ending the early host borrow.
+
+After normal Text preparation and host binding, `LayoutFlowInput::try_new_with_edges`
+accepts the current tree, actual paragraph bindings, final `WrappingInput`, and a
+borrowed receipt. The tree also supplies a fresh `WrapEdgeSource` projection.
+Admission checks current roles, declarations, relevant generated order and
+source/cause associations against both the receipt and actual prepared inputs.
+Changed semantic evidence returns `PlanMismatch`; invalid source associations
+return `SourceAssociation`. A coherent new preparation from the retained capture
+can reuse the receipt. The receipt authorizes no stale tree or foreign capture.
+
+Used box metrics remain final `WrappingInput` facts. They are not resolved from
+early source styles or frozen as absent by the receipt. A numerical change alone
+can reuse its semantic proof; the normal metric/fit/cache owners consume the new
+values. See [the source-admission guide](how-to.md#prepare-native-forced-text-edges).
 
 Both scope variants carry `metric_contribution`.
 `Some(InlineBoxMetricContribution::Strut(...))` supplies actual used geometry and
