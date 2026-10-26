@@ -179,13 +179,22 @@ uses its existing metric owner. Equal glyph prefixes do not establish equal
 box assignment or float clearance.
 At paragraph completion, the outgoing frontier must close inline boxes whose
 genuine exits precede that paragraph's exit. After an actual Forced selection,
-Text's issued ParagraphEnd selection can complete remaining boxes on a terminal
-empty receiving line within the same nonempty run. Layout retains this completion
-proof separately from the preceding original pin, which remains unchanged. The
-proof carries the genuine selected sequence, incoming box attribution and captured
-paragraph horizon through measurement, replay and reuse. Missing box metrics still
-return `MissingBoxMetrics`; missing completion authority returns
-`UnsupportedIncidence`. Wholly node-free paragraph scheduling remains separate.
+Text's issued ParagraphEnd selection can complete remaining boxes within the
+same scheduled nonempty run. Layout retains this proof separately
+from the preceding original pin, which remains unchanged. The proof carries the
+genuine selected sequence, incoming box attribution and captured paragraph horizon
+through measurement, replay and reuse. CSS phantom disposition is independent of
+numerical metric completeness: a strut-only Paragraph receiver retains completion
+custody but contributes no ordinary published line or block extent. See the
+[completion and disposition contract](../../../references/text-wrap-edges--native-determination.md#paragraph-completion-and-retained-pins).
+Missing demanded box metrics still return `MissingBoxMetrics`; missing completion
+authority returns `UnsupportedIncidence`. Wholly node-free paragraph scheduling
+remains separate and follows the same disposition when admitted.
+
+Native non-atomic endpoints currently carry their actual border and padding;
+they do not represent signed inline margins. That remaining geometry capability
+belongs to [fragmented inline decoration work](https://github.com/bj-data-eng/surgeist/issues/780).
+An atomic's signed margins cannot stand in for a non-atomic margin-only witness.
 
 Text-backed scopes use authenticated mixed-prefix and canonical source incidence,
 including transformed, collapsed and removed content. A semantic captured scope

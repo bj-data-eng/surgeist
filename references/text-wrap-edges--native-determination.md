@@ -221,10 +221,31 @@ and its incidence queries remain unchanged. Counterfactual measurement must
 retain the corresponding authentic mandatory sequence and observed basis;
 replay and reuse preserve the same distinction.
 
-This permits a glyph-free receiving line within an already scheduled nonempty
-Text run. Actual box metrics still supply its allocations; they cannot create
-selection or completion authority. When neither an authenticated prefix placement
-nor this genuine completion transition closes the local boxes, Layout returns
-`UnsupportedIncidence` before publishing geometry. It must not omit a box,
-forge an exterior incidence or invent source participation. Wholly node-free
-paragraph admission remains a separate scheduling scope.
+A genuine completion does not itself create a formatted CSS line. Apply the
+[pinned phantom-line rule](css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#phantom-line-box)
+to each selected line: actual retained text, preserved whitespace, an in-flow atomic
+(including zero-sized), any individual nonzero inline-axis margin, border or
+padding, or an actual Forced ending prevents phantom disposition. Evaluate
+individual sides; cancelling sums, zero advance or empty ink cannot establish
+absence. Vertical struts and block-axis-only decoration do not prevent a line
+from being phantom. A Paragraph receiver does not inherit the preceding line's
+Forced status, regardless of whether earlier source nodes exist.
+
+Retain phantom completion as a nonformatted result in the same selection and
+placement path: genuine ParagraphEnd, unchanged pin, complete original-box exits,
+actual metric receipts and whole-paragraph coverage remain authoritative. Real
+numerical receiver metrics still require their genuine witnesses; suppression
+is not permission to substitute zero or omit an allocation. Phantom completion
+adds no published ordinary line rectangle or baseline, formatted ordinal,
+first/last formatted-line role, block/intrinsic/float/scroll/paint extent or
+nominal caret rectangle. Descendant positioning uses the rule's zero-height
+line box through its actual owner. Retain appropriate source and nonvisual
+provenance without dropping the final receipt or switching to partial coverage.
+Raw standalone Text's native numerical metric policy is separate.
+
+Within an already scheduled nonempty Text run, the existing genuine terminal
+selection can perform this completion. Wholly node-free paragraph admission is a
+separate scheduling scope and must apply the same CSS disposition once admitted.
+When neither an authenticated prefix placement nor a genuine completion
+transition closes local boxes, Layout returns `UnsupportedIncidence` before
+publishing geometry; it must not forge an exterior incidence or source participant.
