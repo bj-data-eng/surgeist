@@ -969,3 +969,66 @@ fn phantom_completion_still_requires_the_actual_trailing_metric_witness() {
         missing_trailing_metric::<f64>(direction);
     }
 }
+
+fn omitted_paragraph_receipt<S: l::LayoutScalar>(direction: l::Direction) {
+    let fixture = Fixture::<S>::new(direction, true);
+    let pin = fixture.pinned();
+    let batch = fixture.compute();
+    let entry = &batch.placed_text()[0];
+    let placed = entry.layout();
+    let actual_body = batch
+        .final_inline_fragments()
+        .iter()
+        .find(|entry| entry.fragment().line_index() == 0)
+        .unwrap()
+        .fragment()
+        .finalized_fragment()
+        .finalized_line();
+    let selected = actual_body.selected_line();
+    let request = selected.request();
+    let offers = fixture.offers(true);
+    assert_eq!(request.context.end, t::LineEnd::Forced);
+    assert_eq!(
+        request.termination,
+        t::PreparedTermination::Ordinary(offers[1].clone())
+    );
+    assert_eq!(request.end, offers[2].view().boundary());
+    assert_eq!(offers[2].view().kind(), t::PreparedBreakKind::ParagraphEnd);
+    let first = placed.lines()[0];
+    let anchor = t::LineAnchor {
+        inline_origin: first.bounds().origin.x,
+        baseline: first.baseline(),
+    };
+    assert!(anchor.inline_origin.is_finite() && anchor.baseline.is_finite());
+    // Exact terminal-boundary equality is insufficient: the actual selected
+    // ending remains Forced, while WholeParagraph needs its real Paragraph receipt.
+    let error = t::Layout::from_finalized_lines(t::PlacementRequest {
+        prepared: fixture.prepared.clone(),
+        coverage: t::PlacementCoverage::WholeParagraph,
+        lines: vec![t::LinePlacement {
+            line: actual_body,
+            anchor,
+            orientation: t::LineOrientation::Horizontal,
+            atomics: vec![],
+        }],
+    })
+    .expect_err("dropping the genuine ParagraphEnd receipt cannot complete WholeParagraph");
+    assert!(
+        matches!(
+            error.detail(),
+            Some(t::ErrorDetail::InvalidTextProtocol {
+                reason: t::ProtocolError::IncompleteLineCoverage { line: 0 },
+            })
+        ),
+        "{error:?}"
+    );
+    assert_eq!(fixture.pinned(), pin);
+}
+
+#[test]
+fn whole_paragraph_rejects_only_forced_receipt_even_at_its_final_boundary() {
+    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+        omitted_paragraph_receipt::<f32>(direction);
+        omitted_paragraph_receipt::<f64>(direction);
+    }
+}
