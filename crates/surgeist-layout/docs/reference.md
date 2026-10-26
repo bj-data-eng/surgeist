@@ -177,10 +177,15 @@ independent of the receiving preparation's spelling boundary. Text combines
 allocated box struts with its existing metric groups; numeric-only native flow
 uses its existing metric owner. Equal glyph prefixes do not establish equal
 box assignment or float clearance.
-At paragraph completion, the original cut must also close inline boxes whose
-genuine exits precede that paragraph's exit. A terminal computed pin lacking
-that proof returns `UnsupportedIncidence`; metrics cannot supply missing
-completion authority or silently replace an unfinished box.
+At paragraph completion, the outgoing frontier must close inline boxes whose
+genuine exits precede that paragraph's exit. After an actual Forced selection,
+Text's issued ParagraphEnd selection can complete remaining boxes on a terminal
+empty receiving line within the same nonempty run. Layout retains this completion
+proof separately from the preceding original pin, which remains unchanged. The
+proof carries the genuine selected sequence, incoming box attribution and captured
+paragraph horizon through measurement, replay and reuse. Missing box metrics still
+return `MissingBoxMetrics`; missing completion authority returns
+`UnsupportedIncidence`. Wholly node-free paragraph scheduling remains separate.
 
 Text-backed scopes use authenticated mixed-prefix and canonical source incidence,
 including transformed, collapsed and removed content. A semantic captured scope

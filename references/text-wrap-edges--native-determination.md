@@ -211,8 +211,20 @@ that captured paragraph's exit require an outgoing `AtAfter` or `After` relation
 Use actual same-capture/domain scope exits, not clipped intersection endpoints;
 scopes continuing beyond the paragraph retain their existing frontier custody.
 
-When no authenticated placement closes those local boxes, the current adapter
-returns `UnsupportedIncidence` before publishing geometry. It must not silently
-omit a box contribution, forge an exterior placement, or infer a box-only
-receiver from numerical struts. Genuine Forced endings and ordinary trailing-box
-completion remain distinct. Node-free completion is a separate scheduling scope.
+An existing issued ParagraphEnd selection can complete those local boxes after
+an actual Forced ending, including a final selection with equal start and end
+boundaries. Its completion frontier is distinct from the prefix incidence: it
+retains the actual preceding Forced selection, attributed incoming box frontier,
+same preparation and captured paragraph horizon. Text's ordinary Paragraph
+selection owns the remaining executed correspondence. The original forced pin
+and its incidence queries remain unchanged. Counterfactual measurement must
+retain the corresponding authentic mandatory sequence and observed basis;
+replay and reuse preserve the same distinction.
+
+This permits a glyph-free receiving line within an already scheduled nonempty
+Text run. Actual box metrics still supply its allocations; they cannot create
+selection or completion authority. When neither an authenticated prefix placement
+nor this genuine completion transition closes the local boxes, Layout returns
+`UnsupportedIncidence` before publishing geometry. It must not omit a box,
+forge an exterior incidence or invent source participation. Wholly node-free
+paragraph admission remains a separate scheduling scope.

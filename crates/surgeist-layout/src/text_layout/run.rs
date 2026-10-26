@@ -1580,12 +1580,12 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
         } else {
             super::boxes::NativeBoxCut::Prefix
         };
-        Ok(super::boxes::BoxFrontier {
-            boundary: boundary.clone(),
+        Ok(super::boxes::BoxFrontier::boundary(
+            boundary.clone(),
             incidence,
             native,
             relations,
-        })
+        ))
     }
 
     // A local box that really exits before the paragraph must be discharged
@@ -1611,16 +1611,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
             {
                 continue;
             }
-            let Some(incidence) = &outgoing.incidence else {
-                return Ok(false);
-            };
-            if !matches!(
-                incidence
-                    .boundary()
-                    .prepared_text()
-                    .incidence_scope_relation(incidence, scope)?,
-                R::AtAfter | R::After
-            ) {
+            if !matches!(outgoing.scope_relation(scope)?, Some(R::AtAfter | R::After)) {
                 return Ok(false);
             }
         }
@@ -1695,17 +1686,17 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
 impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
     fn choices(
         &self,
-        start: &surgeist_text::PreparedBoundary,
-        end: &surgeist_text::PreparedBoundary,
-        incoming: Option<super::boxes::BoxEntry<'_>>,
-        controls: &[surgeist_text::ControlAllocation],
-        ending: surgeist_text::LineEnd,
+        choice: super::boxes::BoxChoice<'_>,
     ) -> Result<Vec<super::boxes::BoxAssignment>, FitError> {
+        let start = choice.start;
+        let end = choice.end;
+        let controls = choice.controls;
+        let ending = choice.ending;
         use crate::InlineBoxMetricContribution as M;
         use surgeist_text::CapturedScopeIncidence as R;
         // The receiver's Text progress boundary keeps its own spelling. The
         // original frontier stays with its issuer across administrative runs.
-        let entry = incoming.or(self
+        let entry = choice.incoming.or(self
             .incoming
             .as_ref()
             .map(super::boxes::BoxEntry::ConsumedTo));
@@ -1720,7 +1711,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                 self.cuts(start)?
                     .into_iter()
                     .filter(|cut| {
-                        incoming.relations.iter().all(|(id, prior)| {
+                        incoming.relations().iter().all(|(id, prior)| {
                             !matches!(prior, R::AtAfter | R::After)
                                 || !matches!(
                                     cut.relation(*id),
@@ -1733,24 +1724,51 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
         } else {
             self.cuts(start)?.into_iter().take(1).collect()
         };
-        let mut ends = self.cuts(end)?;
-        // A real paragraph completion has no receiving line for unconsumed
-        // trailing boxes. Their last admissible original placement closes this
-        // line; this does not create another break or ignore a retained pin.
-        if ending == surgeist_text::LineEnd::Paragraph {
-            let mut completed = Vec::new();
-            for outgoing in ends {
-                if self.closes_paragraph(&outgoing)? {
-                    completed.push(outgoing);
-                }
-            }
-            ends = completed.into_iter().last().into_iter().collect();
-        }
-        if ends.is_empty() || starts.is_empty() {
+        let boundary_ends = self.cuts(end)?;
+        if starts.is_empty() {
             return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
         }
         let mut choices = Vec::new();
         for incoming in starts {
+            let mut ends = boundary_ends.clone();
+            if ending == surgeist_text::LineEnd::Paragraph {
+                // Keep an existing exterior incidence and its physical proof
+                // when it already discharges all local boxes.
+                let mut completed = Vec::new();
+                for outgoing in ends {
+                    if self.closes_paragraph(&outgoing)? {
+                        completed.push(outgoing);
+                    }
+                }
+                ends = completed.into_iter().last().into_iter().collect();
+                if ends.is_empty()
+                    && start == end
+                    && let Some(paragraph) = end.prepared_text().captured_paragraph()
+                {
+                    let mut relations = Vec::new();
+                    for (id, row, _) in &self.boxes {
+                        let relation = row
+                            .capture
+                            .as_ref()
+                            .map(|scope| super::boxes::horizon_relation(&paragraph, scope))
+                            .transpose()?
+                            .flatten()
+                            .or_else(|| incoming.relation(*id));
+                        if let Some(relation) = relation {
+                            relations.push((*id, relation));
+                        }
+                    }
+                    if let Some(completion) =
+                        super::boxes::BoxFrontier::complete(&incoming, &choice, relations)?
+                        && self.closes_paragraph(&completion)?
+                    {
+                        ends.push(completion);
+                    }
+                }
+            }
+            if ends.is_empty() {
+                return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+            }
             for outgoing in &ends {
                 let mut contributions = Vec::new();
                 let mut valid = true;
@@ -1818,21 +1836,12 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                     continue;
                 }
                 for scope in &self.unlisted {
-                    let Some(outgoing_incidence) = &outgoing.incidence else {
-                        continue;
-                    };
-                    let end_relation = outgoing_incidence
-                        .boundary()
-                        .prepared_text()
-                        .incidence_scope_relation(outgoing_incidence, scope)?;
-                    let start_relation = if let Some(start_incidence) = &incoming.incidence {
-                        start_incidence
-                            .boundary()
-                            .prepared_text()
-                            .incidence_scope_relation(start_incidence, scope)?
-                    } else {
-                        return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
-                    };
+                    let end_relation = outgoing
+                        .scope_relation(scope)?
+                        .ok_or(crate::WrappingScopeError::UnsupportedIncidence)?;
+                    let start_relation = incoming
+                        .scope_relation(scope)?
+                        .ok_or(crate::WrappingScopeError::UnsupportedIncidence)?;
                     if !matches!(start_relation, R::AtAfter | R::After)
                         && matches!(end_relation, R::Inside | R::AtAfter | R::After)
                     {
@@ -1872,7 +1881,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
     ) -> Result<crate::inline_wrapping::AvoidClass, FitError> {
         use surgeist_text::{CapturedScopeIncidence as R, SourceBoxSide};
         let cut = &assignment.outgoing;
-        let Some(incidence) = &cut.incidence else {
+        let Some(incidence) = cut.incidence() else {
             return self.classify_boundary(&cut.boundary.prepared_text(), &cut.boundary);
         };
         let issuer = cut.boundary.prepared_text();
