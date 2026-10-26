@@ -1631,14 +1631,15 @@ fn text_line_offset<S: LayoutScalar>(
     text_align: TextAlign,
 ) -> S {
     let free_space = (available_inline_extent - used_inline_extent).max(S::ZERO);
-    let inline_decreases = flow_axes
-        .logical_axis_progression(crate::LogicalAxis::Inline)
-        .is_decreasing();
     match text_align {
         TextAlign::Start | TextAlign::Justify => S::ZERO,
         TextAlign::End => free_space,
-        TextAlign::Left | TextAlign::LegacyLeft if inline_decreases => free_space,
-        TextAlign::Right | TextAlign::LegacyRight if !inline_decreases => free_space,
+        TextAlign::Left | TextAlign::LegacyLeft if flow_axes.direction() == Direction::Rtl => {
+            free_space
+        }
+        TextAlign::Right | TextAlign::LegacyRight if flow_axes.direction() == Direction::Ltr => {
+            free_space
+        }
         TextAlign::Center | TextAlign::LegacyCenter => free_space / S::from_f64(2.0),
         TextAlign::Left | TextAlign::Right | TextAlign::LegacyLeft | TextAlign::LegacyRight => {
             S::ZERO
