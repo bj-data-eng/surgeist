@@ -387,6 +387,20 @@ is zone-exempt, while max-content stays unbroken. These reference trials remain
 unpublished, and changed policy, bands or encounters rebuild their private pass
 basis. See the [zone contract](../../../docs/text-layout-contract.md#hyphenation-zone-and-the-ordinary-fallback-line).
 
+`NodeInputOf::text_group_align` selects `TextGroupAlign`, defaulting to `None`.
+Layout groups actual descendant formatted lines in the same block formatting
+context, resolves their common padding from natural advances, then applies
+ordinary alignment and justification in that reduced content frame. A child
+`None` still participates in its ancestor's group. The
+[native group-alignment contract](../../../references/text-group-alignment--native-determination.md)
+defines nested residuals, membership and per-line direction.
+
+`NodeInputOf::block_flow_context` supplies `BlockFlowContext::Independent` for a
+used flow root. `Normal` retains the box's other context-establishing facts.
+Independent contexts contain their own floats; ordinary shared blocks transfer
+float exclusions through the enclosing context without including those floats
+in their own auto height.
+
 `TextJustification::Spaces` expands retained U+0020 slots using Text's finalized
 ownership and edge decisions. Layout distributes the remaining line capacity
 after subtracting Text's natural alignment measure to those slots, then finalizes

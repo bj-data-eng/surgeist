@@ -34,6 +34,7 @@ use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
 use super::{LengthOf, NodeInputOf, WritingMode};
 
 mod absolute;
+pub(crate) mod float_context;
 mod float_text;
 mod floats;
 mod in_flow;
@@ -57,13 +58,12 @@ use in_flow::{
     InFlowPassContext, layout_in_flow_children, normal_flow_children_can_establish_baseline,
 };
 
-pub(crate) use floats::FloatExclusions;
 #[cfg(test)]
 pub(crate) use floats::FloatLedgerSide;
 use floats::{
-    BfcBandCandidate, FloatBand, FloatIntrinsics, InheritedFloatExclusions, PendingFloat,
-    ProviderBandContext, layout_floats,
+    BfcBandCandidate, FloatBand, FloatIntrinsics, PendingFloat, ProviderBandContext, layout_floats,
 };
+pub(crate) use floats::{FloatExclusions, InheritedFloatExclusions};
 
 pub(crate) fn compute_block<'input, Tree, M>(
     tree: &mut Tree,
@@ -73,31 +73,40 @@ pub(crate) fn compute_block<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    compute_block_with_optional_inherited_float_exclusions(tree, node, input, None)
+    let incoming = tree
+        .block_float_state()
+        .and_then(|state| state.incoming(node, input));
+    if incoming.is_some()
+        && float_context::Role::for_input(tree.node_input(node), input)
+            != float_context::Role::Shared
+    {
+        return Err(float_context::missing(node));
+    }
+
+    compute_block_with_optional_inherited_float_exclusions(tree, node, input, incoming)
 }
 
-pub(crate) fn compute_block_with_inherited_float_exclusions<'input, Tree, M>(
-    tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
-    input: ComputeInputOf<Tree::Scalar>,
-    inherited: InheritedFloatExclusions<Tree::Scalar, <Tree as Traverse>::Node>,
-) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    compute_block_with_optional_inherited_float_exclusions(tree, node, input, Some(inherited))
+struct BlockResult<Node, S: LayoutScalar> {
+    output: ComputeOutputOf<S>,
+    used: ComputeInputOf<S>,
+    floats: Option<(FloatExclusions<S, Node>, usize)>,
 }
 
 fn compute_block_with_optional_inherited_float_exclusions<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
-    inherited: Option<InheritedFloatExclusions<Tree::Scalar, <Tree as Traverse>::Node>>,
+    incoming: Option<float_context::Incoming<<Tree as Traverse>::Node, Tree::Scalar>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
+    let inherited = incoming.as_ref().map(|incoming| incoming.frame.as_ref());
     let anonymous = tree.node_input(node).block_generation == crate::BlockGeneration::Anonymous;
+    let group_style = tree.node_input(node);
+    if let Some(groups) = tree.group_computation() {
+        groups.begin(node, input, group_style);
+    }
     let formatted = tree
         .text_computation()
         .is_some_and(|text| text.formatted_begin_block(node, input, anonymous));
@@ -107,16 +116,12 @@ where
             .get();
         let mut pass_input = input;
         loop {
-            let output = compute_block_inner::<Tree, Tree::Scalar, M>(
-                tree,
-                node,
-                pass_input,
-                inherited.as_ref(),
-            )?;
+            let output =
+                compute_block_inner::<Tree, Tree::Scalar, M>(tree, node, pass_input, inherited)?;
             if !input.run_mode().is_perform_layout() {
                 return Ok(output);
             }
-            let Some(geometry) = output.scroll_geometry else {
+            let Some(geometry) = output.output.scroll_geometry else {
                 return Ok(output);
             };
             let next_state = pass_input.settled_auto_scrollbars().transition(geometry);
@@ -135,7 +140,35 @@ where
     if formatted && let Some(text) = tree.text_computation() {
         text.formatted_end_block(node, input, anonymous, result.is_ok());
     }
-    result
+    if let Some(groups) = tree.group_computation() {
+        groups.end(result.is_ok());
+    }
+    result.and_then(|result| {
+        if incoming.is_none()
+            && float_context::Role::for_input(tree.node_input(node), input)
+                == float_context::Role::Shared
+            && result
+                .floats
+                .as_ref()
+                .is_some_and(|(ledger, _)| !ledger.is_empty())
+        {
+            return Err(float_context::missing(node));
+        }
+        if let Some((ledger, inherited)) = result.floats
+            && let Some(state) = tree.block_float_state()
+        {
+            state.record(float_context::Completed {
+                node,
+                request: incoming.as_ref().map_or(input, |incoming| incoming.request),
+                used: result.used,
+                output: result.output,
+                ledger,
+                inherited,
+                frame: incoming.map(|incoming| incoming.frame),
+            });
+        }
+        Ok(result.output)
+    })
 }
 
 fn compute_block_inner<'input, Tree, S, M>(
@@ -143,11 +176,12 @@ fn compute_block_inner<'input, Tree, S, M>(
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<S>,
     inherited: Option<&InheritedFloatExclusions<S, <Tree as Traverse>::Node>>,
-) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<S>, S, M>
+) -> LayoutResultOf<<Tree as Traverse>::Node, BlockResult<<Tree as Traverse>::Node, S>, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
+    let float_role = float_context::Role::for_input(tree.node_input(node), input);
     let style = block_container_projection::<Tree, M>(tree, node);
     let constants = Constants::from_projection::<Tree, M>(tree, node, &style, input)?;
     let children = tree.children(node).collect::<Vec<_>>();
@@ -159,6 +193,7 @@ where
         .text_computation()
         .is_some_and(|text| text.has_semantic(node));
     if children.is_empty()
+        && inherited.is_none()
         && !semantic_work
         && !observe_formatted
         && input.run_mode() == RunMode::ComputeSize
@@ -167,11 +202,14 @@ where
             height: Some(height),
         } = constants.node_outer_size
     {
-        return Ok(ComputeOutputOf::<S>::from_outer_size(Size::new(
-            width, height,
-        )));
+        return Ok(BlockResult {
+            output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height)),
+            used: input,
+            floats: None,
+        });
     }
     if input.run_mode() == RunMode::ComputeSize
+        && inherited.is_none()
         && !semantic_work
         && !observe_formatted
         && let Size {
@@ -180,13 +218,26 @@ where
         } = constants.node_outer_size
         && !normal_flow_children_can_establish_baseline(tree, &children)
     {
-        return Ok(ComputeOutputOf::<S>::from_outer_size(Size::new(
-            width, height,
-        )));
+        return Ok(BlockResult {
+            output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height)),
+            used: input,
+            floats: None,
+        });
     }
 
     let logical_inner_size = constants.logical_node_inner_size();
-    let needs_final_pass = input.run_mode().is_perform_layout()
+    let sizes_float_context = float_context::sizes_float_context(
+        float_role,
+        input,
+        logical_inner_size.inline.or(constants
+            .flow_axes
+            .logical_size(constants.available_content)
+            .inline
+            .into_option()),
+        inherited.is_some(),
+        tree.block_float_work(node),
+    );
+    let needs_final_pass = (input.run_mode().is_perform_layout() || sizes_float_context)
         && (logical_inner_size.inline.is_none()
             || constants
                 .flow_axes
@@ -207,7 +258,7 @@ where
     )?;
     let logical_intrinsic_outer_size = LogicalSizeOf::new(
         intrinsic_pass.content_size.inline + constants.logical_content_box_inset().inline_sum(),
-        intrinsic_pass.auto_block(&constants),
+        intrinsic_pass.auto_block(&constants, float_role),
     );
     let logical_intrinsic_outer_size = LogicalSizeOf::new(
         logical_intrinsic_outer_size
@@ -256,7 +307,7 @@ where
             input,
             InFlowPassContext {
                 inner_inline: logical_inner_size.inline,
-                set_layout: true,
+                set_layout: input.run_mode().is_perform_layout(),
                 inherited,
             },
         )?;
@@ -267,6 +318,9 @@ where
     if let Some(text) = tree.text_computation() {
         text.formatted_record_flow(final_pass.formatted.clone());
     }
+    if let Some(groups) = tree.group_computation() {
+        groups.select(final_pass.groups.clone());
+    }
     let logical_output_size = LogicalSizeOf::new(
         provisional_logical_output_size.inline,
         constants
@@ -274,7 +328,7 @@ where
             .logical_size(input.known())
             .block
             .or(final_constants.logical_node_outer_size().block)
-            .unwrap_or_else(|| final_pass.auto_block(&final_constants))
+            .unwrap_or_else(|| final_pass.auto_block(&final_constants, float_role))
             .clamp_max_before_min_optional(
                 final_constants.logical_node_min_size().block,
                 final_constants.logical_node_max_size().block,
@@ -300,7 +354,11 @@ where
             final_pass.baselines,
         );
         output.block_margin_collapse = block_margin_collapse;
-        Ok(output)
+        Ok(BlockResult {
+            output,
+            used: input,
+            floats: Some((final_pass.float_context, final_pass.inherited_floats)),
+        })
     } else {
         let mut contributions =
             with_block_scroll_projections::<Tree, M, _>(tree, node, |scroll_box_projection, _| {
@@ -353,7 +411,11 @@ where
         );
         output.scroll_geometry = Some(published_scroll.geometry);
         output.block_margin_collapse = block_margin_collapse;
-        Ok(output)
+        Ok(BlockResult {
+            output,
+            used: input,
+            floats: Some((final_pass.float_context, final_pass.inherited_floats)),
+        })
     }
 }
 
@@ -572,7 +634,9 @@ impl<S: LayoutScalar> Constants<S> {
         let is_root = input.run_mode() == RunMode::PerformRootLayout;
         let boundary_margins_can_collapse =
             input.parent_formatting_context() == ParentFormattingContext::BlockFlow;
-        let blocks_margin_collapse = style.common.item_is_replaced
+        let blocks_margin_collapse = style.block_flow_context
+            == crate::BlockFlowContext::Independent
+            || style.common.item_is_replaced
             || style
                 .common
                 .overflow

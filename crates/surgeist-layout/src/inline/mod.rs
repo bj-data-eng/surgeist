@@ -68,6 +68,7 @@ pub(super) enum MixedInlineParticipantOf<S: LayoutScalar = DefaultScalar> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunInputOf<S: LayoutScalar = DefaultScalar> {
+    pub groups: crate::group_alignment::Snapshot,
     pub text_wrap_style: crate::TextWrapStyle,
     pub line_box_context: crate::line_box::LineBoxContext,
     pub observe_tail: bool,
@@ -178,6 +179,7 @@ impl<S: LayoutScalar> InlineEndpointOf<S> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
+    pub group_lines: Vec<crate::group_alignment::NaturalLine<S>>,
     pub formatted_lines: Option<Vec<crate::text_layout::formatted::NumericFormattedLine>>,
     pub line_box_context: crate::line_box::LineBoxContext,
     pub lines: Vec<crate::hyphenation::CommittedInlineLine>,
@@ -1644,31 +1646,98 @@ fn text_line_offset<S: LayoutScalar>(
     }
 }
 
-fn selected_line_inline_start<S: LayoutScalar>(
-    line: &SelectedInlineLineOf<S>,
-    flow_axes: FlowAxes,
-    text_align: TextAlign,
-    direction: Direction,
+fn line_alignment_offset<S: LayoutScalar>(
+    advance: S,
+    capacity: S,
+    axes: FlowAxes,
+    alignment: TextAlign,
+    same_direction: bool,
 ) -> S {
-    let same_direction = direction == flow_axes.direction();
-    let text_align = match (same_direction, text_align) {
+    let alignment = match (same_direction, alignment) {
         (false, TextAlign::Start | TextAlign::Justify) => TextAlign::End,
         (false, TextAlign::End) => TextAlign::Start,
         (_, alignment) => alignment,
     };
+    let free_space = capacity - advance;
+    if free_space < S::ZERO {
+        if same_direction { S::ZERO } else { free_space }
+    } else {
+        text_line_offset(advance, capacity, axes, alignment)
+    }
+}
+fn ordinary_line_inline_start<S: LayoutScalar>(
+    line: &SelectedInlineLineOf<S>,
+    axes: FlowAxes,
+    alignment: TextAlign,
+    direction: Direction,
+) -> S {
+    let same_direction = direction == axes.direction();
     line.inline_start_override.unwrap_or_else(|| {
         let capacity = line.band.inline_end - line.band.inline_start - line.indent;
-        let free_space = capacity - line.used_inline_extent;
-        // Overlong content aligns to the resolved line-box Start, regardless
-        // of requested alignment. Opposed containing progression needs the
-        // signed deficit to reach that edge; matching progression starts at0.
-        let offset = if free_space < S::ZERO {
-            if same_direction { S::ZERO } else { free_space }
-        } else {
-            text_line_offset(line.used_inline_extent, capacity, flow_axes, text_align)
-        };
+        let offset = line_alignment_offset(
+            line.used_inline_extent,
+            capacity,
+            axes,
+            alignment,
+            same_direction,
+        );
         line.band.inline_start + if same_direction { line.indent } else { S::ZERO } + offset
     })
+}
+fn selected_line_inline_start<S: LayoutScalar>(
+    line: &SelectedInlineLineOf<S>,
+    axes: FlowAxes,
+    alignment: TextAlign,
+    direction: Direction,
+    insets: surgeist_text::LineAlignmentInsets,
+) -> Result<S, crate::inline_wrapping::NumericWrappingError> {
+    let old = ordinary_line_inline_start(line, axes, alignment, direction);
+    if insets == surgeist_text::LineAlignmentInsets::ZERO {
+        return Ok(old);
+    }
+    let capacity = crate::group_alignment::canonical_capacity::<S>(
+        (line.band.inline_end - line.band.inline_start).to_f64(),
+        insets,
+        line.indent.to_f64(),
+    )?;
+    crate::group_alignment::add::<S>(capacity, -line.used_inline_extent.to_f64())?;
+    let same_direction = direction == axes.direction();
+    let offset = line_alignment_offset(
+        line.used_inline_extent,
+        crate::group_alignment::scalar::<S>(capacity)?,
+        axes,
+        alignment,
+        same_direction,
+    );
+    let start_inset = if axes.direction() == Direction::Ltr {
+        insets.line_left()
+    } else {
+        insets.line_right()
+    };
+    let base = crate::group_alignment::add::<S>(
+        line.band.inline_start.to_f64(),
+        if same_direction {
+            line.indent.to_f64()
+        } else {
+            0.0
+        },
+    )?;
+    let shifted = crate::group_alignment::add::<S>(
+        crate::group_alignment::add::<S>(base, offset.to_f64())?,
+        start_inset,
+    )?;
+    let result = if let Some(overridden) = line.inline_start_override {
+        let mut ordinary = line.clone();
+        ordinary.inline_start_override = None;
+        let delta = crate::group_alignment::add::<S>(
+            shifted,
+            -ordinary_line_inline_start(&ordinary, axes, alignment, direction).to_f64(),
+        )?;
+        crate::group_alignment::add::<S>(overridden.to_f64(), delta)?
+    } else {
+        shifted
+    };
+    Ok(crate::group_alignment::scalar(result)?)
 }
 
 fn resolved_float_terminal_block_extent<S: LayoutScalar>(
@@ -1704,8 +1773,10 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
     flow_axes: FlowAxes,
     text_align: TextAlign,
     direction: Direction,
-) -> (S, Vec<usize>, Vec<S>) {
-    let line_inline_start = selected_line_inline_start(line, flow_axes, text_align, direction);
+    insets: surgeist_text::LineAlignmentInsets,
+) -> Result<(S, Vec<usize>, Vec<S>), crate::inline_wrapping::NumericWrappingError> {
+    let line_inline_start =
+        selected_line_inline_start(line, flow_axes, text_align, direction, insets)?;
     let mut order = vec![0; line.units.len()];
     let visual_order = SuppliedLine::new(supplied)
         .reorder_into(&mut order)
@@ -1739,7 +1810,7 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
             inline_start = inline_start + selected_inline_extent;
         }
     }
-    (line_inline_start, visual_indices, inline_starts)
+    Ok((line_inline_start, visual_indices, inline_starts))
 }
 
 #[cfg(test)]
@@ -2162,8 +2233,17 @@ where
         line_box_context.commit(line_box_context.resolve(None));
         pending_strut = selected.pending_strut;
         let line_block_end = block_cursor + line.baseline + line.after_baseline;
-        let line_inline_start =
-            selected_line_inline_start(&line, input.flow_axes, line.alignment, line_direction);
+        let line_inline_start = selected_line_inline_start(
+            &line,
+            input.flow_axes,
+            line.alignment,
+            line_direction,
+            if matches!(input.available_inline_extent, AvailableOf::Definite(_)) {
+                input.groups.insets::<S>(line_box_context.resolve(None))?
+            } else {
+                surgeist_text::LineAlignmentInsets::ZERO
+            },
+        )?;
         let line_inline_end = line_inline_start + line.used_inline_extent;
         if has_float_transition && line.split_baseline_edge_phase.is_some() {
             float_edge_phase = line.split_baseline_edge_phase;
@@ -2693,6 +2773,14 @@ where
     let mut atomics = Vec::new();
     let mut controls = Vec::new();
     let mut nonformatted_controls = Vec::new();
+    let mut group_lines = Vec::new();
+    let group_insets = if matches!(input.available_inline_extent, AvailableOf::Definite(_)) {
+        input
+            .groups
+            .insets::<S>(input.line_box_context.resolve(None))?
+    } else {
+        surgeist_text::LineAlignmentInsets::ZERO
+    };
     let mut post_line_clear_intents = Vec::new();
     let mut line_bands = Vec::new();
     let mut lines = Vec::new();
@@ -2707,7 +2795,8 @@ where
                 input.flow_axes,
                 line.alignment,
                 line_direction,
-            );
+                surgeist_text::LineAlignmentInsets::ZERO,
+            )?;
             for (index, unit) in line.units.into_iter().enumerate() {
                 let MixedInlineParticipantOf::Boundary(control) = unit.participant else {
                     unreachable!("nonformatted numeric participation contains only boundaries");
@@ -2740,7 +2829,31 @@ where
             input.flow_axes,
             line.alignment,
             line_direction,
-        );
+            group_insets,
+        )?;
+        if input.groups.is_active()
+            && matches!(input.available_inline_extent, AvailableOf::Definite(_))
+        {
+            group_lines.push(crate::group_alignment::NaturalLine {
+                width: (line.band.inline_end - line.band.inline_start).to_f64(),
+                indent: line.indent.to_f64(),
+                advance: line.used_inline_extent.to_f64(),
+                direction: input.line_box_context.resolve(None),
+                used: group_insets,
+                witness: crate::group_alignment::Witness::Numeric {
+                    participants: line.units.iter().map(|unit| unit.participant).collect(),
+                    discarded: line.units.iter().map(|unit| unit.discarded).collect(),
+                    descriptor_start: line.descriptor_range.start,
+                    next: (
+                        line.next_cursor.source,
+                        line.next_cursor.descriptor,
+                        line.next_cursor.edge_consumed,
+                    ),
+                    end: line.ending,
+                    band: line.band,
+                },
+            });
+        }
         inline_extent = inline_extent.max(line_inline_start + line.used_inline_extent);
         post_line_clear_intents.push(line.post_line_clear_intent);
         line_bands.push(line.band);
@@ -2827,6 +2940,7 @@ where
     }
 
     Ok(MixedInlineRunReportOf {
+        group_lines,
         formatted_lines,
         line_box_context,
         lines,
@@ -3188,6 +3302,7 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
         })
         .collect();
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+        groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,
         line_box_context: crate::line_box::LineBoxContext::new(
             crate::LineBoxDirectionPolicy::Normal,

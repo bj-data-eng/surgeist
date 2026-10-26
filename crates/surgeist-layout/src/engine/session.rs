@@ -22,6 +22,9 @@ type CanonicalFrames<Tree> = Vec<
     crate::text_layout::state::CanonicalFrame<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
 >;
 
+type GroupBasis<Tree> =
+    Option<crate::group_alignment::Basis<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>>;
+
 #[cfg(test)]
 std::thread_local! {
     static HIDDEN_COMPUTE_SESSION_REQUESTS: std::cell::RefCell<Vec<(
@@ -48,9 +51,11 @@ where
     Tree: LayoutTree,
 {
     tree: &'a Tree,
+    block_floats: crate::block::float_context::State<Tree::Node, Tree::Scalar>,
     wrapping: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>>,
     flow_graph: Option<&'a crate::engine::validation::ValidationGraph<Tree::Node>>,
     wrapping_uncached: Vec<Tree::Node>,
+    groups: Option<crate::group_alignment::State<Tree::Node, Tree::Scalar>>,
     text: Option<crate::text_layout::state::TextComputation<'a, Tree::Node, Tree::Scalar>>,
     unrounded_entries: Vec<LayoutOutputEntryOf<Tree::Node, Tree::Scalar>>,
     final_entries: Vec<LayoutOutputEntryOf<Tree::Node, Tree::Scalar>>,
@@ -70,6 +75,7 @@ struct StagedInlineFragmentGroup<Node, S: LayoutScalar> {
 /// One actual child request executed off-side against the same immutable tree
 /// and canonical Text invocation. This is not a rounded/completed child batch.
 pub(crate) struct FloatChildPacket<Node, S: LayoutScalar> {
+    groups: Option<crate::group_alignment::State<Node, S>>,
     wrapping: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>>,
     formatted_basis: Vec<crate::text_layout::formatted::BoundAssignment<Node, S>>,
     boxes: Vec<crate::text_layout::boxes::BoxRunUse<Node, S>>,
@@ -156,9 +162,11 @@ where
             .collect();
         Self {
             tree,
+            block_floats: crate::block::float_context::State::new(),
             wrapping: None,
             flow_graph: None,
             wrapping_uncached: Vec::new(),
+            groups: None,
             text: None,
             unrounded_entries: Vec::new(),
             final_entries: Vec::new(),
@@ -176,6 +184,12 @@ where
         graph: &'a crate::engine::validation::ValidationGraph<Tree::Node>,
     ) {
         self.flow_graph = Some(graph);
+        self.block_floats.configure(self.tree, graph);
+        if let Some(nodes) = crate::group_alignment::dependencies(self.tree, graph) {
+            self.groups = Some(crate::group_alignment::State::new());
+            self.uncache_flow_dependencies(graph, nodes.into_iter());
+        }
+
         if wrapping.has_effects() {
             self.wrapping = Some(wrapping.clone());
             // Host geometry has no slot for this immutable selection basis.
@@ -244,6 +258,24 @@ where
             session.text = Some(text);
         }
         session
+    }
+
+    pub(super) fn groups_active(&self) -> bool {
+        self.groups.is_some()
+    }
+    pub(super) fn group_basis(&self, root: Tree::Node) -> SessionResult<Tree, GroupBasis<Tree>> {
+        self.groups
+            .as_ref()
+            .map(|groups| groups.basis().map_err(|error| error.layout(root)))
+            .transpose()
+    }
+    pub(super) fn next_groups(&mut self, basis: &GroupBasis<Tree>) {
+        if let (Some(state), Some(basis)) = (&mut self.groups, basis) {
+            state.next_pass(basis);
+        }
+    }
+    pub(super) fn has_text(&self) -> bool {
+        self.text.is_some()
     }
 
     pub(super) fn canonical_frames(
@@ -338,38 +370,33 @@ where
         &mut self,
         frames: Vec<crate::text_layout::state::CanonicalFrame<Tree::Node, Tree::Scalar>>,
     ) {
-        let text = self
-            .text
-            .as_mut()
-            .expect("Text compute entry initialized its state");
-        text.formatted_next_pass();
-        text.frames = frames.into();
-        if let Some(formatted) = &mut text.formatted {
-            formatted.frames = text.frames.clone();
-            formatted.wrapping = text.wrapping.clone();
-        }
-        text.reusable = text
-            .pending
-            .iter()
-            .flat_map(|paragraph| {
-                paragraph
-                    .entries
+        if let Some(text) = self.text.as_mut() {
+            text.formatted_next_pass();
+            text.frames = frames.into();
+            if let Some(formatted) = &mut text.formatted {
+                formatted.frames = text.frames.clone();
+                formatted.wrapping = text.wrapping.clone();
+            }
+            text.reusable =
+                text.pending
                     .iter()
-                    .zip(&paragraph.amounts)
-                    .map(
-                        |(placement, amounts)| crate::text_layout::fit::ReusableLine {
-                            finalized: placement.finalized_line().clone(),
-                            amounts: amounts.clone(),
-                        },
-                    )
-            })
-            .collect::<Vec<_>>()
-            .into();
-        text.pending.clear();
-        text.boxes.clear();
-        text.scope_fragments.clear();
-        text.atomic_origins.clear();
-        text.absolute_baselines.clear();
+                    .flat_map(|paragraph| {
+                        paragraph.entries.iter().zip(&paragraph.amounts).map(
+                            |(placement, amounts)| crate::text_layout::fit::ReusableLine {
+                                finalized: placement.finalized_line().clone(),
+                                amounts: amounts.clone(),
+                            },
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .into();
+            text.pending.clear();
+            text.boxes.clear();
+            text.scope_fragments.clear();
+            text.atomic_origins.clear();
+            text.absolute_baselines.clear();
+        }
+        self.block_floats.reset();
         self.unrounded_entries.clear();
         self.final_entries.clear();
         self.unrounded_inline_fragment_groups.clear();
@@ -610,6 +637,33 @@ where
         Some((self.wrapping.as_ref()?, self.flow_graph?))
     }
 
+    fn block_float_state(
+        &mut self,
+    ) -> Option<&mut crate::block::float_context::State<Self::Node, Self::Scalar>> {
+        Some(&mut self.block_floats)
+    }
+    fn has_leaf_measurement(&self, node: Self::Node) -> bool {
+        self.tree.has_leaf_measurement(node)
+    }
+    fn block_float_work(&self, node: Self::Node) -> bool {
+        if let Some(graph) = self.flow_graph {
+            let index = graph
+                .index(node)
+                .expect("actual child belongs to this immutable graph");
+            self.block_floats
+                .needs_work(index)
+                .expect("float work proof shares the validated graph")
+        } else {
+            crate::block::float_context::discover_work(self, node)
+        }
+    }
+
+    fn group_computation(
+        &mut self,
+    ) -> Option<&mut crate::group_alignment::State<Self::Node, Self::Scalar>> {
+        self.groups.as_mut()
+    }
+
     fn text_computation(
         &mut self,
     ) -> Option<&mut crate::text_layout::state::TextComputation<'input, Self::Node, Self::Scalar>>
@@ -755,6 +809,7 @@ where
         Tree::MeasureError,
     > {
         let mut observation = Self::new(self.tree, self.invalidated_nodes.clone());
+        observation.block_floats = self.block_floats.fork();
         observation.wrapping = self.wrapping.clone();
         observation.flow_graph = self.flow_graph;
         observation.wrapping_uncached = self.wrapping_uncached.clone();
@@ -818,6 +873,8 @@ where
             .filter(|node| scope.contains(node))
             .collect();
         let mut probe = Self::new(self.tree, dirty);
+        probe.block_floats = self.block_floats.fork();
+        probe.groups = self.groups.as_ref().map(|groups| groups.fork());
         probe.wrapping = self.wrapping.clone();
         probe.flow_graph = self.flow_graph;
         probe.wrapping_uncached = self.wrapping_uncached.clone();
@@ -863,6 +920,7 @@ where
             );
         let associations = self.text.as_ref().map(|text| text.associations.clone());
         Ok(std::sync::Arc::new(FloatChildPacket {
+            groups: probe.groups,
             boxes,
             wrapping: self.wrapping.clone(),
             formatted_basis: self
@@ -891,6 +949,17 @@ where
         &mut self,
         packet: &FloatChildPacket<Self::Node, Self::Scalar>,
     ) -> LayoutResultOf<Self::Node, (), Self::Scalar, Tree::MeasureError> {
+        if !match (&self.groups, &packet.groups) {
+            (Some(left), Some(right)) => left.same_plan(right),
+            (None, None) => true,
+            _ => false,
+        } {
+            return Err(LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(packet.node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::TextFeedbackCycle,
+            ));
+        }
         if self.wrapping != packet.wrapping {
             return Err(crate::inline_wrapping::wrapping_error(
                 packet.node,
@@ -922,6 +991,9 @@ where
                 LayoutOperation::ChildLayout,
                 LayoutErrorKindOf::TextFeedbackCycle,
             ));
+        }
+        if let (Some(groups), Some(accepted)) = (&mut self.groups, &packet.groups) {
+            groups.accept(accepted);
         }
         for entry in &packet.entries {
             self.set_unrounded(entry.node(), entry.output());
@@ -1114,6 +1186,7 @@ where
         context: crate::CacheKeyContext,
     ) -> Option<ComputeOutputOf<Self::Scalar>> {
         if self.invalidated_nodes.contains(&node)
+            || self.block_floats.blocks_cache(node, input)
             || self.wrapping_uncached.contains(&node)
             || self
                 .text
@@ -1153,6 +1226,10 @@ where
             self.cache_clear(node);
             return;
         }
+        if self.block_floats.blocks_cache(node, input) {
+            return;
+        }
+
         if let Some(index) = self.cache_store_entries.iter().position(|entry| {
             entry.node() == node && entry.input() == input && entry.context() == context
         }) {
@@ -1185,8 +1262,88 @@ mod wrapping_tests;
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn actual_float_packets_preserve_send_sync_for_native_nodes_and_both_scalars() {
+        fn require_send_sync<T: Send + Sync>() {}
+        require_send_sync::<super::FloatChildPacket<u32, f32>>();
+        require_send_sync::<super::FloatChildPacket<u32, f64>>();
+    }
+
     use super::*;
     use crate::{DefaultScalar, LayoutErrorSite, NodeInput, Point, ScrollRectOf, round_layout};
+
+    #[test]
+    fn rejected_float_probe_cannot_export_shared_descendant_rows_or_outputs() {
+        fn lane<S: LayoutScalar>() {
+            let sized = |width: f64, height: Option<f64>| NodeInputOf {
+                display: crate::Display::Block,
+                size: Size::new(
+                    crate::PreferredSizeOf::px(S::from_f64(width)),
+                    height.map_or(crate::PreferredSizeOf::AUTO, |height| {
+                        crate::PreferredSizeOf::px(S::from_f64(height))
+                    }),
+                ),
+                ..NodeInputOf::default()
+            };
+            let tree = crate::test_support::layout_tree::PublicLayoutTreeOf::new()
+                .children(1, [2])
+                .children(2, [3])
+                .children(3, [])
+                .style(
+                    1,
+                    NodeInputOf {
+                        float: crate::Float::Left,
+                        ..sized(40.0, None)
+                    },
+                )
+                .style(2, sized(40.0, None))
+                .style(
+                    3,
+                    NodeInputOf {
+                        float: crate::Float::Left,
+                        ..sized(10.0, Some(30.0))
+                    },
+                );
+            let mut session = ComputeSession::new(&tree, Vec::new());
+            let input = ComputeInputOf::leaf_layout(
+                Size::NONE,
+                Size::new(Some(S::from_f64(100.0)), None),
+                crate::ContainingLayoutContext::new(
+                    crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+                    crate::ParentFormattingContext::BlockFlow,
+                ),
+                Size::new(
+                    crate::AvailableOf::definite(S::from_f64(100.0)),
+                    crate::AvailableOf::MAX_CONTENT,
+                ),
+            )
+            .unwrap();
+            let rejected = session.probe_float_child(1, input).unwrap();
+            assert_eq!(rejected.output.size.height, S::from_f64(30.0));
+            drop(rejected);
+            assert!(session.unrounded_entries.is_empty());
+            assert!(session.cache_store_entries.is_empty());
+            let accepted = session.probe_float_child(1, input).unwrap();
+            session.accept_float_child(&accepted).unwrap();
+            let child = session
+                .unrounded_entries
+                .iter()
+                .find(|entry| entry.node() == 2)
+                .unwrap()
+                .output();
+            assert_eq!(child.size.height, S::ZERO);
+            let float = session
+                .unrounded_entries
+                .iter()
+                .find(|entry| entry.node() == 3)
+                .unwrap()
+                .output();
+            assert_eq!(float.size.height, S::from_f64(30.0));
+            assert_eq!(float.location, Point::ZERO);
+        }
+        lane::<f32>();
+        lane::<f64>();
+    }
 
     #[test]
     fn borrowed_input_projection_remains_live_across_mutable_child_compute() {

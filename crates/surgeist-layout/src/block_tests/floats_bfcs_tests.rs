@@ -881,12 +881,8 @@ fn fri06_c05_shape_flow_physical_intervals_preserve_both_logical_sides_all_flows
             );
             assert_eq!(
                 start_tree.shape_queries(),
-                vec![
-                    (1, expected_start_query),
-                    (1, expected_start_query),
-                    (1, expected_start_query),
-                ],
-                "float, line, and final float candidates must share the exact mapped query for {writing_mode:?} {direction:?}",
+                vec![(1, expected_start_query), (1, expected_start_query),],
+                "float and line candidates must share the exact mapped query; native publication validates the accepted placement without a new query for {writing_mode:?} {direction:?}",
             );
 
             let (minimum, maximum) = fri06_c05_physical_inline_interval(flow_axes, 75.0, 100.0);
@@ -924,8 +920,8 @@ fn fri06_c05_shape_flow_physical_intervals_preserve_both_logical_sides_all_flows
             );
             assert_eq!(
                 end_tree.shape_queries(),
-                vec![(1, expected_end_query), (1, expected_end_query)],
-                "line-end candidate passes must retain the final physical margin box and ordered band for {writing_mode:?} {direction:?}",
+                vec![(1, expected_end_query)],
+                "the line-end float candidate must retain the physical margin box and ordered band; native publication does not query again for {writing_mode:?} {direction:?}",
             );
         }
     }
@@ -972,7 +968,8 @@ fn fri06_c05_shape_query_float_line_and_bfc_consumers_record_exact_candidate_onc
         compute_layout(&float_tree, 0, fri06_c05_shape_request(flow_axes)).unwrap();
         assert_eq!(
             float_tree.shape_queries(),
-            vec![(1, expected), (1, expected)]
+            vec![(1, expected)],
+            "only the overlapping float candidate queries the shape; native publication reuses its validated placement",
         );
 
         let bfc_tree = fri06_c05_shape_tree(

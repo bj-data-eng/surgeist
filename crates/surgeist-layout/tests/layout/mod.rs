@@ -17,3 +17,5 @@ mod wrap_balance;
 
 mod numeric_bidi_order;
 mod shared_float_context;
+mod text_group_align;
+mod text_group_text;

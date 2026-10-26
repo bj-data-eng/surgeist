@@ -76,20 +76,7 @@ where
 {
     let mut session = session::ComputeSession::new(tree, invalidated_nodes);
     session.install_wrapping(wrapping, graph);
-    match request.context() {
-        LayoutRootContextOf::Viewport => {
-            compute_root(&mut session, root, request.available())?;
-        }
-        LayoutRootContextOf::FlexItemUnderViewport(context) => {
-            compute_flex_item_root(&mut session, root, request.available(), context)?;
-        }
-    }
-
-    match request.rounding_mode() {
-        crate::LayoutRoundingMode::NearestCssPixel => rounding::round_layout(&mut session, root)?,
-    }
-
-    Ok(session.complete_for_root(root))
+    run_session(session, root, request)
 }
 
 /// Computes checked immutable inline flow, including numeric-only flow.
@@ -128,21 +115,16 @@ where
     let mut invalidation_seeds = changed_nodes.to_vec();
     invalidation_seeds.extend(capture.invalidated.iter().copied());
     let invalidated = capture.graph.invalidation(&invalidation_seeds)?;
-    let mut session = session::ComputeSession::with_flow(capture, invalidated);
-    if capture.paragraphs.is_empty() {
-        match request.context() {
-            LayoutRootContextOf::Viewport => compute_root(&mut session, root, request.available())?,
-            LayoutRootContextOf::FlexItemUnderViewport(context) => {
-                compute_flex_item_root(&mut session, root, request.available(), context)?;
-            }
-        }
-        match request.rounding_mode() {
-            crate::LayoutRoundingMode::NearestCssPixel => {
-                rounding::round_layout(&mut session, root)?
-            }
-        }
-        return Ok(session.complete_for_root(root));
-    }
+    let session = session::ComputeSession::with_flow(capture, invalidated);
+    run_session(session, root, request)
+}
+
+fn run_session<Tree: LayoutTree>(
+    mut session: session::ComputeSession<'_, Tree>,
+    root: Tree::Node,
+    request: LayoutRootRequestOf<Tree::Scalar>,
+) -> ComputeLayoutResult<Tree> {
+    let replay = session.has_text() || session.groups_active();
     let mut rejected_bases = Vec::new();
     loop {
         match request.context() {
@@ -158,13 +140,25 @@ where
                 rounding::round_layout(&mut session, root)?
             }
         }
+        if !replay {
+            return Ok(session.complete_for_root(root));
+        }
         let frames = session.canonical_frames(root)?;
-        let basis = session.text_pass_basis(frames.clone());
-        if frames == session.text_basis()
-            && rejected_bases.last() == Some(&basis)
+        let text = session
+            .has_text()
+            .then(|| session.text_pass_basis(frames.clone()));
+        let groups = session.group_basis(root)?;
+        let basis = (frames.clone(), text, groups.clone());
+        if rejected_bases.last() == Some(&basis)
+            && (!session.has_text() || frames == session.text_basis())
             && session.formatted_text_valid()
+            && groups.as_ref().is_none_or(|groups| groups.is_reproduced())
         {
-            return session.complete_with_text(root);
+            return if session.has_text() {
+                session.complete_with_text(root)
+            } else {
+                Ok(session.complete_for_root(root))
+            };
         }
         if rejected_bases.contains(&basis) {
             return Err(crate::LayoutErrorOf::new(
@@ -174,6 +168,7 @@ where
             ));
         }
         rejected_bases.push(basis);
+        session.next_groups(&groups);
         session.begin_text_pass(frames);
     }
 }

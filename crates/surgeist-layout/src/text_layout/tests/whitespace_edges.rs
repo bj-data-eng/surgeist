@@ -31,6 +31,7 @@ fn run_in_band<S: LayoutScalar>(
         &[],
         &[],
         super::super::run::Context {
+            groups: crate::group_alignment::Snapshot::default(),
             wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,
             formatted: Default::default(),

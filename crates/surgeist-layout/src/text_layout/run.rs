@@ -401,6 +401,7 @@ pub(crate) enum Frame<S: LayoutScalar> {
 }
 
 pub(crate) struct Context<Node, S: LayoutScalar> {
+    pub groups: crate::group_alignment::Snapshot,
     pub wrapping: Option<WrappingProjection<Node>>,
     pub formatted: super::formatted::FormattedTailSnapshot,
     pub line_box_context: crate::line_box::LineBoxContext,
@@ -541,6 +542,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         .map(|projection| projection as &fit::WrappingClassifier<'_>);
     let lines = fit::fit(
         fit::FitInput {
+            groups: context.groups.clone(),
             wrapping,
             formatted: &context.formatted,
             line_box_context: context.line_box_context,
@@ -967,6 +969,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         last_baseline: None,
         atomics: Vec::new(),
         controls: Vec::new(),
+        group_lines: Vec::new(),
         nonformatted_controls: Vec::new(),
         post_line_clear_intents: Vec::new(),
         line_bands: Vec::new(),
@@ -1000,6 +1003,25 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         natural_advances.push(line.natural_advance);
         let line_index = report.line_bands.len();
         let is_formatted = line.disposition.is_formatted();
+        if is_formatted && context.groups.is_active() {
+            let selected = line.finalized.selected_line();
+            let request = selected.request();
+            if let Some(width) = request.context.available_inline {
+                report
+                    .group_lines
+                    .push(crate::group_alignment::NaturalLine {
+                        width,
+                        indent: request.context.indent,
+                        advance: line.natural_advance,
+                        direction: request.context.line_box_direction,
+                        used: request.context.alignment_insets,
+                        witness: crate::group_alignment::Witness::Text {
+                            request: Box::new(request.clone()),
+                            amounts: line.amounts.clone(),
+                        },
+                    });
+            }
+        }
         box_assignments.push(line.boxes.clone());
         box_uses.extend(line.box_uses);
         for used in line.role_uses {
@@ -1505,15 +1527,9 @@ pub(crate) fn number<S: LayoutScalar>(value: f64) -> Result<S, FitError> {
     Ok(number)
 }
 pub(super) fn add(base: f64, delta: f64) -> Result<f64, FitError> {
-    let result = finite(base + delta)?;
-    if delta != 0.0 && result == base {
-        return Err(FitError::Numeric(
-            delta,
-            LayoutTextNumericError::NonZeroLost,
-        ));
-    }
-    Ok(result)
+    crate::scalar::checked_geometry_add(base, delta).map_err(FitError::from)
 }
+
 fn finite(value: f64) -> Result<f64, FitError> {
     if value.is_finite() {
         Ok(value)

@@ -476,6 +476,7 @@ fn assert_outgoing_counter_once(p: &text::PreparedText) {
         .collect::<Vec<_>>();
     let fitted = fit::fit(
         fit::FitInput {
+            groups: crate::group_alignment::Snapshot::default(),
             wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,
             formatted: &super::super::formatted::FormattedTailSnapshot::default(),

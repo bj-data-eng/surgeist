@@ -46,6 +46,27 @@ pub use scroll::{
     ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf,
 };
 
+/// Alignment of the natural in-flow text-line group in this block's BFC.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum TextGroupAlign {
+    #[default]
+    None,
+    Start,
+    End,
+    Left,
+    Right,
+    Center,
+}
+
+/// Used block formatting-context establishment supplied by style lowering.
+/// `Normal` does not override other actual context-establishing box roles.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum BlockFlowContext {
+    #[default]
+    Normal,
+    Independent,
+}
+
 fn validate_numeric_property<S: LayoutScalar>(
     value: S,
 ) -> Result<S, NonNegativeFiniteScalarErrorOf<S>> {
@@ -89,6 +110,8 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     pub hyphenate_limit_zone: crate::LengthPercentageOf<S>,
     /// Normalized inherited line-selection preference for this block container.
     pub text_wrap_style: TextWrapStyle,
+    pub text_group_align: TextGroupAlign,
+    pub block_flow_context: BlockFlowContext,
     pub text_align: TextAlign,
     pub text_align_last: TextAlignLast,
     pub text_justification: TextJustification,
@@ -194,6 +217,8 @@ impl NodeInputOf<DefaultScalar> {
         hyphenate_limit_last: crate::HyphenateLimitLast::None,
         hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
         text_wrap_style: TextWrapStyle::Auto,
+        text_group_align: TextGroupAlign::None,
+        block_flow_context: BlockFlowContext::Normal,
         text_align: TextAlign::Start,
         text_align_last: TextAlignLast::Auto,
         text_justification: TextJustification::None,
@@ -281,6 +306,8 @@ impl<S: LayoutScalar> Default for NodeInputOf<S> {
             hyphenate_limit_last: crate::HyphenateLimitLast::None,
             hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
             text_wrap_style: TextWrapStyle::Auto,
+            text_group_align: TextGroupAlign::None,
+            block_flow_context: BlockFlowContext::Normal,
             text_align: TextAlign::Start,
             text_align_last: TextAlignLast::Auto,
             text_justification: TextJustification::None,

@@ -200,6 +200,7 @@ fn fitting_ordinary_trials(
     let observed = RefCell::new(Vec::<LineSelectionRequest>::new());
     let lines = super::super::fit(
         FitInput {
+            groups: crate::group_alignment::Snapshot::default(),
             wrapping: None,
             formatted: &FormattedTailSnapshot::default(),
             line_box_context: crate::line_box::LineBoxContext::new(

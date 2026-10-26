@@ -41,6 +41,7 @@ fn mr02_input<S: LayoutScalar>(
     participants: Vec<MixedInlineParticipantOf<S>>,
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
+        groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,
         line_box_context: crate::line_box::LineBoxContext::new(
             crate::LineBoxDirectionPolicy::Normal,
@@ -704,6 +705,7 @@ fn fri06_c03_strut_private_builder_retains_control_baselines_and_post_line_inten
             InlineMetricsOf::from_line_height_and_baseline(S::from_f64(20.0), S::from_f64(15.0))
                 .unwrap();
         let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+            groups: crate::group_alignment::Snapshot::default(),
             text_wrap_style: crate::TextWrapStyle::Auto,
             line_box_context: crate::line_box::LineBoxContext::new(
                 crate::LineBoxDirectionPolicy::Normal,
@@ -763,6 +765,7 @@ fn fri06_c04_line_band_private_callback_retries_transition_and_reselects_same_cu
         let mut queries = Vec::new();
         let report = layout_mixed_inline_run_with_band_source(
             MixedInlineRunInputOf {
+                groups: crate::group_alignment::Snapshot::default(),
                 text_wrap_style: crate::TextWrapStyle::Auto,
                 line_box_context: crate::line_box::LineBoxContext::new(
                     crate::LineBoxDirectionPolicy::Normal,
