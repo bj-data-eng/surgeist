@@ -64,8 +64,12 @@ fn fixture<S: LayoutScalar>(hidden: bool, width: f64) -> NativeRun<S> {
     let boundary = |kind| {
         LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
             kind,
-            InlineMetricsOf::from_line_height_and_baseline(S::from_f64(10.0), S::from_f64(10.0))
-                .unwrap(),
+            InlineMetricsOf::from_line_height_and_baseline(
+                surgeist_layout::InlineBaselineContext::Physical,
+                S::from_f64(10.0),
+                S::from_f64(10.0),
+            )
+            .unwrap(),
             InlineBoundaryEdgeOf::ZERO,
         ))
     };

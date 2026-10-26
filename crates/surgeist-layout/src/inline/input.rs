@@ -151,8 +151,12 @@ mod tests {
         };
         assert_eq!(projected_text.origin(), &paragraph.origin(17));
 
-        let break_metrics = InlineMetricsOf::try_new(S::from_f64(13.0), S::from_f64(19.0))
-            .expect("valid non-default line-break metrics");
+        let break_metrics = InlineMetricsOf::try_new(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(13.0),
+            S::from_f64(19.0),
+        )
+        .expect("valid non-default line-break metrics");
         let line_break = LineBreakInputOf::new()
             .with_metrics(break_metrics)
             .hidden()
@@ -173,8 +177,12 @@ mod tests {
         assert_eq!(projected_break.vertical_align(), VerticalAlign::Top);
         assert_eq!(projected_break.clear(), Clear::Right);
 
-        let boundary_metrics = InlineMetricsOf::try_new(S::from_f64(29.0), S::from_f64(31.0))
-            .expect("valid non-default inline-boundary metrics");
+        let boundary_metrics = InlineMetricsOf::try_new(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(29.0),
+            S::from_f64(31.0),
+        )
+        .expect("valid non-default inline-boundary metrics");
         let boundary = InlineBoundaryInputOf::new(
             InlineBoundaryKind::End,
             boundary_metrics,

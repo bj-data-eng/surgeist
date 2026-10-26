@@ -254,7 +254,12 @@ impl<S: l::LayoutScalar> Advanced<S> {
                 let node = inputs.len() as u32;
                 inputs.push(l::LayoutInputOf::line_break(
                     l::LineBreakInputOf::new().with_metrics(
-                        l::InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                        l::InlineMetricsOf::try_new(
+                            surgeist_layout::InlineBaselineContext::Physical,
+                            S::from_f64(8.0),
+                            S::from_f64(10.0),
+                        )
+                        .unwrap(),
                     ),
                 ));
                 nodes.push(node);

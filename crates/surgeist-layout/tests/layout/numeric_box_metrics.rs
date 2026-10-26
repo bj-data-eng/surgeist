@@ -90,6 +90,7 @@ impl<S: LayoutScalar> NumericTree<S> {
             InlineBoundaryInputOf::new(
                 kind,
                 InlineMetricsOf::try_new(
+                    surgeist_layout::InlineBaselineContext::Physical,
                     S::from_f64(actual.metrics.baseline),
                     S::from_f64(actual.metrics.line_extent),
                 )

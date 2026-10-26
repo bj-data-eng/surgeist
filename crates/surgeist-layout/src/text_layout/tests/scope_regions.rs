@@ -82,7 +82,8 @@ fn bind(
                 node,
                 LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                     kind,
-                    InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+                    InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
+                        .unwrap(),
                     crate::InlineBoundaryEdgeOf::ZERO,
                 )),
             );

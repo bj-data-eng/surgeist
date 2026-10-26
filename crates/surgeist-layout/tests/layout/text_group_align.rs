@@ -96,7 +96,14 @@ fn forced<S: l::LayoutScalar>(
         l::LineBreakInputOf::new()
             .with_writing_mode(mode)
             .with_direction(direction)
-            .with_metrics(l::InlineMetricsOf::try_new(n(10.0), n(10.0)).unwrap()),
+            .with_metrics(
+                l::InlineMetricsOf::try_new(
+                    surgeist_layout::InlineBaselineContext::Physical,
+                    n(10.0),
+                    n(10.0),
+                )
+                .unwrap(),
+            ),
     )
 }
 impl<S: l::LayoutScalar> Tree<S> {

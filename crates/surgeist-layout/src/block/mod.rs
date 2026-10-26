@@ -203,7 +203,8 @@ where
         } = constants.node_outer_size
     {
         return Ok(BlockResult {
-            output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height)),
+            output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height))
+                .with_named_baselines(crate::NamedBaselinesOf::absent()),
             used: input,
             floats: None,
         });
@@ -219,7 +220,8 @@ where
         && !normal_flow_children_can_establish_baseline(tree, &children)
     {
         return Ok(BlockResult {
-            output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height)),
+            output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height))
+                .with_named_baselines(crate::NamedBaselinesOf::absent()),
             used: input,
             floats: None,
         });
@@ -352,7 +354,8 @@ where
             output_size,
             Size::ZERO,
             final_pass.baselines,
-        );
+        )
+        .with_named_baselines(final_pass.named_baselines);
         output.block_margin_collapse = block_margin_collapse;
         Ok(BlockResult {
             output,
@@ -408,7 +411,8 @@ where
             output_size,
             published_scroll.content_size,
             final_pass.baselines,
-        );
+        )
+        .with_named_baselines(final_pass.named_baselines);
         output.scroll_geometry = Some(published_scroll.geometry);
         output.block_margin_collapse = block_margin_collapse;
         Ok(BlockResult {
@@ -443,6 +447,7 @@ struct Constants<S: LayoutScalar> {
     node_max_size: Size<Option<S>>,
     direction: Direction,
     line_box_direction_policy: crate::LineBoxDirectionPolicy,
+    inline_baseline_context: crate::InlineBaselineContext,
     text_indent: crate::TextIndentOf<S>,
     hyphenate_limit_lines: crate::HyphenateLimitLines,
     hyphenate_limit_last: crate::HyphenateLimitLast,
@@ -737,6 +742,7 @@ impl<S: LayoutScalar> Constants<S> {
             node_max_size: max_size,
             direction: flow_axes.direction(),
             line_box_direction_policy: style.line_box_direction_policy,
+            inline_baseline_context: style.inline_baseline_context,
             wrap_style: style.wrap_style,
             text_align: style.text_align,
             text_align_last: style.text_align_last,

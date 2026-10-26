@@ -14,7 +14,13 @@ pub(crate) fn round_layout<Tree, M>(
 where
     Tree: Round<M>,
 {
-    round_layout_inner(tree, root, Tree::Scalar::ZERO, Tree::Scalar::ZERO)
+    round_layout_inner(
+        tree,
+        root,
+        Tree::Scalar::ZERO,
+        Tree::Scalar::ZERO,
+        NamedRoundingContext::ROOT,
+    )
 }
 
 fn round_layout_inner<Tree, M>(
@@ -22,6 +28,7 @@ fn round_layout_inner<Tree, M>(
     node: <Tree as Traverse>::Node,
     cumulative_x: Tree::Scalar,
     cumulative_y: Tree::Scalar,
+    named_ancestor: NamedRoundingContext,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), <Tree as Traverse>::Scalar, M>
 where
     Tree: Round<M>,
@@ -38,6 +45,15 @@ where
             Tree::Scalar::from_f64(origin.y - origin.y.floor()),
         );
         let mut layout = unrounded;
+        let named_context = NamedRoundingContext::canonical(origin);
+        layout.named_baselines = finalize_named_baselines(unrounded.named_baselines, named_context)
+            .map_err(|kind| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::RoundingFinalization,
+                    kind,
+                )
+            })?;
         layout.scroll_geometry = unrounded
             .scroll_geometry
             .map(|geometry| rebuild_rounded_canonical_scroll_geometry(geometry, scalar_phase))
@@ -58,6 +74,7 @@ where
                 tree.child(node, index),
                 scalar_phase.x,
                 scalar_phase.y,
+                named_context,
             )?;
         }
         return Ok(());
@@ -79,6 +96,15 @@ where
 
     layout.location.x = round_layout_coordinate(unrounded.location.x);
     layout.location.y = round_layout_coordinate(unrounded.location.y);
+    let named_context = named_ancestor.descend(unrounded.location, layout.location);
+    layout.named_baselines = finalize_named_baselines(unrounded.named_baselines, named_context)
+        .map_err(|kind| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::RoundingFinalization,
+                kind,
+            )
+        })?;
     layout.size.width = round_layout_coordinate(cumulative_x + unrounded.size.width)
         - round_layout_coordinate(cumulative_x);
     layout.size.height = round_layout_coordinate(cumulative_y + unrounded.size.height)
@@ -141,9 +167,120 @@ where
 
     for index in 0..tree.child_count(node) {
         let child = tree.child(node, index);
-        round_layout_inner(tree, child, cumulative_x, cumulative_y)?;
+        round_layout_inner(tree, child, cumulative_x, cumulative_y, named_context)?;
     }
     Ok(())
+}
+
+/// Named readback tracks the actual raw and published border frames without
+/// adding a small metric to a huge global origin. `integer_shift` is
+/// floor(raw global origin) - floor(published global origin); the two phases
+/// complete the same raw-to-published displacement. Ordinary location/size
+/// rounding remains unchanged. Canonical Text atomics retain their real origin.
+#[derive(Clone, Copy)]
+struct NamedRoundingContext {
+    raw_phase: Point<f64>,
+    published_phase: Point<f64>,
+    integer_shift: Point<f64>,
+}
+
+impl NamedRoundingContext {
+    const ROOT: Self = Self {
+        raw_phase: Point::ZERO,
+        published_phase: Point::ZERO,
+        integer_shift: Point::ZERO,
+    };
+
+    fn canonical(origin: Point<f64>) -> Self {
+        let phase = Point::new(origin.x - origin.x.floor(), origin.y - origin.y.floor());
+        Self {
+            raw_phase: phase,
+            published_phase: phase,
+            integer_shift: Point::ZERO,
+        }
+    }
+
+    fn descend<S: LayoutScalar>(self, raw: Point<S>, published: Point<S>) -> Self {
+        let axis = |phase: f64, shift: f64, raw: S, published: S| {
+            let raw = raw.to_f64();
+            let combined_phase = phase + (raw - raw.floor());
+            (
+                combined_phase - combined_phase.floor(),
+                shift + (raw.floor() - published.to_f64()) + combined_phase.floor(),
+            )
+        };
+        let (x, dx) = axis(self.raw_phase.x, self.integer_shift.x, raw.x, published.x);
+        let (y, dy) = axis(self.raw_phase.y, self.integer_shift.y, raw.y, published.y);
+        Self {
+            raw_phase: Point::new(x, y),
+            integer_shift: Point::new(dx, dy),
+            published_phase: self.published_phase,
+        }
+    }
+}
+
+fn finalize_named_baselines<S: LayoutScalar, M>(
+    facts: crate::NamedBaselinesOf<S>,
+    context: NamedRoundingContext,
+) -> Result<crate::NamedBaselinesOf<S>, LayoutErrorKindOf<S, M>> {
+    let finalize = |fact: crate::BaselineFactOf<S>| {
+        let crate::BaselineFactOf::Available(coordinate) = fact else {
+            return Ok(fact);
+        };
+        let (phase, published_phase, shift) = match coordinate.axis() {
+            crate::PhysicalAxis::Horizontal => (
+                context.raw_phase.x,
+                context.published_phase.x,
+                context.integer_shift.x,
+            ),
+            crate::PhysicalAxis::Vertical => (
+                context.raw_phase.y,
+                context.published_phase.y,
+                context.integer_shift.y,
+            ),
+        };
+        let offset = coordinate.offset().to_f64();
+        let whole = offset.floor();
+        let correction = shift + (phase + (offset - whole) + 0.5).floor() - published_phase;
+        let value = whole + correction;
+        if !value.is_finite() {
+            return Err(LayoutErrorKindOf::InvalidInput(
+                crate::LayoutInvalidInputOf::InvalidNumeric {
+                    value: S::from_f64(value),
+                },
+            ));
+        }
+        let converted = S::from_f64(value);
+        if !converted.is_finite()
+            || value != 0.0 && converted == S::ZERO
+            || correction != 0.0 && (value == whole || converted.to_f64() == whole)
+        {
+            return Err(LayoutErrorKindOf::InvalidInput(
+                crate::LayoutInvalidInputOf::InlineBaseline(
+                    crate::InlineBaselineError::UnrepresentableCoordinate,
+                ),
+            ));
+        }
+        crate::BaselineCoordinateOf::try_new(coordinate.axis(), converted)
+            .map(crate::BaselineFactOf::Available)
+            .map_err(|crate::FiniteScalarErrorOf::NonFinite { value }| {
+                LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::InvalidNumeric {
+                    value,
+                })
+            })
+    };
+    let mut result = crate::NamedBaselinesOf::unknown();
+    for name in [
+        crate::BaselineName::Alphabetic,
+        crate::BaselineName::Central,
+    ] {
+        let pair = facts.get(name);
+        result = result.with(
+            name,
+            crate::BaselinePairOf::new(finalize(pair.first())?, finalize(pair.last())?),
+        );
+    }
+    Ok(result)
 }
 
 #[cfg(test)]

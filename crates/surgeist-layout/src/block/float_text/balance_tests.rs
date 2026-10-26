@@ -119,9 +119,16 @@ fn lane<S: LayoutScalar>() {
         .input(6, paragraph.text_input(6))
         .input(
             3,
-            LayoutInputOf::line_break(LineBreakInputOf::new().with_metrics(
-                InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
-            )),
+            LayoutInputOf::line_break(
+                LineBreakInputOf::new().with_metrics(
+                    InlineMetricsOf::try_new(
+                        crate::InlineBaselineContext::Physical,
+                        S::from_f64(8.0),
+                        S::from_f64(10.0),
+                    )
+                    .unwrap(),
+                ),
+            ),
         );
     for (node, extent) in [(2, 10.0), (5, 20.0)] {
         tree = tree.style(

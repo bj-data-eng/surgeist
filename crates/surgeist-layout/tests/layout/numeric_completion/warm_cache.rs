@@ -159,8 +159,12 @@ impl<S: l::LayoutScalar> CachedNumeric<S> {
             self.actual.inputs[node] = l::LayoutInputOf::inline_boundary(
                 l::InlineBoundaryInputOf::new(
                     kind,
-                    l::InlineMetricsOf::try_new(S::from_f64(baseline), S::from_f64(extent))
-                        .unwrap(),
+                    l::InlineMetricsOf::try_new(
+                        surgeist_layout::InlineBaselineContext::Physical,
+                        S::from_f64(baseline),
+                        S::from_f64(extent),
+                    )
+                    .unwrap(),
                     edge,
                 )
                 .with_direction(direction),
@@ -176,7 +180,12 @@ impl<S: l::LayoutScalar> CachedNumeric<S> {
             };
             assert_eq!(
                 input.metrics(),
-                l::InlineMetricsOf::try_new(S::from_f64(baseline), S::from_f64(extent)).unwrap()
+                l::InlineMetricsOf::try_new(
+                    surgeist_layout::InlineBaselineContext::Physical,
+                    S::from_f64(baseline),
+                    S::from_f64(extent)
+                )
+                .unwrap()
             );
         }
     }

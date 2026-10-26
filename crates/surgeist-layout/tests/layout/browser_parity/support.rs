@@ -692,7 +692,12 @@ fn parse_inline_boundary_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Erro
                 ));
             }
             Some(
-                layout::InlineMetrics::try_new(baseline, line_height).map_err(|error| {
+                layout::InlineMetrics::try_new(
+                    surgeist_layout::InlineBaselineContext::Physical,
+                    baseline,
+                    line_height,
+                )
+                .map_err(|error| {
                     Error::new(format!("invalid inline boundary metrics: {error:?}"))
                 })?,
             )
@@ -966,7 +971,7 @@ fn parse_inline_segment(xml: roxmltree::Node<'_, '_>) -> Result<MeasuredSegment,
     let inline_extent = parse_inline_nonnegative_number(xml, "inline-extent")?;
     let baseline = parse_inline_nonnegative_number(xml, "inline-baseline")?;
     let line_height = parse_inline_nonnegative_number(xml, "inline-line-height")?;
-    let metrics = layout::InlineMetrics::try_new(baseline, line_height).map_err(|_| {
+    let metrics = layout::InlineMetrics::try_new(surgeist_layout::InlineBaselineContext::Physical, baseline, line_height).map_err(|_| {
         Error::new(format!(
             "invalid inline metrics on `<segment>`: baseline `{baseline}`, line height `{line_height}`"
         ))
@@ -1957,8 +1962,12 @@ impl TestTree {
                 // Native fixture validation forbids an authored strut here,
                 // and the boundary schema admits no decoration properties.
                 // These are genuine zero contributions, not absent Style facts.
-                let metrics = layout::InlineMetrics::try_new(0.0, 0.0)
-                    .map_err(|error| Error::new(format!("invalid neutral metrics: {error:?}")))?;
+                let metrics = layout::InlineMetrics::try_new(
+                    surgeist_layout::InlineBaselineContext::Physical,
+                    0.0,
+                    0.0,
+                )
+                .map_err(|error| Error::new(format!("invalid neutral metrics: {error:?}")))?;
                 layout::LayoutInput::inline_boundary(
                     layout::InlineBoundaryInput::new(
                         kind,
@@ -2265,8 +2274,12 @@ fn fixture_inline_metrics(
 ) -> Result<layout::InlineMetrics, Error> {
     let leading = (line_height - font_size).max(0.0);
     let baseline = (leading / 2.0 + font_size * 0.8).min(line_height);
-    layout::InlineMetrics::try_new(baseline, line_height)
-        .map_err(|error| Error::new(format!("invalid finite fixture inline metrics: {error:?}")))
+    layout::InlineMetrics::try_new(
+        surgeist_layout::InlineBaselineContext::Physical,
+        baseline,
+        line_height,
+    )
+    .map_err(|error| Error::new(format!("invalid finite fixture inline metrics: {error:?}")))
 }
 
 fn grid_text_container_needs_anonymous_child(display: layout::Display) -> bool {
@@ -4221,6 +4234,7 @@ fn inline_metrics(attrs: &StyleAttrs) -> Result<Option<layout::InlineMetrics>, E
         (None, None) => Ok(None),
         (Some(baseline), Some(line_height)) => {
             layout::InlineMetrics::from_line_height_and_baseline(
+                surgeist_layout::InlineBaselineContext::Physical,
                 parse_px_dimension(line_height, "inline-line-height")?,
                 parse_px_dimension(baseline, "inline-baseline")?,
             )

@@ -1083,7 +1083,12 @@ impl<S: layout::LayoutScalar> PairedEarly<S> {
         if reverse {
             declarations.reverse();
         }
-        let metrics = layout::InlineMetricsOf::try_new(S::ZERO, S::ZERO).unwrap();
+        let metrics = layout::InlineMetricsOf::try_new(
+            surgeist_layout::InlineBaselineContext::Physical,
+            S::ZERO,
+            S::ZERO,
+        )
+        .unwrap();
         let start = layout::InlineBoundaryInputOf::new(
             layout::InlineBoundaryKind::Start,
             metrics,

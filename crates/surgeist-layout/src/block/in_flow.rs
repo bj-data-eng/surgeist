@@ -54,6 +54,7 @@ pub(super) struct InFlowResult<Node, S: LayoutScalar> {
     pub(super) resolved_terminal_float_block_end: Option<S>,
     pub(super) contributions: ScrollContributionAccumulatorOf<S>,
     pub(super) baselines: BaselinesOf<S>,
+    pub(super) named_baselines: crate::NamedBaselinesOf<S>,
     pub(super) static_positions: Vec<(Node, Point<S>)>,
     pub(super) pending_floats: Vec<PendingFloat<Node, S>>,
     pub(super) cursor_block: S,
@@ -140,6 +141,7 @@ where
     let mut owned_float_block_end = constants.logical_content_box_inset().block_start;
     let mut resolved_terminal_float_block_end = None;
     let mut baselines = BaselinesOf::NONE;
+    let mut named_baselines = crate::NamedBaselinesOf::absent();
     let mut static_positions = Vec::new();
     let mut active_margin = CollapsibleMarginOf::<S>::ZERO;
     let mut top_margin = CollapsibleMarginOf::<S>::ZERO;
@@ -449,6 +451,7 @@ where
                         content_size: &mut content_size,
                         scroll_content_size: &mut scroll_content_size,
                         baselines: &mut baselines,
+                        named_baselines: &mut named_baselines,
                         static_positions: &mut static_positions,
                         resolved_terminal_float_block_end: &mut resolved_terminal_float_block_end,
                         active_margin: &mut active_margin,
@@ -951,6 +954,7 @@ where
                     source_index: crate::SourceIndex::new(source_index),
                     location,
                     size: output.size,
+                    named_baselines: output.named_baselines,
                     content_size: output.content_size,
                     border: child_border,
                     padding: child_padding,
@@ -990,6 +994,18 @@ where
         content_size.block = content_size.block.max(child_block_content);
         scroll_content_size.inline = scroll_content_size.inline.max(child_inline_content);
         scroll_content_size.block = scroll_content_size.block.max(child_block_content);
+        let child_named = output.named_baselines.translated(location).map_err(
+            |crate::FiniteScalarErrorOf::NonFinite { value }| {
+                crate::LayoutErrorOf::new(
+                    crate::LayoutErrorSiteOf::Node(child),
+                    crate::LayoutOperation::ChildLayout,
+                    crate::LayoutErrorKindOf::InvalidInput(
+                        crate::LayoutInvalidInputOf::InvalidNumeric { value },
+                    ),
+                )
+            },
+        )?;
+        named_baselines.record(child_named);
         if let Some(baseline) = output.baselines().first_block_baseline(child_flow_axes) {
             baselines.record_first(baseline.translated(location));
         }
@@ -1041,6 +1057,7 @@ where
         resolved_terminal_float_block_end,
         contributions,
         baselines,
+        named_baselines,
         static_positions,
         pending_floats,
         cursor_block,

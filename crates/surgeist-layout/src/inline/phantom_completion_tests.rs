@@ -22,7 +22,12 @@ fn boundary<S: LayoutScalar>(
             direction,
             AvailableOf::definite(n(60.0)),
         ),
-        InlineMetricsOf::try_new(n(baseline), n(extent)).unwrap(),
+        InlineMetricsOf::try_new(
+            crate::InlineBaselineContext::Physical,
+            n(baseline),
+            n(extent),
+        )
+        .unwrap(),
         InlineControlAlignment::Baseline,
         InlineBoundaryEdgeOf::try_new(n(border), n(padding)).unwrap(),
     )
@@ -32,6 +37,7 @@ fn input<S: LayoutScalar>(
     participants: Vec<MixedInlineParticipantOf<S>>,
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
+        inline_baseline_context: crate::InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,
         line_box_context: crate::line_box::LineBoxContext::new(
@@ -136,6 +142,7 @@ fn zero_atomic<S: LayoutScalar>(direction: Direction) {
     let calls = Cell::new(0);
     let clears = RefCell::new(Vec::new());
     let atomic = AtomicInlineBoxParticipant {
+        baseline_reference: crate::InlineBaselineContext::Physical,
         source_index: 37,
         size: Size::ZERO,
         content_size: Size::ZERO,
@@ -216,7 +223,7 @@ fn zero_forced<S: LayoutScalar>(direction: Direction) {
             direction,
             AvailableOf::definite(n(60.0)),
         ),
-        InlineMetricsOf::try_new(S::ZERO, S::ZERO).unwrap(),
+        InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, S::ZERO, S::ZERO).unwrap(),
         InlineControlAlignment::Baseline,
         Clear::Both,
     );

@@ -958,6 +958,9 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     lines: Vec<FittedLine>,
 ) -> Result<Output<Node, S>, FitError> {
     let mut report = MixedInlineRunReportOf {
+        inline_baseline_context: crate::InlineBaselineContext::Physical,
+        first_named_baseline: false,
+        last_named_baseline: false,
         lines: Vec::new(),
         hyphenation_state: context.hyphenation_state,
         indent_state: context.indent_state,

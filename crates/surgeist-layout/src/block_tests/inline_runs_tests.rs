@@ -257,9 +257,16 @@ fn prepared_fixed_metric_text_retains_actual_font_baseline_both_scalars() {
 fn fri06_c03_fixed_metric_break_retains_requested_baseline_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         assert_fri06_c03_fixed_metric_participant(
-            LayoutInputOf::line_break(LineBreakInputOf::new().with_metrics(
-                InlineMetricsOf::from_ascent_descent(S::from_f64(7.0), S::from_f64(3.0)).unwrap(),
-            )),
+            LayoutInputOf::line_break(
+                LineBreakInputOf::new().with_metrics(
+                    InlineMetricsOf::from_ascent_descent(
+                        crate::InlineBaselineContext::Physical,
+                        S::from_f64(7.0),
+                        S::from_f64(3.0),
+                    )
+                    .unwrap(),
+                ),
+            ),
             Some(S::from_f64(7.0)),
             Some(S::from_f64(7.0)),
         );
@@ -274,7 +281,12 @@ fn fri06_c03_fixed_metric_zero_edge_boundary_has_no_formatted_baseline_both_scal
         assert_fri06_c03_fixed_metric_participant(
             LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                 InlineBoundaryKind::Start,
-                InlineMetricsOf::from_ascent_descent(S::from_f64(6.0), S::from_f64(4.0)).unwrap(),
+                InlineMetricsOf::from_ascent_descent(
+                    crate::InlineBaselineContext::Physical,
+                    S::from_f64(6.0),
+                    S::from_f64(4.0),
+                )
+                .unwrap(),
                 crate::InlineBoundaryEdgeOf::ZERO,
             )),
             None,
@@ -293,7 +305,12 @@ fn fri06_c03_fixed_metric_positive_border_boundary_retains_requested_baseline_bo
         assert_fri06_c03_fixed_metric_participant(
             LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                 InlineBoundaryKind::Start,
-                InlineMetricsOf::from_ascent_descent(S::from_f64(6.0), S::from_f64(4.0)).unwrap(),
+                InlineMetricsOf::from_ascent_descent(
+                    crate::InlineBaselineContext::Physical,
+                    S::from_f64(6.0),
+                    S::from_f64(4.0),
+                )
+                .unwrap(),
                 crate::InlineBoundaryEdgeOf::try_new(S::from_f64(1.0), S::ZERO).unwrap(),
             )),
             Some(S::from_f64(6.0)),
@@ -310,7 +327,12 @@ fn fri06_c03_fixed_size_only_control_keeps_early_return_call_accounting_both_sca
         let (size_only, layout_input_calls, child_compute_calls) = fri06_c03_fixed_size_output(
             LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                 InlineBoundaryKind::Start,
-                InlineMetricsOf::from_ascent_descent(S::ZERO, S::ZERO).unwrap(),
+                InlineMetricsOf::from_ascent_descent(
+                    crate::InlineBaselineContext::Physical,
+                    S::ZERO,
+                    S::ZERO,
+                )
+                .unwrap(),
                 crate::InlineBoundaryEdgeOf::ZERO,
             )),
         );
@@ -471,19 +493,30 @@ fn fri08_c07_t01_inline_transition_tree<S: LayoutScalar>(
                 3,
                 LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                     InlineBoundaryKind::Start,
-                    InlineMetricsOf::from_ascent_descent(S::ZERO, S::ZERO).unwrap(),
+                    InlineMetricsOf::from_ascent_descent(
+                        crate::InlineBaselineContext::Physical,
+                        S::ZERO,
+                        S::ZERO,
+                    )
+                    .unwrap(),
                     crate::InlineBoundaryEdgeOf::ZERO,
                 )),
             ),
-        Fri08C07T01InlineRunStart::ExplicitLineBreak => {
-            tree.with_style(3, NodeInputOf::non_box())
-                .with_layout_input(
-                    3,
-                    LayoutInputOf::line_break(LineBreakInputOf::new().with_metrics(
-                        InlineMetricsOf::from_ascent_descent(S::ZERO, S::ZERO).unwrap(),
-                    )),
-                )
-        }
+        Fri08C07T01InlineRunStart::ExplicitLineBreak => tree
+            .with_style(3, NodeInputOf::non_box())
+            .with_layout_input(
+                3,
+                LayoutInputOf::line_break(
+                    LineBreakInputOf::new().with_metrics(
+                        InlineMetricsOf::from_ascent_descent(
+                            crate::InlineBaselineContext::Physical,
+                            S::ZERO,
+                            S::ZERO,
+                        )
+                        .unwrap(),
+                    ),
+                ),
+            ),
         Fri08C07T01InlineRunStart::InlineBox => tree.with_style(
             3,
             NodeInputOf {
@@ -1187,9 +1220,12 @@ fn block_line_break_metadata_positions_rtl_lines_and_preserves_two_line_extent()
     let second_line_block_start = line_block_extent;
     let first_atomic_size = Size::new(20.0, 10.0);
     let second_atomic_size = Size::new(15.0, 12.0);
-    let metrics =
-        InlineMetrics::from_line_height_and_baseline(line_block_extent, baseline_from_line_start)
-            .unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        line_block_extent,
+        baseline_from_line_start,
+    )
+    .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3])
         .style(
@@ -1277,7 +1313,12 @@ fn block_line_break_metadata_positions_rtl_lines_and_preserves_two_line_extent()
 
 #[test]
 fn block_line_break_metrics_create_two_forced_lines_without_phantom_receiver_height() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(20.0, 15.0).unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        20.0,
+        15.0,
+    )
+    .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .style(
             0,
@@ -1321,7 +1362,12 @@ fn block_line_break_metrics_create_two_forced_lines_without_phantom_receiver_hei
 
 #[test]
 fn block_inline_boundaries_are_reported_as_zero_size_inline_controls() {
-    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(18.0, 13.0).unwrap();
+    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        18.0,
+        13.0,
+    )
+    .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3, 4])
         .style(
@@ -1397,7 +1443,12 @@ fn block_inline_boundaries_are_reported_as_zero_size_inline_controls() {
 
 #[test]
 fn block_inline_boundaries_before_overwide_first_inline_block_do_not_create_leading_line() {
-    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(50.0, 35.0).unwrap();
+    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        50.0,
+        35.0,
+    )
+    .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2])
         .style(
@@ -1448,7 +1499,12 @@ fn block_inline_boundaries_before_overwide_first_inline_block_do_not_create_lead
 
 #[test]
 fn vertical_block_inline_boundaries_use_parent_flow() {
-    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(20.0, 14.0).unwrap();
+    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        20.0,
+        14.0,
+    )
+    .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3])
         .style(
@@ -1515,7 +1571,12 @@ fn vertical_block_inline_boundaries_use_parent_flow() {
 
 #[test]
 fn vertical_lr_block_inline_boundaries_use_parent_flow() {
-    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(20.0, 14.0).unwrap();
+    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        20.0,
+        14.0,
+    )
+    .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3])
         .style(
@@ -1669,7 +1730,12 @@ fn block_atomic_inline_run_never_computes_line_break_as_box() {
 
 #[test]
 fn vertical_rl_line_break_is_laid_out_as_zero_size_inline_control() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(20.0, 14.0).unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        20.0,
+        14.0,
+    )
+    .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3])
         .style(
@@ -1726,7 +1792,12 @@ fn vertical_rl_line_break_is_laid_out_as_zero_size_inline_control() {
 
 #[test]
 fn vertical_lr_line_break_is_laid_out_as_zero_size_inline_control() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(20.0, 14.0).unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        20.0,
+        14.0,
+    )
+    .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3])
         .style(
@@ -1899,7 +1970,12 @@ fn visible_controls<S: LayoutScalar>(flow: FlowAxes) -> [LayoutInputOf<S>; 3] {
         LayoutInputOf::inline_boundary(
             InlineBoundaryInputOf::new(
                 kind,
-                InlineMetricsOf::from_ascent_descent(S::ZERO, S::ZERO).unwrap(),
+                InlineMetricsOf::from_ascent_descent(
+                    crate::InlineBaselineContext::Physical,
+                    S::ZERO,
+                    S::ZERO,
+                )
+                .unwrap(),
                 crate::InlineBoundaryEdgeOf::ZERO,
             )
             .with_writing_mode(flow.writing_mode())
@@ -1994,7 +2070,12 @@ fn vertical_parent_rejects_default_line_break_flow_until_input_is_layout_ready()
 
 #[test]
 fn vertical_parent_rejects_default_inline_boundary_flow_until_input_is_layout_ready() {
-    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(20.0, 14.0).unwrap();
+    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        20.0,
+        14.0,
+    )
+    .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1])
         .style(
@@ -2088,7 +2169,12 @@ fn inline_break_clear_tree(
     clear: Clear,
     float_side: Float,
 ) -> crate::test_support::layout_tree::OracleTree {
-    let metrics = InlineMetrics::from_line_height_and_baseline(10.0, 10.0).unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        10.0,
+        10.0,
+    )
+    .unwrap();
     crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3, 4])
         .style(
@@ -2188,7 +2274,12 @@ fn line_break_clear_right_moves_following_inline_segment_below_right_float() {
 
 #[test]
 fn line_break_clear_both_uses_greater_left_or_right_float_bottom() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(10.0, 10.0).unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        10.0,
+        10.0,
+    )
+    .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3, 4, 5])
         .style(
@@ -2267,7 +2358,12 @@ fn line_break_clear_both_uses_greater_left_or_right_float_bottom() {
 
 #[test]
 fn line_break_clear_at_run_end_moves_following_block_below_float() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(10.0, 10.0).unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        10.0,
+        10.0,
+    )
+    .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3, 4])
         .style(
@@ -2408,7 +2504,12 @@ fn line_break_clear_right_ignores_left_float_and_preserves_alignment() {
 
 #[test]
 fn line_break_clear_that_is_noop_after_line_height_preserves_alignment() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(10.0, 10.0).unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        10.0,
+        10.0,
+    )
+    .unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [1, 2, 3, 4])
         .style(
@@ -3940,8 +4041,12 @@ fn numeric_inline_endpoint_uses_one_real_strip_and_moves_the_next_box_all_flows_
                     let edge =
                         crate::InlineBoundaryEdgeOf::try_new(S::from_f64(3.0), S::from_f64(5.0))
                             .unwrap();
-                    let metrics =
-                        InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap();
+                    let metrics = InlineMetricsOf::try_new(
+                        crate::InlineBaselineContext::Physical,
+                        S::from_f64(8.0),
+                        S::from_f64(10.0),
+                    )
+                    .unwrap();
                     let atomic = NodeInputOf {
                         display: Display::InlineBlock,
                         atomic_inline_participation: Some(AtomicInlineParticipation::new(
@@ -4094,7 +4199,12 @@ fn finite_endpoint_components_that_overflow_the_numeric_run_refuse_the_batch() {
                     node,
                     LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                         kind,
-                        InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                        InlineMetricsOf::try_new(
+                            crate::InlineBaselineContext::Physical,
+                            S::from_f64(8.0),
+                            S::from_f64(10.0),
+                        )
+                        .unwrap(),
                         edge,
                     )),
                 );
@@ -4175,7 +4285,12 @@ fn numeric_endpoint_uses_the_actual_float_band_in_both_scalar_lanes() {
                     2,
                     LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                         InlineBoundaryKind::Start,
-                        InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                        InlineMetricsOf::try_new(
+                            crate::InlineBaselineContext::Physical,
+                            S::from_f64(8.0),
+                            S::from_f64(10.0),
+                        )
+                        .unwrap(),
                         edge,
                     )),
                 )

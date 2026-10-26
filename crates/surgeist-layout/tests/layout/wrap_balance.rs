@@ -231,7 +231,12 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 l::LineBreakInputOf::new()
                     .with_direction(direction)
                     .with_metrics(
-                        l::InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                        l::InlineMetricsOf::try_new(
+                            surgeist_layout::InlineBaselineContext::Physical,
+                            S::from_f64(8.0),
+                            S::from_f64(10.0),
+                        )
+                        .unwrap(),
                     ),
             ));
             inputs.push(l::LayoutInputOf::inline_text(l::TextParticipation::new(

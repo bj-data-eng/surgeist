@@ -32,11 +32,11 @@ pub use grid::{
     RawGridPlacement,
 };
 pub use inline::{
-    AtomicInlineParticipation, BlockGeneration, InlineBoundaryEdge, InlineBoundaryEdgeOf,
-    InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind, InlineBreakOpportunity,
-    InlineMetrics, InlineMetricsError, InlineMetricsOf, LineBreakDisplay, LineBreakInput,
-    LineBreakInputOf, TextAlign, TextAlignLast, TextIndent, TextIndentOf, TextJustification,
-    TextWrapStyle, VerticalAlign, WritingMode,
+    AtomicInlineParticipation, BlockGeneration, InlineBaselineContext, InlineBaselineError,
+    InlineBoundaryEdge, InlineBoundaryEdgeOf, InlineBoundaryInput, InlineBoundaryInputOf,
+    InlineBoundaryKind, InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf,
+    LineBreakDisplay, LineBreakInput, LineBreakInputOf, TextAlign, TextAlignLast, TextIndent,
+    TextIndentOf, TextJustification, TextWrapStyle, VerticalAlign, WritingMode,
 };
 pub use scroll::{
     ComputedOverflow, ComputedOverflowError, Overflow, OverflowClipBox, OverflowClipMargin,
@@ -83,6 +83,8 @@ fn validate_numeric_property<S: LayoutScalar>(
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
+    /// Intrinsic resolved reference for this node's inline lines.
+    pub inline_baseline_context: InlineBaselineContext,
     pub wrap_edges: crate::WrapEdges,
     pub display: Display,
     pub atomic_inline_participation: Option<AtomicInlineParticipation>,
@@ -200,6 +202,7 @@ pub type NodeInput = NodeInputOf<DefaultScalar>;
 
 impl NodeInputOf<DefaultScalar> {
     pub const DEFAULT: Self = Self {
+        inline_baseline_context: InlineBaselineContext::Physical,
         wrap_edges: crate::WrapEdges::AUTO,
         display: Display::Flex,
         atomic_inline_participation: None,
@@ -289,6 +292,7 @@ impl NodeInputOf<DefaultScalar> {
 impl<S: LayoutScalar> Default for NodeInputOf<S> {
     fn default() -> Self {
         Self {
+            inline_baseline_context: InlineBaselineContext::Physical,
             wrap_edges: crate::WrapEdges::AUTO,
             display: Display::Flex,
             atomic_inline_participation: None,

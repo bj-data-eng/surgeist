@@ -175,6 +175,7 @@ impl VisibleInlineRunTransition {
             content_size,
             scroll_content_size,
             baselines,
+            named_baselines,
             static_positions,
             resolved_terminal_float_block_end,
             active_margin,
@@ -255,6 +256,23 @@ impl VisibleInlineRunTransition {
             .max(placement_scroll_content_size.block);
         *owned_float_block_end = (*owned_float_block_end).max(placement.owned_float_block_end);
         record_inline_run_baselines(baselines, &placement, *cursor_block, constants);
+        let mut run_baselines = BaselinesOf::NONE;
+        record_inline_run_baselines(&mut run_baselines, &placement, *cursor_block, constants);
+        let facts = crate::NamedBaselinesOf::from_line(
+            placement.inline_baseline_context,
+            constants.flow_axes,
+            run_baselines,
+            placement.first_named_baseline,
+            placement.last_named_baseline,
+        )
+        .map_err(|crate::FiniteScalarErrorOf::NonFinite { value }| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value }),
+            )
+        })?;
+        named_baselines.record(facts);
         *cursor_block = *cursor_block + placement.logical_block_extent(constants.flow_axes);
         pending_floats.extend(placement.floats);
         static_positions.extend(placement.static_positions);
@@ -279,6 +297,7 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
     pub(super) content_size: &'a mut LogicalSizeOf<S>,
     pub(super) scroll_content_size: &'a mut LogicalSizeOf<S>,
     pub(super) baselines: &'a mut BaselinesOf<S>,
+    pub(super) named_baselines: &'a mut crate::NamedBaselinesOf<S>,
     pub(super) static_positions: &'a mut Vec<(Node, Point<S>)>,
     pub(super) resolved_terminal_float_block_end: &'a mut Option<S>,
     pub(super) active_margin: &'a mut CollapsibleMarginOf<S>,
@@ -299,6 +318,9 @@ enum InlineRunMargin {
 }
 
 struct InlineRunPlacement<Node, S: LayoutScalar> {
+    inline_baseline_context: crate::InlineBaselineContext,
+    first_named_baseline: bool,
+    last_named_baseline: bool,
     margin: InlineRunMargin,
     box_frontier: Option<crate::text_layout::boxes::BoxFrontier>,
     formatted: Option<crate::text_layout::formatted::FormattedFlowItem<Node, S>>,
@@ -452,6 +474,15 @@ where
         tree.text_computation()
             .and_then(|state| state.paragraph(container, run))
     });
+    if text_binding.is_some()
+        && constants.inline_baseline_context != crate::InlineBaselineContext::Physical
+    {
+        return Err(LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(container),
+            LayoutOperation::TextCapture,
+            LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::NamedInlineBaseline),
+        ));
+    }
     if text_binding.is_none()
         && run.iter().any(|node| {
             let input = tree.layout_input(*node);
@@ -494,6 +525,12 @@ where
                 let line_break =
                     visible_line_break_in_flow(tree, container, child, constants.flow_axes)?
                         .expect("visible line-break input remains visible after validation");
+                validate_metric_reference(
+                    container,
+                    constants.inline_baseline_context,
+                    line_break.metrics(),
+                    line_break.vertical_align(),
+                )?;
                 participants.push(MixedInlineParticipantOf::ForcedLineBreak(
                     forced_line_break_control(source_index, line_break, available_inline_extent),
                 ));
@@ -504,6 +541,12 @@ where
                 let boundary =
                     visible_inline_boundary_in_flow(tree, container, child, constants.flow_axes)?
                         .expect("inline-boundary input remains present after validation");
+                validate_metric_reference(
+                    container,
+                    constants.inline_baseline_context,
+                    boundary.metrics(),
+                    boundary.vertical_align(),
+                )?;
                 participants.push(MixedInlineParticipantOf::Boundary(inline_boundary_control(
                     source_index,
                     boundary,
@@ -695,8 +738,18 @@ where
             child_margin,
             child_padding,
             child_border,
-            constants.flow_axes,
-        );
+            AtomicInlineContext {
+                axes: constants.flow_axes,
+                baseline: constants.inline_baseline_context,
+            },
+        )
+        .map_err(|kind| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(child),
+                LayoutOperation::ChildLayout,
+                kind,
+            )
+        })?;
         if let Some(participation) = participation {
             participants.push(MixedInlineParticipantOf::Atomic {
                 item,
@@ -1103,6 +1156,7 @@ where
                 .is_some_and(|state| state.formatted_active());
         let result = layout_mixed_inline_run_with_formatted_observation(
             MixedInlineRunInputOf {
+                inline_baseline_context: constants.inline_baseline_context,
                 groups: tree
                     .group_computation()
                     .map(|groups| groups.snapshot())
@@ -1448,6 +1502,7 @@ where
                     source_index: crate::SourceIndex::new(source_index),
                     location,
                     size: source.item.size,
+                    named_baselines: output.named_baselines,
                     content_size: source.item.content_size,
                     border: source.item.border,
                     padding: source.item.padding,
@@ -1540,6 +1595,9 @@ where
         })
         .fold(owned_float_block_end, |a, b| a.max(b));
     Ok(InlineRunPlacement {
+        inline_baseline_context: report.inline_baseline_context,
+        first_named_baseline: report.first_named_baseline,
+        last_named_baseline: report.last_named_baseline,
         margin,
         box_frontier,
         formatted: formatted_item,
@@ -1594,15 +1652,24 @@ fn record_inline_run_baselines<S: LayoutScalar>(
     }
 }
 
-fn atomic_inline_box_participant<S: LayoutScalar>(
+struct AtomicInlineContext {
+    axes: crate::FlowAxes,
+    baseline: crate::InlineBaselineContext,
+}
+
+fn atomic_inline_box_participant<S: LayoutScalar, M>(
     source_index: usize,
     child_style: BlockChildProjection<'_, S>,
     output: ComputeOutputOf<S>,
     margin: Edges<S>,
     padding: Edges<S>,
     border: Edges<S>,
-    containing_flow_axes: crate::geometry::FlowAxes,
-) -> AtomicInlineBoxParticipant<S> {
+    containing: AtomicInlineContext,
+) -> Result<AtomicInlineBoxParticipant<S>, LayoutErrorKindOf<S, M>> {
+    let AtomicInlineContext {
+        axes: containing_flow_axes,
+        baseline: context,
+    } = containing;
     let logical_size = containing_flow_axes.logical_size(output.size);
     let used_overflow = UsedOverflow::from_computed(
         child_style.common.overflow,
@@ -1612,7 +1679,7 @@ fn atomic_inline_box_participant<S: LayoutScalar>(
         PhysicalAxis::Horizontal => used_overflow.x(),
         PhysicalAxis::Vertical => used_overflow.y(),
     };
-    let selected_inner_baseline = (child_style.vertical_align == VerticalAlign::Baseline
+    let mut selected_inner_baseline = (child_style.vertical_align == VerticalAlign::Baseline
         && block_overflow.value() == Overflow::Visible)
         .then(|| {
             let baselines = output.baselines();
@@ -1631,7 +1698,80 @@ fn atomic_inline_box_participant<S: LayoutScalar>(
                 })
         })
         .flatten();
-    AtomicInlineBoxParticipant {
+    if let crate::InlineBaselineContext::Named(name) = context
+        && child_style.vertical_align == VerticalAlign::Baseline
+    {
+        let pair = output.named_baselines.get(name);
+        let fact = if block_overflow.value() != Overflow::Visible {
+            crate::BaselineFactOf::Absent
+        } else {
+            match pair.first() {
+                crate::BaselineFactOf::Absent => pair.last(),
+                first => first,
+            }
+        };
+        let physical = match fact {
+            crate::BaselineFactOf::Unknown => {
+                return Err(LayoutErrorKindOf::MissingContext(
+                    crate::LayoutMissingContext::NamedInlineBaseline,
+                ));
+            }
+            crate::BaselineFactOf::Available(value) => {
+                if value.axis() != containing_flow_axes.block_axis() {
+                    return Err(LayoutErrorKindOf::InvalidInput(
+                        LayoutInvalidInputOf::InlineBaseline(
+                            crate::InlineBaselineError::AxisMismatch {
+                                expected: containing_flow_axes.block_axis(),
+                                actual: value.axis(),
+                            },
+                        ),
+                    ));
+                }
+                value.offset()
+            }
+            crate::BaselineFactOf::Absent => {
+                let edge = |side| match side {
+                    crate::PhysicalSide::Top => -margin.top,
+                    crate::PhysicalSide::Bottom => output.size.height + margin.bottom,
+                    crate::PhysicalSide::Left => -margin.left,
+                    crate::PhysicalSide::Right => output.size.width + margin.right,
+                };
+                let under = edge(containing_flow_axes.line_under());
+                match name {
+                    crate::BaselineName::Alphabetic => under,
+                    crate::BaselineName::Central => {
+                        edge(containing_flow_axes.line_over()) / S::from_f64(2.0)
+                            + under / S::from_f64(2.0)
+                    }
+                }
+            }
+        };
+        if !physical.is_finite() {
+            return Err(LayoutErrorKindOf::InvalidInput(
+                LayoutInvalidInputOf::InvalidNumeric { value: physical },
+            ));
+        }
+        let logical = if containing_flow_axes
+            .logical_axis_progression(crate::LogicalAxis::Block)
+            .is_decreasing()
+        {
+            logical_size.block - physical
+        } else {
+            physical
+        };
+        if !logical.is_finite() {
+            return Err(LayoutErrorKindOf::InvalidInput(
+                LayoutInvalidInputOf::InvalidNumeric { value: logical },
+            ));
+        }
+        selected_inner_baseline = Some(logical);
+    }
+    Ok(AtomicInlineBoxParticipant {
+        baseline_reference: if child_style.vertical_align == VerticalAlign::Baseline {
+            context
+        } else {
+            crate::InlineBaselineContext::Physical
+        },
         source_index,
         size: output.size,
         content_size: output.content_size,
@@ -1641,7 +1781,7 @@ fn atomic_inline_box_participant<S: LayoutScalar>(
         scrollbar_size: child_scrollbar_size(&child_style),
         first_baseline: selected_inner_baseline,
         alignment: child_style.vertical_align.into(),
-    }
+    })
 }
 
 fn resolve_atomic_inline_margin<S: LayoutScalar>(margin: Edges<Option<S>>) -> Edges<S> {
@@ -1750,4 +1890,25 @@ fn resolve_text_indent<Node: Copy, S: LayoutScalar, M>(
         each_line: policy.each_line,
         hanging: policy.hanging,
     })
+}
+
+fn validate_metric_reference<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    expected: crate::InlineBaselineContext,
+    metrics: crate::InlineMetricsOf<S>,
+    alignment: VerticalAlign,
+) -> LayoutResultOf<Node, (), S, M> {
+    if alignment == VerticalAlign::Baseline && metrics.reference() != expected {
+        return Err(LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::ChildLayout,
+            LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InlineBaseline(
+                crate::InlineBaselineError::ReferenceMismatch {
+                    expected,
+                    actual: metrics.reference(),
+                },
+            )),
+        ));
+    }
+    Ok(())
 }
