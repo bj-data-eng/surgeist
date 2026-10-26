@@ -2,7 +2,7 @@
 
 use super::TextParagraphBinding;
 use crate::{LayoutScalar, NodeOutputOf, Point};
-use surgeist_text::{LinePlacement, PlacementCoverage, PlacementRequest};
+use surgeist_text::{PlacementCoverage, PlacementEntry, PlacementRequest};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct CanonicalFrame<Node, S: LayoutScalar> {
@@ -18,7 +18,11 @@ pub(crate) struct PendingParagraph<Node> {
     pub container: Node,
     pub nodes: Vec<Node>,
     pub prepared: surgeist_text::PreparedText,
-    pub lines: Vec<LinePlacement>,
+    pub entries: Vec<PlacementEntry>,
+    pub wrap_style: crate::TextWrapStyle,
+    pub balance: Option<std::sync::Arc<super::fit::BalanceBasis>>,
+    pub natural_advances: Vec<f64>,
+    pub boxes: Vec<Option<super::boxes::BoxAssignment>>,
     pub bands: Vec<super::fit::LineBands>,
     pub flows: Vec<super::fit::LineFlow>,
     pub amounts: Vec<Vec<f64>>,
@@ -36,6 +40,9 @@ pub(crate) struct PendingParagraph<Node> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct LineBasis {
+    natural_advance: f64,
+    disposition: super::fit::LineDisposition,
+    boxes: Option<super::boxes::BoxAssignment>,
     zone: super::fit::ZoneBasis,
     phrases: Vec<super::fit::PhraseBasis>,
     encounters: Vec<super::fit::EncounterBasis>,
@@ -51,6 +58,7 @@ pub(crate) struct LineBasis {
 pub(crate) struct PassBasis<Node, S: LayoutScalar> {
     pub wrapping: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>>,
     pub formatted: Option<super::formatted::FormattedPassBasis<Node, S>>,
+    pub boxes: Vec<super::boxes::BoxRunUse<Node, S>>,
     pub line_boxes: Vec<(
         Node,
         crate::line_box::LineBoxContext,
@@ -59,6 +67,11 @@ pub(crate) struct PassBasis<Node, S: LayoutScalar> {
     pub tail: Vec<(Node, super::fit::TailContext)>,
     pub frames: Vec<CanonicalFrame<Node, S>>,
     pub lines: Vec<LineBasis>,
+    pub selections: Vec<(
+        Node,
+        crate::TextWrapStyle,
+        Option<std::sync::Arc<super::fit::BalanceBasis>>,
+    )>,
     pub absolute_baselines: Vec<(Node, f64)>,
     pub associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
     pub hyphenation: Vec<(
@@ -77,6 +90,7 @@ pub(crate) struct PassBasis<Node, S: LayoutScalar> {
 #[derive(Clone)]
 pub(crate) struct ScopeFragmentGroup<Node, S: LayoutScalar> {
     pub container: Node,
+    pub prepared: surgeist_text::PreparedText,
     pub nodes: Vec<Node>,
     pub fragments: Vec<crate::InlineFragmentOutputEntryOf<Node, S>>,
 }
@@ -93,6 +107,7 @@ pub(crate) struct TextComputation<'input, Node, S: LayoutScalar> {
     pub associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
     pub frames: std::sync::Arc<[CanonicalFrame<Node, S>]>,
     pub pending: Vec<PendingParagraph<Node>>,
+    pub boxes: Vec<super::boxes::BoxRunUse<Node, S>>,
     pub reusable: std::sync::Arc<[super::fit::ReusableLine]>,
     pub atomic_origins: Vec<(Node, Point<f64>)>,
     pub absolute_baselines: Vec<(Node, f64)>,
@@ -362,6 +377,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             associations,
             frames: std::sync::Arc::from([]),
             pending: Vec::new(),
+            boxes: Vec::new(),
             reusable: std::sync::Arc::from([]),
             atomic_origins: Vec::new(),
             absolute_baselines: Vec::new(),
@@ -401,16 +417,49 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             })
     }
 
+    pub(crate) fn semantic_slots(
+        &self,
+        container: Node,
+    ) -> Vec<super::capture::SemanticParagraphSlot<Node>> {
+        self.associations
+            .semantic_slots(container)
+            .cloned()
+            .collect()
+    }
+    pub(crate) fn has_semantic(&self, container: Node) -> bool {
+        self.associations.semantic_slots(container).next().is_some()
+    }
+    pub(crate) fn semantic_paragraph(
+        &self,
+        container: Node,
+        prepared: &surgeist_text::PreparedText,
+    ) -> Option<&'input TextParagraphBinding<Node>> {
+        let slot = self.associations.semantic_slot(prepared)?;
+        if slot.container != container {
+            return None;
+        }
+        self.paragraphs.iter().find(|binding| {
+            binding.container == container
+                && binding.prepared == *prepared
+                && binding.prepared.captured_paragraph().as_ref() == Some(&slot.captured)
+        })
+    }
     pub fn frame(&self, node: Node) -> Option<CanonicalFrame<Node, S>> {
         self.frames.iter().find(|frame| frame.node == node).copied()
     }
 
+    pub(crate) fn record_boxes(&mut self, uses: super::boxes::BoxRunUse<Node, S>) {
+        if !uses.trials.is_empty() && !self.boxes.contains(&uses) {
+            self.boxes.push(uses);
+        }
+    }
+
     pub fn record(&mut self, paragraph: PendingParagraph<Node>) {
-        if let Some(old) = self
-            .pending
-            .iter_mut()
-            .find(|old| old.container == paragraph.container && old.nodes == paragraph.nodes)
-        {
+        if let Some(old) = self.pending.iter_mut().find(|old| {
+            old.container == paragraph.container
+                && old.nodes == paragraph.nodes
+                && old.prepared == paragraph.prepared
+        }) {
             *old = paragraph;
         } else {
             self.pending.push(paragraph);
@@ -420,18 +469,18 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     pub fn record_scope_fragments(
         &mut self,
         container: Node,
+        prepared: surgeist_text::PreparedText,
         nodes: Vec<Node>,
         fragments: Vec<crate::InlineFragmentOutputEntryOf<Node, S>>,
     ) {
-        if let Some(old) = self
-            .scope_fragments
-            .iter_mut()
-            .find(|group| group.container == container && group.nodes == nodes)
-        {
+        if let Some(old) = self.scope_fragments.iter_mut().find(|group| {
+            group.container == container && group.nodes == nodes && group.prepared == prepared
+        }) {
             old.fragments = fragments;
         } else {
             self.scope_fragments.push(ScopeFragmentGroup {
                 container,
+                prepared,
                 nodes,
                 fragments,
             });
@@ -466,6 +515,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
 
     pub fn basis(&self, frames: Vec<CanonicalFrame<Node, S>>) -> PassBasis<Node, S> {
         PassBasis {
+            boxes: self.boxes.clone(),
             wrapping: self.wrapping.clone(),
             formatted: self
                 .formatted
@@ -483,12 +533,17 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 .map(|p| (p.container, p.tail))
                 .collect(),
             frames,
+            selections: self
+                .pending
+                .iter()
+                .map(|p| (p.container, p.wrap_style, p.balance.clone()))
+                .collect(),
             lines: self
                 .pending
                 .iter()
                 .flat_map(|paragraph| {
                     paragraph
-                        .lines
+                        .entries
                         .iter()
                         .zip(&paragraph.bands)
                         .zip(&paragraph.flows)
@@ -496,17 +551,44 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                         .zip(&paragraph.encounters)
                         .zip(&paragraph.zones)
                         .zip(&paragraph.phrases)
+                        .zip(&paragraph.boxes)
+                        .zip(&paragraph.natural_advances)
                 })
                 .map(
-                    |((((((placement, band), flow), amounts), encounters), zone), phrases)| {
+                    |(
+                        (
+                            ((((((placement, band), flow), amounts), encounters), zone), phrases),
+                            boxes,
+                        ),
+                        natural_advance,
+                    )| {
                         LineBasis {
+                            natural_advance: *natural_advance,
+                            boxes: boxes.clone(),
                             zone: zone.clone(),
                             phrases: phrases.clone(),
                             encounters: encounters.clone(),
                             amounts: amounts.clone(),
-                            request: placement.line.selected_line().request().clone(),
-                            anchor: placement.anchor,
-                            atomics: placement.atomics.clone(),
+                            request: placement.finalized_line().selected_line().request().clone(),
+                            disposition: match placement {
+                                PlacementEntry::Formatted(_) => {
+                                    super::fit::LineDisposition::Formatted
+                                }
+                                PlacementEntry::NonFormatted(line) => {
+                                    super::fit::LineDisposition::NonFormatted(line.line.clone())
+                                }
+                            },
+                            anchor: match placement {
+                                PlacementEntry::Formatted(line) => line.anchor,
+                                PlacementEntry::NonFormatted(line) => surgeist_text::LineAnchor {
+                                    inline_origin: line.origin.x,
+                                    baseline: line.origin.y,
+                                },
+                            },
+                            atomics: match placement {
+                                PlacementEntry::Formatted(line) => line.atomics.clone(),
+                                PlacementEntry::NonFormatted(line) => line.atomics.clone(),
+                            },
                             bands: *band,
                             flow: *flow,
                         }
@@ -603,19 +685,21 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                     );
                     let baseline = placement_add(node, frame.origin.y, baseline)?;
                     let baseline = (baseline + 0.5).floor();
-                    paragraph.lines[line_index]
-                        .atomics
-                        .push(surgeist_text::AtomicPlacement {
-                            occurrence,
-                            border,
-                            content,
-                            baseline,
-                        });
+                    let atomics = match &mut paragraph.entries[line_index] {
+                        PlacementEntry::Formatted(line) => &mut line.atomics,
+                        PlacementEntry::NonFormatted(line) => &mut line.atomics,
+                    };
+                    atomics.push(surgeist_text::AtomicPlacement {
+                        occurrence,
+                        border,
+                        content,
+                        baseline,
+                    });
                 }
                 let layout = surgeist_text::Layout::from_finalized_lines(PlacementRequest {
                     prepared: paragraph.prepared,
                     coverage: PlacementCoverage::WholeParagraph,
-                    lines: paragraph.lines,
+                    entries: paragraph.entries,
                 })
                 .map_err(|error| {
                     crate::LayoutErrorOf::new(

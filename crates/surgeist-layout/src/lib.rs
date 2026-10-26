@@ -72,7 +72,9 @@
 //! Render owns paint conversion, and Runtime owns coherent publication.
 //! The prepared-text profile supports horizontal LTR and RTL flow, signed
 //! indentation, and font-advance or CSS-stop tabs. [`TextAlign`] and
-//! [`TextAlignLast`] select line alignment. [`TextJustification::Spaces`] permits
+//! [`TextAlignLast`] select line alignment. [`TextWrapStyle`] selects ordinary
+//! or balanced breaks within each forced-break group without changing its real
+//! containing geometry or wrapping permission. [`TextJustification::Spaces`] permits
 //! explicit expansion of actual retained U+0020 slots during justification;
 //! [`TextJustification::None`]
 //! adds no expansion. Text owns line-edge and trailing-space decisions.
@@ -213,6 +215,7 @@ mod error;
 mod flex;
 mod geometry;
 mod grid;
+mod group_alignment;
 mod hyphenation;
 mod inline;
 mod layout_math;
@@ -230,8 +233,10 @@ mod text_indent;
 mod text_layout;
 pub use inline_wrapping::{
     ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
-    InlineBoxRef, InlineChildOrderInput, WrapEdge, WrapEdges, WrapInside, WrappingInput,
-    WrappingScopeError, WrappingScopeInput,
+    InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, ProcessedWrappingSource,
+    ResolvedWrapEdges, SourceOccurrenceAssociations, SourceScopeAssociation,
+    SourceWrappingScopeInput, WrapEdge, WrapEdgeSource, WrapEdgeSourceNodeView, WrapEdges,
+    WrapInside, WrappingInput, WrappingScopeError, WrappingScopeInput, process_wrapping_source,
 };
 pub use text_layout::{
     LayoutFlowInput, TextAtomicBinding, TextBindingError, TextControlBinding,
@@ -299,22 +304,23 @@ pub use measurement::{
     MeasurementAvailable, MeasurementAvailableOf, compute_leaf,
 };
 pub use node_input::{
-    AlignContent, AlignItems, AtomicInlineParticipation, BlockGeneration, BoxSizing, Clear,
-    ComputedOverflow, ComputedOverflowError, Direction, Display, FlexDirection, FlexGrow,
-    FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap, Float, FloatExclusion,
-    FloatExclusionInterval, FloatExclusionIntervalError, FloatExclusionIntervalErrorOf,
-    FloatExclusionIntervalOf, FloatExclusionQuery, FloatExclusionQueryOf, GridAutoFlow,
-    GridFlowTolerance, GridFlowToleranceOf, GridPlacement, InlineBoundaryEdge,
-    InlineBoundaryEdgeOf, InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind,
-    InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf, ItemOrder,
-    LayoutInput, LayoutInputOf, LayoutInputView, LayoutInputViewOf, LineBoxDirectionPolicy,
-    LineBreakDisplay, LineBreakInput, LineBreakInputOf, NodeInput, NodeInputOf, Overflow,
-    OverflowClipBox, OverflowClipMargin, OverflowClipMarginOf, Position, RawGridLine,
-    RawGridPlacement, ScrollMargin, ScrollMarginError, ScrollMarginErrorOf, ScrollMarginOf,
-    ScrollPadding, ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf, ScrollSnapAlign,
-    ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType,
-    ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, TextAlign, TextAlignLast, TextIndent,
-    TextIndentOf, TextJustification, VerticalAlign, WritingMode,
+    AlignContent, AlignItems, AtomicInlineParticipation, BlockFlowContext, BlockGeneration,
+    BoxSizing, Clear, ComputedOverflow, ComputedOverflowError, Direction, Display, FlexDirection,
+    FlexGrow, FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap, Float,
+    FloatExclusion, FloatExclusionInterval, FloatExclusionIntervalError,
+    FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf, FloatExclusionQuery,
+    FloatExclusionQueryOf, GridAutoFlow, GridFlowTolerance, GridFlowToleranceOf, GridPlacement,
+    InlineBoundaryEdge, InlineBoundaryEdgeOf, InlineBoundaryInput, InlineBoundaryInputOf,
+    InlineBoundaryKind, InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf,
+    ItemOrder, LayoutInput, LayoutInputOf, LayoutInputView, LayoutInputViewOf,
+    LineBoxDirectionPolicy, LineBreakDisplay, LineBreakInput, LineBreakInputOf, NodeInput,
+    NodeInputOf, Overflow, OverflowClipBox, OverflowClipMargin, OverflowClipMarginOf, Position,
+    RawGridLine, RawGridPlacement, ScrollMargin, ScrollMarginError, ScrollMarginErrorOf,
+    ScrollMarginOf, ScrollPadding, ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf,
+    ScrollSnapAlign, ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness,
+    ScrollSnapType, ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, TextAlign, TextAlignLast,
+    TextGroupAlign, TextIndent, TextIndentOf, TextJustification, TextWrapStyle, VerticalAlign,
+    WritingMode,
 };
 pub use output::{
     Baselines, BaselinesOf, CollapsibleMargin, CollapsibleMarginOf, CompletedLayoutBatch,

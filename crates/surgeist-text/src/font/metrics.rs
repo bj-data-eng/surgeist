@@ -1,4 +1,10 @@
+mod baseline;
 mod variation;
+pub use baseline::{
+    FontBaseline, FontBaselineAbsence, FontBaselineAxis, FontBaselineMeasurement,
+    FontBaselineOutcome, FontBaselineProvenance, FontBaselineScript, FontBaselineUnavailable,
+    FontBaselineUnavailableReason, FontBaselineValue,
+};
 
 use skrifa::{
     FontRef, Tag,
@@ -268,6 +274,7 @@ fn table<'a>(font: &FontRef<'a>, which: Table, required: bool) -> Result<Option<
         Table::Hhea => b"hhea",
         Table::Os2 => b"OS/2",
         Table::Mvar => b"MVAR",
+        Table::Base => b"BASE",
     });
     let mut entries = font
         .table_directory()

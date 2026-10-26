@@ -469,6 +469,8 @@ fn intrinsic<S: LayoutScalar>(
         &[],
         &[],
         super::super::run::Context {
+            groups: crate::group_alignment::Snapshot::default(),
+            wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,
             formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
@@ -493,6 +495,7 @@ fn intrinsic<S: LayoutScalar>(
         },
         &[],
         super::super::run::LineEnvironment {
+            checkpoint_group: || {},
             reset: |_| {},
             band: |_, _| {
                 Ok(super::super::fit::Band {
@@ -533,8 +536,8 @@ fn independent_intrinsics<S: LayoutScalar>() {
     ] {
         for available in order {
             let output = intrinsic::<S>(&p, available);
-            assert!(output.paragraph.lines.iter().all(|line| {
-                line.line
+            assert!(output.paragraph.entries.iter().all(|line| {
+                line.finalized_line()
                     .selected_line()
                     .request()
                     .context
@@ -545,9 +548,15 @@ fn independent_intrinsics<S: LayoutScalar>() {
                 assert_eq!(output.report.inline_extent, S::from_f64(10.0));
                 let directions = output
                     .paragraph
-                    .lines
+                    .entries
                     .iter()
-                    .map(|p| p.line.selected_line().request().context.line_box_direction)
+                    .map(|p| {
+                        p.finalized_line()
+                            .selected_line()
+                            .request()
+                            .context
+                            .line_box_direction
+                    })
                     .collect::<Vec<_>>();
                 assert_eq!(
                     directions,
@@ -561,8 +570,8 @@ fn independent_intrinsics<S: LayoutScalar>() {
             } else {
                 assert_eq!(output.report.inline_extent, S::from_f64(40.0));
                 assert_eq!(
-                    output.paragraph.lines[0]
-                        .line
+                    output.paragraph.entries[0]
+                        .finalized_line()
                         .selected_line()
                         .request()
                         .context

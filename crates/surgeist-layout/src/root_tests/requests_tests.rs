@@ -964,7 +964,7 @@ fn fri06_c03_control_forced_break_splits_min_content_indivisible_groups_both_sca
 }
 
 #[test]
-fn fri06_c03_strut_adjacent_final_breaks_preserve_empty_following_line_both_scalars() {
+fn fri06_c03_strut_adjacent_final_breaks_keep_only_actual_forced_lines_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let metrics =
             InlineMetricsOf::from_line_height_and_baseline(S::from_f64(20.0), S::from_f64(15.0))
@@ -987,7 +987,7 @@ fn fri06_c03_strut_adjacent_final_breaks_preserve_empty_following_line_both_scal
 
         assert_eq!(
             fri06_c02_final_node(&batch, 0).size.height,
-            S::from_f64(60.0)
+            S::from_f64(40.0)
         );
         assert_eq!(
             fri06_c02_final_node(&batch, 1).location.y,
@@ -1050,7 +1050,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
         );
         assert_eq!(
             fri06_c02_final_node(&trailing, 0).size.height,
-            S::from_f64(40.0)
+            S::from_f64(20.0)
         );
         assert_eq!(
             fri06_c02_final_node(&trailing, 3).location,
@@ -1067,9 +1067,11 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
         );
         assert_eq!(
             fri06_c02_final_node(&only_break, 0).size.height,
-            S::from_f64(40.0)
+            S::from_f64(20.0)
         );
 
+        // Actual struts alone do not create a formatted line. Its endpoint
+        // descendants use the zero-height used origin, not nominal baseline15.
         let only_boundary = fri06_c03_mixed_batch(
             vec![(
                 1,
@@ -1082,13 +1084,10 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
             )],
             AvailableOf::MAX_CONTENT,
         );
-        assert_eq!(
-            fri06_c02_final_node(&only_boundary, 0).size.height,
-            S::from_f64(20.0)
-        );
+        assert_eq!(fri06_c02_final_node(&only_boundary, 0).size.height, S::ZERO);
         assert_eq!(
             fri06_c02_final_node(&only_boundary, 1).location,
-            Point::new(S::ZERO, S::from_f64(15.0))
+            Point::ZERO
         );
 
         let adjacent_boundaries = fri06_c03_mixed_batch(
@@ -1115,12 +1114,16 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
             AvailableOf::MAX_CONTENT,
         );
         assert_eq!(
+            fri06_c02_final_node(&adjacent_boundaries, 0).size.height,
+            S::ZERO
+        );
+        assert_eq!(
             fri06_c02_final_node(&adjacent_boundaries, 1).location,
-            Point::new(S::ZERO, S::from_f64(15.0))
+            Point::ZERO
         );
         assert_eq!(
             fri06_c02_final_node(&adjacent_boundaries, 2).location,
-            Point::new(S::ZERO, S::from_f64(15.0))
+            Point::ZERO
         );
 
         let boundaries = fri06_c03_mixed_batch(
@@ -2987,7 +2990,7 @@ fn numeric_rtl_visual_placement_and_internal_supplied_edge_semantics_all_flows_b
                     report.atomics[0].inline_start,
                     report.atomics[2].inline_start
                 ],
-                [S::from_f64(35.0), S::ZERO]
+                [S::ZERO, S::from_f64(25.0)]
             );
             let containing =
                 axes.physical_size(LogicalSizeOf::new(S::from_f64(100.0), S::from_f64(160.0)));
@@ -3945,8 +3948,8 @@ fn fri06_c07_sideways_lr_rtl_all_atomic_odd_bidi_keeps_visual_placement_both_sca
             second_source.size,
             Size::new(S::from_f64(20.0), S::from_f64(20.0))
         );
-        assert_eq!(first_source.location.y, S::from_f64(20.0));
-        assert_eq!(second_source.location.y, S::ZERO);
+        assert_eq!(first_source.location.y, S::ZERO);
+        assert_eq!(second_source.location.y, S::from_f64(10.0));
     }
 
     assert_lane::<f32>();
@@ -4224,12 +4227,63 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
         .unwrap();
         assert_eq!(
             mandatory.placed_text()[0].layout().metrics().line_count(),
-            3
+            2
         );
         assert_eq!(
             fri06_c02_final_node(&mandatory, 0).size.height,
-            S::from_f64(30.0)
+            S::from_f64(20.0)
         );
+        // Both actual Forced lines remain 10px. The final Paragraph receipt
+        // retains its real Ahem8/10 metrics but contributes no third CSS line.
+        let placed = mandatory.placed_text()[0].layout();
+        assert_eq!(placed.source().text().code_units(), &[88, 10, 88, 10]);
+        let completions = placed.nonformatted_lines().collect::<Vec<_>>();
+        assert_eq!(completions.len(), 1);
+        let completion = completions[0].line.finalized_line();
+        assert_eq!(
+            (
+                completion
+                    .selected_line()
+                    .request()
+                    .start
+                    .view()
+                    .source_before()
+                    .get(),
+                completion
+                    .selected_line()
+                    .request()
+                    .end
+                    .view()
+                    .source_after()
+                    .get()
+            ),
+            (4, 4)
+        );
+        assert!(!completion.has_in_flow_content());
+        assert_eq!(completion.feedback().baseline, 8.0);
+        assert_eq!(completion.feedback().line_height, 10.0);
+        assert_eq!(completions[0].origin.y, 20.0);
+        let selected = completion.selected_line();
+        let request = selected.request();
+        assert_eq!(request.context.end, surgeist_text::LineEnd::Paragraph);
+        assert!(matches!(&request.termination,
+            surgeist_text::PreparedTermination::Ordinary(offer)
+                if offer.view().kind() == surgeist_text::PreparedBreakKind::ParagraphEnd));
+        assert_eq!(request.start, request.end);
+        let forced = mandatory
+            .final_inline_fragments()
+            .iter()
+            .find(|entry| entry.fragment().line_index() == 1)
+            .unwrap()
+            .fragment()
+            .finalized_fragment()
+            .finalized_line();
+        assert_eq!(completion.prepared_text(), forced.prepared_text());
+        assert_eq!(
+            forced.selected_line().request().context.end,
+            surgeist_text::LineEnd::Forced
+        );
+        assert_eq!(request.start, forced.selected_line().request().end);
         let overwide = prepared_source_batch(
             Source::new("XXXXXX"),
             ahem_style(10.0, 10.0),

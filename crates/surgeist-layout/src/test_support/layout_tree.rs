@@ -310,6 +310,7 @@ impl<S: LayoutScalar> Traverse for OracleTreeOf<S> {
 }
 
 pub struct OracleComputeOf<'input, 'output, S: LayoutScalar = DefaultScalar> {
+    block_floats: crate::block::float_context::State<u32, S>,
     children: &'input HashMap<u32, Vec<u32>>,
     layout_inputs: &'input HashMap<u32, LayoutInputOf<S>>,
     measurements: &'input HashMap<u32, Vec<OracleMeasurementOf<S>>>,
@@ -321,6 +322,7 @@ pub struct OracleComputeOf<'input, 'output, S: LayoutScalar = DefaultScalar> {
 impl<S: LayoutScalar> OracleTreeOf<S> {
     pub fn borrow_compute(&mut self) -> OracleComputeOf<'_, '_, S> {
         OracleComputeOf {
+            block_floats: crate::block::float_context::State::new(),
             children: &self.children,
             layout_inputs: &self.layout_inputs,
             measurements: &self.measurements,
@@ -374,6 +376,15 @@ impl<'input, S: LayoutScalar> Traverse for OracleComputeOf<'input, '_, S> {
 }
 
 impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, '_, S> {
+    fn block_float_state(
+        &mut self,
+    ) -> Option<&mut crate::block::float_context::State<Self::Node, Self::Scalar>> {
+        Some(&mut self.block_floats)
+    }
+    fn has_leaf_measurement(&self, node: Self::Node) -> bool {
+        self.measurements.contains_key(&node)
+    }
+
     fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<S> {
         match self.layout_inputs.get(&node) {
             Some(input) => input
@@ -406,6 +417,7 @@ impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, '_, S>
         let mut layouts = HashMap::new();
         let mut final_layouts = HashMap::new();
         let mut observation = OracleComputeOf {
+            block_floats: self.block_floats.fork(),
             children: self.children,
             layout_inputs: self.layout_inputs,
             measurements: self.measurements,

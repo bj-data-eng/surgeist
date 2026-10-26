@@ -26,3 +26,6 @@ mod in_flow_margins;
 mod inline_runs;
 #[path = "block_tests/sizing_scroll_tests.rs"]
 mod sizing_scroll;
+
+#[path = "block_tests/balance_provider_tests.rs"]
+mod balance_provider;

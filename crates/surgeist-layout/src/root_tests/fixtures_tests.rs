@@ -84,6 +84,8 @@ pub(super) fn numeric_atomic_fit_with_flow<S: LayoutScalar>(
 ) -> crate::inline::MixedInlineRunReportOf<S> {
     let axes = FlowAxes::new(writing_mode, direction);
     crate::inline::layout_mixed_inline_run(crate::inline::MixedInlineRunInputOf {
+        groups: crate::group_alignment::Snapshot::default(),
+        text_wrap_style: crate::TextWrapStyle::Auto,
         wrapping: None,
         line_box_context: crate::line_box::LineBoxContext::new(
             crate::LineBoxDirectionPolicy::Normal,
@@ -563,6 +565,8 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
         ))
     };
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+        groups: crate::group_alignment::Snapshot::default(),
+        text_wrap_style: crate::TextWrapStyle::Auto,
         wrapping: None,
         line_box_context: crate::line_box::LineBoxContext::new(
             crate::LineBoxDirectionPolicy::Normal,
@@ -584,11 +588,9 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
         ],
     })
     .unwrap();
-    let starts = if axes.direction() == Direction::Rtl {
-        [12.0, 12.0, 7.0, 7.0, 0.0]
-    } else {
-        [0.0, 10.0, 10.0, 15.0, 15.0]
-    };
+    // Source-order flow starts coincide here: RTL L2 reverses the slots,
+    // while its inline-start basis is opposite to line-left.
+    let starts = [0.0, 10.0, 10.0, 15.0, 15.0];
     let containing = axes.physical_size(LogicalSizeOf::new(S::from_f64(100.0), S::from_f64(160.0)));
     for (slot, block, width, height) in [
         (0, 4.0, 10.0, 10.0),

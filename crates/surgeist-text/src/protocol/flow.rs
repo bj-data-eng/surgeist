@@ -56,6 +56,7 @@ pub struct FlowObservation {
     pub(crate) request: FlowObservationRequest,
     pub(crate) profile: LineMetricPolicy,
     pub(crate) retained: bool,
+    pub(crate) in_flow_content: bool,
     pub(crate) identity: Vec<u64>,
 }
 impl PartialEq for FlowObservation {
@@ -63,6 +64,7 @@ impl PartialEq for FlowObservation {
         self.segment == other.segment
             && self.profile == other.profile
             && self.retained == other.retained
+            && self.in_flow_content == other.in_flow_content
             && self.identity == other.identity
     }
 }
@@ -72,6 +74,7 @@ impl Hash for FlowObservation {
         self.segment.hash(state);
         self.profile.hash(state);
         self.retained.hash(state);
+        self.in_flow_content.hash(state);
         self.identity.hash(state);
     }
 }
@@ -84,6 +87,11 @@ impl FlowObservation {
     }
     pub fn has_retained_flow_participation(&self) -> bool {
         self.retained
+    }
+    /// Actual retained text, in-flow atomics and allocated inline boundary
+    /// content, using the same semantic owner as finalized-line readback.
+    pub fn has_in_flow_content(&self) -> bool {
+        self.in_flow_content
     }
 }
 fn invalid() -> crate::Error {
@@ -530,6 +538,7 @@ mod tests {
         };
         FlowObservationRequest {
             context: LineContext {
+                alignment_insets: crate::LineAlignmentInsets::ZERO,
                 formatted_line: FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 line_box_direction: LineBoxDirection::LeftToRight,
@@ -705,6 +714,7 @@ mod tests {
             line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
+                alignment_insets: crate::LineAlignmentInsets::ZERO,
                 formatted_line: FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 line_box_direction: LineBoxDirection::LeftToRight,

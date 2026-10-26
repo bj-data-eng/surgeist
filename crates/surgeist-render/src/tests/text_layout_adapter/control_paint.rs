@@ -282,6 +282,7 @@ fn selected_placed(system: &mut text::System, value: &str) -> text::Layout {
             boundary_context: vec![],
             line_strut: None,
             context: text::LineContext {
+                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
                 base_direction: text::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
                 formatted_line: text::FormattedLineContext::default(),
@@ -301,7 +302,7 @@ fn selected_placed(system: &mut text::System, value: &str) -> text::Layout {
     text::Layout::from_finalized_lines(text::PlacementRequest {
         prepared,
         coverage: text::PlacementCoverage::WholeParagraph,
-        lines: vec![text::LinePlacement {
+        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
             line,
             anchor: text::LineAnchor {
                 inline_origin: 2.0,
@@ -309,7 +310,7 @@ fn selected_placed(system: &mut text::System, value: &str) -> text::Layout {
             },
             orientation: text::LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap()
 }

@@ -328,6 +328,8 @@ pub enum LayoutInternalInvariant {
     InvalidBlockScrollGeometry,
     InvalidRoundedScrollGeometry,
     InvalidRoundedInlineFragmentGeometry,
+    /// A private balanced-line basis violated its finite/count/replay invariant.
+    InvalidInlineBalance,
     MissingLeafMeasurementProvider,
     MissingStagedUnroundedOutput,
     SubgridTrackInheritance,

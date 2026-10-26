@@ -1582,6 +1582,7 @@ pub(super) fn standalone_amounts(
     let width = selection.available_inline.unwrap_or_else(|| {
         (metrics.advance + selection.indent.max(0.0) - metrics.trailing_whitespace).max(0.0)
     });
+    let width = alignment_width(selection, width)?;
     let free = width - selection.indent - metrics.advance + metrics.trailing_whitespace;
     if free <= 0.0 {
         return Ok(amounts);
@@ -1620,12 +1621,34 @@ pub(super) fn standalone_amounts(
     Ok(amounts)
 }
 
+/// The original width remains the outer metric and tab frame. Only ordinary
+/// content alignment and its explicit spacing budget consume these insets.
+fn alignment_width(selection: &LineContext, width: f64) -> Result<f64> {
+    let insets = selection.alignment_insets;
+    if insets == crate::LineAlignmentInsets::ZERO {
+        return Ok(width);
+    }
+    let after_left = add(
+        "line alignment content width",
+        TextNumericPhase::Finalization,
+        width,
+        -insets.line_left(),
+    )?;
+    add(
+        "line alignment content width",
+        TextNumericPhase::Finalization,
+        after_left,
+        -insets.line_right(),
+    )
+}
+
 fn alignment_offset(
     selection: &LineContext,
     body_base: u8,
     width: f64,
     metrics: &LineMetrics,
 ) -> Result<f64> {
+    let width = alignment_width(selection, width)?;
     let rtl = selection.line_box_direction == LineBoxDirection::RightToLeft;
     let mut offset = if rtl { 0.0 } else { selection.indent };
     // Standalone's trailing SPACE still belongs to the physical edge selected
@@ -1667,6 +1690,15 @@ fn alignment_offset(
             TextNumericPhase::Finalization,
             offset,
             adjustment,
+        )?;
+    }
+    let left = selection.alignment_insets.line_left();
+    if left != 0.0 {
+        offset = add(
+            "line alignment inset offset",
+            TextNumericPhase::Finalization,
+            offset,
+            left,
         )?;
     }
     finite(
@@ -2083,6 +2115,7 @@ mod tests {
                 termination: crate::PreparedTermination::Ordinary(termination),
                 alternative: None,
                 context: LineContext {
+                    alignment_insets: crate::LineAlignmentInsets::ZERO,
                     base_direction: ParagraphBaseDirection::LeftToRight,
                     line_box_direction: LineBoxDirection::LeftToRight,
                     formatted_line: crate::FormattedLineContext::default(),
@@ -2488,6 +2521,7 @@ mod tests {
                 line_box_struts: Vec::new(),
                 line_strut: None,
                 context: LineContext {
+                    alignment_insets: crate::LineAlignmentInsets::ZERO,
                     base_direction: ParagraphBaseDirection::LeftToRight,
                     line_box_direction: LineBoxDirection::LeftToRight,
                     formatted_line: crate::FormattedLineContext::default(),
@@ -2512,7 +2546,7 @@ mod tests {
         let placed = crate::Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::WholeParagraph,
-            lines: vec![LinePlacement {
+            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -2525,7 +2559,7 @@ mod tests {
                     content: Rect::new(0.0, -10.0, 4.0, 4.0),
                     baseline: -7.0,
                 }],
-            }],
+            })],
         })
         .unwrap();
         assert_eq!(placed.lines()[0].bounds().size.height, 0.0);
@@ -2943,6 +2977,7 @@ mod tests {
                     termination: crate::PreparedTermination::Ordinary(termination),
                     alternative: None,
                     context: LineContext {
+                        alignment_insets: crate::LineAlignmentInsets::ZERO,
                         base_direction: ParagraphBaseDirection::RightToLeft,
                         line_box_direction: LineBoxDirection::RightToLeft,
                         formatted_line: crate::FormattedLineContext::default(),
@@ -3093,17 +3128,19 @@ mod tests {
         let request = PlacementRequest {
             prepared: prepared.clone(),
             coverage: PlacementCoverage::WholeParagraph,
-            lines: [first.clone(), second.clone()]
+            entries: [first.clone(), second.clone()]
                 .into_iter()
                 .enumerate()
-                .map(|(index, line)| LinePlacement {
-                    anchor: LineAnchor {
-                        inline_origin: 0.0,
-                        baseline: index as f64 * 20.0 + line.feedback().baseline,
-                    },
-                    line,
-                    orientation: LineOrientation::Horizontal,
-                    atomics: vec![],
+                .map(|(index, line)| {
+                    crate::PlacementEntry::Formatted(LinePlacement {
+                        anchor: LineAnchor {
+                            inline_origin: 0.0,
+                            baseline: index as f64 * 20.0 + line.feedback().baseline,
+                        },
+                        line,
+                        orientation: LineOrientation::Horizontal,
+                        atomics: vec![],
+                    })
                 })
                 .collect(),
         };

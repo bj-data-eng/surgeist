@@ -53,7 +53,9 @@ Sources: [engine](../src/engine/mod.rs), [measurement](../src/measurement.rs),
   flow with optional Text: `LayoutFlowInput`, `compute_layout_with_flow`, and
   `compute_layout_with_flow_invalidated`.
 - Direct leaf measurement: `compute_leaf`.
-- Host contracts: `Traverse`, `LayoutTree`, and `LayoutBatchSink`.
+- Host contracts: `Traverse`, `LayoutTree`, `WrapEdgeSource`, and `LayoutBatchSink`.
+- Early native Text edges: `process_wrapping_source`, `ProcessedWrappingSource`,
+  and `ResolvedWrapEdges`; [source admission](../src/inline_wrapping/source.rs).
 - Cache and failure contracts: `CacheOf`, `LayoutResultOf`, and `LayoutErrorOf`.
 
 ### Node input
@@ -63,11 +65,21 @@ Source: [node input](../src/node_input/mod.rs) and its domain modules.
 - Aggregate input: `NodeInputOf` and its `NodeInput` default-scalar alias.
 - Tree participation: owned `LayoutInputOf` storage and borrowed `LayoutInputViewOf`, `Display`, `Position`, and `ItemOrder`.
 - Flow and alignment: `WritingMode`, `Direction`, `AlignItems`, `AlignContent`,
-  `TextAlign`, `TextAlignLast`, and `TextJustification`.
+  `TextAlign`, `TextAlignLast`, `TextJustification`, and `TextWrapStyle`.
 - Inline and flex input: `TextParticipation`, `TextControlParticipation`, `TextParagraphBinding`,
   `InlineBoundaryInputOf`, `FlexDirection`, `FlexWrap`, and `FlexItemCollapse`.
 - Grid input: `GridPlacement`, `GridAutoFlow`, and `GridFlowToleranceOf`.
 - Scroll input: `ComputedOverflow`, `OverflowClipMarginOf`, `ScrollPaddingOf`, `ScrollMarginOf`, and `ScrollSnapType`.
+
+`NodeInputOf::text_wrap_style` defaults to `TextWrapStyle::Auto`. `Balance`
+selects among the same legal endpoints within each actual forced-break group,
+using natural remaining inline space before justification. It preserves Auto's
+formatted-line count in its bounded two-to-ten-line search; larger groups use
+Auto. The preference does not narrow containing geometry, change tab or
+percentage bases, or authorize conditional overflow breaks. Numeric atomic and
+control-only runs use the same preference through their existing fitter.
+Intrinsic sizing and forced-only nowrap retain their ordinary behavior. This is
+an unfragmented, unclamped profile; the other CSS wrap styles are not exposed.
 
 Prepared Text participation carries actual issued origin, atomic, control and scope
 handles. Capture validates complete inventories against the same borrowed tree;
@@ -114,13 +126,105 @@ Missing demanded incidence returns `MissingChildOrder`. Mixed inside/edge
 avoidance uses the [independent-constraint policy](../../../references/text-wrap-edges--native-determination.md#independent-avoidance-constraints).
 Avoidance adds no ordinary opportunities.
 
-Text-backed soft edge avoidance requires authentic physical endpoint or atomic
-incidence. A logical scope edge without that proof returns `UnsupportedIncidence`;
-the [original-cut refinement](../../../references/text-wrap-edges--native-determination.md#original-box-cut-incidence)
-specifies the remaining empty-box support. A Text-backed `Line` declaration
-requires source processing before preparation and currently returns
-`SourceProcessingRequired` at this late admission boundary. Computed mandatory
-boundaries already prepared by Text retain their separate issued causes.
+Text-backed soft edge avoidance selects one Text-issued original incidence of
+the existing boundary, with authentic generated-box order and association.
+Genuine empty captured boxes can have distinct before/after choices; one choice
+governs every participating scope. Each material box-metric assignment is fitted
+before preference selection. Missing correspondence returns
+`UnsupportedIncidence`; see the [original-cut contract](../../../references/text-wrap-edges--native-determination.md#original-box-cut-incidence).
+A Text-backed `Line` declaration requires source processing before preparation.
+Ordinary `LayoutFlowInput::try_new` returns `SourceProcessingRequired` at this
+late admission boundary. Computed mandatory boundaries already prepared by Text
+retain their separate issued causes.
+
+`process_wrapping_source` accepts a borrowed `WrapEdgeSource` projection and one
+Text `ContextualSourceInput`. Source scopes and occurrence associations refer to
+that input's actual inventories; the early projection needs no prepared handles.
+The operation derives applicable native forces, preserves existing computed
+requests, processes Text once, and authenticates the returned capture before
+issuing `ProcessedWrappingSource`. Its `into_parts` returns the processed source
+and an owned `ResolvedWrapEdges` receipt, ending the early host borrow.
+An explicitly declared native pair retains its real endpoint-control identity
+when the input has no matching inline scope.
+
+After normal Text preparation and host binding, `LayoutFlowInput::try_new_with_edges`
+accepts the current tree, actual paragraph bindings, final `WrappingInput`, and a
+borrowed receipt. The tree also supplies a fresh `WrapEdgeSource` projection.
+Admission checks current roles, declarations, relevant generated order and
+source/cause associations against both the receipt and actual prepared inputs.
+Changed semantic evidence returns `PlanMismatch`; invalid source associations
+return `SourceAssociation`. A coherent new preparation from the retained capture
+can reuse the receipt. The receipt authorizes no stale tree or foreign capture.
+
+Used box metrics remain final `WrappingInput` facts. They are not resolved from
+early source styles or frozen as absent by the receipt. A numerical change alone
+can reuse its semantic proof; the normal metric/fit/cache owners consume the new
+values. See [the source-admission guide](how-to.md#prepare-native-forced-text-edges).
+
+Complete generated child order can include genuine inline scopes without physical
+endpoints. Native spans establish the physical projection; canonical capture
+facts establish the full parent/order and consumed prefix or suffix. An empty
+in-flow child still determines first/last-child propagation. Admission rejects
+contradictory or unavailable required proofs instead of dropping that child.
+Atomic exterior edges require the same parent and consumed-side proof. A
+continuing inline uses its actual parent-domain paragraph coverage; intervening
+block content retains its own domain.
+
+Both scope variants carry `metric_contribution`.
+`Some(InlineBoxMetricContribution::Strut(...))` supplies actual used geometry and
+alignment; `Some(NoContribution)` affirmatively supplies absence, and `None`
+leaves the evidence unsupplied. Influential boxes need a real witness unless an
+actually selected same-box control allocation already owns that contribution.
+Glyph or descendant-font containment cannot establish the box's own strut.
+Aliases share one supplied witness; contributions are not duplicated.
+Missing, invalid and contradictory evidence return `MissingBoxMetrics`,
+`InvalidBoxMetrics` and `ConflictingBoxMetrics`, respectively. See the
+[metric ownership contract](../../../references/text-wrap-edges--native-determination.md#actual-box-metrics).
+
+The accepted original incidence and box attribution continue into the receiving
+line, actual allocation feedback, replay and cache identity. This custody is
+independent of the receiving preparation's spelling boundary. Text combines
+allocated box struts with its existing metric groups; numeric-only native flow
+uses its existing metric owner. Equal glyph prefixes do not establish equal
+box assignment or float clearance.
+At paragraph completion, the outgoing frontier must close inline boxes whose
+genuine exits precede that paragraph's exit. After an actual Forced selection,
+Text's issued ParagraphEnd selection can complete remaining boxes within the
+same actual scheduled paragraph. Layout retains this proof separately
+from the preceding original pin, which remains unchanged. The proof carries the
+genuine selected sequence, incoming box attribution and captured paragraph horizon
+through measurement, replay and reuse. CSS phantom disposition is independent of
+numerical metric completeness: a strut-only Paragraph receiver retains completion
+custody but contributes no ordinary published line or block extent. See the
+[completion and disposition contract](../../../references/text-wrap-edges--native-determination.md#paragraph-completion-and-retained-pins).
+Missing demanded box metrics still return `MissingBoxMetrics`; missing completion
+authority returns `UnsupportedIncidence`.
+
+Box/control-only native runs also distinguish nominal metrics from formatted
+line existence. Empty zero-decoration endpoints retain their metrics and
+source-indexed descendant outputs with zero used height; they do not establish
+a formatted ordinal, baseline, float band or adjoining-margin separator. A real
+in-flow atomic, each individual nonzero supported inline border or padding, and
+an actual Forced ending remain formatted even with zero extent. A terminal
+strut-only receiver does not inherit the preceding Forced status. These native
+results use the numeric owner directly and do not manufacture Text receipts.
+
+Captured paragraphs whose only prepared participants are genuine computed
+mandatory boundaries can execute without host child nodes. Layout proves their
+unique native gap from the existing capture/domain/graph associations and orders
+shared-gap paragraphs by canonical events. Empty, leading and trailing gaps use
+the same block/float/fitter path as ordinary runs. Exact preparation and paragraph
+identity prevent empty-vector lookup and result collisions through replay and
+publication. Real Block interruptions retain their child-domain associations;
+missing, foreign or ambiguous correspondence refuses. Strict zero-participation
+AssociationOnly metadata stays nonrendering, and numerical struts alone do not
+create work. Known-size and cache paths retain actual semantic baseline/metric
+work; whole-paragraph placement applies the same phantom disposition above.
+
+Native non-atomic endpoints currently carry their actual border and padding;
+they do not represent signed inline margins. That remaining geometry capability
+belongs to [fragmented inline decoration work](https://github.com/bj-data-eng/surgeist/issues/780).
+An atomic's signed margins cannot stand in for a non-atomic margin-only witness.
 
 Text-backed scopes use authenticated mixed-prefix and canonical source incidence,
 including transformed, collapsed and removed content. A semantic captured scope
@@ -239,8 +343,9 @@ accepted candidates publish their actual float placements once.
 Retained source participation determines whether an encounter has preceding
 in-flow content, independently of zero or signed prefix advance. Hidden and
 absolute participants retain their own traversal and static-position effects.
-Separate paragraph bindings retain their terminal lines, including genuine
-empty terminal lines. A discarded-only soft endpoint contributes no phantom
+Separate paragraph bindings retain their genuine terminal receipts. A
+strut-only Paragraph completion publishes no ordinary line; actual Forced
+endings remain real. A discarded-only soft endpoint contributes no phantom
 line. Minimum sizing includes the largest individual float contribution;
 maximum sizing combines each actual line with its applicable float occupation
 before the final finite placement pass. Clearance and expired float cohorts
@@ -281,6 +386,20 @@ an existing fallback that fails finalization propagates its error. Min-content
 is zone-exempt, while max-content stays unbroken. These reference trials remain
 unpublished, and changed policy, bands or encounters rebuild their private pass
 basis. See the [zone contract](../../../docs/text-layout-contract.md#hyphenation-zone-and-the-ordinary-fallback-line).
+
+`NodeInputOf::text_group_align` selects `TextGroupAlign`, defaulting to `None`.
+Layout groups actual descendant formatted lines in the same block formatting
+context, resolves their common padding from natural advances, then applies
+ordinary alignment and justification in that reduced content frame. A child
+`None` still participates in its ancestor's group. The
+[native group-alignment contract](../../../references/text-group-alignment--native-determination.md)
+defines nested residuals, membership and per-line direction.
+
+`NodeInputOf::block_flow_context` supplies `BlockFlowContext::Independent` for a
+used flow root. `Normal` retains the box's other context-establishing facts.
+Independent contexts contain their own floats; ordinary shared blocks transfer
+float exclusions through the enclosing context without including those floats
+in their own auto height.
 
 `TextJustification::Spaces` expands retained U+0020 slots using Text's finalized
 ownership and edge decisions. Layout distributes the remaining line capacity

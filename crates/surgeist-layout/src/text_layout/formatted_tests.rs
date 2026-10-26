@@ -101,6 +101,8 @@ fn numeric_forced_lines() -> Vec<NumericFormattedLine> {
     let metrics = crate::InlineMetricsOf::from_ascent_descent(8.0, 2.0).unwrap();
     let report = layout_mixed_inline_run_with_formatted_observation(
         MixedInlineRunInputOf {
+            groups: crate::group_alignment::Snapshot::default(),
+            text_wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,
             line_box_context: crate::line_box::LineBoxContext::new(
                 crate::LineBoxDirectionPolicy::Normal,

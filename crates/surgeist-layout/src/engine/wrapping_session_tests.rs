@@ -67,6 +67,7 @@ fn tree<S: LayoutScalar>(float: bool) -> PublicLayoutTreeOf<S> {
 
 fn scopes(policy: WrapInside) -> Vec<WrappingScopeInput<u32>> {
     vec![WrappingScopeInput::NativePair {
+        metric_contribution: None,
         edges: Default::default(),
         start: 1,
         end: 3,

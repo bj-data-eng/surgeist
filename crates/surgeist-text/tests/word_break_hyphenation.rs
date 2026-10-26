@@ -156,6 +156,7 @@ fn finish(
         line_box_struts: Vec::new(),
         line_strut: None,
         context: t::LineContext {
+            alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
             formatted_line: surgeist_text::FormattedLineContext::default(),
             base_direction: if p.analyzed_source().direction() == t::Direction::RightToLeft {
                 t::ParagraphBaseDirection::RightToLeft
@@ -231,7 +232,7 @@ fn copy_whole(p: &t::PreparedText, line: t::FinalizedLine, original: &t::Source)
     let layout = t::Layout::from_finalized_lines(t::PlacementRequest {
         prepared: p.clone(),
         coverage: t::PlacementCoverage::WholeParagraph,
-        lines: vec![t::LinePlacement {
+        entries: vec![t::PlacementEntry::Formatted(t::LinePlacement {
             line,
             anchor: t::LineAnchor {
                 inline_origin: 0.0,
@@ -239,7 +240,7 @@ fn copy_whole(p: &t::PreparedText, line: t::FinalizedLine, original: &t::Source)
             },
             orientation: t::LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap();
     assert_eq!(layout.source(), original);
@@ -862,6 +863,7 @@ fn suppressed_source_shy_retains_whole_word_portion_and_measurement_tail() {
             line_box_struts: Vec::new(),
             line_strut: None,
             context: t::LineContext {
+                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
                 formatted_line: surgeist_text::FormattedLineContext::default(),
                 base_direction: t::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,

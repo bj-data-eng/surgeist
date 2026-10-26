@@ -63,11 +63,22 @@ pub(crate) fn observe(
     let retained = shaped.items.iter().any(|item| {
         crate::protocol::prefix::retained_item(input, item, &atomics, &controls, &dispositions)
     });
+    let in_flow_content = shaped.items.iter().any(|item| {
+        crate::protocol::prefix::in_flow_item(
+            input,
+            &shaped,
+            item,
+            &atomics,
+            &controls,
+            &dispositions,
+        )
+    });
     Ok(FlowObservation {
         segment: segment.clone(),
         request: request.clone(),
         profile,
         retained,
+        in_flow_content,
         identity: crate::protocol::request_context(request_input),
     })
 }

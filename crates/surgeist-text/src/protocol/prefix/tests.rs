@@ -57,6 +57,7 @@ fn selected_end(
             participants,
             alternative,
             context: LineContext {
+                alignment_insets: crate::LineAlignmentInsets::ZERO,
                 formatted_line: crate::FormattedLineContext::default(),
                 base_direction: if prepared.analyzed_source().direction() == Direction::RightToLeft
                 {

@@ -687,22 +687,41 @@ mod tests {
             ))
             .unwrap();
             let batch = layout::compute_layout_with_flow(&capture, 0, request).unwrap();
-            assert_eq!(batch.unrounded_inline_fragments().len(), raw_children.len());
-            for entry in batch.unrounded_inline_fragments() {
-                let text::FinalizedFragmentOwner::Control(control) =
-                    entry.fragment().finalized_fragment().view().owner()
-                else {
+            assert!(batch.unrounded_inline_fragments().is_empty());
+            assert!(batch.final_inline_fragments().is_empty());
+            let placed = batch.placed_text()[0].layout();
+            assert!(placed.lines().is_empty());
+            let receipts = placed.nonformatted_lines().collect::<Vec<_>>();
+            assert_eq!(receipts.len(), 1);
+            let line = receipts[0].line.finalized_line();
+            assert_eq!(line.prepared_text(), *prepared);
+            assert!(!line.has_in_flow_content());
+            assert_eq!(line.fragments().len(), raw_children.len());
+            assert_eq!(
+                line.selected_line()
+                    .request()
+                    .controls
+                    .iter()
+                    .map(|row| row.occurrence.clone())
+                    .collect::<Vec<_>>(),
+                expected,
+                "the nonvisual selection retains the actual explicit event order"
+            );
+            for fragment in line.fragments() {
+                let text::FinalizedFragmentOwner::Control(control) = fragment.view().owner() else {
                     panic!("genuine control must remain Control-owned")
                 };
+                let binding = tree.paragraphs[0]
+                    .controls
+                    .iter()
+                    .find(|row| row.occurrence == control)
+                    .expect("the actual retained control still binds its genuine native child");
                 assert_eq!(
                     control,
-                    expected[match entry.owner() {
-                        layout::InlineFragmentOwner::Node(node) => *node - 1,
-                        layout::InlineFragmentOwner::Scope(_) =>
-                            panic!("source fixture requires node ownership"),
-                    }],
-                    "placed child must retain its actual event owner, including same-kind same-offset controls"
+                    expected[binding.node - 1],
+                    "native child must retain its actual event owner, including same-kind same-offset controls"
                 );
+                assert!(fragment.view().origin().is_none());
             }
         }
     }

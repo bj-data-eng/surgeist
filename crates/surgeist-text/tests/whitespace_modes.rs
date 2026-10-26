@@ -189,6 +189,7 @@ fn finish(
             line_box_struts: Vec::new(),
             line_strut: None,
             context: t::LineContext {
+                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
                 formatted_line: surgeist_text::FormattedLineContext::default(),
                 base_direction: direction(prepared),
                 line_box_direction: match direction(prepared) {
@@ -318,17 +319,19 @@ fn place_and_copy(
     let layout = t::Layout::from_finalized_lines(t::PlacementRequest {
         prepared,
         coverage: t::PlacementCoverage::WholeParagraph,
-        lines: lines
+        entries: lines
             .into_iter()
             .enumerate()
-            .map(|(index, line)| t::LinePlacement {
-                line,
-                anchor: t::LineAnchor {
-                    inline_origin: 0.0,
-                    baseline: 8.0 + index as f64 * 10.0,
-                },
-                orientation: t::LineOrientation::Horizontal,
-                atomics: vec![],
+            .map(|(index, line)| {
+                t::PlacementEntry::Formatted(t::LinePlacement {
+                    line,
+                    anchor: t::LineAnchor {
+                        inline_origin: 0.0,
+                        baseline: 8.0 + index as f64 * 10.0,
+                    },
+                    orientation: t::LineOrientation::Horizontal,
+                    atomics: vec![],
+                })
             })
             .collect(),
     })

@@ -12,7 +12,10 @@ fn actual_geometry<S: LayoutScalar>() {
         output.line_bounds[0].metrics.size().width,
         S::from_f64(20.0)
     );
-    let first = &output.paragraph.lines[0].line;
+    let surgeist_text::PlacementEntry::Formatted(placement) = &output.paragraph.entries[0] else {
+        panic!("native intrinsic line remains formatted");
+    };
+    let first = &placement.line;
     assert_eq!(
         first.metric_bounds(),
         surgeist_text::Rect::new(0.0, 0.0, 20.0, 10.0)
@@ -34,7 +37,7 @@ fn actual_geometry<S: LayoutScalar>() {
     let layout = surgeist_text::Layout::from_finalized_lines(surgeist_text::PlacementRequest {
         prepared: output.paragraph.prepared,
         coverage: surgeist_text::PlacementCoverage::WholeParagraph,
-        lines: output.paragraph.lines,
+        entries: output.paragraph.entries,
     })
     .unwrap();
     assert_eq!(layout.source().text().code_units(), &[88, 32, 10, 89]);

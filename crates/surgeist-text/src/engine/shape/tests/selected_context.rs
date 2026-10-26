@@ -106,6 +106,7 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
         line_box_struts: Vec::new(),
         line_strut: None,
         context: LineContext {
+            alignment_insets: crate::LineAlignmentInsets::ZERO,
             formatted_line: crate::FormattedLineContext::default(),
             base_direction: ParagraphBaseDirection::RightToLeft,
             line_box_direction: crate::LineBoxDirection::RightToLeft,

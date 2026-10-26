@@ -549,6 +549,7 @@ fn assumed_line_opportunities_do_not_become_detected_word_movement_stops() {
                 line_box_struts: Vec::new(),
                 line_strut: None,
                 context: t::LineContext {
+                    alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
                     formatted_line: surgeist_text::FormattedLineContext::default(),
                     base_direction: direction,
                     line_box_direction: match direction {
@@ -575,7 +576,7 @@ fn assumed_line_opportunities_do_not_become_detected_word_movement_stops() {
         let layout = t::Layout::from_finalized_lines(t::PlacementRequest {
             prepared: p,
             coverage: t::PlacementCoverage::WholeParagraph,
-            lines: vec![t::LinePlacement {
+            entries: vec![t::PlacementEntry::Formatted(t::LinePlacement {
                 line,
                 anchor: t::LineAnchor {
                     inline_origin: 0.0,
@@ -583,7 +584,7 @@ fn assumed_line_opportunities_do_not_become_detected_word_movement_stops() {
                 },
                 orientation: t::LineOrientation::Horizontal,
                 atomics: vec![],
-            }],
+            })],
         })
         .unwrap();
         assert_eq!(

@@ -127,6 +127,29 @@ impl RunView<'_> {
                 pen: glyph.pen,
             })
     }
+    /// Measures an unhinted named design baseline for this actual run's script
+    /// and retained instance. This does not enable vertical run placement.
+    pub fn baseline(
+        &self,
+        expected: &crate::FontCatalogueIdentity,
+        axis: crate::FontBaselineAxis,
+        name: crate::FontBaseline,
+    ) -> Result<crate::FontBaselineMeasurement<'_>> {
+        let script =
+            crate::FontBaselineScript::from_script(self.shaped.script).ok_or_else(|| {
+                crate::Error::new(
+                    crate::ErrorCode::InvalidFontMetrics,
+                    "unavailable actual baseline script",
+                )
+                .with_detail(crate::ErrorDetail::FontMetricTable {
+                    table: crate::FontMetricTable::Base,
+                    reason: crate::FontMetricTableError::BaselineScriptUnavailable,
+                })
+            })?;
+        self.effective_instance()?
+            .baseline(expected, script, axis, name)
+    }
+
     /// Qualifies complete canonical coordinates and the actual executable synthesis.
     pub fn effective_instance(&self) -> Result<EffectiveFontInstance<'_>> {
         EffectiveFontInstance::qualify_synthesized(

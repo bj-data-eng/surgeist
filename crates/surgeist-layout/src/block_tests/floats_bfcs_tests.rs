@@ -881,12 +881,8 @@ fn fri06_c05_shape_flow_physical_intervals_preserve_both_logical_sides_all_flows
             );
             assert_eq!(
                 start_tree.shape_queries(),
-                vec![
-                    (1, expected_start_query),
-                    (1, expected_start_query),
-                    (1, expected_start_query),
-                ],
-                "float, line, and final float candidates must share the exact mapped query for {writing_mode:?} {direction:?}",
+                vec![(1, expected_start_query), (1, expected_start_query),],
+                "float and line candidates must share the exact mapped query; native publication validates the accepted placement without a new query for {writing_mode:?} {direction:?}",
             );
 
             let (minimum, maximum) = fri06_c05_physical_inline_interval(flow_axes, 75.0, 100.0);
@@ -924,8 +920,8 @@ fn fri06_c05_shape_flow_physical_intervals_preserve_both_logical_sides_all_flows
             );
             assert_eq!(
                 end_tree.shape_queries(),
-                vec![(1, expected_end_query), (1, expected_end_query)],
-                "line-end candidate passes must retain the final physical margin box and ordered band for {writing_mode:?} {direction:?}",
+                vec![(1, expected_end_query)],
+                "the line-end float candidate must retain the physical margin box and ordered band; native publication does not query again for {writing_mode:?} {direction:?}",
             );
         }
     }
@@ -972,7 +968,8 @@ fn fri06_c05_shape_query_float_line_and_bfc_consumers_record_exact_candidate_onc
         compute_layout(&float_tree, 0, fri06_c05_shape_request(flow_axes)).unwrap();
         assert_eq!(
             float_tree.shape_queries(),
-            vec![(1, expected), (1, expected)]
+            vec![(1, expected)],
+            "only the overlapping float candidate queries the shape; native publication reuses its validated placement",
         );
 
         let bfc_tree = fri06_c05_shape_tree(
@@ -1252,11 +1249,11 @@ fn fri06_c12_t08_float_shape_slots_follow_visual_order_before_physical_projectio
             .collect::<Vec<_>>();
         let expected = match direction {
             Direction::Ltr => vec![S::ZERO, S::from_f64(66.0)],
-            Direction::Rtl => vec![S::from_f64(66.0), S::from_f64(180.0)],
+            Direction::Rtl => vec![S::from_f64(180.0), S::from_f64(114.0)],
         };
         assert_eq!(
             flow_inline_starts, expected,
-            "logical slots are LTR 0/66 and RTL 114/0 before FlowAxes projects them",
+            "L2 places RTL B114/A66 from line-left; their physical right edges are A180/B114",
         );
     }
 

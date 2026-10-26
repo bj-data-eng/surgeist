@@ -476,6 +476,8 @@ fn assert_outgoing_counter_once(p: &text::PreparedText) {
         .collect::<Vec<_>>();
     let fitted = fit::fit(
         fit::FitInput {
+            groups: crate::group_alignment::Snapshot::default(),
+            wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,
             formatted: &super::super::formatted::FormattedTailSnapshot::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
@@ -515,8 +517,9 @@ fn assert_outgoing_counter_once(p: &text::PreparedText) {
                 .minimum
                 .map_or(position.proposed, |minimum| position.proposed.max(minimum)))
         },
-        |line, _, _| {
+        |line, _, _, box_struts| {
             Ok(fit::LineAllocations {
+                line_box_struts: box_struts.to_vec(),
                 atomics: Vec::new(),
                 controls: line.selected_line().request().controls.clone(),
                 line_strut: None,
@@ -524,6 +527,7 @@ fn assert_outgoing_counter_once(p: &text::PreparedText) {
         },
         |_, _| Ok(None),
         fit::EncounterCallbacks {
+            checkpoint_group: || {},
             replay: |_: &text::FinalizedLine, _: fit::EncounterReplay| Ok(Vec::new()),
             accept: || Ok(()),
             reset: |_| {},

@@ -1,20 +1,32 @@
 //! Layout-owned inline scope proof and ancestry-prefix break preference.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{cmp::Ordering, collections::BTreeMap, sync::Arc};
+pub(crate) mod balance;
 mod declarations;
 pub use declarations::{
     ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
-    InlineBoxRef, InlineChildOrderInput, WrapEdge, WrapEdges, WrappingInput,
+    InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, WrapEdge, WrapEdges,
+    WrappingInput,
 };
 pub(crate) use declarations::{EdgeEffect, EdgePreferences, WrappingMode};
 
 use surgeist_text::CapturedScope;
+mod canonical_order;
 mod context;
+pub(crate) use canonical_order::{
+    CanonicalBox, CanonicalCoverage, CanonicalOrderBindings, CanonicalOrderInventory,
+};
 mod edge_plan;
+mod source;
 pub(crate) use crate::error::wrapping_error;
 pub(crate) use context::{
     CanonicalScopeProof, NumericWrapping, ScopeRow, WrappingContext, WrappingScopeProof,
     native_span,
+};
+pub use source::{
+    ProcessedWrappingSource, ResolvedWrapEdges, SourceOccurrenceAssociations,
+    SourceScopeAssociation, SourceWrappingScopeInput, WrapEdgeSource, WrapEdgeSourceNodeView,
+    process_wrapping_source,
 };
 
 /// Noninherited preference for permitted breaks inside one actual inline box.
@@ -26,18 +38,20 @@ pub enum WrapInside {
 }
 
 /// Actual native endpoints or a canonical captured inline scope.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum WrappingScopeInput<Node> {
     NativePair {
         start: Node,
         end: Node,
         wrap_inside: WrapInside,
         edges: WrapEdges,
+        metric_contribution: Option<InlineBoxMetricContribution>,
     },
     Captured {
         scope: CapturedScope,
         wrap_inside: WrapInside,
         edges: WrapEdges,
+        metric_contribution: Option<InlineBoxMetricContribution>,
     },
 }
 
@@ -62,6 +76,11 @@ pub enum WrappingScopeError {
     ChildOrder,
     MissingChildOrder,
     SourceProcessingRequired,
+    SourceAssociation,
+    PlanMismatch,
+    MissingBoxMetrics,
+    InvalidBoxMetrics,
+    ConflictingBoxMetrics,
 }
 
 #[derive(Debug, Default)]
@@ -114,8 +133,15 @@ pub(crate) struct NativePairProjection<Node> {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NumericWrappingError {
+    Group(crate::group_alignment::NumericError),
     Scope(WrappingScopeError),
     FeedbackCycle,
+    InvalidBalanceBasis,
+}
+impl From<crate::group_alignment::NumericError> for NumericWrappingError {
+    fn from(error: crate::group_alignment::NumericError) -> Self {
+        Self::Group(error)
+    }
 }
 impl From<WrappingScopeError> for NumericWrappingError {
     fn from(error: WrappingScopeError) -> Self {
@@ -127,11 +153,19 @@ pub(crate) fn numeric_wrapping_error<Node, S: crate::LayoutScalar, M>(
     error: NumericWrappingError,
 ) -> crate::LayoutErrorOf<Node, S, M> {
     match error {
+        NumericWrappingError::Group(error) => error.layout(node),
         NumericWrappingError::Scope(error) => wrapping_error(node, error),
         NumericWrappingError::FeedbackCycle => crate::LayoutErrorOf::new(
             crate::LayoutErrorSiteOf::Node(node),
             crate::LayoutOperation::InlineWrapping,
             crate::LayoutErrorKindOf::InlineFeedbackCycle,
+        ),
+        NumericWrappingError::InvalidBalanceBasis => crate::LayoutErrorOf::new(
+            crate::LayoutErrorSiteOf::Node(node),
+            crate::LayoutOperation::InlineWrapping,
+            crate::LayoutErrorKindOf::InternalInvariant(
+                crate::LayoutInternalInvariant::InvalidInlineBalance,
+            ),
         ),
     }
 }
@@ -176,6 +210,17 @@ impl<T> PreferenceFrontier<T> {
         class: AvoidClass,
         receipt: T,
     ) -> Result<(), WrappingScopeError> {
+        self.consider_ranked(class, receipt, |_, _| Ordering::Equal)
+    }
+
+    /// Rank only equivalent avoidance classes here; strict dominance always
+    /// wins independently of numerical preference. Less means left preferred.
+    pub(crate) fn consider_ranked(
+        &mut self,
+        class: AvoidClass,
+        receipt: T,
+        prefer: impl Fn(&T, &T) -> Ordering,
+    ) -> Result<(), WrappingScopeError> {
         if !Arc::ptr_eq(&self.ancestry, &class.ancestry) {
             return Err(WrappingScopeError::InconsistentIncidence);
         }
@@ -197,6 +242,13 @@ impl<T> PreferenceFrontier<T> {
                 if let Some((_, prior)) = entries.range(..key).next_back()
                     && key < prior.class.interval().1
                 {
+                    return Ok(());
+                }
+                if entries.get(&key).is_some_and(|prior| {
+                    prior.class.subset(&class)
+                        && class.subset(&prior.class)
+                        && prefer(&prior.receipt, &receipt) == Ordering::Less
+                }) {
                     return Ok(());
                 }
                 let dominated = entries
@@ -222,6 +274,13 @@ impl<T> PreferenceFrontier<T> {
                 {
                     return Ok(());
                 }
+                if entries.iter().any(|prior| {
+                    prior.class.subset(&class)
+                        && class.subset(&prior.class)
+                        && prefer(&prior.receipt, &receipt) == Ordering::Less
+                }) {
+                    return Ok(());
+                }
                 entries.retain(|prior| !class.subset(&prior.class));
                 entries.push(FrontierEntry {
                     class,
@@ -234,16 +293,25 @@ impl<T> PreferenceFrontier<T> {
         Ok(())
     }
     pub(crate) fn into_preferred(self) -> Option<T> {
+        self.into_preferred_ranked(|_, _| Ordering::Equal)
+    }
+
+    /// Compare only the surviving nondominated receipts. Exact rank ties keep
+    /// the consuming fitter's established latest normal-preference serial.
+    pub(crate) fn into_preferred_ranked(self, prefer: impl Fn(&T, &T) -> Ordering) -> Option<T> {
+        let preferred = |prior: FrontierEntry<T>, next: FrontierEntry<T>| match prefer(
+            &next.receipt,
+            &prior.receipt,
+        ) {
+            Ordering::Less => next,
+            Ordering::Equal if next.serial > prior.serial => next,
+            _ => prior,
+        };
         match self.entries {
-            FrontierEntries::Inside(entries) => entries
-                .into_values()
-                .max_by_key(|entry| entry.serial)
-                .map(|entry| entry.receipt),
-            FrontierEntries::Mixed(entries) => entries
-                .into_iter()
-                .max_by_key(|entry| entry.serial)
-                .map(|entry| entry.receipt),
+            FrontierEntries::Inside(entries) => entries.into_values().reduce(preferred),
+            FrontierEntries::Mixed(entries) => entries.into_iter().reduce(preferred),
         }
+        .map(|entry| entry.receipt)
     }
 }
 

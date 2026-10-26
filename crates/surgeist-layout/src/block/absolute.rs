@@ -200,6 +200,9 @@ where
             )
             .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
         )?;
+        if let Some(groups) = tree.group_computation() {
+            groups.child(child);
+        }
         let final_size = known_size
             .unwrap_or(output.size)
             .clamp_max_before_min_optional(min_size, max_size);

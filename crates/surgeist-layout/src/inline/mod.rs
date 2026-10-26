@@ -8,6 +8,7 @@ use crate::Point;
 use crate::geometry::FlowAxes;
 #[cfg(test)]
 use crate::geometry::{LogicalPointOf, LogicalSizeOf};
+use crate::inline_wrapping::balance::{BalanceGoal, NaturalResidual};
 #[cfg(test)]
 use std::cell::Cell;
 use std::ops::Range;
@@ -67,6 +68,8 @@ pub(super) enum MixedInlineParticipantOf<S: LayoutScalar = DefaultScalar> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunInputOf<S: LayoutScalar = DefaultScalar> {
+    pub groups: crate::group_alignment::Snapshot,
+    pub text_wrap_style: crate::TextWrapStyle,
     pub line_box_context: crate::line_box::LineBoxContext,
     pub observe_tail: bool,
     pub wrapping: Option<crate::inline_wrapping::NumericWrapping>,
@@ -113,6 +116,14 @@ pub(super) struct LogicalLineBandOf<S: LayoutScalar = DefaultScalar> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct NonFormattedInlineControlOf<S: LayoutScalar = DefaultScalar> {
+    /// The original numerical witness remains real despite zero used height.
+    pub control: InlineBoundaryControlOf<S>,
+    pub inline_start: S,
+    pub block_start: S,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct InlineControlSourceOf<S: LayoutScalar = DefaultScalar> {
     pub kind: InlineParticipantLayoutKind,
     pub source_index: usize,
@@ -142,6 +153,14 @@ impl<S: LayoutScalar> InlineEndpointOf<S> {
         }
     }
 
+    pub(super) fn from_control(control: InlineBoundaryControlOf<S>) -> Self {
+        Self {
+            kind: control.kind(),
+            axes: control.flow().flow_axes,
+            edge: control.edge(),
+        }
+    }
+
     pub(super) fn physical_components(self) -> (Edges<S>, Edges<S>) {
         let logical = |value| match self.kind {
             InlineBoundaryKind::Start => {
@@ -160,6 +179,7 @@ impl<S: LayoutScalar> InlineEndpointOf<S> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
+    pub group_lines: Vec<crate::group_alignment::NaturalLine<S>>,
     pub formatted_lines: Option<Vec<crate::text_layout::formatted::NumericFormattedLine>>,
     pub line_box_context: crate::line_box::LineBoxContext,
     pub lines: Vec<crate::hyphenation::CommittedInlineLine>,
@@ -172,11 +192,12 @@ pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
     pub last_baseline: Option<S>,
     pub atomics: Vec<AtomicInlineSourceOf<S>>,
     pub controls: Vec<InlineControlSourceOf<S>>,
+    pub nonformatted_controls: Vec<NonFormattedInlineControlOf<S>>,
     pub post_line_clear_intents: Vec<PostLineClearIntent>,
     pub line_bands: Vec<LogicalLineBandOf<S>>,
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, PartialEq)]
 struct InlineSourceCursor {
     source: usize,
     descriptor: usize,
@@ -266,15 +287,16 @@ pub(super) fn inline_leading_query_units() -> usize {
     INLINE_LEADING_QUERY_UNITS.with(Cell::get)
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 struct SelectedInlineUnitOf<S: LayoutScalar> {
     participant: MixedInlineParticipantOf<S>,
     discarded: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct SelectedInlineLineOf<S: LayoutScalar> {
     ending: surgeist_text::LineEnd,
+    next_cursor: InlineSourceCursor,
     alignment: TextAlign,
     indent: S,
     units: Vec<SelectedInlineUnitOf<S>>,
@@ -285,6 +307,7 @@ struct SelectedInlineLineOf<S: LayoutScalar> {
     after_baseline: S,
     fallback_line_band: Option<InlineMetricContributionOf<S>>,
     used_inline_extent: S,
+    has_in_flow_content: bool,
     split_baseline_edge_phase: Option<S>,
     inline_start_override: Option<S>,
     uses_float_strut_phase: bool,
@@ -302,6 +325,7 @@ struct InlineLineSummaryOf<S: LayoutScalar> {
     after_baseline: S,
     fallback_line_band: Option<InlineMetricContributionOf<S>>,
     used_inline_extent: S,
+    has_in_flow_content: bool,
     split_baseline_edge_phase: Option<S>,
 }
 
@@ -320,6 +344,58 @@ enum SelectedInlineLineEnd {
     Paragraph,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NumericLineDisposition {
+    Formatted,
+    NonFormatted,
+}
+
+impl NumericLineDisposition {
+    fn for_line(ending: surgeist_text::LineEnd, has_in_flow_content: bool) -> Self {
+        if ending == surgeist_text::LineEnd::Forced || has_in_flow_content {
+            Self::Formatted
+        } else {
+            Self::NonFormatted
+        }
+    }
+}
+
+impl SelectedInlineLineEnd {
+    fn line_end(self) -> surgeist_text::LineEnd {
+        match self {
+            Self::Soft => surgeist_text::LineEnd::Soft,
+            Self::Forced => surgeist_text::LineEnd::Forced,
+            Self::Paragraph => surgeist_text::LineEnd::Paragraph,
+        }
+    }
+}
+
+fn numeric_line_alignment(
+    normal: TextAlign,
+    last: crate::TextAlignLast,
+    ending: SelectedInlineLineEnd,
+) -> TextAlign {
+    let alignment = normal.for_line(last, ending != SelectedInlineLineEnd::Soft);
+    if alignment == TextAlign::Justify {
+        normal.unexpandable(last)
+    } else {
+        alignment
+    }
+}
+
+/// A numeric run separates adjoining margins only if it can produce an actual
+/// formatted line. This uses the same participant semantics as line summaries;
+/// numerical struts, a previous force and zero/nonzero advances are not roles.
+pub(super) fn numeric_run_has_formatted_line<S: LayoutScalar>(
+    participants: &[MixedInlineParticipantOf<S>],
+    wrapping: Option<&crate::inline_wrapping::NumericWrapping>,
+) -> bool {
+    participants.iter().copied().any(|participant| {
+        participant.has_in_flow_content()
+            || matches!(participant, MixedInlineParticipantOf::ForcedLineBreak(_))
+    }) || wrapping.is_some_and(|wrapping| wrapping.forced(0) || wrapping.next_forced(0).is_some())
+}
+
 #[derive(Clone)]
 struct SelectedInlineLineCandidateOf<S: LayoutScalar> {
     end: SelectedInlineLineEnd,
@@ -328,7 +404,7 @@ struct SelectedInlineLineCandidateOf<S: LayoutScalar> {
     pending_strut: Option<InlineMetricContributionOf<S>>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 struct InlineMetricContributionOf<S: LayoutScalar> {
     baseline: S,
     after_baseline: S,
@@ -413,6 +489,16 @@ impl<S: LayoutScalar> InlineLineMetricGroupsOf<S> {
 }
 
 impl<S: LayoutScalar> MixedInlineParticipantOf<S> {
+    fn has_in_flow_content(self) -> bool {
+        match self {
+            Self::Atomic { .. } => true,
+            Self::Boundary(control) => {
+                control.edge().border() != S::ZERO || control.edge().padding() != S::ZERO
+            }
+            Self::ForcedLineBreak(_) => false,
+        }
+    }
+
     fn following_break(self) -> Option<InlineBreakOpportunity> {
         match self {
             Self::Atomic { participation, .. } => Some(participation.following_break()),
@@ -528,12 +614,16 @@ fn summarize_inline_line<S: LayoutScalar>(
     let mut used_inline_extent = S::ZERO;
     let discarded_start_end = edges.leading_discard_len();
     let discarded_end_start = edges.trailing_discard_start();
+    let mut has_in_flow_content = false;
     let mut before_trailing_metric_groups = metric_groups;
     let mut before_trailing_inline_extent = used_inline_extent;
     for (index, participant) in participants.iter().copied().enumerate() {
         if index == discarded_end_start {
             before_trailing_metric_groups = metric_groups;
             before_trailing_inline_extent = used_inline_extent;
+        }
+        if discarded_start_end <= index && index < discarded_end_start {
+            has_in_flow_content |= participant.has_in_flow_content();
         }
         if index >= discarded_start_end {
             metric_groups.include(participant.alignment(), participant.metrics(flow_axes));
@@ -557,6 +647,7 @@ fn summarize_inline_line<S: LayoutScalar>(
         after_baseline: metrics.after_baseline,
         fallback_line_band,
         used_inline_extent,
+        has_in_flow_content,
         split_baseline_edge_phase: metric_groups.split_baseline_edge_phase(),
     }
 }
@@ -587,6 +678,7 @@ fn selected_from_summary<S: LayoutScalar>(
 
     SelectedInlineLineOf {
         ending: surgeist_text::LineEnd::Paragraph,
+        next_cursor: InlineSourceCursor::default(),
         alignment: TextAlign::Start,
         indent: S::ZERO,
         units,
@@ -597,6 +689,7 @@ fn selected_from_summary<S: LayoutScalar>(
         after_baseline: summary.after_baseline,
         fallback_line_band: summary.fallback_line_band,
         used_inline_extent: summary.used_inline_extent,
+        has_in_flow_content: summary.has_in_flow_content,
         split_baseline_edge_phase: summary.split_baseline_edge_phase,
         inline_start_override: None,
         uses_float_strut_phase: false,
@@ -931,6 +1024,7 @@ struct NumericCandidateReceiptOf<S: LayoutScalar> {
     next_cursor: InlineSourceCursor,
     pending_strut: Option<InlineMetricContributionOf<S>>,
     summary: InlineLineSummaryOf<S>,
+    groups: InlineLineMetricGroupsOf<S>,
     phase_groups: InlineLineMetricGroupsOf<S>,
     last_boundary: Option<Option<InlineMetricContributionOf<S>>>,
     starts_phase: bool,
@@ -938,6 +1032,7 @@ struct NumericCandidateReceiptOf<S: LayoutScalar> {
     has_fallback_atomic: bool,
     uses_phase: bool,
     band: Option<LogicalLineBandQueryResultOf<S>>,
+    capacity: Option<S>,
 }
 /// Prefix accumulator over actual numeric participants. Neither numeric variant
 /// is discardable Text, so these are the same ordered metric/advance folds as
@@ -946,6 +1041,7 @@ struct NumericReceiptAccumulatorOf<S: LayoutScalar> {
     groups: InlineLineMetricGroupsOf<S>,
     phase_groups: InlineLineMetricGroupsOf<S>,
     advance: S,
+    has_in_flow_content: bool,
     last_boundary: Option<Option<InlineMetricContributionOf<S>>>,
     starts_phase: bool,
     has_boundary: bool,
@@ -959,6 +1055,7 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
             groups,
             phase_groups: InlineLineMetricGroupsOf::from_strut(None),
             advance: S::ZERO,
+            has_in_flow_content: false,
             last_boundary: None,
             starts_phase: false,
             has_boundary: false,
@@ -967,6 +1064,7 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
         }
     }
     fn push(&mut self, participant: MixedInlineParticipantOf<S>, axes: FlowAxes) {
+        self.has_in_flow_content |= participant.has_in_flow_content();
         self.groups
             .include(participant.alignment(), participant.metrics(axes));
         self.advance = self.advance + participant.inline_advance(axes);
@@ -1030,8 +1128,10 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
                 after_baseline: metrics.after_baseline,
                 fallback_line_band: fallback,
                 used_inline_extent: self.advance,
+                has_in_flow_content: self.has_in_flow_content,
                 split_baseline_edge_phase: groups.split_baseline_edge_phase(),
             },
+            groups,
             phase_groups,
             last_boundary: self.last_boundary,
             starts_phase: self.starts_phase,
@@ -1039,8 +1139,76 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
             has_fallback_atomic: self.has_fallback_atomic,
             uses_phase: false,
             band: None,
+            capacity: None,
         }
     }
+}
+
+fn allocate_numeric_box_metrics<S: LayoutScalar>(
+    receipt: &mut NumericCandidateReceiptOf<S>,
+    wrapping: &crate::inline_wrapping::NumericWrapping,
+    participants: &[MixedInlineParticipantOf<S>],
+    start: usize,
+    end: usize,
+) -> Result<(), crate::inline_wrapping::NumericWrappingError> {
+    use crate::{InlineBoxMetricContribution as Contribution, WrappingScopeError};
+    for allocation in wrapping.metrics(start, end) {
+        let owned: Vec<_> = allocation
+            .endpoints
+            .into_iter()
+            .flatten()
+            .filter(|&index| start <= index && index < end)
+            .map(|index| match participants.get(index) {
+                Some(MixedInlineParticipantOf::Boundary(control)) => {
+                    Ok((control.alignment(), control.metrics()))
+                }
+                _ => Err(WrappingScopeError::CaptureAssociation),
+            })
+            .collect::<Result<_, _>>()?;
+        let (alignment, metrics) = match allocation.contribution {
+            Contribution::NoContribution => {
+                if !owned.is_empty() {
+                    return Err(WrappingScopeError::ConflictingBoxMetrics.into());
+                }
+                continue;
+            }
+            Contribution::Strut(strut) => {
+                let baseline = S::from_f64(strut.metrics.baseline);
+                let extent = S::from_f64(strut.metrics.line_extent);
+                if !baseline.is_finite() || !extent.is_finite() || extent < baseline {
+                    return Err(WrappingScopeError::InvalidBoxMetrics.into());
+                }
+                let alignment = match strut.alignment {
+                    surgeist_text::LineBoxAlignment::Baseline => InlineControlAlignment::Baseline,
+                    surgeist_text::LineBoxAlignment::Top => InlineControlAlignment::Top,
+                    surgeist_text::LineBoxAlignment::Bottom => InlineControlAlignment::Bottom,
+                };
+                if owned.iter().any(|(actual_alignment, metrics)| {
+                    *actual_alignment != alignment
+                        || metrics.baseline() != baseline
+                        || metrics.after_baseline() != extent - baseline
+                }) {
+                    return Err(WrappingScopeError::ConflictingBoxMetrics.into());
+                }
+                (
+                    alignment,
+                    InlineMetricContributionOf {
+                        baseline,
+                        after_baseline: extent - baseline,
+                    },
+                )
+            }
+        };
+        if owned.is_empty() {
+            receipt.groups.include(alignment, metrics);
+            receipt.phase_groups.include(alignment, metrics);
+        }
+    }
+    let metrics = receipt.groups.resolve();
+    receipt.summary.baseline = metrics.baseline;
+    receipt.summary.after_baseline = metrics.after_baseline;
+    receipt.summary.split_baseline_edge_phase = receipt.groups.split_baseline_edge_phase();
+    Ok(())
 }
 
 fn resolve_numeric_candidate<S: LayoutScalar>(
@@ -1051,6 +1219,11 @@ fn resolve_numeric_candidate<S: LayoutScalar>(
     available: S,
     mut band_source: impl FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
 ) -> Result<bool, crate::inline_wrapping::NumericWrappingError> {
+    if NumericLineDisposition::for_line(receipt.end.line_end(), receipt.summary.has_in_flow_content)
+        == NumericLineDisposition::NonFormatted
+    {
+        return Ok(true);
+    }
     let original = receipt.summary;
     let mut floating = false;
     let mut seen = Vec::new();
@@ -1119,12 +1292,15 @@ fn resolve_numeric_candidate<S: LayoutScalar>(
         } else {
             width
         };
+        receipt.capacity = Some(width);
         return Ok(receipt.summary.used_inline_extent <= width - indent);
     }
 }
 
 #[derive(Clone, Copy)]
 struct NumericLineQuery<'a, S: LayoutScalar> {
+    goal: Option<BalanceGoal>,
+    indent: S,
     run: ProjectedInlineRun<'a, S>,
     cursor: InlineSourceCursor,
     next_boundary_descriptor: usize,
@@ -1133,6 +1309,57 @@ struct NumericLineQuery<'a, S: LayoutScalar> {
     pending: Option<InlineMetricContributionOf<S>>,
     axes: FlowAxes,
 }
+enum NumericCandidatePreference<S: LayoutScalar> {
+    Auto(NumericCandidateReceiptOf<S>),
+    Balance {
+        receipt: NumericCandidateReceiptOf<S>,
+        residual: NaturalResidual,
+    },
+}
+impl<S: LayoutScalar> NumericCandidatePreference<S> {
+    fn new(
+        receipt: NumericCandidateReceiptOf<S>,
+        goal: Option<BalanceGoal>,
+        indent: S,
+    ) -> Result<Self, crate::inline_wrapping::NumericWrappingError> {
+        let Some(_) = goal else {
+            return Ok(Self::Auto(receipt));
+        };
+        let invalid = crate::inline_wrapping::NumericWrappingError::InvalidBalanceBasis;
+        let capacity = receipt.capacity.ok_or(invalid)?;
+        let residual = NaturalResidual::from_components(
+            capacity.to_f64(),
+            indent.to_f64(),
+            receipt.summary.used_inline_extent.to_f64(),
+        )
+        .ok_or(invalid)?;
+        Ok(Self::Balance { receipt, residual })
+    }
+    fn receipt(&self) -> &NumericCandidateReceiptOf<S> {
+        match self {
+            Self::Auto(receipt) | Self::Balance { receipt, .. } => receipt,
+        }
+    }
+    fn into_receipt(self) -> NumericCandidateReceiptOf<S> {
+        match self {
+            Self::Auto(receipt) | Self::Balance { receipt, .. } => receipt,
+        }
+    }
+    fn compare(&self, other: &Self, goal: Option<BalanceGoal>) -> std::cmp::Ordering {
+        match (self, other, goal) {
+            (Self::Auto(_), Self::Auto(_), None) => std::cmp::Ordering::Equal,
+            (
+                Self::Balance { residual: left, .. },
+                Self::Balance {
+                    residual: right, ..
+                },
+                Some(goal),
+            ) => goal.compare_distance(*left, *right),
+            _ => unreachable!("one numeric candidate walk has one actual preference mode"),
+        }
+    }
+}
+
 fn select_scope_inline_line<S: LayoutScalar>(
     query: NumericLineQuery<'_, S>,
     wrapping: Option<&crate::inline_wrapping::NumericWrapping>,
@@ -1142,6 +1369,8 @@ fn select_scope_inline_line<S: LayoutScalar>(
 ) -> Result<Option<SelectedInlineLineCandidateOf<S>>, crate::inline_wrapping::NumericWrappingError>
 {
     let NumericLineQuery {
+        goal,
+        indent,
         run,
         cursor,
         next_boundary_descriptor,
@@ -1161,14 +1390,16 @@ fn select_scope_inline_line<S: LayoutScalar>(
             axes,
         )
     };
-    let Some(wrapping) = wrapping else {
+    if wrapping.is_none() && goal.is_none() {
         return Ok(baseline());
-    };
-    let edge_stop = if !cursor.edge_consumed && wrapping.forced(cursor.source) {
-        Some(cursor.source)
-    } else {
-        wrapping.next_forced(cursor.source)
-    };
+    }
+    let edge_stop = wrapping.and_then(|wrapping| {
+        if !cursor.edge_consumed && wrapping.forced(cursor.source) {
+            Some(cursor.source)
+        } else {
+            wrapping.next_forced(cursor.source)
+        }
+    });
     if cursor.source == run.participants.len() && edge_stop.is_none() {
         return Ok(baseline());
     }
@@ -1227,6 +1458,15 @@ fn select_scope_inline_line<S: LayoutScalar>(
     if let Some(fallback) = completion.summary.fallback_line_band {
         completion.has_fallback_atomic=run.participants[cursor.source..stop].iter().any(|p|matches!(*p,MixedInlineParticipantOf::Atomic {item,..} if item.fallback_block_start_in_band(axes,fallback).is_some()));
     }
+    if let Some(wrapping) = wrapping {
+        allocate_numeric_box_metrics(
+            &mut completion,
+            wrapping,
+            run.participants,
+            cursor.source,
+            stop,
+        )?;
+    }
     let build = |receipt: NumericCandidateReceiptOf<S>| {
         let end = receipt.next_cursor.source - usize::from(receipt.summary.line_break.is_some());
         let mut line = selected_from_summary(
@@ -1242,7 +1482,15 @@ fn select_scope_inline_line<S: LayoutScalar>(
             pending_strut: receipt.pending_strut,
         }
     };
-    if fits(&mut completion)? || !wraps {
+    let completion_fits = fits(&mut completion)?;
+    if !wraps
+        || completion_fits
+            && (goal.is_none()
+                || NumericLineDisposition::for_line(
+                    completion.end.line_end(),
+                    completion.summary.has_in_flow_content,
+                ) == NumericLineDisposition::NonFormatted)
+    {
         return Ok(Some(build(completion)));
     }
     let descriptor_stop = cursor.descriptor + stop - cursor.source;
@@ -1268,10 +1516,65 @@ fn select_scope_inline_line<S: LayoutScalar>(
         candidate
     })
     .or_else(|| Some(build(completion)));
-    let mut first: Option<NumericCandidateReceiptOf<S>> = None;
+    let fallback = if !wrapping.is_some_and(|wrapping| wrapping.has_metrics()) {
+        fallback
+    } else if let Some(candidate) = fallback {
+        let end = candidate.next_cursor.source - usize::from(candidate.line.line_break.is_some());
+        let mut accumulator = NumericReceiptAccumulatorOf::new(pending);
+        for participant in run.participants[cursor.source..end].iter().copied() {
+            accumulator.push(participant, axes);
+        }
+        let mut receipt = accumulator.receipt(
+            candidate.end,
+            candidate.next_cursor,
+            candidate.line.line_break,
+            pending,
+            end - cursor.source,
+        );
+        receipt.pending_strut = candidate.pending_strut;
+        if let Some(wrapping) = wrapping {
+            allocate_numeric_box_metrics(
+                &mut receipt,
+                wrapping,
+                run.participants,
+                cursor.source,
+                end,
+            )?;
+        }
+        fits(&mut receipt)?;
+        Some(build(receipt))
+    } else {
+        None
+    };
+    let mut first: Option<NumericCandidatePreference<S>> = None;
     let mut frontier: Option<
-        crate::inline_wrapping::PreferenceFrontier<NumericCandidateReceiptOf<S>>,
+        crate::inline_wrapping::PreferenceFrontier<NumericCandidatePreference<S>>,
     > = None;
+    let prefer = |left: &NumericCandidatePreference<S>, right: &NumericCandidatePreference<S>| {
+        left.compare(right, goal)
+    };
+    let mut consider = |receipt: NumericCandidateReceiptOf<S>| -> Result<(), crate::inline_wrapping::NumericWrappingError> {
+        let next = NumericCandidatePreference::new(receipt, goal, indent)?;
+        if let Some(wrapping) = wrapping {
+            if let Some(frontier) = frontier.as_mut() {
+                if goal.is_some() { frontier.consider_ranked(wrapping.class(next.receipt().next_cursor.source)?, next, prefer)?; }
+                else { frontier.consider(wrapping.class(next.receipt().next_cursor.source)?, next)?; }
+            } else if let Some(prior) = first.take() {
+                let mut next_frontier = wrapping.frontier();
+                if goal.is_some() {
+                    next_frontier.consider_ranked(wrapping.class(prior.receipt().next_cursor.source)?, prior, prefer)?;
+                    next_frontier.consider_ranked(wrapping.class(next.receipt().next_cursor.source)?, next, prefer)?;
+                } else {
+                    next_frontier.consider(wrapping.class(prior.receipt().next_cursor.source)?, prior)?;
+                    next_frontier.consider(wrapping.class(next.receipt().next_cursor.source)?, next)?;
+                }
+                frontier = Some(next_frontier);
+            } else { first = Some(next); }
+        } else if first.as_ref().is_none_or(|prior| prefer(&next, prior) != std::cmp::Ordering::Greater) {
+            first = Some(next);
+        }
+        Ok(())
+    };
     let mut accumulator = NumericReceiptAccumulatorOf::new(pending);
     for end in cursor.source + 1..stop {
         let participant = run.participants[end - 1];
@@ -1290,24 +1593,34 @@ fn select_scope_inline_line<S: LayoutScalar>(
             pending,
             end - cursor.source,
         );
+        if let Some(wrapping) = wrapping {
+            allocate_numeric_box_metrics(
+                &mut candidate,
+                wrapping,
+                run.participants,
+                cursor.source,
+                end,
+            )?;
+        }
         if !fits(&mut candidate)? {
             continue;
         }
-        if let Some(frontier) = frontier.as_mut() {
-            frontier.consider(wrapping.class(end)?, candidate)?;
-        } else if let Some(prior) = first.take() {
-            let mut next = wrapping.frontier();
-            next.consider(wrapping.class(prior.next_cursor.source)?, prior)?;
-            next.consider(wrapping.class(end)?, candidate)?;
-            frontier = Some(next);
-        } else {
-            first = Some(candidate);
-        }
+        consider(candidate)?;
     }
-    Ok(frontier
-        .and_then(crate::inline_wrapping::PreferenceFrontier::into_preferred)
-        .or(first)
-        .map(build)
+    if completion_fits {
+        consider(completion)?;
+    }
+    let preferred = frontier
+        .and_then(|frontier| {
+            if goal.is_some() {
+                frontier.into_preferred_ranked(prefer)
+            } else {
+                frontier.into_preferred()
+            }
+        })
+        .or(first);
+    Ok(preferred
+        .map(|preferred| build(preferred.into_receipt()))
         .or(fallback))
 }
 
@@ -1318,14 +1631,15 @@ fn text_line_offset<S: LayoutScalar>(
     text_align: TextAlign,
 ) -> S {
     let free_space = (available_inline_extent - used_inline_extent).max(S::ZERO);
-    let inline_decreases = flow_axes
-        .logical_axis_progression(crate::LogicalAxis::Inline)
-        .is_decreasing();
     match text_align {
         TextAlign::Start | TextAlign::Justify => S::ZERO,
         TextAlign::End => free_space,
-        TextAlign::Left | TextAlign::LegacyLeft if inline_decreases => free_space,
-        TextAlign::Right | TextAlign::LegacyRight if !inline_decreases => free_space,
+        TextAlign::Left | TextAlign::LegacyLeft if flow_axes.direction() == Direction::Rtl => {
+            free_space
+        }
+        TextAlign::Right | TextAlign::LegacyRight if flow_axes.direction() == Direction::Ltr => {
+            free_space
+        }
         TextAlign::Center | TextAlign::LegacyCenter => free_space / S::from_f64(2.0),
         TextAlign::Left | TextAlign::Right | TextAlign::LegacyLeft | TextAlign::LegacyRight => {
             S::ZERO
@@ -1333,31 +1647,98 @@ fn text_line_offset<S: LayoutScalar>(
     }
 }
 
-fn selected_line_inline_start<S: LayoutScalar>(
-    line: &SelectedInlineLineOf<S>,
-    flow_axes: FlowAxes,
-    text_align: TextAlign,
-    direction: Direction,
+fn line_alignment_offset<S: LayoutScalar>(
+    advance: S,
+    capacity: S,
+    axes: FlowAxes,
+    alignment: TextAlign,
+    same_direction: bool,
 ) -> S {
-    let same_direction = direction == flow_axes.direction();
-    let text_align = match (same_direction, text_align) {
+    let alignment = match (same_direction, alignment) {
         (false, TextAlign::Start | TextAlign::Justify) => TextAlign::End,
         (false, TextAlign::End) => TextAlign::Start,
         (_, alignment) => alignment,
     };
+    let free_space = capacity - advance;
+    if free_space < S::ZERO {
+        if same_direction { S::ZERO } else { free_space }
+    } else {
+        text_line_offset(advance, capacity, axes, alignment)
+    }
+}
+fn ordinary_line_inline_start<S: LayoutScalar>(
+    line: &SelectedInlineLineOf<S>,
+    axes: FlowAxes,
+    alignment: TextAlign,
+    direction: Direction,
+) -> S {
+    let same_direction = direction == axes.direction();
     line.inline_start_override.unwrap_or_else(|| {
         let capacity = line.band.inline_end - line.band.inline_start - line.indent;
-        let free_space = capacity - line.used_inline_extent;
-        // Overlong content aligns to the resolved line-box Start, regardless
-        // of requested alignment. Opposed containing progression needs the
-        // signed deficit to reach that edge; matching progression starts at0.
-        let offset = if free_space < S::ZERO {
-            if same_direction { S::ZERO } else { free_space }
-        } else {
-            text_line_offset(line.used_inline_extent, capacity, flow_axes, text_align)
-        };
+        let offset = line_alignment_offset(
+            line.used_inline_extent,
+            capacity,
+            axes,
+            alignment,
+            same_direction,
+        );
         line.band.inline_start + if same_direction { line.indent } else { S::ZERO } + offset
     })
+}
+fn selected_line_inline_start<S: LayoutScalar>(
+    line: &SelectedInlineLineOf<S>,
+    axes: FlowAxes,
+    alignment: TextAlign,
+    direction: Direction,
+    insets: surgeist_text::LineAlignmentInsets,
+) -> Result<S, crate::inline_wrapping::NumericWrappingError> {
+    let old = ordinary_line_inline_start(line, axes, alignment, direction);
+    if insets == surgeist_text::LineAlignmentInsets::ZERO {
+        return Ok(old);
+    }
+    let capacity = crate::group_alignment::canonical_capacity::<S>(
+        (line.band.inline_end - line.band.inline_start).to_f64(),
+        insets,
+        line.indent.to_f64(),
+    )?;
+    crate::group_alignment::add::<S>(capacity, -line.used_inline_extent.to_f64())?;
+    let same_direction = direction == axes.direction();
+    let offset = line_alignment_offset(
+        line.used_inline_extent,
+        crate::group_alignment::scalar::<S>(capacity)?,
+        axes,
+        alignment,
+        same_direction,
+    );
+    let start_inset = if axes.direction() == Direction::Ltr {
+        insets.line_left()
+    } else {
+        insets.line_right()
+    };
+    let base = crate::group_alignment::add::<S>(
+        line.band.inline_start.to_f64(),
+        if same_direction {
+            line.indent.to_f64()
+        } else {
+            0.0
+        },
+    )?;
+    let shifted = crate::group_alignment::add::<S>(
+        crate::group_alignment::add::<S>(base, offset.to_f64())?,
+        start_inset,
+    )?;
+    let result = if let Some(overridden) = line.inline_start_override {
+        let mut ordinary = line.clone();
+        ordinary.inline_start_override = None;
+        let delta = crate::group_alignment::add::<S>(
+            shifted,
+            -ordinary_line_inline_start(&ordinary, axes, alignment, direction).to_f64(),
+        )?;
+        crate::group_alignment::add::<S>(overridden.to_f64(), delta)?
+    } else {
+        shifted
+    };
+    Ok(crate::group_alignment::scalar(result)?)
 }
 
 fn resolved_float_terminal_block_extent<S: LayoutScalar>(
@@ -1393,8 +1774,10 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
     flow_axes: FlowAxes,
     text_align: TextAlign,
     direction: Direction,
-) -> (S, Vec<usize>, Vec<S>) {
-    let line_inline_start = selected_line_inline_start(line, flow_axes, text_align, direction);
+    insets: surgeist_text::LineAlignmentInsets,
+) -> Result<(S, Vec<usize>, Vec<S>), crate::inline_wrapping::NumericWrappingError> {
+    let line_inline_start =
+        selected_line_inline_start(line, flow_axes, text_align, direction, insets)?;
     let mut order = vec![0; line.units.len()];
     let visual_order = SuppliedLine::new(supplied)
         .reorder_into(&mut order)
@@ -1404,7 +1787,15 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
     for (visual_index, (source_index, _)) in visual_order.iter().enumerate() {
         visual_indices[source_index] = visual_index;
     }
-    let mut inline_start = line_inline_start;
+    // L2 orders slots from line-left to line-right. A containing RTL flow
+    // numbers logical coordinates from the opposite side of the occupied
+    // interval, independently of its physical writing-mode progression.
+    let rtl_flow = flow_axes.direction() == Direction::Rtl;
+    let mut inline_start = if rtl_flow {
+        line_inline_start + line.used_inline_extent
+    } else {
+        line_inline_start
+    };
     for (source_index, _) in visual_order.iter() {
         let selected = line.units[source_index];
         let selected_inline_extent = if selected.discarded {
@@ -1412,10 +1803,15 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
         } else {
             selected.participant.inline_advance(flow_axes)
         };
+        if rtl_flow {
+            inline_start = inline_start - selected_inline_extent;
+        }
         inline_starts[source_index] = inline_start;
-        inline_start = inline_start + selected_inline_extent;
+        if !rtl_flow {
+            inline_start = inline_start + selected_inline_extent;
+        }
     }
-    (line_inline_start, visual_indices, inline_starts)
+    Ok((line_inline_start, visual_indices, inline_starts))
 }
 
 #[cfg(test)]
@@ -1486,100 +1882,159 @@ where
     )
 }
 
-fn layout_mixed_inline_run_from_available<S, BandSource, ClearSource>(
-    input: MixedInlineRunInputOf<S>,
-    supplied: Vec<SuppliedInlineParticipant>,
+#[derive(Clone, Copy)]
+struct NumericWalkInput<'a, S: LayoutScalar> {
+    input: &'a MixedInlineRunInputOf<S>,
+    supplied: &'a [SuppliedInlineParticipant],
     available: S,
-    mut band_source: BandSource,
-    mut clear_source: ClearSource,
-    observe_formatted: bool,
-) -> Result<MixedInlineRunReportOf<S>, crate::inline_wrapping::NumericWrappingError>
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct NumericFlowState<S: LayoutScalar> {
+    cursor: InlineSourceCursor,
+    boundary_index: usize,
+    pending_strut: Option<InlineMetricContributionOf<S>>,
+    indent_state: crate::text_indent::IndentLineState,
+    line_box_context: crate::line_box::LineBoxContext,
+    block_cursor: S,
+    float_strut: Option<InlineMetricContributionOf<S>>,
+    continuation_inline_cursor: Option<S>,
+    advanced_phase_transition: bool,
+    resolved_terminal_block_extent: S,
+    float_edge_phase: Option<S>,
+}
+
+struct NumericSequence<S: LayoutScalar> {
+    state: NumericFlowState<S>,
+    selected_lines: Vec<SelectedInlineLineOf<S>>,
+    formatted_lines: Option<Vec<crate::text_layout::formatted::NumericFormattedLine>>,
+}
+
+#[derive(Clone, Copy)]
+struct NumericGroupEntry<S: LayoutScalar> {
+    state: NumericFlowState<S>,
+    selected_len: usize,
+    formatted_len: usize,
+}
+
+impl<S: LayoutScalar> NumericSequence<S> {
+    fn new(input: &MixedInlineRunInputOf<S>, observe: bool) -> Self {
+        Self {
+            state: NumericFlowState {
+                cursor: InlineSourceCursor::default(),
+                boundary_index: 0,
+                pending_strut: None,
+                indent_state: input.indent_state,
+                line_box_context: input.line_box_context,
+                block_cursor: S::ZERO,
+                float_strut: None,
+                continuation_inline_cursor: None,
+                advanced_phase_transition: false,
+                resolved_terminal_block_extent: S::ZERO,
+                float_edge_phase: None,
+            },
+            selected_lines: Vec::new(),
+            formatted_lines: observe.then(Vec::new),
+        }
+    }
+    fn checkpoint(&self) -> NumericGroupEntry<S> {
+        NumericGroupEntry {
+            state: self.state,
+            selected_len: self.selected_lines.len(),
+            formatted_len: self.formatted_lines.as_ref().map_or(0, Vec::len),
+        }
+    }
+    fn restore(&mut self, entry: NumericGroupEntry<S>) {
+        self.state = entry.state;
+        self.selected_lines.truncate(entry.selected_len);
+        if let Some(lines) = &mut self.formatted_lines {
+            lines.truncate(entry.formatted_len);
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct NumericWalkControl {
+    goal: Option<BalanceGoal>,
+    stop_at_group: bool,
+    max_formatted: Option<usize>,
+}
+impl NumericWalkControl {
+    fn auto() -> Self {
+        Self {
+            goal: None,
+            stop_at_group: false,
+            max_formatted: None,
+        }
+    }
+    fn group(goal: Option<BalanceGoal>, max_formatted: Option<usize>) -> Self {
+        Self {
+            goal,
+            stop_at_group: true,
+            max_formatted,
+        }
+    }
+    fn stop(self, ending: surgeist_text::LineEnd, count: usize) -> Option<NumericWalkOutcome> {
+        if self.max_formatted.is_some_and(|limit| count > limit) {
+            Some(NumericWalkOutcome::CountExceeded)
+        } else if self.stop_at_group && ending != surgeist_text::LineEnd::Soft {
+            Some(NumericWalkOutcome::GroupComplete)
+        } else {
+            None
+        }
+    }
+}
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum NumericWalkOutcome {
+    Exhausted,
+    GroupComplete,
+    CountExceeded,
+}
+
+fn walk_numeric_sequence<S, B, C>(
+    request: NumericWalkInput<'_, S>,
+    sequence: &mut NumericSequence<S>,
+    line_boundaries: &mut std::iter::Peekable<impl Iterator<Item = InlineSourceCursor>>,
+    control: NumericWalkControl,
+    mut band_source: B,
+    mut clear_source: C,
+) -> Result<NumericWalkOutcome, crate::inline_wrapping::NumericWrappingError>
 where
     S: LayoutScalar,
-    BandSource: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
-    ClearSource: FnMut(S, PostLineClearIntent) -> S,
+    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    C: FnMut(S, PostLineClearIntent) -> S,
 {
-    let wraps = !matches!(input.available_inline_extent, AvailableOf::MaxContent);
-    let mut selected_lines = Vec::new();
-    let mut formatted_lines = observe_formatted.then(Vec::new);
-    let mut cursor = InlineSourceCursor::default();
+    let NumericWalkInput {
+        input,
+        supplied,
+        available,
+    } = request;
     let run = ProjectedInlineRun {
         participants: &input.participants,
-        supplied: &supplied,
+        supplied,
     };
-    let mut boundary_descriptor = 0;
-    // Mandatory following breaks also delimit a line. Looking only for forced
-    // controls would repeatedly query a suffix of discardable mandatory units.
-    let mut original_boundaries = input
-        .participants
-        .iter()
-        .enumerate()
-        .filter_map(|(index, participant)| {
-            #[cfg(test)]
-            observe_inline_work_visit(1);
-            let is_forced = matches!(participant, MixedInlineParticipantOf::ForcedLineBreak(_));
-            if !is_forced {
-                boundary_descriptor += 1;
-            }
-            (is_forced
-                || participant
-                    .following_break()
-                    .is_some_and(|following| following == InlineBreakOpportunity::Mandatory))
-            .then_some(InlineSourceCursor {
-                edge_consumed: false,
-                source: index + 1,
-                descriptor: boundary_descriptor,
-            })
-        })
-        .peekable();
-    let mut computed_boundaries = input
-        .wrapping
-        .as_ref()
-        .into_iter()
-        .flat_map(|wrapping| {
-            let mut descriptor = 0;
-            std::iter::once((0, 0))
-                .chain(input.participants.iter().enumerate().map(move |(i, p)| {
-                    if !matches!(p, MixedInlineParticipantOf::ForcedLineBreak(_)) {
-                        descriptor += 1;
-                    }
-                    (i + 1, descriptor)
-                }))
-                .filter_map(move |(source, descriptor)| {
-                    wrapping.forced(source).then_some(InlineSourceCursor {
-                        source,
-                        descriptor,
-                        edge_consumed: false,
-                    })
-                })
-        })
-        .peekable();
-    let mut line_boundaries = std::iter::from_fn(move || {
-        match (original_boundaries.peek(), computed_boundaries.peek()) {
-            (Some(a), Some(b)) if a.source == b.source => {
-                computed_boundaries.next();
-                original_boundaries.next()
-            }
-            (Some(a), Some(b)) if a.source < b.source => original_boundaries.next(),
-            (_, Some(_)) => computed_boundaries.next(),
-            (Some(_), None) => original_boundaries.next(),
-            (None, None) => None,
-        }
-    })
-    .peekable();
-    let mut indent_state = input.indent_state;
-    let mut line_box_context = input.line_box_context;
-    // This route has only atomic/control occurrences, so every actual line is
-    // weak. Its fallback is constant until a prepared Text run supplies strong facts.
+    let wraps = !matches!(input.available_inline_extent, AvailableOf::MaxContent);
+    let NumericSequence {
+        state,
+        selected_lines,
+        formatted_lines,
+    } = sequence;
+    let NumericFlowState {
+        mut cursor,
+        mut boundary_index,
+        mut pending_strut,
+        mut indent_state,
+        mut line_box_context,
+        mut block_cursor,
+        mut float_strut,
+        mut continuation_inline_cursor,
+        mut advanced_phase_transition,
+        mut resolved_terminal_block_extent,
+        mut float_edge_phase,
+    } = *state;
     let line_direction = line_box_context.weak_direction();
-    let mut pending_strut = None;
-    let mut block_cursor = S::ZERO;
-    let mut float_strut = None;
-    let mut continuation_inline_cursor = None;
-    let mut advanced_phase_transition = false;
-    let mut resolved_terminal_block_extent = S::ZERO;
-    let mut float_edge_phase = None;
-
+    let mut formatted_count = 0;
+    let mut outcome = NumericWalkOutcome::Exhausted;
     loop {
         let line_indent = input.indent.at(indent_state);
         let next_boundary_descriptor = line_boundaries
@@ -1587,6 +2042,8 @@ where
             .map_or(supplied.len(), |boundary| boundary.descriptor);
         let Some(mut provisional) = select_scope_inline_line(
             NumericLineQuery {
+                goal: control.goal,
+                indent: line_indent,
                 run,
                 cursor,
                 next_boundary_descriptor,
@@ -1610,6 +2067,32 @@ where
         else {
             break;
         };
+        if NumericLineDisposition::for_line(
+            provisional.end.line_end(),
+            provisional.line.has_in_flow_content,
+        ) == NumericLineDisposition::NonFormatted
+        {
+            provisional.line.ending = provisional.end.line_end();
+            provisional.line.next_cursor = provisional.next_cursor;
+            provisional.line.indent = line_indent;
+            provisional.line.alignment =
+                numeric_line_alignment(input.text_align, input.text_align_last, provisional.end);
+            provisional.line.band = LogicalLineBandOf {
+                inline_start: S::ZERO,
+                inline_end: available,
+                block_start: block_cursor,
+                block_end: block_cursor,
+            };
+            cursor = provisional.next_cursor;
+            pending_strut = provisional.pending_strut;
+            let ending = provisional.line.ending;
+            selected_lines.push(provisional.line);
+            if let Some(stop) = control.stop(ending, formatted_count) {
+                outcome = stop;
+                break;
+            }
+            continue;
+        }
         if float_strut.is_some() {
             resolve_float_strut_phase(&mut provisional.line, float_strut, input.flow_axes);
         }
@@ -1638,6 +2121,8 @@ where
         } else {
             let selected = select_scope_inline_line(
                 NumericLineQuery {
+                    goal: control.goal,
+                    indent: line_indent,
                     run,
                     cursor,
                     next_boundary_descriptor,
@@ -1731,21 +2216,14 @@ where
                 .next()
                 .expect("selected hard line end is present in source");
             debug_assert_eq!(consumed.descriptor, selected.next_cursor.descriptor);
+            boundary_index += 1;
         }
         cursor = selected.next_cursor;
-        line.alignment = input.text_align.for_line(
-            input.text_align_last,
-            selected.end != SelectedInlineLineEnd::Soft,
-        );
-        if line.alignment == TextAlign::Justify {
-            line.alignment = input.text_align.unexpandable(input.text_align_last);
-        }
-        line.ending = match selected.end {
-            SelectedInlineLineEnd::Soft => surgeist_text::LineEnd::Soft,
-            SelectedInlineLineEnd::Forced => surgeist_text::LineEnd::Forced,
-            SelectedInlineLineEnd::Paragraph => surgeist_text::LineEnd::Paragraph,
-        };
-        if let Some(lines) = &mut formatted_lines {
+        line.alignment =
+            numeric_line_alignment(input.text_align, input.text_align_last, selected.end);
+        line.ending = selected.end.line_end();
+        line.next_cursor = selected.next_cursor;
+        if let Some(lines) = formatted_lines.as_mut() {
             lines.push(crate::text_layout::formatted::NumericFormattedLine {
                 source_end: selected.next_cursor.source,
                 descriptor_end: selected.next_cursor.descriptor,
@@ -1756,8 +2234,17 @@ where
         line_box_context.commit(line_box_context.resolve(None));
         pending_strut = selected.pending_strut;
         let line_block_end = block_cursor + line.baseline + line.after_baseline;
-        let line_inline_start =
-            selected_line_inline_start(&line, input.flow_axes, line.alignment, line_direction);
+        let line_inline_start = selected_line_inline_start(
+            &line,
+            input.flow_axes,
+            line.alignment,
+            line_direction,
+            if matches!(input.available_inline_extent, AvailableOf::Definite(_)) {
+                input.groups.insets::<S>(line_box_context.resolve(None))?
+            } else {
+                surgeist_text::LineAlignmentInsets::ZERO
+            },
+        )?;
         let line_inline_end = line_inline_start + line.used_inline_extent;
         if has_float_transition && line.split_baseline_edge_phase.is_some() {
             float_edge_phase = line.split_baseline_edge_phase;
@@ -1775,18 +2262,554 @@ where
         advanced_phase_transition = false;
         block_cursor =
             clear_source(line_block_end, line.post_line_clear_intent).max(line_block_end);
+        let ending = line.ending;
         selected_lines.push(line);
+        formatted_count += 1;
+        if let Some(stop) = control.stop(ending, formatted_count) {
+            outcome = stop;
+            break;
+        }
     }
+
+    *state = NumericFlowState {
+        cursor,
+        boundary_index,
+        pending_strut,
+        indent_state,
+        line_box_context,
+        block_cursor,
+        float_strut,
+        continuation_inline_cursor,
+        advanced_phase_transition,
+        resolved_terminal_block_extent,
+        float_edge_phase,
+    };
+    Ok(outcome)
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct NumericGroupTerminal<S: LayoutScalar> {
+    ending: surgeist_text::LineEnd,
+    cursor: InlineSourceCursor,
+    control: Option<ForcedLineBreakControlOf<S>>,
+}
+impl<S: LayoutScalar> NumericGroupTerminal<S> {
+    fn of(line: &SelectedInlineLineOf<S>) -> Self {
+        Self {
+            ending: line.ending,
+            cursor: line.next_cursor,
+            control: line.line_break,
+        }
+    }
+}
+struct NumericReferenceGroup<S: LayoutScalar> {
+    terminal: NumericGroupTerminal<S>,
+    count: usize,
+    residuals: Option<Vec<NaturalResidual>>,
+}
+#[derive(Clone, PartialEq)]
+struct NumericGroupBasis<S: LayoutScalar> {
+    lines: Vec<SelectedInlineLineOf<S>>,
+    outgoing: NumericFlowState<S>,
+}
+struct NumericGroupProgram<S: LayoutScalar> {
+    goal: Option<BalanceGoal>,
+    basis: NumericGroupBasis<S>,
+}
+#[derive(Clone, Copy)]
+struct NumericGroupAttempt<'a, S: LayoutScalar> {
+    entry: NumericGroupEntry<S>,
+    reference: &'a NumericReferenceGroup<S>,
+    goal: Option<BalanceGoal>,
+}
+fn numeric_line_residual<S: LayoutScalar>(
+    line: &SelectedInlineLineOf<S>,
+) -> Result<NaturalResidual, crate::inline_wrapping::NumericWrappingError> {
+    NaturalResidual::from_components(
+        (line.band.inline_end - line.band.inline_start).to_f64(),
+        line.indent.to_f64(),
+        line.used_inline_extent.to_f64(),
+    )
+    .ok_or(crate::inline_wrapping::NumericWrappingError::InvalidBalanceBasis)
+}
+fn numeric_is_formatted<S: LayoutScalar>(line: &SelectedInlineLineOf<S>) -> bool {
+    NumericLineDisposition::for_line(line.ending, line.has_in_flow_content)
+        == NumericLineDisposition::Formatted
+}
+fn numeric_reference_groups<S: LayoutScalar>(
+    lines: &[SelectedInlineLineOf<S>],
+) -> Result<Vec<NumericReferenceGroup<S>>, crate::inline_wrapping::NumericWrappingError> {
+    lines
+        .split_inclusive(|line| line.ending != surgeist_text::LineEnd::Soft)
+        .map(|group| {
+            let last = group
+                .last()
+                .ok_or(crate::inline_wrapping::NumericWrappingError::InvalidBalanceBasis)?;
+            let count = group
+                .iter()
+                .filter(|line| numeric_is_formatted(line))
+                .count();
+            let residuals = if (2..=10).contains(&count) {
+                Some(
+                    group
+                        .iter()
+                        .filter(|line| numeric_is_formatted(line))
+                        .map(numeric_line_residual)
+                        .collect::<Result<_, _>>()?,
+                )
+            } else {
+                None
+            };
+            Ok(NumericReferenceGroup {
+                terminal: NumericGroupTerminal::of(last),
+                count,
+                residuals,
+            })
+        })
+        .collect()
+}
+fn numeric_group_trial<S, B, C>(
+    request: NumericWalkInput<'_, S>,
+    boundaries: &[InlineSourceCursor],
+    sequence: &mut NumericSequence<S>,
+    attempt: NumericGroupAttempt<'_, S>,
+    band_source: &mut B,
+    clear_source: &mut C,
+) -> Result<
+    Option<crate::inline_wrapping::balance::GroupTrial<NumericGroupBasis<S>>>,
+    crate::inline_wrapping::NumericWrappingError,
+>
+where
+    S: LayoutScalar,
+    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    C: FnMut(S, PostLineClearIntent) -> S,
+{
+    let NumericGroupAttempt {
+        entry,
+        reference,
+        goal,
+    } = attempt;
+    sequence.restore(entry);
+    let mut remaining = boundaries[entry.state.boundary_index..]
+        .iter()
+        .copied()
+        .peekable();
+    let outcome = walk_numeric_sequence(
+        request,
+        sequence,
+        &mut remaining,
+        NumericWalkControl::group(goal, Some(reference.count)),
+        band_source,
+        clear_source,
+    )?;
+    if outcome != NumericWalkOutcome::GroupComplete {
+        return Ok(None);
+    }
+    let suffix = &sequence.selected_lines[entry.selected_len..];
+    let Some(last) = suffix.last() else {
+        return Ok(None);
+    };
+    if NumericGroupTerminal::of(last) != reference.terminal
+        || suffix
+            .iter()
+            .filter(|line| numeric_is_formatted(line))
+            .count()
+            != reference.count
+    {
+        return Ok(None);
+    }
+    let residuals = if reference.residuals.is_some() {
+        suffix
+            .iter()
+            .filter(|line| numeric_is_formatted(line))
+            .map(numeric_line_residual)
+            .collect::<Result<_, _>>()?
+    } else {
+        Vec::new()
+    };
+    Ok(Some(crate::inline_wrapping::balance::GroupTrial {
+        residuals,
+        value: NumericGroupBasis {
+            lines: suffix.to_vec(),
+            outgoing: sequence.state,
+        },
+    }))
+}
+fn replay_numeric_auto<S, B, C>(
+    request: NumericWalkInput<'_, S>,
+    boundaries: &[InlineSourceCursor],
+    sequence: &mut NumericSequence<S>,
+    initial: NumericGroupEntry<S>,
+    band_source: &mut B,
+    clear_source: &mut C,
+) -> Result<(), crate::inline_wrapping::NumericWrappingError>
+where
+    S: LayoutScalar,
+    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    C: FnMut(S, PostLineClearIntent) -> S,
+{
+    sequence.restore(initial);
+    let mut cursor = boundaries.iter().copied().peekable();
+    walk_numeric_sequence(
+        request,
+        sequence,
+        &mut cursor,
+        NumericWalkControl::auto(),
+        band_source,
+        clear_source,
+    )?;
+    Ok(())
+}
+fn balance_numeric_sequence<S, B, C>(
+    request: NumericWalkInput<'_, S>,
+    boundaries: &[InlineSourceCursor],
+    sequence: &mut NumericSequence<S>,
+    mut band_source: B,
+    mut clear_source: C,
+) -> Result<(), crate::inline_wrapping::NumericWrappingError>
+where
+    S: LayoutScalar,
+    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    C: FnMut(S, PostLineClearIntent) -> S,
+{
+    use crate::inline_wrapping::balance::{choose_group, variance_order};
+    use std::cmp::Ordering;
+    let invalid = crate::inline_wrapping::NumericWrappingError::InvalidBalanceBasis;
+    let initial = sequence.checkpoint();
+    replay_numeric_auto(
+        request,
+        boundaries,
+        sequence,
+        initial,
+        &mut band_source,
+        &mut clear_source,
+    )?;
+    let references = numeric_reference_groups(&sequence.selected_lines)?;
+    sequence.restore(initial);
+    let mut program = Vec::with_capacity(references.len());
+    let mut improved = false;
+    for reference in &references {
+        let entry = sequence.checkpoint();
+        let auto = numeric_group_trial(
+            request,
+            boundaries,
+            sequence,
+            NumericGroupAttempt {
+                entry,
+                reference,
+                goal: None,
+            },
+            &mut band_source,
+            &mut clear_source,
+        )?;
+        let (goal, trial) = if let Some(residuals) = &reference.residuals {
+            let winner = choose_group(residuals, auto, |goal| {
+                numeric_group_trial(
+                    request,
+                    boundaries,
+                    sequence,
+                    NumericGroupAttempt {
+                        entry,
+                        reference,
+                        goal: Some(goal),
+                    },
+                    &mut band_source,
+                    &mut clear_source,
+                )
+            })?;
+            let Some(winner) = winner else {
+                return replay_numeric_auto(
+                    request,
+                    boundaries,
+                    sequence,
+                    initial,
+                    &mut band_source,
+                    &mut clear_source,
+                );
+            };
+            improved |= variance_order(&winner.trial.residuals, residuals).ok_or(invalid)?
+                == Ordering::Less;
+            (winner.goal, winner.trial)
+        } else {
+            let Some(auto) = auto else {
+                return replay_numeric_auto(
+                    request,
+                    boundaries,
+                    sequence,
+                    initial,
+                    &mut band_source,
+                    &mut clear_source,
+                );
+            };
+            // Noneligible groups use one actual local Auto invocation; do not
+            // format a long unrelated group again for winner selection.
+            program.push(NumericGroupProgram {
+                goal: None,
+                basis: auto.value,
+            });
+            continue;
+        };
+        let replay = numeric_group_trial(
+            request,
+            boundaries,
+            sequence,
+            NumericGroupAttempt {
+                entry,
+                reference,
+                goal,
+            },
+            &mut band_source,
+            &mut clear_source,
+        )?;
+        let Some(replay) = replay else {
+            return replay_numeric_auto(
+                request,
+                boundaries,
+                sequence,
+                initial,
+                &mut band_source,
+                &mut clear_source,
+            );
+        };
+        if replay.value != trial.value {
+            return Err(invalid);
+        }
+        program.push(NumericGroupProgram {
+            goal,
+            basis: replay.value,
+        });
+    }
+    // One whole-program replay starts at the true incoming state. Group slices
+    // index the one authentic hard-boundary inventory; earlier prefixes are
+    // borrowed and never replayed by another group's target portfolio.
+    sequence.restore(initial);
+    for (reference, program) in references.iter().zip(&program) {
+        let entry = sequence.checkpoint();
+        let replay = numeric_group_trial(
+            request,
+            boundaries,
+            sequence,
+            NumericGroupAttempt {
+                entry,
+                reference,
+                goal: program.goal,
+            },
+            &mut band_source,
+            &mut clear_source,
+        )?;
+        let Some(replay) = replay else {
+            return replay_numeric_auto(
+                request,
+                boundaries,
+                sequence,
+                initial,
+                &mut band_source,
+                &mut clear_source,
+            );
+        };
+        if replay.value != program.basis {
+            return Err(invalid);
+        }
+        if let Some(reference) = &reference.residuals
+            && variance_order(&replay.residuals, reference).ok_or(invalid)? == Ordering::Greater
+        {
+            return replay_numeric_auto(
+                request,
+                boundaries,
+                sequence,
+                initial,
+                &mut band_source,
+                &mut clear_source,
+            );
+        }
+    }
+    let before = sequence.selected_lines.len();
+    let mut remaining = boundaries[sequence.state.boundary_index..]
+        .iter()
+        .copied()
+        .peekable();
+    if walk_numeric_sequence(
+        request,
+        sequence,
+        &mut remaining,
+        NumericWalkControl::auto(),
+        &mut band_source,
+        &mut clear_source,
+    )? != NumericWalkOutcome::Exhausted
+        || sequence.selected_lines.len() != before
+    {
+        return Err(invalid);
+    }
+    if !improved {
+        return replay_numeric_auto(
+            request,
+            boundaries,
+            sequence,
+            initial,
+            &mut band_source,
+            &mut clear_source,
+        );
+    }
+    Ok(())
+}
+
+fn layout_mixed_inline_run_from_available<S, BandSource, ClearSource>(
+    input: MixedInlineRunInputOf<S>,
+    supplied: Vec<SuppliedInlineParticipant>,
+    available: S,
+    mut band_source: BandSource,
+    mut clear_source: ClearSource,
+    observe_formatted: bool,
+) -> Result<MixedInlineRunReportOf<S>, crate::inline_wrapping::NumericWrappingError>
+where
+    S: LayoutScalar,
+    BandSource: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    ClearSource: FnMut(S, PostLineClearIntent) -> S,
+{
+    let mut boundary_descriptor = 0;
+    // Mandatory following breaks also delimit a line. Looking only for forced
+    // controls would repeatedly query a suffix of discardable mandatory units.
+    let mut original_boundaries = input
+        .participants
+        .iter()
+        .enumerate()
+        .filter_map(|(index, participant)| {
+            #[cfg(test)]
+            observe_inline_work_visit(1);
+            let is_forced = matches!(participant, MixedInlineParticipantOf::ForcedLineBreak(_));
+            if !is_forced {
+                boundary_descriptor += 1;
+            }
+            (is_forced
+                || participant
+                    .following_break()
+                    .is_some_and(|following| following == InlineBreakOpportunity::Mandatory))
+            .then_some(InlineSourceCursor {
+                edge_consumed: false,
+                source: index + 1,
+                descriptor: boundary_descriptor,
+            })
+        })
+        .peekable();
+    let mut computed_boundaries = input
+        .wrapping
+        .as_ref()
+        .into_iter()
+        .flat_map(|wrapping| {
+            let mut descriptor = 0;
+            std::iter::once((0, 0))
+                .chain(input.participants.iter().enumerate().map(move |(i, p)| {
+                    if !matches!(p, MixedInlineParticipantOf::ForcedLineBreak(_)) {
+                        descriptor += 1;
+                    }
+                    (i + 1, descriptor)
+                }))
+                .filter_map(move |(source, descriptor)| {
+                    wrapping.forced(source).then_some(InlineSourceCursor {
+                        source,
+                        descriptor,
+                        edge_consumed: false,
+                    })
+                })
+        })
+        .peekable();
+    let mut line_boundaries = std::iter::from_fn(move || {
+        match (original_boundaries.peek(), computed_boundaries.peek()) {
+            (Some(a), Some(b)) if a.source == b.source => {
+                computed_boundaries.next();
+                original_boundaries.next()
+            }
+            (Some(a), Some(b)) if a.source < b.source => original_boundaries.next(),
+            (_, Some(_)) => computed_boundaries.next(),
+            (Some(_), None) => original_boundaries.next(),
+            (None, None) => None,
+        }
+    })
+    .peekable();
+    let balance = input.text_wrap_style == crate::TextWrapStyle::Balance
+        && matches!(input.available_inline_extent, AvailableOf::Definite(_));
+    let mut sequence = NumericSequence::new(&input, observe_formatted || balance);
+    let request = NumericWalkInput {
+        input: &input,
+        supplied: &supplied,
+        available,
+    };
+    if balance {
+        let boundaries = line_boundaries.collect::<Vec<_>>();
+        balance_numeric_sequence(
+            request,
+            &boundaries,
+            &mut sequence,
+            &mut band_source,
+            &mut clear_source,
+        )?;
+    } else {
+        walk_numeric_sequence(
+            request,
+            &mut sequence,
+            &mut line_boundaries,
+            NumericWalkControl::auto(),
+            &mut band_source,
+            &mut clear_source,
+        )?;
+    }
+    let NumericSequence {
+        state,
+        selected_lines,
+        formatted_lines,
+    } = sequence;
+    let NumericFlowState {
+        line_box_context,
+        indent_state,
+        block_cursor,
+        resolved_terminal_block_extent,
+        float_edge_phase,
+        ..
+    } = state;
+    let line_direction = input.line_box_context.weak_direction();
 
     let mut inline_extent = S::ZERO;
     let mut first_baseline = None;
     let mut last_baseline = None;
     let mut atomics = Vec::new();
     let mut controls = Vec::new();
+    let mut nonformatted_controls = Vec::new();
+    let mut group_lines = Vec::new();
+    let group_insets = if matches!(input.available_inline_extent, AvailableOf::Definite(_)) {
+        input
+            .groups
+            .insets::<S>(input.line_box_context.resolve(None))?
+    } else {
+        surgeist_text::LineAlignmentInsets::ZERO
+    };
     let mut post_line_clear_intents = Vec::new();
     let mut line_bands = Vec::new();
     let mut lines = Vec::new();
-    for (line_index, line) in selected_lines.into_iter().enumerate() {
+    let mut line_index = 0;
+    for line in selected_lines {
+        if NumericLineDisposition::for_line(line.ending, line.has_in_flow_content)
+            == NumericLineDisposition::NonFormatted
+        {
+            let (_, _, inline_starts) = resolved_inline_unit_slots(
+                &line,
+                &supplied[line.descriptor_range.clone()],
+                input.flow_axes,
+                line.alignment,
+                line_direction,
+                surgeist_text::LineAlignmentInsets::ZERO,
+            )?;
+            for (index, unit) in line.units.into_iter().enumerate() {
+                let MixedInlineParticipantOf::Boundary(control) = unit.participant else {
+                    unreachable!("nonformatted numeric participation contains only boundaries");
+                };
+                nonformatted_controls.push(NonFormattedInlineControlOf {
+                    control,
+                    inline_start: inline_starts[index],
+                    block_start: line.band.block_start,
+                });
+            }
+            continue;
+        }
         if input.observe_tail {
             lines.push(crate::hyphenation::CommittedInlineLine {
                 end: line.ending,
@@ -1807,7 +2830,31 @@ where
             input.flow_axes,
             line.alignment,
             line_direction,
-        );
+            group_insets,
+        )?;
+        if input.groups.is_active()
+            && matches!(input.available_inline_extent, AvailableOf::Definite(_))
+        {
+            group_lines.push(crate::group_alignment::NaturalLine {
+                width: (line.band.inline_end - line.band.inline_start).to_f64(),
+                indent: line.indent.to_f64(),
+                advance: line.used_inline_extent.to_f64(),
+                direction: input.line_box_context.resolve(None),
+                used: group_insets,
+                witness: crate::group_alignment::Witness::Numeric {
+                    participants: line.units.iter().map(|unit| unit.participant).collect(),
+                    discarded: line.units.iter().map(|unit| unit.discarded).collect(),
+                    descriptor_start: line.descriptor_range.start,
+                    next: (
+                        line.next_cursor.source,
+                        line.next_cursor.descriptor,
+                        line.next_cursor.edge_consumed,
+                    ),
+                    end: line.ending,
+                    band: line.band,
+                },
+            });
+        }
         inline_extent = inline_extent.max(line_inline_start + line.used_inline_extent);
         post_line_clear_intents.push(line.post_line_clear_intent);
         line_bands.push(line.band);
@@ -1860,11 +2907,7 @@ where
                         source_index: control.source_index(),
                         inline_start,
                         inline_extent: control.edge().advance(),
-                        endpoint: Some(InlineEndpointOf {
-                            kind: control.kind(),
-                            axes: control.flow().flow_axes,
-                            edge: control.edge(),
-                        }),
+                        endpoint: Some(InlineEndpointOf::from_control(control)),
                         block_start: control_block,
                         line_index,
                         visual_index: Some(visual_indices[source_index]),
@@ -1894,9 +2937,11 @@ where
                 visual_index: None,
             });
         }
+        line_index += 1;
     }
 
     Ok(MixedInlineRunReportOf {
+        group_lines,
         formatted_lines,
         line_box_context,
         lines,
@@ -1909,6 +2954,7 @@ where
         last_baseline,
         atomics,
         controls,
+        nonformatted_controls,
         post_line_clear_intents,
         line_bands,
     })
@@ -2257,6 +3303,8 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
         })
         .collect();
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+        groups: crate::group_alignment::Snapshot::default(),
+        text_wrap_style: crate::TextWrapStyle::Auto,
         line_box_context: crate::line_box::LineBoxContext::new(
             crate::LineBoxDirectionPolicy::Normal,
             flow_axes.direction(),
@@ -2353,3 +3401,10 @@ pub(super) fn inline_run_max_content_width<S: LayoutScalar>(items: &[InlineParti
     .size
     .width
 }
+
+#[cfg(test)]
+mod balance_tests;
+#[cfg(test)]
+mod bidi_order_tests;
+#[cfg(test)]
+mod phantom_completion_tests;

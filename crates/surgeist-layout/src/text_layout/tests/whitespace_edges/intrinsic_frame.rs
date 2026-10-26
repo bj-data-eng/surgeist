@@ -21,6 +21,8 @@ fn observed<S: LayoutScalar>(
         &[],
         &[],
         super::super::super::run::Context {
+            groups: crate::group_alignment::Snapshot::default(),
+            wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,
             formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
@@ -48,6 +50,7 @@ fn observed<S: LayoutScalar>(
         },
         &[],
         super::super::super::run::LineEnvironment {
+            checkpoint_group: || {},
             reset: |_| {},
             band: |_, _| {
                 Ok(super::super::super::fit::Band {
@@ -63,8 +66,10 @@ fn observed<S: LayoutScalar>(
         },
     )
     .unwrap_or_else(|_| panic!("actual intrinsic paragraph finalizes"));
-    assert_eq!(output.paragraph.lines.len(), 1);
-    let placed = &output.paragraph.lines[0];
+    assert_eq!(output.paragraph.entries.len(), 1);
+    let surgeist_text::PlacementEntry::Formatted(placed) = &output.paragraph.entries[0] else {
+        panic!("native intrinsic line remains formatted");
+    };
     assert_eq!(
         placed.line.feedback().advance,
         if source == "X" { 10.0 } else { 20.0 }

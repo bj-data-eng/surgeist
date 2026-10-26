@@ -84,6 +84,7 @@ fn first_request(prepared: &PreparedText) -> LineSelectionRequest {
         line_box_struts: Vec::new(),
         line_strut: None,
         context: LineContext {
+            alignment_insets: crate::LineAlignmentInsets::ZERO,
             formatted_line: crate::FormattedLineContext::default(),
             base_direction: ParagraphBaseDirection::LeftToRight,
             line_box_direction: crate::LineBoxDirection::LeftToRight,
@@ -361,7 +362,7 @@ fn selected_endpoints_contribute_once_to_flow_prefix_and_exact_event_selection()
     let layout = Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        lines: vec![LinePlacement {
+        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -369,7 +370,7 @@ fn selected_endpoints_contribute_once_to_flow_prefix_and_exact_event_selection()
             },
             orientation: LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();

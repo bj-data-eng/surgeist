@@ -105,6 +105,7 @@ fn observe(
             line_box_struts: Vec::new(),
             line_strut: None,
             context: text::LineContext {
+                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
                 formatted_line: surgeist_text::FormattedLineContext::default(),
                 base_direction: direction,
                 line_box_direction: match direction {
@@ -160,7 +161,7 @@ fn observe(
     let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
         prepared,
         coverage: text::PlacementCoverage::WholeParagraph,
-        lines: vec![text::LinePlacement {
+        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
             line,
             anchor: text::LineAnchor {
                 inline_origin: 0.0,
@@ -168,7 +169,7 @@ fn observe(
             },
             orientation: text::LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap();
     let utf16: Vec<_> = value.encode_utf16().collect();

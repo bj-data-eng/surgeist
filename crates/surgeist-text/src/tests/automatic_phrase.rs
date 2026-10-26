@@ -266,6 +266,7 @@ fn whole(prepared: &PreparedText) -> FinalizedLine {
             line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
+                alignment_insets: crate::LineAlignmentInsets::ZERO,
                 formatted_line: crate::FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 line_box_direction: crate::LineBoxDirection::LeftToRight,
@@ -288,7 +289,7 @@ fn place(prepared: PreparedText, line: FinalizedLine) -> Layout {
     Layout::from_finalized_lines(PlacementRequest {
         prepared,
         coverage: PlacementCoverage::WholeParagraph,
-        lines: vec![LinePlacement {
+        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -296,7 +297,7 @@ fn place(prepared: PreparedText, line: FinalizedLine) -> Layout {
             },
             orientation: LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap()
 }

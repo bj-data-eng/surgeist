@@ -1,5 +1,6 @@
 //! Provisional source-order float encounters for one captured Text paragraph.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use super::floats::{
@@ -18,6 +19,7 @@ pub(super) struct FloatEvent<Node, S: LayoutScalar> {
     following: Option<TextSeam>,
     position: usize,
     inside: bool,
+    native_offset: usize,
 }
 
 impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
@@ -155,6 +157,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
             following: next_seam,
             position: actual.1,
             inside: actual.2,
+            native_offset: offset,
         })
     }
 }
@@ -169,6 +172,25 @@ pub(super) struct EncounterOutput<Node, S: LayoutScalar> {
     pub children: Vec<AcceptedFloatChild<Node, S>>,
 }
 
+/// An actual accepted prefix is shared by every local group trial. Only rows
+/// written after the checkpoint are undone; earlier packet receipts stay put.
+struct GroupCheckpoint<Node, S: LayoutScalar> {
+    ledger: FloatExclusions<S, Node>,
+    accepted_len: usize,
+    earlier_float_top: Option<S>,
+}
+
+/// Balance-only work index and undo log. Ranks filter work, never decide seam
+/// ownership: all equal-boundary and deferred earlier events remain candidates.
+struct EncounterJournal<Node, S: LayoutScalar> {
+    remaining: BTreeSet<(usize, usize)>,
+    tentative: Vec<usize>,
+    accepted: Vec<usize>,
+    incoming_float_top: Option<S>,
+    earlier_float_top: Option<S>,
+    group: Option<GroupCheckpoint<Node, S>>,
+}
+
 pub(super) struct Encounters<Node, S: LayoutScalar> {
     pub events: Vec<FloatEvent<Node, S>>,
     incoming: Option<FloatExclusions<S, Node>>,
@@ -178,6 +200,9 @@ pub(super) struct Encounters<Node, S: LayoutScalar> {
     tentative: Vec<Option<PendingFloat<Node, S>>>,
     cursor: S,
     inline_space: FloatInlineSpace,
+    journal: Option<EncounterJournal<Node, S>>,
+    #[cfg(test)]
+    replay_event_visits: usize,
 }
 
 impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
@@ -186,22 +211,41 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         base: FloatExclusions<S, Node>,
         cursor: S,
         inline_space: FloatInlineSpace,
-        reselect_tail: bool,
+        restart_sequence: bool,
+        balance: bool,
     ) -> Self {
         let count = events.len();
+        let journal = balance.then(|| {
+            let earlier_float_top = base.preceding_float_top();
+            EncounterJournal {
+                remaining: events
+                    .iter()
+                    .enumerate()
+                    .map(|(index, event)| (event.position, index))
+                    .collect(),
+                tentative: Vec::new(),
+                accepted: Vec::new(),
+                incoming_float_top: earlier_float_top,
+                earlier_float_top,
+                group: None,
+            }
+        });
         Self {
             events,
-            incoming: reselect_tail.then(|| base.clone()),
+            incoming: restart_sequence.then(|| base.clone()),
             current: base.clone(),
             base,
             accepted: vec![None; count],
             tentative: vec![None; count],
             cursor,
             inline_space,
+            journal,
+            #[cfg(test)]
+            replay_event_visits: 0,
         }
     }
     /// Roll back the entire unpublished branch to this run's incoming ledger.
-    /// Only finite complete-tail search retains the additional snapshot.
+    /// Finite complete-tail search and Balance retain the actual snapshot.
     pub fn restart_sequence(&mut self) {
         let Some(incoming) = &self.incoming else {
             self.reset_candidate();
@@ -209,13 +253,63 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         };
         self.base = incoming.clone();
         self.current = incoming.clone();
-        self.accepted.fill(None);
-        self.tentative.fill(None);
+        if let Some(journal) = &mut self.journal {
+            for index in journal.tentative.drain(..) {
+                self.tentative[index] = None;
+            }
+            for index in journal.accepted.drain(..) {
+                self.accepted[index] = None;
+                journal
+                    .remaining
+                    .insert((self.events[index].position, index));
+            }
+            journal.earlier_float_top = journal.incoming_float_top;
+            journal.group = None;
+        } else {
+            self.accepted.fill(None);
+            self.tentative.fill(None);
+        }
+    }
+    /// Mark the actual resolved group entry after the preceding winning replay.
+    pub fn checkpoint_group(&mut self) {
+        self.reset_candidate();
+        if let Some(journal) = &mut self.journal {
+            journal.group = Some(GroupCheckpoint {
+                ledger: self.base.clone(),
+                accepted_len: journal.accepted.len(),
+                earlier_float_top: journal.earlier_float_top,
+            });
+        }
+    }
+    /// Restore only this group's accepted suffix and provisional candidate rows.
+    pub fn restart_group(&mut self) {
+        self.reset_candidate();
+        if let Some(journal) = &mut self.journal {
+            let group = journal
+                .group
+                .as_ref()
+                .expect("group reset follows an actual group-entry checkpoint");
+            self.base = group.ledger.clone();
+            self.current = group.ledger.clone();
+            for index in journal.accepted.drain(group.accepted_len..) {
+                self.accepted[index] = None;
+                journal
+                    .remaining
+                    .insert((self.events[index].position, index));
+            }
+            journal.earlier_float_top = group.earlier_float_top;
+        }
     }
     /// Discard provisional state while retaining the accepted line prefix.
     pub fn reset_candidate(&mut self) {
         self.current = self.base.clone();
-        self.tentative = self.accepted.clone();
+        if let Some(journal) = &mut self.journal {
+            for index in journal.tentative.drain(..) {
+                self.tentative[index] = None;
+            }
+        } else {
+            self.tentative = self.accepted.clone();
+        }
     }
     pub fn band(&self) -> &FloatExclusions<S, Node> {
         &self.current
@@ -231,8 +325,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
-        self.current = self.base.clone();
-        self.tentative = self.accepted.clone();
+        self.reset_candidate();
         let portion_start = line
             .selected_line()
             .request()
@@ -240,12 +333,39 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             .view()
             .participant_offset();
         let mut basis = Vec::new();
-        let mut earlier_float_top = self.base.preceding_float_top();
-        for (index, event) in self.events.iter().enumerate() {
+        let mut earlier_float_top = self.journal.as_ref().map_or_else(
+            || self.base.preceding_float_top(),
+            |journal| journal.earlier_float_top,
+        );
+        // The real end rank is only an upper work bound. Keep every unaccepted
+        // earlier/equal-rank event, including a genuinely deferred predecessor,
+        // then visit them in their original native event order.
+        let window = self.journal.as_ref().map(|journal| {
+            let end = line
+                .selected_line()
+                .request()
+                .end
+                .view()
+                .participant_offset();
+            let mut window: Vec<_> = journal
+                .remaining
+                .range(..=(end, usize::MAX))
+                .map(|&(_, index)| index)
+                .collect();
+            window.sort_unstable();
+            window
+        });
+        for ordinal in 0..window.as_ref().map_or(self.events.len(), Vec::len) {
+            let index = window.as_ref().map_or(ordinal, |window| window[ordinal]);
+            let event = &self.events[index];
+            #[cfg(test)]
+            {
+                self.replay_event_visits += 1;
+            }
             if let Some(previous) = &self.accepted[index] {
                 let top = previous
-                    .accepted
-                    .as_ref()
+                    .placement
+                    .text()
                     .expect("accepted encounter retains its placement")
                     .margin_block_start;
                 earlier_float_top = Some(earlier_float_top.map_or(top, |earlier| earlier.max(top)));
@@ -283,6 +403,9 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                         && !event.inside
                         && !represented(original_request.request(), &event.seam)
             });
+            let boxes = prefix
+                .map_or(replay.boxes.as_ref(), |frame| frame.boxes.as_ref())
+                .cloned();
             let (line, placed) =
                 prefix.map_or((line, replay.placed), |frame| (&frame.line, frame.placed));
             let selected = line.selected_line();
@@ -293,12 +416,37 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             } else {
                 request.end.view().participant_offset()
             };
+            let boundary_side = if event.position == end && !event.inside {
+                match boxes
+                    .as_ref()
+                    .map(|assignment| assignment.outgoing.native())
+                {
+                    Some(crate::text_layout::boxes::NativeBoxCut::Proven(cut)) => Some(
+                        cut.side_of_node(event.native_offset).ok_or_else(|| {
+                            super::inline_run::text_run_error(
+                                container,
+                                FitError::Wrapping(crate::WrappingScopeError::UnsupportedIncidence),
+                            )
+                        })? == std::cmp::Ordering::Less,
+                    ),
+                    Some(crate::text_layout::boxes::NativeBoxCut::Unavailable) => {
+                        return Err(super::inline_run::text_run_error(
+                            container,
+                            FitError::Wrapping(crate::WrappingScopeError::UnsupportedIncidence),
+                        ));
+                    }
+                    Some(crate::text_layout::boxes::NativeBoxCut::Prefix) | None => None,
+                }
+            } else {
+                None
+            };
             let eligible = if event.inside {
                 start <= event.position && event.position < end
             } else {
                 start <= event.position
                     && (event.position < end
-                        || event.position == end && request.context.end != LineEnd::Forced)
+                        || event.position == end
+                            && boundary_side.unwrap_or(request.context.end != LineEnd::Forced))
             };
             if !eligible {
                 continue;
@@ -337,8 +485,11 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 ));
             }
             let mut pending = event.pending.clone();
+            let used_height = crate::text_layout::fit::LineDisposition::resolve(line)
+                .map_err(|error| super::inline_run::text_run_error(container, error))?
+                .height(line);
             let encounter_floor = if preceding && replay.defer_preceding {
-                replay.logical.max(placed) + line.feedback().line_height
+                replay.logical.max(placed) + used_height
             } else {
                 replay.source_floor
             };
@@ -352,10 +503,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             }
             let encounter_floor = (pending.block_start - self.cursor).to_f64();
             let line_end = self.cursor
-                + crate::text_layout::run::number::<S>(
-                    replay.logical.max(placed) + line.feedback().line_height,
-                )
-                .map_err(|e| super::inline_run::text_run_error(container, e))?;
+                + crate::text_layout::run::number::<S>(replay.logical.max(placed) + used_height)
+                    .map_err(|e| super::inline_run::text_run_error(container, e))?;
             let provider = ProviderBandContext {
                 tree,
                 container,
@@ -377,16 +526,19 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                     earlier.max(location.margin_block_start)
                 }),
             );
-            pending.accepted = Some(AcceptedFloatPlacement {
-                logical_origin,
-                inline_space: self.inline_space,
-                margin_block_start: location.margin_block_start,
-                intrinsic_inline_demand: location.intrinsic_inline_demand,
-                prefix,
-                observation,
-                line: line.clone(),
-            });
+            pending.placement =
+                super::floats::PendingPlacement::Text(Box::new(AcceptedFloatPlacement {
+                    boxes: boxes.clone(),
+                    logical_origin,
+                    inline_space: self.inline_space,
+                    margin_block_start: location.margin_block_start,
+                    intrinsic_inline_demand: location.intrinsic_inline_demand,
+                    prefix,
+                    observation,
+                    line: line.clone(),
+                }));
             basis.push(EncounterBasis {
+                boxes,
                 event: index,
                 prefix,
                 preceding,
@@ -398,12 +550,38 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 block: logical_origin.block.to_f64(),
             });
             self.tentative[index] = Some(pending);
+            if let Some(journal) = &mut self.journal {
+                journal.tentative.push(index);
+            }
         }
         Ok(basis)
     }
     pub fn accept(&mut self) {
         self.base = self.current.clone();
-        self.accepted = self.tentative.clone();
+        if let Some(journal) = &mut self.journal {
+            for index in journal.tentative.drain(..) {
+                let pending = self.tentative[index]
+                    .take()
+                    .expect("touched encounter retains its actual provisional receipt");
+                let top = pending
+                    .placement
+                    .text()
+                    .expect("accepted encounter retains its placement")
+                    .margin_block_start;
+                journal.earlier_float_top = Some(
+                    journal
+                        .earlier_float_top
+                        .map_or(top, |earlier| earlier.max(top)),
+                );
+                self.accepted[index] = Some(pending);
+                journal.accepted.push(index);
+                journal
+                    .remaining
+                    .remove(&(self.events[index].position, index));
+            }
+        } else {
+            self.accepted = self.tentative.clone();
+        }
     }
     pub fn finish(self) -> EncounterOutput<Node, S> {
         let children = self
@@ -423,3 +601,6 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         }
     }
 }
+
+#[cfg(test)]
+mod balance_tests;

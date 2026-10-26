@@ -77,6 +77,16 @@ where
     Tree: LayoutTree,
 {
     let graph = discover_graph(tree, root)?;
+    validate_layout_request_with_graph(tree, root, changed_nodes, paragraphs, graph)
+}
+
+pub(crate) fn validate_layout_request_with_graph<Tree: LayoutTree>(
+    tree: &Tree,
+    root: Tree::Node,
+    changed_nodes: &[Tree::Node],
+    paragraphs: &[crate::TextParagraphBinding<Tree::Node>],
+    graph: ValidationGraph<Tree::Node>,
+) -> LayoutResultOf<Tree::Node, ValidatedRequest<Tree::Node>, Tree::Scalar, Tree::MeasureError> {
     let invalidated = graph.invalidation(changed_nodes)?;
     if validate_layout_tree(tree, &graph, paragraphs)? {
         return Err(LayoutErrorOf::new(
@@ -88,10 +98,10 @@ where
     Ok((graph, invalidated))
 }
 
-fn discover_graph<Tree: LayoutTree>(
+pub(crate) fn discover_graph<Tree: crate::Traverse, M>(
     tree: &Tree,
     root: Tree::Node,
-) -> LayoutResultOf<Tree::Node, ValidationGraph<Tree::Node>, Tree::Scalar, Tree::MeasureError> {
+) -> LayoutResultOf<Tree::Node, ValidationGraph<Tree::Node>, Tree::Scalar, M> {
     let mut graph = ValidationGraph {
         nodes: vec![root],
         children: vec![Vec::new()],

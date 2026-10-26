@@ -7,6 +7,7 @@ pub(crate) struct CanonicalScopeProof<Node> {
     pub(crate) scope: CapturedScope,
     pub(crate) flow: Node,
     pub(crate) pair: Option<(Node, Node)>,
+    pub(crate) order: Option<Arc<CanonicalOrderBindings<Node>>>,
 }
 /// Endpoint evidence retains the explicit native identity; it does not invent
 /// a canonical scope for an additional native box.
@@ -18,6 +19,7 @@ pub(crate) enum WrappingScopeProof<Node> {
         pair: (Node, Node),
         start: surgeist_text::CapturedControl,
         end: surgeist_text::CapturedControl,
+        order: Option<Arc<CanonicalOrderBindings<Node>>>,
     },
 }
 impl<Node> WrappingScopeProof<Node> {
@@ -83,6 +85,7 @@ pub(crate) struct ScopeRow<Node> {
     pub(crate) native: Option<NativeSpan>,
     pub(crate) policy: WrapInside,
     pub(crate) edges: WrapEdges,
+    pub(crate) metric_contribution: Option<InlineBoxMetricContribution>,
     source: Option<SourceExtent>,
 }
 #[derive(Clone, Debug)]
@@ -107,9 +110,34 @@ impl<Node> Default for WrappingContext<Node> {
             edge_plan: super::edge_plan::EdgePlan {
                 locations: Vec::new(),
                 dependencies: Vec::new(),
+                subtrees: Vec::new(),
             },
         }
     }
+}
+fn validate_metrics(
+    value: Option<InlineBoxMetricContribution>,
+) -> Result<Option<InlineBoxMetricContribution>, WrappingScopeError> {
+    Ok(match value {
+        Some(InlineBoxMetricContribution::Strut(mut strut)) => {
+            let metrics = &mut strut.metrics;
+            if !metrics.baseline.is_finite()
+                || !metrics.line_extent.is_finite()
+                || metrics.baseline < 0.0
+                || metrics.line_extent < metrics.baseline
+            {
+                return Err(WrappingScopeError::InvalidBoxMetrics);
+            }
+            if metrics.baseline == 0.0 {
+                metrics.baseline = 0.0;
+            }
+            if metrics.line_extent == 0.0 {
+                metrics.line_extent = 0.0;
+            }
+            Some(InlineBoxMetricContribution::Strut(strut))
+        }
+        other => other,
+    })
 }
 fn captured_contains(a: &CapturedScope, b: &CapturedScope) -> bool {
     let mut next = b.parent();
@@ -122,14 +150,14 @@ fn captured_contains(a: &CapturedScope, b: &CapturedScope) -> bool {
     false
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Relation {
+pub(super) enum Relation {
     Before,
     After,
     Contains,
     Within,
     Crossing,
 }
-fn interval_relation<T: PartialOrd>(a: &T, b: &T, c: &T, d: &T) -> Relation {
+pub(super) fn interval_relation<T: PartialOrd>(a: &T, b: &T, c: &T, d: &T) -> Relation {
     if b < c {
         Relation::Before
     } else if d < a {
@@ -197,6 +225,20 @@ pub(crate) fn native_span<Tree: LayoutTree>(
     end: Tree::Node,
     counts: &[u8],
 ) -> Result<(Tree::Node, NativeSpan), WrappingScopeError> {
+    native_span_with(graph, start, end, counts, |node| {
+        tree.layout_input(node)
+            .as_inline_boundary()
+            .map(|v| v.kind())
+    })
+}
+
+pub(super) fn native_span_with<Node: Copy + Eq>(
+    graph: &ValidationGraph<Node>,
+    start: Node,
+    end: Node,
+    counts: &[u8],
+    kind: impl Fn(Node) -> Option<InlineBoundaryKind>,
+) -> Result<(Node, NativeSpan), WrappingScopeError> {
     let a = graph
         .index(start)
         .ok_or(WrappingScopeError::NodeNotReachable)?;
@@ -206,14 +248,7 @@ pub(crate) fn native_span<Tree: LayoutTree>(
     if counts[a] != 1 || counts[b] != 1 {
         return Err(WrappingScopeError::AmbiguousNode);
     }
-    if tree
-        .layout_input(start)
-        .as_inline_boundary()
-        .is_none_or(|v| v.kind() != InlineBoundaryKind::Start)
-        || tree
-            .layout_input(end)
-            .as_inline_boundary()
-            .is_none_or(|v| v.kind() != InlineBoundaryKind::End)
+    if kind(start) != Some(InlineBoundaryKind::Start) || kind(end) != Some(InlineBoundaryKind::End)
     {
         return Err(WrappingScopeError::EndpointRole);
     }
@@ -289,6 +324,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                     end,
                     wrap_inside,
                     edges,
+                    metric_contribution,
                 } => {
                     let (flow, native) = native_span(tree, graph, *start, *end, &counts)?;
                     let proof = proofs
@@ -317,6 +353,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                             native: Some(native),
                             policy: *wrap_inside,
                             edges: *edges,
+                            metric_contribution: validate_metrics(*metric_contribution)?,
                             source: if let Some(proof) = proof {
                                 Some(SourceExtent::canonical(&proof.scope))
                             } else {
@@ -328,6 +365,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                                             flow: actual,
                                             start: a,
                                             end: b,
+                                            ..
                                         } if *pair == (*start, *end) => Some(if *actual == flow {
                                             SourceExtent::native(a, b)
                                         } else {
@@ -345,6 +383,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                     scope,
                     wrap_inside,
                     edges,
+                    metric_contribution,
                 } => {
                     if scope.role() != surgeist_text::ScopeRole::Inline {
                         return Err(WrappingScopeError::NonInlineScope);
@@ -372,6 +411,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                             native: native.map(|(_, s)| s),
                             policy: *wrap_inside,
                             edges: *edges,
+                            metric_contribution: validate_metrics(*metric_contribution)?,
                             source: Some(SourceExtent::canonical(scope)),
                         },
                         2,
@@ -385,6 +425,15 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                     .is_some_and(|(a, b)| a == b)
                     || p.pair.zip(row.pair).is_some_and(|(a, b)| a == b)
             }) {
+                if let Some(value) = row.metric_contribution {
+                    if rows[i]
+                        .metric_contribution
+                        .is_some_and(|prior| prior != value)
+                    {
+                        return Err(WrappingScopeError::ConflictingBoxMetrics);
+                    }
+                    rows[i].metric_contribution = Some(value);
+                }
                 if rows[i].policy != row.policy || rows[i].edges != row.edges {
                     return Err(WrappingScopeError::ConflictingScope);
                 }
@@ -399,6 +448,62 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             }
             rows.push(row);
             forms.push(form);
+        }
+        // Scope references are already owner-issued positive generated-box
+        // inventory. They do not acquire fabricated authored declarations or
+        // metric witnesses merely because they have no declaration row.
+        #[expect(
+            clippy::mutable_key_type,
+            reason = "Text handle hashing uses immutable capture identity and occurrence index; lazy cache contents never affect the key"
+        )]
+        let mut inventory = std::collections::HashSet::new();
+        for scope in child_order
+            .iter()
+            .flat_map(|order| {
+                std::iter::once(&order.parent).chain(order.children.iter().map(|child| &child.box_))
+            })
+            .filter_map(|box_| {
+                if let GeneratedBoxRef::Inline(InlineBoxRef::Scope(scope)) = box_ {
+                    Some(scope)
+                } else {
+                    None
+                }
+            })
+        {
+            if !inventory.insert(scope.clone())
+                || rows.iter().any(|row| row.capture.as_ref() == Some(scope))
+            {
+                continue;
+            }
+            if scope.role() != surgeist_text::ScopeRole::Inline {
+                return Err(WrappingScopeError::NonInlineScope);
+            }
+            let proof = proofs
+                .iter()
+                .filter_map(WrappingScopeProof::canonical)
+                .find(|proof| proof.scope == *scope)
+                .ok_or(WrappingScopeError::MissingCapture)?;
+            let native = proof
+                .pair
+                .map(|(start, end)| native_span(tree, graph, start, end, &counts))
+                .transpose()?;
+            if native.as_ref().is_some_and(|(flow, _)| *flow != proof.flow) {
+                return Err(WrappingScopeError::CaptureAssociation);
+            }
+            let row = ScopeRow {
+                flow: proof.flow,
+                capture: Some(scope.clone()),
+                pair: proof.pair,
+                native: native.map(|(_, span)| span),
+                policy: WrapInside::Auto,
+                edges: WrapEdges::AUTO,
+                metric_contribution: None,
+                source: Some(SourceExtent::canonical(scope)),
+            };
+            for prior in &rows {
+                proven_relation(prior, &row)?;
+            }
+            rows.push(row);
         }
         let mut parents: Vec<Option<usize>> = vec![None; rows.len()];
         for i in 0..rows.len() {
@@ -447,9 +552,10 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             super::edge_plan::EdgePlan {
                 locations: Vec::new(),
                 dependencies: Vec::new(),
+                subtrees: Vec::new(),
             }
         } else {
-            super::edge_plan::EdgePlan::new(tree, graph, &rows, child_order)?
+            super::edge_plan::EdgePlan::new(tree, graph, &rows, child_order, proofs)?
         };
         Ok(Self {
             rows,
@@ -459,7 +565,12 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         })
     }
     pub(crate) fn has_effects(&self) -> bool {
-        self.has_avoid || !self.edge_plan.dependencies.is_empty()
+        self.has_avoid
+            || !self.edge_plan.dependencies.is_empty()
+            || self
+                .rows
+                .iter()
+                .any(|row| row.metric_contribution.is_some())
     }
     pub(crate) fn scope_pair(&self, scope: &CapturedScope) -> Option<(Node, Node)> {
         self.rows
@@ -482,6 +593,22 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             .locations
             .iter()
             .any(|e| e.flow == flow && e.effect.forced)
+    }
+    pub(crate) fn whole_subtree(&self, row: usize) -> Result<bool, WrappingScopeError> {
+        use super::edge_plan::SubtreeRealization;
+        match self.edge_plan.subtrees.get(row) {
+            Some(SubtreeRealization::Empty) => Ok(true),
+            Some(SubtreeRealization::Participating) => Ok(false),
+            Some(SubtreeRealization::Unavailable) | None => {
+                Err(WrappingScopeError::MissingChildOrder)
+            }
+        }
+    }
+    pub(crate) fn box_rows(&self, flow: Node) -> impl Iterator<Item = (usize, &ScopeRow<Node>)> {
+        self.rows
+            .iter()
+            .enumerate()
+            .filter(move |(_, row)| row.flow == flow)
     }
     pub(crate) fn rows(&self) -> impl Iterator<Item = &ScopeRow<Node>> {
         self.rows
@@ -628,7 +755,38 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                 class.edges.push(id);
             }
         }
+        let mut metrics = Vec::new();
+        for (_, row) in self.box_rows(flow) {
+            let Some(contribution) = row.metric_contribution else {
+                continue;
+            };
+            let span = row
+                .native
+                .as_ref()
+                .ok_or(WrappingScopeError::UnsupportedIncidence)?;
+            if ranks
+                .first()
+                .zip(ranks.last())
+                .is_none_or(|(first, last)| span.last < *first || *last < span.first)
+            {
+                continue;
+            }
+            let first = ranks.binary_search(&span.first).ok();
+            let last = ranks.binary_search(&span.last).ok();
+            if first.is_none() && ranks.first().is_some_and(|rank| *rank <= span.first)
+                || last.is_none() && ranks.last().is_some_and(|rank| span.last <= *rank)
+            {
+                return Err(WrappingScopeError::UnsupportedIncidence);
+            }
+            metrics.push(NumericBoxMetrics {
+                first: first.unwrap_or(0),
+                after: last.map_or(nodes.len(), |index| index + 1),
+                endpoints: [first, last],
+                contribution,
+            });
+        }
         Ok(NumericWrapping {
+            metrics,
             forced,
             ancestry: Arc::clone(&self.ancestry),
             classes,
@@ -673,11 +831,11 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
     }
     pub(crate) fn dependencies(&self) -> Vec<Node> {
         let mut result = self.edge_plan.dependencies.clone();
-        for row in self
-            .rows
-            .iter()
-            .filter(|row| row.policy == WrapInside::Avoid || !row.edges.is_auto())
-        {
+        for row in self.rows.iter().filter(|row| {
+            row.policy == WrapInside::Avoid
+                || !row.edges.is_auto()
+                || row.metric_contribution.is_some()
+        }) {
             for n in [Some(row.flow), row.pair.map(|p| p.0), row.pair.map(|p| p.1)]
                 .into_iter()
                 .flatten()
@@ -690,20 +848,43 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         result
     }
 }
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct NumericBoxMetrics {
+    pub(crate) first: usize,
+    pub(crate) after: usize,
+    pub(crate) endpoints: [Option<usize>; 2],
+    pub(crate) contribution: InlineBoxMetricContribution,
+}
 #[derive(Clone, Debug)]
 pub(crate) struct NumericWrapping {
     ancestry: Arc<Ancestry>,
     classes: Vec<Result<AvoidClass, WrappingScopeError>>,
     forced: Vec<bool>,
+    metrics: Vec<NumericBoxMetrics>,
 }
 impl PartialEq for NumericWrapping {
     fn eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.ancestry, &other.ancestry)
             && self.classes == other.classes
             && self.forced == other.forced
+            && self.metrics == other.metrics
     }
 }
 impl NumericWrapping {
+    pub(crate) fn has_metrics(&self) -> bool {
+        !self.metrics.is_empty()
+    }
+    pub(crate) fn metrics(
+        &self,
+        start: usize,
+        end: usize,
+    ) -> impl Iterator<Item = &NumericBoxMetrics> {
+        self.metrics.iter().filter(move |metrics| {
+            start < metrics.after && metrics.first < end
+                || start == end && metrics.first < start && start < metrics.after
+        })
+    }
+
     pub(crate) fn without_avoidance(mut self) -> Self {
         for class in self.classes.iter_mut().flatten() {
             class.scope = None;

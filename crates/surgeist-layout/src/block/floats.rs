@@ -13,7 +13,7 @@ use crate::{
 
 #[derive(Clone)]
 pub(super) struct PendingFloat<Node, S: LayoutScalar> {
-    pub(super) accepted: Option<AcceptedFloatPlacement<S>>,
+    pub(super) placement: PendingPlacement<Node, S>,
     pub(super) node: Node,
     pub(super) source_index: usize,
     pub(super) side: Float,
@@ -28,6 +28,77 @@ pub(super) struct PendingFloat<Node, S: LayoutScalar> {
     pub(super) child_compute_geometry: Option<ScrollGeometryOf<S>>,
 }
 
+/// Unresolved trials and actual accepted native/Text placements are distinct.
+#[derive(Clone)]
+pub(super) enum PendingPlacement<Node, S: LayoutScalar> {
+    Unresolved,
+    Native(Box<NativeFloatPlacement<Node, S>>),
+    Text(Box<AcceptedFloatPlacement<S>>),
+}
+impl<Node, S: LayoutScalar> PendingPlacement<Node, S> {
+    pub(super) fn text(&self) -> Option<&AcceptedFloatPlacement<S>> {
+        match self {
+            Self::Text(receipt) => Some(receipt),
+            Self::Unresolved | Self::Native(_) => None,
+        }
+    }
+}
+#[derive(Clone)]
+struct NativeFloatBasis<Node, S: LayoutScalar> {
+    node: Node,
+    source_index: usize,
+    side: Float,
+    clear: Clear,
+    block_start: S,
+    size: Size<S>,
+    content_size: Size<S>,
+    border: Edges<S>,
+    padding: Edges<S>,
+    margin: Edges<S>,
+    exclusion: FloatExclusion,
+    geometry: Option<ScrollGeometryOf<S>>,
+}
+impl<Node: Copy + Eq, S: LayoutScalar> NativeFloatBasis<Node, S> {
+    fn for_pending(pending: &PendingFloat<Node, S>) -> Self {
+        Self {
+            node: pending.node,
+            source_index: pending.source_index,
+            side: pending.side,
+            clear: pending.clear,
+            block_start: pending.block_start,
+            size: pending.size,
+            content_size: pending.content_size,
+            border: pending.border,
+            padding: pending.padding,
+            margin: pending.margin,
+            exclusion: pending.float_exclusion,
+            geometry: pending.child_compute_geometry,
+        }
+    }
+    fn matches(&self, pending: &PendingFloat<Node, S>) -> bool {
+        self.node == pending.node
+            && self.source_index == pending.source_index
+            && self.side == pending.side
+            && self.clear == pending.clear
+            && self.block_start == pending.block_start
+            && self.size == pending.size
+            && self.content_size == pending.content_size
+            && self.border == pending.border
+            && self.padding == pending.padding
+            && self.margin == pending.margin
+            && self.exclusion == pending.float_exclusion
+            && self.geometry == pending.child_compute_geometry
+    }
+}
+#[derive(Clone)]
+pub(super) struct NativeFloatPlacement<Node, S: LayoutScalar> {
+    basis: NativeFloatBasis<Node, S>,
+    logical: LogicalPointOf<S>,
+    axes: crate::FlowAxes,
+    inline_start: S,
+    inline_end: S,
+}
+
 /// The real inline-space role of this placement invocation. Intrinsic Max
 /// has independent side frontiers, not a finite zero-width containing line.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -40,6 +111,7 @@ pub(super) enum FloatInlineSpace {
 /// never repeats placement without its preceding-inline constraint.
 #[derive(Clone, Debug)]
 pub(super) struct AcceptedFloatPlacement<S: LayoutScalar> {
+    pub(super) boxes: Option<crate::text_layout::boxes::BoxAssignment>,
     pub(super) logical_origin: LogicalPointOf<S>,
     pub(super) inline_space: FloatInlineSpace,
     pub(super) margin_block_start: S,
@@ -104,13 +176,12 @@ impl AcceptedFloatPrefix {
     }
 }
 
-/// Both coordinates are issued by the same actual ledger placement. Keeping
-/// the original logical result avoids reversing a scalar frame transform.
+/// The actual ledger placement. Keeping the original logical result avoids
+/// reversing a scalar frame transform before final physical publication.
 pub(super) struct FloatPlacement<S: LayoutScalar> {
     pub(super) margin_block_start: S,
     pub(super) intrinsic_inline_demand: Option<S>,
     pub(super) logical: LogicalPointOf<S>,
-    pub(super) physical: Point<S>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -146,7 +217,7 @@ struct PhysicalMarginBox<S: LayoutScalar> {
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct FloatLedgerOrder(usize);
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct FloatLedgerEntry<S: LayoutScalar, Node> {
     node: Node,
     side: FloatLedgerSide,
@@ -157,10 +228,11 @@ struct FloatLedgerEntry<S: LayoutScalar, Node> {
     block_start: S,
     block_end: S,
     ledger_order: FloatLedgerOrder,
+    relative: std::sync::Arc<[RelativeFlow<Node, S>]>,
 }
 
 impl<S: LayoutScalar, Node: Copy> FloatLedgerEntry<S, Node> {
-    fn overlaps_block_span(self, block_start: S, block_end: S) -> bool {
+    fn overlaps_block_span(&self, block_start: S, block_end: S) -> bool {
         self.block_start < block_end && block_start < self.block_end
     }
 }
@@ -206,6 +278,14 @@ enum FloatBandQueryPurpose {
     ProviderBand,
 }
 
+/// Actual unshifted placement of a relatively moved ordinary shared block.
+/// Native rounding owns both coordinates; no source-offset reconstruction.
+#[derive(Clone, Copy, Debug)]
+struct RelativeFlow<Node, S: LayoutScalar> {
+    node: Node,
+    normal: Point<S>,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct FloatExclusions<S: LayoutScalar, Node = ()> {
     flow_axes: crate::geometry::FlowAxes,
@@ -213,6 +293,7 @@ pub(crate) struct FloatExclusions<S: LayoutScalar, Node = ()> {
     pub(super) containing_inline_start: S,
     pub(super) containing_inline_end: S,
     ledger: Vec<FloatLedgerEntry<S, Node>>,
+    relative: std::sync::Arc<[RelativeFlow<Node, S>]>,
 }
 
 #[derive(Clone, Debug)]
@@ -221,6 +302,8 @@ pub(crate) struct InheritedFloatExclusions<S: LayoutScalar, Node> {
     parent_containing_size: Size<S>,
     child_logical_location: LogicalPointOf<S>,
     ledger: Vec<FloatLedgerEntry<S, Node>>,
+    relative: std::sync::Arc<[RelativeFlow<Node, S>]>,
+    child_relative: bool,
 }
 
 impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
@@ -236,6 +319,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             containing_inline_start: inset.inline_start,
             containing_inline_end: inset.inline_start + content_inline_size,
             ledger: Vec::new(),
+            relative: std::sync::Arc::from([]),
         }
     }
 
@@ -265,7 +349,25 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         result.containing_size = container.output.size;
         result.containing_inline_start = logical_content_origin.inline;
         result.containing_inline_end = logical_content_origin.inline + logical_content.inline;
+        let correction = |path: &[RelativeFlow<Node, S>]| -> Result<Point<f64>, crate::text_layout::fit::FitError> {
+            let mut offset = Point::<f64>::ZERO;
+            for relative in path {
+                let actual = frames.iter().find(|frame| frame.node == relative.node)
+                    .ok_or(crate::text_layout::fit::FitError::InvalidGeometry)?;
+                let delta_x = actual.output.location.x.to_f64()
+                    - crate::scalar::round_layout_coordinate(relative.normal.x).to_f64();
+                let delta_y = actual.output.location.y.to_f64()
+                    - crate::scalar::round_layout_coordinate(relative.normal.y).to_f64();
+                offset.x = crate::scalar::checked_geometry_add(offset.x, delta_x)
+                    .map_err(crate::text_layout::fit::FitError::from)?;
+                offset.y = crate::scalar::checked_geometry_add(offset.y, delta_y)
+                    .map_err(crate::text_layout::fit::FitError::from)?;
+            }
+            Ok(offset)
+        };
+        let container_relative = correction(&self.relative)?;
         for entry in &mut result.ledger {
+            let float_relative = correction(&entry.relative)?;
             let frame = frames
                 .iter()
                 .find(|frame| frame.node == entry.node)
@@ -273,10 +375,12 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             let margin = frame.output.margin;
             let origin = Point::new(
                 crate::text_layout::run::number::<S>(
-                    frame.origin.x - container.origin.x - margin.left.to_f64(),
+                    frame.origin.x - float_relative.x - container.origin.x + container_relative.x
+                        - margin.left.to_f64(),
                 )?,
                 crate::text_layout::run::number::<S>(
-                    frame.origin.y - container.origin.y - margin.top.to_f64(),
+                    frame.origin.y - float_relative.y - container.origin.y + container_relative.y
+                        - margin.top.to_f64(),
                 )?,
             );
             let size = Size::new(
@@ -318,16 +422,23 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
     pub(super) fn for_ordinary_child(
         &self,
         child_logical_location: LogicalPointOf<S>,
+        child_relative: bool,
     ) -> InheritedFloatExclusions<S, Node> {
         InheritedFloatExclusions {
             parent_flow_axes: self.flow_axes,
             parent_containing_size: self.containing_size,
             child_logical_location,
             ledger: self.ledger.clone(),
+            relative: self.relative.clone(),
+            child_relative,
         }
     }
 
-    pub(super) fn inherit_into_child(&mut self, inherited: &InheritedFloatExclusions<S, Node>) {
+    pub(super) fn inherit_into_child(
+        &mut self,
+        inherited: &InheritedFloatExclusions<S, Node>,
+        node: Node,
+    ) {
         let child_size = self.containing_size;
         let child_logical_size = inherited.parent_flow_axes.logical_size(child_size);
         let child_physical_origin = inherited.parent_flow_axes.physical_point(
@@ -335,9 +446,18 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             child_logical_size,
             inherited.parent_containing_size,
         );
+        self.relative = inherited.relative.clone();
+        if inherited.child_relative {
+            let mut path = self.relative.to_vec();
+            path.push(RelativeFlow {
+                node,
+                normal: child_physical_origin,
+            });
+            self.relative = path.into();
+        }
         let mut inherited_order = self.ledger.len();
         self.ledger
-            .extend(inherited.ledger.iter().copied().map(|entry| {
+            .extend(inherited.ledger.iter().cloned().map(|entry| {
                 let physical_origin = Point::new(
                     entry.physical_margin_box.origin.x - child_physical_origin.x,
                     entry.physical_margin_box.origin.y - child_physical_origin.y,
@@ -386,16 +506,101 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             }));
     }
 
-    pub(super) fn place_float<'input, Tree, M>(
-        &mut self,
-        provider: ProviderBandContext<'_, Tree, Node>,
-        float: &PendingFloat<Node, S>,
-    ) -> LayoutResultOf<Node, Point<S>, S, M>
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+    pub(super) fn retain_native(
+        &self,
+        pending: &mut PendingFloat<Node, S>,
+        placement: FloatPlacement<S>,
+    ) where
+        Node: Eq,
     {
-        self.place_float_for_line(provider, float, None)
-            .map(|placement| placement.physical)
+        pending.placement = PendingPlacement::Native(Box::new(NativeFloatPlacement {
+            basis: NativeFloatBasis::for_pending(pending),
+            logical: placement.logical,
+            axes: self.flow_axes,
+            inline_start: self.containing_inline_start,
+            inline_end: self.containing_inline_end,
+        }));
+    }
+
+    pub(super) fn len(&self) -> usize {
+        self.ledger.len()
+    }
+    pub(super) fn bottom(&self) -> S {
+        self.ledger
+            .iter()
+            .map(|entry| entry.block_end)
+            .fold(S::ZERO, S::max)
+    }
+    pub(super) fn import_child(
+        &mut self,
+        child: &super::float_context::Completed<Node, S>,
+        location: LogicalPointOf<S>,
+    ) -> bool
+    where
+        Node: Eq,
+    {
+        let Some(incoming) = &child.frame else {
+            return false;
+        };
+        if incoming.parent_flow_axes != self.flow_axes
+            || incoming.parent_containing_size != self.containing_size
+            || incoming.child_logical_location != location
+            || child.inherited != incoming.ledger.len()
+            || child.ledger.ledger.len() < child.inherited
+            || !child
+                .ledger
+                .ledger
+                .iter()
+                .take(child.inherited)
+                .zip(&incoming.ledger)
+                .all(|(left, right)| left.node == right.node && left.exclusion == right.exclusion)
+            || incoming.ledger.len() != self.ledger.len()
+            || !incoming
+                .ledger
+                .iter()
+                .zip(&self.ledger)
+                .all(|(left, right)| {
+                    left.node == right.node
+                        && left.side == right.side
+                        && left.ledger_order == right.ledger_order
+                })
+        {
+            return false;
+        }
+        let child_origin = self.flow_axes.physical_point(
+            location,
+            self.flow_axes.logical_size(child.output.size),
+            self.containing_size,
+        );
+        for entry in child.ledger.ledger.iter().skip(child.inherited) {
+            let mut entry = entry.clone();
+            let physical_origin = Point::new(
+                entry.physical_margin_box.origin.x + child_origin.x,
+                entry.physical_margin_box.origin.y + child_origin.y,
+            );
+            let size = entry.physical_margin_box.size;
+            let origin = self
+                .flow_axes
+                .logical_point(physical_origin, size, self.containing_size);
+            let logical_size = self.flow_axes.logical_size(size);
+            let physical_side = match entry.side {
+                FloatLedgerSide::LineStart => child.ledger.flow_axes.inline_start(),
+                FloatLedgerSide::LineEnd => child.ledger.flow_axes.inline_end(),
+            };
+            entry.side = if physical_side == self.flow_axes.inline_start() {
+                FloatLedgerSide::LineStart
+            } else {
+                FloatLedgerSide::LineEnd
+            };
+            entry.physical_margin_box.origin = physical_origin;
+            entry.inline_start = origin.inline;
+            entry.inline_end = origin.inline + logical_size.inline;
+            entry.block_start = origin.block;
+            entry.block_end = origin.block + logical_size.block;
+            entry.ledger_order = FloatLedgerOrder(self.ledger.len());
+            self.ledger.push(entry);
+        }
+        true
     }
 
     /// Record an already accepted border-box origin in this exact ledger frame.
@@ -427,6 +632,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             block_start: origin.block,
             block_end: origin.block + size.block,
             ledger_order: FloatLedgerOrder(self.ledger.len()),
+            relative: self.relative.clone(),
         });
     }
 
@@ -533,11 +739,6 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
                     margin_block_start: candidate_block,
                     intrinsic_inline_demand,
                     logical: content_origin,
-                    physical: self.flow_axes.physical_point(
-                        content_origin,
-                        logical_size,
-                        self.containing_size,
-                    ),
                 });
             }
             candidate_block = band
@@ -627,7 +828,6 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
     pub(super) fn clearance_block(&self, block: S, clear: Clear) -> S {
         self.ledger
             .iter()
-            .copied()
             .filter(|entry| entry.side.is_cleared_by(clear))
             .map(|entry| entry.block_end)
             .fold(block, S::max)
@@ -756,7 +956,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         #[cfg(test)]
         let mut evaluated = 0;
 
-        for entry in self.ledger.iter().copied() {
+        for entry in &self.ledger {
             #[cfg(test)]
             {
                 evaluated += 1;
@@ -813,7 +1013,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
 
     fn provider_query(
         &self,
-        entry: FloatLedgerEntry<S, Node>,
+        entry: &FloatLedgerEntry<S, Node>,
         block_start: S,
         block_end: S,
     ) -> FloatExclusionQueryOf<S> {
@@ -881,6 +1081,7 @@ impl<S: LayoutScalar> FloatExclusions<S> {
             block_start: logical_origin.block,
             block_end: logical_origin.block + logical_size.block,
             ledger_order,
+            relative: self.relative.clone(),
         });
     }
 }
@@ -907,8 +1108,16 @@ where
     );
 
     for float in floats {
-        let location = if let Some(accepted) = &float.accepted {
+        let location = if let Some(accepted) = float.placement.text() {
             if accepted.inline_space != FloatInlineSpace::Finite {
+                return Err(super::inline_run::text_run_error(
+                    container,
+                    crate::text_layout::fit::FitError::InvalidGeometry,
+                ));
+            }
+            if accepted.boxes.as_ref().is_some_and(|boxes| {
+                boxes.outgoing.boundary != accepted.line.selected_line().request().end
+            }) {
                 return Err(super::inline_run::text_run_error(
                     container,
                     crate::text_layout::fit::FitError::InvalidGeometry,
@@ -931,14 +1140,24 @@ where
                 container_size,
             )
         } else {
-            float_exclusions.place_float(
-                ProviderBandContext {
-                    tree,
-                    container,
-                    enabled: true,
-                },
-                float,
-            )?
+            let PendingPlacement::Native(receipt) = &float.placement else {
+                return Err(super::float_context::missing(float.node));
+            };
+            let frame_matches = receipt.axes == constants.flow_axes
+                && receipt.inline_start == float_exclusions.containing_inline_start
+                && receipt.inline_end == float_exclusions.containing_inline_end;
+            if !receipt.basis.matches(float) || !frame_matches {
+                return Err(super::float_context::missing(float.node));
+            }
+            float_exclusions.record_placement(float, receipt.logical);
+            // Block auto size may settle after placement. The accepted logical
+            // position belongs to the unchanged inline frame; project it once
+            // against the final block extent, including decreasing block flow.
+            constants.flow_axes.physical_point(
+                receipt.logical,
+                constants.flow_axes.logical_size(float.size),
+                container_size,
+            )
         };
         let scroll_geometry = with_block_scroll_projections::<Tree, M, _>(
             tree,

@@ -74,6 +74,27 @@ impl FinalizedLine {
         self.inner.data.prefix.has_in_flow_content
     }
 
+    /// Issues semantic nonformatted eligibility without changing finalization.
+    /// The consumer must additionally establish its actual box/decorations
+    /// disposition; absent glyph ink or zero numerical advance is insufficient.
+    pub fn nonformatted(&self) -> Result<super::NonFormattedLine> {
+        let request = &self.inner.selected.request;
+        if request.context.end == super::LineEnd::Forced
+            || matches!(&request.termination, super::PreparedTermination::Ordinary(offer)
+                if offer.view().kind() == PreparedBreakKind::Forced)
+        {
+            return Err(super::protocol_error(
+                super::ProtocolError::NonFormattedForcedLine,
+            ));
+        }
+        if self.has_in_flow_content() {
+            return Err(super::protocol_error(
+                super::ProtocolError::NonFormattedInFlowContent,
+            ));
+        }
+        Ok(super::NonFormattedLine { line: self.clone() })
+    }
+
     /// Actual feedback for every issued selected slot, in that same order.
     /// Discarded slots remain present with zero advance. Iteration clones only
     /// the issued slot capability; it does not allocate an inventory or glyphs.
@@ -1870,6 +1891,7 @@ mod tests {
                 termination: crate::PreparedTermination::Ordinary(termination),
                 alternative: None,
                 context: LineContext {
+                    alignment_insets: crate::LineAlignmentInsets::ZERO,
                     formatted_line: crate::FormattedLineContext::default(),
                     base_direction: ParagraphBaseDirection::LeftToRight,
                     line_box_direction: crate::LineBoxDirection::LeftToRight,
@@ -1902,7 +1924,7 @@ mod tests {
         let layout = crate::Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::WholeParagraph,
-            lines: vec![LinePlacement {
+            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 7.5,
@@ -1910,7 +1932,7 @@ mod tests {
                 },
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
-            }],
+            })],
         })
         .unwrap();
         assert_eq!(

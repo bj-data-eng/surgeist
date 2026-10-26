@@ -594,8 +594,8 @@ fn transformed_receiving_body_and_exact_before_after_both_indications_share_cust
         let layout = crate::Layout::from_finalized_lines(PlacementRequest {
             prepared: p,
             coverage: PlacementCoverage::WholeParagraph,
-            lines: vec![
-                LinePlacement {
+            entries: vec![
+                crate::PlacementEntry::Formatted(LinePlacement {
                     line: first,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -603,8 +603,8 @@ fn transformed_receiving_body_and_exact_before_after_both_indications_share_cust
                     },
                     orientation: LineOrientation::Horizontal,
                     atomics: vec![],
-                },
-                LinePlacement {
+                }),
+                crate::PlacementEntry::Formatted(LinePlacement {
                     line: last,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -612,7 +612,7 @@ fn transformed_receiving_body_and_exact_before_after_both_indications_share_cust
                     },
                     orientation: LineOrientation::Horizontal,
                     atomics: vec![],
-                },
+                }),
             ],
         })
         .unwrap();

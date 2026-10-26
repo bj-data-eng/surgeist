@@ -324,12 +324,23 @@ fn request_at<S: LayoutScalar>(width: AvailableOf<S>) -> LayoutRootRequestOf<S> 
 
 fn policies(fixture: &Captured, values: &[WrapInside]) -> Vec<WrappingScopeInput<u32>> {
     assert_eq!(fixture.scopes.len(), values.len());
+    // Native host witness: every captured inline below owns its declared
+    // Ahem10/absolute10 metrics (8/2 ascent/descent; see ahem_style). The
+    // PhraseAhem specialization preserves those tables. Baseline alignment is
+    // explicitly authored here, not inferred from selected/descendant glyphs.
     fixture
         .scopes
         .iter()
         .cloned()
         .zip(values)
         .map(|(scope, &wrap_inside)| WrappingScopeInput::Captured {
+            metric_contribution: Some(InlineBoxMetricContribution::Strut(text::LineBoxStrut {
+                metrics: text::LineStrut {
+                    baseline: 8.0,
+                    line_extent: 10.0,
+                },
+                alignment: text::LineBoxAlignment::Baseline,
+            })),
             edges: Default::default(),
             scope,
             wrap_inside,
@@ -794,6 +805,7 @@ fn numeric_tree<S: LayoutScalar>(
 
 fn pair(start: u32, end: u32, policy: WrapInside) -> WrappingScopeInput<u32> {
     WrappingScopeInput::NativePair {
+        metric_contribution: None,
         edges: Default::default(),
         start,
         end,
@@ -849,7 +861,13 @@ fn numeric<S: LayoutScalar>() {
                     (i - first, 10.0)
                 };
                 let x = if rtl {
-                    10.0 - slot as f64 * 10.0
+                    // Actual atomics have level0 in this RTL containing flow.
+                    // L2 keeps their physical left-to-right source order; the
+                    // level1 boundary controls have zero advance. The occupied
+                    // margin-flow interval is right-aligned within width25,
+                    // and each border starts5px before its margin-flow slot.
+                    let members = if i < first { first } else { 3 - first };
+                    25.0 - members as f64 * 10.0 - 5.0 + slot as f64 * 10.0
                 } else {
                     5.0 + slot as f64 * 10.0
                 };
@@ -997,6 +1015,7 @@ fn foreign_canonical_scope_is_not_reinterpreted_by_matching_source_or_ordinal() 
         vec![one.binding.clone()],
         crate::WrappingInput {
             scopes: vec![WrappingScopeInput::Captured {
+                metric_contribution: None,
                 edges: Default::default(),
                 scope: block,
                 wrap_inside: WrapInside::Avoid,
@@ -1090,9 +1109,9 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
     assert!(unmatched.scopes[0].entry_control().is_none());
     assert!(unmatched.scopes[0].exit_control().is_none());
     let tree = text_tree::<f64>(&unmatched.binding, false);
-    // Complete capture retained both actual standalone control events, but
-    // supplied no canonical pairing for them. Their roles/order alone do not
-    // authorize inventing a box. Neutral construction still permits controls.
+    // This fixture emits Start after S enters and End after S exits:
+    // S.enter < Start < S.exit < End. The asserted native pair crosses the
+    // actual source box. Neutral construction still permits the controls.
     LayoutFlowInput::try_new(
         &tree,
         0,
@@ -1113,7 +1132,7 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
         },
     )
     .err()
-    .expect("the requested pair has no canonical box in complete capture");
+    .expect("the requested native pair crosses the actual source box");
     assert!(matches!(
         error.kind(),
         LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(
@@ -1348,7 +1367,24 @@ fn receiving<S: LayoutScalar>() {
             0,
             vec![p.binding(0)],
             crate::WrappingInput {
-                scopes: vec![pair(2, 5, WrapInside::Avoid)],
+                // This native box owns Ahem10/absolute10, Baseline8/10,
+                // matching its actual endpoint allocations. Full receiving
+                // trials may contain neither endpoint; supply the same box fact.
+                scopes: vec![WrappingScopeInput::NativePair {
+                    start: 2,
+                    end: 5,
+                    wrap_inside: WrapInside::Avoid,
+                    edges: Default::default(),
+                    metric_contribution: Some(InlineBoxMetricContribution::Strut(
+                        text::LineBoxStrut {
+                            metrics: text::LineStrut {
+                                baseline: 8.0,
+                                line_extent: 10.0,
+                            },
+                            alignment: text::LineBoxAlignment::Baseline,
+                        },
+                    )),
+                }],
                 child_order: Vec::new(),
             },
         )
@@ -1439,7 +1475,24 @@ fn receiving<S: LayoutScalar>() {
             0,
             vec![p.binding(0)],
             crate::WrappingInput {
-                scopes: vec![pair(2, 5, WrapInside::Avoid)],
+                // This native box owns Ahem10/absolute10, Baseline8/10,
+                // matching its actual endpoint allocations. Full receiving
+                // trials may contain neither endpoint; supply the same box fact.
+                scopes: vec![WrappingScopeInput::NativePair {
+                    start: 2,
+                    end: 5,
+                    wrap_inside: WrapInside::Avoid,
+                    edges: Default::default(),
+                    metric_contribution: Some(InlineBoxMetricContribution::Strut(
+                        text::LineBoxStrut {
+                            metrics: text::LineStrut {
+                                baseline: 8.0,
+                                line_extent: 10.0,
+                            },
+                            alignment: text::LineBoxAlignment::Baseline,
+                        },
+                    )),
+                }],
                 child_order: Vec::new(),
             },
         )
@@ -1573,18 +1626,54 @@ fn replacement_and_terminal<S: LayoutScalar>() {
         AvailableOf::definite(S::from_f64(100.0)),
         false,
     );
-    assert_eq!(cuts(&batch), [3, 3]);
+    assert_eq!(cuts(&batch), [3]);
+    let placed = batch.placed_text()[0].layout();
+    let completions = placed.nonformatted_lines().collect::<Vec<_>>();
+    assert_eq!(completions.len(), 1);
+    let completion = completions[0].line.finalized_line();
+    assert_eq!(completion.prepared_text(), f.binding.prepared);
+    assert_eq!(placed.source().text(), &text::Text::from("AB\n"));
     assert_eq!(
-        batch.placed_text()[0].layout().lines()[1]
-            .bounds()
-            .size
-            .height,
-        10.0
+        (
+            completion
+                .selected_line()
+                .request()
+                .start
+                .view()
+                .source_before()
+                .get(),
+            completion
+                .selected_line()
+                .request()
+                .end
+                .view()
+                .source_after()
+                .get()
+        ),
+        (3, 3)
     );
+    assert!(!completion.has_in_flow_content());
+    assert_eq!(completion.feedback().baseline, 8.0);
+    assert_eq!(completion.feedback().line_height, 10.0);
+    assert_eq!(completions[0].origin.y, 10.0);
+    let selected = completion.selected_line();
+    let request = selected.request();
+    assert_eq!(request.context.end, text::LineEnd::Paragraph);
+    assert!(matches!(&request.termination,
+        text::PreparedTermination::Ordinary(offer)
+            if offer.view().kind() == text::PreparedBreakKind::ParagraphEnd));
+    assert_eq!(request.start, request.end);
+    assert!(request.participants.is_empty());
+    let forced = finalized(&batch).remove(0);
+    assert_eq!(
+        forced.selected_line().request().context.end,
+        text::LineEnd::Forced
+    );
+    assert_eq!(request.start, forced.selected_line().request().end);
 }
 
 #[test]
-fn empty_native_replacement_and_genuine_terminal_empty_line_keep_their_owners() {
+fn empty_native_replacement_and_nonformatted_terminal_completion_keep_their_owners() {
     replacement_and_terminal::<f32>();
     replacement_and_terminal::<f64>();
 }
@@ -2094,17 +2183,45 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
         };
         assert_mixed_facts(&f, reverse);
         let tree = text_tree::<S>(&f.binding, rtl);
-        let native = pair(10000, 10001, WrapInside::Avoid);
+        // Both nested orders use the native box's own Ahem10/absolute10,
+        // Baseline8/10 allocation, matching its actual physical endpoints.
+        // Endpoint-free trials still need that same-box metric witness.
+        let native = WrappingScopeInput::NativePair {
+            metric_contribution: Some(InlineBoxMetricContribution::Strut(text::LineBoxStrut {
+                metrics: text::LineStrut {
+                    baseline: 8.0,
+                    line_extent: 10.0,
+                },
+                alignment: text::LineBoxAlignment::Baseline,
+            })),
+            edges: Default::default(),
+            start: 10000,
+            end: 10001,
+            wrap_inside: WrapInside::Avoid,
+        };
+        // This actual semantic box independently owns the same fixture font
+        // and absolute line-height; supply its own native Baseline allocation.
         let canonical = WrappingScopeInput::Captured {
+            metric_contribution: Some(InlineBoxMetricContribution::Strut(text::LineBoxStrut {
+                metrics: text::LineStrut {
+                    baseline: 8.0,
+                    line_extent: 10.0,
+                },
+                alignment: text::LineBoxAlignment::Baseline,
+            })),
             edges: Default::default(),
             scope: f.scopes[0].clone(),
             wrap_inside: WrapInside::Avoid,
         };
         let native_only = if reverse { vec![2, 6, 8] } else { vec![4, 8] };
         let captured_only = if reverse { vec![4, 8] } else { vec![2, 6, 8] };
+        // Only the native form supplies Avoid here. The real canonical box
+        // remains present and supplies its own metrics with an Auto policy.
+        let mut native_policy = vec![native.clone()];
+        native_policy.extend(policies(&f, &[WrapInside::Auto]));
         for (label, definitions, expected) in [
             ("neutral", vec![], vec![4, 8]),
-            ("native-only", vec![native.clone()], native_only),
+            ("native-only", native_policy, native_only),
             ("captured-only", vec![canonical.clone()], captured_only),
         ] {
             let flow = LayoutFlowInput::try_new(
@@ -2198,6 +2315,7 @@ fn mixed_crossing<S: LayoutScalar>() -> Vec<String> {
         let tree = text_tree::<S>(&f.binding, rtl);
         let native = pair(10000, 10001, WrapInside::Avoid);
         let canonical = WrappingScopeInput::Captured {
+            metric_contribution: None,
             edges: Default::default(),
             scope: f.scopes[0].clone(),
             wrap_inside: WrapInside::Avoid,

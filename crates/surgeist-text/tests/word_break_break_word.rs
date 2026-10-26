@@ -197,6 +197,7 @@ fn finish(
         line_box_struts: Vec::new(),
         line_strut: None,
         context: t::LineContext {
+            alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
             formatted_line: surgeist_text::FormattedLineContext::default(),
             base_direction: if p.analyzed_source().direction() == t::Direction::RightToLeft {
                 DIRECTIONS[1]
@@ -356,17 +357,19 @@ fn native_real_trials_exhaust_the_only_ordinary_variant_before_two_fitting_piece
             let layout = t::Layout::from_finalized_lines(t::PlacementRequest {
                 prepared: p.clone(),
                 coverage: t::PlacementCoverage::WholeParagraph,
-                lines: [first, second]
+                entries: [first, second]
                     .into_iter()
                     .enumerate()
-                    .map(|(index, line)| t::LinePlacement {
-                        line,
-                        anchor: t::LineAnchor {
-                            inline_origin: 0.0,
-                            baseline: 8.0 + index as f64 * 10.0,
-                        },
-                        orientation: t::LineOrientation::Horizontal,
-                        atomics: vec![],
+                    .map(|(index, line)| {
+                        t::PlacementEntry::Formatted(t::LinePlacement {
+                            line,
+                            anchor: t::LineAnchor {
+                                inline_origin: 0.0,
+                                baseline: 8.0 + index as f64 * 10.0,
+                            },
+                            orientation: t::LineOrientation::Horizontal,
+                            atomics: vec![],
+                        })
                     })
                     .collect(),
             })

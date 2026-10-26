@@ -11,12 +11,14 @@ use crate::{
 pub(crate) struct BlockContainerProjection<'a, S: LayoutScalar> {
     pub(super) common: CommonBoxProjection<'a, S>,
     pub(super) display: Display,
+    pub(super) block_flow_context: crate::BlockFlowContext,
     pub(super) block_generation: crate::BlockGeneration,
     pub(super) text_indent: crate::TextIndentOf<S>,
     pub(super) line_box_direction_policy: crate::LineBoxDirectionPolicy,
     pub(super) hyphenate_limit_lines: crate::HyphenateLimitLines,
     pub(super) hyphenate_limit_last: crate::HyphenateLimitLast,
     pub(super) hyphenate_limit_zone: crate::LengthPercentageOf<S>,
+    pub(super) wrap_style: crate::TextWrapStyle,
     pub(super) text_align: TextAlign,
     pub(super) text_align_last: TextAlignLast,
     pub(super) text_justification: TextJustification,
@@ -30,12 +32,14 @@ impl<'a, S: LayoutScalar> BlockContainerProjection<'a, S> {
         Self {
             common: CommonBoxProjection::from_node(input),
             display: input.display,
+            block_flow_context: input.block_flow_context,
             block_generation: input.block_generation,
             text_indent: input.text_indent,
             line_box_direction_policy: input.line_box_direction_policy,
             hyphenate_limit_lines: input.hyphenate_limit_lines,
             hyphenate_limit_last: input.hyphenate_limit_last,
             hyphenate_limit_zone: input.hyphenate_limit_zone,
+            wrap_style: input.text_wrap_style,
             text_align: input.text_align,
             text_align_last: input.text_align_last,
             text_justification: input.text_justification,
@@ -50,6 +54,7 @@ impl<'a, S: LayoutScalar> BlockContainerProjection<'a, S> {
 pub(crate) struct BlockChildProjection<'a, S: LayoutScalar> {
     pub(super) common: CommonBoxProjection<'a, S>,
     pub(super) display: Display,
+    pub(super) block_flow_context: crate::BlockFlowContext,
     pub(super) float: Float,
     pub(super) clear: Clear,
     pub(super) float_exclusion: FloatExclusion,
@@ -64,6 +69,7 @@ impl<'a, S: LayoutScalar> BlockChildProjection<'a, S> {
         Self {
             common: CommonBoxProjection::from_node(input),
             display: input.display,
+            block_flow_context: input.block_flow_context,
             float: input.float,
             clear: input.clear,
             float_exclusion: input.float_exclusion,
@@ -247,6 +253,7 @@ mod tests {
             inset: expected_inset,
             item_is_replaced: true,
             item_is_table: true,
+            text_wrap_style: crate::TextWrapStyle::Balance,
             text_align: TextAlign::LegacyCenter,
             scrollbar_gutter: ScrollbarGutter::StableBothEdges,
             scrollbar_width: expected_scrollbar_width,
@@ -283,6 +290,7 @@ mod tests {
         assert_eq!(container.common, common);
         assert!(core::ptr::eq(container.common.size, common.size));
         assert_eq!(container.display, Display::InlineBlock);
+        assert_eq!(container.wrap_style, crate::TextWrapStyle::Balance);
         assert_eq!(container.text_align, TextAlign::LegacyCenter);
         assert_eq!(container.scrollbar_gutter, ScrollbarGutter::StableBothEdges);
         assert_eq!(container.scrollbar_width, expected_scrollbar_width);

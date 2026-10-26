@@ -130,6 +130,8 @@ impl<S: LayoutScalar> Fixture<S> {
             .numeric_projection(&flow.graph, 0, &self.nodes)
             .unwrap();
         MixedInlineRunInputOf {
+            groups: crate::group_alignment::Snapshot::default(),
+            text_wrap_style: crate::TextWrapStyle::Auto,
             line_box_context: crate::line_box::LineBoxContext::new(
                 crate::LineBoxDirectionPolicy::Normal,
                 self.direction,
@@ -215,7 +217,12 @@ fn check_simple<S: LayoutScalar>(
             let logical = 10.0 * position as f64 + margin;
             let x = match f.direction {
                 Direction::Ltr => logical,
-                Direction::Rtl => f.width.to_f64() - logical - 10.0,
+                // All atomics have resolved level0: physical L2 order is
+                // source order even inside RTL. The used row is right-aligned;
+                // its physical left margin is -margin, not logical start +margin.
+                Direction::Rtl => {
+                    f.width.to_f64() - 10.0 * nodes.len() as f64 + 10.0 * position as f64 - margin
+                }
             };
             let actual = output(&batch, node as u32);
             assert_eq!(actual.location, Point::new(n(x), n(10.0 * line as f64)));
@@ -385,15 +392,14 @@ fn empty_edges<S: LayoutScalar>() {
             false,
         );
         let r = layout_mixed_inline_run(terminal.numeric()).unwrap();
-        assert_eq!(groups(&r), [vec![1, 2, 3], vec![]]);
-        assert_eq!(
-            r.lines.iter().map(|l| l.end).collect::<Vec<_>>(),
-            [Forced, Paragraph]
-        );
-        assert_eq!(r.block_extent, n(20.0));
+        // The genuine terminal Force ends the atomic line; its pending
+        // Paragraph strut does not supply another formatted line.
+        assert_eq!(groups(&r), [vec![1, 2, 3]]);
+        assert_eq!(r.lines.iter().map(|l| l.end).collect::<Vec<_>>(), [Forced]);
+        assert_eq!(r.block_extent, n(10.0));
         assert_eq!(r.first_baseline, Some(n(10.0)));
-        assert_eq!(r.last_baseline, Some(n(20.0)));
-        assert_eq!(output(&terminal.compute(), 0).size.height, n(20.0));
+        assert_eq!(r.last_baseline, Some(n(10.0)));
+        assert_eq!(output(&terminal.compute(), 0).size.height, n(10.0));
         edges = [WrapEdges::AUTO; 3];
         edges[0].after = WrapEdge::Line;
         edges[1].before = WrapEdge::Line;
@@ -482,6 +488,7 @@ fn nested<S: LayoutScalar>(
     f.atomic(3, WrapEdges::AUTO, InlineBreakOpportunity::Allowed, false);
     for (start, end) in [(10, 13), (11, 12)] {
         f.wrapping.scopes.push(WrappingScopeInput::NativePair {
+            metric_contribution: None,
             start,
             end,
             wrap_inside: WrapInside::Auto,
@@ -491,6 +498,7 @@ fn nested<S: LayoutScalar>(
     let mut outer = vec![];
     if empty {
         f.wrapping.scopes.push(WrappingScopeInput::NativePair {
+            metric_contribution: None,
             start: 14,
             end: 15,
             wrap_inside: WrapInside::Auto,
@@ -549,6 +557,8 @@ fn propagation<S: LayoutScalar>() {
             for extent in expected_flow {
                 let selected = select_scope_inline_line(
                     NumericLineQuery {
+                        goal: None,
+                        indent: n(0.0),
                         run,
                         cursor,
                         next_boundary_descriptor: supplied.len(),
@@ -567,15 +577,18 @@ fn propagation<S: LayoutScalar>() {
                 pending = selected.pending_strut;
             }
             let b = f.compute();
-            for (node, logical, y) in [
-                (1, 0.0, 0.0),
-                (2, if empty { 3.0 } else { 8.0 }, 10.0),
-                (3, if empty { 19.0 } else { 24.0 }, 10.0),
+            // Atomic levels remain0. RTL L2 reverses only adjacent level1
+            // boundary runs. Used widths are10/34, or15/29 with the real empty
+            // sibling: their line-left bases are90/66, or85/71.
+            for (node, ltr, rtl, y) in [
+                (1, 0.0, if empty { 85.0 } else { 90.0 }, 0.0),
+                (2, if empty { 3.0 } else { 8.0 }, 74.0, 10.0),
+                (3, if empty { 19.0 } else { 24.0 }, 90.0, 10.0),
             ] {
                 let x = if direction == Direction::Ltr {
-                    logical
+                    ltr
                 } else {
-                    100.0 - logical - 10.0
+                    rtl
                 };
                 assert_eq!(output(&b, node).location, Point::new(n(x), n(y)));
             }
@@ -664,11 +677,13 @@ fn opaque_context<S: LayoutScalar>() {
         // equal real10/0 metrics place them on the same outer line; 5+3+2+4
         // real BP and three actual10 boxes give44 total inline flow.
         assert_eq!(output(&b, 1).location.y, output(&b, 3).location.y);
-        for (node, logical) in [(1, 0.0), (2, 18.0), (3, 34.0)] {
+        // RTL line-left is100-44=56. Actual L2 order is P, innerStart3,
+        // outerStart5, A, outerEnd4, innerEnd2, Q; atomic x is56/74/90.
+        for (node, ltr, rtl) in [(1, 0.0, 56.0), (2, 18.0, 74.0), (3, 34.0, 90.0)] {
             let x = if direction == Direction::Ltr {
-                logical
+                ltr
             } else {
-                100.0 - logical - 10.0
+                rtl
             };
             assert_eq!(output(&b, node).location.x, n(x));
         }
@@ -876,6 +891,7 @@ fn mixed_constraints<S: LayoutScalar>(direction: Direction, width: f64) -> Fixtu
     // is interior to the respective complete native pair; after3 is outside.
     for (start, end) in [(10, 11), (12, 13)] {
         f.wrapping.scopes.push(WrappingScopeInput::NativePair {
+            metric_contribution: None,
             start,
             end,
             wrap_inside: WrapInside::Avoid,
@@ -902,7 +918,9 @@ fn assert_mixed_output<S: LayoutScalar>(f: &Fixture<S>, expected: &[&[usize]]) {
             let x = if f.direction == Direction::Ltr {
                 logical
             } else {
-                f.width.to_f64() - logical - 10.0
+                // Level0 atomics retain line-left source order; genuine
+                // level1 boundaries here have zero advance.
+                f.width.to_f64() - 10.0 * nodes.len() as f64 + logical
             };
             assert_eq!(
                 output(&batch, node as u32).location,
@@ -1093,7 +1111,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     before: WrapEdge::Auto,
                     after: WrapEdge::Line,
                 },
-                [0.0, 10.0, 20.0, 40.0],
+                [0.0, 10.0, 20.0, 30.0],
             ),
             (
                 WrapEdges {
@@ -1109,7 +1127,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     after: WrapEdge::Line,
                 },
                 WrapEdges::AUTO,
-                [0.0, 20.0, 30.0, 40.0],
+                [0.0, 10.0, 20.0, 30.0],
             ),
             (
                 WrapEdges {
@@ -1120,7 +1138,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     before: WrapEdge::Line,
                     after: WrapEdge::Auto,
                 },
-                [0.0, 20.0, 30.0, 40.0],
+                [0.0, 10.0, 20.0, 30.0],
             ),
             (
                 WrapEdges {
@@ -1131,7 +1149,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     before: WrapEdge::Auto,
                     after: WrapEdge::Line,
                 },
-                [0.0, 20.0, 30.0, 50.0],
+                [0.0, 10.0, 20.0, 30.0],
             ),
         ] {
             // The normal block is an actual run separator. All three boxes
@@ -1164,10 +1182,98 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                 );
             }
             let batch = crate::compute_layout(&tree, 0, request(n(100.0))).unwrap();
+            // Equal geometry after phantom suppression cannot by itself prove
+            // locality. Observe each actual run through its own host-derived
+            // projection: an after force must end only that owner's atomic.
+            let flow =
+                LayoutFlowInput::try_new(&tree, 0, vec![], WrappingInput::default()).unwrap();
+            for (node, edges) in [(1, early), (3, late)] {
+                // Allocation fields are genuine owner inputs from the already
+                // required unrounded public batch, never ending/cursor oracles.
+                let allocation = batch
+                    .unrounded_entries()
+                    .iter()
+                    .find(|entry| entry.node() == node)
+                    .unwrap()
+                    .output();
+                let projection = flow
+                    .wrapping
+                    .numeric_projection(&flow.graph, 0, &[node])
+                    .unwrap();
+                let report = layout_mixed_inline_run_with_formatted_observation(
+                    MixedInlineRunInputOf {
+                        groups: crate::group_alignment::Snapshot::default(),
+                        text_wrap_style: crate::TextWrapStyle::Auto,
+                        line_box_context: crate::line_box::LineBoxContext::new(
+                            crate::LineBoxDirectionPolicy::Normal,
+                            direction,
+                        ),
+                        observe_tail: false,
+                        wrapping: Some(projection),
+                        available_inline_extent: AvailableOf::definite(n(100.0)),
+                        flow_axes: FlowAxes::new(WritingMode::HorizontalTb, direction),
+                        text_align: TextAlign::Start,
+                        text_align_last: crate::TextAlignLast::Auto,
+                        indent: crate::text_indent::ResolvedTextIndent::ZERO,
+                        indent_state: crate::text_indent::IndentLineState::default(),
+                        // Empty blocks have no inner baseline. The numeric
+                        // owner uses their actual block-end fallback (10+0),
+                        // rather than a fabricated Some(10) baseline witness.
+                        // The declared Visible overflow reserves no scrollbar.
+                        participants: vec![MixedInlineParticipantOf::Atomic {
+                            item: AtomicInlineBoxParticipant {
+                                source_index: allocation.source_index.get(),
+                                size: allocation.size,
+                                content_size: allocation.content_size,
+                                margin: allocation.margin,
+                                padding: allocation.padding,
+                                border: allocation.border,
+                                scrollbar_size: Size::ZERO,
+                                first_baseline: None,
+                                alignment: InlineControlAlignment::Baseline,
+                            },
+                            participation: participation(InlineBreakOpportunity::Allowed),
+                        }],
+                    },
+                    |_, _| LogicalLineBandQueryResultOf {
+                        inline_start: S::ZERO,
+                        inline_end: n(100.0),
+                        next_transition: None,
+                    },
+                    |block, _| block,
+                    true,
+                )
+                .unwrap();
+                let mut expected_endings = Vec::new();
+                if edges.before == WrapEdge::Line {
+                    expected_endings.push((surgeist_text::LineEnd::Forced, 0, 0));
+                }
+                expected_endings.push((
+                    if edges.after == WrapEdge::Line {
+                        surgeist_text::LineEnd::Forced
+                    } else {
+                        surgeist_text::LineEnd::Paragraph
+                    },
+                    1,
+                    1,
+                ));
+                assert_eq!(
+                    report
+                        .formatted_lines
+                        .as_ref()
+                        .unwrap()
+                        .iter()
+                        .map(|line| (line.ending, line.source_end, line.descriptor_end))
+                        .collect::<Vec<_>>(),
+                    expected_endings,
+                    "actual run owner {node}, declarations {early:?}/{late:?}"
+                );
+            }
             // An owner's before force starts its own run with the already
-            // qualified zero-metric numeric leading line. Its after force
-            // retains only its own real10/0 terminal receiving strut. Neither
-            // belongs to the other run across the intervening block box.
+            // qualified zero-metric numeric leading Forced line. Its after
+            // force retains a nominal10/0 terminal strut, but the empty
+            // Paragraph receiver is nonformatted. Neither force can spend
+            // height in the other run across the actual intervening block.
             for entries in [batch.unrounded_entries(), batch.final_entries()] {
                 let get = |node| {
                     entries

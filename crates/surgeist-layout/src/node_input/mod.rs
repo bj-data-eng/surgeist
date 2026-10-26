@@ -36,7 +36,7 @@ pub use inline::{
     InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind, InlineBreakOpportunity,
     InlineMetrics, InlineMetricsError, InlineMetricsOf, LineBreakDisplay, LineBreakInput,
     LineBreakInputOf, TextAlign, TextAlignLast, TextIndent, TextIndentOf, TextJustification,
-    VerticalAlign, WritingMode,
+    TextWrapStyle, VerticalAlign, WritingMode,
 };
 pub use scroll::{
     ComputedOverflow, ComputedOverflowError, Overflow, OverflowClipBox, OverflowClipMargin,
@@ -45,6 +45,27 @@ pub use scroll::{
     ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType,
     ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf,
 };
+
+/// Alignment of the natural in-flow text-line group in this block's BFC.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum TextGroupAlign {
+    #[default]
+    None,
+    Start,
+    End,
+    Left,
+    Right,
+    Center,
+}
+
+/// Used block formatting-context establishment supplied by style lowering.
+/// `Normal` does not override other actual context-establishing box roles.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum BlockFlowContext {
+    #[default]
+    Normal,
+    Independent,
+}
 
 fn validate_numeric_property<S: LayoutScalar>(
     value: S,
@@ -87,6 +108,10 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     pub hyphenate_limit_last: crate::HyphenateLimitLast,
     /// Computed signed length/percentage, resolved against the natural fallback line box.
     pub hyphenate_limit_zone: crate::LengthPercentageOf<S>,
+    /// Normalized inherited line-selection preference for this block container.
+    pub text_wrap_style: TextWrapStyle,
+    pub text_group_align: TextGroupAlign,
+    pub block_flow_context: BlockFlowContext,
     pub text_align: TextAlign,
     pub text_align_last: TextAlignLast,
     pub text_justification: TextJustification,
@@ -191,6 +216,9 @@ impl NodeInputOf<DefaultScalar> {
         hyphenate_limit_lines: crate::HyphenateLimitLines::NoLimit,
         hyphenate_limit_last: crate::HyphenateLimitLast::None,
         hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+        text_wrap_style: TextWrapStyle::Auto,
+        text_group_align: TextGroupAlign::None,
+        block_flow_context: BlockFlowContext::Normal,
         text_align: TextAlign::Start,
         text_align_last: TextAlignLast::Auto,
         text_justification: TextJustification::None,
@@ -277,6 +305,9 @@ impl<S: LayoutScalar> Default for NodeInputOf<S> {
             hyphenate_limit_lines: crate::HyphenateLimitLines::NoLimit,
             hyphenate_limit_last: crate::HyphenateLimitLast::None,
             hyphenate_limit_zone: crate::LengthPercentageOf::ZERO,
+            text_wrap_style: TextWrapStyle::Auto,
+            text_group_align: TextGroupAlign::None,
+            block_flow_context: BlockFlowContext::Normal,
             text_align: TextAlign::Start,
             text_align_last: TextAlignLast::Auto,
             text_justification: TextJustification::None,
@@ -670,6 +701,7 @@ mod tests {
     }
 
     fn assert_fri05_c01_node_input_fields_and_defaults<S: LayoutScalar>(input: &NodeInputOf<S>) {
+        assert_eq!(input.text_wrap_style, TextWrapStyle::Auto);
         let _: &ComputedOverflow = &input.overflow;
         let _: &OverflowClipMarginOf<S> = &input.overflow_clip_margin;
         let _: &ScrollbarGutter = &input.scrollbar_gutter;
@@ -692,6 +724,24 @@ mod tests {
         assert_eq!(input.scroll_snap_type, ScrollSnapType::None);
         assert_eq!(input.scroll_snap_align, ScrollSnapAlign::default());
         assert_eq!(input.scroll_snap_stop, ScrollSnapStop::Normal);
+    }
+
+    #[test]
+    fn native_wrap_selection_is_a_normalized_box_fact() {
+        assert_eq!(TextWrapStyle::default(), TextWrapStyle::Auto);
+        assert_eq!(
+            NodeInputOf::<f32>::non_box().text_wrap_style,
+            TextWrapStyle::Auto
+        );
+        assert_eq!(
+            NodeInputOf::<f64>::non_box().text_wrap_style,
+            TextWrapStyle::Auto
+        );
+        let balanced = NodeInputOf::<f64> {
+            text_wrap_style: TextWrapStyle::Balance,
+            ..NodeInputOf::default()
+        };
+        assert_ne!(balanced, NodeInputOf::<f64>::default());
     }
 
     #[test]

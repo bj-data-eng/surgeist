@@ -71,14 +71,16 @@ fn fri06_c03_projection_soft_and_forced_unequal_atomic_lines_align_per_line_in_a
  {
     fn expected_offset(
         align: TextAlign,
-        decreases: bool,
+        direction: Direction,
         containing_inline: f64,
         used_inline: f64,
     ) -> f64 {
         let free = containing_inline - used_inline;
+        // Text4 left/right (including WebKit aliases) are line sides; WM4
+        // Table 11 separates them from physical coordinate progression.
         match align {
-            TextAlign::LegacyLeft if decreases => free,
-            TextAlign::LegacyRight if !decreases => free,
+            TextAlign::LegacyLeft if direction == Direction::Rtl => free,
+            TextAlign::LegacyRight if direction == Direction::Ltr => free,
             TextAlign::LegacyCenter => free / 2.0,
             TextAlign::Start
             | TextAlign::End
@@ -94,7 +96,6 @@ fn fri06_c03_projection_soft_and_forced_unequal_atomic_lines_align_per_line_in_a
     fn assert_lane<S: LayoutScalar>() {
         for (writing_mode, direction) in fri06_c02_flow_mappings() {
             let flow = FlowAxes::new(writing_mode, direction);
-            let decreases = fri06_c02_inline_decreases(writing_mode, direction);
             for align in [
                 TextAlign::LegacyLeft,
                 TextAlign::LegacyRight,
@@ -115,7 +116,7 @@ fn fri06_c03_projection_soft_and_forced_unequal_atomic_lines_align_per_line_in_a
                     (
                         1,
                         (
-                            expected_offset(align, decreases, 40.0, 30.0),
+                            expected_offset(align, direction, 40.0, 30.0),
                             0.0,
                             30.0,
                             10.0,
@@ -124,7 +125,12 @@ fn fri06_c03_projection_soft_and_forced_unequal_atomic_lines_align_per_line_in_a
                     (
                         2,
                         (
-                            expected_offset(align, decreases, 40.0, 40.0),
+                            expected_offset(align, direction, 40.0, 40.0)
+                                + if direction == Direction::Rtl {
+                                    10.0
+                                } else {
+                                    0.0
+                                },
                             10.0,
                             30.0,
                             10.0,
@@ -133,7 +139,12 @@ fn fri06_c03_projection_soft_and_forced_unequal_atomic_lines_align_per_line_in_a
                     (
                         3,
                         (
-                            expected_offset(align, decreases, 40.0, 40.0) + 30.0,
+                            expected_offset(align, direction, 40.0, 40.0)
+                                + if direction == Direction::Rtl {
+                                    0.0
+                                } else {
+                                    30.0
+                                },
                             10.0,
                             10.0,
                             10.0,
@@ -166,7 +177,7 @@ fn fri06_c03_projection_soft_and_forced_unequal_atomic_lines_align_per_line_in_a
                     (
                         1,
                         (
-                            expected_offset(align, decreases, 100.0, 30.0),
+                            expected_offset(align, direction, 100.0, 30.0),
                             0.0,
                             30.0,
                             10.0,
@@ -175,7 +186,7 @@ fn fri06_c03_projection_soft_and_forced_unequal_atomic_lines_align_per_line_in_a
                     (
                         2,
                         (
-                            expected_offset(align, decreases, 100.0, 10.0),
+                            expected_offset(align, direction, 100.0, 10.0),
                             10.0,
                             10.0,
                             10.0,
@@ -658,7 +669,7 @@ fn fri06_c07_logical_clear_vertical_control_and_float_projection_both_scalars() 
                         baselines,
                         BaselinesOf {
                             first: Point::new(Some(S::from_f64(25.0)), None),
-                            last: Point::new(Some(S::from_f64(5.0)), None),
+                            last: Point::new(Some(S::from_f64(25.0)), None),
                         },
                         "{} {} root baselines",
                         row.source,
@@ -673,8 +684,8 @@ fn fri06_c07_logical_clear_vertical_control_and_float_projection_both_scalars() 
                     );
                     assert_eq!(
                         root_output.size.width - baselines.last.x.unwrap(),
-                        S::from_f64(35.0),
-                        "{} {} following-strut logical block baseline",
+                        S::from_f64(15.0),
+                        "{} {} last real Forced logical block baseline",
                         row.source,
                         row.variant,
                     );
@@ -872,9 +883,6 @@ fn fri06_c04_line_alignment_legacy_values_use_each_final_band_all_flows_both_sca
             (WritingMode::SidewaysLr, Direction::Rtl),
         ] {
             let flow_axes = FlowAxes::new(writing_mode, direction);
-            let inline_decreases = flow_axes
-                .logical_axis_progression(LogicalAxis::Inline)
-                .is_decreasing();
             for align in [
                 TextAlign::LegacyLeft,
                 TextAlign::LegacyRight,
@@ -930,10 +938,12 @@ fn fri06_c04_line_alignment_legacy_values_use_each_final_band_all_flows_both_sca
                 );
                 let expected = |used: f64| {
                     let free = 70.0 - used;
+                    // Left/right name line sides, not physical progression
+                    // (Text4 and WM4 Table 11), also for their WebKit aliases.
                     let offset = match align {
                         TextAlign::LegacyCenter => free / 2.0,
-                        TextAlign::LegacyLeft if inline_decreases => free,
-                        TextAlign::LegacyRight if !inline_decreases => free,
+                        TextAlign::LegacyLeft if direction == Direction::Rtl => free,
+                        TextAlign::LegacyRight if direction == Direction::Ltr => free,
                         TextAlign::LegacyLeft
                         | TextAlign::LegacyRight
                         | TextAlign::Start
@@ -1177,24 +1187,16 @@ fn fri06_c02_flow_mappings() -> [(WritingMode, Direction); 10] {
     ]
 }
 
-fn fri06_c02_inline_decreases(writing_mode: WritingMode, direction: Direction) -> bool {
-    match writing_mode {
-        WritingMode::HorizontalTb
-        | WritingMode::VerticalRl
-        | WritingMode::VerticalLr
-        | WritingMode::SidewaysRl => direction == Direction::Rtl,
-        WritingMode::SidewaysLr => direction == Direction::Ltr,
-    }
-}
-
 #[test]
 fn numeric_fitter_alignment_uses_each_unequal_line_and_clamps_overflow_all_flows_both_scalars() {
-    fn offset(align: TextAlign, decreases: bool, used: f64) -> f64 {
+    fn offset(align: TextAlign, direction: Direction, used: f64) -> f64 {
         let free = (100.0 - used).max(0.0);
+        // Text4/WM4 logical offsets depend on direction; the line sides
+        // themselves stay fixed even when SidewaysLr reverses progression.
         match align {
             TextAlign::Start => 0.0,
-            TextAlign::LegacyLeft if decreases => free,
-            TextAlign::LegacyRight if !decreases => free,
+            TextAlign::LegacyLeft if direction == Direction::Rtl => free,
+            TextAlign::LegacyRight if direction == Direction::Ltr => free,
             TextAlign::LegacyCenter => free / 2.0,
             _ => 0.0,
         }
@@ -1202,7 +1204,6 @@ fn numeric_fitter_alignment_uses_each_unequal_line_and_clamps_overflow_all_flows
     fn assert_lane<S: LayoutScalar>() {
         for (writing_mode, direction) in fri06_c02_flow_mappings() {
             let axes = FlowAxes::new(writing_mode, direction);
-            let decreases = fri06_c02_inline_decreases(writing_mode, direction);
             for align in [
                 TextAlign::Start,
                 TextAlign::LegacyLeft,
@@ -1240,7 +1241,7 @@ fn numeric_fitter_alignment_uses_each_unequal_line_and_clamps_overflow_all_flows
                         actual,
                         fri06_c02_expected_physical_rect(
                             (writing_mode, direction),
-                            (offset(align, decreases, used), block, used, 10.0),
+                            (offset(align, direction, used), block, used, 10.0),
                             (100.0, 20.0)
                         ),
                         "{writing_mode:?} {direction:?} {align:?}"
@@ -1317,12 +1318,25 @@ fn numeric_fitter_flow_projects_rect_baseline_and_empty_anchor_all_mappings_both
             );
             let containing =
                 axes.physical_size(LogicalSizeOf::new(S::from_f64(100.0), report.block_extent));
-            for (fragment, (start, extent, block, baseline)) in report.atomics.iter().zip([
-                (50.0, 10.0, 0.0, 8.0),
-                (40.0, 10.0, 0.0, 8.0),
-                (51.0, 4.0, 10.0, 18.0),
-                (45.0, 6.0, 10.0, 18.0),
-            ]) {
+            // These are flow-logical starts; L2 is ordered from line-left.
+            let expected_rows = if direction == Direction::Rtl {
+                [
+                    (40.0, 10.0, 0.0, 8.0),
+                    (50.0, 10.0, 0.0, 8.0),
+                    (45.0, 4.0, 10.0, 18.0),
+                    (49.0, 6.0, 10.0, 18.0),
+                ]
+            } else {
+                [
+                    (50.0, 10.0, 0.0, 8.0),
+                    (40.0, 10.0, 0.0, 8.0),
+                    (51.0, 4.0, 10.0, 18.0),
+                    (45.0, 6.0, 10.0, 18.0),
+                ]
+            };
+            for (fragment, (start, extent, block, baseline)) in
+                report.atomics.iter().zip(expected_rows)
+            {
                 assert_eq!(
                     axes.physical_rect(
                         crate::geometry::LogicalRectOf::new(

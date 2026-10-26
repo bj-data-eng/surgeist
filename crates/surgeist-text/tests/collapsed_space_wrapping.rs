@@ -378,6 +378,7 @@ fn finish(
             line_box_struts: Vec::new(),
             line_strut: None,
             context: text::LineContext {
+                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
                 formatted_line: surgeist_text::FormattedLineContext::default(),
                 base_direction: text::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
@@ -434,17 +435,19 @@ fn disappeared_follower_cut_finalizes_two_real_ten_pixel_lines_without_losing_so
     let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
         prepared,
         coverage: text::PlacementCoverage::WholeParagraph,
-        lines: [first, second]
+        entries: [first, second]
             .into_iter()
             .enumerate()
-            .map(|(index, line)| text::LinePlacement {
-                line,
-                anchor: text::LineAnchor {
-                    inline_origin: 0.0,
-                    baseline: 8.0 + index as f64 * 10.0,
-                },
-                orientation: text::LineOrientation::Horizontal,
-                atomics: vec![],
+            .map(|(index, line)| {
+                text::PlacementEntry::Formatted(text::LinePlacement {
+                    line,
+                    anchor: text::LineAnchor {
+                        inline_origin: 0.0,
+                        baseline: 8.0 + index as f64 * 10.0,
+                    },
+                    orientation: text::LineOrientation::Horizontal,
+                    atomics: vec![],
+                })
             })
             .collect(),
     })

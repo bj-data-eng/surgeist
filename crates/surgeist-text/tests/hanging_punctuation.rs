@@ -124,6 +124,7 @@ fn request(
         line_box_struts: Vec::new(),
         line_strut: None,
         context: t::LineContext {
+            alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
             base_direction: if p.analyzed_source().direction() == t::Direction::RightToLeft {
                 t::ParagraphBaseDirection::RightToLeft
             } else {
@@ -190,7 +191,7 @@ fn placed(p: &t::PreparedText, line: t::FinalizedLine) -> t::Layout {
             start: r.start.clone(),
             end: r.end.clone(),
         },
-        lines: vec![t::LinePlacement {
+        entries: vec![t::PlacementEntry::Formatted(t::LinePlacement {
             line,
             anchor: t::LineAnchor {
                 inline_origin: 0.0,
@@ -198,7 +199,7 @@ fn placed(p: &t::PreparedText, line: t::FinalizedLine) -> t::Layout {
             },
             orientation: t::LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap()
 }

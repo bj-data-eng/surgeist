@@ -767,10 +767,12 @@ fn empty_edges<S: LayoutScalar>() {
             let batch = compute::<S>(&f, rtl, AvailableOf::definite(S::from_f64(40.0)));
             let placed = batch.placed_text()[0].layout();
             assert_eq!(placed.source().text(), &text::Text::from("AA"));
+            // The leading actual Forced ending is real even without text.
+            // After the trailing force, only the Paragraph receiver is strut-only.
             let expected = if side == Side::Before {
-                [text::Range::new(0, 0), text::Range::new(0, 2)]
+                vec![text::Range::new(0, 0), text::Range::new(0, 2)]
             } else {
-                [text::Range::new(0, 2), text::Range::new(2, 2)]
+                vec![text::Range::new(0, 2)]
             };
             assert_eq!(
                 placed
@@ -793,6 +795,46 @@ fn empty_edges<S: LayoutScalar>() {
                 assert_eq!(line.bounds().origin.y, 10.0 * i as f64);
                 assert_eq!(line.bounds().size.height, 10.0);
             }
+            let completions = placed.nonformatted_lines().collect::<Vec<_>>();
+            if side == Side::Before {
+                assert!(completions.is_empty());
+            } else {
+                assert_eq!(completions.len(), 1);
+                let completion = completions[0].line.finalized_line();
+                assert_eq!(completion.prepared_text(), f.binding.prepared);
+                assert_eq!(
+                    (
+                        completion
+                            .selected_line()
+                            .request()
+                            .start
+                            .view()
+                            .source_before()
+                            .get(),
+                        completion
+                            .selected_line()
+                            .request()
+                            .end
+                            .view()
+                            .source_after()
+                            .get()
+                    ),
+                    (2, 2)
+                );
+                assert!(!completion.has_in_flow_content());
+                assert_eq!(completion.feedback().baseline, 8.0);
+                assert_eq!(completion.feedback().line_height, 10.0);
+                assert_eq!(completions[0].origin.y, 10.0);
+                let selected = completion.selected_line();
+                let request = selected.request();
+                assert_eq!(request.context.end, text::LineEnd::Paragraph);
+                assert!(matches!(&request.termination,
+                    text::PreparedTermination::Ordinary(offer)
+                        if offer.view().kind() == text::PreparedBreakKind::ParagraphEnd));
+                assert_eq!(request.start, request.end);
+                assert_eq!(request.end.view().source_after().get(), 2);
+                assert!(request.participants.is_empty());
+            }
             assert_eq!(
                 batch
                     .final_entries()
@@ -802,14 +844,14 @@ fn empty_edges<S: LayoutScalar>() {
                     .output()
                     .size
                     .height,
-                S::from_f64(20.0)
+                S::from_f64(if side == Side::Before { 20.0 } else { 10.0 })
             );
         }
     }
 }
 
 #[test]
-fn leading_and_trailing_computed_forces_emit_actual_empty_lines() {
+fn leading_computed_force_is_real_and_trailing_strut_only_receiver_is_nonformatted() {
     empty_edges::<f32>();
     empty_edges::<f64>();
 }
@@ -829,7 +871,54 @@ fn anchored_empty<S: LayoutScalar>() {
             .iter()
             .all(|run| run.glyphs().is_empty() && run.advance() == 0.0)
     );
-    assert_eq!(placed.lines().len(), 2);
+    // The computed Forced selection is one real 10px line. Its terminal
+    // Paragraph selection contains only zero-decoration endpoints and struts.
+    assert_eq!(placed.lines().len(), 1);
+    let completions = placed.nonformatted_lines().collect::<Vec<_>>();
+    assert_eq!(completions.len(), 1);
+    let completion = completions[0].line.finalized_line();
+    assert_eq!(completion.prepared_text(), f.binding.prepared);
+    assert_eq!(
+        (
+            completion
+                .selected_line()
+                .request()
+                .start
+                .view()
+                .source_before()
+                .get(),
+            completion
+                .selected_line()
+                .request()
+                .end
+                .view()
+                .source_after()
+                .get()
+        ),
+        (0, 0)
+    );
+    assert!(!completion.has_in_flow_content());
+    assert_eq!(completion.feedback().baseline, 8.0);
+    assert_eq!(completion.feedback().line_height, 10.0);
+    assert_eq!(completions[0].origin.y, 10.0);
+    let selected = completion.selected_line();
+    let request = selected.request();
+    assert_eq!(request.context.end, text::LineEnd::Paragraph);
+    assert!(matches!(&request.termination,
+        text::PreparedTermination::Ordinary(offer)
+            if offer.view().kind() == text::PreparedBreakKind::ParagraphEnd));
+    assert_eq!(
+        request
+            .controls
+            .iter()
+            .map(|row| row.occurrence.clone())
+            .collect::<Vec<_>>(),
+        f.binding
+            .controls
+            .iter()
+            .map(|row| row.occurrence.clone())
+            .collect::<Vec<_>>()
+    );
     for (i, line) in placed.lines().iter().enumerate() {
         assert_eq!(line.range(), text::Range::new(0, 0));
         assert_eq!(line.baseline(), 8.0 + 10.0 * i as f64);
@@ -844,27 +933,28 @@ fn anchored_empty<S: LayoutScalar>() {
             .output()
             .size
             .height,
-        S::from_f64(20.0)
+        S::from_f64(10.0)
     );
     // No extra line-break/control node or painted text was fabricated.
     assert_eq!(batch.placed_text()[0].nodes(), &[200, 201]);
 }
 
 #[test]
-fn computed_only_paragraph_uses_its_real_existing_endpoints_and_default_font() {
+fn computed_only_paragraph_retains_real_endpoints_in_nonformatted_completion() {
     anchored_empty::<f32>();
     anchored_empty::<f64>();
 }
 
 #[test]
-fn node_free_computed_only_paragraph_preserves_exact_empty_run_scheduling_limit() {
+fn node_free_computed_paragraph_admits_its_real_capture_without_child_nodes() {
     let f = prepare(empty_input(false, text::ParagraphStrut::DefaultFont));
     assert!(f.binding.nodes.is_empty());
     assert!(f.binding.origins.is_empty());
     assert!(f.binding.controls.is_empty());
-    assert_eq!(computed_group(&f, 1).view().source_position().get(), 0);
+    let computed = computed_group(&f, 1);
+    assert_eq!(computed.view().source_position().get(), 0);
     let tree = tree::<f64>(&f, false);
-    let error = LayoutFlowInput::try_new(
+    let flow = LayoutFlowInput::try_new(
         &tree,
         0,
         vec![f.binding.clone()],
@@ -873,14 +963,25 @@ fn node_free_computed_only_paragraph_preserves_exact_empty_run_scheduling_limit(
             child_order: Vec::new(),
         },
     )
-    .err()
-    .expect("there is not yet a native semantic-slot scheduler for a node-free run");
-    assert!(matches!(
-        error.kind(),
-        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::TextBinding(
-            TextBindingError::EmptyRun
-        ))
-    ));
+    .expect("actual computed participation admits a semantic paragraph in the unique empty-container gap");
+    assert_eq!(flow.paragraphs().len(), 1);
+    let actual = &flow.paragraphs()[0];
+    assert_eq!(actual.container, f.binding.container);
+    assert_eq!(actual.prepared, f.binding.prepared);
+    assert_eq!(
+        actual.prepared.captured_paragraph(),
+        f.processed.captured_paragraph(0)
+    );
+    assert!(actual.nodes.is_empty());
+    assert!(actual.origins.is_empty());
+    assert!(actual.controls.is_empty());
+    assert!(actual.atomics.is_empty());
+    // Admission retains the actual issued computed participant, not a native
+    // placeholder or a newly prepared source. Final geometry is qualified by
+    // the public node-free completion tests with actual box metric witnesses.
+    assert!(actual.prepared.participants().any(|participant| {
+        matches!(participant, text::PreparedParticipant::ComputedLineBoundary(group) if group == computed)
+    }));
 }
 
 fn missing_metrics<S: LayoutScalar>() {

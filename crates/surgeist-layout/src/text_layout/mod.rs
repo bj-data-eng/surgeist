@@ -1,5 +1,6 @@
 //! The concrete immutable Text capture and its Layout-owned consuming adapter.
 
+pub(crate) mod boxes;
 pub(crate) mod capture;
 pub(crate) mod fit;
 pub(crate) mod formatted;
@@ -158,6 +159,32 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
         paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
         wrapping_input: crate::WrappingInput<Tree::Node>,
     ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
+        Self::try_new_inner(tree, root, paragraphs, wrapping_input, None)
+    }
+
+    /// Revalidates an early source receipt against this current host projection,
+    /// then performs the ordinary immutable Text and native association checks.
+    pub fn try_new_with_edges(
+        tree: &'tree Tree,
+        root: Tree::Node,
+        paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
+        wrapping_input: crate::WrappingInput<Tree::Node>,
+        receipt: &crate::ResolvedWrapEdges<Tree::Node>,
+    ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError>
+    where
+        Tree: crate::WrapEdgeSource,
+    {
+        let graph = receipt.validate_final(tree, root, &paragraphs, &wrapping_input)?;
+        Self::try_new_inner(tree, root, paragraphs, wrapping_input, Some(graph))
+    }
+
+    fn try_new_inner(
+        tree: &'tree Tree,
+        root: Tree::Node,
+        paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
+        wrapping_input: crate::WrappingInput<Tree::Node>,
+        source_graph: Option<crate::engine::validation::ValidationGraph<Tree::Node>>,
+    ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
         let mut influencing = Vec::new();
         let mut occupied = Vec::new();
         for paragraph in &paragraphs {
@@ -188,6 +215,13 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 if actual != Some(reference.direction()) {
                     return Err(error(TextBindingError::TabReferenceDirection));
                 }
+            }
+            if class == capture::ParagraphClass::SemanticFlow {
+                if tree.layout_input(paragraph.container).as_box().is_none() {
+                    return Err(error(TextBindingError::ScopeAssociation));
+                }
+                influencing.push(paragraph.container);
+                continue;
             }
             if paragraph.nodes.is_empty() {
                 return Err(error(TextBindingError::EmptyRun));
@@ -514,12 +548,23 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 }
             }
         }
-        let (graph, _) = crate::engine::validation::validate_layout_request_with_text_graph(
-            tree,
-            root,
-            &influencing,
-            &paragraphs,
-        )?;
+        let source_validated = source_graph.is_some();
+        let (graph, _) = if let Some(graph) = source_graph {
+            crate::engine::validation::validate_layout_request_with_graph(
+                tree,
+                root,
+                &influencing,
+                &paragraphs,
+                graph,
+            )?
+        } else {
+            crate::engine::validation::validate_layout_request_with_text_graph(
+                tree,
+                root,
+                &influencing,
+                &paragraphs,
+            )?
+        };
         // Every actual prepared-text node under this root must be covered. A
         // partial inventory cannot silently use the box-only compute entry.
         for &node in &graph.nodes {
@@ -530,7 +575,32 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 return Err(binding_error(node, TextBindingError::MissingParagraph));
             }
         }
-        let resolved = capture::resolve(tree, &graph, &paragraphs, &wrapping_input.scopes)?;
+        #[expect(
+            clippy::mutable_key_type,
+            reason = "Text handle hashing uses immutable capture identity and occurrence index; lazy cache contents never affect the key"
+        )]
+        let mut seen_scopes = std::collections::HashSet::new();
+        let inventory_scopes: Vec<_> = wrapping_input
+            .child_order
+            .iter()
+            .flat_map(|order| {
+                std::iter::once(&order.parent).chain(order.children.iter().map(|child| &child.box_))
+            })
+            .filter_map(|box_| {
+                let crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(scope)) = box_ else {
+                    return None;
+                };
+                seen_scopes.insert(scope.clone()).then(|| scope.clone())
+            })
+            .collect();
+        let resolved = capture::resolve(
+            tree,
+            &graph,
+            &paragraphs,
+            &wrapping_input.scopes,
+            &inventory_scopes,
+            !wrapping_input.child_order.is_empty(),
+        )?;
         let wrapping = crate::inline_wrapping::WrappingContext::new(
             tree,
             &graph,
@@ -539,9 +609,10 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
             &wrapping_input.child_order,
         )
         .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
-        if paragraphs
-            .iter()
-            .any(|p| wrapping.requires_source(p.container))
+        if !source_validated
+            && paragraphs
+                .iter()
+                .any(|p| wrapping.requires_source(p.container))
         {
             return Err(crate::inline_wrapping::wrapping_error(
                 root,

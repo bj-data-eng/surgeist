@@ -231,6 +231,8 @@ fn intrinsic<S: LayoutScalar>(
         &[],
         &[],
         super::super::run::Context {
+            groups: crate::group_alignment::Snapshot::default(),
+            wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,
             formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
@@ -258,6 +260,7 @@ fn intrinsic<S: LayoutScalar>(
         },
         &[],
         super::super::run::LineEnvironment {
+            checkpoint_group: || {},
             reset: |_| {},
             band: |_, _| {
                 Ok(super::super::fit::Band {
@@ -413,11 +416,11 @@ fn intrinsic_anywhere_is_independent_of_finite_phrase_restoration_and_query_orde
                         assert_eq!(measured.report.inline_extent, S::from_f64(10.0));
                         for row in measured
                             .paragraph
-                            .lines
+                            .entries
                             .iter()
-                            .take(measured.paragraph.lines.len() - 1)
+                            .take(measured.paragraph.entries.len() - 1)
                         {
-                            let selected = row.line.selected_line();
+                            let selected = row.finalized_line().selected_line();
                             let text::PreparedTermination::Conditional(offer) =
                                 &selected.request().termination
                             else {

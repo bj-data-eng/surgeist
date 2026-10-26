@@ -133,6 +133,7 @@ fn select(
                     line_extent: 20.0,
                 }),
             context: LineContext {
+                alignment_insets: crate::LineAlignmentInsets::ZERO,
                 formatted_line: crate::FormattedLineContext::default(),
                 base_direction: if prepared.analyzed_source().direction() == Direction::RightToLeft
                 {
@@ -195,7 +196,7 @@ fn place(prepared: PreparedText, x: f64, y: f64) -> Layout {
                 baseline: 8.0,
             })
             .collect();
-        lines.push(LinePlacement {
+        lines.push(crate::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: x,
@@ -203,13 +204,13 @@ fn place(prepared: PreparedText, x: f64, y: f64) -> Layout {
             },
             orientation: LineOrientation::Horizontal,
             atomics,
-        });
+        }));
         start = next;
     }
     Layout::from_finalized_lines(PlacementRequest {
         prepared,
         coverage: PlacementCoverage::WholeParagraph,
-        lines,
+        entries: lines,
     })
     .unwrap()
 }
@@ -603,8 +604,8 @@ fn rtl_pdi_keeps_post_l1_l2_x_and_original_local_origin_offsets() {
     let l = Layout::from_finalized_lines(PlacementRequest {
         prepared: p,
         coverage: PlacementCoverage::WholeParagraph,
-        lines: vec![
-            LinePlacement {
+        entries: vec![
+            crate::PlacementEntry::Formatted(LinePlacement {
                 line: first,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -612,8 +613,8 @@ fn rtl_pdi_keeps_post_l1_l2_x_and_original_local_origin_offsets() {
                 },
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
-            },
-            LinePlacement {
+            }),
+            crate::PlacementEntry::Formatted(LinePlacement {
                 line: second,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -621,7 +622,7 @@ fn rtl_pdi_keeps_post_l1_l2_x_and_original_local_origin_offsets() {
                 },
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
-            },
+            }),
         ],
     })
     .unwrap();
@@ -803,7 +804,7 @@ fn partial_placement_rejects_outside_original_even_when_origin_covers_both_lines
             start,
             end: forced.view().boundary(),
         },
-        lines: vec![LinePlacement {
+        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -811,7 +812,7 @@ fn partial_placement_rejects_outside_original_even_when_origin_covers_both_lines
             },
             orientation: LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap();
     assert!(matches!(
@@ -902,8 +903,8 @@ fn selected_source_and_control_alternatives_keep_authentic_source_provenance() {
         let l = Layout::from_finalized_lines(PlacementRequest {
             prepared: p,
             coverage: PlacementCoverage::WholeParagraph,
-            lines: vec![
-                LinePlacement {
+            entries: vec![
+                crate::PlacementEntry::Formatted(LinePlacement {
                     line: first,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -911,8 +912,8 @@ fn selected_source_and_control_alternatives_keep_authentic_source_provenance() {
                     },
                     orientation: LineOrientation::Horizontal,
                     atomics: vec![],
-                },
-                LinePlacement {
+                }),
+                crate::PlacementEntry::Formatted(LinePlacement {
                     line: second,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -920,7 +921,7 @@ fn selected_source_and_control_alternatives_keep_authentic_source_provenance() {
                     },
                     orientation: LineOrientation::Horizontal,
                     atomics: vec![],
-                },
+                }),
             ],
         })
         .unwrap();
@@ -1139,8 +1140,8 @@ fn place_alternative_pair(
     Layout::from_finalized_lines(PlacementRequest {
         prepared: p,
         coverage: PlacementCoverage::WholeParagraph,
-        lines: vec![
-            LinePlacement {
+        entries: vec![
+            crate::PlacementEntry::Formatted(LinePlacement {
                 line: first,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -1148,8 +1149,8 @@ fn place_alternative_pair(
                 },
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
-            },
-            LinePlacement {
+            }),
+            crate::PlacementEntry::Formatted(LinePlacement {
                 line: second,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -1157,7 +1158,7 @@ fn place_alternative_pair(
                 },
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
-            },
+            }),
         ],
     })
     .unwrap()
@@ -1491,7 +1492,7 @@ fn optional_ligature_keeps_selected_space_allocation_on_its_own_range_unit() {
     let l = Layout::from_finalized_lines(PlacementRequest {
         prepared: p,
         coverage: PlacementCoverage::WholeParagraph,
-        lines: vec![LinePlacement {
+        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -1499,7 +1500,7 @@ fn optional_ligature_keeps_selected_space_allocation_on_its_own_range_unit() {
             },
             orientation: LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap();
     let a = l.source_range_fragments(&o, Range::new(0, 1)).unwrap();

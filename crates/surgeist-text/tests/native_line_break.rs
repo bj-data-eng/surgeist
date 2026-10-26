@@ -505,6 +505,7 @@ fn finish(
         line_box_struts: Vec::new(),
         line_strut: None,
         context: t::LineContext {
+            alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
             formatted_line: surgeist_text::FormattedLineContext::default(),
             base_direction: if p.analyzed_source().direction() == t::Direction::RightToLeft {
                 DIRECTIONS[1]

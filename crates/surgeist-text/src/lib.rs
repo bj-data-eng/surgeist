@@ -51,8 +51,11 @@ pub use error::{
     TextNumericError, TextNumericPhase, TextTransformError,
 };
 pub use font::{
-    EffectiveFontInstance, FontData, FontFace, FontMetrics, FontOutlineCapability,
-    FontOutlineError, FontSynthesis, GlyphOutlineGeometry, StrikeoutMetrics,
+    EffectiveFontInstance, FontBaseline, FontBaselineAbsence, FontBaselineAxis,
+    FontBaselineMeasurement, FontBaselineOutcome, FontBaselineProvenance, FontBaselineScript,
+    FontBaselineUnavailable, FontBaselineUnavailableReason, FontBaselineValue, FontData, FontFace,
+    FontMetrics, FontOutlineCapability, FontOutlineError, FontSynthesis, GlyphOutlineGeometry,
+    StrikeoutMetrics,
 };
 pub use geometry::{Point, Rect, Size};
 pub use id::Id;
@@ -97,12 +100,13 @@ pub use protocol::{
     FinalizedLine, FlowObservation, FlowObservationRequest, FlowSegmentRole, FormattedLineContext,
     FormattedLineUsage, HyphenationContinuation, HyphenationCounts, HyphenationProvenance,
     HyphenationResource, HyphenationSourcePieceView, InlineBoundaryAllocation,
-    InlineBoundaryContextAllocation, InlineMeasure, LineAnchor, LineBoxAlignment, LineBoxDirection,
-    LineBoxStrut, LineContext, LineDirectionFacts, LineEdgeDisposition, LineEdgeOwner,
-    LineEdgeSide, LineEdgeUnitView, LineEnd, LineFeedback, LineMeasurements, LineOrientation,
-    LinePlacement, LineSelectionRequest, LineStart, LineStrut, ParagraphBaseDirection,
-    ParagraphInput, ParagraphTerminalEdge, PhaseTwoContext, PhraseOverflowDecision,
-    PlacementCoverage, PlacementRequest, PreparationOptions, PreparedAlternative,
+    InlineBoundaryContextAllocation, InlineMeasure, LineAlignmentInsets, LineAnchor,
+    LineBoxAlignment, LineBoxDirection, LineBoxStrut, LineContext, LineDirectionFacts,
+    LineEdgeDisposition, LineEdgeOwner, LineEdgeSide, LineEdgeUnitView, LineEnd, LineFeedback,
+    LineMeasurements, LineOrientation, LinePlacement, LineSelectionRequest, LineStart, LineStrut,
+    NonFormattedLine, NonFormattedLinePlacement, ParagraphBaseDirection, ParagraphInput,
+    ParagraphTerminalEdge, PhaseTwoContext, PhraseOverflowDecision, PlacementCoverage,
+    PlacementEntry, PlacementRequest, PreparationOptions, PreparedAlternative,
     PreparedAlternativeAvailability, PreparedAtomic, PreparedBoundary, PreparedBoundaryIncidence,
     PreparedBreakKind, PreparedComputedLineBoundary, PreparedConditionalBatch,
     PreparedConditionalOpportunity, PreparedConditionalSearch, PreparedControl,
@@ -152,6 +156,10 @@ mod test_wrapping;
 #[cfg(test)]
 #[path = "test_fonts/shaping.rs"]
 mod shaping_test_fonts;
+
+#[cfg(test)]
+#[path = "test_fonts/baseline.rs"]
+mod baseline_test_fonts;
 
 mod range_fragments;
 pub use range_fragments::{

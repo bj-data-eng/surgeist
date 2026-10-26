@@ -268,6 +268,8 @@ fn intrinsic_with_indent(
         &[],
         &[],
         super::super::run::Context {
+            groups: crate::group_alignment::Snapshot::default(),
+            wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,
             formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
@@ -306,6 +308,7 @@ fn intrinsic_with_indent(
         },
         &[],
         super::super::run::LineEnvironment {
+            checkpoint_group: || {},
             reset: |_| {},
             band: |_, _| {
                 Ok(super::super::fit::Band {
@@ -350,21 +353,21 @@ fn check_intrinsic_block_directions(width: f64) {
                 (
                     output
                         .paragraph
-                        .lines
+                        .entries
                         .iter()
-                        .map(|line| line.line.feedback().advance)
+                        .map(|line| line.finalized_line().feedback().advance)
                         .collect::<Vec<_>>(),
                     zero_output
                         .paragraph
-                        .lines
+                        .entries
                         .iter()
-                        .map(|line| line.line.feedback().advance)
+                        .map(|line| line.finalized_line().feedback().advance)
                         .collect::<Vec<_>>()
                 ),
                 expected,
                 "{available:?}/{rtl}"
             );
-            let line = &output.paragraph.lines[0].line;
+            let line = output.paragraph.entries[0].finalized_line();
             assert_eq!(
                 line.selected_line().request().context.available_inline,
                 None
@@ -382,9 +385,9 @@ fn check_intrinsic_block_directions(width: f64) {
             assert_eq!(
                 opposite_output
                     .paragraph
-                    .lines
+                    .entries
                     .iter()
-                    .map(|line| line.line.feedback().advance)
+                    .map(|line| line.finalized_line().feedback().advance)
                     .collect::<Vec<_>>(),
                 expected.0,
                 "opposite block edge: {available:?}/{rtl}"
@@ -402,10 +405,10 @@ fn check_intrinsic_block_directions(width: f64) {
                 assert_eq!(
                     opposite_output
                         .paragraph
-                        .lines
+                        .entries
                         .iter()
                         .map(|line| line
-                            .line
+                            .finalized_line()
                             .measurements()
                             .min_content_contribution()
                             .advance())
@@ -416,8 +419,8 @@ fn check_intrinsic_block_directions(width: f64) {
 
             let output = zero_output;
             assert_eq!(
-                output.paragraph.lines[0]
-                    .line
+                output.paragraph.entries[0]
+                    .finalized_line()
                     .selected_line()
                     .request()
                     .context
@@ -544,18 +547,23 @@ fn intrinsic_lines_reset_the_tab_pen_with_the_applicable_indent() {
             assert_eq!(
                 output
                     .paragraph
-                    .lines
+                    .entries
                     .iter()
-                    .map(|line| line.line.feedback().advance)
+                    .map(|line| line.finalized_line().feedback().advance)
                     .collect::<Vec<_>>(),
                 expected_raw
             );
             assert_eq!(
                 output
                     .paragraph
-                    .lines
+                    .entries
                     .iter()
-                    .map(|line| line.line.selected_line().request().context.indent)
+                    .map(|line| line
+                        .finalized_line()
+                        .selected_line()
+                        .request()
+                        .context
+                        .indent)
                     .collect::<Vec<_>>(),
                 expected_indents
             );
@@ -576,18 +584,23 @@ fn intrinsic_lines_reset_the_tab_pen_with_the_applicable_indent() {
         assert_eq!(
             output
                 .paragraph
-                .lines
+                .entries
                 .iter()
-                .map(|line| line.line.feedback().advance)
+                .map(|line| line.finalized_line().feedback().advance)
                 .collect::<Vec<_>>(),
             [30.0, 10.0]
         );
         assert_eq!(
             output
                 .paragraph
-                .lines
+                .entries
                 .iter()
-                .map(|line| line.line.selected_line().request().context.indent)
+                .map(|line| line
+                    .finalized_line()
+                    .selected_line()
+                    .request()
+                    .context
+                    .indent)
                 .collect::<Vec<_>>(),
             [10.0, 0.0]
         );

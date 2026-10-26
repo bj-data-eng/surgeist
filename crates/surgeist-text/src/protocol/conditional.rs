@@ -489,11 +489,7 @@ fn validate_frontier(
                         return Err(invalid());
                     }
                     if matches!(disposition, ConditionalDisposition::Phantom(_)) {
-                        let last = request.participants.last().ok_or_else(invalid)?;
-                        if receipt
-                            .prefix_at(&crate::TextSeam::AfterParticipant(last.clone()))?
-                            .has_retained_flow_participation()
-                        {
+                        if receipt.nonformatted().is_err() {
                             return Err(protocol_error(ProtocolError::RetainedConditionalPrefix {
                                 opportunity: index,
                                 alternative: variant,
@@ -625,6 +621,8 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
         number(&mut values, width);
     }
     number(&mut values, context.indent);
+    number(&mut values, context.alignment_insets.line_left());
+    number(&mut values, context.alignment_insets.line_right());
     match context.tabs {
         super::TabContext::NoTabs => values.push(0),
         super::TabContext::FontAdvance => values.push(1),
@@ -1124,13 +1122,7 @@ impl PreparedConditionalBatch {
                 }
                 match disposition {
                     ConditionalDisposition::Phantom(_) => {
-                        let last = request.participants.last().ok_or_else(|| {
-                            protocol_error(ProtocolError::InvalidConditionalStage)
-                        })?;
-                        if receipt
-                            .prefix_at(&crate::TextSeam::AfterParticipant(last.clone()))?
-                            .has_retained_flow_participation()
-                        {
+                        if receipt.nonformatted().is_err() {
                             return Err(protocol_error(ProtocolError::InvalidConditionalStage));
                         }
                         identity.kind = 0;
@@ -1233,7 +1225,7 @@ impl PreparedConditionalOpportunity {
 }
 
 // These semantic line choices stay stable across candidate evaluation. Width,
-// indent, effective alignment, line-box direction and tab coordinates come from
+// indent, alignment insets, effective alignment, line-box direction and tab coordinates come from
 // each converged frame; the query retains its own frame identity without
 // certifying Layout staleness.
 fn selection_context(context: &super::LineContext) -> Vec<u64> {

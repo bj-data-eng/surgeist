@@ -16,6 +16,8 @@ pub(crate) fn fragment_for(
 ) -> surgeist_text::FinalizedFragment {
     let lines = crate::text_layout::fit::fit(
         crate::text_layout::fit::FitInput {
+            groups: crate::group_alignment::Snapshot::default(),
+            wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,
             formatted: &crate::text_layout::formatted::FormattedTailSnapshot::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
@@ -53,8 +55,9 @@ pub(crate) fn fragment_for(
                 .minimum
                 .map_or(position.proposed, |minimum| position.proposed.max(minimum)))
         },
-        |_, _, _| {
+        |_, _, _, box_struts| {
             Ok(crate::text_layout::fit::LineAllocations {
+                line_box_struts: box_struts.to_vec(),
                 atomics: Vec::new(),
                 controls: Vec::new(),
                 line_strut: None,
@@ -62,6 +65,7 @@ pub(crate) fn fragment_for(
         },
         |_, _| Ok(None),
         crate::text_layout::fit::EncounterCallbacks {
+            checkpoint_group: || {},
             replay: |_: &surgeist_text::FinalizedLine,
                      _: crate::text_layout::fit::EncounterReplay| Ok(Vec::new()),
             accept: || Ok(()),

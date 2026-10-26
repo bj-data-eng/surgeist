@@ -356,11 +356,9 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
         let unrounded_range = unrounded_root.scroll_geometry.unwrap().physical_range();
         let placed = cold.placed_text()[0].layout();
         let lines = placed.lines();
-        assert_eq!(lines.len(), 3);
+        assert_eq!(lines.len(), 2);
         for (line, (top, baseline, height)) in
-            lines
-                .iter()
-                .zip([(0.0, 8.0, 10.0), (10.0, 20.0, 14.0), (24.0, 32.0, 10.0)])
+            lines.iter().zip([(0.0, 8.0, 10.0), (10.0, 20.0, 14.0)])
         {
             assert_eq!(
                 line.bounds(),
@@ -427,14 +425,15 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
             assert_eq!(atomic.location, Point::new(S::ZERO, S::from_f64(10.0)));
             assert_eq!(atomic.size, Size::new(S::from_f64(25.0), S::from_f64(10.0)));
         }
-        // All three actual line boxes contribute to overflow, including the
-        // terminal strut line with no source fragment:24+10−root20=14.
+        // The real 10px text line plus the 14px atomic/Forced line end at 24, so
+        // the 20px scrollport has 4px overflow. The final strut-only Paragraph
+        // receiver retains its metric receipt but adds no used line extent.
         assert_eq!(
             unrounded_root.size,
             Size::new(S::from_f64(20.0), S::from_f64(20.0))
         );
         assert_eq!(unrounded_range.x().maximum(), S::from_f64(5.25));
-        assert_eq!(unrounded_range.y().maximum(), S::from_f64(14.0));
+        assert_eq!(unrounded_range.y().maximum(), S::from_f64(4.0));
         let final_root = cold_final
             .iter()
             .find(|entry| entry.node() == 0)
@@ -451,7 +450,48 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
                 .physical_range()
                 .y()
                 .maximum(),
-            S::from_f64(14.0)
+            S::from_f64(4.0)
+        );
+        let completions = placed.nonformatted_lines().cloned().collect::<Vec<_>>();
+        assert_eq!(completions.len(), 1);
+        let completion = completions[0].line.finalized_line();
+        assert_eq!(completion.prepared_text(), tree.text.prepared);
+        assert_eq!(
+            (
+                completion
+                    .selected_line()
+                    .request()
+                    .start
+                    .view()
+                    .source_before()
+                    .get(),
+                completion
+                    .selected_line()
+                    .request()
+                    .end
+                    .view()
+                    .source_after()
+                    .get()
+            ),
+            (1, 1)
+        );
+        assert!(!completion.has_in_flow_content());
+        assert_eq!(completion.feedback().baseline, 8.0);
+        assert_eq!(completion.feedback().line_height, 10.0);
+        assert_eq!(completions[0].origin.y, 24.0);
+        let selected = completion.selected_line();
+        let completion_request = selected.request();
+        assert_eq!(
+            completion_request.context.end,
+            surgeist_text::LineEnd::Paragraph
+        );
+        assert!(matches!(&completion_request.termination,
+            surgeist_text::PreparedTermination::Ordinary(offer)
+                if offer.view().kind() == surgeist_text::PreparedBreakKind::ParagraphEnd));
+        assert_eq!(completion_request.start, completion_request.end);
+        assert_eq!(
+            completion_request.start,
+            control_line.selected_line().request().end
         );
         let source_indices = |entries: &[LayoutOutputEntryOf<u32, S>]| {
             entries
@@ -502,6 +542,14 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
         assert_eq!(warm.unrounded_entries(), cold_unrounded);
         assert_eq!(warm.final_entries(), cold_final);
         assert_eq!(
+            warm.placed_text()[0]
+                .layout()
+                .nonformatted_lines()
+                .cloned()
+                .collect::<Vec<_>>(),
+            completions
+        );
+        assert_eq!(
             origin_fragment_associations(warm.unrounded_inline_fragments()),
             origin_fragment_associations(&cold_unrounded_fragments)
         );
@@ -524,6 +572,14 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
             .compute_invalidated(request, &tree.retained.dirty)
             .expect("dirty atomic replacement stages");
         assert_eq!(replacement.invalidated_nodes(), &[0, 1, 2, 3, 4]);
+        assert_eq!(
+            replacement.placed_text()[0]
+                .layout()
+                .nonformatted_lines()
+                .cloned()
+                .collect::<Vec<_>>(),
+            completions
+        );
         assert_eq!(
             origin_fragment_associations(replacement.unrounded_inline_fragments()),
             origin_fragment_associations(&cold_unrounded_fragments),
@@ -650,38 +706,64 @@ fn prepared_text_zero_advance_source_fragment_survives_committed_state_and_fresh
         let mut tree =
             Fri06C02StatefulTextTree::new(Source::identified(" ", Id::from_u64(63), 0), style);
         let request = fri06_c02_stateful_request::<S>();
+        // This stimulus is a collapsible SPACE removed at the line edge, not
+        // actual retained text whose advance happens to be zero.
+        let origin = tree.text.origins[0].origin.clone();
+        let snapshot = |batch: &CompletedLayoutBatchOf<u32, S>| {
+            assert!(batch.unrounded_inline_fragments().is_empty());
+            assert!(batch.final_inline_fragments().is_empty());
+            let placed = batch.placed_text()[0].layout();
+            assert!(placed.lines().is_empty());
+            let receipts = placed.nonformatted_lines().cloned().collect::<Vec<_>>();
+            assert_eq!(receipts.len(), 1);
+            let line = receipts[0].line.finalized_line();
+            assert_eq!(line.prepared_text(), origin.prepared_text());
+            assert!(!line.has_in_flow_content());
+            let source = line
+                .fragment_views()
+                .map(|fragment| {
+                    assert_eq!(fragment.origin(), Some(origin.clone()));
+                    assert_eq!(
+                        fragment.local_range(),
+                        Some(surgeist_text::Range::new(0, 1))
+                    );
+                    assert_eq!(
+                        fragment.aggregate_range(),
+                        Some(surgeist_text::Range::new(0, 1))
+                    );
+                    let bounds = fragment
+                        .bounds()
+                        .expect("real nominal source anchor geometry");
+                    assert_eq!(
+                        (bounds.size.width, bounds.size.height),
+                        (0.0, 10.0),
+                        "nominal font-backed evidence remains without a rendered source rectangle"
+                    );
+                    (
+                        fragment.owner(),
+                        fragment.local_range(),
+                        fragment.aggregate_range(),
+                        fragment.bounds(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                source.len(),
+                1,
+                "the nonvisual occurrence retains its actual original association"
+            );
+            assert!(
+                line.run_views()
+                    .all(|run| run.glyphs().all(|glyph| glyph.advance() == 0.0))
+            );
+            (receipts, source)
+        };
         let cold = tree.compute(request).unwrap();
-        let source = origin_fragment_associations(cold.unrounded_inline_fragments());
-        assert_eq!(
-            source.len(),
-            1,
-            "a zero-advance occurrence retains its actual original association"
-        );
-        assert_eq!(source[0].1, tree.text.origins[0].origin);
-        assert_eq!(source[0].2, surgeist_text::Range::new(0, 1));
-        assert_eq!(
-            source[0].3.unwrap().size(),
-            Size::new(S::ZERO, S::from_f64(10.0)),
-            "placed font-backed source retains its actual Text anchor geometry"
-        );
-        assert!(
-            cold.placed_text()[0]
-                .layout()
-                .glyph_runs()
-                .iter()
-                .all(|run| run.glyphs().iter().all(|glyph| glyph.advance() == 0.0))
-        );
+        let source = snapshot(&cold);
         cold.apply_to(&mut tree).unwrap();
-        assert_eq!(tree.retained.unrounded_fragments[&1].len(), 1);
+        assert!(tree.retained.unrounded_fragments[&1].is_empty());
         let warm = tree.compute(request).unwrap();
-        assert_eq!(
-            origin_fragment_associations(warm.unrounded_inline_fragments()),
-            source
-        );
-        assert_eq!(
-            origin_fragment_associations(warm.final_inline_fragments()),
-            source
-        );
+        assert_eq!(snapshot(&warm), source);
     }
     assert_lane::<f32>();
     assert_lane::<f64>();

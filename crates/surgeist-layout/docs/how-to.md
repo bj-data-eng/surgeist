@@ -23,6 +23,32 @@ measurement constraints after resolving percentage edges in the containing flow.
 Browser XML exercises the default `f32` boundary; use separate crate-local tests
 for behavior that needs `f64` evidence.
 
+## Prepare native forced Text edges
+
+Use this sequence when normalized inline box declarations request `WrapEdge::Line`
+before Text preparation:
+
+1. Expose a borrowed `WrapEdgeSource` over the host's real traversal, box roles,
+   source-local scope declarations, occurrence associations and generated child
+   order. Source scope ordinals belong to the one `ContextualSourceInput` being
+   consumed.
+2. Call `process_wrapping_source` and split its result with `into_parts`. The
+   returned processed source and `ResolvedWrapEdges` receipt own their evidence;
+   the early host borrow can end.
+3. Prepare the returned paragraphs through Text's normal `AnalyzedSource` and
+   `System::prepare` path, then install their actual origin, control and atomic
+   bindings in the host's final Layout view.
+4. Call `LayoutFlowInput::try_new_with_edges` with that current tree, its real
+   paragraph bindings, the current final `WrappingInput`, and `&receipt`. This
+   view implements both `LayoutTree` and `WrapEdgeSource`, so admission can
+   compare fresh semantic evidence with the actual prepared participation.
+
+Supply actual `metric_contribution` values in the final wrapping input, when
+known. A receipt can validate another coherent preparation of the same processed
+capture or different final used metrics. Changes to relevant roles, declarations,
+order, associations or capture require fresh source processing. Read the
+[admission contract](reference.md#node-input) for typed refusal and metric rules.
+
 ## Verify the default library configuration
 
 With `just`, Rustfmt, Clippy, and the default dependency cache already available,
