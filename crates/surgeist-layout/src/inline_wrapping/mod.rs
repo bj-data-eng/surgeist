@@ -10,7 +10,11 @@ pub use declarations::{
 pub(crate) use declarations::{EdgeEffect, EdgePreferences, WrappingMode};
 
 use surgeist_text::CapturedScope;
+mod canonical_order;
 mod context;
+pub(crate) use canonical_order::{
+    CanonicalBox, CanonicalCoverage, CanonicalOrderBindings, CanonicalOrderInventory,
+};
 mod edge_plan;
 mod source;
 pub(crate) use crate::error::wrapping_error;

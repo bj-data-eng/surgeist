@@ -149,6 +149,12 @@ early source styles or frozen as absent by the receipt. A numerical change alone
 can reuse its semantic proof; the normal metric/fit/cache owners consume the new
 values. See [the source-admission guide](how-to.md#prepare-native-forced-text-edges).
 
+Complete generated child order can include genuine inline scopes without physical
+endpoints. Native spans establish the physical projection; canonical capture
+facts establish the full parent/order and consumed prefix or suffix. An empty
+in-flow child still determines first/last-child propagation. Admission rejects
+contradictory or unavailable required proofs instead of dropping that child.
+
 Both scope variants carry `metric_contribution`.
 `Some(InlineBoxMetricContribution::Strut(...))` supplies actual used geometry and
 alignment; `Some(NoContribution)` affirmatively supplies absence, and `None`

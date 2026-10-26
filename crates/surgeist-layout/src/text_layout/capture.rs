@@ -8,6 +8,7 @@ use super::{
 };
 use crate::engine::validation::ValidationGraph;
 use crate::inline_wrapping::{
+    CanonicalBox, CanonicalCoverage, CanonicalOrderBindings, CanonicalOrderInventory,
     CanonicalScopeProof, WrapInside, WrappingScopeError, WrappingScopeInput, WrappingScopeProof,
 };
 use surgeist_text::{
@@ -444,7 +445,7 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
         validate_virtuals(paragraph)
             .map_err(|reason| binding_error(paragraph.container, reason))?;
     }
-    let wrapping = proof.wrapping_proofs()?;
+    let wrapping = proof.wrapping_proofs(!inventory_scopes.is_empty())?;
     proof.result.structural = proof.domains;
     Ok(CaptureResolution {
         associations: proof.result,
@@ -971,7 +972,57 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
             .cloned()
             .collect()
     }
-    fn wrapping_proofs(&self) -> ResultOf<Tree, Vec<WrappingScopeProof<Tree::Node>>> {
+    fn wrapping_proofs(
+        &self,
+        canonical_orders: bool,
+    ) -> ResultOf<Tree, Vec<WrappingScopeProof<Tree::Node>>> {
+        let order = if canonical_orders {
+            let mut nodes = Vec::new();
+            for (node, position, paragraph) in self
+                .origins
+                .iter()
+                .map(|row| (row.node, &row.position, row.paragraph))
+                .chain(
+                    self.atomics
+                        .iter()
+                        .map(|row| (row.node, &row.position, row.paragraph)),
+                )
+            {
+                let captured = self.result.paragraphs[paragraph]
+                    .captured
+                    .as_ref()
+                    .ok_or_else(|| binding_error(node, E::ScopeAssociation))?;
+                nodes.push((
+                    node,
+                    CanonicalBox::Occurrence {
+                        position: position.clone(),
+                        domain: captured.domain(),
+                    },
+                ));
+            }
+            Some(std::sync::Arc::new(CanonicalOrderBindings {
+                inventory: CanonicalOrderInventory {
+                    scopes: self.known.clone(),
+                    occurrences: nodes.iter().map(|(_, fact)| fact.clone()).collect(),
+                    coverage: CanonicalCoverage::Paragraphs(
+                        self.result
+                            .paragraphs
+                            .iter()
+                            .filter_map(|row| row.captured.clone())
+                            .collect(),
+                    ),
+                },
+                nodes,
+                flows: self
+                    .result
+                    .domains
+                    .iter()
+                    .map(|row| (row.container, row.scope.clone()))
+                    .collect(),
+            }))
+        } else {
+            None
+        };
         let mut result = self
             .wrapping
             .iter()
@@ -986,6 +1037,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                     scope: scope.clone(),
                     flow: self.domain(&scope.domain())?.container,
                     pair,
+                    order: order.clone(),
                 }))
             })
             .collect::<ResultOf<Tree, Vec<_>>>()?;

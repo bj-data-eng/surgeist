@@ -87,6 +87,7 @@ impl<Node: Copy + Eq> EdgePlan<Node> {
         graph: &ValidationGraph<Node>,
         rows: &[ScopeRow<Node>],
         orders: &[InlineChildOrderInput<Node>],
+        proofs: &[WrappingScopeProof<Node>],
     ) -> Result<Self, WrappingScopeError> {
         let counts = graph.path_counts();
         let mut boxes = Vec::new();
@@ -208,6 +209,7 @@ impl<Node: Copy + Eq> EdgePlan<Node> {
             .zip(counts.iter().map(|&n| n == 1))
             .collect::<Vec<_>>();
         let normalized = normalize_orders(&mut boxes, &aliases, orders, &contexts)?;
+        validate_canonical_orders(&boxes, &normalized, proofs)?;
         let mut realization = RealizationProof::new(tree, &boxes, rows, &normalized, &unmodeled);
         let subtrees = (0..rows.len())
             .map(|index| realization.resolve(index))
@@ -460,6 +462,72 @@ fn inferred_children<Node: Copy + Eq, Scope>(
     Ok(children)
 }
 
+fn validate_canonical_orders<Node: Copy + Eq>(
+    boxes: &[BoxFact<Node>],
+    orders: &[ChildOrderProof],
+    proofs: &[WrappingScopeProof<Node>],
+) -> Result<(), WrappingScopeError> {
+    use super::canonical_order::CanonicalOrderError;
+    let Some(bindings) = proofs.iter().find_map(|proof| match proof {
+        WrappingScopeProof::Captured(proof) => proof.order.as_ref(),
+        _ => None,
+    }) else {
+        return Ok(());
+    };
+    let fact = |index: usize| match &boxes[index].box_ {
+        GeneratedBoxRef::Inline(InlineBoxRef::Scope(scope)) => {
+            Some(CanonicalBox::Scope(scope.clone()))
+        }
+        GeneratedBoxRef::Node(node) => bindings
+            .nodes
+            .iter()
+            .find(|(actual, _)| actual == node)
+            .map(|(_, fact)| fact.clone()),
+        GeneratedBoxRef::Inline(InlineBoxRef::NativePair { .. }) => None,
+    };
+    for order in orders {
+        let children = order
+            .children
+            .iter()
+            .filter_map(|&(i, _)| fact(i))
+            .collect::<Vec<_>>();
+        let parent = match &boxes[order.parent].box_ {
+            GeneratedBoxRef::Inline(InlineBoxRef::Scope(scope)) => Some(scope.clone()),
+            GeneratedBoxRef::Node(node) => {
+                let mut domains = bindings
+                    .flows
+                    .iter()
+                    .filter(|(actual, _)| actual == node)
+                    .map(|(_, domain)| domain);
+                let first = domains.next().cloned();
+                if domains.any(|domain| Some(domain) != first.as_ref()) {
+                    return Err(WrappingScopeError::UnsupportedIncidence);
+                }
+                first
+            }
+            GeneratedBoxRef::Inline(InlineBoxRef::NativePair { .. }) => None,
+        };
+        let Some(parent) = parent else {
+            if order
+                .children
+                .iter()
+                .any(|&(i, _)| boxes[i].native.is_none())
+            {
+                return Err(WrappingScopeError::UnsupportedIncidence);
+            }
+            continue;
+        };
+        bindings
+            .inventory
+            .validate(&parent, &children, order.prefix, order.suffix)
+            .map_err(|error| match error {
+                CanonicalOrderError::Unavailable => WrappingScopeError::UnsupportedIncidence,
+                CanonicalOrderError::Contradiction => WrappingScopeError::ChildOrder,
+            })?;
+    }
+    Ok(())
+}
+
 pub(super) fn normalize_orders<Node: Copy + Eq, Scope: Clone + Eq>(
     boxes: &mut Vec<BoxFact<Node, Scope>>,
     aliases: &[(Scope, (Node, Node))],
@@ -533,12 +601,29 @@ pub(super) fn normalize_orders<Node: Copy + Eq, Scope: Clone + Eq>(
             && matches!(boxes[parent].box_, GeneratedBoxRef::Inline(_))
         {
             let actual = inferred_children(boxes, parent)?;
-            for (i, _) in &children {
+            // Only genuine scoped identities may lack a physical span. Source
+            // claims are authenticated after Text; final captured facts are
+            // checked by the same canonical-order owner before admission.
+            if children.iter().any(|&(i, _)| {
+                boxes[i].native.is_none()
+                    && !matches!(
+                        boxes[i].box_,
+                        GeneratedBoxRef::Inline(InlineBoxRef::Scope(_))
+                    )
+            }) {
+                return Err(WrappingScopeError::UnsupportedIncidence);
+            }
+            let physical = children
+                .iter()
+                .copied()
+                .filter(|&(i, _)| boxes[i].native.is_some())
+                .collect::<Vec<_>>();
+            for (i, _) in &physical {
                 if !actual.iter().any(|(j, _)| i == j) {
                     return Err(WrappingScopeError::ChildOrder);
                 }
             }
-            if let (Some(&(first, _)), Some(&(last, _))) = (children.first(), children.last()) {
+            if let (Some(&(first, _)), Some(&(last, _))) = (physical.first(), physical.last()) {
                 let a = actual
                     .iter()
                     .position(|(i, _)| *i == first)
@@ -552,7 +637,7 @@ pub(super) fn normalize_orders<Node: Copy + Eq, Scope: Clone + Eq>(
                 {
                     return Err(WrappingScopeError::ChildOrder);
                 }
-                if actual[a..=b] != children {
+                if actual[a..=b] != physical {
                     return Err(WrappingScopeError::ChildOrder);
                 }
             } else if !actual.is_empty()

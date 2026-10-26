@@ -7,6 +7,7 @@ pub(crate) struct CanonicalScopeProof<Node> {
     pub(crate) scope: CapturedScope,
     pub(crate) flow: Node,
     pub(crate) pair: Option<(Node, Node)>,
+    pub(crate) order: Option<Arc<CanonicalOrderBindings<Node>>>,
 }
 /// Endpoint evidence retains the explicit native identity; it does not invent
 /// a canonical scope for an additional native box.
@@ -552,7 +553,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                 subtrees: Vec::new(),
             }
         } else {
-            super::edge_plan::EdgePlan::new(tree, graph, &rows, child_order)?
+            super::edge_plan::EdgePlan::new(tree, graph, &rows, child_order, proofs)?
         };
         Ok(Self {
             rows,
