@@ -791,3 +791,181 @@ fn changed_trailing_metric_changes_only_receiver_and_preserves_old_batch() {
         changed_trailing_metric::<f64>(direction);
     }
 }
+
+fn assert_phantom_terminal_result<S: l::LayoutScalar>(
+    fixture: &Fixture<S>,
+    batch: &l::CompletedLayoutBatchOf<u32, S>,
+    direction: l::Direction,
+) {
+    assert_eq!(batch.placed_text().len(), 1);
+    let entry = &batch.placed_text()[0];
+    assert_eq!(entry.container(), 0);
+    assert_eq!(entry.nodes(), [1, 2]);
+    let placed = entry.layout();
+    assert_eq!(
+        placed.analyzed_source().identity(),
+        fixture.prepared.analyzed_source().identity()
+    );
+    assert_eq!(placed.source().id(), Some(t::Id::from_u64(652900)));
+    assert_eq!(placed.source().revision(), 9);
+    assert_eq!(placed.source().text().code_units(), [65, 66]);
+    // A real Forced line is formatted; its final strut-only Paragraph receiver
+    // retains completion authority but is not an ordinary published line.
+    let lines = placed.lines();
+    assert_eq!(
+        lines.len(),
+        1,
+        "the Paragraph-ended empty strut receiver is phantom"
+    );
+    assert_eq!(lines[0].range(), t::Range::new(0, 2));
+    assert_eq!(lines[0].baseline(), 16.0);
+    assert_eq!(lines[0].bounds().size, t::Size::new(30.0, 20.0));
+    assert_eq!(placed.metrics().line_count(), 1);
+    assert_eq!(placed.metrics().first_baseline(), Some(16.0));
+    assert_eq!(placed.metrics().last_baseline(), Some(16.0));
+    assert_eq!(placed.metrics().size().height, 20.0);
+    assert_eq!(placed.bounds().size.height, 20.0);
+    let root = batch
+        .final_entries()
+        .iter()
+        .find(|entry| entry.node() == 0)
+        .unwrap()
+        .output();
+    assert_eq!(
+        root.size,
+        l::Size::new(S::from_f64(30.0), S::from_f64(20.0))
+    );
+    assert_eq!(root.content_size.height, S::from_f64(20.0));
+    let body_entry = batch
+        .final_inline_fragments()
+        .iter()
+        .find(|entry| entry.fragment().line_index() == 0)
+        .unwrap();
+    let body = body_entry.fragment().finalized_fragment().finalized_line();
+    let selected = body.selected_line();
+    let request = selected.request();
+    let offers = fixture.offers(true);
+    assert_eq!(request.context.end, t::LineEnd::Forced);
+    assert_eq!(
+        request.termination,
+        t::PreparedTermination::Ordinary(offers[1].clone())
+    );
+    assert_eq!(request.end, offers[1].view().boundary());
+    assert_eq!(
+        request.participants,
+        fixture.prepared.participants().collect::<Vec<_>>()
+    );
+    assert_struts(&request.line_box_struts, &[metric(16.0, 20.0)]);
+    assert!(request.controls.is_empty());
+    assert!(request.atomics.is_empty());
+    assert_eq!(body.measurements().fit().advance(), 20.0);
+    assert_eq!(offers[2].view().kind(), t::PreparedBreakKind::ParagraphEnd);
+    assert_eq!(offers[2].view().boundary(), request.end);
+    assert!(offers[2].view().computed_line_boundary().is_none());
+    // Source-aware glyph facts come from the actual finalized body, while
+    // committed physical glyph placements intentionally carry no source range.
+    let sourced = body
+        .run_views()
+        .flat_map(|run| {
+            run.glyphs()
+                .map(|glyph| (glyph.range(), glyph.id(), glyph.advance()))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        sourced,
+        [
+            (t::Range::new(0, 1), 35, 10.0),
+            (t::Range::new(1, 2), 36, 10.0)
+        ]
+    );
+    let x = if direction == l::Direction::Ltr {
+        0.0
+    } else {
+        10.0
+    };
+    let mut posed = vec![];
+    for run in placed.run_views() {
+        assert_eq!(run.face().bytes(), AHEM);
+        assert_eq!(run.font_size(), 10.0);
+        for glyph in run.glyphs() {
+            posed.push((
+                run.line(),
+                glyph.id(),
+                glyph.advance(),
+                run.origin().x + glyph.pen() + f64::from(glyph.x()),
+                run.origin().y,
+            ));
+        }
+    }
+    assert_eq!(
+        posed,
+        [(0, 35, 10.0, x, 16.0), (0, 36, 10.0, x + 10.0, 16.0)]
+    );
+    assert!(
+        batch
+            .final_inline_fragments()
+            .iter()
+            .all(|entry| entry.fragment().line_index() == 0)
+    );
+    assert_eq!(fixture.prepared.participants().count(), 3);
+    assert_eq!(fixture.prepared.origin_views().count(), 2);
+    assert_eq!(fixture.prepared.control_views().count(), 0);
+    assert_eq!(fixture.prepared.atomic_views().count(), 0);
+}
+
+fn phantom_terminal<S: l::LayoutScalar>(direction: l::Direction) {
+    let fixture = Fixture::<S>::new(direction, true);
+    let pin = fixture.pinned();
+    let batch = fixture.compute();
+    assert_phantom_terminal_result(&fixture, &batch, direction);
+    assert_eq!(fixture.pinned(), pin);
+}
+
+fn phantom_t_metric<S: l::LayoutScalar>(direction: l::Direction) {
+    let fixture = Fixture::<S>::new(direction, true);
+    let pin = fixture.pinned();
+    let old = fixture.compute();
+    assert_phantom_terminal_result(&fixture, &old, direction);
+    let mut inventory = fixture.inventory();
+    replace_t_metric(
+        &mut inventory,
+        &fixture.scopes[1],
+        Some(l::InlineBoxMetricContribution::Strut(metric(12.0, 40.0))),
+    );
+    let changed = fixture
+        .try_compute_inventory(inventory)
+        .expect("real phantom completion still finalizes the supplied actual T metric");
+    // T's actual numerical receiver metrics change; no text, inline-axis BP,
+    // atomic or Forced ending appears on that receiver to make it formatted.
+    assert_phantom_terminal_result(&fixture, &changed, direction);
+    assert_eq!(fixture.pinned(), pin);
+    // The earlier successful immutable publication also remains unchanged.
+    assert_phantom_terminal_result(&fixture, &old, direction);
+    assert_eq!(fixture.pinned(), pin);
+}
+
+#[test]
+fn terminal_strut_only_paragraph_completion_has_no_published_line_or_extent() {
+    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+        phantom_terminal::<f32>(direction);
+        phantom_terminal::<f64>(direction);
+    }
+}
+
+#[test]
+fn larger_phantom_tail_metrics_do_not_create_extent_or_mutate_prior_output() {
+    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+        phantom_t_metric::<f32>(direction);
+        phantom_t_metric::<f64>(direction);
+    }
+}
+
+#[test]
+fn phantom_completion_still_requires_the_actual_trailing_metric_witness() {
+    // Existing genuine metric-demand control: None is not zero or a font proxy.
+    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+        missing_trailing_metric::<f32>(direction);
+        missing_trailing_metric::<f64>(direction);
+    }
+}
