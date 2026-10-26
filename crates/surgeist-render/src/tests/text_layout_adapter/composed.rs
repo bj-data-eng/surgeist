@@ -31,6 +31,7 @@ fn finalized(source: text::Source) -> (text::PreparedText, text::FinalizedLine) 
             boundary_context: vec![],
             line_strut: None,
             context: text::LineContext {
+                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
                 base_direction: text::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
                 formatted_line: text::FormattedLineContext::default(),
@@ -194,6 +195,7 @@ fn hanging_punctuation_reaches_paint_with_its_original_advance_and_source() {
             boundary_context: vec![],
             line_strut: None,
             context: text::LineContext {
+                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
                 base_direction: text::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: text::LineBoxDirection::LeftToRight,
                 formatted_line: text::FormattedLineContext::new(Some(true), Some(true)),
@@ -305,6 +307,7 @@ fn actual_gpos_mark_placement_reaches_admitted_outline_ink_without_advance_subst
             boundary_context: vec![],
             line_strut: None,
             context: text::LineContext {
+                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
                 base_direction: text::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
                 formatted_line: text::FormattedLineContext::default(),

@@ -429,6 +429,7 @@ mod tests {
             line_box_struts: Vec::new(),
             line_strut: None,
             context: crate::LineContext {
+                alignment_insets: crate::LineAlignmentInsets::ZERO,
                 formatted_line: crate::FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::RightToLeft,
                 line_box_direction: crate::LineBoxDirection::RightToLeft,

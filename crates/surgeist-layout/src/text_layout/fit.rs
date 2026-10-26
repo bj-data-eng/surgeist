@@ -253,6 +253,15 @@ pub(crate) enum FitError {
     MissingComputedBoundaryIncidence,
 }
 
+impl From<crate::scalar::GeometryAddError> for FitError {
+    fn from(error: crate::scalar::GeometryAddError) -> Self {
+        match error.reason {
+            crate::LayoutTextNumericError::NonFinite => Self::NonFinite(error.value),
+            reason => Self::Numeric(error.value, reason),
+        }
+    }
+}
+
 impl From<surgeist_text::Error> for FitError {
     fn from(error: surgeist_text::Error) -> Self {
         Self::Text(error)
@@ -268,6 +277,7 @@ impl From<crate::inline_wrapping::WrappingScopeError> for FitError {
 pub(crate) type WrappingClassifier<'a> = dyn BoxResolver + 'a;
 
 pub(crate) struct FitInput<'a> {
+    pub groups: crate::group_alignment::Snapshot,
     pub wrapping: Option<&'a WrappingClassifier<'a>>,
     pub formatted: &'a FormattedTailSnapshot,
     pub line_box_context: crate::line_box::LineBoxContext,
@@ -405,10 +415,25 @@ fn finalize_candidate(
             .context
             .available_inline
             .map(|width| {
-                finite(width - request.context.indent).and_then(|capacity| {
-                    finite(capacity - natural.measurements().alignment().advance())
-                        .map(|extra| (capacity, extra))
-                })
+                if request.context.alignment_insets == surgeist_text::LineAlignmentInsets::ZERO {
+                    finite(width - request.context.indent).and_then(|capacity| {
+                        finite(capacity - natural.measurements().alignment().advance())
+                            .map(|extra| (capacity, extra))
+                    })
+                } else {
+                    let capacity = crate::group_alignment::canonical_capacity::<f64>(
+                        width,
+                        request.context.alignment_insets,
+                        request.context.indent,
+                    )
+                    .map_err(|error| FitError::Numeric(error.value(), error.reason()))?;
+                    let extra = crate::group_alignment::add::<f64>(
+                        capacity,
+                        -natural.measurements().alignment().advance(),
+                    )
+                    .map_err(|error| FitError::Numeric(error.value(), error.reason()))?;
+                    Ok((capacity, extra))
+                }
             })
             .transpose()?;
         if let Some((width, extra)) = expansion.filter(|(_, extra)| *extra >= 0.0)
@@ -1046,6 +1071,14 @@ where
             let bands = query_bands(&mut self.band, position.logical_start, placed_start, height)?;
             let band = bands.combined();
             request.context.available_inline = selection_width(input.available, band)?;
+            request.context.alignment_insets = if request.context.available_inline.is_some() {
+                input
+                    .groups
+                    .insets::<f64>(request.context.line_box_direction)
+                    .map_err(|error| FitError::Numeric(error.value(), error.reason()))?
+            } else {
+                surgeist_text::LineAlignmentInsets::ZERO
+            };
             request.context.tabs = tab_context(input, band, request.context.available_inline)?;
             let mut allocation_bases = Vec::new();
             let (finalized, amounts, natural_advance, role_basis) = loop {
@@ -1069,6 +1102,15 @@ where
                     && actual.line_strut == request.line_strut
                     && actual.line_box_struts == request.line_box_struts
                 {
+                    // A nonformatted semantic receipt is not a group member.
+                    // Its real allocations were validated above; finalize its
+                    // actual zero-used frame before retaining source custody.
+                    if request.context.alignment_insets != surgeist_text::LineAlignmentInsets::ZERO
+                        && !LineDisposition::resolve(&candidate.finalized)?.is_formatted()
+                    {
+                        request.context.alignment_insets = surgeist_text::LineAlignmentInsets::ZERO;
+                        continue;
+                    }
                     break (
                         candidate.finalized,
                         candidate.amounts,
@@ -1615,6 +1657,7 @@ fn selection_request(
         alternative: endpoint.alternative,
         incoming: incoming.cloned(),
         context: LineContext {
+            alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
             formatted_line: surgeist_text::FormattedLineContext::default(),
             line_box_direction,
             base_direction: input.base_direction,

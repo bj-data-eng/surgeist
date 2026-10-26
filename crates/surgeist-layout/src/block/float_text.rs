@@ -364,8 +364,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             }
             if let Some(previous) = &self.accepted[index] {
                 let top = previous
-                    .accepted
-                    .as_ref()
+                    .placement
+                    .text()
                     .expect("accepted encounter retains its placement")
                     .margin_block_start;
                 earlier_float_top = Some(earlier_float_top.map_or(top, |earlier| earlier.max(top)));
@@ -526,16 +526,17 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                     earlier.max(location.margin_block_start)
                 }),
             );
-            pending.accepted = Some(AcceptedFloatPlacement {
-                boxes: boxes.clone(),
-                logical_origin,
-                inline_space: self.inline_space,
-                margin_block_start: location.margin_block_start,
-                intrinsic_inline_demand: location.intrinsic_inline_demand,
-                prefix,
-                observation,
-                line: line.clone(),
-            });
+            pending.placement =
+                super::floats::PendingPlacement::Text(Box::new(AcceptedFloatPlacement {
+                    boxes: boxes.clone(),
+                    logical_origin,
+                    inline_space: self.inline_space,
+                    margin_block_start: location.margin_block_start,
+                    intrinsic_inline_demand: location.intrinsic_inline_demand,
+                    prefix,
+                    observation,
+                    line: line.clone(),
+                }));
             basis.push(EncounterBasis {
                 boxes,
                 event: index,
@@ -563,8 +564,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                     .take()
                     .expect("touched encounter retains its actual provisional receipt");
                 let top = pending
-                    .accepted
-                    .as_ref()
+                    .placement
+                    .text()
                     .expect("accepted encounter retains its placement")
                     .margin_block_start;
                 journal.earlier_float_top = Some(

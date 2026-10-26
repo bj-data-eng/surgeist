@@ -14,6 +14,7 @@ fn paragraph(raw: &str) -> PreparedParagraph {
 fn fit_terminal(paragraph: &PreparedParagraph, style: crate::TextWrapStyle) -> Vec<FittedLine> {
     super::super::fit(
         FitInput {
+            groups: crate::group_alignment::Snapshot::default(),
             wrapping: None,
             formatted: &FormattedTailSnapshot::default(),
             line_box_context: crate::line_box::LineBoxContext::new(

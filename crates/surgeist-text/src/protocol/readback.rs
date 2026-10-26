@@ -1891,6 +1891,7 @@ mod tests {
                 termination: crate::PreparedTermination::Ordinary(termination),
                 alternative: None,
                 context: LineContext {
+                    alignment_insets: crate::LineAlignmentInsets::ZERO,
                     formatted_line: crate::FormattedLineContext::default(),
                     base_direction: ParagraphBaseDirection::LeftToRight,
                     line_box_direction: crate::LineBoxDirection::LeftToRight,

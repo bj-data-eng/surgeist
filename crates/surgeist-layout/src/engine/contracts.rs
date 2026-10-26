@@ -9,6 +9,9 @@ pub(crate) type WrappingContextLoan<'a, Node> = (
     &'a crate::engine::validation::ValidationGraph<Node>,
 );
 
+pub(crate) type FloatContextChildResult<Node, S, M> =
+    LayoutResultOf<Node, crate::block::float_context::ChildOutput<Node, S>, S, M>;
+
 // Input loans refer to immutable request storage, independently of temporary
 // borrows of the mutable output/cache computation facade.
 pub(crate) trait Compute<'input, M = core::convert::Infallible>:
@@ -19,6 +22,42 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     /// Immutable normalized scope authority, separate from optional Text progress.
     fn wrapping_context(&self) -> Option<WrappingContextLoan<'_, Self::Node>> {
         None
+    }
+    fn group_computation(
+        &mut self,
+    ) -> Option<&mut crate::group_alignment::State<Self::Node, Self::Scalar>> {
+        None
+    }
+    fn block_float_state(
+        &mut self,
+    ) -> Option<&mut crate::block::float_context::State<Self::Node, Self::Scalar>> {
+        None
+    }
+    fn has_leaf_measurement(&self, _node: Self::Node) -> bool {
+        false
+    }
+    fn block_float_work(&self, node: Self::Node) -> bool {
+        crate::block::float_context::discover_work(self, node)
+    }
+    fn compute_child_with_float_context(
+        &mut self,
+        node: Self::Node,
+        input: ComputeInputOf<Self::Scalar>,
+        frame: crate::block::InheritedFloatExclusions<Self::Scalar, Self::Node>,
+    ) -> FloatContextChildResult<Self::Node, Self::Scalar, M> {
+        self.block_float_state()
+            .ok_or_else(|| crate::block::float_context::missing(node))?
+            .push(node, input, frame);
+        let result = self.compute_child(node, input);
+        let completed = self
+            .block_float_state()
+            .and_then(|state| state.pop(node, input));
+        let output = result?;
+        let floats = completed.ok_or_else(|| crate::block::float_context::missing(node))?;
+        if floats.output != output {
+            return Err(crate::block::float_context::missing(node));
+        }
+        Ok(crate::block::float_context::ChildOutput { output, floats })
     }
     fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutputOf<Self::Scalar>);
     // Absence is the actual box-only profile, not a successful no-op finalizer.

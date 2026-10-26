@@ -8,6 +8,7 @@ fn input<S: LayoutScalar>(
     style: TextWrapStyle,
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
+        groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: style,
         line_box_context: crate::line_box::LineBoxContext::new(
             crate::LineBoxDirectionPolicy::Normal,

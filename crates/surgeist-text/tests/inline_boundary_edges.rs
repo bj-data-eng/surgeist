@@ -281,6 +281,7 @@ fn finish(
         line_box_struts: Vec::new(),
         line_strut: None,
         context: t::LineContext {
+            alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
             formatted_line: surgeist_text::FormattedLineContext::default(),
             base_direction: t::ParagraphBaseDirection::LeftToRight,
             line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,

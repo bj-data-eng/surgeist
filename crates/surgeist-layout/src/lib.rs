@@ -215,6 +215,7 @@ mod error;
 mod flex;
 mod geometry;
 mod grid;
+mod group_alignment;
 mod hyphenation;
 mod inline;
 mod layout_math;
@@ -303,22 +304,23 @@ pub use measurement::{
     MeasurementAvailable, MeasurementAvailableOf, compute_leaf,
 };
 pub use node_input::{
-    AlignContent, AlignItems, AtomicInlineParticipation, BlockGeneration, BoxSizing, Clear,
-    ComputedOverflow, ComputedOverflowError, Direction, Display, FlexDirection, FlexGrow,
-    FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap, Float, FloatExclusion,
-    FloatExclusionInterval, FloatExclusionIntervalError, FloatExclusionIntervalErrorOf,
-    FloatExclusionIntervalOf, FloatExclusionQuery, FloatExclusionQueryOf, GridAutoFlow,
-    GridFlowTolerance, GridFlowToleranceOf, GridPlacement, InlineBoundaryEdge,
-    InlineBoundaryEdgeOf, InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind,
-    InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf, ItemOrder,
-    LayoutInput, LayoutInputOf, LayoutInputView, LayoutInputViewOf, LineBoxDirectionPolicy,
-    LineBreakDisplay, LineBreakInput, LineBreakInputOf, NodeInput, NodeInputOf, Overflow,
-    OverflowClipBox, OverflowClipMargin, OverflowClipMarginOf, Position, RawGridLine,
-    RawGridPlacement, ScrollMargin, ScrollMarginError, ScrollMarginErrorOf, ScrollMarginOf,
-    ScrollPadding, ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf, ScrollSnapAlign,
-    ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType,
-    ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, TextAlign, TextAlignLast, TextIndent,
-    TextIndentOf, TextJustification, TextWrapStyle, VerticalAlign, WritingMode,
+    AlignContent, AlignItems, AtomicInlineParticipation, BlockFlowContext, BlockGeneration,
+    BoxSizing, Clear, ComputedOverflow, ComputedOverflowError, Direction, Display, FlexDirection,
+    FlexGrow, FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap, Float,
+    FloatExclusion, FloatExclusionInterval, FloatExclusionIntervalError,
+    FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf, FloatExclusionQuery,
+    FloatExclusionQueryOf, GridAutoFlow, GridFlowTolerance, GridFlowToleranceOf, GridPlacement,
+    InlineBoundaryEdge, InlineBoundaryEdgeOf, InlineBoundaryInput, InlineBoundaryInputOf,
+    InlineBoundaryKind, InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf,
+    ItemOrder, LayoutInput, LayoutInputOf, LayoutInputView, LayoutInputViewOf,
+    LineBoxDirectionPolicy, LineBreakDisplay, LineBreakInput, LineBreakInputOf, NodeInput,
+    NodeInputOf, Overflow, OverflowClipBox, OverflowClipMargin, OverflowClipMarginOf, Position,
+    RawGridLine, RawGridPlacement, ScrollMargin, ScrollMarginError, ScrollMarginErrorOf,
+    ScrollMarginOf, ScrollPadding, ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf,
+    ScrollSnapAlign, ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness,
+    ScrollSnapType, ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, TextAlign, TextAlignLast,
+    TextGroupAlign, TextIndent, TextIndentOf, TextJustification, TextWrapStyle, VerticalAlign,
+    WritingMode,
 };
 pub use output::{
     Baselines, BaselinesOf, CollapsibleMargin, CollapsibleMarginOf, CompletedLayoutBatch,

@@ -130,6 +130,7 @@ impl<S: LayoutScalar> Fixture<S> {
             .numeric_projection(&flow.graph, 0, &self.nodes)
             .unwrap();
         MixedInlineRunInputOf {
+            groups: crate::group_alignment::Snapshot::default(),
             text_wrap_style: crate::TextWrapStyle::Auto,
             line_box_context: crate::line_box::LineBoxContext::new(
                 crate::LineBoxDirectionPolicy::Normal,
@@ -1201,6 +1202,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     .unwrap();
                 let report = layout_mixed_inline_run_with_formatted_observation(
                     MixedInlineRunInputOf {
+                        groups: crate::group_alignment::Snapshot::default(),
                         text_wrap_style: crate::TextWrapStyle::Auto,
                         line_box_context: crate::line_box::LineBoxContext::new(
                             crate::LineBoxDirectionPolicy::Normal,

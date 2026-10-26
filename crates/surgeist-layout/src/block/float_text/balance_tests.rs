@@ -39,6 +39,7 @@ fn selected_line(
             alternative: None,
             incoming: None,
             context: text::LineContext {
+                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
                 formatted_line: text::FormattedLineContext::default(),
                 base_direction: text::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: text::LineBoxDirection::LeftToRight,
@@ -161,7 +162,7 @@ fn lane<S: LayoutScalar>() {
         let packet = owner.probe_float_child(node, child_request).unwrap();
         assert_eq!(packet.output.size, Size::splat(S::from_f64(extent)));
         let pending = PendingFloat {
-            accepted: None,
+            placement: super::super::floats::PendingPlacement::Unresolved,
             node,
             source_index: offset,
             side: Float::Left,
@@ -239,8 +240,9 @@ fn lane<S: LayoutScalar>() {
     let prefix = encounters.accepted[0]
         .as_ref()
         .unwrap()
-        .accepted
-        .clone()
+        .placement
+        .text()
+        .cloned()
         .unwrap();
 
     // A candidate and then an accepted losing trial both use the actual second
@@ -269,8 +271,8 @@ fn lane<S: LayoutScalar>() {
         encounters.accepted[1]
             .as_ref()
             .unwrap()
-            .accepted
-            .as_ref()
+            .placement
+            .text()
             .unwrap()
             .logical_origin
             .block,
@@ -281,8 +283,8 @@ fn lane<S: LayoutScalar>() {
     let retained = encounters.accepted[0]
         .as_ref()
         .unwrap()
-        .accepted
-        .as_ref()
+        .placement
+        .text()
         .unwrap();
     assert_eq!(retained.logical_origin, prefix.logical_origin);
     assert_eq!(retained.line, prefix.line);
@@ -296,8 +298,8 @@ fn lane<S: LayoutScalar>() {
         encounters.accepted[1]
             .as_ref()
             .unwrap()
-            .accepted
-            .as_ref()
+            .placement
+            .text()
             .unwrap()
             .logical_origin
             .block,
@@ -339,8 +341,8 @@ fn lane<S: LayoutScalar>() {
     assert_eq!(
         output.children[1]
             .pending
-            .accepted
-            .as_ref()
+            .placement
+            .text()
             .unwrap()
             .logical_origin
             .block,

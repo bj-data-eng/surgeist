@@ -291,6 +291,7 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
             line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
+                alignment_insets: crate::LineAlignmentInsets::ZERO,
                 formatted_line: crate::FormattedLineContext::default(),
                 base_direction: direction,
                 line_box_direction: match direction {
@@ -1106,6 +1107,7 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
             line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
+                alignment_insets: crate::LineAlignmentInsets::ZERO,
                 formatted_line: crate::FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 line_box_direction: crate::LineBoxDirection::LeftToRight,
@@ -1531,6 +1533,7 @@ fn selected_soft_wrap_does_not_reset_plaintext_context_or_copy_line_edge_deletio
             line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
+                alignment_insets: crate::LineAlignmentInsets::ZERO,
                 formatted_line: crate::FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 line_box_direction: crate::LineBoxDirection::LeftToRight,
@@ -1896,6 +1899,7 @@ fn right_line(prepared: &PreparedText) -> FinalizedLine {
             line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
+                alignment_insets: crate::LineAlignmentInsets::ZERO,
                 formatted_line: crate::FormattedLineContext::default(),
                 base_direction: direction,
                 line_box_direction: match direction {

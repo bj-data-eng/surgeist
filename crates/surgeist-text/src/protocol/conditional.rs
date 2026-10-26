@@ -621,6 +621,8 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
         number(&mut values, width);
     }
     number(&mut values, context.indent);
+    number(&mut values, context.alignment_insets.line_left());
+    number(&mut values, context.alignment_insets.line_right());
     match context.tabs {
         super::TabContext::NoTabs => values.push(0),
         super::TabContext::FontAdvance => values.push(1),
@@ -1223,7 +1225,7 @@ impl PreparedConditionalOpportunity {
 }
 
 // These semantic line choices stay stable across candidate evaluation. Width,
-// indent, effective alignment, line-box direction and tab coordinates come from
+// indent, alignment insets, effective alignment, line-box direction and tab coordinates come from
 // each converged frame; the query retains its own frame identity without
 // certifying Layout staleness.
 fn selection_context(context: &super::LineContext) -> Vec<u64> {

@@ -11,6 +11,7 @@ use crate::{
 pub(crate) struct BlockContainerProjection<'a, S: LayoutScalar> {
     pub(super) common: CommonBoxProjection<'a, S>,
     pub(super) display: Display,
+    pub(super) block_flow_context: crate::BlockFlowContext,
     pub(super) block_generation: crate::BlockGeneration,
     pub(super) text_indent: crate::TextIndentOf<S>,
     pub(super) line_box_direction_policy: crate::LineBoxDirectionPolicy,
@@ -31,6 +32,7 @@ impl<'a, S: LayoutScalar> BlockContainerProjection<'a, S> {
         Self {
             common: CommonBoxProjection::from_node(input),
             display: input.display,
+            block_flow_context: input.block_flow_context,
             block_generation: input.block_generation,
             text_indent: input.text_indent,
             line_box_direction_policy: input.line_box_direction_policy,
@@ -52,6 +54,7 @@ impl<'a, S: LayoutScalar> BlockContainerProjection<'a, S> {
 pub(crate) struct BlockChildProjection<'a, S: LayoutScalar> {
     pub(super) common: CommonBoxProjection<'a, S>,
     pub(super) display: Display,
+    pub(super) block_flow_context: crate::BlockFlowContext,
     pub(super) float: Float,
     pub(super) clear: Clear,
     pub(super) float_exclusion: FloatExclusion,
@@ -66,6 +69,7 @@ impl<'a, S: LayoutScalar> BlockChildProjection<'a, S> {
         Self {
             common: CommonBoxProjection::from_node(input),
             display: input.display,
+            block_flow_context: input.block_flow_context,
             float: input.float,
             clear: input.clear,
             float_exclusion: input.float_exclusion,

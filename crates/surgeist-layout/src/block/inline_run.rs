@@ -234,8 +234,8 @@ impl VisibleInlineRunTransition {
             let margin = constants.flow_axes.logical_edges(plan.margin);
             float_intrinsics.add_captured(
                 size.inline + margin.inline_sum(),
-                plan.accepted
-                    .as_ref()
+                plan.placement
+                    .text()
                     .and_then(|accepted| accepted.intrinsic_inline_demand),
             );
         }
@@ -641,7 +641,11 @@ where
         let output = if let Some(packet) = &packet {
             packet.output
         } else {
-            tree.compute_child(child, child_request)?
+            let result = tree.compute_child(child, child_request)?;
+            if let Some(groups) = tree.group_computation() {
+                groups.child(child);
+            }
+            result
         };
         let unresolved_margin = constants
             .flow_axes
@@ -654,7 +658,7 @@ where
         let child_margin = resolve_atomic_inline_margin(unresolved_margin);
         if let Some(packet) = packet {
             let pending = PendingFloat {
-                accepted: None,
+                placement: super::floats::PendingPlacement::Unresolved,
                 node: child,
                 source_index,
                 side: child_style.float,
@@ -802,7 +806,12 @@ where
                 state.formatted_snapshot(container, run, &binding.prepared, input, formatted_mode)
             })
             .unwrap_or_default();
+        let group_snapshot = tree
+            .group_computation()
+            .map(|groups| groups.snapshot())
+            .unwrap_or_default();
         let context = crate::text_layout::run::Context {
+            groups: group_snapshot,
             wrapping: tree.wrapping_context().and_then(|(context, graph)| {
                 crate::text_layout::run::WrappingProjection::new(
                     context,
@@ -1040,6 +1049,9 @@ where
         let accepted = encounters.into_inner().finish();
         for child in accepted.children {
             tree.accept_float_child(&child.packet)?;
+            if let Some(groups) = tree.group_computation() {
+                groups.child(child.packet.node);
+            }
             encounter_plans.push(child.pending);
         }
         *float_exclusions = accepted.ledger;
@@ -1091,6 +1103,10 @@ where
                 .is_some_and(|state| state.formatted_active());
         let result = layout_mixed_inline_run_with_formatted_observation(
             MixedInlineRunInputOf {
+                groups: tree
+                    .group_computation()
+                    .map(|groups| groups.snapshot())
+                    .unwrap_or_default(),
                 wrapping,
                 text_wrap_style: constants.wrap_style,
                 line_box_context,
@@ -1507,10 +1523,15 @@ where
         report.last_baseline.map(projected_baseline),
     );
 
+    if let Some(groups) = tree.group_computation() {
+        for line in &report.group_lines {
+            groups.observe(line.clone());
+        }
+    }
     let float_end = encounter_plans
         .iter()
         .filter_map(|plan| {
-            plan.accepted.as_ref().map(|accepted| {
+            plan.placement.text().map(|accepted| {
                 let margin = constants.flow_axes.logical_edges(plan.margin);
                 accepted.logical_origin.block
                     + constants.flow_axes.logical_size(plan.size).block

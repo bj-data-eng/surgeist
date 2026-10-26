@@ -474,6 +474,7 @@ mod tests {
         GROUP_WORK.with_borrow_mut(|work| work.clear());
         let lines = super::super::fit(
             FitInput {
+                groups: crate::group_alignment::Snapshot::default(),
                 wrapping: None,
                 formatted: &FormattedTailSnapshot::default(),
                 line_box_context: crate::line_box::LineBoxContext::new(

@@ -37,6 +37,28 @@ pub trait LayoutScalar:
     fn to_f64(self) -> f64;
 }
 
+/// Failure of one required finite geometry contribution, before scalar narrowing.
+pub(crate) struct GeometryAddError {
+    pub(crate) value: f64,
+    pub(crate) reason: crate::LayoutTextNumericError,
+}
+pub(crate) fn checked_geometry_add(base: f64, delta: f64) -> Result<f64, GeometryAddError> {
+    let result = base + delta;
+    if !result.is_finite() {
+        return Err(GeometryAddError {
+            value: result,
+            reason: crate::LayoutTextNumericError::NonFinite,
+        });
+    }
+    if delta != 0.0 && result == base {
+        return Err(GeometryAddError {
+            value: delta,
+            reason: crate::LayoutTextNumericError::NonZeroLost,
+        });
+    }
+    Ok(result)
+}
+
 pub(crate) fn canonical_zero<S: LayoutScalar>(value: S) -> S {
     if value == S::ZERO { S::ZERO } else { value }
 }

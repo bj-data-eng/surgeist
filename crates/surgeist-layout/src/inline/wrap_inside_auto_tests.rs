@@ -59,6 +59,7 @@ fn numeric_input<S: LayoutScalar>(
         ))
     };
     MixedInlineRunInputOf {
+        groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,
         line_box_context: crate::line_box::LineBoxContext::new(
             crate::LineBoxDirectionPolicy::Normal,

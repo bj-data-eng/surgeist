@@ -84,6 +84,7 @@ fn first_request(prepared: &PreparedText) -> LineSelectionRequest {
         line_box_struts: Vec::new(),
         line_strut: None,
         context: LineContext {
+            alignment_insets: crate::LineAlignmentInsets::ZERO,
             formatted_line: crate::FormattedLineContext::default(),
             base_direction: ParagraphBaseDirection::LeftToRight,
             line_box_direction: crate::LineBoxDirection::LeftToRight,
