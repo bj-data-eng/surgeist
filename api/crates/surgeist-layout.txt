@@ -316,6 +316,7 @@ pub const fn surgeist_layout::LayoutInputViewOf<'input, S>::as_line_break(self) 
 pub const fn surgeist_layout::LayoutInputViewOf<'input, S>::as_text_control(self) -> core::option::Option<&'input surgeist_layout::TextControlParticipation>
 #[non_exhaustive] pub enum surgeist_layout::LayoutInternalInvariant
 pub surgeist_layout::LayoutInternalInvariant::InvalidBlockScrollGeometry
+pub surgeist_layout::LayoutInternalInvariant::InvalidInlineBalance
 pub surgeist_layout::LayoutInternalInvariant::InvalidRootScrollGeometry
 pub surgeist_layout::LayoutInternalInvariant::InvalidRoundedInlineFragmentGeometry
 pub surgeist_layout::LayoutInternalInvariant::InvalidRoundedScrollGeometry
@@ -779,6 +780,9 @@ pub surgeist_layout::TextScopeAssociation::Inline
 pub surgeist_layout::TextScopeAssociation::Inline::end: Node
 pub surgeist_layout::TextScopeAssociation::Inline::start: Node
 pub surgeist_layout::TextScopeAssociation::ParagraphContainer(Node)
+pub enum surgeist_layout::TextWrapStyle
+pub surgeist_layout::TextWrapStyle::Auto
+pub surgeist_layout::TextWrapStyle::Balance
 pub enum surgeist_layout::TrackComponentOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::TrackComponentOf::LineNames(alloc::vec::Vec<alloc::string::String>)
 pub surgeist_layout::TrackComponentOf::Repeat(surgeist_layout::TrackRepetitionOf<S>)
@@ -1436,6 +1440,7 @@ pub surgeist_layout::NodeInputOf::text_align: surgeist_layout::TextAlign
 pub surgeist_layout::NodeInputOf::text_align_last: surgeist_layout::TextAlignLast
 pub surgeist_layout::NodeInputOf::text_indent: surgeist_layout::TextIndentOf<S>
 pub surgeist_layout::NodeInputOf::text_justification: surgeist_layout::TextJustification
+pub surgeist_layout::NodeInputOf::text_wrap_style: surgeist_layout::TextWrapStyle
 pub surgeist_layout::NodeInputOf::vertical_align: surgeist_layout::VerticalAlign
 pub surgeist_layout::NodeInputOf::wrap_edges: surgeist_layout::WrapEdges
 pub surgeist_layout::NodeInputOf::writing_mode: surgeist_layout::WritingMode

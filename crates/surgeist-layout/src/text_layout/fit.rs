@@ -5,7 +5,12 @@ use super::boxes::{
 };
 use super::formatted::FormattedTailSnapshot;
 pub(crate) use super::roles::{RoleBasis, RoleUse};
+use crate::inline_wrapping::balance::{BalanceGoal, NaturalResidual};
 use crate::{TextAlign, TextAlignLast, TextJustification};
+
+#[path = "fit_balance.rs"]
+mod balance;
+pub(crate) use balance::BalanceBasis;
 use surgeist_text::{
     Alignment, AtomicAllocation, ConditionalDisposition, ConditionalPurpose, ConditionalStage,
     ControlAllocation, FinalizedLine, HyphenationContinuation, LineContext, LineEnd,
@@ -118,6 +123,7 @@ pub(crate) enum TailContext {
 pub(crate) enum EncounterReset {
     Candidate,
     Sequence,
+    Group,
 }
 
 /// Actual source-event ordinal and accepted scalar geometry for cycle identity.
@@ -140,6 +146,7 @@ struct CandidateBasis {
     request: LineSelectionRequest,
     boxes: Option<BoxAssignment>,
     amounts: Vec<f64>,
+    natural_advance: f64,
     logical_start: f64,
     placed_start: f64,
     bands: LineBands,
@@ -203,6 +210,7 @@ impl LineDisposition {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct FittedLine {
     pub disposition: LineDisposition,
     pub boxes: Option<BoxAssignment>,
@@ -216,6 +224,8 @@ pub(crate) struct FittedLine {
     pub encounters: Vec<EncounterBasis>,
     pub finalized: FinalizedLine,
     pub amounts: Vec<f64>,
+    pub natural_advance: f64,
+    pub balance: Option<std::sync::Arc<BalanceBasis>>,
     pub inline_start: f64,
     pub placed_start: f64,
     pub available: f64,
@@ -266,6 +276,7 @@ pub(crate) struct FitInput<'a> {
     pub base_direction: ParagraphBaseDirection,
     pub block_direction: ParagraphBaseDirection,
     pub alignment: TextAlign,
+    pub wrap_style: crate::TextWrapStyle,
     pub last_alignment: TextAlignLast,
     pub justification: TextJustification,
     pub indent: crate::text_indent::ResolvedTextIndent<f64>,
@@ -291,6 +302,7 @@ struct FinalizedCandidate {
     request: LineSelectionRequest,
     finalized: FinalizedLine,
     amounts: Vec<f64>,
+    natural_advance: f64,
 }
 
 fn text_alignment(alignment: TextAlign) -> Alignment {
@@ -378,6 +390,7 @@ fn finalize_candidate(
     *active_request = request.clone();
     resolve_boundary_context(prepared, controls, &mut request)?;
     let natural = natural_line(prepared, reusable, &request)?;
+    let natural_advance = natural.measurements().alignment().advance();
     let selected = natural.selected_line();
     let mut amounts = vec![0.0; selected.spacing_slots().len()];
     if effective == TextAlign::Justify {
@@ -428,6 +441,7 @@ fn finalize_candidate(
                     request,
                     finalized,
                     amounts,
+                    natural_advance,
                 });
             }
         } else {
@@ -440,6 +454,7 @@ fn finalize_candidate(
             amounts = vec![0.0; finalized.selected_line().spacing_slots().len()];
             return Ok(FinalizedCandidate {
                 request,
+                natural_advance: finalized.measurements().alignment().advance(),
                 finalized,
                 amounts,
             });
@@ -449,6 +464,7 @@ fn finalize_candidate(
         request,
         finalized: natural,
         amounts,
+        natural_advance,
     })
 }
 
@@ -470,6 +486,7 @@ fn finalize_with_roles(
                 FinalizedCandidate {
                     amounts: vec![0.0; finalized.selected_line().spacing_slots().len()],
                     request: active.clone(),
+                    natural_advance: finalized.measurements().alignment().advance(),
                     finalized,
                 }
             })
@@ -594,6 +611,7 @@ struct EvaluatedCandidate {
     request: LineSelectionRequest,
     finalized: FinalizedLine,
     amounts: Vec<f64>,
+    natural_advance: f64,
     encounters: Vec<EncounterBasis>,
     bands: LineBands,
     placed_start: f64,
@@ -609,12 +627,21 @@ impl EvaluatedCandidate {
             boxes: self.boxes.clone(),
             request: self.request.clone(),
             amounts: self.amounts.clone(),
+            natural_advance: self.natural_advance,
             logical_start: position.logical_start,
             placed_start: self.placed_start,
             bands: self.bands,
             height: self.disposition.height(&self.finalized),
             minimum_block: position.minimum_block,
         }
+    }
+
+    fn natural_residual(&self) -> Option<NaturalResidual> {
+        NaturalResidual::from_components(
+            self.request.context.available_inline?,
+            self.request.context.indent,
+            self.natural_advance,
+        )
     }
 
     fn observed(&self, position: &CandidatePosition) -> ObservedCandidateBasis {
@@ -652,10 +679,10 @@ struct FittingEnds {
 }
 
 impl FittingEnds {
-    fn observe(&mut self, candidate: &EvaluatedCandidate) {
+    fn observe(&mut self, candidate: &EvaluatedCandidate, include_terminal: bool) {
         if !candidate.fits
             || !candidate.disposition.is_formatted()
-            || candidate.request.context.end != LineEnd::Soft
+            || (!include_terminal && candidate.request.context.end != LineEnd::Soft)
         {
             return;
         }
@@ -683,6 +710,7 @@ struct ComparisonBasis {
 
 #[derive(Default)]
 struct ScopedChoices {
+    goal: Option<BalanceGoal>,
     frontier: Option<crate::inline_wrapping::PreferenceFrontier<EvaluatedCandidate>>,
     error: Option<FitError>,
 }
@@ -698,10 +726,21 @@ impl ScopedChoices {
             .ok_or(FitError::InvalidGeometry)
             .and_then(|boxes| classify.classify(boxes))
             .and_then(|class| {
-                self.frontier
-                    .get_or_insert_with(|| class.frontier())
-                    .consider(class, candidate)
-                    .map_err(FitError::Wrapping)
+                let frontier = self.frontier.get_or_insert_with(|| class.frontier());
+                if let Some(goal) = self.goal {
+                    candidate
+                        .natural_residual()
+                        .ok_or(FitError::InvalidGeometry)?;
+                    frontier.consider_ranked(class, candidate, |left, right| {
+                        goal.compare_distance(
+                            left.natural_residual().expect("finite goal candidate"),
+                            right.natural_residual().expect("finite goal candidate"),
+                        )
+                    })
+                } else {
+                    frontier.consider(class, candidate)
+                }
+                .map_err(FitError::Wrapping)
             });
         if let Err(error) = result {
             self.error = Some(error);
@@ -712,8 +751,41 @@ impl ScopedChoices {
         if let Some(error) = self.error {
             return Err(error);
         }
-        Ok(self.frontier.and_then(|frontier| frontier.into_preferred()))
+        Ok(self.frontier.and_then(|frontier| {
+            if let Some(goal) = self.goal {
+                frontier.into_preferred_ranked(|left, right| {
+                    goal.compare_distance(
+                        left.natural_residual().expect("finite goal candidate"),
+                        right.natural_residual().expect("finite goal candidate"),
+                    )
+                })
+            } else {
+                frontier.into_preferred()
+            }
+        }))
     }
+}
+
+fn prefer_candidate(
+    goal: Option<BalanceGoal>,
+    candidate: &EvaluatedCandidate,
+    current: Option<&EvaluatedCandidate>,
+) -> Result<bool, FitError> {
+    let Some((goal, current)) = goal.zip(current).filter(|(_, current)| {
+        candidate.fits
+            && current.fits
+            && candidate.disposition.is_formatted()
+            && current.disposition.is_formatted()
+    }) else {
+        return Ok(true);
+    };
+    let candidate = candidate
+        .natural_residual()
+        .ok_or(FitError::InvalidGeometry)?;
+    let current = current
+        .natural_residual()
+        .ok_or(FitError::InvalidGeometry)?;
+    Ok(goal.compare_distance(candidate, current) != std::cmp::Ordering::Greater)
 }
 
 #[derive(Clone, Copy)]
@@ -976,7 +1048,7 @@ where
             request.context.available_inline = selection_width(input.available, band)?;
             request.context.tabs = tab_context(input, band, request.context.available_inline)?;
             let mut allocation_bases = Vec::new();
-            let (finalized, amounts, role_basis) = loop {
+            let (finalized, amounts, natural_advance, role_basis) = loop {
                 let (candidate, role_basis) =
                     finalize_with_roles(input, request, natural_only, &entry)?;
                 request = candidate.request;
@@ -997,7 +1069,12 @@ where
                     && actual.line_strut == request.line_strut
                     && actual.line_box_struts == request.line_box_struts
                 {
-                    break (candidate.finalized, candidate.amounts, role_basis);
+                    break (
+                        candidate.finalized,
+                        candidate.amounts,
+                        candidate.natural_advance,
+                        role_basis,
+                    );
                 }
                 let basis = (request.clone(), candidate.amounts);
                 if allocation_bases.contains(&basis) {
@@ -1036,6 +1113,7 @@ where
                 boxes: boxes.clone(),
                 request: request.clone(),
                 amounts: amounts.clone(),
+                natural_advance,
                 logical_start: position.logical_start,
                 placed_start,
                 bands,
@@ -1108,6 +1186,7 @@ where
                 request,
                 finalized,
                 amounts,
+                natural_advance,
                 encounters,
                 bands,
                 placed_start,
@@ -1467,10 +1546,11 @@ fn tab_context(
 }
 
 /// The three operations share one accepted encounter checkpoint.
-pub(crate) struct EncounterCallbacks<Replay, Accept, Reset> {
+pub(crate) struct EncounterCallbacks<Replay, Accept, Reset, Checkpoint> {
     pub replay: Replay,
     pub accept: Accept,
     pub reset: Reset,
+    pub checkpoint_group: Checkpoint,
 }
 
 struct LineEndpoint {
@@ -1576,17 +1656,19 @@ pub(crate) fn fit(
         f64,
         &[surgeist_text::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
-    mut clear_source: impl FnMut(f64, &LineSelectionRequest) -> Result<Option<f64>, FitError>,
+    clear_source: impl FnMut(f64, &LineSelectionRequest) -> Result<Option<f64>, FitError>,
     encounters: EncounterCallbacks<
         impl FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
         impl FnMut() -> Result<(), FitError>,
         impl FnMut(EncounterReset),
+        impl FnMut(),
     >,
 ) -> Result<Vec<FittedLine>, FitError> {
     let EncounterCallbacks {
         replay: replay_encounters,
-        accept: mut accept_encounters,
+        accept: accept_encounters,
         reset: reset_candidate,
+        checkpoint_group,
     } = encounters;
     let boundaries: Vec<_> = input
         .prepared
@@ -1609,7 +1691,7 @@ pub(crate) fn fit(
             )
         })
         .collect();
-    let mut environment = CandidateEnvironment {
+    let environment = CandidateEnvironment {
         roles: Vec::new(),
         box_uses: Vec::new(),
         band: band_source,
@@ -1618,535 +1700,711 @@ pub(crate) fn fit(
         replay: replay_encounters,
         reset: reset_candidate,
     };
-    // Each frame records only choices already visited under its exact accepted
-    // prefix. Backtracking discards all descendant frames; no abandoned ban is
-    // transferred to a different line sequence. Every remaining actual variant
-    // is still evaluated in the ordinary chooser's preference order.
-    let constrained = input.tail == TailContext::CompleteBlock
-        && matches!(input.available, Available::Definite(_));
-    let wrapping = input
-        .wrapping
-        .filter(|_| matches!(input.available, Available::Definite(_)));
-    let mut visited: Vec<Vec<CandidateKey>> = Vec::new();
-    'sequence: loop {
-        environment.roles.clear();
-        environment.box_uses.clear();
-        (environment.reset)(EncounterReset::Sequence);
-        let mut result: Vec<FittedLine> = Vec::new();
-        let mut start = 0;
-        let mut logical_start = 0.0;
-        let mut minimum_block: Option<f64> = None;
-        let mut indent_state = input.indent_state;
-        let mut line_box_context = input.line_box_context;
-        let mut hyphenation_state = input.hyphenation_state;
-        // A rebuilt sequence owns fresh continuation custody. Requests below
-        // retain it in reuse, convergence and visited-choice identity.
-        let mut incoming = None;
-        let mut completed_end = false;
-        let mut current_boundary = boundaries
+    let entry = SequenceEntry {
+        boundary: boundaries
             .first()
             .ok_or(FitError::InvalidGeometry)?
             .1
-            .clone();
-        while !completed_end {
-            let start_boundary = current_boundary.clone();
-            let rejected_choices: &[CandidateKey] = if constrained {
-                if visited.len() <= result.len() {
-                    visited.push(Vec::new());
-                }
-                &visited[result.len()]
-            } else {
-                &[]
-            };
-            let mut position = CandidatePosition {
-                source_floor: logical_start,
-                logical_start,
-                minimum_block,
-                deferred_from: None,
-            };
-            let mut transitions = Vec::new();
-            let role_start = environment.roles.len();
-            let box_use_start = environment.box_uses.len();
-            loop {
-                let mut phrase_basis = Vec::new();
-                let mut choice: Option<EvaluatedCandidate>;
-                let mut fitting_none;
-                let mut first_ceiling;
-                let mut skipped_ordinary = Vec::new();
-                let mut zone_basis = ZoneBasis {
-                    policy: input.hyphenate_limit_zone,
-                    references: Vec::new(),
+            .clone(),
+        logical_start: 0.0,
+        minimum_block: None,
+        indent_state: input.indent_state,
+        line_box_context: input.line_box_context,
+        hyphenation_state: input.hyphenation_state,
+        incoming: None,
+        prefix_len: 0,
+    };
+    let mut runner = SequenceRunner {
+        input,
+        environment,
+        opportunities,
+        accept: accept_encounters,
+        clear: clear_source,
+    };
+    if runner.input.wrap_style == crate::TextWrapStyle::Balance
+        && matches!(runner.input.available, Available::Definite(_))
+    {
+        return balance::fit(&mut runner, entry, checkpoint_group);
+    }
+    let mut result = Vec::new();
+    let scope = SequenceScope {
+        reset: EncounterReset::Sequence,
+        stop_at_forced: false,
+        max_formatted: None,
+        goal: None,
+        opportunity_start: 0,
+        opportunity_end: runner.opportunities.len(),
+    };
+    match runner.run(&entry, scope, &mut result)? {
+        SequenceOutcome::Complete(_) => Ok(result),
+        SequenceOutcome::Inadmissible => Err(FitError::FeedbackCycle),
+    }
+}
+
+type Opportunity = (
+    usize,
+    surgeist_text::PreparedOpportunity,
+    PreparedBreakKind,
+    Vec<PreparedAlternative>,
+);
+
+#[derive(Clone, Debug, PartialEq)]
+struct SequenceEntry {
+    boundary: PreparedBoundary,
+    logical_start: f64,
+    minimum_block: Option<f64>,
+    indent_state: crate::text_indent::IndentLineState,
+    line_box_context: crate::line_box::LineBoxContext,
+    hyphenation_state: crate::hyphenation::LineHyphenationState,
+    incoming: Option<HyphenationContinuation>,
+    prefix_len: usize,
+}
+
+#[derive(Clone, Copy)]
+struct SequenceScope {
+    reset: EncounterReset,
+    stop_at_forced: bool,
+    max_formatted: Option<usize>,
+    goal: Option<BalanceGoal>,
+    opportunity_start: usize,
+    opportunity_end: usize,
+}
+
+enum SequenceOutcome {
+    Complete(SequenceEntry),
+    Inadmissible,
+}
+
+struct SequenceRunner<'a, B, C, A, R, X, Accept, Clear> {
+    input: FitInput<'a>,
+    environment: CandidateEnvironment<B, C, A, R, X>,
+    opportunities: Vec<Opportunity>,
+    accept: Accept,
+    clear: Clear,
+}
+
+impl<B, C, A, R, X, Accept, Clear> SequenceRunner<'_, B, C, A, R, X, Accept, Clear>
+where
+    B: FnMut(f64, f64) -> Result<Band, FitError>,
+    C: FnMut(BlockPosition, f64) -> Result<f64, FitError>,
+    A: FnMut(
+        &FinalizedLine,
+        Band,
+        f64,
+        &[surgeist_text::LineBoxStrut],
+    ) -> Result<LineAllocations, FitError>,
+    R: FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
+    X: FnMut(EncounterReset),
+    Accept: FnMut() -> Result<(), FitError>,
+    Clear: FnMut(f64, &LineSelectionRequest) -> Result<Option<f64>, FitError>,
+{
+    fn run(
+        &mut self,
+        entry: &SequenceEntry,
+        scope: SequenceScope,
+        result: &mut Vec<FittedLine>,
+    ) -> Result<SequenceOutcome, FitError> {
+        #[cfg(test)]
+        balance::observe_work(scope, false);
+        let input = &self.input;
+        let environment = &mut self.environment;
+        let opportunities = &self.opportunities[scope.opportunity_start..scope.opportunity_end];
+        let accept_encounters = &mut self.accept;
+        let clear_source = &mut self.clear;
+        // Each frame records only choices already visited under its exact accepted
+        // prefix. Backtracking discards all descendant frames; no abandoned ban is
+        // transferred to a different line sequence. Every remaining actual variant
+        // is still evaluated in the ordinary chooser's preference order.
+        let constrained = input.tail == TailContext::CompleteBlock
+            && matches!(input.available, Available::Definite(_));
+        let wrapping = input
+            .wrapping
+            .filter(|_| matches!(input.available, Available::Definite(_)));
+        let mut visited: Vec<Vec<CandidateKey>> = Vec::new();
+        'sequence: loop {
+            environment.roles.clear();
+            environment.box_uses.clear();
+            (environment.reset)(scope.reset);
+            result.truncate(entry.prefix_len);
+            let mut start = entry.boundary.view().participant_offset();
+            let mut logical_start = entry.logical_start;
+            let mut minimum_block = entry.minimum_block;
+            let mut indent_state = entry.indent_state;
+            let mut line_box_context = entry.line_box_context;
+            let mut hyphenation_state = entry.hyphenation_state;
+            // A rebuilt sequence owns fresh continuation custody. Requests below
+            // retain it in reuse, convergence and visited-choice identity.
+            let mut incoming = entry.incoming.clone();
+            let mut completed_end = false;
+            let mut current_boundary = entry.boundary.clone();
+            let mut formatted_count = 0;
+            while !completed_end {
+                let start_boundary = current_boundary.clone();
+                let rejected_choices: &[CandidateKey] = if constrained {
+                    if visited.len() <= result.len() - entry.prefix_len {
+                        visited.push(Vec::new());
+                    }
+                    &visited[result.len() - entry.prefix_len]
+                } else {
+                    &[]
                 };
-                let mut comparison_basis: Option<ComparisonBasis> = None;
+                let mut position = CandidatePosition {
+                    source_floor: logical_start,
+                    logical_start,
+                    minimum_block,
+                    deferred_from: None,
+                };
+                let mut transitions = Vec::new();
+                let role_start = environment.roles.len();
+                let box_use_start = environment.box_uses.len();
                 loop {
-                    choice = None;
-                    fitting_none = false;
-                    first_ceiling = None;
-                    skipped_ordinary.clear();
-                    zone_basis.references.clear();
-                    let mut ends = FittingEnds::default();
-                    let mut terminal = None;
-                    let mut scoped = ScopedChoices::default();
-                    for (end, opportunity, kind, alternatives) in &opportunities {
-                        if *end < start
-                            || (*end == start && *kind != PreparedBreakKind::ParagraphEnd)
-                        {
-                            continue;
+                    let mut phrase_basis = Vec::new();
+                    let mut choice: Option<EvaluatedCandidate>;
+                    let mut fitting_none;
+                    let mut first_ceiling;
+                    let mut skipped_ordinary = Vec::new();
+                    let mut zone_basis = ZoneBasis {
+                        policy: input.hyphenate_limit_zone,
+                        references: Vec::new(),
+                    };
+                    let mut comparison_basis: Option<ComparisonBasis> = None;
+                    loop {
+                        choice = None;
+                        fitting_none = false;
+                        first_ceiling = None;
+                        skipped_ordinary.clear();
+                        zone_basis.references.clear();
+                        let mut ends = FittingEnds::default();
+                        let mut terminal = None;
+                        let mut scoped = ScopedChoices {
+                            goal: scope.goal,
+                            ..ScopedChoices::default()
+                        };
+                        for (end, opportunity, kind, alternatives) in opportunities {
+                            #[cfg(test)]
+                            balance::observe_work(scope, true);
+                            if *end < start
+                                || (*end == start && *kind != PreparedBreakKind::ParagraphEnd)
+                            {
+                                continue;
+                            }
+                            let variants = (*kind != PreparedBreakKind::Discretionary)
+                                .then_some(None)
+                                .into_iter()
+                                .chain(alternatives.iter().cloned().map(Some));
+                            let query = EndpointContext {
+                                accepted_prefix: result,
+                                line_box_context,
+                                start: &start_boundary,
+                                incoming: incoming.as_ref(),
+                                position: &position,
+                                indent_state,
+                                hyphenation_state,
+                                rejected_choices,
+                                conditional: false,
+                            };
+                            let endpoint = environment.choose_endpoint(
+                                input,
+                                &query,
+                                variants.map(|alternative| LineEndpoint {
+                                    boundary: opportunity.view().boundary(),
+                                    termination: PreparedTermination::Ordinary(opportunity.clone()),
+                                    alternative,
+                                    ending: match kind {
+                                        PreparedBreakKind::Allowed
+                                        | PreparedBreakKind::Discretionary => LineEnd::Soft,
+                                        PreparedBreakKind::Forced => LineEnd::Forced,
+                                        PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
+                                    },
+                                }),
+                                &mut zone_basis,
+                            )?;
+                            fitting_none |= endpoint.fitting_none;
+                            let EndpointChoice {
+                                candidate: endpoint_choice,
+                                dispositions,
+                                formatted: ordinary_formatted,
+                                ..
+                            } = endpoint;
+                            if wrapping.is_some()
+                                && !matches!(
+                                    kind,
+                                    PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary
+                                )
+                            {
+                                terminal = Some((
+                                    opportunity.view().boundary(),
+                                    endpoint_choice
+                                        .as_ref()
+                                        .map(|candidate| candidate.observed(&position)),
+                                ));
+                            }
+                            if let Some(candidate) = endpoint_choice {
+                                if wrapping.is_some() {
+                                    ends.observe(&candidate, scope.goal.is_some());
+                                }
+                                if comparison_basis.is_some()
+                                    && candidate.fits
+                                    && candidate.disposition.is_formatted()
+                                    && (scope.goal.is_some()
+                                        || candidate.request.context.end == LineEnd::Soft)
+                                {
+                                    scoped.consider(
+                                        wrapping.expect("comparison has a scope loan"),
+                                        candidate.clone(),
+                                    );
+                                }
+                                if (choice.is_none()
+                                    || (!matches!(input.available, Available::Minimum)
+                                        && (candidate.fits
+                                            || matches!(input.available, Available::Maximum))))
+                                    && prefer_candidate(scope.goal, &candidate, choice.as_ref())?
+                                {
+                                    choice = Some(candidate);
+                                }
+                            }
+                            if first_ceiling.is_none() {
+                                if ordinary_formatted {
+                                    first_ceiling = Some(opportunity.clone());
+                                } else {
+                                    skipped_ordinary.extend(dispositions);
+                                }
+                            }
+                            if matches!(input.available, Available::Minimum) && ordinary_formatted {
+                                break;
+                            }
+                            if !matches!(
+                                kind,
+                                PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary
+                            ) {
+                                break;
+                            }
                         }
-                        let variants = (*kind != PreparedBreakKind::Discretionary)
-                            .then_some(None)
-                            .into_iter()
-                            .chain(alternatives.iter().cloned().map(Some));
+                        if wrapping.is_some() {
+                            let observed = ComparisonBasis {
+                                position: position.clone(),
+                                normal: choice
+                                    .as_ref()
+                                    .map(|candidate| candidate.observed(&position)),
+                                terminal,
+                                progress: None,
+                                ceiling: first_ceiling.as_ref().map(
+                                    |opportunity: &surgeist_text::PreparedOpportunity| {
+                                        opportunity.view().boundary()
+                                    },
+                                ),
+                                fitting_none,
+                                ends,
+                            };
+                            if let Some(prior) = &comparison_basis {
+                                if prior != &observed {
+                                    return Err(FitError::FeedbackCycle);
+                                }
+                                if let Some(preferred) = scoped.preferred()? {
+                                    choice = Some(preferred);
+                                }
+                            } else if observed.ends.multiple
+                                && !choice.as_ref().is_some_and(|candidate| {
+                                    candidate.fits && candidate.request.context.end != LineEnd::Soft
+                                })
+                            {
+                                comparison_basis = Some(observed);
+                                continue;
+                            }
+                        }
+                        break;
+                    }
+                    // A rejected fitting nonhyphenating terminal branch does not
+                    // authorize overflow/emergency in an otherwise fitting word.
+                    let choice =
+                        choice.filter(|candidate| !constrained || candidate.fits || !fitting_none);
+                    let Some(mut candidate) = choice else {
+                        if constrained
+                            && result.len() > entry.prefix_len
+                            && let Some(parent) = result.pop()
+                        {
+                            let depth = result.len() - entry.prefix_len;
+                            visited.truncate(depth + 1);
+                            visited[depth].push(parent.key());
+                            continue 'sequence;
+                        }
+                        return if scope.stop_at_forced {
+                            Ok(SequenceOutcome::Inadmissible)
+                        } else {
+                            Err(FitError::FeedbackCycle)
+                        };
+                    };
+                    let purpose = match input.available {
+                        Available::Minimum => Some(ConditionalPurpose::MinContent),
+                        Available::Definite(_) if !candidate.fits => {
+                            Some(ConditionalPurpose::Overflow)
+                        }
+                        Available::Definite(_) | Available::Maximum => None,
+                    };
+                    let mut minimal_progress = None;
+                    if let Some(purpose) = purpose
+                        && let Some(ceiling) = first_ceiling
+                        && ceiling.view().boundary().view().participant_offset() > start
+                    {
+                        let search = input.prepared.conditional_search(
+                            &start_boundary,
+                            incoming.as_ref(),
+                            &ceiling,
+                            purpose,
+                            &skipped_ordinary,
+                            (purpose == ConditionalPurpose::Overflow)
+                                .then_some(&candidate.finalized),
+                        )?;
                         let query = EndpointContext {
-                            accepted_prefix: &result,
-                            line_box_context,
+                            accepted_prefix: result,
                             start: &start_boundary,
+                            line_box_context,
                             incoming: incoming.as_ref(),
                             position: &position,
                             indent_state,
                             hyphenation_state,
                             rejected_choices,
-                            conditional: false,
+                            conditional: true,
                         };
-                        let endpoint = environment.choose_endpoint(
-                            &input,
-                            &query,
-                            variants.map(|alternative| LineEndpoint {
-                                boundary: opportunity.view().boundary(),
-                                termination: PreparedTermination::Ordinary(opportunity.clone()),
-                                alternative,
-                                ending: match kind {
-                                    PreparedBreakKind::Allowed
-                                    | PreparedBreakKind::Discretionary => LineEnd::Soft,
-                                    PreparedBreakKind::Forced => LineEnd::Forced,
-                                    PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
-                                },
-                            }),
-                            &mut zone_basis,
-                        )?;
-                        fitting_none |= endpoint.fitting_none;
-                        let EndpointChoice {
-                            candidate: endpoint_choice,
-                            dispositions,
-                            formatted: ordinary_formatted,
-                            ..
-                        } = endpoint;
-                        if wrapping.is_some()
-                            && !matches!(
-                                kind,
-                                PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary
-                            )
-                        {
-                            terminal = Some((
-                                opportunity.view().boundary(),
-                                endpoint_choice
-                                    .as_ref()
-                                    .map(|candidate| candidate.observed(&position)),
-                            ));
+                        let mut decisions = Vec::new();
+                        for portion in search.phrase_portions() {
+                            let (decision, basis) =
+                                environment.measure_phrase(input, &query, &candidate, portion)?;
+                            decisions.push(decision);
+                            phrase_basis.push(basis);
                         }
-                        if let Some(candidate) = endpoint_choice {
-                            if wrapping.is_some() {
-                                ends.observe(&candidate);
+                        let mut batch = search.begin(&decisions)?;
+                        let mut restored_fallback = false;
+                        loop {
+                            let stage = batch.stage();
+                            let mut dispositions = Vec::new();
+                            let mut stage_choice: Option<EvaluatedCandidate>;
+                            let mut blocked_none;
+                            let mut stage_progress;
+                            let progress_already_present = minimal_progress.is_some();
+                            let zone_start = zone_basis.references.len();
+                            let mut comparison_basis: Option<ComparisonBasis> = None;
+                            loop {
+                                dispositions.clear();
+                                zone_basis.references.truncate(zone_start);
+                                stage_choice = None;
+                                blocked_none = false;
+                                stage_progress = None;
+                                let mut ends = FittingEnds::default();
+                                let mut scoped = ScopedChoices {
+                                    goal: scope.goal,
+                                    ..ScopedChoices::default()
+                                };
+                                let mut from = 0;
+                                while from < batch.opportunities().len() {
+                                    let boundary = batch.opportunities()[from].boundary();
+                                    let mut to = from + 1;
+                                    while to < batch.opportunities().len()
+                                        && batch.opportunities()[to].boundary() == boundary
+                                    {
+                                        to += 1;
+                                    }
+                                    let endpoint = environment.choose_endpoint(
+                                        input,
+                                        &query,
+                                        batch.opportunities()[from..to].iter().cloned().map(
+                                            |opportunity| {
+                                                let alternative = opportunity.alternative();
+                                                LineEndpoint {
+                                                    boundary: opportunity.boundary(),
+                                                    termination: PreparedTermination::Conditional(
+                                                        opportunity,
+                                                    ),
+                                                    alternative,
+                                                    ending: LineEnd::Soft,
+                                                }
+                                            },
+                                        ),
+                                        &mut zone_basis,
+                                    )?;
+                                    blocked_none |=
+                                        endpoint.fitting_none && endpoint.candidate.is_none();
+                                    dispositions.extend(endpoint.dispositions);
+                                    if let Some(trial) = endpoint.candidate {
+                                        if wrapping.is_some() {
+                                            ends.observe(&trial, scope.goal.is_some());
+                                        }
+                                        if comparison_basis.is_some()
+                                            && trial.fits
+                                            && trial.disposition.is_formatted()
+                                        {
+                                            scoped.consider(
+                                                wrapping.expect("comparison has a scope loan"),
+                                                trial.clone(),
+                                            );
+                                        }
+                                        if purpose == ConditionalPurpose::MinContent {
+                                            stage_choice = Some(trial);
+                                            break;
+                                        }
+                                        if stage == ConditionalStage::Arbitrary
+                                            && !trial.fits
+                                            && !progress_already_present
+                                            && stage_progress.is_none()
+                                        {
+                                            stage_progress = Some(trial);
+                                        } else if (stage_choice.is_none() || trial.fits)
+                                            && prefer_candidate(
+                                                scope.goal,
+                                                &trial,
+                                                stage_choice.as_ref(),
+                                            )?
+                                        {
+                                            stage_choice = Some(trial);
+                                        }
+                                    }
+                                    from = to;
+                                }
+                                if wrapping.is_some() {
+                                    let observed = ComparisonBasis {
+                                        position: position.clone(),
+                                        normal: stage_choice
+                                            .as_ref()
+                                            .map(|candidate| candidate.observed(&position)),
+                                        terminal: None,
+                                        progress: stage_progress
+                                            .as_ref()
+                                            .map(|candidate| candidate.observed(&position)),
+                                        ceiling: None,
+                                        fitting_none: blocked_none,
+                                        ends,
+                                    };
+                                    if let Some(prior) = &comparison_basis {
+                                        if prior != &observed {
+                                            return Err(FitError::FeedbackCycle);
+                                        }
+                                        if let Some(preferred) = scoped.preferred()? {
+                                            stage_choice = Some(preferred);
+                                        }
+                                    } else if observed.ends.multiple {
+                                        comparison_basis = Some(observed);
+                                        continue;
+                                    }
+                                }
+                                break;
                             }
-                            if comparison_basis.is_some()
-                                && candidate.fits
-                                && candidate.disposition.is_formatted()
-                                && candidate.request.context.end == LineEnd::Soft
+                            if !progress_already_present {
+                                minimal_progress = stage_progress;
+                            }
+                            if blocked_none
+                                && stage_choice.as_ref().is_none_or(|choice| !choice.fits)
                             {
-                                scoped.consider(
-                                    wrapping.expect("comparison has a scope loan"),
-                                    candidate.clone(),
-                                );
+                                if constrained
+                                    && result.len() > entry.prefix_len
+                                    && let Some(parent) = result.pop()
+                                {
+                                    let depth = result.len() - entry.prefix_len;
+                                    visited.truncate(depth + 1);
+                                    visited[depth].push(parent.key());
+                                    continue 'sequence;
+                                }
+                                return if scope.stop_at_forced {
+                                    Ok(SequenceOutcome::Inadmissible)
+                                } else {
+                                    Err(FitError::FeedbackCycle)
+                                };
                             }
-                            if choice.is_none()
-                                || (!matches!(input.available, Available::Minimum)
-                                    && (candidate.fits
-                                        || matches!(input.available, Available::Maximum)))
-                            {
-                                choice = Some(candidate);
+                            if let Some(choice) = stage_choice {
+                                if choice.fits || purpose == ConditionalPurpose::MinContent {
+                                    candidate = choice;
+                                    break;
+                                }
+                                if stage != ConditionalStage::Arbitrary && !restored_fallback {
+                                    candidate = choice;
+                                    restored_fallback = true;
+                                }
                             }
-                        }
-                        if first_ceiling.is_none() {
-                            if ordinary_formatted {
-                                first_ceiling = Some(opportunity.clone());
-                            } else {
-                                skipped_ordinary.extend(dispositions);
-                            }
-                        }
-                        if matches!(input.available, Available::Minimum) && ordinary_formatted {
-                            break;
-                        }
-                        if !matches!(
-                            kind,
-                            PreparedBreakKind::Allowed | PreparedBreakKind::Discretionary
-                        ) {
-                            break;
+                            let Some(next) = batch.advance(&dispositions)? else {
+                                break;
+                            };
+                            batch = next;
                         }
                     }
-                    if wrapping.is_some() {
-                        let observed = ComparisonBasis {
-                            position: position.clone(),
-                            normal: choice
-                                .as_ref()
-                                .map(|candidate| candidate.observed(&position)),
-                            terminal,
-                            progress: None,
-                            ceiling: first_ceiling.as_ref().map(
-                                |opportunity: &surgeist_text::PreparedOpportunity| {
-                                    opportunity.view().boundary()
-                                },
-                            ),
-                            fitting_none,
-                            ends,
-                        };
-                        if let Some(prior) = &comparison_basis {
-                            if prior != &observed {
-                                return Err(FitError::FeedbackCycle);
-                            }
-                            if let Some(preferred) = scoped.preferred()? {
-                                choice = Some(preferred);
-                            }
-                        } else if observed.ends.multiple
-                            && !choice.as_ref().is_some_and(|candidate| {
-                                candidate.fits && candidate.request.context.end != LineEnd::Soft
-                            })
-                        {
-                            comparison_basis = Some(observed);
+                    environment.restore(&candidate, &position)?;
+                    let basis = (
+                        candidate.request.clone(),
+                        candidate.boxes.clone(),
+                        candidate.amounts.clone(),
+                        candidate.encounters.clone(),
+                        candidate.bands,
+                        candidate.placed_start,
+                        position.logical_start,
+                        position.minimum_block,
+                        position.deferred_from.clone(),
+                        zone_basis.clone(),
+                    );
+                    if transitions.contains(&basis) {
+                        return Err(FitError::FeedbackCycle);
+                    }
+                    transitions.push(basis);
+                    if !candidate.fits
+                        && position.deferred_from.is_none()
+                        && candidate.encounters.iter().any(|event| event.preceding)
+                    {
+                        let deferred = (environment.replay)(
+                            &candidate.finalized,
+                            EncounterReplay {
+                                preceding: None,
+                                boxes: candidate.boxes.clone(),
+                                defer_preceding: true,
+                                ..position.replay(candidate.placed_start, None)
+                            },
+                        )?;
+                        if deferred != candidate.encounters {
+                            position.deferred_from = Some(candidate.request.clone());
                             continue;
                         }
                     }
-                    break;
-                }
-                // A rejected fitting nonhyphenating terminal branch does not
-                // authorize overflow/emergency in an otherwise fitting word.
-                let choice =
-                    choice.filter(|candidate| !constrained || candidate.fits || !fitting_none);
-                let Some(mut candidate) = choice else {
-                    if constrained && let Some(parent) = result.pop() {
-                        let depth = result.len();
-                        visited.truncate(depth + 1);
-                        visited[depth].push(parent.key());
-                        continue 'sequence;
+                    if !candidate.fits
+                        && let Some(progress) = minimal_progress
+                    {
+                        candidate = progress;
+                        environment.restore(&candidate, &position)?;
                     }
-                    return Err(FitError::FeedbackCycle);
-                };
-                let purpose = match input.available {
-                    Available::Minimum => Some(ConditionalPurpose::MinContent),
-                    Available::Definite(_) if !candidate.fits => Some(ConditionalPurpose::Overflow),
-                    Available::Definite(_) | Available::Maximum => None,
-                };
-                let mut minimal_progress = None;
-                if let Some(purpose) = purpose
-                    && let Some(ceiling) = first_ceiling
-                    && ceiling.view().boundary().view().participant_offset() > start
-                {
-                    let search = input.prepared.conditional_search(
-                        &start_boundary,
-                        incoming.as_ref(),
-                        &ceiling,
-                        purpose,
-                        &skipped_ordinary,
-                        (purpose == ConditionalPurpose::Overflow).then_some(&candidate.finalized),
-                    )?;
-                    let query = EndpointContext {
-                        accepted_prefix: &result,
-                        start: &start_boundary,
-                        line_box_context,
-                        incoming: incoming.as_ref(),
-                        position: &position,
-                        indent_state,
-                        hyphenation_state,
-                        rejected_choices,
-                        conditional: true,
-                    };
-                    let mut decisions = Vec::new();
-                    for portion in search.phrase_portions() {
-                        let (decision, basis) =
-                            environment.measure_phrase(&input, &query, &candidate, portion)?;
-                        decisions.push(decision);
-                        phrase_basis.push(basis);
-                    }
-                    let mut batch = search.begin(&decisions)?;
-                    let mut restored_fallback = false;
-                    loop {
-                        let stage = batch.stage();
-                        let mut dispositions = Vec::new();
-                        let mut stage_choice: Option<EvaluatedCandidate>;
-                        let mut blocked_none;
-                        let mut stage_progress;
-                        let progress_already_present = minimal_progress.is_some();
-                        let zone_start = zone_basis.references.len();
-                        let mut comparison_basis: Option<ComparisonBasis> = None;
-                        loop {
-                            dispositions.clear();
-                            zone_basis.references.truncate(zone_start);
-                            stage_choice = None;
-                            blocked_none = false;
-                            stage_progress = None;
-                            let mut ends = FittingEnds::default();
-                            let mut scoped = ScopedChoices::default();
-                            let mut from = 0;
-                            while from < batch.opportunities().len() {
-                                let boundary = batch.opportunities()[from].boundary();
-                                let mut to = from + 1;
-                                while to < batch.opportunities().len()
-                                    && batch.opportunities()[to].boundary() == boundary
-                                {
-                                    to += 1;
-                                }
-                                let endpoint = environment.choose_endpoint(
-                                    &input,
-                                    &query,
-                                    batch.opportunities()[from..to].iter().cloned().map(
-                                        |opportunity| {
-                                            let alternative = opportunity.alternative();
-                                            LineEndpoint {
-                                                boundary: opportunity.boundary(),
-                                                termination: PreparedTermination::Conditional(
-                                                    opportunity,
-                                                ),
-                                                alternative,
-                                                ending: LineEnd::Soft,
-                                            }
-                                        },
-                                    ),
-                                    &mut zone_basis,
-                                )?;
-                                blocked_none |=
-                                    endpoint.fitting_none && endpoint.candidate.is_none();
-                                dispositions.extend(endpoint.dispositions);
-                                if let Some(trial) = endpoint.candidate {
-                                    if wrapping.is_some() {
-                                        ends.observe(&trial);
-                                    }
-                                    if comparison_basis.is_some()
-                                        && trial.fits
-                                        && trial.disposition.is_formatted()
-                                    {
-                                        scoped.consider(
-                                            wrapping.expect("comparison has a scope loan"),
-                                            trial.clone(),
-                                        );
-                                    }
-                                    if purpose == ConditionalPurpose::MinContent {
-                                        stage_choice = Some(trial);
-                                        break;
-                                    }
-                                    if stage == ConditionalStage::Arbitrary
-                                        && !trial.fits
-                                        && !progress_already_present
-                                        && stage_progress.is_none()
-                                    {
-                                        stage_progress = Some(trial);
-                                    } else if stage_choice.is_none() || trial.fits {
-                                        stage_choice = Some(trial);
-                                    }
-                                }
-                                from = to;
-                            }
-                            if wrapping.is_some() {
-                                let observed = ComparisonBasis {
-                                    position: position.clone(),
-                                    normal: stage_choice
-                                        .as_ref()
-                                        .map(|candidate| candidate.observed(&position)),
-                                    terminal: None,
-                                    progress: stage_progress
-                                        .as_ref()
-                                        .map(|candidate| candidate.observed(&position)),
-                                    ceiling: None,
-                                    fitting_none: blocked_none,
-                                    ends,
-                                };
-                                if let Some(prior) = &comparison_basis {
-                                    if prior != &observed {
-                                        return Err(FitError::FeedbackCycle);
-                                    }
-                                    if let Some(preferred) = scoped.preferred()? {
-                                        stage_choice = Some(preferred);
-                                    }
-                                } else if observed.ends.multiple {
-                                    comparison_basis = Some(observed);
-                                    continue;
-                                }
-                            }
-                            break;
-                        }
-                        if !progress_already_present {
-                            minimal_progress = stage_progress;
-                        }
-                        if blocked_none && stage_choice.as_ref().is_none_or(|choice| !choice.fits) {
-                            if constrained && let Some(parent) = result.pop() {
-                                let depth = result.len();
-                                visited.truncate(depth + 1);
-                                visited[depth].push(parent.key());
-                                continue 'sequence;
-                            }
-                            return Err(FitError::FeedbackCycle);
-                        }
-                        if let Some(choice) = stage_choice {
-                            if choice.fits || purpose == ConditionalPurpose::MinContent {
-                                candidate = choice;
-                                break;
-                            }
-                            if stage != ConditionalStage::Arbitrary && !restored_fallback {
-                                candidate = choice;
-                                restored_fallback = true;
-                            }
-                        }
-                        let Some(next) = batch.advance(&dispositions)? else {
-                            break;
-                        };
-                        batch = next;
-                    }
-                }
-                environment.restore(&candidate, &position)?;
-                let basis = (
-                    candidate.request.clone(),
-                    candidate.boxes.clone(),
-                    candidate.amounts.clone(),
-                    candidate.encounters.clone(),
-                    candidate.bands,
-                    candidate.placed_start,
-                    position.logical_start,
-                    position.minimum_block,
-                    position.deferred_from.clone(),
-                    zone_basis.clone(),
-                );
-                if transitions.contains(&basis) {
-                    return Err(FitError::FeedbackCycle);
-                }
-                transitions.push(basis);
-                if !candidate.fits
-                    && position.deferred_from.is_none()
-                    && candidate.encounters.iter().any(|event| event.preceding)
-                {
-                    let deferred = (environment.replay)(
-                        &candidate.finalized,
-                        EncounterReplay {
-                            preceding: None,
-                            boxes: candidate.boxes.clone(),
-                            defer_preceding: true,
-                            ..position.replay(candidate.placed_start, None)
-                        },
-                    )?;
-                    if deferred != candidate.encounters {
-                        position.deferred_from = Some(candidate.request.clone());
+                    if !candidate.fits
+                        && let Some(next) = candidate
+                            .bands
+                            .next_transition(position.logical_start, candidate.placed_start)
+                    {
+                        position.logical_start = position.logical_start.max(next);
+                        position.minimum_block = Some(
+                            position
+                                .minimum_block
+                                .map_or(next, |minimum| minimum.max(next)),
+                        );
                         continue;
                     }
-                }
-                if !candidate.fits
-                    && let Some(progress) = minimal_progress
-                {
-                    candidate = progress;
+                    // Deferred replay above may have been a no-op. Restore the exact
+                    // candidate once more before any clear/accept operation observes it.
                     environment.restore(&candidate, &position)?;
+                    let logical_end = finite(
+                        position.logical_start + candidate.disposition.height(&candidate.finalized),
+                    )?;
+                    let cleared = if candidate.disposition.is_formatted() {
+                        clear_source(logical_end, &candidate.request)?
+                            .map(finite)
+                            .transpose()?
+                            .map_or(logical_end, |minimum| minimum.max(logical_end))
+                    } else {
+                        logical_end
+                    };
+                    minimum_block = position.minimum_block;
+                    if cleared > logical_end {
+                        minimum_block =
+                            Some(minimum_block.map_or(cleared, |minimum| minimum.max(cleared)));
+                    }
+                    let ending = candidate.request.context.end;
+                    let end = candidate.request.end.view().participant_offset();
+                    current_boundary = candidate.request.end.clone();
+                    let first_formatted = indent_state.first_formatted();
+                    if candidate.disposition.is_formatted() {
+                        indent_state.commit(ending == LineEnd::Forced);
+                        line_box_context.commit(candidate.request.context.line_box_direction);
+                    }
+                    accept_encounters()?;
+                    if matches!(input.available, Available::Definite(_))
+                        && candidate.disposition.is_formatted()
+                    {
+                        hyphenation_state.commit(candidate.request.alternative.is_some());
+                    }
+                    // Trials and hypothetical manual portions do not mutate this
+                    // state; only the accepted outgoing ending replaces it.
+                    incoming = candidate.finalized.hyphenation_continuation();
+                    let available = candidate.finalized.metric_bounds().size.width;
+                    result.push(FittedLine {
+                        disposition: candidate.disposition,
+                        boxes: candidate.boxes,
+                        box_uses: environment.box_uses.split_off(box_use_start),
+                        first_formatted,
+                        role_uses: environment.roles.split_off(role_start),
+                        line_box_end: line_box_context,
+                        zone_basis,
+                        phrase_basis,
+                        hyphenation_end: hyphenation_state,
+                        encounters: candidate.encounters,
+                        finalized: candidate.finalized,
+                        amounts: candidate.amounts,
+                        natural_advance: candidate.natural_advance,
+                        balance: None,
+                        inline_start: candidate.bands.combined().start,
+                        placed_start: candidate.placed_start,
+                        available,
+                        bands: candidate.bands,
+                        flow: LineFlow {
+                            start: position.logical_start,
+                            end: logical_end,
+                            next: cleared,
+                        },
+                    });
+                    logical_start = cleared;
+                    start = end;
+                    completed_end = ending == LineEnd::Paragraph;
+                    if result
+                        .last()
+                        .is_some_and(|line| line.disposition.is_formatted())
+                    {
+                        formatted_count += 1;
+                    }
+                    if scope.max_formatted.is_some_and(|max| formatted_count > max) {
+                        return Ok(SequenceOutcome::Inadmissible);
+                    }
+                    break;
                 }
-                if !candidate.fits
-                    && let Some(next) = candidate
-                        .bands
-                        .next_transition(position.logical_start, candidate.placed_start)
+                if scope.stop_at_forced
+                    && result.last().is_some_and(|line| {
+                        line.finalized.selected_line().request().context.end == LineEnd::Forced
+                    })
                 {
-                    position.logical_start = position.logical_start.max(next);
-                    position.minimum_block = Some(
-                        position
-                            .minimum_block
-                            .map_or(next, |minimum| minimum.max(next)),
-                    );
-                    continue;
+                    break;
                 }
-                // Deferred replay above may have been a no-op. Restore the exact
-                // candidate once more before any clear/accept operation observes it.
-                environment.restore(&candidate, &position)?;
-                let logical_end = finite(
-                    position.logical_start + candidate.disposition.height(&candidate.finalized),
-                )?;
-                let cleared = if candidate.disposition.is_formatted() {
-                    clear_source(logical_end, &candidate.request)?
-                        .map(finite)
-                        .transpose()?
-                        .map_or(logical_end, |minimum| minimum.max(logical_end))
-                } else {
-                    logical_end
-                };
-                minimum_block = position.minimum_block;
-                if cleared > logical_end {
-                    minimum_block =
-                        Some(minimum_block.map_or(cleared, |minimum| minimum.max(cleared)));
-                }
-                let ending = candidate.request.context.end;
-                let end = candidate.request.end.view().participant_offset();
-                current_boundary = candidate.request.end.clone();
-                let first_formatted = indent_state.first_formatted();
-                if candidate.disposition.is_formatted() {
-                    indent_state.commit(ending == LineEnd::Forced);
-                    line_box_context.commit(candidate.request.context.line_box_direction);
-                }
-                accept_encounters()?;
-                if matches!(input.available, Available::Definite(_))
-                    && candidate.disposition.is_formatted()
-                {
-                    hyphenation_state.commit(candidate.request.alternative.is_some());
-                }
-                // Trials and hypothetical manual portions do not mutate this
-                // state; only the accepted outgoing ending replaces it.
-                incoming = candidate.finalized.hyphenation_continuation();
-                let available = candidate.finalized.metric_bounds().size.width;
-                result.push(FittedLine {
-                    disposition: candidate.disposition,
-                    boxes: candidate.boxes,
-                    box_uses: environment.box_uses.split_off(box_use_start),
-                    first_formatted,
-                    role_uses: environment.roles.split_off(role_start),
-                    line_box_end: line_box_context,
-                    zone_basis,
-                    phrase_basis,
-                    hyphenation_end: hyphenation_state,
-                    encounters: candidate.encounters,
-                    finalized: candidate.finalized,
-                    amounts: candidate.amounts,
-                    inline_start: candidate.bands.combined().start,
-                    placed_start: candidate.placed_start,
-                    available,
-                    bands: candidate.bands,
-                    flow: LineFlow {
-                        start: position.logical_start,
-                        end: logical_end,
-                        next: cleared,
-                    },
-                });
-                logical_start = cleared;
-                start = end;
-                completed_end = ending == LineEnd::Paragraph;
-                break;
             }
+            if completed_end
+                && constrained
+                && let Some(last) = result
+                    .iter()
+                    .rposition(|line| line.finalized.has_in_flow_content())
+                && last > 0
+                && result[last - 1]
+                    .finalized
+                    .selected_line()
+                    .request()
+                    .context
+                    .end
+                    == LineEnd::Soft
+                && result[last - 1]
+                    .finalized
+                    .selected_line()
+                    .request()
+                    .alternative
+                    .is_some()
+            {
+                // Reject the completed suffix, then visit the next actual choice at
+                // its deepest decision. Exhausted descendants backtrack above.
+                if result.len() <= entry.prefix_len {
+                    return Ok(SequenceOutcome::Inadmissible);
+                }
+                let index = result.len() - 1;
+                let depth = index - entry.prefix_len;
+                visited.truncate(depth + 1);
+                visited[depth].push(result[index].key());
+                continue 'sequence;
+            }
+            return Ok(SequenceOutcome::Complete(SequenceEntry {
+                boundary: current_boundary,
+                logical_start,
+                minimum_block,
+                indent_state,
+                line_box_context,
+                hyphenation_state,
+                incoming,
+                prefix_len: result.len(),
+            }));
         }
-        if constrained
-            && let Some(last) = result
-                .iter()
-                .rposition(|line| line.finalized.has_in_flow_content())
-            && last > 0
-            && result[last - 1]
-                .finalized
-                .selected_line()
-                .request()
-                .context
-                .end
-                == LineEnd::Soft
-            && result[last - 1]
-                .finalized
-                .selected_line()
-                .request()
-                .alternative
-                .is_some()
-        {
-            // Reject the completed suffix, then visit the next actual choice at
-            // its deepest decision. Exhausted descendants backtrack above.
-            let depth = result.len() - 1;
-            visited.truncate(depth + 1);
-            visited[depth].push(result[depth].key());
-            continue 'sequence;
-        }
-        return Ok(result);
     }
 }
 

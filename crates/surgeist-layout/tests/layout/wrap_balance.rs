@@ -483,3 +483,191 @@ fn nowrap_preserves_the_same_real_source_on_one_overflowing_line() {
         characterize::<f64>(direction, t::Wrap::None, false, &expected);
     }
 }
+
+fn set_normalized_wrap_style<S: l::LayoutScalar>(
+    fixture: &mut Fixture<S>,
+    style: l::TextWrapStyle,
+) {
+    let original = fixture.tree.inputs[0].as_box().cloned().unwrap();
+    fixture.tree.inputs[0] = l::LayoutInputOf::box_input(l::NodeInputOf {
+        text_wrap_style: style,
+        ..original
+    });
+    assert_eq!(
+        fixture.tree.inputs[0].as_box().unwrap().text_wrap_style,
+        style
+    );
+}
+
+fn assert_real_capacity_and_tab_basis<S: l::LayoutScalar>(
+    fixture: &Fixture<S>,
+    batch: &l::CompletedLayoutBatchOf<u32, S>,
+    count: usize,
+) -> Vec<t::TabContext> {
+    let mut tabs = vec![None; count];
+    for fragment in batch.final_inline_fragments() {
+        let l::InlineFragmentOwner::Node(node) = fragment.owner() else {
+            continue;
+        };
+        if !fixture
+            .binding
+            .origins
+            .iter()
+            .any(|origin| origin.node == *node)
+        {
+            continue;
+        }
+        let line = fragment.fragment().finalized_fragment().finalized_line();
+        assert_eq!(line.prepared_text(), fixture.prepared);
+        let selected = line.selected_line();
+        let context = &selected.request().context;
+        // A selection goal cannot replace the actual 60px fit/tab/percent frame.
+        assert_eq!(context.available_inline, Some(60.0));
+        assert_eq!(context.indent, 0.0);
+        assert_eq!(context.orientation, t::LineOrientation::Horizontal);
+        let slot = &mut tabs[fragment.fragment().line_index()];
+        if let Some(previous) = slot {
+            assert_eq!(*previous, context.tabs);
+        } else {
+            *slot = Some(context.tabs.clone());
+        }
+    }
+    tabs.into_iter()
+        .map(|basis| basis.expect("actual body receipt supplies each line's tab basis"))
+        .collect()
+}
+
+fn compute_changed_wrap_style<S: l::LayoutScalar>(
+    fixture: &Fixture<S>,
+) -> l::CompletedLayoutBatchOf<u32, S> {
+    let flow = l::LayoutFlowInput::try_new(
+        &fixture.tree,
+        0,
+        vec![fixture.binding.clone()],
+        l::WrappingInput::default(),
+    )
+    .unwrap();
+    let request = l::LayoutRootRequestOf::viewport(l::Size::new(
+        l::AvailableOf::definite(S::from_f64(60.0)),
+        l::AvailableOf::MAX_CONTENT,
+    ))
+    .unwrap();
+    let batch = l::compute_layout_with_flow_invalidated(&flow, 0, request, &[0]).unwrap();
+    assert!(batch.invalidated_nodes().contains(&0));
+    batch
+}
+
+fn balance_transition<S: l::LayoutScalar>(
+    direction: l::Direction,
+    wrap: t::Wrap,
+    forced_groups: bool,
+    auto_expected: &[(t::Range, f64, t::LineEnd)],
+    balance_expected: &[(t::Range, f64, t::LineEnd)],
+) {
+    let mut fixture = Fixture::<S>::new(direction, wrap, forced_groups);
+    assert_eq!(
+        fixture.tree.inputs[0].as_box().unwrap().text_wrap_style,
+        l::TextWrapStyle::Auto
+    );
+    let preparation = fixture.prepared.clone();
+    let capture = Arc::clone(&fixture.capture);
+    let binding = fixture.binding.clone();
+    let auto = fixture.compute();
+    fixture.assert_lines(&auto, auto_expected, direction);
+    let actual_tabs = assert_real_capacity_and_tab_basis(&fixture, &auto, auto_expected.len());
+
+    set_normalized_wrap_style(&mut fixture, l::TextWrapStyle::Balance);
+    assert_eq!(fixture.prepared, preparation);
+    assert!(Arc::ptr_eq(&fixture.capture, &capture));
+    assert_eq!(fixture.binding, binding);
+    let balanced = compute_changed_wrap_style(&fixture);
+    fixture.assert_lines(&balanced, balance_expected, direction);
+    assert_eq!(
+        balanced.placed_text()[0].layout().metrics().line_count(),
+        auto.placed_text()[0].layout().metrics().line_count()
+    );
+    assert_eq!(
+        assert_real_capacity_and_tab_basis(&fixture, &balanced, balance_expected.len()),
+        actual_tabs
+    );
+    let balanced_replay = fixture.compute();
+    fixture.assert_lines(&balanced_replay, balance_expected, direction);
+    assert_eq!(
+        balanced.placed_text()[0].layout().key(),
+        balanced_replay.placed_text()[0].layout().key()
+    );
+    if auto_expected != balance_expected {
+        assert_ne!(
+            auto.placed_text()[0].layout().key(),
+            balanced.placed_text()[0].layout().key()
+        );
+    }
+    // Existing completed Auto output is immutable after a different real choice.
+    fixture.assert_lines(&auto, auto_expected, direction);
+
+    set_normalized_wrap_style(&mut fixture, l::TextWrapStyle::Auto);
+    let auto_again = compute_changed_wrap_style(&fixture);
+    fixture.assert_lines(&auto_again, auto_expected, direction);
+    assert_eq!(
+        assert_real_capacity_and_tab_basis(&fixture, &auto_again, auto_expected.len()),
+        actual_tabs
+    );
+    assert_eq!(
+        auto.placed_text()[0].layout().key(),
+        auto_again.placed_text()[0].layout().key()
+    );
+    assert_eq!(fixture.prepared, preparation);
+    assert!(Arc::ptr_eq(&fixture.capture, &capture));
+    assert_eq!(fixture.binding, binding);
+    fixture.assert_lines(&balanced, balance_expected, direction);
+    fixture.assert_lines(&auto, auto_expected, direction);
+}
+
+#[test]
+fn balance_uses_two_real_word_lines_with_natural_measures_thirty_and_forty() {
+    let auto = [
+        (t::Range::new(0, 7), 60.0, t::LineEnd::Soft),
+        (t::Range::new(7, 8), 10.0, t::LineEnd::Paragraph),
+    ];
+    let balanced = [
+        (t::Range::new(0, 4), 30.0, t::LineEnd::Soft),
+        (t::Range::new(4, 8), 40.0, t::LineEnd::Paragraph),
+    ];
+    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+        balance_transition::<f32>(direction, t::Wrap::Word, false, &auto, &balanced);
+        balance_transition::<f64>(direction, t::Wrap::Word, false, &auto, &balanced);
+    }
+}
+
+#[test]
+fn balance_preserves_each_actual_forced_group_and_its_two_line_count() {
+    let auto = [
+        (t::Range::new(0, 7), 60.0, t::LineEnd::Soft),
+        (t::Range::new(7, 8), 10.0, t::LineEnd::Forced),
+        (t::Range::new(8, 15), 60.0, t::LineEnd::Soft),
+        (t::Range::new(15, 16), 10.0, t::LineEnd::Paragraph),
+    ];
+    let balanced = [
+        (t::Range::new(0, 4), 30.0, t::LineEnd::Soft),
+        (t::Range::new(4, 8), 40.0, t::LineEnd::Forced),
+        (t::Range::new(8, 12), 30.0, t::LineEnd::Soft),
+        (t::Range::new(12, 16), 40.0, t::LineEnd::Paragraph),
+    ];
+    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+        balance_transition::<f32>(direction, t::Wrap::Word, true, &auto, &balanced);
+        balance_transition::<f64>(direction, t::Wrap::Word, true, &auto, &balanced);
+    }
+}
+
+#[test]
+fn balance_keeps_actual_nowrap_source_on_its_original_overflowing_line() {
+    let unchanged = [(t::Range::new(0, 8), 80.0, t::LineEnd::Paragraph)];
+    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+        balance_transition::<f32>(direction, t::Wrap::None, false, &unchanged, &unchanged);
+        balance_transition::<f64>(direction, t::Wrap::None, false, &unchanged, &unchanged);
+    }
+}
+
+mod advanced;
+
+mod numeric;

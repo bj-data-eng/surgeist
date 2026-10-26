@@ -65,11 +65,21 @@ Source: [node input](../src/node_input/mod.rs) and its domain modules.
 - Aggregate input: `NodeInputOf` and its `NodeInput` default-scalar alias.
 - Tree participation: owned `LayoutInputOf` storage and borrowed `LayoutInputViewOf`, `Display`, `Position`, and `ItemOrder`.
 - Flow and alignment: `WritingMode`, `Direction`, `AlignItems`, `AlignContent`,
-  `TextAlign`, `TextAlignLast`, and `TextJustification`.
+  `TextAlign`, `TextAlignLast`, `TextJustification`, and `TextWrapStyle`.
 - Inline and flex input: `TextParticipation`, `TextControlParticipation`, `TextParagraphBinding`,
   `InlineBoundaryInputOf`, `FlexDirection`, `FlexWrap`, and `FlexItemCollapse`.
 - Grid input: `GridPlacement`, `GridAutoFlow`, and `GridFlowToleranceOf`.
 - Scroll input: `ComputedOverflow`, `OverflowClipMarginOf`, `ScrollPaddingOf`, `ScrollMarginOf`, and `ScrollSnapType`.
+
+`NodeInputOf::text_wrap_style` defaults to `TextWrapStyle::Auto`. `Balance`
+selects among the same legal endpoints within each actual forced-break group,
+using natural remaining inline space before justification. It preserves Auto's
+formatted-line count in its bounded two-to-ten-line search; larger groups use
+Auto. The preference does not narrow containing geometry, change tab or
+percentage bases, or authorize conditional overflow breaks. Numeric atomic and
+control-only runs use the same preference through their existing fitter.
+Intrinsic sizing and forced-only nowrap retain their ordinary behavior. This is
+an unfragmented, unclamped profile; the other CSS wrap styles are not exposed.
 
 Prepared Text participation carries actual issued origin, atomic, control and scope
 handles. Capture validates complete inventories against the same borrowed tree;

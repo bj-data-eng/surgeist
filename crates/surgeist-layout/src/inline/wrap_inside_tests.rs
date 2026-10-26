@@ -137,6 +137,8 @@ fn exercise<S: LayoutScalar>(
     };
     let selected = select_scope_inline_line(
         NumericLineQuery {
+            goal: None,
+            indent: S::ZERO,
             run,
             cursor: InlineSourceCursor::default(),
             next_boundary_descriptor: supplied.len(),
@@ -167,6 +169,8 @@ fn exercise<S: LayoutScalar>(
     );
     let receiving = select_scope_inline_line(
         NumericLineQuery {
+            goal: None,
+            indent: S::ZERO,
             run,
             cursor: selected.next_cursor,
             next_boundary_descriptor: supplied.len(),

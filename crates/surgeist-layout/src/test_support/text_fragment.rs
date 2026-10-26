@@ -16,6 +16,7 @@ pub(crate) fn fragment_for(
 ) -> surgeist_text::FinalizedFragment {
     let lines = crate::text_layout::fit::fit(
         crate::text_layout::fit::FitInput {
+            wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,
             formatted: &crate::text_layout::formatted::FormattedTailSnapshot::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
@@ -63,6 +64,7 @@ pub(crate) fn fragment_for(
         },
         |_, _| Ok(None),
         crate::text_layout::fit::EncounterCallbacks {
+            checkpoint_group: || {},
             replay: |_: &surgeist_text::FinalizedLine,
                      _: crate::text_layout::fit::EncounterReplay| Ok(Vec::new()),
             accept: || Ok(()),

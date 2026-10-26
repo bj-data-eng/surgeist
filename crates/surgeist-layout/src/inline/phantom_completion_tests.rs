@@ -32,6 +32,7 @@ fn input<S: LayoutScalar>(
     participants: Vec<MixedInlineParticipantOf<S>>,
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
+        text_wrap_style: crate::TextWrapStyle::Auto,
         line_box_context: crate::line_box::LineBoxContext::new(
             crate::LineBoxDirectionPolicy::Plaintext,
             direction,

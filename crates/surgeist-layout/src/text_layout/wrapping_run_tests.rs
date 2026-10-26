@@ -80,6 +80,7 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
         &[],
         &controls,
         Context {
+            wrap_style: crate::TextWrapStyle::Auto,
             wrapping: WrappingProjection::new(
                 &input.wrapping,
                 &input.graph,
@@ -109,6 +110,7 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
         },
         &[],
         LineEnvironment {
+            checkpoint_group: || {},
             band: |_, _| {
                 Ok(Band {
                     start: 0.0,

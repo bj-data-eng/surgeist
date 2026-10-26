@@ -12,5 +12,5 @@ mod source_edges_native_source_interleaving;
 mod source_edges_propagation;
 mod terminal_box_completion;
 
-mod wrap_balance;
 mod numeric_completion;
+mod wrap_balance;
