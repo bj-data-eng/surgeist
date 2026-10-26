@@ -52,7 +52,7 @@ pub(super) fn admit(
     if input.computed_line_boundaries.is_empty() {
         return Ok(());
     }
-    let flow = super::canonical::CanonicalFlow::new(topology)?;
+    let flow = topology.canonical_flow()?;
     let mut endpoint_scopes = Vec::new();
     super::super::reserve(&mut endpoint_scopes, topology.controls.len())?;
     endpoint_scopes.resize(topology.controls.len(), None);

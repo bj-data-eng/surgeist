@@ -207,6 +207,7 @@ pub(crate) struct ScopedEvent {
 
 #[derive(Clone, Debug)]
 pub(crate) struct ScopeCapture {
+    canonical: canonical::CanonicalCache,
     pub(crate) computed_input_rows: Vec<usize>,
     pub(crate) computed: Vec<computed::CapturedComputedBoundaryData>,
     pub(crate) origin_orders: Vec<usize>,
@@ -429,6 +430,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
     };
     let mut cursor = 0;
     let mut topology = ScopeCapture {
+        canonical: canonical::CanonicalCache::default(),
         computed_input_rows: Vec::new(),
         computed: Vec::new(),
         origin_orders: vec![0; input.origins.len()],
