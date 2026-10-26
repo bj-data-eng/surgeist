@@ -15,7 +15,7 @@ fn anchor_free_scope_boundary_parenthesis_counts_toward_structural_limit() {
             ":is(".repeat(255),
             ")".repeat(255)
         );
-        let report = parse_sheet(&accepted);
+        let report = CssParser::default().parse_sheet(&accepted);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let [CssRule::Scope(scope), CssRule::Style(after)] = report.syntax().rules() else {
             panic!("scope and following neighbor")
@@ -44,7 +44,7 @@ fn anchor_free_scope_boundary_parenthesis_counts_toward_structural_limit() {
             ":is(".repeat(256),
             ")".repeat(256)
         );
-        let report = parse_sheet(&exceeded);
+        let report = CssParser::default().parse_sheet(&exceeded);
         let [diagnostic] = report.diagnostics() else {
             panic!("one excess scope diagnostic: {:?}", report.diagnostics())
         };

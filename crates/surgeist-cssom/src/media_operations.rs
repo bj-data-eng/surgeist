@@ -74,7 +74,8 @@ impl CssomBatch {
                 });
             }
             check_input(source, &this.limits)?;
-            let (value, diagnostics) = recovered(parse_media_query_list(source))?;
+            let (value, diagnostics) =
+                recovered(CssMediaQueryList::parse(&CssParser::default(), source))?;
             value
                 .serialize_cssom(this.limits.css)
                 .map_err(CssomError::Media)?;
@@ -110,7 +111,8 @@ impl CssomBatch {
         self.apply(|this| {
             this.staged.media(id)?;
             check_input(source, &this.limits)?;
-            let (candidate, diagnostics) = recovered(parse_cssom_media_query(source))?;
+            let (candidate, diagnostics) =
+                recovered(CssMediaQuery::parse_medium(&CssParser::default(), source))?;
             let Some(candidate) = candidate else {
                 return Ok(CssomMediaEdit {
                     changed: false,

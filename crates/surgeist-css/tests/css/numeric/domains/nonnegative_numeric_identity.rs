@@ -8,7 +8,7 @@ use surgeist_css::*;
 macro_rules! aggregate_parser {
     ($name:ident, $ty:ty, $variant:ident, $getter:ident) => {
         fn $name(source: &str) -> $ty {
-            let report = parse_style_attribute(source);
+            let report = CssParser::default().parse_block_contents(source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(report.syntax().len(), 1, "{source}");
             let CssKnownPropertyValueRef::$variant(value) = report.syntax()[0]
@@ -36,7 +36,7 @@ aggregate_parser!(
 aggregate_parser!(animation, CssAnimationList, Animation, value);
 
 fn filter(source: &str) -> CssFilter {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
     match report.syntax()[0]
@@ -267,7 +267,10 @@ fn nonnegative_equality_controls_keep_defaults_branches_fill_order_and_omission(
 #[test]
 fn raw_nonnegative_scalar_and_calculation_equality_ignores_provenance() {
     let n = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
-        parse_component_values("1").unwrap().items()[0].clone(),
+        CssComponentValues::parse(&CssParser::default(), "1")
+            .unwrap()
+            .items()[0]
+            .clone(),
     )
     .unwrap();
     let built = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
@@ -279,7 +282,10 @@ fn raw_nonnegative_scalar_and_calculation_equality_ignores_provenance() {
         "Direct shared nonnegative Number equality ignores parsed versus programmatic provenance for 1"
     );
     let p = CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
-        parse_component_values("25%").unwrap().items()[0].clone(),
+        CssComponentValues::parse(&CssParser::default(), "25%")
+            .unwrap()
+            .items()[0]
+            .clone(),
     )
     .unwrap();
     let built = CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
@@ -291,12 +297,12 @@ fn raw_nonnegative_scalar_and_calculation_equality_ignores_provenance() {
         "Direct shared nonnegative Percentage equality ignores parsed versus programmatic provenance for 25%"
     );
     let a = CssCalculation::<CssNumber>::try_from_components(
-        parse_component_values("calc(1 + 2)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(1 + 2)").unwrap(),
         Default::default(),
     )
     .unwrap();
     let b = CssCalculation::<CssNumber>::try_from_components(
-        parse_component_values("  calc(1 + 2)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "  calc(1 + 2)").unwrap(),
         Default::default(),
     )
     .unwrap();

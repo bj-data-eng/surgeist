@@ -8,7 +8,7 @@ use surgeist_css::*;
 fn calculation(text: &str) -> CssNumeric<CssInteger> {
     CssNumeric::<CssInteger>::try_from_calculation(
         CssCalculation::<CssInteger>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -43,7 +43,10 @@ fn typed_constructors_preserve_fractional_negative_and_nonfinite_calculation_gra
         let Some(graph) = pad.minimum_length().calculation() else {
             panic!("calculation variant must be retained")
         };
-        assert_eq!(graph.components(), &parse_component_values(text).unwrap());
+        assert_eq!(
+            graph.components(),
+            &CssComponentValues::parse(&CssParser::default(), text).unwrap()
+        );
     }
 }
 
@@ -56,7 +59,8 @@ fn symbolic_order_is_deferred_while_adjacent_literal_descent_remains_checked() {
         "calc(-1) X, 5 Y",
         "1 X, calc(2) Y, 2 Z",
     ] {
-        let report = parse_counter_style_descriptor_value(
+        let report = CssCounterStyleDescriptorValue::parse(
+            &CssParser::default(),
             input,
             CssCounterStyleDescriptorKind::AdditiveSymbols,
         );
@@ -110,7 +114,11 @@ fn fixed_calculated_default_retains_its_wrapper_and_explicit_occurrence() {
 #[test]
 fn isolated_rule_and_genuine_body_fronts_share_math_and_complete_member_recovery() {
     let body = "{system: fixed calc(1.5); range: calc(8) calc(2); pad: '0' min(1, 2); additive-symbols: max(1, 2) X, 0 N; pad: calc(1px) '0';}";
-    let block = parse_counter_style_block(body);
+    let block = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        body,
+        &CssBlockContext::default(),
+    );
     assert_eq!(block.diagnostics().len(), 1);
     assert_eq!(
         block.diagnostics()[0].action(),
@@ -119,7 +127,11 @@ fn isolated_rule_and_genuine_body_fronts_share_math_and_complete_member_recovery
     let descriptors = block.syntax().as_ref().unwrap().body();
     assert_eq!(descriptors.occurrences().count(), 4);
     let source = format!("@counter-style x {body}");
-    let isolated = parse_rule(&source, &CssNamespaceContext::default());
+    let isolated = CssRule::parse(
+        &CssParser::default(),
+        &source,
+        &CssNamespaceContext::default(),
+    );
     assert_eq!(isolated.diagnostics().len(), 1);
     let Some(CssRule::CounterStyle(rule)) = isolated.syntax() else {
         panic!("rule retained after descriptor recovery")
@@ -183,7 +195,7 @@ fn checked_pending_env_math_reentry_is_reusable_and_rejects_residual_var_and_env
     for token in ["env(weight)", "env(weight, calc(1.5) X)"] {
         let pending = CssCounterStyleDescriptorValue::try_from_components(
             CssCounterStyleDescriptorKind::AdditiveSymbols,
-            parse_component_values(token).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), token).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -192,7 +204,7 @@ fn checked_pending_env_math_reentry_is_reusable_and_rejects_residual_var_and_env
         // the second weight is responsible.
         let error = pending
             .reparse_after_substitution(
-                parse_component_values("2 X, 2 Y").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "2 X, 2 Y").unwrap(),
                 Default::default(),
             )
             .unwrap_err();
@@ -206,7 +218,7 @@ fn checked_pending_env_math_reentry_is_reusable_and_rejects_residual_var_and_env
             assert!(
                 pending
                     .reparse_after_substitution(
-                        parse_component_values(residual).unwrap(),
+                        CssComponentValues::parse(&CssParser::default(), residual).unwrap(),
                         Default::default()
                     )
                     .unwrap_err()
@@ -216,7 +228,8 @@ fn checked_pending_env_math_reentry_is_reusable_and_rejects_residual_var_and_env
         }
         let completed = pending
             .reparse_after_substitution(
-                parse_component_values("calc(1.5) X, calc(-1.5) Y").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "calc(1.5) X, calc(-1.5) Y")
+                    .unwrap(),
                 Default::default(),
             )
             .unwrap();
@@ -235,10 +248,10 @@ fn checked_pending_env_math_reentry_is_reusable_and_rejects_residual_var_and_env
 #[test]
 fn normalization_keeps_math_payloads_and_descriptor_origins_in_conditional_and_scoped_rules() {
     let source = "@media print { @counter-style A { system: fixed calc(1.5); } } @scope { @counter-style B { pad: calc(-1.5) '0'; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let retained = report.syntax().clone();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let counters = normalized
         .items()
         .iter()
@@ -299,12 +312,12 @@ fn suppressed_duplicate_math_spends_cumulative_input_budget_without_emitting_byt
 fn checked_math_depth_failure_keeps_the_original_pending_descriptor() {
     let pending = CssCounterStyleDescriptorValue::try_from_components(
         CssCounterStyleDescriptorKind::Pad,
-        parse_component_values("env(pad)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "env(pad)").unwrap(),
         Default::default(),
     )
     .unwrap();
     let source = "calc(1 + (2 + (3 + (4 + 5)))) '0'";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let limits = CssComponentValueLimits::try_new(2, 1000, 10000).unwrap();
     let before = pending.clone();
     assert!(

@@ -60,14 +60,19 @@ fn assert_relative(expression: &CssRelativeColorExpression) {
 
 fn parsed(text: &str) -> CssDeclaration {
     let source = format!("color:{text}!important;height:1px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
     assert_eq!(
         report.syntax()[1].known().unwrap().property(),
         CssKnownProperty::Height
     );
-    assert!(validate_style_attribute(&source).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_ok()
+    );
     let declaration = report.syntax()[0].clone();
     assert_eq!(
         declaration
@@ -83,7 +88,7 @@ fn parsed(text: &str) -> CssDeclaration {
 
 fn assert_reentry(text: &str) {
     let source = detached_checked_declaration("color", "var(--paint)", false);
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending color")
     };
     let replacement = components(text);
@@ -97,7 +102,9 @@ fn assert_reentry(text: &str) {
     assert_eq!(item.source().importance(), CssImportance::Important);
     assert_eq!(item.replacement_components(), Some(&replacement));
     let CssExpansion::Contributions(CssContributions::Longhands(expected)) =
-        expand_declaration(&detached_checked_declaration("color", text, false)).unwrap()
+        detached_checked_declaration("color", text, false)
+            .expand()
+            .unwrap()
     else {
         panic!("checked color")
     };
@@ -206,7 +213,7 @@ fn relative_non_hue_channels_and_alpha_admit_hinted_numbers_through_frontdoors()
 
 fn rejects(text: &str) {
     let source = format!("color:{text};height:1px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(report.syntax().len(), 1, "{text}");
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),
@@ -218,19 +225,24 @@ fn rejects(text: &str) {
         CssRecoveryAction::DropDeclaration
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_color_grammar_failure(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
             components(text),
             CssImportance::Normal,
         ),
         text,
     );
     let pending = detached_checked_declaration("color", "var(--paint)", false);
-    let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+    let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
         panic!("pending")
     };
     assert!(

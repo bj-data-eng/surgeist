@@ -5,7 +5,7 @@ use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn one_component(text: &str) -> CssComponentValue {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [component] = values.items() else {
         panic!("expected one component: {text}")
     };
@@ -21,7 +21,7 @@ fn factor(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
 
 fn basis(text: &str) -> CssFlexBasisValue {
     let source = format!("flex-basis:{text}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::FlexBasis(value) = report.syntax()[0]
         .known()
@@ -36,7 +36,7 @@ fn basis(text: &str) -> CssFlexBasisValue {
 
 fn flex(text: &str) -> CssFlexValue {
     let source = format!("flex:{text}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Flex(value) = report.syntax()[0]
         .known()
@@ -51,11 +51,11 @@ fn flex(text: &str) -> CssFlexValue {
 
 fn contributions(text: &str) -> Vec<CssLonghandContribution> {
     let source = format!("flex:{text}!important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let declaration = &report.syntax()[0];
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(declaration).unwrap()
+        declaration.expand().unwrap()
     else {
         panic!("three flex contributions: {source}")
     };
@@ -120,7 +120,7 @@ fn checked_factors_preserve_exact_lexical_numbers_and_symbolic_math() {
         assert!(error.is_out_of_range(), "{error:?}");
     }
     let math = CssCalculation::<CssNumber>::try_from_components(
-        parse_component_values("calc(1 + 2)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(1 + 2)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -207,7 +207,7 @@ fn content_calc_size_is_flex_valid_and_box_invalid_at_the_offending_basis() {
 
     let constructed = CssComponentValue::try_function(
         "calc-size",
-        parse_component_values("content, size").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "content, size").unwrap(),
     )
     .unwrap();
     let calc = CssCalcSize::try_from_component(constructed, Default::default()).unwrap();
@@ -441,10 +441,10 @@ fn global_and_pending_flex_declarations_keep_all_three_contributions() {
         ("revert", CssGlobalKeyword::Revert),
         ("revert-layer", CssGlobalKeyword::RevertLayer),
     ] {
-        let report = parse_style_attribute(&format!("flex:{text}!important"));
+        let report = CssParser::default().parse_block_contents(format!("flex:{text}!important"));
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
         let CssExpansion::Contributions(CssContributions::Longhands(globals)) =
-            expand_declaration(&report.syntax()[0]).unwrap()
+            report.syntax()[0].expand().unwrap()
         else {
             panic!("global flex: {text}")
         };
@@ -455,19 +455,19 @@ fn global_and_pending_flex_declarations_keep_all_three_contributions() {
             assert_eq!(item.source().importance(), CssImportance::Important);
         }
     }
-    let report = parse_style_attribute("flex:var(--f)!important");
+    let report = CssParser::default().parse_block_contents("flex:var(--f)!important");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let CssExpansion::Pending(pending) = expand_declaration(&report.syntax()[0]).unwrap() else {
+    let CssExpansion::Pending(pending) = report.syntax()[0].expand().unwrap() else {
         panic!("pending flex")
     };
     assert!(
         pending
-            .reenter(parse_component_values("2 content 3").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "2 content 3").unwrap())
             .unwrap_err()
             .replacement_error()
             .is_some()
     );
-    let replacement = parse_component_values("10px 2 3").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "10px 2 3").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("reentered flex")
     };
@@ -481,13 +481,14 @@ fn global_and_pending_flex_declarations_keep_all_three_contributions() {
 
 #[test]
 fn normalization_retains_valid_flex_contributions_around_a_dropped_declaration() {
-    let report = parse_sheet(".a{flex:2;flex:2 content 3;flex:none!important}");
+    let report =
+        CssParser::default().parse_sheet(".a{flex:2;flex:2 content 3;flex:none!important}");
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -524,9 +525,9 @@ fn normalization_retains_valid_flex_contributions_around_a_dropped_declaration()
 
 #[test]
 fn normalization_preserves_mixed_flex_occurrence_order_and_rejects_member_limit() {
-    let report = parse_sheet(".a{flex-grow:4;flex:2;flex-basis:10px}");
+    let report = CssParser::default().parse_sheet(".a{flex-grow:4;flex:2;flex-basis:10px}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -553,7 +554,7 @@ fn normalization_preserves_mixed_flex_occurrence_order_and_rejects_member_limit(
     }
 
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 3).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert!(error.exhausted_limit() == Some((CssNormalizationResource::Contributions, 3)));
     assert_eq!(
         error.declaration().unwrap().known().unwrap().property(),

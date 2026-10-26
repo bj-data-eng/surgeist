@@ -2,9 +2,9 @@
 //! termination at a real parent close. Checked output may supply a semicolon.
 
 use surgeist_css::{
-    CssRecoveryAction, CssRule, CssSerializedOrigin, CssSupportsAtRuleTest,
-    CssSupportsConditionRule, CssSupportsTestBody, CssSupportsTestItem, CssValueOrigin,
-    parse_component_values, parse_sheet, validate_sheet,
+    CssComponentValues, CssParser, CssRecoveryAction, CssRule, CssSerializedOrigin,
+    CssSupportsAtRuleTest, CssSupportsConditionRule, CssSupportsTestBody, CssSupportsTestItem,
+    CssValueOrigin,
 };
 
 fn statement(body: &CssSupportsTestBody) -> &CssSupportsAtRuleTest {
@@ -30,7 +30,7 @@ fn generated_semicolon(body: &CssSupportsTestBody) {
 fn explicit_named_body_close_and_checked_components_allow_an_unterminated_symbolic_statement() {
     // Pinned Syntax block supplement §§5.5.2/5.5.5 uses nested=true.
     let source = "/*🦊*/\r\n@supports-condition --x{@future}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::SupportsCondition(definition)] = report.syntax().rules() else {
         panic!("one named definition")
@@ -45,9 +45,15 @@ fn explicit_named_body_close_and_checked_components_allow_an_unterminated_symbol
     assert_eq!(origin.span().end().byte_offset().value(), start + 7);
     assert!(definition.body().recovery_origin().is_none());
     generated_semicolon(definition.body());
-    assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
 
-    let input = parse_component_values("@future").unwrap();
+    let input = CssComponentValues::parse(&CssParser::default(), "@future").unwrap();
     let input_origin = input.items()[0].origin().clone();
     let body = CssSupportsTestBody::try_from_components(input, Default::default()).unwrap();
     let keyword = statement(&body);
@@ -65,7 +71,7 @@ fn explicit_named_body_close_and_checked_components_allow_an_unterminated_symbol
 #[test]
 fn actual_source_eof_retains_the_statement_and_only_the_real_named_body_closure() {
     let source = "/*🦊*/\r\n@supports-condition --x{@future";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::SupportsCondition(definition)] = report.syntax().rules() else {
         panic!("EOF-recovered named definition")
     };
@@ -93,7 +99,11 @@ fn actual_source_eof_retains_the_statement_and_only_the_real_named_body_closure(
     assert!(opening.source().same_snapshot(at.source()));
     assert_eq!(at.source().as_str(), source);
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert!(

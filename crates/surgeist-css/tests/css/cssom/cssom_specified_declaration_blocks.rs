@@ -61,7 +61,7 @@ fn keyframe_terminal_expected(name: CssPropertyNameRef<'_>) -> bool {
 }
 
 fn declarations(source: &str) -> CssDeclarationList {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {report:?}");
     report.syntax().clone()
 }
@@ -122,7 +122,7 @@ fn gradient_inverses_preserve_conic_interpolation_and_double_stop_roles() {
 }
 
 fn keyframes(source: &str) -> CssKeyframesRule {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {report:?}");
     let [CssRule::Keyframes(rule)] = report.syntax().rules() else {
         panic!("expected keyframes")
@@ -401,17 +401,19 @@ fn all_eight_pending_mode_families_fail_at_the_real_occurrence_and_retry_in_both
             list[0].serialize_specified(Default::default()).unwrap(),
             format!("{name}: var(--M);")
         );
-        let CssExpansion::Pending(pending) = expand_declaration(&list[0]).unwrap() else {
+        let CssExpansion::Pending(pending) = list[0].expand().unwrap() else {
             panic!("pending")
         };
-        let following = expand_declaration(&list[1]).unwrap();
+        let following = list[1].expand().unwrap();
         for (replacement, expected) in [
             (scalar.to_string(), scalar.to_string()),
             (format!("logical {scalar}"), format!("logical {scalar}")),
         ] {
             let completed = CssExpansion::Contributions(
                 pending
-                    .reenter(parse_component_values(&replacement).unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), &replacement).unwrap(),
+                    )
                     .unwrap(),
             );
             let block = CssSpecifiedDeclarationBlock::try_from_expansions(
@@ -438,17 +440,17 @@ fn all_eight_pending_mode_families_fail_at_the_real_occurrence_and_retry_in_both
 #[test]
 fn completed_mode_footprints_override_only_their_selected_members() {
     let list = declarations("margin:var(--M);margin-left:7px");
-    let CssExpansion::Pending(pending) = expand_declaration(&list[0]).unwrap() else {
+    let CssExpansion::Pending(pending) = list[0].expand().unwrap() else {
         panic!("pending")
     };
-    let after = expand_declaration(&list[1]).unwrap();
+    let after = list[1].expand().unwrap();
     for (input, expected) in [
         ("1px", "margin: 1px 1px 1px 7px;"),
         ("logical 1px", "margin: logical 1px; margin-left: 7px;"),
     ] {
         let complete = CssExpansion::Contributions(
             pending
-                .reenter(parse_component_values(input).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), input).unwrap())
                 .unwrap(),
         );
         let block = CssSpecifiedDeclarationBlock::try_from_expansions(
@@ -458,14 +460,14 @@ fn completed_mode_footprints_override_only_their_selected_members() {
         .unwrap();
         assert_eq!(block.serialize_cssom(Default::default()).unwrap(), expected);
     }
-    let inline = expand_declaration(&declarations("margin-inline-start:7px")[0]).unwrap();
+    let inline = declarations("margin-inline-start:7px")[0].expand().unwrap();
     for (input, expected) in [
         ("1px", "margin: 1px; margin-inline-start: 7px;"),
         ("logical 1px", "margin: logical 1px 7px 1px 1px;"),
     ] {
         let complete = CssExpansion::Contributions(
             pending
-                .reenter(parse_component_values(input).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), input).unwrap())
                 .unwrap(),
         );
         let block = CssSpecifiedDeclarationBlock::try_from_expansions(
@@ -566,7 +568,7 @@ fn every_supported_finite_shorthand_uses_its_own_independent_inverse_literal() {
             continue;
         };
         let source = format!("{}:{}", row.name, expected.authored);
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         if !report.is_clean() {
             failures.push(format!("{source:?}: independent stimulus was rejected"));
             continue;
@@ -850,7 +852,7 @@ fn keyframe_normalization_and_expansion_domain_reject_important_and_excluded_sou
         ),
     ] {
         let declaration = &declarations(source)[0];
-        let expansion = expand_declaration(declaration).unwrap();
+        let expansion = declaration.expand().unwrap();
         let error = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
             std::slice::from_ref(&expansion),
             Default::default(),
@@ -862,7 +864,7 @@ fn keyframe_normalization_and_expansion_domain_reject_important_and_excluded_sou
         CssSpecifiedDeclarationBlock::try_from_expansions(&[expansion], Default::default())
             .unwrap();
     }
-    let expansion = expand_declaration(&declarations("--animation-duration:1s")[0]).unwrap();
+    let expansion = declarations("--animation-duration:1s")[0].expand().unwrap();
     assert_eq!(
         CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
             &[expansion],
@@ -975,14 +977,16 @@ fn keyframe_pending_mode_error_and_completed_fronts_keep_the_real_original_sourc
             original.serialize_specified(Default::default()).unwrap(),
             format!("{name}: var(--M);")
         );
-        let CssExpansion::Pending(pending) = expand_declaration(original).unwrap() else {
+        let CssExpansion::Pending(pending) = original.expand().unwrap() else {
             panic!("pending")
         };
-        let before = expand_declaration(list.as_slice()[0].source()).unwrap();
+        let before = list.as_slice()[0].source().expand().unwrap();
         for replacement in [scalar.to_string(), format!("logical {scalar}")] {
             let completed = CssExpansion::Contributions(
                 pending
-                    .reenter(parse_component_values(&replacement).unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), &replacement).unwrap(),
+                    )
                     .unwrap(),
             );
             let block = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
@@ -1011,19 +1015,20 @@ fn keyframe_pending_mode_error_and_completed_fronts_keep_the_real_original_sourc
 #[test]
 fn keyframe_reentry_preserves_quirks_context_and_genuine_programmatic_absence() {
     let context = CssParserContext::new(CssParserMode::Quirks);
-    let report = context.parse_sheet("@keyframes k{from{width:var(--W)}}");
+    let report = CssParser::new(context, Default::default())
+        .parse_sheet("@keyframes k{from{width:var(--W)}}");
     assert!(report.is_clean());
     let [CssRule::Keyframes(rule)] = report.syntax().rules() else {
         panic!("keyframes")
     };
     let source = rule.blocks()[0].declarations().as_slice()[0].source();
     assert_eq!(source.parser_context(), context);
-    let CssExpansion::Pending(pending) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending")
     };
     let completed = CssExpansion::Contributions(
         pending
-            .reenter(parse_component_values("1").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "1").unwrap())
             .unwrap(),
     );
     let block = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
@@ -1039,11 +1044,11 @@ fn keyframe_reentry_preserves_quirks_context_and_genuine_programmatic_absence() 
     assert_eq!(block.entries()[0].source().parser_context(), context);
     assert_eq!(block.entries()[0].source().position(), source.position());
     let ordinary = declarations("width:var(--W)");
-    let CssExpansion::Pending(pending) = expand_declaration(&ordinary[0]).unwrap() else {
+    let CssExpansion::Pending(pending) = ordinary[0].expand().unwrap() else {
         panic!("pending")
     };
     let detail = crate::css::support::value_assertions::replacement_rejection(
-        pending.reenter(parse_component_values("1").unwrap()),
+        pending.reenter(CssComponentValues::parse(&CssParser::default(), "1").unwrap()),
         CssKnownProperty::Width,
     );
     assert_eq!(
@@ -1051,14 +1056,15 @@ fn keyframe_reentry_preserves_quirks_context_and_genuine_programmatic_absence() 
         Some("1")
     );
 
-    let source = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Opacity),
-        parse_component_values("1").unwrap(),
+    let source = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Opacity)),
+        CssComponentValues::parse(&CssParser::default(), "1").unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
     assert_eq!(source.position(), None);
-    let expansion = expand_declaration(&source).unwrap();
+    let expansion = source.expand().unwrap();
     let block = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
         &[expansion],
         Default::default(),
@@ -1272,8 +1278,11 @@ fn inverse_numeric_graph_equality_ignores_original_coordinates_and_preserves_pha
         read(&graphs, CssKnownProperty::Margin).as_deref(),
         Some("calc(3px) calc(3px)")
     );
-    let report = CssParserContext::new(CssParserMode::Quirks)
-        .parse_style_attribute("margin-top:1;margin-right:1px;margin-bottom:1;margin-left:1px");
+    let report = CssParser::new(
+        CssParserContext::new(CssParserMode::Quirks),
+        Default::default(),
+    )
+    .parse_block_contents("margin-top:1;margin-right:1px;margin-bottom:1;margin-left:1px");
     assert!(report.is_clean());
     let quirky =
         CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
@@ -1920,7 +1929,7 @@ fn ordinary_time_pair_providers_keep_their_own_comparison_and_projection_tariffs
 #[test]
 fn ordinary_numeric_owner_keeps_its_math_and_keyword_tariffs() {
     let calculation = CssCalculation::<CssTime>::try_from_components(
-        parse_component_values("calc(1s + 2s)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(1s + 2s)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -2204,7 +2213,7 @@ fn color_mix_inverse_compares_exact_effective_declared_shares_and_default_interp
 
 #[test]
 fn ordinary_color_owner_keeps_its_exact_coefficient_tariff() {
-    let report = parse_style_attribute("color:color(srgb 1 0 0)");
+    let report = CssParser::default().parse_block_contents("color:color(srgb 1 0 0)");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::Color(value) = report.syntax()[0]
         .known()
@@ -2782,7 +2791,8 @@ fn all_source_block(
     value: &str,
 ) -> (CssDeclaration, CssSpecifiedDeclarationBlock) {
     if keyframe {
-        let report = context.parse_sheet(&format!("@keyframes k{{from{{all:{value}}}}}"));
+        let report = CssParser::new(context, Default::default())
+            .parse_sheet(format!("@keyframes k{{from{{all:{value}}}}}"));
         assert!(report.is_clean());
         let CssRule::Keyframes(rule) = &report.syntax().rules()[0] else {
             panic!("keyframes")
@@ -2794,7 +2804,8 @@ fn all_source_block(
                 .unwrap();
         (source, block)
     } else {
-        let report = context.parse_style_attribute(&format!("all:{value}"));
+        let report = CssParser::new(context, Default::default())
+            .parse_block_contents(format!("all:{value}"));
         assert!(report.is_clean());
         let source = report.syntax()[0].clone();
         let block = CssSpecifiedDeclarationBlock::try_from_declarations(
@@ -2808,7 +2819,7 @@ fn all_source_block(
 
 #[test]
 fn explicit_svg_terminal_winners_and_legacy_alias_keep_distinct_semantic_owners() {
-    let report = svg_context().parse_style_attribute("glyph-orientation-vertical:180deg!important;glyph-orientation-vertical:90deg;text-orientation:upright");
+    let report = CssParser::new(svg_context(), Default::default()).parse_block_contents("glyph-orientation-vertical:180deg!important;glyph-orientation-vertical:90deg;text-orientation:upright");
     assert!(report.is_clean());
     let list = report.syntax();
     let block =
@@ -2844,9 +2855,10 @@ fn explicit_svg_terminal_winners_and_legacy_alias_keep_distinct_semantic_owners(
         "glyph-orientation-vertical: 180deg !important; text-orientation: upright;"
     );
 
-    let explicit = parse_property_value(
-        name,
-        parse_component_values("180deg").unwrap(),
+    let explicit = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(name),
+        CssComponentValues::parse(&CssParser::default(), "180deg").unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -2854,10 +2866,7 @@ fn explicit_svg_terminal_winners_and_legacy_alias_keep_distinct_semantic_owners(
     assert_eq!(explicit.position(), None);
     let legacy = declarations("glyph-orientation-vertical:0")[0].clone();
     assert!(legacy.svg_glyph_orientation_vertical().is_none());
-    let expansions = [
-        expand_declaration(&explicit).unwrap(),
-        expand_declaration(&legacy).unwrap(),
-    ];
+    let expansions = [explicit.expand().unwrap(), legacy.expand().unwrap()];
     let combined =
         CssSpecifiedDeclarationBlock::try_from_expansions(&expansions, Default::default()).unwrap();
     assert_eq!(
@@ -2881,7 +2890,7 @@ fn explicit_svg_terminal_winners_and_legacy_alias_keep_distinct_semantic_owners(
 
 #[test]
 fn svg_keyframe_accessors_borrow_the_actual_retained_body_and_normal_occurrence() {
-    let report = svg_context().parse_sheet(
+    let report = CssParser::new(svg_context(), Default::default()).parse_sheet(
         "@keyframes k{from{glyph-orientation-vertical:180deg;glyph-orientation-vertical:90deg}}",
     );
     assert!(report.is_clean());
@@ -2928,11 +2937,12 @@ fn svg_keyframe_accessors_borrow_the_actual_retained_body_and_normal_occurrence(
 
 #[test]
 fn svg_direct_pending_and_completed_reentry_keep_original_and_replacement_origins() {
-    let report = svg_context().parse_style_attribute("glyph-orientation-vertical:var(--G)");
+    let report = CssParser::new(svg_context(), Default::default())
+        .parse_block_contents("glyph-orientation-vertical:var(--G)");
     assert!(report.is_clean());
     let original = report.syntax()[0].clone();
     let name = CssPropertyNameRef::SvgGlyphOrientationVertical;
-    let CssExpansion::Pending(pending) = expand_declaration(&original).unwrap() else {
+    let CssExpansion::Pending(pending) = original.expand().unwrap() else {
         panic!("SVG pending")
     };
     let pending_block =
@@ -2958,7 +2968,7 @@ fn svg_direct_pending_and_completed_reentry_keep_original_and_replacement_origin
         original.serialize_specified(Default::default()).unwrap(),
         "glyph-orientation-vertical: var(--G);"
     );
-    let replacement = parse_component_values("45deg").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "45deg").unwrap();
     let completed = CssExpansion::Contributions(pending.reenter(replacement.clone()).unwrap());
     for block in [
         CssSpecifiedDeclarationBlock::try_from_expansions(
@@ -2991,7 +3001,7 @@ fn svg_direct_pending_and_completed_reentry_keep_original_and_replacement_origin
         assert_eq!(value.replacement_components(), Some(&replacement));
     }
     let error = pending
-        .reenter(parse_component_values("var(--G)").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "var(--G)").unwrap())
         .unwrap_err();
     assert!(error.is_residual_substitution(), "{error:?}");
     assert!(pending.source().same_occurrence(&original));
@@ -3006,20 +3016,21 @@ fn svg_direct_pending_and_completed_reentry_keep_original_and_replacement_origin
 
     // The explicit SVG name has SVG semantics even with the default finite
     // alias lookup selector. Its Normal constructed source has no position.
-    let explicit = parse_property_value(
-        name,
-        parse_component_values("var(--G)").unwrap(),
+    let explicit = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(name),
+        CssComponentValues::parse(&CssParser::default(), "var(--G)").unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
     assert_eq!(explicit.parser_context(), CssParserContext::default());
     assert_eq!(explicit.position(), None);
-    let CssExpansion::Pending(pending) = expand_declaration(&explicit).unwrap() else {
+    let CssExpansion::Pending(pending) = explicit.expand().unwrap() else {
         panic!("explicit SVG pending")
     };
     let complete = CssExpansion::Contributions(
         pending
-            .reenter(parse_component_values("45deg").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "45deg").unwrap())
             .unwrap(),
     );
     let block =
@@ -3035,8 +3046,8 @@ fn svg_direct_pending_and_completed_reentry_keep_original_and_replacement_origin
     assert!(block.entries()[0].source().same_occurrence(&explicit));
     assert_eq!(block.entries()[0].source().position(), None);
 
-    let report =
-        svg_context().parse_sheet("@keyframes k{from{glyph-orientation-vertical:var(--G)}}");
+    let report = CssParser::new(svg_context(), Default::default())
+        .parse_sheet("@keyframes k{from{glyph-orientation-vertical:var(--G)}}");
     assert!(report.is_clean());
     let CssRule::Keyframes(rule) = &report.syntax().rules()[0] else {
         panic!("keyframes")
@@ -3047,12 +3058,12 @@ fn svg_direct_pending_and_completed_reentry_keep_original_and_replacement_origin
         list.serialize_cssom(Default::default()).unwrap(),
         "glyph-orientation-vertical: var(--G);"
     );
-    let CssExpansion::Pending(pending) = expand_declaration(original).unwrap() else {
+    let CssExpansion::Pending(pending) = original.expand().unwrap() else {
         panic!("keyframe SVG pending")
     };
     let completed = CssExpansion::Contributions(
         pending
-            .reenter(parse_component_values("90deg").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "90deg").unwrap())
             .unwrap(),
     );
     let block = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
@@ -3135,13 +3146,15 @@ fn all_supported_union_ignores_lookup_selection_and_preserves_complete_pending_i
                         panic!("All SVG pending member")
                     };
                     assert!(original.same_occurrence(&source));
-                    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap()
-                    else {
+                    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
                         panic!("All pending")
                     };
                     let complete = CssExpansion::Contributions(
                         pending
-                            .reenter(parse_component_values("inherit").unwrap())
+                            .reenter(
+                                CssComponentValues::parse(&CssParser::default(), "inherit")
+                                    .unwrap(),
+                            )
                             .unwrap(),
                     );
                     let completed = if keyframe {
@@ -3198,7 +3211,7 @@ fn svg_all_overrides_mixed_priority_and_different_pending_occurrences_disqualify
             "var(--A)",
         ),
     ] {
-        let report = svg_context().parse_style_attribute(source);
+        let report = CssParser::new(svg_context(), Default::default()).parse_block_contents(source);
         assert!(report.is_clean());
         let list = report.syntax();
         let block =
@@ -3220,8 +3233,8 @@ fn svg_all_overrides_mixed_priority_and_different_pending_occurrences_disqualify
         assert_eq!(entry.authored_ordinal(), 1);
         assert_eq!(entry.member_ordinal(), 0);
     }
-    let report = svg_context()
-        .parse_style_attribute("all:inherit!important;glyph-orientation-vertical:auto");
+    let report = CssParser::new(svg_context(), Default::default())
+        .parse_block_contents("all:inherit!important;glyph-orientation-vertical:auto");
     assert!(report.is_clean());
     let block =
         CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
@@ -3239,8 +3252,8 @@ fn svg_all_overrides_mixed_priority_and_different_pending_occurrences_disqualify
 
     // Completed globals compare exact semantic values, while pending members
     // require one original occurrence. Equal Normal globals may coalesce.
-    let report =
-        svg_context().parse_style_attribute("all:inherit;glyph-orientation-vertical:inherit");
+    let report = CssParser::new(svg_context(), Default::default())
+        .parse_block_contents("all:inherit;glyph-orientation-vertical:inherit");
     assert!(report.is_clean());
     let block =
         CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
@@ -3260,7 +3273,8 @@ fn svg_all_overrides_mixed_priority_and_different_pending_occurrences_disqualify
         "all:inherit;glyph-orientation-vertical:auto",
         "all:var(--A);glyph-orientation-vertical:var(--A)",
     ] {
-        let report = svg_context().parse_sheet(&format!("@keyframes k{{from{{{source}}}}}"));
+        let report = CssParser::new(svg_context(), Default::default())
+            .parse_sheet(format!("@keyframes k{{from{{{source}}}}}"));
         assert!(report.is_clean());
         let CssRule::Keyframes(rule) = &report.syntax().rules()[0] else {
             panic!("keyframes")
@@ -3278,13 +3292,14 @@ fn svg_all_overrides_mixed_priority_and_different_pending_occurrences_disqualify
             .unwrap();
         assert!(entry.source().same_occurrence(list[1].source()));
     }
-    let important = parse_property_value(
-        name,
-        parse_component_values("auto").unwrap(),
+    let important = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(name),
+        CssComponentValues::parse(&CssParser::default(), "auto").unwrap(),
         CssImportance::Important,
     )
     .unwrap();
-    let expansion = expand_declaration(&important).unwrap();
+    let expansion = important.expand().unwrap();
     let error = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
         &[expansion],
         Default::default(),
@@ -3305,8 +3320,8 @@ fn svg_and_all_union_pay_exact_source_projection_and_atomic_output_work() {
         ("180deg", "180deg", 2, 2, 6),
         ("calc(30deg + 60deg)", "calc(90deg)", 5, 4, 11),
     ] {
-        let report =
-            svg_context().parse_style_attribute(&format!("glyph-orientation-vertical:{value}"));
+        let report = CssParser::new(svg_context(), Default::default())
+            .parse_block_contents(format!("glyph-orientation-vertical:{value}"));
         assert!(report.is_clean());
         let block = CssSpecifiedDeclarationBlock::try_from_declarations(
             report.syntax(),
@@ -3399,7 +3414,8 @@ fn svg_and_all_union_pay_exact_source_projection_and_atomic_output_work() {
     }
     // A single SVG Auto source builds I5/P3 (keyframe P5), then output costs
     // I4/P5 plus the one All presence pass, whose admitted footprint is n/r.
-    let report = svg_context().parse_style_attribute("glyph-orientation-vertical:auto");
+    let report = CssParser::new(svg_context(), Default::default())
+        .parse_block_contents("glyph-orientation-vertical:auto");
     assert!(report.is_clean());
     let list = report.syntax();
     let exact = CssSerializationLimits::new(9, n + 8, 33);
@@ -3430,7 +3446,8 @@ fn svg_and_all_union_pay_exact_source_projection_and_atomic_output_work() {
             "glyph-orientation-vertical: auto;"
         );
     }
-    let report = svg_context().parse_sheet("@keyframes k{from{glyph-orientation-vertical:auto}}");
+    let report = CssParser::new(svg_context(), Default::default())
+        .parse_sheet("@keyframes k{from{glyph-orientation-vertical:auto}}");
     assert!(report.is_clean());
     let CssRule::Keyframes(rule) = &report.syntax().rules()[0] else {
         panic!("keyframes")
@@ -3489,7 +3506,7 @@ fn all_svg_winner_work_retains_the_full_unfiltered_member_ordinal() {
         .count();
     for keyframe in [false, true] {
         let (source, _) = all_source_block(CssParserContext::default(), keyframe, "inherit");
-        let expansions = [expand_declaration(&source).unwrap()];
+        let expansions = [source.expand().unwrap()];
         let build = |limits| {
             if keyframe {
                 CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(&expansions, limits)

@@ -13,7 +13,7 @@ use surgeist_css::*;
 
 fn cssom(value: &str) -> String {
     let source = format!("color: {value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
         .unwrap()

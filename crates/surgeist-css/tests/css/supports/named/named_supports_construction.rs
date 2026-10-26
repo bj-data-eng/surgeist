@@ -3,9 +3,9 @@
 
 use surgeist_css::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssImportance, CssRule, CssSerializedOrigin, CssSupportsConditionName,
+    CssImportance, CssParser, CssRule, CssSerializedOrigin, CssSupportsConditionName,
     CssSupportsConditionRule, CssSupportsTestBody, CssSupportsTestItem, CssValueOrigin,
-    CssValueTokenRef, parse_component_values, parse_sheet,
+    CssValueTokenRef,
 };
 
 #[test]
@@ -35,7 +35,7 @@ fn extension_names_use_decoded_case_sensitive_identifiers_and_original_origin() 
     assert!(error.is_invalid_identifier(), "{error:?}");
     assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
     let source = "@supports-condition --\\54 heme{}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
         panic!("one rule");
@@ -57,16 +57,20 @@ fn extension_names_use_decoded_case_sensitive_identifiers_and_original_origin() 
 
 #[test]
 fn checked_body_rejects_invalid_grammar_without_property_support_filtering() {
-    let unknown = parse_component_values("future:unknown(foo);@future test{other:value}").unwrap();
+    let unknown = CssComponentValues::parse(
+        &CssParser::default(),
+        "future:unknown(foo);@future test{other:value}",
+    )
+    .unwrap();
     let body = CssSupportsTestBody::try_from_components(unknown, Default::default()).unwrap();
     assert_eq!(body.items().len(), 2);
-    let invalid = parse_component_values("missing-colon;").unwrap();
+    let invalid = CssComponentValues::parse(&CssParser::default(), "missing-colon;").unwrap();
     assert!(
         CssSupportsTestBody::try_from_components(invalid, Default::default())
             .as_ref()
             .is_err_and(|error| error.is_invalid_body_grammar())
     );
-    let recovered = parse_component_values("future:fn(").unwrap();
+    let recovered = CssComponentValues::parse(&CssParser::default(), "future:fn(").unwrap();
     assert!(
         CssSupportsTestBody::try_from_components(recovered, Default::default())
             .as_ref()
@@ -77,7 +81,7 @@ fn checked_body_rejects_invalid_grammar_without_property_support_filtering() {
 #[test]
 fn strict_rule_budget_counts_name_shell_body_and_nested_structural_depth() {
     let body = CssSupportsTestBody::try_from_components(
-        parse_component_values("x:y;").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "x:y;").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -97,7 +101,7 @@ fn strict_rule_budget_counts_name_shell_body_and_nested_structural_depth() {
 
     let whitespace_limit = CssComponentValueLimits::try_new(256, 1, usize::MAX).unwrap();
     let empty = CssSupportsTestBody::try_from_components(
-        parse_component_values("").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -106,7 +110,7 @@ fn strict_rule_budget_counts_name_shell_body_and_nested_structural_depth() {
     assert!(matches!(error.origin(), CssValueOrigin::Programmatic));
 
     let nested = CssSupportsTestBody::try_from_components(
-        parse_component_values("a{b:c}").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "a{b:c}").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -121,7 +125,7 @@ fn strict_rule_budget_counts_name_shell_body_and_nested_structural_depth() {
 
 #[test]
 fn checked_body_counts_generated_semicolon_and_boundary_comment() {
-    let input = parse_component_values("x:y").unwrap();
+    let input = CssComponentValues::parse(&CssParser::default(), "x:y").unwrap();
     let too_few = CssComponentValueLimits::try_new(256, 3, usize::MAX).unwrap();
     let error = CssSupportsTestBody::try_from_components(input.clone(), too_few).unwrap_err();
     assert!(
@@ -133,7 +137,10 @@ fn checked_body_counts_generated_semicolon_and_boundary_comment() {
     let enough = CssComponentValueLimits::try_new(256, 4, usize::MAX).unwrap();
     CssSupportsTestBody::try_from_components(input, enough).unwrap();
 
-    let mut adjacent = parse_component_values("x:").unwrap().items().to_vec();
+    let mut adjacent = CssComponentValues::parse(&CssParser::default(), "x:")
+        .unwrap()
+        .items()
+        .to_vec();
     adjacent.push(CssComponentValue::try_number("1").unwrap());
     adjacent.push(CssComponentValue::try_ident("e3").unwrap());
     let adjacent = CssComponentValues::try_new(adjacent, Default::default()).unwrap();
@@ -162,7 +169,11 @@ fn checked_body_counts_generated_semicolon_and_boundary_comment() {
 #[test]
 fn checked_declarations_keep_nonterminal_bangs_in_the_semantic_value() {
     let body = CssSupportsTestBody::try_from_components(
-        parse_component_values("future:a !b;future:a !important !important;").unwrap(),
+        CssComponentValues::parse(
+            &CssParser::default(),
+            "future:a !b;future:a !important !important;",
+        )
+        .unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -188,7 +199,7 @@ fn checked_declarations_keep_nonterminal_bangs_in_the_semantic_value() {
 #[test]
 fn lexical_serialization_maps_supplied_tokens_and_generated_delimiters() {
     let body = CssSupportsTestBody::try_from_components(
-        parse_component_values("x:y").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "x:y").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -212,7 +223,7 @@ fn lexical_serialization_maps_supplied_tokens_and_generated_delimiters() {
             "generated {delimiter} origin"
         );
     }
-    let names = parse_component_values("--x").unwrap();
+    let names = CssComponentValues::parse(&CssParser::default(), "--x").unwrap();
     let [name] = names.items() else {
         unreachable!()
     };

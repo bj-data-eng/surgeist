@@ -2,13 +2,16 @@ use surgeist_css::{
     CssAbsoluteFontWeight, CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue,
     CssErrorCode, CssFontFaceDescriptorKind, CssFontFaceSource, CssFontFaceWeight,
     CssFontFaceWidth, CssFontFormatHint, CssFontTechHint, CssFontWidth, CssFontWidthKeyword,
-    CssRecoveryAction, CssRule, parse_sheet,
+    CssParser, CssRecoveryAction, CssRule,
 };
 
 fn assert_strict_parity(source: &str) {
     {
-        let ordinary = parse_sheet(source);
-        match surgeist_css::validate_sheet(source) {
+        let ordinary = CssParser::default().parse_sheet(source);
+        match surgeist_css::CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+        {
             Ok(sheet) => {
                 assert!(ordinary.is_clean());
                 assert_eq!(&sheet, ordinary.syntax());
@@ -27,7 +30,7 @@ fn font_sources_drop_obsolete_multiple_formats_and_preserve_selected_hints() {
         "url(demo-b.bin) format(\"zebra\"), ",
         "url(demo-c.bin) format(woff2) tech(variations, color-colrv1); }",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     let [diagnostic] = report.diagnostics() else {
         panic!("expected the Fonts3 multiple-format source to be discarded");
@@ -87,7 +90,7 @@ fn font_face_family_and_local_names_distinguish_quoted_reserved_names() {
         "@font-face{font-family:\"serif\";src:",
         "local(\"inherit\"),local(Font Face),url(face.woff)}",
     );
-    let report = parse_sheet(valid);
+    let report = CssParser::default().parse_sheet(valid);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("expected font-face");
@@ -114,7 +117,7 @@ fn font_face_family_and_local_names_distinguish_quoted_reserved_names() {
         "@font-face{font-family:Demo;src:local(inherit)}.after{color:red}",
         "@font-face{font-family:Demo;src:local(sans-serif)}.after{color:red}",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(matches!(
             report.syntax().rules(),
             [CssRule::FontFace(_), CssRule::Style(_)]
@@ -138,14 +141,14 @@ fn font_source_lists_retain_fallbacks_beside_empty_members() {
     // Its "parse a list" uses Syntax 3 (2026-10-01) §5.4.10, where a final
     // comma followed by no token adds no member, but whitespace does.
     // https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-separated-list-of-component-values
-    let report = parse_sheet("@font-face{font-family:Demo;src:url(a),}");
+    let report = CssParser::default().parse_sheet("@font-face{font-family:Demo;src:url(a),}");
     assert!(report.is_clean(), "{report:?}");
     assert_strict_parity("@font-face{font-family:Demo;src:url(a),}");
     for source in [
         "@font-face{font-family:Demo;src:,url(a)}",
         "@font-face{font-family:Demo;src:url(a), }",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("expected retained font-face: {source}");
         };
@@ -189,7 +192,7 @@ fn font_source_lists_reject_all_invalid_items_and_invalid_hint_order() {
         "@font-face{font-family:Demo;src:url(a) tech(variations) tech(color-colrv1)}",
     ];
     for source in cases {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("invalid src must not discard its accepted outer rule: {source}");
         };
@@ -225,7 +228,7 @@ fn selected_fonts4_format_and_technology_keywords_remain_ordered() {
         "url(h) tech(variations,color-colrv0,color-colrv1,color-svg,color-sbix,",
         "color-cbdt,features-opentype,features-aat,features-graphite,incremental)}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("expected font-face");
@@ -286,7 +289,7 @@ fn font_face_preserves_occurrences_and_uses_last_valid_descriptor() {
         "font-stretch: expanded; font-style: italic; unicode-range: U+100-17F; ",
         "font-feature-settings: \"kern\" on; font-display: swap; }",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
@@ -359,7 +362,7 @@ fn fonts3_descriptor_values_and_selected_fonts4_ranges_are_typed() {
         "normal", "bold", "100", "200", "300", "400", "500", "600", "700", "800", "900",
     ] {
         let source = format!("@font-face{{font-family:Demo;src:url(face);font-weight:{authored}}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{authored}: {:?}", report.diagnostics());
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("expected font-face for {authored}");
@@ -386,7 +389,7 @@ fn fonts3_descriptor_values_and_selected_fonts4_ranges_are_typed() {
     ] {
         let source =
             format!("@font-face{{font-family:Demo;src:url(face);font-stretch:{authored}}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{authored}: {:?}", report.diagnostics());
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("expected font-face for {authored}");
@@ -408,7 +411,7 @@ fn fonts3_descriptor_values_and_selected_fonts4_ranges_are_typed() {
         "font-feature-settings:\"kern\",\"liga\" on,\"clig\" off,\"ss01\" 0;",
         "font-display:optional}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("expected font-face");
@@ -446,7 +449,7 @@ fn invalid_descriptor_occurrences_do_not_erase_valid_neighbors() {
         "font-display:block!important;font-display:swap}",
         ".after{color:red}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
         [CssRule::FontFace(_), CssRule::Style(_)]

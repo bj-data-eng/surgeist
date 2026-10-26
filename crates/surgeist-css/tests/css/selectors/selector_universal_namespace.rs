@@ -4,8 +4,8 @@
 
 use crate::css::support::color_and_selector_fixtures::namespace_context as context;
 use surgeist_css::{
-    CssNamespaceConstraint, CssNamespaceContext, CssNamespacePrefix, CssPseudoClass,
-    CssPseudoSelectorListItem, CssSelector, parse_selector,
+    CssNamespaceConstraint, CssNamespaceContext, CssNamespacePrefix, CssParser, CssPseudoClass,
+    CssPseudoSelectorListItem, CssSelector,
 };
 
 fn assert_universal(selector: &CssSelector, expected: &CssNamespaceConstraint, suffix: &str) {
@@ -28,7 +28,7 @@ fn assert_universal(selector: &CssSelector, expected: &CssNamespaceConstraint, s
 fn assert_namespace(prefix: &str, expected: CssNamespaceConstraint) {
     for suffix in [".card", "#card", ":hover"] {
         let input = format!("{prefix}*{suffix}");
-        let report = parse_selector(&input, &context());
+        let report = CssSelector::parse(&CssParser::default(), &input, &context());
         assert!(report.is_clean(), "{input}: {report:?}");
         assert_universal(report.syntax().as_ref().unwrap(), &expected, suffix);
     }
@@ -59,7 +59,11 @@ fn explicit_any_namespace_universals_remain_authored_before_class_id_and_pseudo(
 
 #[test]
 fn logical_selector_arguments_retain_universal_namespace_constraints() {
-    let report = parse_selector(":is(svg|*.card, |*#card, *:hover)", &context());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        ":is(svg|*.card, |*#card, *:hover)",
+        &context(),
+    );
     assert!(report.is_clean(), "{report:?}");
     let Some(CssSelector::PseudoClass(CssPseudoClass::Is(list))) = report.syntax() else {
         panic!("expected logical selector: {report:?}");
@@ -93,7 +97,7 @@ fn absent_type_selectors_keep_compatible_simple_variants() {
         ("#card", CssSelector::Key("card".into())),
         (":hover", CssSelector::PseudoClass(CssPseudoClass::Hover)),
     ] {
-        let report = parse_selector(input, &context);
+        let report = CssSelector::parse(&CssParser::default(), input, &context);
         assert!(report.is_clean(), "{report:?}");
         assert_eq!(report.syntax(), &Some(expected));
     }

@@ -273,7 +273,7 @@ fn whitespace_only_value_and_range_operands_keep_parsed_origins() {
 
 #[test]
 fn programmatic_operand_boundaries_and_mixed_origins_remain_inspectable() {
-    let parsed = parse_component_values("/*source*/1").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "/*source*/1").unwrap();
     let number = parsed.items().last().unwrap().clone();
     let argument = CssComponentValues::try_new(
         vec![
@@ -311,7 +311,7 @@ fn programmatic_operand_boundaries_and_mixed_origins_remain_inspectable() {
 #[test]
 fn style_limits_apply_before_admission_and_recovered_groups_keep_closure_origins() {
     let source = "style((--x) and future())";
-    let values = parse_component_values(source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     for (limits, expected) in [
         (
             CssComponentValueLimits::try_new(1, usize::MAX, usize::MAX).unwrap(),

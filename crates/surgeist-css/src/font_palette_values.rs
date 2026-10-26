@@ -450,3 +450,25 @@ pub(crate) fn validate_descriptors(
         ))
     }
 }
+impl CssFontPaletteDescriptorValue {
+    /// Parses one complete raw `@font-palette-values` descriptor value.
+    ///
+    /// The selected descriptor grammar is checked without a surrounding rule or
+    /// fabricated descriptor-name position. Valid var()/env() defers the whole
+    /// value. Retained components and diagnostics refer to the original input;
+    /// this function neither substitutes values nor performs font lookup.
+    ///
+    /// The parser is not read: neither its document mode nor its component limits apply to this grammar, and only the fixed nesting ceiling bounds the input.
+    #[expect(
+        unused_variables,
+        reason = "this grammar does not read the parser configuration"
+    )]
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+        kind: crate::CssFontPaletteDescriptorKind,
+    ) -> crate::CssParseReport<Option<CssFontPaletteDescriptorValue>> {
+        crate::parser::parse_font_palette_descriptor_value(source.as_ref(), kind)
+    }
+}

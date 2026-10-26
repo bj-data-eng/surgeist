@@ -233,7 +233,8 @@ pub(crate) mod provider_tests {
             ("calc(1s + 2s) calc(1s + 2s)", "calc(3s)", 9, 7),
             ("0.0000001s 0.0000002s", "0s 0s", 3, 3),
         ] {
-            let report = crate::parse_style_attribute(&format!("interest-delay:{text}"));
+            let report =
+                crate::CssParser::default().parse_block_contents(format!("interest-delay:{text}"));
             assert!(report.is_clean(), "{:?}", report.diagnostics());
             let CssKnownPropertyValueRef::InterestDelay(value) = report.syntax()[0]
                 .known()

@@ -27,7 +27,7 @@ fn angle(value: f32) -> CssAngleOrZero {
 }
 fn number_calculation(text: &str) -> CssCalculation<CssNumber> {
     CssCalculation::<CssNumber>::try_from_components(
-        parse_component_values(text).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         Default::default(),
     )
     .unwrap()
@@ -210,14 +210,14 @@ fn checked_length_leaves_reject_foreign_domains_but_retain_pure_math() {
     );
     assert!(
         CssCalculation::<CssLength>::try_from_components(
-            parse_component_values("calc(2px + 5%)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(2px + 5%)").unwrap(),
             Default::default()
         )
         .is_err()
     );
     assert!(
         CssCalculation::<CssLength>::try_from_components(
-            parse_component_values("calc(10% / 10% * 1px)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(10% / 10% * 1px)").unwrap(),
             Default::default()
         )
         .is_ok()
@@ -311,7 +311,8 @@ fn exact_percentage(
 }
 
 fn signed_length(css: &str) -> surgeist_css::CssNumeric<surgeist_css::CssLength> {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+    let components =
+        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
     if css.contains('(') {
         surgeist_css::CssNumeric::<surgeist_css::CssLength>::try_from_calculation(
             surgeist_css::CssCalculation::<surgeist_css::CssLength>::try_from_components(
@@ -331,7 +332,8 @@ fn signed_length(css: &str) -> surgeist_css::CssNumeric<surgeist_css::CssLength>
 fn nonnegative_length(
     css: &str,
 ) -> surgeist_css::CssNumeric<surgeist_css::CssLength, surgeist_css::CssNonNegative> {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+    let components =
+        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
     if css.contains('(') {
         surgeist_css::CssNumeric::<surgeist_css::CssLength, surgeist_css::CssNonNegative>::try_from_calculation(
             surgeist_css::CssCalculation::<surgeist_css::CssLength>::try_from_components(components, Default::default())
@@ -348,7 +350,8 @@ fn nonnegative_length(
 fn signed_length_percentage(
     css: &str,
 ) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage> {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+    let components =
+        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
     if css.contains('(') {
         surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_calculation(
             surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(

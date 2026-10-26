@@ -1,13 +1,12 @@
 //! Singular declaration contracts follow CSS Syntax 3 section 5.4.7 and
 //! declaration-value restrictions in section 8.2, with typed property validation.
 use surgeist_css::{
-    CssImportance, CssKnownProperty, CssPropertyNameRef, CssRecoveryAction, CssRule,
-    parse_component_values, parse_declaration, parse_property_value, parse_sheet,
-    parse_style_attribute,
+    CssComponentValues, CssDeclaration, CssImportance, CssKnownProperty, CssParser,
+    CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction, CssRule,
 };
 
 fn rejected(source: &str) {
-    let report = parse_declaration(source);
+    let report = CssDeclaration::parse(&CssParser::default(), source);
     assert!(report.syntax().is_none(), "{source:?}: {report:?}");
     assert!(!report.is_clean(), "{source:?}");
     for diagnostic in report.diagnostics() {
@@ -24,12 +23,13 @@ fn ordinary_values_return_checked_property_coupled_declarations() {
         ("color:red", CssKnownProperty::Color, "red"),
         ("width:2px", CssKnownProperty::Width, "2px"),
     ] {
-        let report = parse_declaration(source);
+        let report = CssDeclaration::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{report:?}");
         let declaration = report.syntax().as_ref().unwrap();
-        let constructed = parse_property_value(
-            CssPropertyNameRef::Known(property),
-            parse_component_values(value).unwrap(),
+        let constructed = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+            CssComponentValues::parse(&CssParser::default(), value).unwrap(),
             CssImportance::Normal,
         )
         .unwrap();
@@ -45,7 +45,7 @@ fn ordinary_values_return_checked_property_coupled_declarations() {
 
 #[test]
 fn known_variable_values_remain_symbolic() {
-    let report = parse_declaration("width:var(--size)");
+    let report = CssDeclaration::parse(&CssParser::default(), "width:var(--size)");
     assert!(report.is_clean(), "{report:?}");
     let known = report.syntax().as_ref().unwrap().known().unwrap();
     assert_eq!(known.property(), CssKnownProperty::Width);
@@ -65,7 +65,7 @@ fn custom_values_preserve_ordered_nested_data_and_allow_empty_values() {
         "var(--other)",
     ] {
         let source = format!("--x:{value}");
-        let report = parse_declaration(&source);
+        let report = CssDeclaration::parse(&CssParser::default(), &source);
         assert!(report.is_clean(), "{source:?}: {report:?}");
         let declaration = report.syntax().as_ref().unwrap();
         assert_eq!(declaration.custom().unwrap().name().as_str(), "--x");
@@ -76,7 +76,7 @@ fn custom_values_preserve_ordered_nested_data_and_allow_empty_values() {
             .value_components()
             .serialize_tokens(Default::default())
             .unwrap();
-        let expected = parse_component_values(value)
+        let expected = CssComponentValues::parse(&CssParser::default(), value)
             .unwrap()
             .serialize_tokens(Default::default())
             .unwrap();
@@ -94,7 +94,7 @@ fn terminal_important_accepts_case_escapes_and_comments() {
     ] {
         for value in ["color:red", "--x:data", "--x:"] {
             let source = format!("{value}{annotation}");
-            let report = parse_declaration(&source);
+            let report = CssDeclaration::parse(&CssParser::default(), &source);
             assert!(report.is_clean(), "{source:?}: {report:?}");
             assert_eq!(
                 report.syntax().as_ref().unwrap().importance(),
@@ -127,7 +127,7 @@ fn escaped_and_unicode_names_keep_original_snapshot_and_crlf_coordinates() {
         ),
         ("/*😀*/\r\n--é:blue", "--é", "blue", 10, 14, 15, 19),
     ] {
-        let report = parse_declaration(source);
+        let report = CssDeclaration::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{report:?}");
         let declaration = report.syntax().as_ref().unwrap();
         let name_origin = declaration.parsed_name().unwrap();
@@ -146,7 +146,7 @@ fn escaped_and_unicode_names_keep_original_snapshot_and_crlf_coordinates() {
         assert_eq!(declaration.position().unwrap().line().value(), 1);
         assert_eq!(declaration.position().unwrap().column().value(), 0);
     }
-    let report = parse_declaration(" /*before*/ color:red /*after*/ ");
+    let report = CssDeclaration::parse(&CssParser::default(), " /*before*/ color:red /*after*/ ");
     assert!(report.is_clean(), "{report:?}");
 }
 
@@ -188,7 +188,7 @@ fn invalid_outer_syntax_and_values_reject_the_complete_input() {
 #[test]
 fn root_delimiter_after_nested_value_is_the_responsible_token() {
     let source = "--x:f(a);";
-    let report = parse_declaration(source);
+    let report = CssDeclaration::parse(&CssParser::default(), source);
     assert!(report.syntax().is_none());
     let diagnostic = &report.diagnostics()[0];
     assert_eq!(diagnostic.action(), CssRecoveryAction::RejectInput);
@@ -198,7 +198,7 @@ fn root_delimiter_after_nested_value_is_the_responsible_token() {
 #[test]
 fn valid_implicit_closures_are_retained_only_after_complete_declaration_success() {
     for source in ["--x:foo(", "filter:blur("] {
-        let report = parse_declaration(source);
+        let report = CssDeclaration::parse(&CssParser::default(), source);
         assert!(report.syntax().is_some(), "{source}: {report:?}");
         assert!(!report.is_clean());
         assert!(
@@ -221,7 +221,7 @@ fn valid_implicit_closures_are_retained_only_after_complete_declaration_success(
 #[test]
 fn component_depth_exhaustion_preserves_resource_action() {
     let source = format!("--x:{}x{}", "f(".repeat(300), ")".repeat(300));
-    let report = parse_declaration(&source);
+    let report = CssDeclaration::parse(&CssParser::default(), &source);
     assert!(report.syntax().is_none());
     assert!(
         report
@@ -240,7 +240,7 @@ fn component_depth_exhaustion_preserves_resource_action() {
 #[test]
 fn declaration_lists_recover_ordered_siblings_at_authored_positions() {
     let source = "color:red;unknown:x;width:2px;";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     let declarations = report.syntax();
     assert_eq!(declarations.len(), 2);
     assert_eq!(
@@ -262,7 +262,7 @@ fn declaration_lists_recover_ordered_siblings_at_authored_positions() {
             .iter()
             .all(|d| d.action() == CssRecoveryAction::DropDeclaration)
     );
-    let report = parse_sheet(&format!("a{{{source}}}"));
+    let report = CssParser::default().parse_sheet(format!("a{{{source}}}"));
     let CssRule::Style(rule) = &report.syntax().rules()[0] else {
         panic!("style rule")
     };

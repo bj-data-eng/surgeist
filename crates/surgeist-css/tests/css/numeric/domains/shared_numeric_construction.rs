@@ -23,7 +23,7 @@ fn percentage(text: &str) -> CssNumeric<CssPercentage> {
 fn number_math(text: &str) -> CssNumeric<CssNumber> {
     CssNumeric::<CssNumber>::try_from_calculation(
         CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -34,7 +34,7 @@ fn number_math(text: &str) -> CssNumeric<CssNumber> {
 fn percentage_math(text: &str) -> CssNumeric<CssPercentage> {
     CssNumeric::<CssPercentage>::try_from_calculation(
         CssCalculation::<CssPercentage>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap(),

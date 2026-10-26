@@ -10,9 +10,8 @@
 
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use surgeist_css::{
-    CssErrorCode, CssImportance, CssKnownProperty as Property, CssPropertyNameRef,
-    CssRecoveryAction, parse_component_values, parse_property_value, parse_style_attribute,
-    validate_style_attribute,
+    CssComponentValues, CssDeclaration, CssErrorCode, CssImportance, CssKnownProperty as Property,
+    CssParser, CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction,
 };
 
 const AXES: [Property; 2] = [Property::GridTemplateRows, Property::GridTemplateColumns];
@@ -120,7 +119,7 @@ fn assert_accepted(property: Property, authored: &str) {
         "color:red;{}:{authored};width:3px",
         property.canonical_name()
     );
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 3, "{source}");
     let declaration = &report.syntax()[1];
@@ -133,10 +132,17 @@ fn assert_accepted(property: Property, authored: &str) {
         declaration.known().unwrap().property_value().is_some(),
         "{source}"
     );
-    assert!(validate_style_attribute(&source).is_ok(), "{source}");
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(property),
-        parse_component_values(authored).expect("balanced Grid value"),
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_ok(),
+        "{source}"
+    );
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+        CssComponentValues::parse(&CssParser::default(), authored).expect("balanced Grid value"),
         CssImportance::Normal,
     )
     .unwrap_or_else(|error| panic!("checked Grid admission of {source}: {error:?}"));
@@ -148,7 +154,7 @@ fn assert_rejected(property: Property, authored: &str) {
         "color:red;{}:{authored};width:3px",
         property.canonical_name()
     );
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(report.syntax().len(), 2, "{source}");
     let [diagnostic] = report.diagnostics() else {
         panic!("one invalid Grid declaration: {source}: {report:?}");
@@ -159,7 +165,11 @@ fn assert_rejected(property: Property, authored: &str) {
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics(),
         "{source}"
     );

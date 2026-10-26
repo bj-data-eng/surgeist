@@ -3,7 +3,7 @@ use super::super::rendering::tests::{ready, ready_source};
 use super::super::tests::{envelope, flag};
 use super::*;
 use crate::*;
-use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
 use surgeist_cssom::*;
 
 fn render(dom: &mut Dom, id: DomParsedHtmlAssociationId, q: &DomParsedHtmlStyleQualification) {
@@ -33,20 +33,20 @@ fn create_and_render(
     hold.accept_inline_policy(&mut input, &flag()).unwrap();
     let mut prep = hold.prepare_create_sheet(cap, &flag()).unwrap();
     let parser = CssParserContext::default();
-    let sheet = parser
-        .parse_sheet_utf16_with_limits(
+    let sheet = CssParser::new(parser, Default::default())
+        .parse_sheet_utf16(
             prep.request().text().shared_code_units().clone(),
             CssUtf16InputLimits::default(),
             || prep.step(&flag()),
         )
         .unwrap();
-    let media = parser
-        .parse_media_query_list_utf16_with_limits(
-            prep.request().media().unwrap().shared_code_units().clone(),
-            CssUtf16InputLimits::default(),
-            || prep.step(&flag()),
-        )
-        .unwrap();
+    let media = CssMediaQueryList::parse_utf16(
+        &CssParser::new(parser, Default::default()),
+        prep.request().media().unwrap().shared_code_units().clone(),
+        CssUtf16InputLimits::default(),
+        || prep.step(&flag()),
+    )
+    .unwrap();
     let mut input = Some(DomParsedHtmlStyleSheetInput::new(
         sheet,
         media,

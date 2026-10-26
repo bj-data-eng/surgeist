@@ -13,9 +13,8 @@ use crate::css::support::authored_syntax::assert_position_at as assert_position;
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
-    CssDeclarationList, CssErrorCode, CssKnownProperty, CssRecoveryAction, CssRecoveryDiagnostic,
-    CssRule, CssTokenKind, CssValueOrigin, parse_component_values, parse_sheet,
-    parse_style_attribute, validate_sheet, validate_style_attribute,
+    CssComponentValues, CssDeclarationList, CssErrorCode, CssKnownProperty, CssParser,
+    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssTokenKind, CssValueOrigin,
 };
 
 struct ExpectedToken {
@@ -71,7 +70,7 @@ fn assert_diagnostic(diagnostic: &CssRecoveryDiagnostic, expected: &ExpectedToke
 }
 
 fn assert_rejected_attribute(source: &str, expected: ExpectedToken, retained: &[CssKnownProperty]) {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(!report.is_clean());
     assert_retained_known(report.syntax(), retained);
     let [diagnostic] = report.diagnostics() else {
@@ -80,7 +79,10 @@ fn assert_rejected_attribute(source: &str, expected: ExpectedToken, retained: &[
             report.diagnostics()
         );
     };
-    let failure = validate_style_attribute(source).expect_err("recovery is not clean validation");
+    let failure = CssParser::default()
+        .parse_block_contents(source)
+        .into_validation_result()
+        .expect_err("recovery is not clean validation");
     assert_eq!(failure.first(), diagnostic);
     assert_eq!(failure.diagnostics(), report.diagnostics());
     assert_diagnostic(diagnostic, &expected);
@@ -88,7 +90,8 @@ fn assert_rejected_attribute(source: &str, expected: ExpectedToken, retained: &[
     // The independently positioned component failure already owns the complete
     // bad token. Both public views must refer to the same literal source bytes;
     // neither parser's output supplies the expected coordinate for the other.
-    let component = parse_component_values(source).expect_err("the bad component is intrinsic");
+    let component = CssComponentValues::parse(&CssParser::default(), source)
+        .expect_err("the bad component is intrinsic");
     let expected_component_kind = match expected.kind {
         CssTokenKind::BadUrl => ComponentFailure::BadUrl,
         CssTokenKind::BadString => ComponentFailure::BadString,
@@ -109,11 +112,13 @@ fn assert_rejected_attribute(source: &str, expected: ExpectedToken, retained: &[
 }
 
 fn assert_clean_attribute(source: &str, expected_count: usize) {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source:?}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), expected_count);
     assert_eq!(
-        validate_style_attribute(source),
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result(),
         Ok(report.syntax().clone())
     );
 }
@@ -273,7 +278,7 @@ fn corpus_mismatched_custom_closer_reports_its_original_byte_without_wrapper_clo
 #[test]
 fn bad_url_in_style_rule_keeps_the_declaration_span_and_later_rule() {
     let source = ".x{background-image:url(a - b.png);color:red;}.after{width:2px;}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(!report.is_clean());
     let [CssRule::Style(first), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("both style rules must survive declaration recovery");
@@ -286,7 +291,10 @@ fn bad_url_in_style_rule_keeps_the_declaration_span_and_later_rule() {
             report.diagnostics()
         );
     };
-    let failure = validate_sheet(source).expect_err("one recovery prevents clean validation");
+    let failure = CssParser::default()
+        .parse_sheet(source)
+        .into_validation_result()
+        .expect_err("one recovery prevents clean validation");
     assert_eq!(failure.diagnostics(), report.diagnostics());
     assert_diagnostic(
         diagnostic,
@@ -299,7 +307,12 @@ fn bad_url_in_style_rule_keeps_the_declaration_span_and_later_rule() {
         },
     );
     let clean_source = ".x{background-image:url(a-b.png);color:red;}.after{width:2px;}";
-    let clean = parse_sheet(clean_source);
+    let clean = CssParser::default().parse_sheet(clean_source);
     assert!(clean.is_clean(), "{:?}", clean.diagnostics());
-    assert_eq!(validate_sheet(clean_source), Ok(clean.syntax().clone()));
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(clean_source)
+            .into_validation_result(),
+        Ok(clean.syntax().clone())
+    );
 }

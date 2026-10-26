@@ -1,9 +1,10 @@
 //! Authored admission is distinct from definition validity in Counter Styles 2026.
-use surgeist_css::{CssRule, parse_sheet};
+use surgeist_css::{CssCounterStyleDescriptorValue, CssParser, CssRule};
 
 #[test]
 fn extends_symbol_conflict_remains_inspectable_authored_syntax() {
-    let report = parse_sheet("@counter-style example { system: extends decimal; symbols: x; }");
+    let report = CssParser::default()
+        .parse_sheet("@counter-style example { system: extends decimal; symbols: x; }");
     assert!(
         report.is_clean(),
         "definition conflict does not invalidate authored grammar: {report:?}"
@@ -20,16 +21,17 @@ use surgeist_css::{
     CssCounterStyleAlgorithm as Algorithm, CssCounterStyleDefinitionIssue as Issue,
     CssCounterStyleDefinitionStatus as Status, CssCounterStyleDescriptorCollection as Collection,
     CssCounterStyleDescriptorEntry as Entry, CssCounterStyleDescriptorKind as K,
-    CssSerializationLimits as Limits, parse_counter_style_descriptor_value,
+    CssSerializationLimits as Limits,
 };
 fn value(source: &str, kind: K) -> surgeist_css::CssCounterStyleDescriptorValue {
-    let report = parse_counter_style_descriptor_value(source, kind);
+    let report = CssCounterStyleDescriptorValue::parse(&CssParser::default(), source, kind);
     assert!(report.is_clean(), "{report:?}");
     report.syntax().clone().unwrap()
 }
 #[test]
 fn prospective_numeric_edit_preserves_authored_occurrence_and_raw_edit_origin() {
-    let report = parse_sheet("@counter-style sample { system:numeric; symbols:a; symbols:b; }");
+    let report = CssParser::default()
+        .parse_sheet("@counter-style sample { system:numeric; symbols:a; symbols:b; }");
     assert!(report.is_clean(), "{report:?}");
     let CssRule::CounterStyle(rule) = &report.syntax().rules()[0] else {
         panic!()
@@ -150,9 +152,13 @@ fn definition_admission_handles_missing_symbols_extends_and_additive_symbolic_we
         Status::SubstitutionDependent
     );
     assert!(
-        parse_counter_style_descriptor_value("1 A, 2 B", K::AdditiveSymbols)
-            .syntax()
-            .is_none()
+        CssCounterStyleDescriptorValue::parse(
+            &CssParser::default(),
+            "1 A, 2 B",
+            K::AdditiveSymbols
+        )
+        .syntax()
+        .is_none()
     );
 }
 #[test]

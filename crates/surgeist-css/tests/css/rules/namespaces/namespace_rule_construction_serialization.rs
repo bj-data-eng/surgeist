@@ -4,8 +4,8 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
-    CssNamespaceName, CssNamespacePrefix, CssNamespaceRule, CssNormalizedItem, CssRule,
-    CssRuleContextKindRef, CssSerializationLimits, normalize_report, parse_sheet,
+    CssNamespaceName, CssNamespacePrefix, CssNamespaceRule, CssNormalizedItem, CssParser, CssRule,
+    CssRuleContextKindRef, CssSerializationLimits,
 };
 
 #[test]
@@ -48,7 +48,7 @@ fn constructed_namespace_rules_emit_canonical_prefixes_and_literal_url_strings()
         );
         assert_eq!(rule, original);
         assert_eq!(rule.position(), None);
-        let reparsed = parse_sheet(expected);
+        let reparsed = CssParser::default().parse_sheet(expected);
         assert!(reparsed.is_clean(), "{expected}: {reparsed:?}");
         let [CssRule::Namespace(parsed)] = reparsed.syntax().rules() else {
             panic!("one namespace")
@@ -114,10 +114,10 @@ fn standalone_namespace_limits_charge_the_rule_optional_prefix_and_literal_name(
 #[test]
 fn normalized_namespace_payloads_share_output_without_changing_redeclaration_provenance() {
     let source = "/*😀*/\r\n@namespace svg 'first';\r\n@namespace svg 'last';";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     let original_diagnostics = report.diagnostics().to_vec();
-    let normalized = normalize_report(&report).unwrap();
+    let normalized = report.normalize(Default::default()).unwrap();
     assert_eq!(normalized.syntax().items().len(), 2);
     let expected = [
         r#"@namespace svg url("first");"#,
@@ -170,8 +170,8 @@ fn cssom_replaces_programmatic_nul_in_output_without_changing_the_stored_literal
 
 #[test]
 fn namespaces_compose_with_other_supported_rules_under_one_shared_budget() {
-    let report =
-        parse_sheet("@namespace svg 'urn:svg';@supports-condition --feature { future:a; }");
+    let report = CssParser::default()
+        .parse_sheet("@namespace svg 'urn:svg';@supports-condition --feature { future:a; }");
     assert!(report.is_clean(), "{report:?}");
     let expected = "@namespace svg url(\"urn:svg\");\n@supports-condition --feature { future: a; }";
     assert_eq!(

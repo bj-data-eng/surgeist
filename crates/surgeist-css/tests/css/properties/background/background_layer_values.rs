@@ -6,7 +6,7 @@
 
 use crate::css::support::serialization_limits::assert_limits_with_zero as exact_bounds;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{CssBackgroundRepeatStyle as R, *};
+use surgeist_css::{CssBackgroundRepeatStyle as R, CssComponentValue, CssComponentValues, *};
 
 fn size(css: &str) -> CssBackgroundSizeList {
     let source = declaration(&format!("background-size:{css}"));
@@ -122,7 +122,7 @@ fn ordinary_contributions_preserve_typed_list_order_and_parsed_numeric_origin() 
     ] {
         let source = declaration(&format!("{}:{css}!important", property.canonical_name()));
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("completed ordinary")
         };
@@ -197,7 +197,7 @@ fn strict_reentry_retains_programmatic_components_and_expected_typed_values() {
             "{}:var(--layers)!important",
             property.canonical_name()
         ));
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending")
         };
         let replacement = CssComponentValues::try_new(
@@ -225,7 +225,7 @@ fn strict_reentry_retains_programmatic_components_and_expected_typed_values() {
         }
     }
     let source = declaration("background-size:var(--size)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending size")
     };
     let replacement = CssComponentValues::try_new(

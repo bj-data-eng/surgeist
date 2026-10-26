@@ -1,9 +1,7 @@
 use crate::css::support::authored_syntax::assert_diagnostics;
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::{
-    CssErrorCode, CssMediaQuery, CssRecoveryAction, parse_media_query, parse_media_query_list,
-};
+use surgeist_css::{CssErrorCode, CssMediaQuery, CssMediaQueryList, CssParser, CssRecoveryAction};
 
 // MQ5 section 3 prefers media conditions/features before general-enclosed,
 // whose optional any-value contents come from Syntax 3 section 7.2.
@@ -18,7 +16,7 @@ fn arbitrary_enclosures_remain_clean_query_syntax() {
         "(width >= )",
         "future([x] {y:z} nested(a,b); !)",
     ] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(matches!(report.syntax(), CssMediaQuery::Condition(_)));
     }
@@ -34,7 +32,7 @@ fn arbitrary_enclosures_compose_with_media_operators_and_groups() {
         "screen and future()",
         "((color) and (hover))",
     ] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(!matches!(report.syntax(), CssMediaQuery::Never(_)));
     }
@@ -50,7 +48,7 @@ fn invalid_range_derivations_can_use_general_enclosed_grammar() {
         "(width < /**/= 10px)",
         "(aspect-ratio: -1/2)",
     ] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(matches!(report.syntax(), CssMediaQuery::Condition(_)));
     }
@@ -65,7 +63,7 @@ fn malformed_outer_queries_recover_each_list_member() {
         ("future() future()", Some(9)),
         ("future() and (color) or (hover)", Some(21)),
     ] {
-        let report = parse_media_query_list(&format!("{source}, print"));
+        let report = CssMediaQueryList::parse(&CssParser::default(), format!("{source}, print"));
         let expected = (
             CssErrorCode::InvalidMediaQuery,
             CssRecoveryAction::ReplaceMediaQueryWithNever,
@@ -94,7 +92,7 @@ fn malformed_outer_queries_recover_each_list_member() {
 
 #[test]
 fn nested_commas_do_not_split_query_members() {
-    let report = parse_media_query_list("future(a,b), print");
+    let report = CssMediaQueryList::parse(&CssParser::default(), "future(a,b), print");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssMediaQuery::Condition(_), CssMediaQuery::Typed(last)] = report.syntax().queries()
     else {
@@ -118,7 +116,7 @@ fn invalid_any_value_tokens_recover_without_losing_the_next_member() {
         ("future(url(a b)), print", ComponentFailure::BadUrl),
         ("future(\"x\n), print", ComponentFailure::BadString),
     ] {
-        let report = parse_media_query_list(source);
+        let report = CssMediaQueryList::parse(&CssParser::default(), source);
         assert!(!report.is_clean(), "{source}");
         let [CssMediaQuery::Never(_), CssMediaQuery::Typed(last)] = report.syntax().queries()
         else {
@@ -153,11 +151,11 @@ fn enclosing_a_mixed_operator_body_allows_the_general_enclosed_alternative() {
         "(future() and (color) or (hover))",
         "screen and (future() or (color))",
     ] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(!matches!(report.syntax(), CssMediaQuery::Never(_)));
     }
-    let report = parse_media_query("screen and future() or (color)");
+    let report = CssMediaQuery::parse(&CssParser::default(), "screen and future() or (color)");
     assert!(!report.is_clean());
     assert!(matches!(report.syntax(), CssMediaQuery::Never(_)));
 }
@@ -166,7 +164,7 @@ fn enclosing_a_mixed_operator_body_allows_the_general_enclosed_alternative() {
 fn known_features_and_explicit_condition_groups_precede_fallback() {
     use surgeist_css::{CssConditionKind, CssMediaLeaf};
     for source in ["(width <= 10px)", "(width </**/= 10px)"] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean());
         let CssMediaQuery::Condition(condition) = report.syntax() else {
             panic!("condition");
@@ -176,7 +174,7 @@ fn known_features_and_explicit_condition_groups_precede_fallback() {
             CssConditionKind::Leaf(CssMediaLeaf::Feature(_))
         ));
     }
-    let report = parse_media_query("((color) and (hover))");
+    let report = CssMediaQuery::parse(&CssParser::default(), "((color) and (hover))");
     assert!(report.is_clean());
     let CssMediaQuery::Condition(condition) = report.syntax() else {
         panic!("condition");
@@ -205,7 +203,7 @@ fn general_enclosed_operands_keep_their_operator_structure() {
         ("future() or (color)", 2),
         ("(future())", 3),
     ] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let CssMediaQuery::Condition(condition) = report.syntax() else {
             panic!("condition");
@@ -222,7 +220,7 @@ fn general_enclosed_operands_keep_their_operator_structure() {
             _ => panic!("wrong outer condition for {source}"),
         }
     }
-    let report = parse_media_query("screen and future()");
+    let report = CssMediaQuery::parse(&CssParser::default(), "screen and future()");
     assert!(report.is_clean());
     let CssMediaQuery::Typed(query) = report.syntax() else {
         panic!("typed screen");
@@ -233,12 +231,12 @@ fn general_enclosed_operands_keep_their_operator_structure() {
 
 #[test]
 fn media_and_import_rules_share_member_local_admission_and_recovery() {
-    use surgeist_css::{CssMediaType, CssRecoveryAction, CssRule, parse_sheet};
+    use surgeist_css::{CssMediaType, CssRecoveryAction, CssRule};
     for source in [
         "@media future(), screen and, print {} .after {color:red}",
         "@import \"x\" future(), screen and, print; .after {color:red}",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [first, CssRule::Style(_)] = report.syntax().rules() else {
             panic!("retained rule and sibling: {source}");
         };
@@ -279,7 +277,7 @@ fn media_and_import_rules_share_member_local_admission_and_recovery() {
 
 #[test]
 fn eof_closure_is_retained_with_a_recovery_diagnostic() {
-    let report = parse_media_query("future(");
+    let report = CssMediaQuery::parse(&CssParser::default(), "future(");
     assert!(matches!(report.syntax(), CssMediaQuery::Condition(_)));
     assert!(!report.is_clean());
     let [diagnostic] = report.diagnostics() else {

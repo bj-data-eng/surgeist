@@ -18,7 +18,7 @@ fn declaration(value: &str, important: bool) -> CssDeclaration {
 
 fn ordinary(source: &CssDeclaration) {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("Visibility has intrinsic expansion")
+        source.expand().expect("Visibility has intrinsic expansion")
     else {
         panic!("ordinary longhand contribution")
     };
@@ -68,8 +68,11 @@ fn all_visibility_keywords_expand_once_with_original_occurrence() {
                 Default::default(),
             )
             .unwrap();
-            let source = parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Visibility),
+            let source = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                    CssKnownProperty::Visibility,
+                )),
                 components.clone(),
                 if important {
                     CssImportance::Important
@@ -91,12 +94,12 @@ fn all_visibility_keywords_expand_once_with_original_occurrence() {
 #[test]
 fn visibility_pending_reentry_is_strict_and_keeps_original_and_replacement_origins() {
     let source = declaration("var(--visibility)", true);
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending visibility")
     };
     assert!(handle.source().same_occurrence(&source));
     for text in ["visible", "hidden", "collapse"] {
-        let replacement = parse_component_values(text).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
             panic!("replacement longhand")
@@ -114,7 +117,7 @@ fn visibility_pending_reentry_is_strict_and_keeps_original_and_replacement_origi
         assert_eq!(value.replacement_components(), Some(&replacement));
     }
     let CssContributions::Longhands(values) = handle
-        .reenter(parse_component_values("inherit").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
         .unwrap()
     else {
         panic!("global replacement")
@@ -133,13 +136,13 @@ fn visibility_pending_reentry_is_strict_and_keeps_original_and_replacement_origi
         "hidden!important",
     ] {
         let error = handle
-            .reenter(parse_component_values(text).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
             .unwrap_err();
         assert!(error.replacement_error().is_some(), "{text}");
     }
     assert!(
         handle
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
@@ -161,8 +164,9 @@ fn visibility_keyword_grammar_identity_and_recovery_are_preserved() {
             Default::default(),
         )
         .unwrap();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Visibility),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Visibility)),
             components.clone(),
             CssImportance::Normal,
         )

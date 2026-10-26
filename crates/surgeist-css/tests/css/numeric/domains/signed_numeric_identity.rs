@@ -8,7 +8,7 @@ use surgeist_css::*;
 macro_rules! aggregate_parser {
     ($name:ident, $ty:ty, $variant:ident, $getter:ident) => {
         fn $name(source: &str) -> $ty {
-            let report = parse_style_attribute(source);
+            let report = CssParser::default().parse_block_contents(source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(report.syntax().len(), 1, "{source}");
             let CssKnownPropertyValueRef::$variant(value) = report.syntax()[0]

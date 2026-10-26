@@ -32,7 +32,12 @@ fn box_sizing_keywords_contribute_one_typed_terminal_with_source_identity() {
         ("BORDER-BOX", CssBoxSizing::BorderBox),
     ] {
         let source = declaration(&format!("box-sizing:{keyword}!important"));
-        assert!(validate_style_attribute(&format!("box-sizing:{keyword}")).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("box-sizing:{keyword}"))
+                .into_validation_result()
+                .is_ok()
+        );
         let CssKnownPropertyValueRef::BoxSizing(authored) =
             source.known().unwrap().property_value().unwrap()
         else {
@@ -40,7 +45,7 @@ fn box_sizing_keywords_contribute_one_typed_terminal_with_source_identity() {
         };
         assert_eq!(authored.value(), &expected);
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("one longhand contribution")
         };
@@ -61,7 +66,7 @@ fn box_sizing_keywords_contribute_one_typed_terminal_with_source_identity() {
 #[test]
 fn box_sizing_pending_reentry_checks_the_same_grammar_atomically() {
     let source = declaration("box-sizing:var(--edge)!important");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending substitution")
     };
     for text in [
@@ -71,17 +76,17 @@ fn box_sizing_pending_reentry_checks_the_same_grammar_atomically() {
         "border-box; color:red",
     ] {
         let error = handle
-            .reenter(parse_component_values(text).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
             .unwrap_err();
         assert!(error.replacement_error().is_some(), "{text}: {error:?}");
     }
     assert!(
         handle
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
-    let replacement = parse_component_values("BORDER-BOX").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "BORDER-BOX").unwrap();
     for _ in 0..2 {
         let CssContributions::Longhands(items) = handle.reenter(replacement.clone()).unwrap()
         else {
@@ -100,7 +105,7 @@ fn box_sizing_pending_reentry_checks_the_same_grammar_atomically() {
         assert_eq!(item.replacement_components(), Some(&replacement));
     }
     let CssContributions::Longhands(items) = handle
-        .reenter(parse_component_values("inherit").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
         .unwrap()
     else {
         panic!("global reentry")
@@ -116,13 +121,13 @@ fn box_sizing_pending_reentry_checks_the_same_grammar_atomically() {
 fn box_sizing_normalization_preserves_valid_occurrences_after_recovery() {
     let source =
         ".a{box-sizing:content-box;box-sizing:padding-box;box-sizing:border-box!important}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
-    let sheet = normalize_sheet(report.syntax()).unwrap();
+    let sheet = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = sheet
         .items()
         .iter()
@@ -176,8 +181,9 @@ fn box_sizing_checked_construction_preserves_programmatic_origins_and_keyword_me
             Default::default(),
         )
         .unwrap();
-        let source = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::BoxSizing),
+        let source = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BoxSizing)),
             components.clone(),
             CssImportance::Important,
         )
@@ -195,7 +201,7 @@ fn box_sizing_checked_construction_preserves_programmatic_origins_and_keyword_me
         };
         assert_eq!(authored.value(), &expected);
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("constructed longhand")
         };

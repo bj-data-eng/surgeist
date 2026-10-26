@@ -18,7 +18,7 @@ type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;
 
 fn component(text: &str) -> CssComponentValue {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [value] = values.items() else {
         panic!("one scalar component: {text}")
     };
@@ -209,10 +209,11 @@ fn macro_aliases_delegate_to_concrete_property_grammar_and_family_rules() {
     ] {
         let parsed = declaration(name, text);
         let property = parsed.known().unwrap().property();
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let retained = components.clone();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components,
             CssImportance::Important,
         )
@@ -232,7 +233,8 @@ fn macro_aliases_delegate_to_concrete_property_grammar_and_family_rules() {
         ("padding-top", "-1px"),
         ("voice-family", "female male"),
     ] {
-        let report = parse_style_attribute(&format!("{name}:{invalid};color:red"));
+        let report =
+            CssParser::default().parse_block_contents(format!("{name}:{invalid};color:red"));
         crate::css::support::value_assertions::assert_first_property_rejection(
             report.diagnostics(),
             crate::css::support::known_property(name),
@@ -289,7 +291,11 @@ fn common_escaping_and_authored_wrappers_compose_already_serialized_items() {
 #[test]
 fn local_and_url_source_children_share_one_atomic_resource_budget() {
     let text = "LOCAL('é😀'), URL('../font.woff2')";
-    let report = parse_font_face_descriptor_value(text, CssFontFaceDescriptorKind::Src);
+    let report = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        text,
+        CssFontFaceDescriptorKind::Src,
+    );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::Src(parsed))) =
         report.syntax()
@@ -466,10 +472,11 @@ fn every_byte_alpha_has_an_independent_cssom_witness_and_atomic_byte_limit() {
         let text = format!("#000000{byte:02x}");
         let value = color(&text);
         let before = value.clone();
-        let components = parse_component_values(&text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
         let retained = components.clone();
-        let checked_declaration = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+        let checked_declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
             components,
             CssImportance::Normal,
         )

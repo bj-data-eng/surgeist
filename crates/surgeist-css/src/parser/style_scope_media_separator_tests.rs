@@ -155,7 +155,7 @@ fn check_styled(depth: usize) {
         compound.type_selector().unwrap().namespace(),
         &CssNamespaceConstraint::Named(CssNamespacePrefix::try_new("svg").unwrap())
     );
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()

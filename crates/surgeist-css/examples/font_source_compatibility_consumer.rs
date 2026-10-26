@@ -16,12 +16,12 @@
 use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
     CssFontFaceSource, CssFontFaceUrlSource, CssFontFormat, CssFontFormatHint, CssFontFormatString,
-    CssFontTechHint, CssRule, parse_sheet,
+    CssFontTechHint, CssParser, CssRule,
 };
 
 fn parsed_source(hints: &str) -> CssFontFaceUrlSource {
     let source = format!("@font-face{{src:url(font) {hints}}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{hints}: {:?}", report.diagnostics());
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("expected one font face");

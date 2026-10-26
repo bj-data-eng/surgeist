@@ -6,7 +6,8 @@ use CssSerializationLimits as L;
 use surgeist_css::*;
 
 fn entries(source: &str) -> Vec<CssFontFaceDescriptor> {
-    parse_font_face_declaration_block_contents(source)
+    CssParser::default()
+        .parse_font_face_block_contents(source)
         .syntax()
         .as_ref()
         .unwrap()
@@ -80,7 +81,7 @@ fn public_descriptor_lookup_uses_exact_decoded_names_case_and_the_font_stretch_a
 #[test]
 fn selected_order_and_edits_are_distinct_from_whole_font_rule_order() {
     let authored = entries("font-family:A; src:local(A); font-display:swap");
-    let raw = parse_font_face_descriptor_value("B", K::FontFamily);
+    let raw = CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), "B", K::FontFamily);
     let family = CssFontFaceDescriptor::new(raw.syntax().as_ref().unwrap().clone());
     assert!(family.position().is_none());
     let selected = CssSpecifiedFontFaceDeclarationBlock::try_from_entries(

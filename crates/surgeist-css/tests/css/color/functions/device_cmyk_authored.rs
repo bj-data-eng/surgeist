@@ -21,15 +21,16 @@ type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;
 
 fn assert_text(source: &str, expected: &str) {
-    let supplied = parse_component_values(source).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    let supplied = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         supplied.clone(),
         CssImportance::Important,
     );
     // Exercise both admission routes before either assertion can fail at RED.
     let source_attribute = format!("color:{source}!important;opacity:.5");
-    let report = parse_style_attribute(&source_attribute);
+    let report = CssParser::default().parse_block_contents(&source_attribute);
     let checked = checked.unwrap_or_else(|error| {
         panic!(
             "checked admission {source}: {error:?}; parsed diagnostics: {:?}",
@@ -38,7 +39,12 @@ fn assert_text(source: &str, expected: &str) {
     });
     assert_eq!(checked.value_components(), &supplied);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&source_attribute).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source_attribute)
+            .into_validation_result()
+            .is_ok()
+    );
     assert_eq!(report.syntax().len(), 2);
     let parsed = &report.syntax()[0];
     assert_eq!(
@@ -223,7 +229,7 @@ fn admitted_device_colors_are_rejected_by_absolute_only_palette_boundaries() {
                 .contextual_color(),
             Some(CssAbsoluteColorExclusion::DeviceCmyk)
         );
-        let report = parse_sheet(&format!(
+        let report = CssParser::default().parse_sheet(format!(
             "@font-palette-values --p {{ font-family: Demo; override-colors: 0 {source}; base-palette: light; }}"
         ));
         let [CssRule::FontPaletteValues(rule)] = report.syntax().rules() else {
@@ -272,7 +278,7 @@ fn malformed_grammar_drops_only_its_declaration_and_validation_rejects_it() {
         "device-cmyk(0 0 0 1 / calc(1deg))",
     ] {
         let source = format!("color:{invalid};opacity:.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -287,11 +293,17 @@ fn malformed_grammar_drops_only_its_declaration_and_validation_rejects_it() {
             "{source}"
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert!(validate_style_attribute(&source).is_err());
         assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Color),
-                parse_component_values(invalid).unwrap(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
+        assert!(
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+                CssComponentValues::parse(&CssParser::default(), invalid).unwrap(),
                 CssImportance::Normal
             )
             .unwrap_err()
@@ -327,7 +339,8 @@ fn noncolor_properties_reject_device_color_and_retain_siblings() {
         "list-style-image",
         "opacity",
     ] {
-        let report = parse_style_attribute(&format!("{property}:device-cmyk(0 0 0 1);color:green"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("{property}:device-cmyk(0 0 0 1);color:green"));
         assert_eq!(report.syntax().len(), 1, "{property}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -356,7 +369,12 @@ fn registered_color_shorthand_gradient_shadow_and_filter_consumers_admit_device_
         let source = declaration(&css);
         assert_eq!(source.importance(), CssImportance::Important);
         assert!(source.known().unwrap().property_value().is_some());
-        assert!(validate_style_attribute(&css).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result()
+                .is_ok()
+        );
     }
     for css in [
         "border:1px solid device-cmyk(0 0 0 1)",
@@ -369,7 +387,13 @@ fn registered_color_shorthand_gradient_shadow_and_filter_consumers_admit_device_
             declaration(css).known().unwrap().property_value().is_some(),
             "{css}"
         );
-        assert!(validate_style_attribute(css).is_ok(), "{css}");
+        assert!(
+            CssParser::default()
+                .parse_block_contents(css)
+                .into_validation_result()
+                .is_ok(),
+            "{css}"
+        );
     }
 }
 
@@ -422,7 +446,8 @@ fn duplicate_or_nonfinal_background_device_colors_drop_only_background() {
         "device-cmyk(0 0 0 1) blue",
         "device-cmyk(0 0 0 1) device-cmyk(0 0 1 0)",
     ] {
-        let report = parse_style_attribute(&format!("background:{invalid};color:green"));
+        let report =
+            CssParser::default().parse_block_contents(format!("background:{invalid};color:green"));
         assert_eq!(report.syntax().len(), 1);
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -442,7 +467,7 @@ fn parsed_programmatic_and_mixed_components_keep_origins_importance_and_raw_iden
         parsed.value_components().items()[0].origin(),
         CssValueOrigin::Parsed(_)
     ));
-    let mixed_child = parse_component_values("0 0 0 1").unwrap();
+    let mixed_child = CssComponentValues::parse(&CssParser::default(), "0 0 0 1").unwrap();
     let mixed_origin = mixed_child.items()[0].origin().clone();
     for child in [
         CssComponentValues::try_new(
@@ -465,8 +490,9 @@ fn parsed_programmatic_and_mixed_components_keep_origins_importance_and_raw_iden
             Default::default(),
         )
         .unwrap();
-        let source = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+        let source = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
             graph.clone(),
             CssImportance::Important,
         )
@@ -518,13 +544,13 @@ fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
         ),
     ] {
         let source = declaration(&format!("{property}:var(--choice)!important"));
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending")
         };
         for invalid in ["device-cmyk()", "device-cmyk(0, 0, 0)", "device-cmyk(none)"] {
             assert!(
                 pending
-                    .reenter(parse_component_values(invalid).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                     .unwrap_err()
                     .replacement_error()
                     .is_some()
@@ -532,11 +558,11 @@ fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
         }
         assert!(
             pending
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
-        let replacement = parse_component_values(replacement).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), replacement).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -555,11 +581,9 @@ fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
 
 #[test]
 fn normalization_preserves_device_cmyk_order_values_and_source_occurrences() {
-    let report = parse_sheet(
-        ".a{color:device-cmyk(0 0 0 1)!important;background-color:device-cmyk(0 0 1 0);background-image:linear-gradient(device-cmyk(0 1 0 0), blue)}",
-    );
+    let report = CssParser::default().parse_sheet(".a{color:device-cmyk(0 0 0 1)!important;background-color:device-cmyk(0 0 1 0);background-image:linear-gradient(device-cmyk(0 1 0 0), blue)}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -775,7 +799,12 @@ fn numeric_depth_in_every_ink_channel_and_alpha_counts_the_device_function() {
             channels[slot] = calculation;
         }
         let text = format!("device-cmyk({} / {alpha})", channels.join(" "));
-        assert_eq!(parse_component_values(&text).unwrap().nesting_depth(), 256);
+        assert_eq!(
+            CssComponentValues::parse(&CssParser::default(), &text)
+                .unwrap()
+                .nesting_depth(),
+            256
+        );
         let value = color(&text);
         let before = value.clone();
         let mut expected_channels = ["0", "0", "0", "1"];
@@ -803,27 +832,26 @@ fn numeric_depth_in_every_ink_channel_and_alpha_counts_the_device_function() {
             } else {
                 "background-image"
             };
-            let report = parse_style_attribute(&format!("{property}:{invalid};opacity:.5"));
-            assert!(
-                report
-                    .diagnostics()
-                    .iter()
-                    .any(|d| d.error().code() == CssErrorCode::NestingLimit),
-                "{property} slot {slot}"
+            // Block contents refuses the whole input, the sibling included.
+            let source = format!("{property}:{invalid};opacity:.5");
+            let report = CssParser::default().parse_block_contents(&source);
+            assert!(report.syntax().is_empty(), "{property} slot {slot}");
+            crate::css::support::parse_report::assert_contents_refused(
+                &report,
+                &source,
+                &format!("{property} slot {slot}"),
             );
-            assert_eq!(report.syntax().len(), 1);
         }
         let deeper = text
             .replacen("calc(", "calc(calc(", 1)
             .replacen("0.5", "0.5)", 1);
-        let report = parse_style_attribute(&format!("color:{deeper};opacity:.5"));
-        assert!(
-            report
-                .diagnostics()
-                .iter()
-                .any(|d| d.error().code() == CssErrorCode::NestingLimit),
-            "slot {slot}"
+        let source = format!("color:{deeper};opacity:.5");
+        let report = CssParser::default().parse_block_contents(&source);
+        assert!(report.syntax().is_empty(), "slot {slot}");
+        crate::css::support::parse_report::assert_contents_refused(
+            &report,
+            &source,
+            &format!("slot {slot}"),
         );
-        assert_eq!(report.syntax().len(), 1);
     }
 }

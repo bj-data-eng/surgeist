@@ -15,16 +15,17 @@ fn scope_rule(rule: &CssRule) -> &CssScopeRule {
 
 #[test]
 fn scope_rule_parser_accepts_roots_limits_and_scoped_style_rules() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"
             @scope (.card, [data-scope]) to (.stop, .boundary) {
                 .title, > .action { color: black; }
                 &:hover { color: red; }
                 :scope .note { color: blue; }
             }
         "#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
 
     let scope = scope_rule(&sheet.rules()[0]);
     assert_eq!(scope.root().unwrap().selectors().len(), 2);
@@ -64,7 +65,8 @@ fn scope_rule_parser_accepts_roots_limits_and_scoped_style_rules() {
 
 #[test]
 fn scope_rule_parser_accepts_pseudo_elements_in_scoped_style_rules() {
-    let sheet = parse_sheet("@scope (.card) { .label::before { color: red; } }")
+    let sheet = CssParser::default()
+        .parse_sheet("@scope (.card) { .label::before { color: red; } }")
         .expect("clean parse report");
     let scope = scope_rule(&sheet.rules()[0]);
     let [CssRule::Style(style)] = scope.rules().rules() else {
@@ -85,13 +87,14 @@ fn scope_rule_parser_accepts_pseudo_elements_in_scoped_style_rules() {
 
 #[test]
 fn scope_rule_parser_accepts_limit_only_and_empty_prelude_scope() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"
             @scope to (.stop) { .title { color: black; } }
             @scope { > .item { color: red; } }
         "#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
 
     let limit_only = scope_rule(&sheet.rules()[0]);
     assert!(limit_only.root().is_none());
@@ -111,8 +114,9 @@ fn scope_rule_parser_accepts_limit_only_and_empty_prelude_scope() {
 
 #[test]
 fn scope_rule_parser_keeps_nested_scoped_group_rules_scoped() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"
             @scope (.card) {
                 @media screen {
                     @container (inline-size > 30rem) {
@@ -126,8 +130,8 @@ fn scope_rule_parser_keeps_nested_scoped_group_rules_scoped() {
                 @layer reset;
             }
         "#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
 
     let scope = scope_rule(&sheet.rules()[0]);
     let [CssRule::Media(media), CssRule::LayerStatement(_)] = scope.rules().rules() else {
@@ -153,8 +157,9 @@ fn scope_rule_parser_keeps_nested_scoped_group_rules_scoped() {
 
 #[test]
 fn public_api_exposes_layer_scope_and_scoped_rule_structure() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"
             @layer reset, theme.components;
             @layer theme {
                 .button:hover::before { content: "x"; }
@@ -170,8 +175,8 @@ fn public_api_exposes_layer_scope_and_scoped_rule_structure() {
                 @layer scoped.order;
             }
         "#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
 
     let [
         CssRule::LayerStatement(statement),
@@ -263,16 +268,17 @@ fn public_api_exposes_layer_scope_and_scoped_rule_structure() {
 
 #[test]
 fn nested_style_rule_parser_accepts_layer_and_scope_groups() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"
             .card {
                 color: black;
                 @layer components { & > .title { color: red; } }
                 @scope (.title) { > .icon { color: blue; } }
             }
         "#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
 
     let [CssRule::Style(parent)] = sheet.rules() else {
         panic!("expected authored parent");
@@ -328,9 +334,9 @@ fn scope_rule_parser_rejects_malformed_scope_syntax() {
 
 #[test]
 fn scope_rule_parser_retains_global_font_definition() {
-    let sheet =
-        parse_sheet("@scope (.card) { @font-face { font-family: Test; src: local(Test); } }")
-            .expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet("@scope (.card) { @font-face { font-family: Test; src: local(Test); } }")
+        .expect("clean parse report");
     let [CssRule::Scope(scope)] = sheet.rules() else {
         panic!("scope")
     };
@@ -341,7 +347,7 @@ fn scope_rule_parser_retains_global_font_definition() {
     assert!(
         matches!(face_value!(font.descriptors(), Src).sources(), [CssFontFaceSource::Local(name)] if name.as_str() == "Test")
     );
-    let with_neighbors = parse_sheet("@scope (.card) { .ok { color: black; } @font-face { font-family: Test; src: local(Test); } } .after { color: blue; }").expect("clean parse report");
+    let with_neighbors = CssParser::default().parse_sheet("@scope (.card) { .ok { color: black; } @font-face { font-family: Test; src: local(Test); } } .after { color: blue; }").expect("clean parse report");
     let [CssRule::Scope(scope), CssRule::Style(after)] = with_neighbors.rules() else {
         panic!("scope and later style")
     };

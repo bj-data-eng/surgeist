@@ -579,6 +579,24 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssFontFeatureVa
 }
 crate::specified_rule_serialization::specified_serialization!(CssFontFeatureValuesFamilyList);
 
+impl CssFontFeatureValuesFamilyList {
+    /// Parses one complete nonempty nongeneric literal-family prelude, without
+    /// constructing an enclosing rule. Retention is independent of report cleanliness.
+    ///
+    /// The parser supplies the document mode and the cumulative component limits.
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> crate::CssParseReport<Option<CssFontFeatureValuesFamilyList>> {
+        crate::parser::parse_font_feature_values_family_list_with_context(
+            source.as_ref(),
+            parser.component_limits(),
+            parser.context(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -591,7 +609,7 @@ mod tests {
         .unwrap();
         let mut sheet = crate::CssSheet::new();
         sheet.push_rule(crate::CssRule::FontFeatureValues(rule.clone()));
-        let normalized = crate::normalize_sheet(&sheet).unwrap();
+        let normalized = sheet.normalize(Default::default()).unwrap();
         let [crate::CssNormalizedItem::Rule(context)] = normalized.items() else {
             panic!("one opaque rule expected")
         };

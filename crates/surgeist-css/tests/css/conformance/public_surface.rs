@@ -16,17 +16,17 @@ use surgeist_css::{
     CssKnownProperty, CssKnownPropertyValueRef, CssLanguageRange, CssLengthPercentage,
     CssMediaLeaf, CssMediaQuery, CssMediaQueryModifier, CssMediaType, CssNamespaceConstraint,
     CssNamespaceName, CssNamespacePrefix, CssNonNegative, CssNumeric, CssNumericLiteral,
-    CssOpenTypeTag, CssPropertyNameRef, CssPseudoClass, CssPseudoElement, CssPseudoElementSegment,
-    CssRecoveryAction, CssRelativeColorChannel, CssRelativeColorEnvironment,
-    CssRelativeColorExpressionValue, CssRelativeColorFunction, CssRelativeColorResultDomain,
-    CssRule, CssSelector, CssSelectorCombinator, CssSpecificationTier, CssSupportStatus,
-    CssSupportsLeaf, CssSystemColor, conformance_exclusion, feature_metadata, parse_sheet,
-    parse_style_attribute, property_support_metadata, specification_source,
+    CssOpenTypeTag, CssParser, CssPropertyNameRef, CssPseudoClass, CssPseudoElement,
+    CssPseudoElementSegment, CssRecoveryAction, CssRelativeColorChannel,
+    CssRelativeColorEnvironment, CssRelativeColorExpressionValue, CssRelativeColorFunction,
+    CssRelativeColorResultDomain, CssRule, CssSelector, CssSelectorCombinator,
+    CssSpecificationTier, CssSupportStatus, CssSupportsLeaf, CssSystemColor, conformance_exclusion,
+    feature_metadata, property_support_metadata, specification_source,
 };
 
 #[test]
 fn public_surface_exposes_checked_private_field_namespace_models() {
-    let report = parse_sheet("@namespace s\\76 g \"not a URI\";");
+    let report = CssParser::default().parse_sheet("@namespace s\\76 g \"not a URI\";");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Namespace(rule)] = report.syntax().rules() else {
         panic!("expected namespace rule")
@@ -52,7 +52,7 @@ fn public_surface_exposes_checked_private_field_namespace_models() {
 
 #[test]
 fn public_surface_exposes_checked_counter_style_descriptor_models() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@counter-style complete { system: additive; negative: \"(\" \" )\"; ",
         "range: infinite -1, 1 infinite; pad: \"0\" 3; fallback: decimal; ",
         "additive-symbols: C 100, X 10, I 1; speak-as: spell-out; }",
@@ -112,7 +112,7 @@ fn public_surface_exposes_checked_counter_style_descriptor_models() {
 
 #[test]
 fn public_surface_exposes_namespace_qualified_selector_accessors_and_id_projection() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@namespace svg \"urn:svg\";",
         "svg|a#primary[svg|href] { color: red; }",
     ));
@@ -144,7 +144,8 @@ fn public_surface_exposes_namespace_qualified_selector_accessors_and_id_projecti
 
 #[test]
 fn public_surface_exposes_checked_selectors3_language_pseudos_and_ordered_ids() {
-    let report = parse_sheet("a#first#second:lang(e\\6e)::first-line { color: red; }");
+    let report =
+        CssParser::default().parse_sheet("a#first#second:lang(e\\6e)::first-line { color: red; }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(rule)] = report.syntax().rules() else {
         panic!("expected one retained style rule")
@@ -180,7 +181,8 @@ fn public_surface_exposes_checked_selectors3_language_pseudos_and_ordered_ids() 
 
 #[test]
 fn public_surface_exposes_private_field_supports_models_and_checked_lists() {
-    let report = parse_sheet("@supports (display: grid) {} @supports selector(.x > .y) {}");
+    let report = CssParser::default()
+        .parse_sheet("@supports (display: grid) {} @supports selector(.x > .y) {}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Supports(declaration), CssRule::Supports(selector)] = report.syntax().rules()
     else {
@@ -202,7 +204,7 @@ fn public_surface_exposes_private_field_supports_models_and_checked_lists() {
     .expect("two conditions form a checked operator list");
     assert_eq!(list.conditions().len(), 2);
 
-    let import = parse_sheet("@import 'theme.css' supports(display: grid);");
+    let import = CssParser::default().parse_sheet("@import 'theme.css' supports(display: grid);");
     assert!(import.is_clean(), "{:?}", import.diagnostics());
     let [CssRule::Import(import)] = import.syntax().rules() else {
         panic!("expected import rule")
@@ -220,7 +222,7 @@ fn public_surface_exposes_private_field_supports_models_and_checked_lists() {
 #[test]
 fn public_surface_exposes_unknown_media_types_and_general_enclosures() {
     let source = "@media only F\\75ture and (unknown: calc(1foo + 2px)) {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Media(rule)] = report.syntax().rules() else {
         panic!("expected retained media rule")
@@ -246,7 +248,7 @@ fn public_surface_exposes_unknown_media_types_and_general_enclosures() {
 
 #[test]
 fn public_surface_exposes_checked_core_font_models() {
-    let report = parse_style_attribute("font-size: medium; font-family: serif");
+    let report = CssParser::default().parse_block_contents("font-size: medium; font-family: serif");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::FontSize(size) = report.syntax()[0]
         .known()
@@ -336,7 +338,8 @@ fn public_surface_exposes_checked_font_control_models() {
         CssFontSynthesis::Values(values) if values.weight() && !values.style()
     ));
 
-    let report = parse_style_attribute("font-size-adjust: none; font-synthesis: style weight");
+    let report = CssParser::default()
+        .parse_block_contents("font-size-adjust: none; font-synthesis: style weight");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::FontSizeAdjust(adjust) = report.syntax()[0]
         .known()
@@ -416,7 +419,8 @@ fn public_surface_exposes_checked_font_variant_group_models() {
 
 #[test]
 fn public_surface_exposes_typed_authored_color_inspection() {
-    let report = parse_style_attribute("color: rgb(none 120% calc(1 + 2)); color: WindowText");
+    let report = CssParser::default()
+        .parse_block_contents("color: rgb(none 120% calc(1 + 2)); color: WindowText");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
     let CssKnownPropertyValueRef::Color(rgb) = report.syntax()[0]
@@ -455,7 +459,7 @@ fn public_surface_exposes_typed_authored_color_inspection() {
 
 #[test]
 fn public_surface_exposes_perceptual_and_predefined_color_inspection() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "color: oklch(50% 0.2 calc(1turn - 90deg) / none); ",
         "color: color(xyz 1 2 3)",
     ));
@@ -488,8 +492,8 @@ fn public_surface_exposes_perceptual_and_predefined_color_inspection() {
 
 #[test]
 fn public_surface_exposes_typed_relative_color_inspection_without_resolution() {
-    let report =
-        parse_style_attribute("color: oklch(from rgb(from red r g b) l c calc(h + 20) / alpha)");
+    let report = CssParser::default()
+        .parse_block_contents("color: oklch(from rgb(from red r g b) l c calc(h + 20) / alpha)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Color(value) = report.syntax()[0]
         .known()
@@ -515,7 +519,8 @@ fn public_surface_exposes_typed_relative_color_inspection_without_resolution() {
 
 #[test]
 fn public_color_mix_construction_rejects_hue_in_a_rectangular_space() {
-    let report = parse_style_attribute("color: color-mix(in oklch, red 25%, blue 75%)");
+    let report =
+        CssParser::default().parse_block_contents("color: color-mix(in oklch, red 25%, blue 75%)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Color(value) = report.syntax()[0]
         .known()
@@ -693,7 +698,8 @@ fn representative_evolving_kind(
 }
 
 fn emitted_actions(source: &str) -> Vec<CssRecoveryAction> {
-    parse_sheet(source)
+    CssParser::default()
+        .parse_sheet(source)
         .diagnostics()
         .iter()
         .map(|diagnostic| diagnostic.action())
@@ -702,14 +708,14 @@ fn emitted_actions(source: &str) -> Vec<CssRecoveryAction> {
 
 #[test]
 fn public_surface_sheet_reports_expose_retained_syntax_and_structured_recovery() {
-    let clean = parse_sheet(".clean { color: red; }");
+    let clean = CssParser::default().parse_sheet(".clean { color: red; }");
     assert!(clean.is_clean());
     assert!(clean.diagnostics().is_empty());
     assert_eq!(clean.syntax().rules().len(), 1);
     assert_eq!(rule_kind(&clean.syntax().rules()[0]), "style");
 
     let source = ".before { color: red; } @unknown x; .after { color: blue; }";
-    let recovered = parse_sheet(source);
+    let recovered = CssParser::default().parse_sheet(source);
     assert!(!recovered.is_clean());
     assert_eq!(recovered.syntax().rules().len(), 2);
     let diagnostic = &recovered.diagnostics()[0];
@@ -763,7 +769,7 @@ fn public_surface_closed_enums_are_exhaustive_and_evolving_enums_use_wildcards()
 #[test]
 fn public_surface_style_attributes_preserve_importance_custom_and_substitution_syntax() {
     let source = "color: red; --Theme: RGB(1, 2, var(--fallback)); width: var(--size, 2px) !important; mystery: 1";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().as_slice().len(), 3);
     assert_eq!(report.syntax().iter().count(), 3);
     assert_eq!(report.syntax().len(), 3);
@@ -820,8 +826,8 @@ fn public_surface_style_attributes_preserve_importance_custom_and_substitution_s
 
 #[test]
 fn public_surface_known_declarations_expose_coupled_authored_value_views() {
-    let report =
-        parse_style_attribute("width: calc(100% - 12px); color: inherit; opacity: var(--alpha)");
+    let report = CssParser::default()
+        .parse_block_contents("width: calc(100% - 12px); color: inherit; opacity: var(--alpha)");
     assert!(report.is_clean());
 
     let width = report.syntax()[0].known().expect("known width");
@@ -953,7 +959,7 @@ fn public_surface_exposes_dated_sources_and_exclusion_metadata() {
 #[test]
 fn public_surface_non_bmp_coordinates_are_byte_line_and_utf16_based() {
     let source = ".😀 { mystery: 1; color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let diagnostic = &report.diagnostics()[0];
     let position = diagnostic.error().position();
     let byte_offset = source.find("mystery").expect("unknown property");
@@ -1100,12 +1106,16 @@ fn public_surface_font_face_descriptor_current_models_are_checked() {
 
 #[test]
 fn public_surface_enabled_validators_accept_clean_reports_and_preserve_failures() {
-    let sheet = surgeist_css::validate_sheet(".x { color: red; }")
+    let sheet = surgeist_css::CssParser::default()
+        .parse_sheet(".x { color: red; }")
+        .into_validation_result()
         .expect("clean sheet passes application-strict validation");
     assert_eq!(sheet.rules().len(), 1);
 
-    let ordinary = parse_style_attribute("color: red; mystery: 1");
-    let failure = surgeist_css::validate_style_attribute("color: red; mystery: 1")
+    let ordinary = CssParser::default().parse_block_contents("color: red; mystery: 1");
+    let failure = surgeist_css::CssParser::default()
+        .parse_block_contents("color: red; mystery: 1")
+        .into_validation_result()
         .expect_err("recovered style attribute fails application-strict validation");
     assert_eq!(failure.first(), &ordinary.diagnostics()[0]);
     assert_eq!(failure.diagnostics(), ordinary.diagnostics());

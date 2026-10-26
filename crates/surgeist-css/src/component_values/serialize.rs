@@ -478,7 +478,7 @@ mod media_helpers_tests {
 
     #[test]
     fn subtree_ranges_distinguish_repeated_original_components_and_keep_trivia() {
-        let parsed = parse_component_values("future(a/**/b)").unwrap();
+        let parsed = crate::component_values::parse_component_values("future(a/**/b)").unwrap();
         let component = parsed.items()[0].clone();
         let values =
             CssComponentValues::try_new(vec![component.clone(), component], Default::default())
@@ -512,8 +512,8 @@ mod media_helpers_tests {
 
     #[test]
     fn attributed_grammar_uses_token_boundaries_and_original_sources() {
-        let number = parse_component_values("1").unwrap();
-        let identifier = parse_component_values("e3").unwrap();
+        let number = crate::component_values::parse_component_values("1").unwrap();
+        let identifier = crate::component_values::parse_component_values("e3").unwrap();
         let mut builder = CssCanonicalBuilder::new(7);
         builder.push_component(&number.items()[0]).unwrap();
         builder
@@ -549,7 +549,7 @@ mod media_helpers_tests {
 
     #[test]
     fn component_limit_causes_and_implicit_origins_stay_distinct() {
-        let parsed = parse_component_values("future(1px").unwrap();
+        let parsed = crate::component_values::parse_component_values("future(1px").unwrap();
         let implicit = parsed.first_implicit_origin().unwrap();
         assert!(matches!(implicit, CssValueOrigin::ImplicitClosure { .. }));
         for (limits, kind) in [

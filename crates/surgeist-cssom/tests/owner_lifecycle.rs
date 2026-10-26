@@ -297,7 +297,7 @@ fn synchronization_requires_supported_owner_state_but_does_not_mutate_readonly_d
     let mut edit = batch(&store);
     let unbound = edit
         .create_declarations(
-            parse_declaration_block_contents("").into_parts().0,
+            CssParser::default().parse_block_contents("").into_parts().0,
             false,
             false,
             None,
@@ -305,7 +305,7 @@ fn synchronization_requires_supported_owner_state_but_does_not_mutate_readonly_d
         .unwrap();
     let computed = edit
         .create_declarations(
-            parse_declaration_block_contents("").into_parts().0,
+            CssParser::default().parse_block_contents("").into_parts().0,
             true,
             false,
             Some(version(CssomInputRole::Owner, "computed", 1)),
@@ -313,7 +313,8 @@ fn synchronization_requires_supported_owner_state_but_does_not_mutate_readonly_d
         .unwrap();
     let readonly = edit
         .create_declarations(
-            parse_declaration_block_contents("width: 2px")
+            CssParser::default()
+                .parse_block_contents("width: 2px")
                 .into_parts()
                 .0,
             false,
@@ -500,7 +501,8 @@ fn synchronization_serializes_selected_members_instead_of_reexpanding_old_shorth
     let mut import = batch(&consumer);
     let ticket = import
         .create_declarations(
-            parse_declaration_block_contents(effect.value())
+            CssParser::default()
+                .parse_block_contents(effect.value())
                 .into_parts()
                 .0,
             false,
@@ -744,7 +746,7 @@ fn retirement_refusals_dropped_batches_and_stale_batches_preserve_current_block(
     let mut legacy_batch = batch(&store);
     let ticket = legacy_batch
         .create_declarations(
-            parse_declaration_block_contents("").into_parts().0,
+            CssParser::default().parse_block_contents("").into_parts().0,
             false,
             false,
             Some(expected.clone()),
@@ -873,8 +875,8 @@ fn linked_source() -> (CssomLinkedInput, usize) {
     // identities. CSS's public storage report, not this test, prices backing.
     let mut units = Vec::with_capacity(4096);
     units.extend("/* retained original */ .a { --x: token; }".encode_utf16());
-    let report = CssParserContext::default()
-        .parse_sheet_utf16_with_limits(Arc::new(units), CssUtf16InputLimits::default(), || {
+    let report = CssParser::new(CssParserContext::default(), Default::default())
+        .parse_sheet_utf16(Arc::new(units), CssUtf16InputLimits::default(), || {
             Ok::<_, ()>(())
         })
         .unwrap();

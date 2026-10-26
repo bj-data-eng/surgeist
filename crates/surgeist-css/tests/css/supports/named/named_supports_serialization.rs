@@ -1,12 +1,12 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssRule, CssSerializationLimits, CssSupportsTestBody,
-    CssSupportsTestItem, CssValueTokenRef, parse_sheet,
+    CssComponentValue, CssComponentValues, CssParser, CssRule, CssSerializationLimits,
+    CssSupportsTestBody, CssSupportsTestItem, CssValueTokenRef,
 };
 
 fn definition(source: &str) -> String {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
         panic!("expected one named supports definition: {source}");
@@ -21,7 +21,7 @@ fn canonical_body_keeps_earlier_bangs_and_distinguishes_at_rule_forms() {
     assert_eq!(definition(source), expected);
     assert_eq!(definition(expected), expected);
 
-    let report = parse_sheet(expected);
+    let report = CssParser::default().parse_sheet(expected);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
         panic!("expected canonical definition");
@@ -113,7 +113,7 @@ fn independently_supplied_adjacent_tokens_gain_a_safe_separator() {
 #[test]
 fn sheet_budget_is_monotonic_across_palette_and_definition() {
     let source = "@font-palette-values --colors { font-family: Demo; }\n@supports-condition --feature { future:a; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [palette, named] = report.syntax().rules() else {
         panic!("expected two rules");
@@ -163,7 +163,8 @@ fn sheet_budget_is_monotonic_across_palette_and_definition() {
 
 #[test]
 fn supported_definitions_compose_with_a_following_style_rule() {
-    let report = parse_sheet("@supports-condition --feature {}\n.after { color: red; }");
+    let report = CssParser::default()
+        .parse_sheet("@supports-condition --feature {}\n.after { color: red; }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     assert_eq!(

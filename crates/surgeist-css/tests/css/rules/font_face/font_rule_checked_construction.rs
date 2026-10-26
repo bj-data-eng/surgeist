@@ -492,8 +492,11 @@ fn pending_descriptor_effective_value_uses_shared_authored_owner() {
         "@font-face { font-weight:  env(weight); }"
     );
     assert_eq!(input, before);
-    let report =
-        parse_font_face_descriptor_value("env(weight)", CssFontFaceDescriptorKind::FontWeight);
+    let report = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        "env(weight)",
+        CssFontFaceDescriptorKind::FontWeight,
+    );
     let value = report.syntax().as_ref().unwrap().clone();
     let face = CssFontFaceRule::new(CssFontFaceDescriptors::new(vec![
         CssFontFaceDescriptor::new(value),
@@ -531,7 +534,7 @@ fn malformed_font_grammar_keeps_independent_local_recovery_controls() {
         "@font-face { font-weight: 400 500 600; font-display: swap; }",
         "@font-feature-values Demo { @character-variant { bad: 1 2 3; good: 100; } }",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert_eq!(report.syntax().rules().len(), 1);
         assert_eq!(report.diagnostics().len(), 1);
         assert_eq!(

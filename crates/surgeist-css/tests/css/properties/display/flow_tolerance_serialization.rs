@@ -7,9 +7,9 @@
 use crate::css::support::failure_classes::SerializationFailure as ErrorKind;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
-    CssCalculation, CssComponentValueRef, CssFlowTolerance, CssFlowToleranceRef,
-    CssKnownPropertyValueRef, CssLengthPercentage, CssNumeric, CssSerializationLimits as Limits,
-    CssValueTokenRef, parse_component_values, parse_style_attribute,
+    CssCalculation, CssComponentValueRef, CssComponentValues, CssFlowTolerance,
+    CssFlowToleranceRef, CssKnownPropertyValueRef, CssLengthPercentage, CssNumeric, CssParser,
+    CssSerializationLimits as Limits, CssValueTokenRef,
 };
 
 fn constructed(text: &str) -> CssFlowTolerance {
@@ -17,7 +17,7 @@ fn constructed(text: &str) -> CssFlowTolerance {
         "normal" => CssFlowTolerance::normal(),
         "infinite" => CssFlowTolerance::infinite(),
         _ => {
-            let components = parse_component_values(text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let scalar = if text.contains('(') {
                 CssNumeric::<CssLengthPercentage>::try_from_calculation(
                     CssCalculation::<CssLengthPercentage>::try_from_components(
@@ -37,7 +37,7 @@ fn constructed(text: &str) -> CssFlowTolerance {
 }
 
 fn parsed(text: &str) -> CssFlowTolerance {
-    let report = parse_style_attribute(&format!("flow-tolerance:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("flow-tolerance:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let Some(CssKnownPropertyValueRef::FlowTolerance(wrapper)) =
         report.syntax()[0].known().unwrap().property_value()

@@ -20,20 +20,19 @@ mod tests {
     use crate::{
         CssCondition, CssContainerPrelude, CssCustomMediaBody, CssNamespaceContext, CssRule,
         CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
-        CssSupportsLeaf, parse_component_values, parse_sheet,
-        specified_serialization::SpecifiedSerializationContext,
+        CssSupportsLeaf, specified_serialization::SpecifiedSerializationContext,
     };
 
     #[test]
     fn suppressed_lexical_regions_charge_omitted_whitespace_without_allocating_text() {
         let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
-            parse_component_values("  (display:grid)  ").unwrap(),
+            crate::component_values::parse_component_values("  (display:grid)  ").unwrap(),
             &CssNamespaceContext::default(),
             Default::default(),
         )
         .unwrap();
         let prelude = CssContainerPrelude::try_from_components(
-            parse_component_values("  (width>1px)  ").unwrap(),
+            crate::component_values::parse_component_values("  (width>1px)  ").unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -60,7 +59,7 @@ mod tests {
 
     #[test]
     fn suppressed_import_projects_recovered_member_work_and_preserves_its_error_origin() {
-        let report = parse_sheet("@import \"x\" screen,???;");
+        let report = crate::CssParser::default().parse_sheet("@import \"x\" screen,???;");
         let before = report.clone();
         let [CssRule::Import(rule)] = report.syntax().rules() else {
             panic!("import");
@@ -98,7 +97,7 @@ mod tests {
             ("@custom-media --x false;", 2, 2),
             ("@custom-media --x ???;", 3, 5),
         ] {
-            let report = parse_sheet(source);
+            let report = crate::CssParser::default().parse_sheet(source);
             let [CssRule::CustomMedia(rule)] = report.syntax().rules() else {
                 panic!("definition");
             };
@@ -124,7 +123,8 @@ mod tests {
 
     #[test]
     fn import_probe_and_final_emission_share_remaining_bytes_without_double_charging() {
-        let report = parse_sheet("@import \"x\" layer(theme) and (color);");
+        let report =
+            crate::CssParser::default().parse_sheet("@import \"x\" layer(theme) and (color);");
         let [CssRule::Import(rule)] = report.syntax().rules() else {
             panic!("import");
         };

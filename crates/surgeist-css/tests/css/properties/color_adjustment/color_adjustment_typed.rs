@@ -126,8 +126,9 @@ fn parsed_and_checked_schemes_canonicalize_only_last_without_erasing_authored_da
                 .iter()
                 .all(|item| !matches!(item.origin(), CssValueOrigin::Programmatic))
         );
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ColorScheme),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ColorScheme)),
             original.clone(),
             CssImportance::Important,
         )
@@ -314,8 +315,8 @@ fn keyword_models_emit_source_derived_canonical_hints_with_exact_limits() {
 
 #[test]
 fn reserved_scheme_failure_maps_to_the_original_late_mixed_source_token() {
-    let head = parse_component_values("light").unwrap();
-    let tail = parse_component_values("DEFAULT").unwrap();
+    let head = CssComponentValues::parse(&CssParser::default(), "light").unwrap();
+    let tail = CssComponentValues::parse(&CssParser::default(), "DEFAULT").unwrap();
     let original_tail = tail.items()[0].origin().clone();
     let components = CssComponentValues::try_new(
         vec![head.items()[0].clone(), tail.items()[0].clone()],
@@ -323,8 +324,9 @@ fn reserved_scheme_failure_maps_to_the_original_late_mixed_source_token() {
     )
     .unwrap();
     let snapshot = components.clone();
-    let error = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ColorScheme),
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ColorScheme)),
         components.clone(),
         CssImportance::Important,
     )
@@ -338,8 +340,7 @@ fn reserved_scheme_failure_maps_to_the_original_late_mixed_source_token() {
 fn shorthand_expansion_keeps_one_typed_print_hint_and_original_identity() {
     let source = declaration("color-adjust", "EXACT");
     let original = source.value_components().clone();
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one completed member")
     };

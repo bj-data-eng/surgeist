@@ -4,8 +4,8 @@ use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
-    CssCalculation, CssComponentValue, CssComponentValueRef, CssNonNegative, CssNumber, CssNumeric,
-    CssSerializationLimits, CssValueOrigin, CssValueTokenRef, parse_component_values,
+    CssCalculation, CssComponentValue, CssComponentValueRef, CssComponentValues, CssNonNegative,
+    CssNumber, CssNumeric, CssParser, CssSerializationLimits, CssValueOrigin, CssValueTokenRef,
 };
 
 fn literal(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
@@ -65,7 +65,7 @@ fn exact_negative_and_wrong_domain_errors_retain_component_origin() {
         .unwrap_err();
         assert!(error.is_root_domain_mismatch(), "{error:?}");
     }
-    let parsed = parse_component_values("  -1e-999").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "  -1e-999").unwrap();
     let error = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
         parsed
             .items()
@@ -91,7 +91,7 @@ fn exact_negative_and_wrong_domain_errors_retain_component_origin() {
 fn bare_calculation_roots_reenter_literals_and_actual_math_stays_symbolic() {
     for text in ["0", "1e999", "-1e-999"] {
         let calculation = CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -106,7 +106,7 @@ fn bare_calculation_roots_reenter_literals_and_actual_math_stays_symbolic() {
     }
     let math = CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
         CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values("calc(-1)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(-1)").unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -120,7 +120,7 @@ fn bare_calculation_roots_reenter_literals_and_actual_math_stays_symbolic() {
     );
     crate::css::support::value_assertions::assert_calculation_rejected(
         CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values("calc(1 + 2%)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(1 + 2%)").unwrap(),
             Default::default(),
         ),
         Some(NumericFailure::IncompatibleTypes),
@@ -129,7 +129,7 @@ fn bare_calculation_roots_reenter_literals_and_actual_math_stays_symbolic() {
 
 #[test]
 fn shared_scalar_equality_ignores_provenance_and_budgets_are_atomic() {
-    let parsed = parse_component_values("1.250").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "1.250").unwrap();
     let parsed =
         CssNumeric::<CssNumber, CssNonNegative>::try_from_component(parsed.items()[0].clone())
             .unwrap();

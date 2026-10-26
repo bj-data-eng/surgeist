@@ -159,7 +159,7 @@ fn symbolic_and_exact_numeric_children_use_the_projection_contract() {
 #[test]
 fn output_and_atomic_error_preserve_authored_numeric_origins() {
     let source = "/*😀*/grid:10px / dense auto-flow 1e-50px!important";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Grid(wrapper) = report.syntax()[0]
         .known()

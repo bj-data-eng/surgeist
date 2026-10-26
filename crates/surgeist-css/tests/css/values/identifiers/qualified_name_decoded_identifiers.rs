@@ -4,14 +4,15 @@
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#grammar
 
 use surgeist_css::{
-    CssAttributeName, CssComponentValueRef, CssErrorCode, CssNamespaceConstraint,
-    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssNormalizedItem,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSelector, CssValueTokenRef,
-    normalize_report, parse_component_values, parse_selector, parse_sheet, validate_sheet,
+    CssAttributeName, CssComponentValueRef, CssComponentValues, CssErrorCode,
+    CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
+    CssNormalizedItem, CssParser, CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSelector,
+    CssValueTokenRef,
 };
 
 fn assert_identifier_spelling_decodes_to(spelling: &str, decoded: &str) {
-    let components = parse_component_values(spelling).expect("valid escaped identifier spelling");
+    let components = CssComponentValues::parse(&CssParser::default(), spelling)
+        .expect("valid escaped identifier spelling");
     let [identifier] = components.items() else {
         panic!("one complete identifier token: {spelling}: {components:?}");
     };
@@ -76,8 +77,10 @@ fn escaped_attribute_local_names_parse_without_unwinding_in_each_namespace_form(
             ("svg|", CssNamespaceConstraint::Named(prefix.clone())),
         ] {
             let source = format!("[{qualifier}{spelling}].mark");
-            let report = std::panic::catch_unwind(|| parse_selector(&source, &context))
-                .expect("valid escaped attribute local identifier must not unwind");
+            let report = std::panic::catch_unwind(|| {
+                CssSelector::parse(&CssParser::default(), &source, &context)
+            })
+            .expect("valid escaped attribute local identifier must not unwind");
             assert!(report.is_clean(), "{source}: {report:?}");
             assert_attribute_name(report.syntax().as_ref().unwrap(), decoded, &namespace);
             assert_eq!(
@@ -98,7 +101,7 @@ fn escaped_attribute_names_survive_sheet_normalization_with_recovery_and_authore
         let source = format!(
             "/*😀*/\r\n@namespace svg 'urn:svg';\r\n{invalid}\r\n  {selector}{{color:red}}"
         );
-        let report = std::panic::catch_unwind(|| parse_sheet(&source))
+        let report = std::panic::catch_unwind(|| CssParser::default().parse_sheet(&source))
             .expect("valid escaped local name must not unwind after an invalid sibling");
         let [CssRule::Namespace(_), CssRule::Style(style)] = report.syntax().rules() else {
             panic!("namespace and valid later style retained: {report:?}");
@@ -131,11 +134,17 @@ fn escaped_attribute_names_survive_sheet_normalization_with_recovery_and_authore
             invalid_start + invalid.len()
         );
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
 
-        let normalized = normalize_report(&report).expect("retained attribute name normalizes");
+        let normalized = report
+            .normalize(Default::default())
+            .expect("retained attribute name normalizes");
         assert!(!normalized.is_clean());
         assert_eq!(normalized.diagnostics(), report.diagnostics());
         let (context, selectors) = normalized

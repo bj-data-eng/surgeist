@@ -6,8 +6,7 @@ use crate::css::support::authored_syntax::{
 };
 use surgeist_css::{
     CssComponentValue, CssComponentValues, CssCondition, CssConditionKind, CssImportRule,
-    CssNamespaceContext, CssRule, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin,
-    parse_component_values, parse_sheet,
+    CssNamespaceContext, CssParser, CssRule, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin,
 };
 
 fn assert_same_parsed_origin(actual: &CssValueOrigin, expected: &CssValueOrigin) {
@@ -41,7 +40,7 @@ fn named_operands_keep_decoded_case_escapes_and_unknown_identity() {
         );
         assert_same_parsed_origin(name.component().origin(), name.origin());
 
-        let report = parse_sheet(&format!("@supports {source} {{}}"));
+        let report = CssParser::default().parse_sheet(format!("@supports {source} {{}}"));
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [CssRule::Supports(rule)] = report.syntax().rules() else {
             panic!("expected parsed @supports");
@@ -122,7 +121,7 @@ fn named_operands_compose_with_boolean_supports_grammar() {
         .collect();
     assert_eq!(names, ["--left", "--right"]);
 
-    let report = parse_sheet("@supports (--feature) and (display:grid) {}");
+    let report = CssParser::default().parse_sheet("@supports (--feature) and (display:grid) {}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("expected parsed @supports");
@@ -134,7 +133,7 @@ fn named_operands_compose_with_boolean_supports_grammar() {
 fn import_bare_name_preserves_function_form_and_original_token_origin() {
     // Conditional 5 §8 shows a bare reference in an import supports() function.
     let source = "@import url(\"nested-styles.css\") supports(--nesting);";
-    let parsed = parse_sheet(source);
+    let parsed = CssParser::default().parse_sheet(source);
     assert!(parsed.is_clean(), "{:?}", parsed.diagnostics());
     let [CssRule::Import(parsed)] = parsed.syntax().rules() else {
         panic!("expected parsed import");
@@ -183,7 +182,7 @@ fn parenthesized_import_name_and_escaped_bare_name_reconstruct_distinct_forms() 
         ),
         ("@import 'x' supports(--);", "(--)", "--"),
     ] {
-        let parsed = parse_sheet(source);
+        let parsed = CssParser::default().parse_sheet(source);
         assert!(parsed.is_clean(), "{source}: {:?}", parsed.diagnostics());
         let [CssRule::Import(parsed)] = parsed.syntax().rules() else {
             panic!("expected parsed import");
@@ -217,7 +216,7 @@ fn parenthesized_import_name_and_escaped_bare_name_reconstruct_distinct_forms() 
 #[test]
 fn checked_named_references_reject_eof_recovery_before_grammar() {
     let error = CssCondition::<CssSupportsLeaf>::try_from_components(
-        parse_component_values("(--missing").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "(--missing").unwrap(),
         &CssNamespaceContext::default(),
         Default::default(),
     )
@@ -228,7 +227,7 @@ fn checked_named_references_reject_eof_recovery_before_grammar() {
         CssValueOrigin::ImplicitClosure { .. }
     ));
 
-    let recovered = parse_component_values("supports(--missing").unwrap();
+    let recovered = CssComponentValues::parse(&CssParser::default(), "supports(--missing").unwrap();
     let mut components = vec![
         CssComponentValue::try_token("@import").unwrap(),
         CssComponentValue::try_token(" ").unwrap(),

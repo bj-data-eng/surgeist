@@ -4,14 +4,14 @@
 use std::sync::Arc;
 use surgeist_css::{
     CssDeclarationList, CssMediaQueryList, CssMediaRule as AuthoredMediaRule, CssNamespaceContext,
-    CssParseReport, CssParserContext, CssRule as AuthoredRule, CssSheet, CssUtf16InputLimits,
-    CssValueOrigin,
+    CssParseReport, CssParser, CssParserContext, CssRule as AuthoredRule, CssSheet,
+    CssUtf16InputLimits, CssValueOrigin,
 };
 use surgeist_cssom::*;
 
 fn parsed(original: Arc<Vec<u16>>) -> CssParseReport<CssSheet> {
-    CssParserContext::default()
-        .parse_sheet_utf16_with_limits(original, CssUtf16InputLimits::default(), || Ok::<_, ()>(()))
+    CssParser::new(CssParserContext::default(), Default::default())
+        .parse_sheet_utf16(original, CssUtf16InputLimits::default(), || Ok::<_, ()>(()))
         .unwrap()
 }
 fn backing(text: &str) -> Arc<Vec<u16>> {

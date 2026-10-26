@@ -24,7 +24,7 @@ fn assert_color(declaration: &CssDeclaration, expected: &str) {
 fn identifier_fallback_and_at_keyword_callbacks_partition_once_per_nonempty_run() {
     for rejected in ["bad,{}", "@unknown;", "@\\75 nknown{}", "@layer a,b{}"] {
         let source = format!(".p{{color:red;{rejected}@unknown; color:green}}tail{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(
             report.diagnostics().len(),
             2,
@@ -60,7 +60,7 @@ fn escaped_custom_property_lookalike_and_identifier_no_rule_do_not_partition() {
         "\\2d -bad:var(){color:blue};",
     ] {
         let source = format!(".p{{color:red;{rejected}color:green}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(
             report.diagnostics().len(),
             1,
@@ -93,7 +93,7 @@ fn masked_rejected_child_at_chunk_boundary_keeps_leading_slot_semantics() {
                 "@scope{".repeat(62),
                 "}".repeat(62)
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert_eq!(report.diagnostics().len(), 1, "{:?}", report.diagnostics());
             let [CssRule::Scope(scope)] = report.syntax().rules() else {
                 panic!("scope")
@@ -132,7 +132,7 @@ fn failed_block_resource_error_retains_partition_and_original_error_identity() {
         "f(".repeat(255),
         ")".repeat(255)
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let [diagnostic] = report.diagnostics() else {
         panic!("one resource failure: {:?}", report.diagnostics())
     };

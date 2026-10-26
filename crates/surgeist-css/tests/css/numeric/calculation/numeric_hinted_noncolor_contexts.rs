@@ -35,7 +35,7 @@ fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
         "/*😀*/\r\n{}:{text}!important;\r\nheight:1px",
         property.canonical_name()
     );
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(
         report.is_clean(),
         "{}:{text}: {:?}",
@@ -44,7 +44,9 @@ fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
     );
     assert_eq!(report.syntax().len(), 2);
     assert_eq!(
-        validate_style_attribute(&source),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result(),
         Ok(report.syntax().clone())
     );
     let value = report.syntax()[0].clone();
@@ -89,7 +91,7 @@ fn admits(property: CssKnownProperty, text: &str) {
     let parsed = parsed(property, text);
     let checked = authored_property::checked(property, text, false);
     let CssExpansion::Contributions(CssContributions::Longhands(expected)) =
-        expand_declaration(&checked).unwrap()
+        checked.expand().unwrap()
     else {
         panic!("checked longhand")
     };
@@ -97,7 +99,7 @@ fn admits(property: CssKnownProperty, text: &str) {
         panic!("one checked contribution")
     };
     let CssExpansion::Contributions(CssContributions::Longhands(parsed_items)) =
-        expand_declaration(&parsed).unwrap()
+        parsed.expand().unwrap()
     else {
         panic!("parsed longhand")
     };
@@ -106,7 +108,7 @@ fn admits(property: CssKnownProperty, text: &str) {
     assert!(parsed_items.items()[0].source().same_occurrence(&parsed));
 
     let pending_source = checked_pending(property);
-    let CssExpansion::Pending(pending) = expand_declaration(&pending_source).unwrap() else {
+    let CssExpansion::Pending(pending) = pending_source.expand().unwrap() else {
         panic!("pending")
     };
     let replacement = components(text);
@@ -212,7 +214,7 @@ fn rejects_atomically(property: CssKnownProperty, text: &str) {
         "/*😀*/\r\n{}:{text}!important;\r\nheight:1px",
         property.canonical_name()
     );
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         report.syntax().len(),
         1,
@@ -226,19 +228,24 @@ fn rejects_atomically(property: CssKnownProperty, text: &str) {
         CssRecoveryAction::DropDeclaration
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     property_rejection(
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components(text),
             CssImportance::Normal,
         ),
         property,
     );
     let pending_source = checked_pending(property);
-    let CssExpansion::Pending(pending) = expand_declaration(&pending_source).unwrap() else {
+    let CssExpansion::Pending(pending) = pending_source.expand().unwrap() else {
         panic!("pending")
     };
     assert!(

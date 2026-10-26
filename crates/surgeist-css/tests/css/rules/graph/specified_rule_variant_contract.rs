@@ -1,7 +1,7 @@
 //! Independent exact fixtures for the 19 ordinary / 17 scoped variants at
 //! 31dd36b7. Scope boundary grammar is covered by scope_complete_lifecycle.
 use crate::css::support::rules::assert_exact_specified_sheet as exact;
-use surgeist_css::{CssRule, parse_sheet};
+use surgeist_css::{CssParser, CssRule};
 
 macro_rules! ordinary {
     ($name:ident, $source:literal, $expected:literal) => {
@@ -112,7 +112,8 @@ ordinary!(
 
 #[test]
 fn detached_nested_declarations_emits_the_authored_run() {
-    let report = parse_sheet(".parent{.child{}opacity:.5!important;opacity:.25}");
+    let report =
+        CssParser::default().parse_sheet(".parent{.child{}opacity:.5!important;opacity:.25}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("parent")

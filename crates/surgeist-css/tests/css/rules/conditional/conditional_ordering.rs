@@ -1,11 +1,10 @@
 use surgeist_css::{
     CssConditionKind, CssErrorCode, CssImportLayer, CssImportTarget, CssMediaLeaf, CssMediaQuery,
-    CssRecoveryAction, CssRule, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin, parse_sheet,
-    validate_sheet,
+    CssParser, CssRecoveryAction, CssRule, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin,
 };
 
 fn import_rule(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet> {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(
         report
             .syntax()
@@ -20,12 +19,13 @@ fn import_rule(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSh
 
 #[test]
 fn import_conditions_and_prelude_phases_follow_cascade() {
-    let conditional =
-        parse_sheet("@import url(theme.css) layer(theme) supports(display: grid) screen;");
+    let conditional = CssParser::default()
+        .parse_sheet("@import url(theme.css) layer(theme) supports(display: grid) screen;");
     assert!(conditional.is_clean(), "{:?}", conditional.diagnostics());
     assert!(matches!(conditional.syntax().rules(), [CssRule::Import(_)]));
 
-    let initial_layer = parse_sheet("@layer reset; @import url(theme.css); .after { color: red; }");
+    let initial_layer = CssParser::default()
+        .parse_sheet("@layer reset; @import url(theme.css); .after { color: red; }");
     assert!(
         initial_layer.is_clean(),
         "{:?}",
@@ -155,7 +155,12 @@ fn import_supports_accepts_bare_declarations_and_full_conditions() {
         Some(CssSerializedOrigin::Token(CssValueOrigin::Programmatic))
     ));
     assert!(import_rule(output.as_css()).is_clean());
-    assert_eq!(validate_sheet(source), eof.clone().into_validation_result());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
+        eof.clone().into_validation_result()
+    );
 }
 
 #[test]
@@ -172,7 +177,7 @@ fn repeated_or_swapped_clause_functions_remain_valid_media_suffixes() {
         ("supports(not)", None, false, "supports(not)"),
     ] {
         let source = format!("@import 'x.css' {prelude}; .after {{ color: red; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{prelude}: {:?}", report.diagnostics());
         let [CssRule::Import(import), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("{prelude}: expected import and following style")
@@ -220,7 +225,7 @@ fn malformed_outer_media_preserves_import_clauses_and_recovers_once() {
         ("screen layer(a)", false),
     ] {
         let source = format!("@import 'x.css' {prelude}; .after {{ color: red; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Import(import), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("{prelude}: expected retained import and following style")
         };
@@ -249,7 +254,7 @@ fn malformed_outer_media_preserves_import_clauses_and_recovers_once() {
 
 #[test]
 fn only_successful_top_level_rules_advance_the_prelude_phase() {
-    let recovered = parse_sheet(concat!(
+    let recovered = CssParser::default().parse_sheet(concat!(
         "@unknown value; ",
         "@layer ; ",
         "@import; ",
@@ -258,7 +263,7 @@ fn only_successful_top_level_rules_advance_the_prelude_phase() {
     assert!(matches!(recovered.syntax().rules(), [CssRule::Import(_)]));
     assert_eq!(recovered.diagnostics().len(), 3);
 
-    let closed = parse_sheet(concat!(
+    let closed = CssParser::default().parse_sheet(concat!(
         "@import 'first.css'; ",
         "@layer reset; ",
         "@import 'late.css'; ",
@@ -285,7 +290,7 @@ fn only_successful_top_level_rules_advance_the_prelude_phase() {
         "@supports (display: grid) {}",
     ] {
         let source = format!("{body} @import 'late.css';");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(
             report
                 .diagnostics()
@@ -301,7 +306,7 @@ fn only_successful_top_level_rules_advance_the_prelude_phase() {
 
 #[test]
 fn unknown_charset_does_not_change_import_phase_and_imports_remain_top_level_only() {
-    let leading_charset = parse_sheet(concat!(
+    let leading_charset = CssParser::default().parse_sheet(concat!(
         "@charset \"UTF-8\"; ",
         "@layer reset; ",
         "@import 'theme.css';",
@@ -316,7 +321,7 @@ fn unknown_charset_does_not_change_import_phase_and_imports_remain_top_level_onl
         [CssRule::LayerStatement(_), CssRule::Import(_)]
     ));
 
-    let nonleading_charset = parse_sheet(concat!(
+    let nonleading_charset = CssParser::default().parse_sheet(concat!(
         "@import 'first.css'; ",
         "@charset \"UTF-8\"; ",
         "@import 'second.css';",
@@ -331,7 +336,8 @@ fn unknown_charset_does_not_change_import_phase_and_imports_remain_top_level_onl
         CssErrorCode::UnknownAtRule
     );
 
-    let nested = parse_sheet("@media screen { @import 'nested.css'; .kept {} }");
+    let nested =
+        CssParser::default().parse_sheet("@media screen { @import 'nested.css'; .kept {} }");
     let [CssRule::Media(media)] = nested.syntax().rules() else {
         panic!("expected retained media rule")
     };
@@ -345,7 +351,7 @@ fn unknown_charset_does_not_change_import_phase_and_imports_remain_top_level_onl
 
 #[test]
 fn namespace_and_import_preludes_follow_cascade_layer_ordering() {
-    let namespace_path = parse_sheet(concat!(
+    let namespace_path = CssParser::default().parse_sheet(concat!(
         "@charset \"UTF-8\"; ",
         "@import 'theme.css'; ",
         "@namespace \"urn:default\"; ",
@@ -374,7 +380,7 @@ fn namespace_and_import_preludes_follow_cascade_layer_ordering() {
         CssErrorCode::InvalidAtRulePlacement
     );
 
-    let initial_layers_path = parse_sheet(concat!(
+    let initial_layers_path = CssParser::default().parse_sheet(concat!(
         "@layer reset; ",
         "@layer tokens; ",
         "@import 'first.css'; ",
@@ -402,7 +408,7 @@ fn namespace_and_import_preludes_follow_cascade_layer_ordering() {
 
 #[test]
 fn only_successful_namespace_or_layer_rules_change_the_prelude_phase() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@namespace missing-name; ",
         "@layer ; ",
         "@unknown ignored; ",

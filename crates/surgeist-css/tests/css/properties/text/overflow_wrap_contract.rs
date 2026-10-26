@@ -12,8 +12,7 @@ fn exact_value(source: &CssDeclaration) -> CssOverflowWrap {
     else {
         panic!("typed overflow-wrap wrapper")
     };
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("terminal expansion")
     };
@@ -113,7 +112,7 @@ fn authored_alias_origin_and_all_reset_use_the_canonical_identity() {
     assert_eq!(exact_value(&source), CssOverflowWrap::Anywhere);
 
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&parsed("all", "initial")).unwrap()
+        parsed("all", "initial").expand().unwrap()
     else {
         panic!("symbolic all reset")
     };

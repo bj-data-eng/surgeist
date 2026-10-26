@@ -2,18 +2,24 @@
 //! must preserve the same authored domain as parsing; evaluation belongs to style.
 //! https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/#mq-list
 
-use surgeist_css::{CssMediaQueryList, CssRule, parse_sheet, validate_sheet};
+use surgeist_css::{CssMediaQueryList, CssParser, CssRule};
 
 #[test]
 fn empty_media_list_construction_matches_valid_authored_rule() {
     let source = "@media {} .after { color: red; }";
-    let parsed = parse_sheet(source);
+    let parsed = CssParser::default().parse_sheet(source);
     assert!(parsed.is_clean(), "{:?}", parsed.diagnostics());
     let [CssRule::Media(media), CssRule::Style(_)] = parsed.syntax().rules() else {
         panic!("empty media rule and following sibling must survive");
     };
     assert!(media.query().queries().is_empty());
-    assert_eq!(validate_sheet(source).unwrap(), *parsed.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap(),
+        *parsed.syntax()
+    );
     let constructed = CssMediaQueryList::new(Vec::new());
     assert!(constructed.queries().is_empty());
     assert_eq!(&constructed, media.query());
@@ -21,7 +27,7 @@ fn empty_media_list_construction_matches_valid_authored_rule() {
 
 #[test]
 fn media_list_construction_preserves_nonempty_member_order_and_recovery() {
-    let parsed = parse_sheet("@media print,???,screen {}");
+    let parsed = CssParser::default().parse_sheet("@media print,???,screen {}");
     let [CssRule::Media(media)] = parsed.syntax().rules() else {
         panic!("one retained media rule");
     };

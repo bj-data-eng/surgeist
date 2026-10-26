@@ -2,11 +2,11 @@
 
 //! A host may inspect authored Grid placement without resolving layout lines.
 
-use surgeist_css::{CssGridLine, CssKnownPropertyValueRef, CssValueOrigin, parse_style_attribute};
+use surgeist_css::{CssGridLine, CssKnownPropertyValueRef, CssParser, CssValueOrigin};
 
 fn main() {
-    let report =
-        parse_style_attribute("grid-area: main 2147483648 / nav / span calc(-1) !important");
+    let report = CssParser::default()
+        .parse_block_contents("grid-area: main 2147483648 / nav / span calc(-1) !important");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = &report.syntax().as_slice()[0];
     let CssKnownPropertyValueRef::GridArea(value) = declaration

@@ -499,19 +499,20 @@ impl CssCustomMediaRule {
             }
         }
         // Validate resource consumption only. The original typed graph is never replaced.
-        parse_component_values_with_limits(output.as_css(), limits).map_err(|error| {
-            let offset = crate::media::parsed_position(error.origin())
-                .map_or(0, |p| p.byte_offset().value());
-            CssMediaConstructionError::from(crate::media::MediaConstructionKind::Component(
-                CssComponentValueError::new(
-                    error.kind,
-                    output
-                        .value_origin_at(offset)
-                        .cloned()
-                        .unwrap_or_else(|| self.data.origin.clone()),
-                ),
-            ))
-        })?;
+        crate::component_values::parse_component_values_with_limits(output.as_css(), limits)
+            .map_err(|error| {
+                let offset = crate::media::parsed_position(error.origin())
+                    .map_or(0, |p| p.byte_offset().value());
+                CssMediaConstructionError::from(crate::media::MediaConstructionKind::Component(
+                    CssComponentValueError::new(
+                        error.kind,
+                        output
+                            .value_origin_at(offset)
+                            .cloned()
+                            .unwrap_or_else(|| self.data.origin.clone()),
+                    ),
+                ))
+            })?;
         Ok(())
     }
 }

@@ -3,8 +3,8 @@
 
 use crate::css::support::authored_syntax::assert_diagnostics;
 use surgeist_css::{
-    CssRecoveryAction, CssRule, CssSupportsConditionRule, CssSupportsTestBody, CssSupportsTestItem,
-    CssValueOrigin, parse_component_values, parse_sheet,
+    CssComponentValues, CssParser, CssRecoveryAction, CssRule, CssSupportsConditionRule,
+    CssSupportsTestBody, CssSupportsTestItem, CssValueOrigin,
 };
 
 fn definition(rules: &[CssRule]) -> &CssSupportsConditionRule {
@@ -38,7 +38,7 @@ fn assert_own_missing_close(origin: &CssValueOrigin, source: &str) {
 #[test]
 fn later_body_local_fault_precedes_earlier_retained_child_fault_in_summary() {
     let source = "@supports-condition --x { & { bad:url(a b); } bad:url(a b); }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [first, second] = report.diagnostics() else {
         panic!(
             "two independently owned discarded declarations: {:?}",
@@ -73,7 +73,7 @@ fn later_body_local_fault_precedes_earlier_retained_child_fault_in_summary() {
 #[test]
 fn own_missing_body_close_precedes_retained_nested_body_fault_in_summary() {
     let source = "@supports-condition --x { & { bad:url(a b); }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(
         report
             .diagnostics()
@@ -100,7 +100,7 @@ fn own_missing_body_close_precedes_retained_nested_body_fault_in_summary() {
 #[test]
 fn own_missing_body_close_precedes_retained_declaration_value_closure_in_summary() {
     let source = "@supports-condition --x { color:fn(a";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     // EOF closes both the value function and the definition body.
     let closure = (
         surgeist_css::CssErrorCode::UnexpectedEnd,
@@ -119,7 +119,7 @@ fn own_missing_body_close_precedes_retained_declaration_value_closure_in_summary
 #[test]
 fn nested_only_recovery_summary_uses_first_child_without_reordering_history() {
     let source = "@supports-condition --x { & { bad:url(a b); } @future { bad:url(c d); } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 2);
     let body = definition(report.syntax().rules()).body();
     let [
@@ -152,7 +152,7 @@ fn nested_only_recovery_summary_uses_first_child_without_reordering_history() {
 fn empty_semicolons_are_ignored_recursively_by_the_block_partition() {
     let contents = ";color:red;; & { ; } @future { ;; inner:yes;; } ;";
     let body = CssSupportsTestBody::try_from_components(
-        parse_component_values(contents).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), contents).unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -177,7 +177,7 @@ fn empty_semicolons_are_ignored_recursively_by_the_block_partition() {
         body.serialize_specified(Default::default()).unwrap(),
         "color: red; & { } @future  { inner: yes; }"
     );
-    let report = parse_sheet(
+    let report = CssParser::default().parse_sheet(
         "@supports-condition --x { ;color:red;; & { ; } @future { ;; inner:yes;; } ; }",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());

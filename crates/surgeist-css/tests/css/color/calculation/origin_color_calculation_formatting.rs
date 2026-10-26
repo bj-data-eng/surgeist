@@ -521,9 +521,15 @@ fn checked_graph_retains_calculation_components_and_parsed_provenance() {
 #[test]
 fn clean_validation_preserves_raw_graph_and_siblings() {
     let source = "color: alpha(from rgb(calc(1 / 128) none none)) !important; opacity: .5";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert_eq!(&validate_style_attribute(source).unwrap(), report.syntax());
+    assert_eq!(
+        &CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .unwrap(),
+        report.syntax()
+    );
     assert_eq!(report.syntax().len(), 2);
     let before = report.syntax().clone();
     let d = &report.syntax()[0];
@@ -541,7 +547,8 @@ fn clean_validation_preserves_raw_graph_and_siblings() {
 }
 #[test]
 fn invalid_origin_recovery_retains_sibling_control() {
-    let report = parse_style_attribute("color: alpha(from rgb(calc(1px) none none)); opacity: .5");
+    let report = CssParser::default()
+        .parse_block_contents("color: alpha(from rgb(calc(1px) none none)); opacity: .5");
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(
@@ -556,10 +563,7 @@ fn origin_substitution_stays_pending_control() {
     let known = d.known().unwrap();
     assert!(known.property_value().is_none());
     assert_eq!(known.substitution_dependent().unwrap().as_css(), src);
-    assert!(matches!(
-        expand_declaration(&d).unwrap(),
-        CssExpansion::Pending(_)
-    ));
+    assert!(matches!(d.expand().unwrap(), CssExpansion::Pending(_)));
     let error = CssCalculation::<CssNumber>::try_from_components(
         components("calc(var(--n))"),
         Default::default(),

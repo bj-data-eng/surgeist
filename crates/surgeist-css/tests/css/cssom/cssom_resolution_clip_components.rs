@@ -15,7 +15,7 @@ type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;
 
 fn literal(text: &str) -> CssNumericLiteral<CssResolution> {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let component = values
         .items()
         .iter()
@@ -32,7 +32,7 @@ fn literal(text: &str) -> CssNumericLiteral<CssResolution> {
 fn resolution(text: &str) -> CssNumeric<CssResolution, CssNonNegative> {
     CssNumeric::<CssResolution, CssNonNegative>::try_from_calculation(
         CssCalculation::<CssResolution>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -125,7 +125,10 @@ fn resolution_zero_tiny_and_huge_coefficients_remain_exact_authored_values() {
     }
     // Adding emission does not weaken the ordinary nonnegative range.
     for text in ["-1dpi", "-1e-999999dpcm"] {
-        let component = parse_component_values(text).unwrap().items()[0].clone();
+        let component = CssComponentValues::parse(&CssParser::default(), text)
+            .unwrap()
+            .items()[0]
+            .clone();
         assert!(
             CssNumeric::<CssResolution, CssNonNegative>::try_from_component(component)
                 .unwrap_err()
@@ -247,7 +250,7 @@ fn resolution_calculations_share_the_numeric_projection_without_clamping_or_muta
 }
 
 fn clip(text: &str) -> CssClip {
-    let report = parse_style_attribute(&format!("clip:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("clip:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Clip(value) = report.syntax()[0]
         .known()
@@ -297,7 +300,7 @@ fn legacy_rect_scalar_components_keep_order_and_canonical_commas() {
         "auto"
     );
     // Modern clip-path rect() has its own whitespace grammar and provider.
-    let report = parse_style_attribute("clip-path:rect(1px 2px 3px 4px)");
+    let report = CssParser::default().parse_block_contents("clip-path:rect(1px 2px 3px 4px)");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
         .known()

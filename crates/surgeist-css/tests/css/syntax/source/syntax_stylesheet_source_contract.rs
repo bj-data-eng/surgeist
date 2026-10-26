@@ -2,9 +2,8 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/
 //! These UTF-8 string fronts do not run the byte-stream fallback algorithm.
 use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssParseReport, CssRecoveryAction, CssRecoveryDiagnostic,
-    CssRule, CssSelector, CssSheet, CssSourcePosition, CssTokenKind, parse_rule, parse_sheet,
-    validate_sheet,
+    CssErrorCode, CssNamespaceContext, CssParseReport, CssParser, CssRecoveryAction,
+    CssRecoveryDiagnostic, CssRule, CssSelector, CssSheet, CssSourcePosition, CssTokenKind,
 };
 
 type ExpectedStyle<'a> = (&'a str, (usize, u32, u32), (usize, usize));
@@ -63,7 +62,9 @@ fn assert_styles(source: &str, rules: &[CssRule], expected: &[ExpectedStyle<'_>]
 
 fn assert_validator_parity(source: &str, report: &CssParseReport<CssSheet>) {
     assert_eq!(
-        validate_sheet(source),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
         report.clone().into_validation_result()
     );
 }
@@ -89,7 +90,7 @@ fn assert_unknown(
 }
 
 fn assert_charset_sheet(source: &str, drops: &[ExpectedDrop<'_>], styles: &[ExpectedStyle<'_>]) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_styles(source, report.syntax().rules(), styles);
     assert_eq!(report.diagnostics().len(), drops.len(), "{report:?}");
     for (diagnostic, &expected) in report.diagnostics().iter().zip(drops) {
@@ -222,7 +223,7 @@ fn every_duplicate_charset_occurrence_has_its_own_unknown_rule_diagnostic() {
 #[test]
 fn nested_charset_is_unknown_inside_its_retained_parent() {
     let source = "@media all{.before{color:red}@charset \"UTF-8\";.after{color:blue}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("one retained media parent: {report:?}")
     };
@@ -249,7 +250,10 @@ fn nested_charset_is_unknown_inside_its_retained_parent() {
 #[test]
 fn validator_rejects_an_exact_charset_prefix_with_the_ordinary_unknown_rule_report() {
     let source = "@charset \"UTF-8\";.after{color:blue}";
-    let failure = validate_sheet(source).expect_err("an unrecognized rule is not clean input");
+    let failure = CssParser::default()
+        .parse_sheet(source)
+        .into_validation_result()
+        .expect_err("an unrecognized rule is not clean input");
     let [diagnostic] = failure.diagnostics() else {
         panic!("one unknown charset")
     };
@@ -258,11 +262,15 @@ fn validator_rejects_an_exact_charset_prefix_with_the_ordinary_unknown_rule_repo
         ((0, 0, 0), 17, "charset"),
         CssRecoveryAction::DropAtRule,
     );
-    assert_validator_parity(source, &parse_sheet(source));
+    assert_validator_parity(source, &CssParser::default().parse_sheet(source));
 }
 
 fn assert_charset_fragment(source: &str, position: (usize, u32, u32)) {
-    let report = parse_rule(source, &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.syntax().is_none());
     let [diagnostic] = report.diagnostics() else {
         panic!("one rejected outer rule: {report:?}")
@@ -294,7 +302,7 @@ fn commented_charset_fragment_rejects_the_complete_input_with_original_error_pos
 #[test]
 fn top_level_cdo_before_between_and_after_rules_is_clean_and_keeps_source_origins() {
     let source = "<!--.a{color:red}<!--.b{color:blue}<!--";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_styles(
         source,
         report.syntax().rules(),
@@ -308,7 +316,7 @@ fn top_level_cdo_before_between_and_after_rules_is_clean_and_keeps_source_origin
 #[test]
 fn top_level_cdc_before_between_and_after_rules_is_clean_and_keeps_source_origins() {
     let source = "-->.a{color:red}-->.b{color:blue}-->";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_styles(
         source,
         report.syntax().rules(),
@@ -322,7 +330,7 @@ fn top_level_cdc_before_between_and_after_rules_is_clean_and_keeps_source_origin
 #[test]
 fn only_top_level_html_comment_tokens_and_trivia_form_a_clean_empty_sheet() {
     let source = " \r\n/**/ <!-- -->\t";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.syntax().rules().is_empty());
     assert!(report.diagnostics().is_empty(), "{report:?}");
     assert!(report.is_clean());
@@ -332,15 +340,18 @@ fn only_top_level_html_comment_tokens_and_trivia_form_a_clean_empty_sheet() {
 #[test]
 fn validator_accepts_top_level_html_comment_tokens_with_exact_ordinary_syntax() {
     let source = "<!--.a{color:red}-->";
-    let sheet = validate_sheet(source).expect("top-level CDO and CDC are ignored without error");
+    let sheet = CssParser::default()
+        .parse_sheet(source)
+        .into_validation_result()
+        .expect("top-level CDO and CDC are ignored without error");
     assert_styles(source, sheet.rules(), &[("a", (4, 0, 4), (13, 16))]);
-    assert_validator_parity(source, &parse_sheet(source));
+    assert_validator_parity(source, &CssParser::default().parse_sheet(source));
 }
 
 #[test]
 fn ignored_html_comment_tokens_do_not_hide_an_unknown_rule_diagnostic() {
     let source = ".before{color:red}<!--@mystery x;-->.after{color:blue}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_styles(
         source,
         report.syntax().rules(),
@@ -368,7 +379,7 @@ fn assert_nested_html_token(
     kept: ExpectedStyle<'_>,
     after: ExpectedStyle<'_>,
 ) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Media(media), after_rule] = report.syntax().rules() else {
         panic!("retained parent and outer sibling: {report:?}")
     };
@@ -421,7 +432,7 @@ fn nested_cdc_begins_a_discarded_qualified_rule_and_preserves_siblings() {
 #[test]
 fn ordinary_unknown_at_rule_remains_a_local_error_with_the_same_validator_report() {
     let source = "@mystery x;.after{color:blue}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_styles(
         source,
         report.syntax().rules(),
@@ -439,7 +450,7 @@ fn ordinary_unknown_at_rule_remains_a_local_error_with_the_same_validator_report
 }
 
 fn assert_root_token(source: &str, token: CssTokenKind, authored: &str) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.syntax().rules().is_empty());
     let [diagnostic] = report.diagnostics() else {
         panic!("one malformed root token")
@@ -477,7 +488,11 @@ fn unmatched_root_brace_consumes_one_complete_qualified_rule() {
 #[test]
 fn a_bom_in_a_utf8_rule_string_remains_an_identifier_character() {
     let source = "\u{feff}a{color:red}";
-    let report = parse_rule(source, &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{report:?}");
     let Some(CssRule::Style(style)) = report.syntax() else {
         panic!("one authored style rule")
@@ -500,7 +515,11 @@ fn a_bom_in_a_utf8_rule_string_remains_an_identifier_character() {
 #[test]
 fn html_comment_tokens_are_not_stripped_from_an_exact_one_rule_fragment() {
     let source = "<!--.a{color:red}-->";
-    let report = parse_rule(source, &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.syntax().is_none());
     let [diagnostic] = report.diagnostics() else {
         panic!("one outer rejection")

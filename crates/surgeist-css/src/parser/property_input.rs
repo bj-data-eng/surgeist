@@ -1017,7 +1017,7 @@ fn native_token<'i>(token: &'i SyntaxToken<'i>) -> Token<'i> {
 mod tests {
     use super::*;
     use crate::syntax_consumption::{SyntaxInput, SyntaxInputLimits, normalize, source_document};
-    use crate::{CssComponentValues, CssSourceSnapshot, parse_component_values};
+    use crate::{CssComponentValues, CssSourceSnapshot};
 
     #[test]
     fn independent_checked_leaves_do_not_merge_into_a_new_token() {
@@ -1043,7 +1043,7 @@ mod tests {
 
     #[test]
     fn checked_collection_borrows_the_exact_original_component() {
-        let values = parse_component_values("calc(1px + 2px)").unwrap();
+        let values = crate::component_values::parse_component_values("calc(1px + 2px)").unwrap();
         let document = normalize(
             SyntaxInput::CheckedComponents(values.items()),
             SyntaxInputLimits::default(),
@@ -1094,7 +1094,7 @@ mod tests {
 
     #[test]
     fn descendant_sites_select_real_mixed_source_children_and_closing_boundaries() {
-        let children = parse_component_values("\n 2px").unwrap();
+        let children = crate::component_values::parse_component_values("\n 2px").unwrap();
         let origin = children.items()[1].origin().clone();
         let group = CssComponentValue::try_function("f", children).unwrap();
         let values = CssComponentValues::try_new(vec![group], Default::default()).unwrap();
@@ -1115,7 +1115,7 @@ mod tests {
 
     #[test]
     fn nested_end_reports_the_actual_closing_token_and_root_end_reports_eof() {
-        let values = parse_component_values("f()").unwrap();
+        let values = crate::component_values::parse_component_values("f()").unwrap();
         let CssComponentValueRef::Function(function) = values.items()[0].view() else {
             unreachable!()
         };
@@ -1326,7 +1326,7 @@ fn advance_native_to(input: &mut cssparser::Parser<'_, '_>, offset: usize) {
 mod native_adapter_tests {
     use super::*;
     use crate::numeric::NumericInputContext;
-    use crate::{CssComponentValues, CssSourceSnapshot, parse_component_values};
+    use crate::{CssComponentValues, CssSourceSnapshot};
 
     #[test]
     fn source_url_prefix_does_not_admit_the_unconsumed_nested_suffix() {
@@ -1424,7 +1424,7 @@ mod native_adapter_tests {
 
     #[test]
     fn checked_nested_adapter_maps_the_actual_child_path_to_existing_native_input() {
-        let values = parse_component_values("f(a wrong)").unwrap();
+        let values = crate::component_values::parse_component_values("f(a wrong)").unwrap();
         let serialized = values.serialize_tokens(Default::default()).unwrap();
         let mut storage = cssparser::ParserInput::new(serialized.as_css());
         let mut native = cssparser::Parser::new(&mut storage);

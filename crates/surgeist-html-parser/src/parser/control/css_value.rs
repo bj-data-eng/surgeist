@@ -3,8 +3,9 @@ use super::*;
 use crate::parser::buffer::Utf16Buffer;
 use std::cell::{Cell, RefCell};
 use surgeist_css::{
-    CssColorSchemeParseReport, CssComponentValueLimits, CssParserContext, CssParserMode,
-    CssUtf16InputLimits, CssUtf16PropertyValueLimits, CssUtf16ValueAdmission,
+    CssColorScheme, CssColorSchemeParseReport, CssComponentValueLimits, CssParser,
+    CssParserContext, CssParserMode, CssUtf16InputLimits, CssUtf16PropertyValueLimits,
+    CssUtf16ValueAdmission,
 };
 
 /// One admitted immutable provider occurrence. This never enters the string pool.
@@ -61,7 +62,9 @@ impl ParseControl {
             .ok_or_else(|| self.fail_invariant(Invariant::ReleaseUnderflow))?;
         Ok(usize::try_from(remaining).unwrap_or(usize::MAX))
     }
-    fn css_scheme_limits(&mut self) -> Result<CssUtf16PropertyValueLimits, ParseStop> {
+    fn css_scheme_limits(
+        &mut self,
+    ) -> Result<(CssUtf16PropertyValueLimits, CssComponentValueLimits), ParseStop> {
         let bytes = self
             .remaining_css(HtmlParseResource::ManagedCapacityBytes)?
             .min(self.remaining_css(HtmlParseResource::PeakTransientBytes)?);
@@ -77,7 +80,7 @@ impl ParseControl {
             bytes,
         )
         .expect("CSS's fixed maximum depth is preserved");
-        Ok(CssUtf16PropertyValueLimits {
+        let limits = CssUtf16PropertyValueLimits {
             input: CssUtf16InputLimits {
                 max_input_units: units,
                 max_output_bytes: bytes,
@@ -87,11 +90,11 @@ impl ParseControl {
                 max_retained_bytes: bytes,
                 max_work: work,
             },
-            syntax,
             max_work: work,
             max_live_bytes: bytes,
             max_retained_bytes: bytes,
-        })
+        };
+        Ok((limits, syntax))
     }
     /// Copy through the existing bounded buffer, then move its unique ticket
     /// into provider custody. This cannot alias a registered construction string.
@@ -150,7 +153,7 @@ impl ParseControl {
     ) -> Result<CssSchemeValue, ParseStop> {
         let (input, input_receipt) = self.css_scheme_input(raw)?;
         let result = (|| {
-            let limits = self.css_scheme_limits()?;
+            let (limits, syntax) = self.css_scheme_limits()?;
             let original = self.identity();
             let live = Cell::new((0_u64, 0_u64));
             let control = RefCell::new(&mut *self);
@@ -159,7 +162,8 @@ impl ParseControl {
             } else {
                 CssParserMode::Standards
             });
-            let result = context.parse_color_scheme_utf16_with_limits(
+            let result = CssColorScheme::parse_utf16(
+                &CssParser::new(context, syntax),
                 input.clone(),
                 limits,
                 |event| {

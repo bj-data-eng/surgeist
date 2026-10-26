@@ -1,8 +1,8 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use surgeist_css::{
-    CssErrorCode, CssNamespaceConstraint, CssRecoveryAction, CssRule, CssSelector,
-    CssSelectorCombinator, CssSourcePosition, CssStyleSelector, CssTokenKind, parse_sheet,
+    CssErrorCode, CssNamespaceConstraint, CssParser, CssRecoveryAction, CssRule, CssSelector,
+    CssSelectorCombinator, CssSourcePosition, CssStyleSelector, CssTokenKind,
 };
 
 fn nested_layers(depth: usize, tail: &str) -> String {
@@ -183,7 +183,7 @@ fn nesting_detail(
 fn structural_recovery_accepts_256_rule_blocks_and_drops_only_level_257() {
     for depth in [255, 256] {
         let source = nested_layers(depth, ".after{color:red}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -203,7 +203,7 @@ fn structural_recovery_accepts_256_rule_blocks_and_drops_only_level_257() {
     }
 
     let source = nested_layers(257, ".after{color:red}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert_eq!(
         report.syntax().rules().len(),
         2,
@@ -236,7 +236,7 @@ fn structural_recovery_accepts_256_rule_blocks_and_drops_only_level_257() {
 fn structural_split_preserves_namespace_bindings_through_the_256_level_boundary() {
     for depth in [255, 256] {
         let source = namespace_nested_layers(depth);
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -279,7 +279,7 @@ fn structural_split_preserves_namespace_bindings_through_the_256_level_boundary(
     }
 
     let source = namespace_nested_layers(257);
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let [
         CssRule::Namespace(_),
         CssRule::LayerBlock(layer),
@@ -315,7 +315,7 @@ fn structural_split_preserves_namespace_bindings_through_the_256_level_boundary(
 #[test]
 fn structural_preflight_preserves_256_nested_supports_groups_and_later_sibling() {
     let source = nested_supports(256, ".after{}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Supports(rule), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("expected supports chain and later style");
@@ -334,7 +334,7 @@ fn structural_preflight_preserves_256_nested_supports_groups_and_later_sibling()
 #[test]
 fn structural_recovery_nesting_limit_at_eof_spans_remaining_bounded_unit() {
     let source = "@layer{".repeat(257);
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let (detail, span) = nesting_detail(&report);
     assert_eq!(
         detail.production().unwrap().as_str(),
@@ -349,7 +349,7 @@ fn structural_recovery_shares_rule_and_component_depth_for_functions_and_blocks(
     for (opener, closer) in [("f(", ")"), ("(", ")"), ("[", "]"), ("{", "}")] {
         for depth in [255, 256] {
             let source = component_value(depth, opener, closer);
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(
                 report.is_clean(),
                 "{opener} at depth {depth}: {:?}",
@@ -362,7 +362,7 @@ fn structural_recovery_shares_rule_and_component_depth_for_functions_and_blocks(
         }
 
         let source = component_value(257, opener, closer);
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(report.syntax().rules().len(), 2);
         let CssRule::Style(target) = &report.syntax().rules()[0] else {
             panic!("expected retained target style rule");
@@ -392,7 +392,7 @@ fn structural_recovery_drops_only_an_excessively_nested_descriptor() {
         "@font-face{{font-family:Demo;{excessive}src:url(\"demo.woff2\");}}.after{{color:red}}"
     );
 
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(matches!(
         report.syntax().rules(),
         [CssRule::FontFace(_), CssRule::Style(_)]
@@ -408,7 +408,7 @@ fn structural_recovery_drops_only_an_excessively_nested_descriptor() {
 fn structural_recovery_reports_non_bmp_coordinates_and_keeps_later_siblings() {
     let prefix = "/* 🦊\n */";
     let source = format!("{prefix}{}", nested_layers(257, ".after{color:red}"));
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let (_, span) = nesting_detail(&report);
     let failed_start = prefix.len() + "@layer{".len() * 256;
     assert_eq!(span.start().byte_offset().value(), failed_start);
@@ -427,7 +427,7 @@ fn structural_recovery_reports_non_bmp_coordinates_and_keeps_later_siblings() {
 fn malformed_at_rule_recovery_checks_balanced_component_depth() {
     for depth in [255, 256] {
         let source = malformed_block("@unknown{", depth, ".after{color:red}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(report.diagnostics().len(), 1, "depth {depth}: {report:?}");
         assert_eq!(
             report.diagnostics()[0].action(),
@@ -438,7 +438,7 @@ fn malformed_at_rule_recovery_checks_balanced_component_depth() {
 
     let source = malformed_block("@unknown{", 257, ".after{color:red}");
     let unit_end = source.find(".after").expect("generated sibling boundary");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
     let (detail, span) = nesting_detail(&report);
     assert_eq!(detail.production().unwrap().as_str(), "css.at-rule");
@@ -459,7 +459,7 @@ fn nested_malformed_qualified_rule_recovery_checks_balanced_component_depth() {
     for depth in [255, 256] {
         let nested = malformed_block("???{", depth - 1, ".inside{color:blue}");
         let source = format!("@media screen{{{nested}}}.after{{color:red}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(report.diagnostics().len(), 1, "depth {depth}: {report:?}");
         assert_eq!(
             report.diagnostics()[0].action(),
@@ -479,7 +479,7 @@ fn nested_malformed_qualified_rule_recovery_checks_balanced_component_depth() {
     let source = format!("@media screen{{{nested}}}.after{{color:red}}");
     let unit_start = source.find("???").expect("generated failed unit");
     let unit_end = source.find(".inside").expect("generated nested sibling");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let CssRule::Media(media) = &report.syntax().rules()[0] else {
         panic!("expected retained media parent");
     };
@@ -510,7 +510,7 @@ fn structural_preflight_ignores_delimiters_in_comments_strings_and_escapes() {
         "/*{comment_delimiters}*/.target{{--x:\"{string_delimiters}\\\"tail\";--y:ident\\(\\[\\{{;color:blue}}.after{{color:red}}"
     );
 
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{report:?}");
     assert!(matches!(
         report.syntax().rules(),
@@ -525,7 +525,7 @@ fn structural_preflight_accepts_256_mixed_scope_and_style_blocks() {
         "@scope{".repeat(255),
         "}".repeat(255)
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("expected outer scope chain");
@@ -547,7 +547,7 @@ fn structural_preflight_accepts_256_nested_style_blocks_without_losing_declarati
         ".x{".repeat(256),
         "}".repeat(255)
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(root), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("expected nested root and sibling");
@@ -566,7 +566,7 @@ fn structural_preflight_accepts_256_nested_style_blocks_without_losing_declarati
 #[test]
 fn structural_preflight_at_64_preserves_nested_style_context_and_exact_empty_sibling() {
     let source = distinct_nested_styles(64, &[62], true);
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(root), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("expected nested root and sibling");
@@ -617,7 +617,7 @@ fn structural_preflight_at_64_preserves_nested_style_context_and_exact_empty_sib
 #[test]
 fn structural_preflight_at_256_preserves_every_style_chunk_context_and_source_order() {
     let source = distinct_nested_styles(256, &[62, 125, 188, 251], false);
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(root), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("expected root and sibling");
@@ -653,7 +653,7 @@ fn structural_preflight_at_256_preserves_every_style_chunk_context_and_source_or
 fn structural_preflight_orders_empty_ordinary_styles_around_recovered_chunks() {
     for depth in [64, 256] {
         let source = nested_empty_rule_order(depth, false);
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -710,7 +710,7 @@ fn structural_preflight_orders_empty_ordinary_styles_around_recovered_chunks() {
 fn structural_preflight_orders_empty_scoped_styles_around_recovered_chunks() {
     for depth in [64, 256] {
         let source = nested_empty_rule_order(depth, true);
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -772,7 +772,7 @@ fn structural_preflight_orders_empty_scoped_styles_around_recovered_chunks() {
 #[test]
 fn structural_preflight_drops_only_style_level_257_with_exact_parent_order() {
     let source = distinct_nested_styles(257, &[255], false);
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
 
     let [CssRule::Style(root), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("expected retained root and sibling");
@@ -843,7 +843,7 @@ fn structural_preflight_drops_only_style_level_257_with_exact_parent_order() {
 #[test]
 fn structural_recovery_retains_empty_keyframe_parents_after_declaration_loss() {
     let source = "@keyframes fade { from { mystery: 1; } } .after { color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Keyframes(keyframes), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("expected retained empty keyframe structure and later style sibling");
     };
@@ -878,7 +878,9 @@ fn structural_recovery_never_unwinds_on_bounded_adversarial_text() {
     ];
 
     for (source, expects_later_sibling) in cases {
-        let result = catch_unwind(AssertUnwindSafe(|| parse_sheet(source)));
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            CssParser::default().parse_sheet(source)
+        }));
         let report = result.unwrap_or_else(|_| panic!("ordinary input unwound: {source:?}"));
         if source == deep {
             let (detail, span) = nesting_detail(&report);

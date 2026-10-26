@@ -1140,9 +1140,9 @@ pub(crate) enum ErrorKind {
 /// contextual resolution, or resource loading.
 ///
 /// ```
-/// use surgeist_css::{CssErrorCode, parse_style_attribute};
+/// use surgeist_css::{CssErrorCode, CssParser};
 ///
-/// let report = parse_style_attribute("width: red");
+/// let report = CssParser::default().parse_block_contents("width: red");
 /// let error = report.diagnostics()[0].error();
 /// assert_eq!(error.code(), CssErrorCode::InvalidPropertyValue);
 /// assert_eq!(error.encountered().map(|token| token.authored()), Some("red"));

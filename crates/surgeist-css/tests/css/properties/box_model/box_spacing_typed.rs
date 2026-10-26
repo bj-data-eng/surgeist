@@ -1,13 +1,13 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
 use surgeist_css::{
-    CssBoxSideKind, CssCalculation, CssComponentValue, CssComponentValueRef, CssFourSides,
-    CssLengthPercentage, CssMarginValue, CssNonNegative, CssNumeric, CssPaddingValue,
-    CssSerializationLimits, CssSidePair, CssValueOrigin, CssValueTokenRef, parse_component_values,
+    CssBoxSideKind, CssCalculation, CssComponentValue, CssComponentValueRef, CssComponentValues,
+    CssFourSides, CssLengthPercentage, CssMarginValue, CssNonNegative, CssNumeric, CssPaddingValue,
+    CssParser, CssSerializationLimits, CssSidePair, CssValueOrigin, CssValueTokenRef,
 };
 
 fn component(text: &str) -> CssComponentValue {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [component] = values.items() else {
         panic!("one component: {text}")
     };
@@ -21,7 +21,7 @@ fn margin(text: &str) -> CssMarginValue {
         CssMarginValue::LengthPercentage(
             CssNumeric::<CssLengthPercentage>::try_from_calculation(
                 CssCalculation::<CssLengthPercentage>::try_from_components(
-                    parse_component_values(text).unwrap(),
+                    CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                     Default::default(),
                 )
                 .unwrap(),
@@ -39,7 +39,7 @@ fn padding(text: &str) -> CssPaddingValue {
     let value = if text.starts_with("calc(") {
         CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
             CssCalculation::<CssLengthPercentage>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -148,7 +148,10 @@ fn signed_math_stays_deferred_and_padding_wraps_checked_nonnegative_math() {
 #[test]
 fn typed_margin_and_padding_equality_excludes_origin_but_retains_structure() {
     let first = margin("1px");
-    let later = parse_component_values("  1px").unwrap().items()[1].clone();
+    let later = CssComponentValues::parse(&CssParser::default(), "  1px")
+        .unwrap()
+        .items()[1]
+        .clone();
     let later = CssMarginValue::LengthPercentage(
         CssNumeric::<CssLengthPercentage>::try_from_component(later).unwrap(),
     );
@@ -164,7 +167,10 @@ fn typed_margin_and_padding_equality_excludes_origin_but_retains_structure() {
     assert_eq!(padding("1px"), padding("1px"));
     let shifted_padding = CssPaddingValue::new(
         CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
-            parse_component_values("  1px").unwrap().items()[1].clone(),
+            CssComponentValues::parse(&CssParser::default(), "  1px")
+                .unwrap()
+                .items()[1]
+                .clone(),
         )
         .unwrap(),
     );
@@ -174,7 +180,10 @@ fn typed_margin_and_padding_equality_excludes_origin_but_retains_structure() {
     assert_ne!(padding("calc(1px + 2%)"), padding("calc(1px - 2%)"));
     let raw_left = CssNumeric::<CssLengthPercentage>::try_from_component(component("1px")).unwrap();
     let raw_right = CssNumeric::<CssLengthPercentage>::try_from_component(
-        parse_component_values("  1px").unwrap().items()[1].clone(),
+        CssComponentValues::parse(&CssParser::default(), "  1px")
+            .unwrap()
+            .items()[1]
+            .clone(),
     )
     .unwrap();
     assert_eq!(raw_left, raw_right, "numeric value equality ignores origin");

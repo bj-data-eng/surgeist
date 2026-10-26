@@ -9,7 +9,7 @@ use surgeist_css::*;
 
 fn one_size_contribution(source: &CssDeclaration) -> CssLonghandContribution {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("font-size intrinsic expansion")
+        source.expand().expect("font-size intrinsic expansion")
     else {
         panic!("one font-size contribution");
     };
@@ -128,7 +128,7 @@ fn exact_negative_literals_wrong_domains_and_extra_tokens_drop_locally() {
         ("math 16px", "16px"),
     ] {
         let source = format!("color:red;font-size:{invalid};color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid size diagnostic: {source}");
         };
@@ -138,7 +138,12 @@ fn exact_negative_literals_wrong_domains_and_extra_tokens_drop_locally() {
             CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
         assert_checked_value_rejected_at(known_property("font-size"), invalid, rest);
     }
 }
@@ -184,25 +189,25 @@ fn inherited_medium_expands_once_with_globals_and_strict_pending_reentry() {
     }
 
     let source = declaration("font-size", "var(--size)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("unresolved size remains pending");
     };
     assert!(pending.source().same_occurrence(&source));
     assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
     assert!(
         pending
-            .reenter(parse_component_values("-1e-50px").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "-1e-50px").unwrap())
             .unwrap_err()
             .replacement_error()
             .is_some()
     );
     for valid in ["xxx-large", "math", "125%"] {
-        let replacement = parse_component_values(valid).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), valid).unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("strict size replacement contributes a longhand");
@@ -215,7 +220,7 @@ fn inherited_medium_expands_once_with_globals_and_strict_pending_reentry() {
         assert_eq!(item.replacement_components(), Some(&replacement));
     }
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&declaration("all", "initial")).unwrap()
+        declaration("all", "initial").expand().unwrap()
     else {
         panic!("all contributes a universal reset");
     };
@@ -250,12 +255,17 @@ fn shorthand_shares_size_grammar_without_consuming_following_family_or_line_heig
         "small-caps small-caps 16px serif",
     ] {
         let source = format!("color:red;font:{invalid};color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid shorthand diagnostic: {source}");
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
 }

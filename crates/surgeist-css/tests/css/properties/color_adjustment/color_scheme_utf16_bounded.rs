@@ -7,7 +7,6 @@ use surgeist_css::*;
 fn limits() -> CssUtf16PropertyValueLimits {
     CssUtf16PropertyValueLimits {
         input: CssUtf16InputLimits::default(),
-        syntax: CssComponentValueLimits::default(),
         max_work: 4_000_000,
         max_live_bytes: 16 * 1024 * 1024,
         max_retained_bytes: 16 * 1024 * 1024,
@@ -15,9 +14,14 @@ fn limits() -> CssUtf16PropertyValueLimits {
 }
 
 fn parse(input: Arc<Vec<u16>>) -> CssColorSchemeParseReport {
-    CssParserContext::default()
-        .parse_color_scheme_utf16_with_limits(input, limits(), |_| Ok::<_, ()>(()), |_| {})
-        .unwrap()
+    CssColorScheme::parse_utf16(
+        &CssParser::default(),
+        input,
+        limits(),
+        |_| Ok::<_, ()>(()),
+        |_| {},
+    )
+    .unwrap()
 }
 
 #[test]
@@ -59,7 +63,8 @@ fn work_refusal_and_final_output_refusal_release_original_custody_before_zero() 
         let input = Arc::new("Future".repeat(1024).encode_utf16().collect::<Vec<_>>());
         let weak = Arc::downgrade(&input);
         let zero = Cell::new(false);
-        let result = CssParserContext::default().parse_color_scheme_utf16_with_limits(
+        let result = CssColorScheme::parse_utf16(
+            &CssParser::default(),
             input.clone(),
             CssUtf16PropertyValueLimits {
                 max_work: maximum,
@@ -87,7 +92,8 @@ fn work_refusal_and_final_output_refusal_release_original_custody_before_zero() 
     let input = Arc::new("light".encode_utf16().collect::<Vec<_>>());
     let weak = Arc::downgrade(&input);
     let zero = Cell::new(false);
-    let result = CssParserContext::default().parse_color_scheme_utf16_with_limits(
+    let result = CssColorScheme::parse_utf16(
+        &CssParser::default(),
         input.clone(),
         CssUtf16PropertyValueLimits {
             max_retained_bytes: 0,
@@ -114,7 +120,8 @@ fn initial_admission_refusal_drops_the_real_input_before_infallible_release() {
     let input = Arc::new("dark".encode_utf16().collect::<Vec<_>>());
     let weak = Arc::downgrade(&input);
     let releases = Cell::new(0);
-    let result = CssParserContext::default().parse_color_scheme_utf16_with_limits(
+    let result = CssColorScheme::parse_utf16(
+        &CssParser::default(),
         input.clone(),
         limits(),
         |_| Err("first real refusal"),
@@ -209,9 +216,10 @@ fn component_resource_limits_are_not_misreported_as_invalid_authored_css() {
             CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap(),
         ),
     ] {
-        let result = CssParserContext::default().parse_color_scheme_utf16_with_limits(
+        let result = CssColorScheme::parse_utf16(
+            &CssParser::new(CssParserContext::default(), syntax),
             Arc::new(text.encode_utf16().collect()),
-            CssUtf16PropertyValueLimits { syntax, ..limits() },
+            limits(),
             |_| Ok::<_, ()>(()),
             |_| {},
         );

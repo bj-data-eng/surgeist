@@ -91,7 +91,10 @@ fn mathematical_comparison_handles_signs_zeroes_digit_lengths_and_huge_adjacent_
 
 #[test]
 fn mathematical_comparison_and_equality_ignore_lexical_spelling_and_provenance() {
-    let parsed_component = parse_component_values("+0007").unwrap().items()[0].clone();
+    let parsed_component = CssComponentValues::parse(&CssParser::default(), "+0007")
+        .unwrap()
+        .items()[0]
+        .clone();
     let parsed =
         CssNumericLiteral::<CssInteger>::try_from_component(parsed_component.clone()).unwrap();
     let programmatic = integer("+0007");
@@ -119,7 +122,10 @@ fn positive_literal_admission_rejects_noninteger_kinds_zero_and_negative_values(
         assert!(error.is_out_of_range(), "{text}");
     }
     for text in ["2.0", "2e0", "2px", "2%", "calc(2)"] {
-        let component = parse_component_values(text).unwrap().items()[0].clone();
+        let component = CssComponentValues::parse(&CssParser::default(), text)
+            .unwrap()
+            .items()[0]
+            .clone();
         let origin = component.origin().clone();
         let error = CssNumericLiteral::<CssInteger>::try_from_component(component).unwrap_err();
         assert!(error.is_root_domain_mismatch(), "{text}");
@@ -135,7 +141,10 @@ fn both_grid_repeat_owners_retain_checked_count_components_and_origins() {
     for text in ["+0007", "2147483648"] {
         for component in [
             CssComponentValue::try_number(text).unwrap(),
-            parse_component_values(text).unwrap().items()[0].clone(),
+            CssComponentValues::parse(&CssParser::default(), text)
+                .unwrap()
+                .items()[0]
+                .clone(),
         ] {
             let count =
                 CssNumericLiteral::<CssInteger>::try_from_component(component.clone()).unwrap();
@@ -170,7 +179,7 @@ fn both_grid_repeat_owners_retain_checked_count_components_and_origins() {
 #[test]
 fn parsed_repeat_count_keeps_original_snapshot_and_precise_token_span() {
     let source = "grid-template-columns: repeat(+0007, 1fr)";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = &report.syntax()[0];
     let Some(CssKnownPropertyValueRef::GridTemplateColumns(value)) =
@@ -315,7 +324,10 @@ fn counter_ranges_validate_mathematical_order_and_preserve_interval_order_and_in
 #[test]
 fn pad_and_additive_tuples_keep_nonnegative_exact_tokens_including_signed_zero() {
     for text in ["-0000", "+0", "+0007", "2147483648"] {
-        let component = parse_component_values(text).unwrap().items()[0].clone();
+        let component = CssComponentValues::parse(&CssParser::default(), text)
+            .unwrap()
+            .items()[0]
+            .clone();
         let literal =
             CssNumericLiteral::<CssInteger>::try_from_component(component.clone()).unwrap();
         let pad = CssCounterStylePad::try_new(
@@ -389,7 +401,7 @@ fn parsed_counter_fields_retain_huge_lexemes_exact_origins_and_descriptor_order(
         "range: +0002147483648 2147483649; pad: 2147483648 \"_\"; ",
         "additive-symbols: 2147483649 \"a\", 2147483648 \"b\"; }",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("counter rule");
@@ -470,7 +482,7 @@ fn counter_effective_system_coupling_and_neighbor_recovery_remain_checked() {
         // Counter Styles 3 §§3.1/3.8 retain syntactically valid rules that
         // do not define a usable counter style; the integer model is unchanged.
         let source = format!("@counter-style incomplete {{ {body} }} .after {{ color: red; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(
             matches!(
@@ -485,7 +497,7 @@ fn counter_effective_system_coupling_and_neighbor_recovery_remain_checked() {
         "system: extends base; additive-symbols: 1 \"x\";",
     ] {
         let source = format!("@counter-style bad {{ {body} }} .after {{ color: red; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean());
         assert!(matches!(
             report.syntax().rules(),
@@ -493,7 +505,7 @@ fn counter_effective_system_coupling_and_neighbor_recovery_remain_checked() {
         ));
     }
     let source = "@counter-style valid { symbols: \"x\"; range: 2147483649 2147483648; pad: -1 \"_\"; suffix: \".\"; } .after { color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("neighbors survive");
     };
@@ -541,7 +553,7 @@ fn steps_share_positive_literals_and_defer_calculation_range_with_authored_omiss
                 .is_some_and(|value| value.numeric().representation() == text)
         );
     }
-    let components = parse_component_values("calc(1)").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "calc(1)").unwrap();
     let calculation =
         CssCalculation::<CssInteger>::try_from_components(components.clone(), Default::default())
             .unwrap();
@@ -572,7 +584,7 @@ fn steps_share_positive_literals_and_defer_calculation_range_with_authored_omiss
 #[test]
 fn steps_classify_bare_calculation_tokens_without_losing_authored_components_or_origins() {
     let source = " /*ordinary*/ +0002 ";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let original = components
         .items()
         .iter()
@@ -616,7 +628,7 @@ fn steps_classify_bare_calculation_tokens_without_losing_authored_components_or_
     assert_eq!(literal.origin(), &CssValueOrigin::Programmatic);
 
     for source in ["calc(0)", "calc(-1)", "calc(1)"] {
-        let components = parse_component_values(source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let steps = CssSteps::try_new(
             CssNumeric::<CssInteger, CssPositive>::try_from_calculation(
                 CssCalculation::<CssInteger>::try_from_components(
@@ -640,7 +652,7 @@ fn steps_classify_bare_calculation_tokens_without_losing_authored_components_or_
 #[test]
 fn parsed_steps_keep_count_origins_symbolic_math_and_position_omission() {
     let source = "transition-timing-function: steps(+0002, jump-none), steps(calc(1), jump-none), steps(2147483648), steps(2, end)";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let Some(CssKnownPropertyValueRef::TransitionTimingFunction(value)) =
         report.syntax()[0].known().unwrap().property_value()

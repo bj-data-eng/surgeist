@@ -10,7 +10,7 @@ use CssSpecifiedDeclarationBlock as Block;
 use surgeist_css::*;
 
 fn ordinary(source: &str) -> Block {
-    let report = parse_declaration_list_text(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean());
     Block::try_from_declarations(report.syntax(), Default::default()).unwrap()
 }
@@ -36,8 +36,10 @@ fn format(input: Input<'_>, limits: Limits) -> Result<String, CssRuleSerializati
 
 #[test]
 fn three_level_composition_spends_exact_native_budget_once_and_later_sibling_retry_is_atomic() {
-    let query = parse_media_query_list("print").into_parts().0;
-    let raw = parse_sheet("@import 'old.css' screen;");
+    let query = CssMediaQueryList::parse(&CssParser::default(), "print")
+        .into_parts()
+        .0;
+    let raw = CssParser::default().parse_sheet("@import 'old.css' screen;");
     let before = raw.clone();
     let CssRule::Import(original) = &raw.syntax().rules()[0] else {
         panic!()
@@ -97,11 +99,20 @@ fn three_level_composition_spends_exact_native_budget_once_and_later_sibling_ret
 
 #[test]
 fn domain_mismatch_is_admitted_at_the_actual_child_path_and_empty_children_keep_their_tariff() {
-    let query = parse_media_query_list("all").into_parts().0;
-    let selectors = parse_selector_list(".x", &CssNamespaceContext::default())
+    let query = CssMediaQueryList::parse(&CssParser::default(), "all")
         .into_parts()
-        .0
-        .unwrap();
+        .0;
+    let selectors = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        ".x",
+        &CssNamespaceContext::default(),
+        CssStyleSelectorContext::Ordinary,
+    )
+    .into_parts()
+    .0
+    .unwrap()
+    .selectors()
+    .clone();
     let valid = ordinary("");
     let wrong = Block::try_from_keyframe_entries(&[], Default::default()).unwrap();
     for child in [
@@ -150,7 +161,7 @@ fn domain_mismatch_is_admitted_at_the_actual_child_path_and_empty_children_keep_
 fn current_page_margin_and_keyframe_survivors_keep_order_domains_and_real_origins() {
     let source =
         String::from("/*😀*/ @page old { margin:1px 2px; @top-left{margin:3px 4px;content:'X'} }");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let before = report.clone();
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!()
@@ -178,7 +189,7 @@ fn current_page_margin_and_keyframe_survivors_keep_order_domains_and_real_origin
         CssMarginRuleView::try_new(CssMarginBox::BottomRight, &empty_margin).unwrap(),
         CssMarginRuleView::try_new(CssMarginBox::TopCenter, &margin).unwrap(),
     ];
-    let selectors = parse_page_selector_list("invoice:first")
+    let selectors = CssPageSelectorList::parse(&CssParser::default(), "invoice:first")
         .into_parts()
         .0
         .unwrap();
@@ -201,10 +212,11 @@ fn current_page_margin_and_keyframe_survivors_keep_order_domains_and_real_origin
             .as_str(),
         source
     );
-    let key = parse_keyframe_rule("from {margin:1px 2px; opacity:0}")
-        .into_parts()
-        .0
-        .unwrap();
+    let key =
+        CssParsedKeyframeRule::parse(&CssParser::default(), "from {margin:1px 2px; opacity:0}")
+            .into_parts()
+            .0
+            .unwrap();
     let original =
         Block::try_from_keyframe_declarations(key.block().declarations(), Default::default())
             .unwrap();
@@ -217,7 +229,7 @@ fn current_page_margin_and_keyframe_survivors_keep_order_domains_and_real_origin
         Block::try_from_keyframe_entries(std::slice::from_ref(survivor), Default::default())
             .unwrap();
     let empty = Block::try_from_keyframe_entries(&[], Default::default()).unwrap();
-    let offsets = parse_keyframe_selector_list("50%, from, 50%")
+    let offsets = CssParsedKeyframeSelectors::parse(&CssParser::default(), "50%, from, 50%")
         .into_parts()
         .0
         .unwrap();
@@ -246,7 +258,7 @@ fn current_selected_font_face_uses_one_shared_block_writer_with_order_pending_em
     let source = String::from(
         "/*😀*/ font-family:Old; src:local(Old); font-display:swap; font-weight:env(weight)",
     );
-    let report = parse_font_face_declaration_block_contents(&source);
+    let report = CssParser::default().parse_font_face_block_contents(&source);
     let occurrences = report
         .syntax()
         .as_ref()
@@ -293,7 +305,9 @@ fn current_selected_font_face_uses_one_shared_block_writer_with_order_pending_em
         format(Input::font_face(&empty), Limits::new(2, 2, 14)).unwrap(),
         "@font-face { }"
     );
-    let query = parse_media_query_list("print").into_parts().0;
+    let query = CssMediaQueryList::parse(&CssParser::default(), "print")
+        .into_parts()
+        .0;
     let children = [Input::font_face(&empty), input];
     let root = Input::group(Prelude::Media(&query), &children);
     let expected = "@media print {\n  @font-face { }\n  @font-face { font-weight: env(weight); font-display: swap; }\n}";
@@ -323,15 +337,21 @@ fn namespace_and_external_style_ancestry_propagate_through_groups_and_restore_fo
             CssNamespaceName::new("urn:x"),
         ),
     ]);
-    let selectors =
-        parse_style_selector_list("n|leaf", &namespaces, CssStyleSelectorContext::Nested)
-            .into_parts()
-            .0
-            .unwrap();
+    let selectors = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        "n|leaf",
+        &namespaces,
+        CssStyleSelectorContext::Nested,
+    )
+    .into_parts()
+    .0
+    .unwrap();
     let list = selectors.selectors();
     let empty = ordinary("");
     let children = [Input::style(list, &empty, &[])];
-    let query = parse_media_query_list("print").into_parts().0;
+    let query = CssMediaQueryList::parse(&CssParser::default(), "print")
+        .into_parts()
+        .0;
     let grouped = Input::group(Prelude::Media(&query), &children);
     assert_eq!(
         grouped
@@ -354,10 +374,17 @@ fn namespace_and_external_style_ancestry_propagate_through_groups_and_restore_fo
                 .is_some_and(|error| error.is_namespace_binding_unavailable()),
         "{failure:?}"
     );
-    let outer_list = parse_selector_list(".outer", &namespaces)
-        .into_parts()
-        .0
-        .unwrap();
+    let outer_list = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        ".outer",
+        &namespaces,
+        CssStyleSelectorContext::Ordinary,
+    )
+    .into_parts()
+    .0
+    .unwrap()
+    .selectors()
+    .clone();
     let root_children = [
         Input::style(&outer_list, &empty, &children),
         Input::style(&outer_list, &empty, &[]),
@@ -375,7 +402,8 @@ fn namespace_and_external_style_ancestry_propagate_through_groups_and_restore_fo
 fn scoped_selectors_and_parsed_descendants_remain_in_their_actual_domains() {
     let namespaces = CssNamespaceContext::default();
     let raw = " /*😀*/ .child, > .next ";
-    let selectors = parse_style_selector_list(
+    let selectors = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
         raw,
         &namespaces,
         CssStyleSelectorContext::Scoped(CssStyleAncestor::Present),
@@ -393,7 +421,7 @@ fn scoped_selectors_and_parsed_descendants_remain_in_their_actual_domains() {
         "& .child, & > .next { }"
     );
     assert_eq!(selectors.origin().source().as_str(), raw);
-    let report = parse_sheet("@scope (.root) { .kept {color:red} }");
+    let report = CssParser::default().parse_sheet("@scope (.root) { .kept {color:red} }");
     let CssRule::Scope(scope) = &report.syntax().rules()[0] else {
         panic!()
     };
@@ -408,8 +436,10 @@ fn scoped_selectors_and_parsed_descendants_remain_in_their_actual_domains() {
 
 #[test]
 fn unavailable_wrappers_are_lazy_typed_descendants_and_do_not_hide_independent_payloads() {
-    let query = parse_media_query_list("print").into_parts().0;
-    let report = parse_sheet(
+    let query = CssMediaQueryList::parse(&CssParser::default(), "print")
+        .into_parts()
+        .0;
+    let report = CssParser::default().parse_sheet(
         "@scope (.a) { .b {color:red} } @counter-style ticks {system:cyclic;symbols:'x'}",
     );
     assert!(report.is_clean());
@@ -445,7 +475,7 @@ fn unavailable_wrappers_are_lazy_typed_descendants_and_do_not_hide_independent_p
 
 #[test]
 fn named_import_layer_partial_output_uses_the_native_component_meter_and_escaping() {
-    let report = parse_sheet("@import 'x.css' layer(th\\65 me.f\\6f o); ");
+    let report = CssParser::default().parse_sheet("@import 'x.css' layer(th\\65 me.f\\6f o); ");
     assert!(report.is_clean());
     let CssRule::Import(import) = &report.syntax().rules()[0] else {
         panic!()
@@ -481,7 +511,7 @@ fn named_import_layer_partial_output_uses_the_native_component_meter_and_escapin
 
 #[test]
 fn graph_inputs_under_published_supports_keep_empty_visits_and_exact_atomic_meter() {
-    let report = parse_sheet("@supports(display:grid){} .edited {color:red}");
+    let report = CssParser::default().parse_sheet("@supports(display:grid){} .edited {color:red}");
     assert!(report.is_clean());
     let before = report.clone();
     let [CssRule::Supports(supports), CssRule::Style(style)] = report.syntax().rules() else {
@@ -541,13 +571,18 @@ fn published_supports_input_continuations_keep_namespace_ancestry_and_lazy_child
             CssNamespaceName::new("urn:x"),
         ),
     ]);
-    let selected =
-        parse_style_selector_list("n|leaf", &namespaces, CssStyleSelectorContext::Nested)
-            .into_parts()
-            .0
-            .unwrap();
+    let selected = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        "n|leaf",
+        &namespaces,
+        CssStyleSelectorContext::Nested,
+    )
+    .into_parts()
+    .0
+    .unwrap();
     let selectors = selected.selectors();
-    let report = parse_sheet("@supports(display:grid){} @scope(.host){.unused{color:red}}");
+    let report = CssParser::default()
+        .parse_sheet("@supports(display:grid){} @scope(.host){.unused{color:red}}");
     let [CssRule::Supports(supports), scope] = report.syntax().rules() else {
         panic!()
     };
@@ -557,7 +592,9 @@ fn published_supports_input_continuations_keep_namespace_ancestry_and_lazy_child
         Prelude::Supports(supports.condition()),
         &children,
     )];
-    let query = parse_media_query_list("print").into_parts().0;
+    let query = CssMediaQueryList::parse(&CssParser::default(), "print")
+        .into_parts()
+        .0;
     let root = Input::group(Prelude::Media(&query), &inner);
     assert_eq!(
         root.serialize_cssom(&namespaces, CssStyleAncestor::Present, Default::default())
@@ -590,8 +627,11 @@ fn published_supports_input_continuations_keep_namespace_ancestry_and_lazy_child
 /// A chain of `groups` nested `@media screen` groups; the innermost group is
 /// at graph depth `groups - 1`. Each level is leaked so it can borrow the next.
 fn nested_groups(groups: usize) -> Input<'static> {
-    let queries: &'static CssMediaQueryList =
-        Box::leak(Box::new(parse_media_query_list("screen").into_parts().0));
+    let queries: &'static CssMediaQueryList = Box::leak(Box::new(
+        CssMediaQueryList::parse(&CssParser::default(), "screen")
+            .into_parts()
+            .0,
+    ));
     let mut input = Input::group(Prelude::Media(queries), &[]);
     for _ in 1..groups {
         let children: &'static [Input<'static>] = Box::leak(Box::new([input]));
@@ -638,7 +678,7 @@ fn parsed_rule_nesting_stays_within_the_default_graph_depth_bound() {
     // parsed sheet retains a rule beyond the default graph depth bound.
     for groups in [255, 256, 257] {
         let source = format!("{}{}", "@media screen{".repeat(groups), "}".repeat(groups));
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let mut retained = 0;
         let mut rules = report.syntax().rules();
         while let [CssRule::Media(media)] = rules {

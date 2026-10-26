@@ -14,7 +14,7 @@ fn pending_value(declaration: &CssDeclaration, text: &str) {
     assert!(known.global().is_none());
     assert_eq!(known.substitution_dependent().unwrap().as_css(), text);
     assert_eq!(declaration.importance(), CssImportance::Important);
-    let CssExpansion::Pending(pending) = expand_declaration(declaration).unwrap() else {
+    let CssExpansion::Pending(pending) = declaration.expand().unwrap() else {
         panic!("pending")
     };
     assert!(pending.source().same_occurrence(declaration));
@@ -77,9 +77,10 @@ fn env_fallback_presence_preserves_whitespace_and_full_remaining_stream() {
     }
     for text in ["env(foo,)", "env(foo,/**/)"] {
         property_rejection(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Display),
-                parse_component_values(text).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Display)),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssImportance::Normal,
             ),
             CssKnownProperty::Display,
@@ -128,14 +129,16 @@ fn a_same_family_mismatch_cannot_be_rescued_by_its_inner_valid_occurrence() {
         "var(--x) var(x)",
     ] {
         property_rejection(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Display),
-                parse_component_values(text).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Display)),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssImportance::Normal,
             ),
             CssKnownProperty::Display,
         );
-        let report = parse_style_attribute(&format!("display:{text};display:block"));
+        let report =
+            CssParser::default().parse_block_contents(format!("display:{text};display:block"));
         assert!(!report.is_clean(), "{text}");
         assert_eq!(report.diagnostics().len(), 1);
         assert_eq!(
@@ -170,9 +173,10 @@ fn nonqualifying_env_headers_and_index_types_do_not_escape_display_grammar() {
         "env(foo calc(1%))",
     ] {
         property_rejection(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Display),
-                parse_component_values(text).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Display)),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssImportance::Normal,
             ),
             CssKnownProperty::Display,
@@ -190,9 +194,10 @@ fn permissive_custom_and_style_values_retain_env_mismatches_as_raw_tokens() {
         "env(var(--name))",
         "var(--ok,env())",
     ] {
-        let components = parse_component_values(text).unwrap();
-        let constructed = parse_property_value(
-            CssPropertyNameRef::Custom(&name),
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+        let constructed = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
             components.clone(),
             CssImportance::Important,
         )
@@ -212,7 +217,7 @@ fn permissive_custom_and_style_values_retain_env_mismatches_as_raw_tokens() {
             );
         }
         let condition = CssCondition::<CssContainerLeaf>::try_from_components(
-            parse_component_values(&format!("style(--x:{text})")).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), format!("style(--x:{text})")).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -238,22 +243,25 @@ fn permissive_contexts_keep_the_malformed_var_restriction() {
     let name = CssCustomPropertyName::try_new("--x").unwrap();
     for text in ["var(x)", "var(var(--name))", "env(foo,var(x))"] {
         assert!(
-            parse_property_value(
-                CssPropertyNameRef::Custom(&name),
-                parse_component_values(text).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssImportance::Normal
             )
             .is_err(),
             "{text}"
         );
         assert!(
-            !parse_style_attribute(&format!("--x:{text}")).is_clean(),
+            !CssParser::default()
+                .parse_block_contents(format!("--x:{text}"))
+                .is_clean(),
             "{text}"
         );
         // Conditional5 query-in-parens retains a failed style grammar as general-enclosed.
         let source = format!("style(--x:{text})");
         let condition = CssCondition::<CssContainerLeaf>::try_from_components(
-            parse_component_values(&source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -268,19 +276,19 @@ fn permissive_contexts_keep_the_malformed_var_restriction() {
 #[test]
 fn env_in_replacement_is_residual_before_any_replacement_grammar_check() {
     let source = parsed("display", "var(--display)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("existing var pending")
     };
     for text in ["env(foo)", "env()", "f([ENV(foo,)])", "var(x)"] {
         assert!(
             pending
-                .reenter(parse_component_values(text).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                 .unwrap_err()
                 .is_residual_substitution(),
             "{text}"
         );
     }
-    let replacement = parse_component_values("block").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "block").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("longhands")
     };
@@ -305,11 +313,11 @@ fn shorthand_env_pending_reenters_with_one_original_occurrence() {
             .as_css(),
         "env(future, 1px 2px)"
     );
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending margin-block")
     };
     assert!(pending.source().same_occurrence(&source));
-    let replacement = parse_component_values("1px 2px").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "1px 2px").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("margin-block longhands")
     };

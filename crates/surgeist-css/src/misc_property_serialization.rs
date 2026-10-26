@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn suppressed_rgb_caret_color_has_no_scratch_or_final_byte_cost() {
-        let report = crate::parse_style_attribute("caret-color:rgb(1 2 3)");
+        let report = crate::CssParser::default().parse_block_contents("caret-color:rgb(1 2 3)");
         assert!(report.is_clean());
         let crate::CssKnownPropertyValueRef::CaretColor(value) = report.syntax()[0]
             .known()

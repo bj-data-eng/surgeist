@@ -10,15 +10,19 @@
 //! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#non-ascii-code-point
 
 use crate::css::support::authored_syntax::assert_position;
-use surgeist_css::{
-    CssErrorCode, CssRecoveryAction, CssRule, CssSelector, parse_sheet, validate_sheet,
-};
+use surgeist_css::{CssErrorCode, CssParser, CssRecoveryAction, CssRule, CssSelector};
 
 fn assert_incomplete_unicode_rule(source: &str, start: (usize, u32, u32), end: (usize, u32, u32)) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.syntax().rules().is_empty(), "{source:?}");
     assert!(!report.is_clean(), "{source:?}");
-    assert!(validate_sheet(source).is_err(), "{source:?}");
+    assert!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .is_err(),
+        "{source:?}"
+    );
     assert_eq!(report.diagnostics().len(), 1, "{source:?}");
     let diagnostic = &report.diagnostics()[0];
     assert_eq!(
@@ -64,10 +68,13 @@ fn unicode_feff_is_retained_in_complete_type_selector_names() {
         ("a\u{feff}{} b{}", "a\u{feff}", 7, 5),
         ("\u{fffe}a{} b{}", "\u{fffe}a", 7, 5),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{source:?}: {:?}", report.diagnostics());
         assert_eq!(
-            validate_sheet(source).unwrap(),
+            CssParser::default()
+                .parse_sheet(source)
+                .into_validation_result()
+                .unwrap(),
             *report.syntax(),
             "{source:?}"
         );

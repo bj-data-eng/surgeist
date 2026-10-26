@@ -3,8 +3,7 @@
 //! Sources: pinned Cascade 5 #at-import/#layer-names and MQ5 #mq-syntax.
 use surgeist_css::{
     CssConditionKind, CssErrorCode, CssImportLayer, CssImportRule, CssImportTarget, CssMediaLeaf,
-    CssMediaQuery, CssMediaType, CssRecoveryAction, CssRule, CssSupportsLeaf, parse_sheet,
-    validate_sheet,
+    CssMediaQuery, CssMediaType, CssParser, CssRecoveryAction, CssRule, CssSupportsLeaf,
 };
 
 fn source(tail: &str) -> String {
@@ -13,9 +12,15 @@ fn source(tail: &str) -> String {
 
 fn clean_import(tail: &str) -> CssImportRule {
     let source = source(tail);
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{tail}: {:?}", report.diagnostics());
-    assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     let [CssRule::Import(import), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("import and following style rule: {tail}");
     };
@@ -78,7 +83,7 @@ fn invalid_specific_clause_bodies_do_not_forbid_other_complete_derivations() {
         opaque_media(&import, tail);
     }
     // The same keyword is still prohibited when used as an actual layer name.
-    let report = parse_sheet("@layer initial {} .after {color:red}");
+    let report = CssParser::default().parse_sheet("@layer initial {} .after {color:red}");
     assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
@@ -168,7 +173,7 @@ fn clause_shaped_functions_are_valid_operands_inside_typed_media_queries() {
 
 #[test]
 fn exhausted_alternatives_recover_media_once_after_the_first_valid_clauses() {
-    let report = parse_sheet(&source("layer(theme) screen and, print"));
+    let report = CssParser::default().parse_sheet(source("layer(theme) screen and, print"));
     let [CssRule::Import(import), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("retained import and following rule");
     };
@@ -188,7 +193,7 @@ fn exhausted_alternatives_recover_media_once_after_the_first_valid_clauses() {
 
 #[test]
 fn reserved_bare_media_identifiers_recover_after_an_anonymous_layer_clause() {
-    let report = parse_sheet(&source("layer layer"));
+    let report = CssParser::default().parse_sheet(source("layer layer"));
     let [CssRule::Import(import), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("import with media recovery");
     };
@@ -222,7 +227,7 @@ fn escaped_and_cased_optional_names_keep_original_media_origins() {
 fn failed_clause_probes_do_not_duplicate_retained_eof_closures() {
     for tail in ["layer(", "supports("] {
         let source = format!("@import url(test) {tail}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Import(import)] = report.syntax().rules() else {
             panic!("retained import at EOF");
         };
@@ -271,7 +276,9 @@ fn failed_clause_probes_do_not_duplicate_retained_eof_closures() {
         assert_eq!(closure.span().start().byte_offset().value(), source.len());
         assert_eq!(closure.span().end().byte_offset().value(), source.len());
         assert_eq!(
-            validate_sheet(&source),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result(),
             report.clone().into_validation_result()
         );
     }
@@ -280,7 +287,7 @@ fn failed_clause_probes_do_not_duplicate_retained_eof_closures() {
 #[test]
 fn eof_closures_do_not_prefer_a_grammatically_incomplete_prefix_interpretation() {
     let source = "@import url(test) layer(theme) and (color";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("retained import with complete media grammar");
     };
@@ -346,7 +353,9 @@ fn eof_closures_do_not_prefer_a_grammatically_incomplete_prefix_interpretation()
     assert_eq!(closure.span().start().byte_offset().value(), source.len());
     assert_eq!(closure.span().end().byte_offset().value(), source.len());
     assert_eq!(
-        validate_sheet(source),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
         report.clone().into_validation_result()
     );
 }
@@ -355,7 +364,7 @@ fn eof_closures_do_not_prefer_a_grammatically_incomplete_prefix_interpretation()
 fn lexical_errors_remain_terminal_across_optional_clause_probes() {
     for (tail, token) in [("layer(url(a b))", "url(a b)"), ("supports(])", "]")] {
         let source = source(tail);
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
         let [diagnostic] = report.diagnostics() else {
             panic!("one terminal lexical failure");
@@ -382,7 +391,7 @@ fn lexical_errors_remain_terminal_across_optional_clause_probes() {
 #[test]
 fn excessive_nesting_stops_the_import_without_erasing_its_resource_error() {
     let tail = format!("{}x{}", "future(".repeat(257), ")".repeat(257));
-    let report = parse_sheet(&source(&tail));
+    let report = CssParser::default().parse_sheet(source(&tail));
     assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
     let [diagnostic] = report.diagnostics() else {
         panic!("one terminal resource failure");
@@ -404,7 +413,7 @@ fn an_invalid_target_precedes_unentered_nested_prelude_components() {
         format!("url(\"asset\" 1) {deep}"),
     ] {
         let source = format!("@import {target}; .after {{ color: red; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid-target failure");

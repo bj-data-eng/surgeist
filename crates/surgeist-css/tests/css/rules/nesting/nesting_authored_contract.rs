@@ -9,10 +9,9 @@
 use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::rules::declaration_text;
 use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssNormalizedItem, CssNormalizedSheet, CssPseudoClass,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSelector, CssSelectorBinding,
-    CssSelectorCombinator, CssStyleSelector, CssTokenKind, normalize_sheet, parse_selector,
-    parse_sheet,
+    CssErrorCode, CssNamespaceContext, CssNormalizedItem, CssNormalizedSheet, CssParser,
+    CssPseudoClass, CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSelector,
+    CssSelectorBinding, CssSelectorCombinator, CssStyleSelector, CssTokenKind,
 };
 
 fn stream(sheet: &CssNormalizedSheet) -> Vec<String> {
@@ -50,7 +49,7 @@ fn stream(sheet: &CssNormalizedSheet) -> Vec<String> {
 #[test]
 fn mixed_nested_members_share_the_complete_original_parent_context() {
     let source = ".Parent,#Alt { > &.Child, .Else &, .Plain { color:red } .Last { color:blue } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let original = report.clone();
     let [CssRule::Style(parent)] = report.syntax().rules() else {
@@ -116,7 +115,7 @@ fn mixed_nested_members_share_the_complete_original_parent_context() {
     assert_eq!(declaration_text(&child.declarations()[0]), ("color", "red"));
     assert_eq!(declaration_text(&last.declarations()[0]), ("color", "blue"));
 
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_eq!(
         stream(&normalized),
         [
@@ -209,7 +208,7 @@ fn mixed_nested_members_share_the_complete_original_parent_context() {
 fn invalid_ampersand_child_drops_its_declarations_and_grandchild_between_siblings() {
     let source = ".P{color:red;.Before{color:blue}&div{color:green;.Leak{width:1px}}.After{height:2px}opacity:1}.Outside{}";
     let failed = "&div{color:green;.Leak{width:1px}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let original = report.clone();
     let [CssRule::Style(parent), CssRule::Style(outside)] = report.syntax().rules() else {
         panic!("parent and outside survive");
@@ -281,7 +280,7 @@ fn invalid_ampersand_child_drops_its_declarations_and_grandchild_between_sibling
     );
     assert_eq!(diagnostic.span().start().line().value(), 0);
     assert_eq!(diagnostic.span().start().column().value() as usize, start);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_eq!(
         stream(&normalized),
         [
@@ -305,7 +304,7 @@ fn identifier_led_invalid_child_is_one_recovery_unit_without_descendant_promotio
     let source =
         ".P{color:red;div&extra{color:green;.Leak{width:1px}}color:blue;.After{height:2px}}";
     let failed = "div&extra{color:green;.Leak{width:1px}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let original = report.clone();
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("parent retained");
@@ -363,7 +362,7 @@ fn identifier_led_invalid_child_is_one_recovery_unit_without_descendant_promotio
     let encountered = detail.encountered().expect("responsible selector token");
     assert_eq!(encountered.kind(), CssTokenKind::Ident);
     assert_eq!(encountered.authored(), "extra");
-    let top = parse_sheet(failed);
+    let top = CssParser::default().parse_sheet(failed);
     let [top_diagnostic] = top.diagnostics() else {
         panic!("the same rule at the top level");
     };
@@ -386,7 +385,7 @@ fn identifier_led_invalid_child_is_one_recovery_unit_without_descendant_promotio
         top_diagnostic.error().position().byte_offset().value() + start,
         diagnostic.error().position().byte_offset().value()
     );
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_eq!(
         stream(&normalized),
         [
@@ -413,7 +412,7 @@ fn legal_type_first_and_noninitial_repeated_anchors_have_stable_specified_output
         // CSS Syntax hexadecimal escape 44 decodes to D; it remains a type name.
         (r"\44 iv&&.Card", "Div&&.Card", Some("Div"), 2),
     ] {
-        let report = parse_selector(source, &namespaces);
+        let report = CssSelector::parse(&CssParser::default(), source, &namespaces);
         assert!(report.is_clean(), "{source}: {report:?}");
         let original = report.clone();
         let Some(CssSelector::Compound(compound)) = report.syntax() else {
@@ -437,7 +436,7 @@ fn legal_type_first_and_noninitial_repeated_anchors_have_stable_specified_output
         assert_eq!(report, original);
         assert!(report.into_validation_result().is_ok());
     }
-    let report = parse_selector(".Lead > .Card&&", &namespaces);
+    let report = CssSelector::parse(&CssParser::default(), ".Lead > .Card&&", &namespaces);
     assert!(report.is_clean(), "{report:?}");
     let Some(CssSelector::Complex(complex)) = report.syntax() else {
         panic!("away-from-start anchors");
@@ -461,7 +460,7 @@ fn legal_type_first_and_noninitial_repeated_anchors_have_stable_specified_output
     );
     // Selectors 4 §3.1: a type selector must start its compound.
     for (source, token) in [("&div", "div"), ("&-suffix", "-suffix")] {
-        let report = parse_selector(source, &namespaces);
+        let report = CssSelector::parse(&CssParser::default(), source, &namespaces);
         assert!(report.syntax().is_none(), "{source}");
         ExpectedRejection::new(CssErrorCode::InvalidSelector)
             .at(token)
@@ -471,10 +470,10 @@ fn legal_type_first_and_noninitial_repeated_anchors_have_stable_specified_output
 
 #[test]
 fn parentless_nesting_identity_is_distinct_from_literal_scope_identity() {
-    let report = parse_sheet("& {color:red} :scope {color:blue}");
+    let report = CssParser::default().parse_sheet("& {color:red} :scope {color:blue}");
     assert!(report.is_clean(), "{report:?}");
     let original = report.clone();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_eq!(
         stream(&normalized),
         [
@@ -548,7 +547,7 @@ fn nested_lists_keep_parent_identity_and_original_sources_across_deep_boundaries
         source.push_str(&"}".repeat(ancestors));
         source.push_str(".Outside{}");
 
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -623,7 +622,7 @@ fn nested_lists_keep_parent_identity_and_original_sources_across_deep_boundaries
         assert_eq!(declaration_text(blue_source), ("color", "blue"));
         assert_eq!(declaration_text(opacity_source), ("opacity", "1"));
 
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let mut expected = (0..ancestors)
             .map(|level| format!("style:.n{level:03}"))
             .collect::<Vec<_>>();

@@ -6,7 +6,7 @@ use surgeist_css::*;
 /// The sheet of the clean parse of `source`.
 #[track_caller]
 pub fn clean_sheet(source: &str) -> CssSheet {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     report.syntax().clone()
 }
@@ -22,7 +22,7 @@ pub fn assert_clean_and_valid<T: Clone>(report: &CssParseReport<T>) {
 /// changing, and that `expected` reparses cleanly to the same text.
 #[track_caller]
 pub fn assert_exact_specified_sheet(source: &str, expected: &str) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let before = report.clone();
     assert_eq!(
@@ -33,7 +33,7 @@ pub fn assert_exact_specified_sheet(source: &str, expected: &str) {
         expected
     );
     assert_eq!(report, before);
-    let emitted = parse_sheet(expected);
+    let emitted = CssParser::default().parse_sheet(expected);
     assert!(
         emitted.is_clean(),
         "{expected}: {:?}",
@@ -51,7 +51,7 @@ pub fn assert_exact_specified_sheet(source: &str, expected: &str) {
 /// The sole rule of the clean sheet `source`, which must be `@counter-style`.
 #[track_caller]
 pub fn sole_counter_style(source: &str) -> CssCounterStyleRule {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("one counter style rule: {source}");
@@ -95,7 +95,7 @@ pub fn ordinary_font_face_descriptor(
     source: &str,
     kind: CssFontFaceDescriptorKind,
 ) -> CssFontFaceDescriptorValue {
-    let report = parse_font_face_descriptor_value(source, kind);
+    let report = CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), source, kind);
     assert!(
         report.is_clean(),
         "{}: {source}: {:?}",
@@ -113,7 +113,7 @@ pub fn ordinary_font_face_descriptor(
 #[track_caller]
 pub fn import_from_components(source: &str) -> CssImportRule {
     CssImportRule::try_from_components(
-        parse_component_values(source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         &CssNamespaceContext::default(),
         Default::default(),
     )
@@ -481,7 +481,10 @@ impl ExpectedRejection {
     /// diagnostic is this rejection.
     #[track_caller]
     pub fn assert_sheet(&self, source: &str) {
-        let failure = validate_sheet(source).unwrap_err();
+        let failure = CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err();
         self.assert_error(failure.first().error());
     }
 }

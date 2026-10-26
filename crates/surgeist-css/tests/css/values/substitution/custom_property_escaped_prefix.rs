@@ -67,7 +67,7 @@ fn reserved_decoded_name_and_non_identifier_or_residual_source_remain_rejected()
 #[test]
 fn attribute_and_singular_fronts_decode_prefix_escapes_and_retain_original_name_tokens() {
     const SOURCE: &str = r"\2d \2d Theme:RED!important;--Theme:BLUE;-\2d Theme:MiXeD";
-    let report = parse_style_attribute(SOURCE);
+    let report = CssParser::default().parse_block_contents(SOURCE);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [first, second, third] = report.syntax().as_slice() else {
         panic!("three authored custom occurrences");
@@ -104,12 +104,15 @@ fn attribute_and_singular_fronts_decode_prefix_escapes_and_retain_original_name_
             .same_snapshot(third.parsed_name().unwrap().source())
     );
     assert_eq!(
-        validate_style_attribute(SOURCE).unwrap(),
+        CssParser::default()
+            .parse_block_contents(SOURCE)
+            .into_validation_result()
+            .unwrap(),
         report.syntax().clone()
     );
 
     const SINGLE: &str = r"\2d \2d Theme:RED";
-    let report = parse_declaration(SINGLE);
+    let report = CssDeclaration::parse(&CssParser::default(), SINGLE);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = report.syntax().as_ref().unwrap();
     assert_eq!(declaration.custom().unwrap().name(), &plain);
@@ -123,10 +126,11 @@ fn attribute_and_singular_fronts_decode_prefix_escapes_and_retain_original_name_
 #[test]
 fn checked_custom_admission_emits_decoded_name_and_preserves_supplied_value_origin() {
     let name = CssCustomPropertyName::try_new(r"\2d \2d Theme").unwrap();
-    let components = parse_component_values("MiXeD").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "MiXeD").unwrap();
     let before_components = components.clone();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Custom(&name),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
         components,
         CssImportance::Important,
     )
@@ -152,7 +156,10 @@ fn checked_custom_admission_emits_decoded_name_and_preserves_supplied_value_orig
         panic!("supplied value token preserves its actual parsed origin");
     };
     assert!(original.source().same_snapshot(retained.source()));
-    let reparsed = validate_style_attribute(EXPECTED).unwrap();
+    let reparsed = CssParser::default()
+        .parse_block_contents(EXPECTED)
+        .into_validation_result()
+        .unwrap();
     let [reparsed] = reparsed.as_slice() else {
         panic!("one canonical custom declaration");
     };

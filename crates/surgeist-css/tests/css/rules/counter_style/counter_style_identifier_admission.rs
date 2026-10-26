@@ -12,8 +12,7 @@ use descriptor_phases::*;
 use surgeist_css::{
     CssComponentValueRef, CssCounterStyleName, CssCounterStyleSpeakAs, CssCounterStyleSystem,
     CssCounterStyleValue, CssCounterSymbol, CssCounterSymbolIdent, CssKnownPropertyValueRef,
-    CssListStyleTypeValue, CssRecoveryAction, CssRule, CssValueOrigin, CssValueTokenRef,
-    parse_sheet, parse_style_attribute,
+    CssListStyleTypeValue, CssParser, CssRecoveryAction, CssRule, CssValueOrigin, CssValueTokenRef,
 };
 
 // Independent fixture transcribed from the selected Counter Styles 3 §6 and §7
@@ -194,7 +193,7 @@ fn escaped_counter_name_references_retain_decoded_identity() {
 fn bare_digit_and_multiple_identifier_rule_names_are_rejected() {
     for spelling in ["1Name", "chapter name"] {
         let source = format!("@counter-style {spelling} {{ symbols: a; }} .after {{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             matches!(report.syntax().rules(), [CssRule::Style(_)]),
             "{source}"
@@ -232,7 +231,7 @@ fn reserved_counter_rule_names_are_rejected_even_when_escaped() {
         .chain(["none", "NoNe", r"\6e one", r"\64 efault"])
     {
         let source = format!("@counter-style {spelling} {{ symbols: a; }} .after {{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             matches!(report.syntax().rules(), [CssRule::Style(_)]),
             "{source}"
@@ -298,7 +297,7 @@ fn reserved_identifier_symbols_drop_only_the_responsible_descriptor() {
         // counter-style effective-combination validation.
         let source =
             format!("@counter-style custom {{ system: cyclic; symbols: a; prefix: {spelling}; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
             panic!("retained rule for {source}");
         };
@@ -440,7 +439,7 @@ fn protected_predefined_names_are_rejected_as_rule_definitions() {
     for name in FORBIDDEN_RULE_NAMES {
         for spelling in [name.to_owned(), name.to_ascii_uppercase()] {
             let source = format!("@counter-style {spelling} {{ symbols: a; }} .after {{}}");
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(
                 matches!(report.syntax().rules(), [CssRule::Style(_)]),
                 "{source}"
@@ -467,7 +466,7 @@ fn parsed_counter_style_reference_preserves_original_declaration_and_token_origi
     // existing named-reference declaration boundary also exposes genuine name,
     // value and component origins, so their source identity can be checked.
     let source = r"list-style-type: \31Name;";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one list-style-type declaration");

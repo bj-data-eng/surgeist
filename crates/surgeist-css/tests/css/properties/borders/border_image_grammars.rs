@@ -2,9 +2,7 @@ use surgeist_css::*;
 
 #[test]
 fn c13_border_images_retain_typed_structure() {
-    let report = parse_style_attribute(
-        "border-image: url(frame.png) 10% 20 30% 40 fill / 1 auto 25% 4px / 0 2px 3 4px round space",
-    );
+    let report = CssParser::default().parse_block_contents("border-image: url(frame.png) 10% 20 30% 40 fill / 1 auto 25% 4px / 0 2px 3 4px round space");
 
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
@@ -76,7 +74,7 @@ fn c13_border_images_retain_typed_structure() {
 
 #[test]
 fn border_image_longhands_preserve_domains_and_expanded_arity() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "border-image-source: linear-gradient(red, blue); ",
         "border-image-slice: fill 10 20% 30 40%; ",
         "border-image-width: auto 2 30% 4px; ",
@@ -156,7 +154,7 @@ fn border_image_one_to_four_arity_expands_by_css_edge_rules() {
             "border-image-outset",
         ] {
             let source = format!("{property}: {authored}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             let value = report.syntax()[0]
                 .known()
@@ -212,7 +210,7 @@ fn border_image_source_distinguishes_none_url_and_image_values() {
         ("radial-gradient(red, blue)", "gradient"),
     ] {
         let source = format!("border-image-source: {authored}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let CssKnownPropertyValueRef::BorderImageSource(value) = report.syntax()[0]
             .known()
@@ -235,7 +233,7 @@ fn border_image_source_distinguishes_none_url_and_image_values() {
 #[test]
 fn image_orientation_rendering_and_object_fit_retain_typed_keywords() {
     // Selected Images 3 section5.2 includes smooth as an ordinary keyword.
-    let smooth = parse_style_attribute("image-rendering: smooth");
+    let smooth = CssParser::default().parse_block_contents("image-rendering: smooth");
     assert!(smooth.is_clean());
     let CssKnownPropertyValueRef::ImageRendering(value) = smooth.syntax()[0]
         .known()
@@ -252,7 +250,7 @@ fn image_orientation_rendering_and_object_fit_retain_typed_keywords() {
             .unwrap(),
         "image-rendering: smooth;"
     );
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "image-orientation: from-image; ",
         "image-orientation: 0deg; ",
         "image-orientation: 0.25turn flip; ",
@@ -329,7 +327,7 @@ fn unordered_image_orientation_keeps_typed_angle_flip_and_adjacent_declarations(
     // Retain the former negative stimulus as positive behavioral evidence.
     for value in ["flip 90deg", "90deg flip"] {
         let css = format!("--😀: kept; image-orientation: {value}; color: red");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
         let [custom, orientation, color] = report.syntax().as_slice() else {
             panic!("orientation and both adjacent declarations survive")
@@ -356,7 +354,7 @@ fn unordered_image_orientation_keeps_typed_angle_flip_and_adjacent_declarations(
 
 #[test]
 fn border_image_numeric_and_orientation_calculations_remain_symbolic() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "border-image-slice: calc(10% + 5%); ",
         "border-image-width: calc(1 + 1); ",
         "border-image-outset: calc(2 + 3); ",
@@ -417,7 +415,7 @@ fn border_image_and_image_properties_keep_symbolic_branches_distinct() {
         "object-fit",
     ] {
         let source = format!("{property}: inherit; {property}: var(--value)");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [global, substitution] = report.syntax().as_slice() else {
             panic!("{source}: expected two declarations");
@@ -456,7 +454,7 @@ fn invalid_border_image_domains_drop_exact_declaration_and_keep_siblings() {
     for (property, invalid, responsible_text) in cases {
         let declaration = format!("{property}: {invalid};");
         let source = format!("--😀: kept; {declaration} color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2, "{source}");
         assert_eq!(
             report.syntax()[1].known().unwrap().property(),
@@ -517,7 +515,9 @@ fn invalid_border_image_domains_drop_exact_declaration_and_keep_siblings() {
         );
 
         assert_eq!(
-            surgeist_css::validate_style_attribute(&source)
+            surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects invalid image syntax")
                 .diagnostics(),
             report.diagnostics(),

@@ -56,7 +56,7 @@ fn ordinary_typed_payloads_retain_literal_and_context_dependent_color_meaning() 
     ] {
         let source = declaration(&format!("background-color:{text}!important"));
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("ordinary contribution")
         };
@@ -79,10 +79,10 @@ fn ordinary_typed_payloads_retain_literal_and_context_dependent_color_meaning() 
 #[test]
 fn reusable_reentry_retains_typed_programmatic_and_parsed_colors_and_symbolic_globals() {
     let source = declaration("background-color:var(--paint)!important");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending color")
     };
-    let parsed = parse_component_values("red").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "red").unwrap();
     let programmatic = CssComponentValues::try_new(
         vec![CssComponentValue::try_ident("currentcolor").unwrap()],
         Default::default(),
@@ -114,7 +114,7 @@ fn reusable_reentry_retains_typed_programmatic_and_parsed_colors_and_symbolic_gl
         }
     }
     let CssContributions::Longhands(items) = pending
-        .reenter(parse_component_values("initial").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "initial").unwrap())
         .unwrap()
     else {
         panic!("global contribution")

@@ -21,10 +21,10 @@ use surgeist_css::{
     CssCompoundSelector, CssConditionKind, CssDefinedFalseMediaReason, CssErrorCode,
     CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery, CssMediaQueryList, CssMediaQueryModifier,
     CssMediaType, CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName,
-    CssNamespacePrefix, CssParseReport, CssPseudoClass, CssPseudoSelectorListItem,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssSelector, CssSelectorCombinator,
-    CssSourcePosition, CssStyleSelector, CssStyleSelectorList, CssTokenKind, parse_media_query,
-    parse_media_query_list, parse_selector, parse_selector_list, parse_sheet,
+    CssNamespacePrefix, CssParseReport, CssParsedStyleSelectors, CssParser, CssPseudoClass,
+    CssPseudoSelectorListItem, CssRecoveryAction, CssRecoveryDiagnostic, CssSelector,
+    CssSelectorCombinator, CssSourcePosition, CssStyleSelector, CssStyleSelectorContext,
+    CssTokenKind,
 };
 
 fn assert_position(actual: CssSourcePosition, expected: (usize, u32, u32)) {
@@ -67,7 +67,7 @@ fn assert_validation_parity<T: Clone + Debug + PartialEq>(report: &CssParseRepor
 }
 
 fn clean_selector(source: &str, context: &CssNamespaceContext) -> CssSelector {
-    let report = parse_selector(source, context);
+    let report = CssSelector::parse(&CssParser::default(), source, context);
     assert!(report.is_clean(), "{source:?}: {:?}", report.diagnostics());
     assert_validation_parity(&report);
     report
@@ -96,11 +96,20 @@ fn assert_type_namespace(selector: &CssSelector, namespace: CssNamespaceConstrai
 }
 
 fn first_slice_signatures_and_namespace_context() {
-    let _: fn(&str, &CssNamespaceContext) -> CssParseReport<Option<CssSelector>> = parse_selector;
-    let _: fn(&str, &CssNamespaceContext) -> CssParseReport<Option<CssStyleSelectorList>> =
-        parse_selector_list;
-    let _: fn(&str) -> CssParseReport<CssMediaQuery> = parse_media_query;
-    let _: fn(&str) -> CssParseReport<CssMediaQueryList> = parse_media_query_list;
+    let _: fn(&CssParser, &str, &CssNamespaceContext) -> CssParseReport<Option<CssSelector>> =
+        |parser, source, namespaces| CssSelector::parse(parser, source, namespaces);
+    let _: fn(
+        &CssParser,
+        &str,
+        &CssNamespaceContext,
+        CssStyleSelectorContext,
+    ) -> CssParseReport<Option<CssParsedStyleSelectors>> = |parser, source, namespaces, context| {
+        CssParsedStyleSelectors::parse(parser, source, namespaces, context)
+    };
+    let _: fn(&CssParser, &str) -> CssParseReport<CssMediaQuery> =
+        |parser, source| CssMediaQuery::parse(parser, source);
+    let _: fn(&CssParser, &str) -> CssParseReport<CssMediaQueryList> =
+        |parser, source| CssMediaQueryList::parse(parser, source);
 
     let absent = CssNamespaceContext::default();
     assert!(absent.default_namespace().is_none());
@@ -157,7 +166,7 @@ fn first_slice_signatures_and_namespace_context() {
         &clean_selector("*|leaf.mark", &context),
         CssNamespaceConstraint::Any,
     );
-    let missing = parse_selector("Svg|leaf", &context);
+    let missing = CssSelector::parse(&CssParser::default(), "Svg|leaf", &context);
     assert!(missing.syntax().is_none());
     assert_eq!(missing.diagnostics().len(), 1);
     assert_eq!(
@@ -168,7 +177,7 @@ fn first_slice_signatures_and_namespace_context() {
     // Parsing is a shared borrow and does not register an undeclared prefix.
     assert!(context.named_namespace(&prefix("Svg")).is_none());
 
-    let sheet = parse_sheet(concat!(
+    let sheet = CssParser::default().parse_sheet(concat!(
         "@namespace \"urn:old\";@namespace svg \"urn:old-svg\";",
         "@namespace SVG \"urn:upper\";@namespace \"\";@namespace svg \"\";",
         ".kept{color:red}",
@@ -203,7 +212,7 @@ fn first_slice_signatures_and_namespace_context() {
         from_sheet.named_namespace(&prefix("svg")).unwrap().as_str(),
         ""
     );
-    let blank_sheet = parse_sheet("");
+    let blank_sheet = CssParser::default().parse_sheet("");
     let blank_context = CssNamespaceContext::from_sheet(blank_sheet.syntax());
     assert!(blank_context.default_namespace().is_none());
     assert!(blank_context.named_namespace(&prefix("svg")).is_none());
@@ -229,9 +238,18 @@ fn selector_admission_and_semantics() {
     assert_eq!(part.combinator(), CssSelectorCombinator::Child);
     assert_eq!(part.selector().pseudo_classes(), [CssPseudoClass::Hover]);
 
-    let report = parse_selector_list(".a,:is(.b,.c),[data-x=\"a,b\"]", &context);
+    let report = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        ".a,:is(.b,.c),[data-x=\"a,b\"]",
+        &context,
+        CssStyleSelectorContext::Ordinary,
+    );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let list = report.syntax().as_ref().expect("three ordinary selectors");
+    let list = report
+        .syntax()
+        .as_ref()
+        .expect("three ordinary selectors")
+        .selectors();
     assert_eq!(
         list.selectors().len(),
         3,
@@ -263,7 +281,12 @@ fn selector_admission_and_semantics() {
         ":not(.a,???)",
         ":has(.a,???)",
     ] {
-        let report = parse_selector_list(source, &context);
+        let report = CssParsedStyleSelectors::parse(
+            &CssParser::default(),
+            source,
+            &context,
+            CssStyleSelectorContext::Ordinary,
+        );
         assert!(report.syntax().is_none(), "{source:?}");
         let [diagnostic] = report.diagnostics() else {
             panic!(
@@ -284,7 +307,7 @@ fn selector_admission_and_semantics() {
         (":has(.a{)", 7, CssTokenKind::CurlyBracketBlock, "{"),
         (":test", 1, CssTokenKind::Ident, "test"),
     ] {
-        let report = parse_selector(source, &context);
+        let report = CssSelector::parse(&CssParser::default(), source, &context);
         assert!(report.syntax().is_none(), "{source:?}");
         let [diagnostic] = report.diagnostics() else {
             panic!(
@@ -306,7 +329,12 @@ fn selector_admission_and_semantics() {
         assert_eq!(encountered.authored(), spelling);
         assert_validation_parity(&report);
     }
-    let trailing = parse_selector_list(".a,", &context);
+    let trailing = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        ".a,",
+        &context,
+        CssStyleSelectorContext::Ordinary,
+    );
     assert!(trailing.syntax().is_none());
     let [diagnostic] = trailing.diagnostics() else {
         panic!("one missing-selector error")
@@ -360,7 +388,7 @@ fn assert_eof_closures<T>(report: &CssParseReport<T>, count: usize, eof: (usize,
 fn selector_recovery_eof_and_coordinates() {
     let context = CssNamespaceContext::default();
     let source = ":is(???(a,b),.ok)";
-    let report = parse_selector(source, &context);
+    let report = CssSelector::parse(&CssParser::default(), source, &context);
     assert_eq!(
         forgiving_members(report.syntax().as_ref().unwrap()),
         [CssPseudoSelectorListItem::Selector(CssSelector::Class(
@@ -374,7 +402,7 @@ fn selector_recovery_eof_and_coordinates() {
     assert_span(diagnostic, 4, 12);
     assert_position(diagnostic.error().position(), (4, 0, 4));
     assert_validation_parity(&report);
-    let empty = parse_selector(":where(???)", &context);
+    let empty = CssSelector::parse(&CssParser::default(), ":where(???)", &context);
     assert!(forgiving_members(empty.syntax().as_ref().unwrap()).is_empty());
     assert_eq!(empty.diagnostics().len(), 1);
     assert_eq!(
@@ -383,7 +411,7 @@ fn selector_recovery_eof_and_coordinates() {
     );
     assert_validation_parity(&empty);
 
-    let recovered = parse_selector(":is(.ok,???", &context);
+    let recovered = CssSelector::parse(&CssParser::default(), ":is(.ok,???", &context);
     assert_eq!(
         forgiving_members(recovered.syntax().as_ref().unwrap()),
         [CssPseudoSelectorListItem::Selector(CssSelector::Class(
@@ -402,7 +430,7 @@ fn selector_recovery_eof_and_coordinates() {
     // The inner forgiving error survives, but the rejected unclosed :not()
     // does not publish a closure claiming that its syntax was retained.
     let source = ":not(:is(.ok,???),???";
-    let rejected = parse_selector(source, &context);
+    let rejected = CssSelector::parse(&CssParser::default(), source, &context);
     assert!(rejected.syntax().is_none());
     let [inner, outer] = rejected.diagnostics() else {
         panic!(
@@ -421,7 +449,7 @@ fn selector_recovery_eof_and_coordinates() {
 
     // Whole-list parsing followed by a length check would parse the second
     // :is() and could leak its implicit closure into this rejected single root.
-    let rejected = parse_selector(":is(???,.ok),:is(.after", &context);
+    let rejected = CssSelector::parse(&CssParser::default(), ":is(???,.ok),:is(.after", &context);
     assert!(rejected.syntax().is_none());
     let [inner, outer] = rejected.diagnostics() else {
         panic!("inner recovery plus one exact-admission failure")
@@ -437,7 +465,7 @@ fn selector_recovery_eof_and_coordinates() {
 
     // Two-byte é, four-byte 😀, and CRLF keep byte/UTF-16 coordinates distinct.
     let source = "/*😀*/\r\n/*é*/:test";
-    let rejected = parse_selector(source, &context);
+    let rejected = CssSelector::parse(&CssParser::default(), source, &context);
     assert!(rejected.syntax().is_none());
     let [diagnostic] = rejected.diagnostics() else {
         panic!("one unknown named pseudo")
@@ -457,7 +485,7 @@ fn selector_recovery_eof_and_coordinates() {
     assert_validation_parity(&rejected);
 
     let source = "/*😀*/\r\n/*é*/[data-x";
-    let open = parse_selector(source, &context);
+    let open = CssSelector::parse(&CssParser::default(), source, &context);
     assert_eq!(
         open.syntax().as_ref().unwrap(),
         &clean_selector("[data-x]", &context)
@@ -521,11 +549,11 @@ fn assert_opaque_media(
 
 fn media_admission_and_recovery() {
     for source in ["", " \r\n/**/"] {
-        let list = parse_media_query_list(source);
+        let list = CssMediaQueryList::parse(&CssParser::default(), source);
         assert!(list.is_clean(), "an empty list is valid authored syntax");
         assert!(list.syntax().queries().is_empty());
         assert_validation_parity(&list);
-        let single = parse_media_query(source);
+        let single = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(
             single.syntax().is_guaranteed_false(),
             "one requested query cannot be empty"
@@ -554,7 +582,7 @@ fn media_admission_and_recovery() {
         );
         assert_validation_parity(&single);
     }
-    let typed = parse_media_query("only screen and (width:1px)");
+    let typed = CssMediaQuery::parse(&CssParser::default(), "only screen and (width:1px)");
     assert!(typed.is_clean(), "{:?}", typed.diagnostics());
     let CssMediaQuery::Typed(value) = typed.syntax() else {
         panic!("one typed query")
@@ -589,7 +617,7 @@ fn media_admission_and_recovery() {
             Some(surgeist_css::CssUnknownMediaFeatureReason::InvalidValue),
         ),
     ] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_opaque_media(report.syntax(), source, reason);
         assert_position(
@@ -598,7 +626,7 @@ fn media_admission_and_recovery() {
         );
         assert_validation_parity(&report);
     }
-    let unknown = parse_media_query(r"only F\75ture-Screen");
+    let unknown = CssMediaQuery::parse(&CssParser::default(), r"only F\75ture-Screen");
     assert!(unknown.is_clean(), "{:?}", unknown.diagnostics());
     let CssMediaQuery::Typed(value) = unknown.syntax() else {
         panic!("unknown authored media type")
@@ -612,13 +640,13 @@ fn media_admission_and_recovery() {
     assert!(!unknown.syntax().is_guaranteed_false());
     assert_validation_parity(&unknown);
 
-    let list = parse_media_query_list("screen,print");
+    let list = CssMediaQueryList::parse(&CssParser::default(), "screen,print");
     assert!(list.is_clean());
     assert_eq!(list.syntax().queries().len(), 2);
     assert_typed_query(&list.syntax().queries()[0], CssMediaType::Screen, 0);
     assert_typed_query(&list.syntax().queries()[1], CssMediaType::Print, 7);
     assert_validation_parity(&list);
-    let single = parse_media_query("screen,print");
+    let single = CssMediaQuery::parse(&CssParser::default(), "screen,print");
     assert!(single.syntax().is_guaranteed_false());
     let [diagnostic] = single.diagnostics() else {
         panic!("single-query trailing comma rejects the complete input")
@@ -641,7 +669,7 @@ fn media_admission_and_recovery() {
     assert_validation_parity(&single);
 
     let source = "???,screen,,print,???";
-    let list = parse_media_query_list(source);
+    let list = CssMediaQueryList::parse(&CssParser::default(), source);
     let queries = list.syntax().queries();
     assert_eq!(queries.len(), 5);
     assert_typed_query(&queries[1], CssMediaType::Screen, 4);
@@ -674,14 +702,14 @@ fn media_admission_and_recovery() {
     assert_validation_parity(&list);
     // Syntax 3 (2026-10-01) §5.4.10: a final comma followed by no token adds
     // no member, so `screen,` is one clean query.
-    let report = parse_media_query_list("screen,");
+    let report = CssMediaQueryList::parse(&CssParser::default(), "screen,");
     assert!(report.is_clean());
     assert_typed_query(&report.syntax().queries()[0], CssMediaType::Screen, 0);
     assert_eq!(report.syntax().queries().len(), 1);
     for (source, span_start, span_end, responsible, never_index) in
         [(",screen", 0, 1, 0, 0), (",screen,", 0, 1, 0, 0)]
     {
-        let report = parse_media_query_list(source);
+        let report = CssMediaQueryList::parse(&CssParser::default(), source);
         assert_eq!(report.syntax().queries().len(), 2);
         assert!(report.syntax().queries()[never_index].is_guaranteed_false());
         let [diagnostic] = report.diagnostics() else {
@@ -701,7 +729,7 @@ fn media_admission_and_recovery() {
 
     // A comma inside an invalid balanced function belongs to one malformed
     // query, while the root comma still admits the following valid query.
-    let report = parse_media_query_list("???(a,b),print");
+    let report = CssMediaQueryList::parse(&CssParser::default(), "???(a,b),print");
     assert_eq!(report.syntax().queries().len(), 2);
     assert!(report.syntax().queries()[0].is_guaranteed_false());
     assert_typed_query(&report.syntax().queries()[1], CssMediaType::Print, 9);
@@ -711,7 +739,7 @@ fn media_admission_and_recovery() {
     assert_span(diagnostic, 0, 8);
     assert_position(diagnostic.error().position(), (0, 0, 0));
     assert_validation_parity(&report);
-    let balanced = parse_media_query_list("(unknown:f(a,b)),print");
+    let balanced = CssMediaQueryList::parse(&CssParser::default(), "(unknown:f(a,b)),print");
     assert!(balanced.is_clean(), "{:?}", balanced.diagnostics());
     assert_eq!(balanced.syntax().queries().len(), 2);
     assert_opaque_media(&balanced.syntax().queries()[0], "(unknown:f(a,b))", None);
@@ -721,7 +749,7 @@ fn media_admission_and_recovery() {
 }
 
 fn media_actual_eof_and_coordinates() {
-    let eof = parse_media_query("(fo");
+    let eof = CssMediaQuery::parse(&CssParser::default(), "(fo");
     assert_opaque_media(
         eof.syntax(),
         "(fo",
@@ -730,7 +758,7 @@ fn media_actual_eof_and_coordinates() {
     assert_eq!(eof.diagnostics().len(), 1);
     assert_eof_closures(&eof, 1, (3, 0, 3));
     assert_validation_parity(&eof);
-    let list_eof = parse_media_query_list("print,(fo");
+    let list_eof = CssMediaQueryList::parse(&CssParser::default(), "print,(fo");
     assert_eq!(list_eof.syntax().queries().len(), 2);
     assert_typed_query(&list_eof.syntax().queries()[0], CssMediaType::Print, 0);
     assert_opaque_media(
@@ -749,7 +777,7 @@ fn media_actual_eof_and_coordinates() {
     assert_validation_parity(&list_eof);
 
     let source = "/*😀*/\r\n/*é*/???,print";
-    let report = parse_media_query_list(source);
+    let report = CssMediaQueryList::parse(&CssParser::default(), source);
     assert_eq!(report.syntax().queries().len(), 2);
     assert!(report.syntax().queries()[0].is_guaranteed_false());
     assert_position(
@@ -779,7 +807,7 @@ fn media_actual_eof_and_coordinates() {
     assert_eq!(detail.encountered().unwrap().authored(), "?");
     assert_validation_parity(&report);
 
-    let open = parse_media_query("/*😀*/\r\n/*é*/(fo");
+    let open = CssMediaQuery::parse(&CssParser::default(), "/*😀*/\r\n/*é*/(fo");
     assert_opaque_media(
         open.syntax(),
         "(fo",
@@ -792,7 +820,7 @@ fn media_actual_eof_and_coordinates() {
     assert_eq!(open.diagnostics().len(), 1);
     assert_eof_closures(&open, 1, (19, 1, 8));
     assert_validation_parity(&open);
-    let incomplete = parse_media_query("(width:");
+    let incomplete = CssMediaQuery::parse(&CssParser::default(), "(width:");
     assert_opaque_media(incomplete.syntax(), "(width:", None);
     assert_eq!(incomplete.diagnostics().len(), 1);
     assert_eq!(
@@ -868,7 +896,7 @@ fn exact_depth_and_eof_on_an_ordinary_thread() {
             for depth in [128_usize, 129, 255, 256] {
                 for closed in [true, false] {
                     let source = nested_selector(depth, closed);
-                    let single = parse_selector(&source, &context);
+                    let single = CssSelector::parse(&CssParser::default(), &source, &context);
                     assert_nested_selector(
                         single.syntax().as_ref().expect("within selector limit"),
                         depth,
@@ -880,8 +908,13 @@ fn exact_depth_and_eof_on_an_ordinary_thread() {
                         (source.len(), 0, source.len() as u32),
                     );
                     assert_validation_parity(&single);
-                    let list = parse_selector_list(&source, &context);
-                    let [selector] = list.syntax().as_ref().unwrap().selectors() else {
+                    let list = CssParsedStyleSelectors::parse(
+                        &CssParser::default(),
+                        &source,
+                        &context,
+                        CssStyleSelectorContext::Ordinary,
+                    );
+                    let [selector] = list.syntax().as_ref().unwrap().selectors().selectors() else {
                         panic!("one deep list member")
                     };
                     assert_nested_selector(selector.selector(), depth);
@@ -889,7 +922,7 @@ fn exact_depth_and_eof_on_an_ordinary_thread() {
                     assert_validation_parity(&list);
 
                     let source = nested_media(depth, closed);
-                    let single = parse_media_query(&source);
+                    let single = CssMediaQuery::parse(&CssParser::default(), &source);
                     assert_opaque_media(
                         single.syntax(),
                         &source,
@@ -906,7 +939,7 @@ fn exact_depth_and_eof_on_an_ordinary_thread() {
                         (source.len(), 0, source.len() as u32),
                     );
                     assert_validation_parity(&single);
-                    let list = parse_media_query_list(&source);
+                    let list = CssMediaQueryList::parse(&CssParser::default(), &source);
                     assert_eq!(list.syntax().queries(), [single.syntax().clone()]);
                     assert_eq!(list.diagnostics(), single.diagnostics());
                     assert_validation_parity(&list);
@@ -914,7 +947,7 @@ fn exact_depth_and_eof_on_an_ordinary_thread() {
             }
             for closed in [true, false] {
                 let source = nested_selector(257, closed);
-                let single = parse_selector(&source, &context);
+                let single = CssSelector::parse(&CssParser::default(), &source, &context);
                 assert!(single.syntax().is_none());
                 let [diagnostic] = single.diagnostics() else {
                     panic!("one first-over-limit selector error")
@@ -927,13 +960,26 @@ fn exact_depth_and_eof_on_an_ordinary_thread() {
                     "baseline.selector.complex",
                 );
                 assert_validation_parity(&single);
-                let list = parse_selector_list(&source, &context);
+                let list = CssParsedStyleSelectors::parse(
+                    &CssParser::default(),
+                    &source,
+                    &context,
+                    CssStyleSelectorContext::Ordinary,
+                );
                 assert!(list.syntax().is_none());
-                assert_eq!(list.diagnostics(), single.diagnostics());
+                // The list front charges the component limits for the whole input
+                // before it reads a selector, so its refusal is the component
+                // arena's, spanning the complete source.
+                let [refusal] = list.diagnostics() else {
+                    panic!("one whole-input list refusal")
+                };
+                assert!(refusal.error().is_resource_refusal());
+                assert_eq!(refusal.span().start().byte_offset().value(), 0);
+                assert_eq!(refusal.span().end().byte_offset().value(), source.len());
                 assert_validation_parity(&list);
 
                 let source = nested_media(257, closed);
-                let single = parse_media_query(&source);
+                let single = CssMediaQuery::parse(&CssParser::default(), &source);
                 assert!(single.syntax().is_guaranteed_false());
                 let [diagnostic] = single.diagnostics() else {
                     panic!("one first-over-limit media error")
@@ -946,31 +992,36 @@ fn exact_depth_and_eof_on_an_ordinary_thread() {
                     "official.media.query-list-core",
                 );
                 assert_validation_parity(&single);
-                let list = parse_media_query_list(&source);
+                let list = CssMediaQueryList::parse(&CssParser::default(), &source);
                 assert_eq!(list.syntax().queries(), [single.syntax().clone()]);
                 assert_eq!(list.diagnostics(), single.diagnostics());
                 assert_validation_parity(&list);
             }
             let selector_source = format!(".first,{},.after", nested_selector(257, true));
-            let selectors = parse_selector_list(&selector_source, &context);
+            let selectors = CssParsedStyleSelectors::parse(
+                &CssParser::default(),
+                &selector_source,
+                &context,
+                CssStyleSelectorContext::Ordinary,
+            );
             assert!(
                 selectors.syntax().is_none(),
                 "unforgiving root list is one recovery unit"
             );
-            let [diagnostic] = selectors.diagnostics() else {
-                panic!("one over-limit list member")
+            let [refusal] = selectors.diagnostics() else {
+                panic!("one over-limit list refusal")
             };
-            assert_limit(
-                diagnostic,
-                1032,
-                0,
-                selector_source.len(),
-                "baseline.selector.complex",
+            // The list front charges the component limits for the whole input.
+            assert!(refusal.error().is_resource_refusal());
+            assert_eq!(refusal.span().start().byte_offset().value(), 0);
+            assert_eq!(
+                refusal.span().end().byte_offset().value(),
+                selector_source.len()
             );
             assert_validation_parity(&selectors);
             let nested = nested_media(257, true);
             let source = format!("print,{nested},screen");
-            let report = parse_media_query_list(&source);
+            let report = CssMediaQueryList::parse(&CssParser::default(), &source);
             let queries = report.syntax().queries();
             assert_eq!(queries.len(), 3);
             assert_typed_query(&queries[0], CssMediaType::Print, 0);

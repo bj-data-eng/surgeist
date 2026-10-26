@@ -1,15 +1,15 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::math_depth::MathDepthBoundary;
 use crate::css::support::property_admission::{assert_component_rejected, assert_numeric_rejected};
-use surgeist_css::CssNumericLiteral;
 use surgeist_css::{
     CssAnimationDirection, CssAnimationFillMode, CssAnimationIterationCount,
     CssAnimationIterationCountList, CssAnimationName, CssAnimationPlayState,
     CssCalculationExpressionRef, CssCalculationType, CssDelayList, CssDurationList, CssEasing,
     CssEasingKeyword, CssErrorCode, CssKnownProperty, CssKnownPropertyValueRef, CssNonNegative,
     CssNumeric, CssRecoveryAction, CssSourcePosition, CssStepPosition, CssTime, CssTimeUnit,
-    CssTokenKind, CssTransitionProperty, parse_style_attribute,
+    CssTokenKind, CssTransitionProperty,
 };
+use surgeist_css::{CssNumericLiteral, CssParser};
 
 fn for_each_permutation(
     components: &mut [&'static str],
@@ -60,7 +60,7 @@ struct InvalidTimingCase {
 }
 
 fn assert_invalid_timing_case(case: &InvalidTimingCase) {
-    let report = parse_style_attribute(case.source);
+    let report = CssParser::default().parse_block_contents(case.source);
     assert_retained_color_sibling(case.source, &report);
     let [diagnostic] = report.diagnostics() else {
         panic!("{}: expected one exact timing diagnostic", case.source);
@@ -112,7 +112,9 @@ fn assert_invalid_timing_case(case: &InvalidTimingCase) {
     }
 
     {
-        let failure = surgeist_css::validate_style_attribute(case.source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(case.source)
+            .into_validation_result()
             .expect_err("strict validation must reject the recovered timing declaration");
         assert_eq!(
             failure.diagnostics(),
@@ -197,7 +199,7 @@ fn iteration_values_check_literals_and_keep_infinite_and_calculation_branches() 
 
 #[test]
 fn timing_longhands_expose_exact_typed_values() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "transition-duration: 1s, calc((2ms + 3ms) * 2); ",
         "transition-delay: -1s, 2ms; ",
         "animation-duration: 3ms, calc(1s + 2s); ",
@@ -287,7 +289,7 @@ fn timing_longhands_expose_exact_typed_values() {
 
 #[test]
 fn ordinary_timing_inputs_retain_each_typed_component() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "transition-duration: 1s, 2ms; transition-delay: 3s; ",
         "animation-duration: 4ms; animation-delay: 5s; ",
         "animation-iteration-count: infinite, 2; ",
@@ -383,7 +385,7 @@ fn ordinary_timing_inputs_retain_each_typed_component() {
 
 #[test]
 fn transition_shorthand_assigns_first_time_to_duration_and_second_to_signed_delay() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "transition: opacity 1s ease -2ms, transform calc((3ms + 1ms) * 2) ",
         "calc(-1s + 2s) linear"
     ));
@@ -421,9 +423,7 @@ fn transition_shorthand_assigns_first_time_to_duration_and_second_to_signed_dela
 
 #[test]
 fn animation_shorthand_exposes_all_eight_components() {
-    let report = parse_style_attribute(
-        "animation: fade calc((1s + 2s) * 2) ease calc(-1s + 2s) calc((1 + 2) * 3) reverse both paused",
-    );
+    let report = CssParser::default().parse_block_contents("animation: fade calc((1s + 2s) * 2) ease calc(-1s + 2s) calc((1 + 2) * 3) reverse both paused");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Animation(value) = report.syntax()[0]
         .known()
@@ -454,7 +454,7 @@ fn animation_shorthand_exposes_all_eight_components() {
 
 #[test]
 fn timing_shorthands_propagate_typed_cubic_and_step_values() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "transition: opacity 1s cubic-bezier(0.1, -2, 0.9, 3), ",
         "transform 2s steps(2, jump-none); ",
         "animation: fade 1s steps(3, jump-both)"
@@ -513,7 +513,7 @@ fn every_transition_component_order_preserves_first_time_and_second_time_domains
         }
 
         let source = format!("transition: {}", order.join(" "));
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [declaration] = report.syntax().as_slice() else {
             panic!("{source}: expected one transition declaration");
@@ -550,7 +550,9 @@ fn every_transition_component_order_preserves_first_time_and_second_time_domains
         );
 
         assert_eq!(
-            surgeist_css::validate_style_attribute(&source)
+            surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect("strict validation accepts every valid transition order"),
             *report.syntax(),
             "{source}",
@@ -577,7 +579,7 @@ fn every_animation_component_order_preserves_all_eight_typed_domains() {
         }
 
         let source = format!("animation: {}", order.join(" "));
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [declaration] = report.syntax().as_slice() else {
             panic!("{source}: expected one animation declaration");
@@ -633,7 +635,9 @@ fn every_animation_component_order_preserves_all_eight_typed_domains() {
         );
 
         assert_eq!(
-            surgeist_css::validate_style_attribute(&source)
+            surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect("strict validation accepts every valid animation order"),
             *report.syntax(),
             "{source}",
@@ -754,7 +758,7 @@ fn repeated_timing_failures_and_depth_255_256_257_have_exact_recovery_behavior()
         source.push_str("transition: -1s 2s;");
     }
     source.push_str("color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(report.diagnostics().len(), 128);
 
@@ -787,17 +791,22 @@ fn repeated_timing_failures_and_depth_255_256_257_have_exact_recovery_behavior()
             );
         },
         |_, source, report| {
-            assert_retained_color_sibling(source, report);
+            // Block contents refuses the whole input, the color sibling included.
+            assert!(report.syntax().is_empty());
             let [diagnostic] = report.diagnostics() else {
                 panic!("over-limit timing calculation must produce one diagnostic");
             };
             assert_ascii_position(diagnostic.error().position(), 1_301);
             assert_ascii_position(diagnostic.span().start(), 0);
-            assert_ascii_position(diagnostic.span().end(), 1_566);
+            assert_ascii_position(diagnostic.span().end(), source.len());
             let detail = diagnostic.error();
-            assert_eq!(detail.code(), CssErrorCode::NestingLimit, "depth 257 must expose typed nesting-limit detail");
-            assert_eq!(detail.nesting_limit().unwrap(), 256);
-            assert_eq!(detail.production().unwrap().as_str(), "css.declaration");
+            assert_eq!(detail.code(), CssErrorCode::InvalidComponentValue);
+            assert!(
+                detail
+                    .component_error()
+                    .is_some_and(surgeist_css::CssComponentValueError::is_nesting_limit),
+                "depth 257 must expose the typed nesting-limit cause"
+            );
         },
     );
 }
@@ -809,7 +818,7 @@ fn timing_calculations_preserve_extreme_finite_spellings_for_resolution() {
         "animation-delay: calc(-1e999s); color: red",
         "animation-iteration-count: calc(1e999); color: red",
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 2);
     }

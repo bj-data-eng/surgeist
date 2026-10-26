@@ -3,24 +3,6 @@ use super::{StyleContextCaptures, fragments, recovery::RecoveryState, syntax_bri
 use crate::*;
 use cssparser::{Parser, ParserInput};
 
-/// Parses one complete nonempty nongeneric literal-family prelude, without
-/// constructing an enclosing rule. Retention is independent of report cleanliness.
-#[must_use]
-pub fn parse_font_feature_values_family_list(
-    source: &str,
-) -> CssParseReport<Option<CssFontFeatureValuesFamilyList>> {
-    parse_font_feature_values_family_list_with_limits(source, CssComponentValueLimits::default())
-}
-/// Charges the complete original input once, including trivia and later members.
-/// Syntax rejection and resource exhaustion both return `None`, distinguished
-/// by typed diagnostics. Native valid EOF recovery can retain a list with notes.
-#[must_use]
-pub fn parse_font_feature_values_family_list_with_limits(
-    source: &str,
-    limits: CssComponentValueLimits,
-) -> CssParseReport<Option<CssFontFeatureValuesFamilyList>> {
-    parse_with_context(source, limits, CssParserContext::default())
-}
 pub(crate) fn parse_with_context(
     source: &str,
     limits: CssComponentValueLimits,

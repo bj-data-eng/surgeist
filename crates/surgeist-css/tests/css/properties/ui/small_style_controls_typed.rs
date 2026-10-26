@@ -84,8 +84,9 @@ fn keyword_alternatives_and_repeated_decoded_property_names_keep_order_and_case(
         expected.serialize_specified(Default::default()).unwrap(),
         canonical
     );
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::WillChange),
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::WillChange)),
         source.value_components().clone(),
         CssImportance::Normal,
     )
@@ -111,10 +112,11 @@ fn mixed_keyword_exclusions_and_escaped_exclusions_reject_with_component_origins
         "will-change",
         "contents, auto",
     ] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let original = components.clone();
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::WillChange),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::WillChange)),
             components,
             CssImportance::Normal,
         )

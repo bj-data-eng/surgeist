@@ -5,7 +5,7 @@
 
 use crate::css::support::serialization_limits::assert_limits_with_zero as budget;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{CssSerializationLimits as L, *};
+use surgeist_css::{CssComponentValue, CssSerializationLimits as L, *};
 
 fn number(text: &str) -> CssNumeric<CssNumber> {
     CssNumeric::<CssNumber>::try_from_component(CssComponentValue::try_number(text).unwrap())

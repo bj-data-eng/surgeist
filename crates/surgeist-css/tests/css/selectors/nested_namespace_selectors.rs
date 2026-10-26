@@ -3,9 +3,9 @@
 //! A single namespace bar is distinct from the two-bar column combinator.
 
 use surgeist_css::{
-    CssCompoundSelector, CssErrorCode, CssGrammarExpectation, CssNamespaceConstraint,
+    CssCompoundSelector, CssErrorCode, CssGrammarExpectation, CssNamespaceConstraint, CssParser,
     CssProductionId, CssPseudoClass, CssRecoveryAction, CssRecoveryDiagnostic, CssRule,
-    CssSelector, CssTokenSummary, parse_sheet,
+    CssSelector, CssTokenSummary,
 };
 
 fn compound(selector: &CssSelector) -> &CssCompoundSelector {
@@ -35,7 +35,7 @@ fn nested_type_and_universal_selectors_preserve_explicit_no_namespace() {
         ("|*", true, 0),
     ] {
         let source = format!(".parent, #alternate {{ {selector} {{color:green}} }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [CssRule::Style(parent)] = report.syntax().rules() else {
             panic!("expected one parent");
@@ -57,7 +57,7 @@ fn nested_type_and_universal_selectors_preserve_explicit_no_namespace() {
 fn relational_selectors_preserve_single_bar_namespace_prefixes() {
     for (selector, anchors) in [("|div", 0), ("|div&", 1)] {
         let source = format!(".parent {{ &:has({selector}) {{color:green}} }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [CssRule::Style(parent)] = report.syntax().rules() else {
             panic!("expected parent");
@@ -79,7 +79,7 @@ fn relational_selectors_preserve_single_bar_namespace_prefixes() {
 fn incomplete_namespace_names_discard_only_the_child_rule() {
     for selector in ["|&", "|.class&", "| div&"] {
         let source = format!(".parent {{ {selector} {{color:green}} color:red }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Style(parent)] = report.syntax().rules() else {
             panic!("expected retained parent: {source}");
         };
@@ -119,7 +119,7 @@ fn incomplete_namespace_names_discard_only_the_child_rule() {
 // prelude is the selector, so its failure is the one reported.
 // https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
 fn selector_failure(source: &str, unit: &str) -> (usize, CssRecoveryDiagnostic) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let failures = report
         .diagnostics()
         .iter()

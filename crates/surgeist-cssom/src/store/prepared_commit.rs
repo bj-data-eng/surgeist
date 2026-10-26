@@ -309,8 +309,8 @@ mod tests {
             .unwrap();
         let block = batch
             .create_declarations(
-                CssParserContext::default()
-                    .parse_style_attribute("")
+                CssParser::new(CssParserContext::default(), Default::default())
+                    .parse_block_contents("")
                     .into_parts()
                     .0,
                 false,

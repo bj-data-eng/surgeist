@@ -4,12 +4,12 @@
 
 use surgeist_css::{
     CssFontFaceSource, CssFontFaceUrlSource, CssImportTarget, CssImportUrl,
-    CssKnownPropertyValueRef, CssRecoveryAction, CssRule, CssUrl, CssUrlFunction, CssUrlModifier,
-    parse_sheet, parse_style_attribute,
+    CssKnownPropertyValueRef, CssParser, CssRecoveryAction, CssRule, CssUrl, CssUrlFunction,
+    CssUrlModifier,
 };
 
 fn background_url(value: &str) -> CssUrl {
-    let report = parse_style_attribute(&format!("background-image: {value}"));
+    let report = CssParser::default().parse_block_contents(format!("background-image: {value}"));
     assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one background image")
@@ -100,7 +100,7 @@ fn import_and_font_sources_expose_shared_payload_and_preserve_import_spelling() 
         "src(\"first.woff2\" integrity(\"sha256\")), ",
         "url(\"second.woff2\" cors); }"
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Import(import), CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("import then font face")
@@ -149,7 +149,7 @@ fn malformed_src_members_recover_without_losing_valid_font_and_rule_neighbors() 
         "src(\"first.woff2\"), src(foo), src(\"last.woff2\"); } ",
         ".after { color: red; }"
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(!report.is_clean());
     let [CssRule::FontFace(face), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("font face and style survive invalid import")

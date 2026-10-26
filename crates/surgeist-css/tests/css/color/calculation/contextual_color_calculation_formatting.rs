@@ -572,9 +572,15 @@ fn number(text: &str) -> CssColorComponent {
 #[test]
 fn clean_validation_retains_graph_and_siblings() {
     let source = "color: hsl(calc(1 / 128 + 1em / 1px) 50% 50%) !important; opacity: .5";
-    let r = parse_style_attribute(source);
+    let r = CssParser::default().parse_block_contents(source);
     assert!(r.is_clean(), "{:?}", r.diagnostics());
-    assert_eq!(&validate_style_attribute(source).unwrap(), r.syntax());
+    assert_eq!(
+        &CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .unwrap(),
+        r.syntax()
+    );
     assert_eq!(r.syntax().len(), 2);
     let before = r.syntax().clone();
     let d = &r.syntax()[0];
@@ -592,7 +598,7 @@ fn clean_validation_retains_graph_and_siblings() {
 }
 #[test]
 fn invalid_contextual_dimension_recovery_control() {
-    let r = parse_style_attribute("color: rgb(calc(1em) 0 0); opacity: .5");
+    let r = CssParser::default().parse_block_contents("color: rgb(calc(1em) 0 0); opacity: .5");
     assert_eq!(r.diagnostics().len(), 1);
     assert_eq!(r.syntax().len(), 1);
     assert_eq!(
@@ -607,10 +613,7 @@ fn substitution_stays_pending_control() {
     let known = d.known().unwrap();
     assert!(known.property_value().is_none());
     assert_eq!(known.substitution_dependent().unwrap().as_css(), src);
-    assert!(matches!(
-        expand_declaration(&d).unwrap(),
-        CssExpansion::Pending(_)
-    ));
+    assert!(matches!(d.expand().unwrap(), CssExpansion::Pending(_)));
     let e = CssCalculation::<CssNumber>::try_from_components(
         components("calc(var(--n) + 1em / 1px)"),
         Default::default(),

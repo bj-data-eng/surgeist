@@ -13,7 +13,7 @@ fn one_contribution(
     property: CssKnownProperty,
 ) -> CssLonghandContribution {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("font width intrinsic expansion")
+        source.expand().expect("font width intrinsic expansion")
     else {
         panic!("one longhand contribution")
     };
@@ -100,7 +100,7 @@ fn both_names_accept_keywords_and_nonnegative_percentages_but_recover_bad_values
             ("normal 75%", "75%"),
         ] {
             let source = format!("color:red;{name}:{value};color:blue");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             let [diagnostic] = report.diagnostics() else {
                 panic!("one invalid value: {source}")
             };
@@ -114,7 +114,12 @@ fn both_names_accept_keywords_and_nonnegative_percentages_but_recover_bad_values
                 2,
                 "valid neighbors survive: {source}"
             );
-            assert!(validate_style_attribute(&source).is_err());
+            assert!(
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .is_err()
+            );
             assert_checked_value_rejected_at(known_property(name), value, rest);
         }
     }
@@ -161,24 +166,24 @@ fn inherited_normal_width_expands_once_and_pending_reentry_uses_same_grammar() {
         assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
     }
     let source = declaration("font-stretch", "var(--width)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("substitution remains pending")
     };
     assert!(pending.source().same_occurrence(&source));
     assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
     assert!(
         pending
-            .reenter(parse_component_values("-1%").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "-1%").unwrap())
             .unwrap_err()
             .replacement_error()
             .is_some()
     );
-    let replacement = parse_component_values("75%").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "75%").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("strict replacement completes")
     };
@@ -189,7 +194,7 @@ fn inherited_normal_width_expands_once_and_pending_reentry_uses_same_grammar() {
     assert!(item.source().same_occurrence(&source));
     assert_eq!(item.replacement_components(), Some(&replacement));
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&declaration("all", "initial")).unwrap()
+        declaration("all", "initial").expand().unwrap()
     else {
         panic!("all reset")
     };
@@ -202,11 +207,17 @@ fn font_shorthand_keeps_its_nine_keyword_width_component() {
         declaration("font", value);
         checked("font", value);
     }
-    let report = parse_style_attribute("color:red;font:75% 16px serif;color:blue");
+    let report =
+        CssParser::default().parse_block_contents("color:red;font:75% 16px serif;color:blue");
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("percentage is not a shorthand width")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert!(validate_style_attribute("font:75% 16px serif").is_err());
+    assert!(
+        CssParser::default()
+            .parse_block_contents("font:75% 16px serif")
+            .into_validation_result()
+            .is_err()
+    );
 }

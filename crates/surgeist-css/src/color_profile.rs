@@ -357,3 +357,20 @@ impl CssColorProfileRule {
             .map(CssColorProfileDescriptor::value)
     }
 }
+impl CssColorProfileDescriptorValue {
+    /// Parses one complete authored color-profile descriptor with env-only deferral.
+    ///
+    /// The parser is not read: neither its document mode nor its component limits apply to this grammar, and only the fixed nesting ceiling bounds the input.
+    #[expect(
+        unused_variables,
+        reason = "this grammar does not read the parser configuration"
+    )]
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+        kind: crate::CssColorProfileDescriptorKind,
+    ) -> crate::CssParseReport<Option<CssColorProfileDescriptorValue>> {
+        crate::parser::parse_color_profile_descriptor_value(source.as_ref(), kind)
+    }
+}

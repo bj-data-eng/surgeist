@@ -879,14 +879,14 @@ impl CssParsedOrigin {
 #[cfg(test)]
 mod utf16_admission_tests {
     use super::*;
-    use crate::{CssParserContext, CssUtf16InputLimits};
+    use crate::CssUtf16InputLimits;
 
     #[test]
     fn actual_preparation_backing_and_work_accept_exact_and_refuse_one_short() {
         let original = Arc::new(vec![u16::from(b'a'); 64]);
         let mut calls = 0;
-        let report = CssParserContext::default()
-            .parse_sheet_utf16_with_limits(original.clone(), CssUtf16InputLimits::default(), || {
+        let report = crate::CssParser::default()
+            .parse_sheet_utf16(original.clone(), CssUtf16InputLimits::default(), || {
                 calls += 1;
                 Ok::<_, ()>(())
             })
@@ -908,8 +908,8 @@ mod utf16_admission_tests {
         assert_eq!(source.as_str().len(), exact.max_output_bytes);
         assert_eq!(raw.map.len(), exact.max_map_entries);
         assert_eq!(source.0.checkpoints.len(), exact.max_checkpoints);
-        CssParserContext::default()
-            .parse_sheet_utf16_with_limits(original.clone(), exact, || Ok::<_, ()>(()))
+        crate::CssParser::default()
+            .parse_sheet_utf16(original.clone(), exact, || Ok::<_, ()>(()))
             .unwrap();
         for (limits, cause) in [
             (
@@ -963,7 +963,7 @@ mod utf16_admission_tests {
             ),
         ] {
             assert!(
-                matches!(CssParserContext::default().parse_sheet_utf16_with_limits(original.clone(), limits, || Ok::<_, ()>(())), Err(error) if error.exhausted_limit() == Some(cause)),
+                matches!(crate::CssParser::default().parse_sheet_utf16(original.clone(), limits, || Ok::<_, ()>(())), Err(error) if error.exhausted_limit() == Some(cause)),
                 "{cause:?}"
             );
         }
@@ -974,19 +974,15 @@ mod utf16_admission_tests {
         let original = Arc::new(".a{color:red}".encode_utf16().collect::<Vec<_>>());
         let mut total = 0;
         drop(
-            CssParserContext::default()
-                .parse_sheet_utf16_with_limits(
-                    original.clone(),
-                    CssUtf16InputLimits::default(),
-                    || {
-                        total += 1;
-                        Ok::<_, usize>(())
-                    },
-                )
+            crate::CssParser::default()
+                .parse_sheet_utf16(original.clone(), CssUtf16InputLimits::default(), || {
+                    total += 1;
+                    Ok::<_, usize>(())
+                })
                 .unwrap(),
         );
         let mut calls = 0;
-        let result = CssParserContext::default().parse_sheet_utf16_with_limits(
+        let result = crate::CssParser::default().parse_sheet_utf16(
             original.clone(),
             CssUtf16InputLimits::default(),
             || {
@@ -1011,7 +1007,6 @@ mod secondary_admission_tests {
     fn limits() -> CssUtf16PropertyValueLimits {
         CssUtf16PropertyValueLimits {
             input: crate::CssUtf16InputLimits::default(),
-            syntax: crate::CssComponentValueLimits::default(),
             max_work: 1_000_000,
             max_live_bytes: 16_000_000,
             max_retained_bytes: 16_000_000,

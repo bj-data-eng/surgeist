@@ -289,7 +289,7 @@ fn complete_nested_image_components_and_closings_keep_the_original_snapshot() {
 fn suppressed_valid_duplicates_retain_origins_while_invalid_occurrences_are_dropped() {
     let source =
         r"@counter-style Duplicates { symbols:a; prefix:'first'; prefix:inherit; prefix:\4c ast; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("retained rule");
     };
@@ -320,7 +320,7 @@ fn suppressed_valid_duplicates_retain_origins_while_invalid_occurrences_are_drop
 #[test]
 fn eof_image_closure_is_implicit_provenance_and_never_an_authored_delimiter() {
     let source = "@counter-style Eof { symbols: linear-gradient(red, blue";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("retained EOF rule");
     };
@@ -363,7 +363,11 @@ fn eof_image_closure_is_implicit_provenance_and_never_an_authored_delimiter() {
         "linear-gradient(red, blue)"
     );
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -371,10 +375,10 @@ fn eof_image_closure_is_implicit_provenance_and_never_an_authored_delimiter() {
 #[test]
 fn normalization_retains_counter_name_reference_and_image_origin_identity() {
     let source = r"/*😀*/ @media print { @counter-style \31 Name { system:extends Target; prefix:linear-gradient(red, blue); } } @scope { @counter-style Scoped { symbols:x; fallback:\4f ther; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let retained = report.syntax().clone();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let counters: Vec<_> = normalized
         .items()
         .iter()

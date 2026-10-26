@@ -1,4 +1,4 @@
-use surgeist_css::{CssErrorCode, CssKeyframeSelector, CssRecoveryAction, CssRule, parse_sheet};
+use surgeist_css::{CssErrorCode, CssKeyframeSelector, CssParser, CssRecoveryAction, CssRule};
 
 fn keyframes(rule: &CssRule) -> &surgeist_css::CssKeyframesRule {
     let CssRule::Keyframes(keyframes) = rule else {
@@ -26,7 +26,7 @@ fn keyframes_preserve_empty_and_duplicate_authored_structure() {
         "} ",
         "@keyframes empty {}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Keyframes(fade), CssRule::Keyframes(empty)] = report.syntax().rules() else {
@@ -64,7 +64,7 @@ fn invalid_keyframe_children_drop_the_smallest_unit_and_retain_empty_rules() {
         "} ",
         ".after { color: red; }",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     let [empty, CssRule::Style(after)] = report.syntax().rules() else {
         panic!("expected retained keyframes and later style rule");
@@ -85,7 +85,7 @@ fn invalid_keyframe_children_drop_the_smallest_unit_and_retain_empty_rules() {
 #[test]
 fn dropped_declarations_leave_empty_blocks_with_exact_non_bmp_coordinates() {
     let source = "@keyframes 😀fade { from { mystery: 1; } to { opacity: 0 !important; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     let [rule] = report.syntax().rules() else {
         panic!("expected retained keyframes rule");
@@ -120,7 +120,7 @@ fn dropped_declarations_leave_empty_blocks_with_exact_non_bmp_coordinates() {
 fn keyframe_depth_boundary_retains_255_and_256_but_stops_at_257() {
     for depth in [255, 256] {
         let source = keyframes_with_total_depth(depth);
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -133,7 +133,7 @@ fn keyframe_depth_boundary_retains_255_and_256_but_stops_at_257() {
     }
 
     let source = keyframes_with_total_depth(257);
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let [rule] = report.syntax().rules() else {
         panic!("over-limit declaration must leave its authored parents");
     };
@@ -148,7 +148,7 @@ fn keyframe_depth_boundary_retains_255_and_256_but_stops_at_257() {
 #[test]
 fn empty_keyframe_rule_and_block_retain_eof_closures() {
     for (source, expected_blocks) in [("@keyframes empty {", 0), ("@keyframes empty { from {", 1)] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [rule] = report.syntax().rules() else {
             panic!("{source}: expected retained keyframes rule");
         };
@@ -169,16 +169,20 @@ fn empty_keyframe_rule_and_block_retain_eof_closures() {
 #[test]
 fn app_strict_matches_ordinary_empty_duplicate_and_recovered_keyframes() {
     let clean = "@keyframes fade { from, 0%, from { } from { opacity: 1; } }";
-    let ordinary = parse_sheet(clean);
+    let ordinary = CssParser::default().parse_sheet(clean);
     assert!(ordinary.is_clean());
     assert_eq!(
-        surgeist_css::validate_sheet(clean),
+        surgeist_css::CssParser::default()
+            .parse_sheet(clean)
+            .into_validation_result(),
         Ok(ordinary.syntax().clone())
     );
 
     let recovered = "@keyframes fade { from { mystery: 1; } }";
-    let ordinary = parse_sheet(recovered);
-    let failure = surgeist_css::validate_sheet(recovered)
+    let ordinary = CssParser::default().parse_sheet(recovered);
+    let failure = surgeist_css::CssParser::default()
+        .parse_sheet(recovered)
+        .into_validation_result()
         .expect_err("strict validation must reject a recovered declaration");
     assert_eq!(failure.diagnostics(), ordinary.diagnostics());
     let [rule] = ordinary.syntax().rules() else {
@@ -195,7 +199,7 @@ fn app_strict_matches_ordinary_empty_duplicate_and_recovered_keyframes() {
 #[test]
 fn keyframes_block_contents_discard_semicolons_and_stop_invalid_items_at_them() {
     let source = "@keyframes k{;from{opacity:0};;color:red;50%{opacity:.5}x y;to{opacity:1};}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [rule] = report.syntax().rules() else {
         panic!("one keyframes rule: {report:?}");
     };

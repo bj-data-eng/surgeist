@@ -1,10 +1,11 @@
 use surgeist_css::{
-    CssErrorCode, CssImportance, CssKnownProperty, CssRecoveryAction, CssRule, CssSupportStatus,
-    feature_metadata, parse_sheet, parse_style_attribute, property_support_metadata,
+    CssErrorCode, CssImportance, CssKnownProperty, CssParser, CssRecoveryAction, CssRule,
+    CssSupportStatus, feature_metadata, property_support_metadata,
 };
 
 fn actions(source: &str) -> Vec<CssRecoveryAction> {
-    parse_sheet(source)
+    CssParser::default()
+        .parse_sheet(source)
         .diagnostics()
         .iter()
         .map(|diagnostic| diagnostic.action())
@@ -14,7 +15,7 @@ fn actions(source: &str) -> Vec<CssRecoveryAction> {
 #[test]
 fn recovery_front_doors_retain_valid_siblings() {
     let sheet_source = ".before { color: red; } @unknown x; .middle { mystery: 1; width: 2px; } ??? { color: black; } .after { height: 3px; }";
-    let sheet = parse_sheet(sheet_source);
+    let sheet = CssParser::default().parse_sheet(sheet_source);
     // Syntax 3 (CRD 2026-10-01) §5.5 drops only the invalid at-rule, the
     // unknown declaration and the rule with an invalid prelude; CSSOM 1
     // (WD 2021-08-26) §6.7.2 serializes each retained style rule.
@@ -47,7 +48,7 @@ fn recovery_front_doors_retain_valid_siblings() {
         "recovery boundaries"
     );
 
-    let attribute = parse_style_attribute("color: red; broken; width: 2px");
+    let attribute = CssParser::default().parse_block_contents("color: red; broken; width: 2px");
     assert_eq!(
         attribute
             .syntax()
@@ -120,7 +121,7 @@ fn malformed_units_emit_each_recovery_action() {
 #[test]
 fn malformed_units_report_typed_diagnostics_in_source_order() {
     let source = ".😀 { mystery: 1; width: bogus; color: red; } @unknown x;";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let diagnostics = report.diagnostics();
     assert_eq!(diagnostics.len(), 3, "diagnostic count");
     assert_eq!(
@@ -172,16 +173,20 @@ fn malformed_units_report_typed_diagnostics_in_source_order() {
 #[test]
 fn strict_validation_returns_clean_syntax_or_ordinary_diagnostics() {
     let clean_source = ".x { color: red; }";
-    let clean = parse_sheet(clean_source);
+    let clean = CssParser::default().parse_sheet(clean_source);
     assert_eq!(
-        surgeist_css::validate_sheet(clean_source),
+        surgeist_css::CssParser::default()
+            .parse_sheet(clean_source)
+            .into_validation_result(),
         Ok(clean.syntax().clone()),
         "clean validation"
     );
 
     let recovered_source = "color: red; mystery: 1; width: 2px";
-    let recovered = parse_style_attribute(recovered_source);
-    let failure = surgeist_css::validate_style_attribute(recovered_source)
+    let recovered = CssParser::default().parse_block_contents(recovered_source);
+    let failure = surgeist_css::CssParser::default()
+        .parse_block_contents(recovered_source)
+        .into_validation_result()
         .expect_err("recovered input must fail validation");
     assert!(!failure.diagnostics().is_empty());
     assert_eq!(failure.first(), &recovered.diagnostics()[0]);
@@ -190,7 +195,7 @@ fn strict_validation_returns_clean_syntax_or_ordinary_diagnostics() {
 
 #[test]
 fn custom_substitution_and_known_declarations_preserve_coupled_values() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "--Theme: RGB(1, 2, var(--fallback)); width: var(--size, 2px) !important; color: red",
     );
     assert!(report.is_clean(), "style-attribute report");
@@ -249,7 +254,7 @@ fn charset_rules_are_unrecognized_and_dropped() {
         "@charset \"UTF-8\" .x { color: red; }",
         ".x { color: red; } @charset \"UTF-8\";",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one unrecognized charset: {source}")
         };
@@ -260,7 +265,7 @@ fn charset_rules_are_unrecognized_and_dropped() {
 
 #[test]
 fn parse_reports_decompose_into_retained_syntax_and_diagnostics() {
-    let recovered = parse_sheet(".kept { color: red; } @unknown x;");
+    let recovered = CssParser::default().parse_sheet(".kept { color: red; } @unknown x;");
     assert!(!recovered.is_clean());
     let (sheet, diagnostics) = recovered.into_parts();
     assert_eq!(sheet.rules().len(), 1);
@@ -268,7 +273,8 @@ fn parse_reports_decompose_into_retained_syntax_and_diagnostics() {
     assert_eq!(diagnostics[0].error().code(), CssErrorCode::UnknownAtRule);
     assert_eq!(diagnostics[0].action(), CssRecoveryAction::DropAtRule);
 
-    let attribute = parse_style_attribute("--Theme: var(--fallback); width: 2px !important");
+    let attribute = CssParser::default()
+        .parse_block_contents("--Theme: var(--fallback); width: 2px !important");
     assert!(attribute.is_clean());
     assert_eq!(attribute.syntax().len(), 2);
     assert_eq!(attribute.syntax()[1].importance(), CssImportance::Important);
@@ -282,7 +288,7 @@ fn parse_reports_decompose_into_retained_syntax_and_diagnostics() {
 
 #[test]
 fn media_query_recovery_exposes_read_only_never_sentinel() {
-    let report = parse_sheet("@media screen, ??? { .x { color: red; } }");
+    let report = CssParser::default().parse_sheet("@media screen, ??? { .x { color: red; } }");
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("expected retained media rule");
     };

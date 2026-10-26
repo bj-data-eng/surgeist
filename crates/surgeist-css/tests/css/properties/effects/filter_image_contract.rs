@@ -11,7 +11,10 @@ use crate::css::support::property_admission::assert_same_grammar_facts;
 use crate::css::support::property_admission::implicit_closure_origin as implicit_origin;
 use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::{CssKnownProperty as P, CssSerializationLimits as L, *};
+use surgeist_css::{
+    CssComponentValues, CssDeclaration, CssKnownProperty as P, CssParser, CssPropertyTextTarget,
+    CssRule, CssSerializationLimits as L, *,
+};
 
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("inherit", CssGlobalKeyword::Inherit),
@@ -26,9 +29,15 @@ fn fronts(p: P, text: &str) -> Vec<CssDeclaration> {
         "/*😀*/{}:{text}!important",
         p.canonical_name().to_ascii_uppercase()
     );
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert_eq!(validate_style_attribute(&css).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     let [parsed] = report.syntax().as_slice() else {
         panic!("one occurrence")
     };
@@ -41,7 +50,7 @@ fn fronts(p: P, text: &str) -> Vec<CssDeclaration> {
         "/*😀*/".encode_utf16().count()
     );
     assert_eq!(parsed.parsed_value().unwrap().source().as_str(), css);
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let before = values.clone();
     let mut result = vec![parsed.clone()];
     for grammar in [false, true] {
@@ -53,8 +62,16 @@ fn fronts(p: P, text: &str) -> Vec<CssDeclaration> {
         result.push(source);
     }
     for report in [
-        parse_property_value_text(text, CssPropertyNameRef::Known(p), CssImportance::Important),
-        parse_property_value_text_for_grammar(text, p.grammar(), CssImportance::Important),
+        CssParser::default().parse_property_value(
+            text,
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(p)),
+            CssImportance::Important,
+        ),
+        CssParser::default().parse_property_value(
+            text,
+            CssPropertyTextTarget::Grammar(p.grammar()),
+            CssImportance::Important,
+        ),
     ] {
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
         let source = report.syntax().as_ref().unwrap();
@@ -97,7 +114,7 @@ fn canonical(p: P, text: &str, value: &str) {
                 expected
             );
         }
-        let report = parse_style_attribute(&expected);
+        let report = CssParser::default().parse_block_contents(&expected);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         assert_eq!(
             report.syntax()[0]
@@ -110,7 +127,7 @@ fn canonical(p: P, text: &str, value: &str) {
 
 fn invalid(p: P, text: &str) {
     let css = format!("color:red;{}:{text};color:blue", p.canonical_name());
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert_eq!(report.syntax().len(), 2, "atomic rejection: {css}");
     assert!(
         report
@@ -123,10 +140,14 @@ fn invalid(p: P, text: &str) {
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let before = values.clone();
     assert_checked_matches_diagnostic(p, text, diagnostic);
     for grammar in [false, true] {
@@ -137,8 +158,16 @@ fn invalid(p: P, text: &str) {
         );
     }
     for report in [
-        parse_property_value_text(text, CssPropertyNameRef::Known(p), CssImportance::Normal),
-        parse_property_value_text_for_grammar(text, p.grammar(), CssImportance::Normal),
+        CssParser::default().parse_property_value(
+            text,
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(p)),
+            CssImportance::Normal,
+        ),
+        CssParser::default().parse_property_value(
+            text,
+            CssPropertyTextTarget::Grammar(p.grammar()),
+            CssImportance::Normal,
+        ),
     ] {
         assert!(report.syntax().is_none());
         assert!(!report.is_clean());
@@ -269,7 +298,7 @@ fn imported_longhand_image_consumers_share_one_grammar() {
         canonical(p, "filter('a',blur())", "filter(\"a\", blur())");
         for source in fronts(p, "filter('a',blur())") {
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("terminal")
             };
@@ -295,7 +324,7 @@ fn importing_shorthands_preserve_their_existing_expansion_footprints() {
     ] {
         for source in fronts(p, "filter('a',blur())") {
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("shorthand")
             };
@@ -310,8 +339,8 @@ fn importing_shorthands_preserve_their_existing_expansion_footprints() {
                 assert!(item.source().same_occurrence(&source));
                 assert_eq!(item.source().importance(), source.importance());
             }
-            let report =
-                parse_style_attribute(&source.serialize_specified(Default::default()).unwrap());
+            let report = CssParser::default()
+                .parse_block_contents(source.serialize_specified(Default::default()).unwrap());
             assert!(report.is_clean());
         }
     }
@@ -357,7 +386,7 @@ fn counter_style_and_symbols_image_slots_admit_filter_images() {
         ),
     ] {
         let css = format!("@counter-style F {{{body}}}");
-        let report = parse_sheet(&css);
+        let report = CssParser::default().parse_sheet(&css);
         assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
         let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
             panic!("counter definition")
@@ -367,7 +396,11 @@ fn counter_style_and_symbols_image_slots_admit_filter_images() {
                 .unwrap(),
             expected
         );
-        assert!(parse_sheet(&rule.serialize_specified(Default::default()).unwrap()).is_clean());
+        assert!(
+            CssParser::default()
+                .parse_sheet(rule.serialize_specified(Default::default()).unwrap())
+                .is_clean()
+        );
     }
 }
 
@@ -425,7 +458,7 @@ fn every_css_wide_value_stays_whole_and_symbolic() {
         for (input, keyword) in GLOBALS {
             for source in fronts(p, input) {
                 let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                    expand_declaration(&source).unwrap()
+                    source.expand().unwrap()
                 else {
                     panic!("global terminal")
                 };
@@ -449,12 +482,13 @@ fn pending_reentry_is_strict_reusable_and_keeps_occurrence_and_replacement() {
     ] {
         for source in fronts(P::BackgroundImage, text) {
             let original = source.clone();
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("whole pending value")
             };
             for _ in 0..2 {
                 for bad in ["filter('a',none)", "inherit bogus"] {
-                    let replacement = parse_component_values(bad).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), bad).unwrap();
                     let direct =
                         checked(P::BackgroundImage, replacement.clone(), false).unwrap_err();
                     let error = handle.reenter(replacement).unwrap_err();
@@ -466,12 +500,19 @@ fn pending_reentry_is_strict_reusable_and_keeps_occurrence_and_replacement() {
                 }
                 assert!(
                     handle
-                        .reenter(parse_component_values("filter(var(--again),blur())").unwrap())
+                        .reenter(
+                            CssComponentValues::parse(
+                                &CssParser::default(),
+                                "filter(var(--again),blur())"
+                            )
+                            .unwrap()
+                        )
                         .unwrap_err()
                         .is_residual_substitution()
                 );
                 for good in ["/*😀*/filter('a',blur())", "inherit"] {
-                    let replacement = parse_component_values(good).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), good).unwrap();
                     let before = replacement.clone();
                     let CssContributions::Longhands(values) =
                         handle.reenter(replacement.clone()).unwrap()
@@ -506,7 +547,7 @@ fn checked_original_image_and_pending_closures_are_not_repaired() {
         "var(--image",
         "var(--image)/*unfinished",
     ] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let before = values.clone();
         let origin = implicit_origin(&values);
         for grammar in [false, true] {
@@ -524,10 +565,10 @@ fn checked_original_image_and_pending_closures_are_not_repaired() {
 #[test]
 fn replacement_original_closure_is_checked_after_residual_substitution() {
     let source = fronts(P::BackgroundImage, "var(--image)").remove(0);
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending")
     };
-    let values = parse_component_values("filter('a',blur()").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "filter('a',blur()").unwrap();
     let origin = implicit_origin(&values);
     let error = handle.reenter(values).unwrap_err();
     let Some(actual) = error.replacement_error() else {
@@ -537,13 +578,18 @@ fn replacement_original_closure_is_checked_after_residual_substitution() {
     assert!(actual.code() == Some(CssErrorCode::UnexpectedEnd));
     assert!(
         handle
-            .reenter(parse_component_values("filter(var(--again),blur()").unwrap())
+            .reenter(
+                CssComponentValues::parse(&CssParser::default(), "filter(var(--again),blur()")
+                    .unwrap()
+            )
             .unwrap_err()
             .is_residual_substitution()
     );
     assert!(
         handle
-            .reenter(parse_component_values("filter('a',blur())").unwrap())
+            .reenter(
+                CssComponentValues::parse(&CssParser::default(), "filter('a',blur())").unwrap()
+            )
             .is_ok()
     );
 }
@@ -551,14 +597,14 @@ fn replacement_original_closure_is_checked_after_residual_substitution() {
 #[test]
 fn normalization_keeps_duplicate_order_context_importance_and_pending_values() {
     let css = ".a{background-image:filter('a',blur())!important;background-image:var(--image);list-style-image:filter(url(b),sepia());background-image:unset}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssRule::Style(style) = &report.syntax().rules()[0] else {
         panic!("style rule")
     };
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(0, 1, 4, 4).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -604,7 +650,7 @@ fn normalization_keeps_duplicate_order_context_importance_and_pending_values() {
             CssNormalizationResource::Contributions,
         ),
     ] {
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+        let error = report.syntax().normalize(limits).unwrap_err();
         assert_eq!(error.exhausted_limit(), Some((resource, 3)));
         assert_eq!(error.declaration_order(), Some(3));
         assert!(
@@ -615,7 +661,7 @@ fn normalization_keeps_duplicate_order_context_importance_and_pending_values() {
         );
         assert_eq!(report, before);
     }
-    assert!(normalize_report_with_limits(&report, exact).is_ok());
+    assert!(report.normalize(exact).is_ok());
 }
 
 fn budget(text: &str, expected_value: &str, input: usize, projection: usize) {
@@ -702,22 +748,22 @@ fn nested_filter_parser_boundary_counts_actual_retained_function_depth() {
     };
     // 255 filter functions + deepest blur = the common 256 component ceiling.
     let valid = nested(255);
-    let report = parse_property_value_text(
+    let report = CssParser::default().parse_property_value(
         &valid,
-        CssPropertyNameRef::Known(P::BackgroundImage),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(P::BackgroundImage)),
         CssImportance::Normal,
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let invalid = nested(256);
-    let report = parse_property_value_text(
+    let report = CssParser::default().parse_property_value(
         &invalid,
-        CssPropertyNameRef::Known(P::BackgroundImage),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(P::BackgroundImage)),
         CssImportance::Normal,
     );
     assert!(!report.is_clean());
     assert!(report.syntax().is_none());
     assert!(
-        parse_component_values(&invalid)
+        CssComponentValues::parse(&CssParser::default(), &invalid)
             .unwrap_err()
             .is_nesting_limit()
     );

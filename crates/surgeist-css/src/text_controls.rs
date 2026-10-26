@@ -454,10 +454,10 @@ provider!(CssHangingPunctuation, value, writer => match value { Self::None => wr
 #[cfg(test)]
 mod provider_tests {
     use super::*;
+    use crate::CssKnownPropertyValueRef;
     use crate::CssSerializationLimits as Limits;
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
     use crate::specified_rule_serialization::SpecifiedProvider as _;
-    use crate::{CssKnownPropertyValueRef, parse_style_attribute};
 
     fn emit(value: CssKnownPropertyValueRef<'_>, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match value {
@@ -507,7 +507,7 @@ mod provider_tests {
     #[test]
     fn private_providers_compose_exact_work_and_utf8_bytes_under_one_context() {
         for (name, text, nodes) in CASES {
-            let report = parse_style_attribute(&format!("{name}:{text}"));
+            let report = crate::CssParser::default().parse_block_contents(format!("{name}:{text}"));
             assert!(report.is_clean());
             let source = &report.syntax()[0];
             let before = source.clone();
@@ -548,7 +548,7 @@ mod provider_tests {
     #[test]
     fn nested_suppression_charges_each_child_and_restores_emission_after_success_or_failure() {
         for (name, text, nodes) in CASES {
-            let report = parse_style_attribute(&format!("{name}:{text}"));
+            let report = crate::CssParser::default().parse_block_contents(format!("{name}:{text}"));
             assert!(report.is_clean());
             let source = &report.syntax()[0];
             let before = source.clone();
@@ -603,7 +603,8 @@ mod provider_tests {
                 5,
             ),
         ] {
-            let report = parse_style_attribute(&format!("{name}:{input}"));
+            let report =
+                crate::CssParser::default().parse_block_contents(format!("{name}:{input}"));
             assert!(report.is_clean());
             let source = &report.syntax()[0];
             let before = source.clone();

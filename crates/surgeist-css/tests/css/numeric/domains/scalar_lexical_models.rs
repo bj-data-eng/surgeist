@@ -42,12 +42,16 @@ fn checked_integer_tokens_keep_sign_digits_kind_and_origins_at_every_magnitude()
     ] {
         for component in [
             CssComponentValue::try_number(text).unwrap(),
-            parse_component_values(text).unwrap().items()[0].clone(),
+            CssComponentValues::parse(&CssParser::default(), text)
+                .unwrap()
+                .items()[0]
+                .clone(),
         ] {
             let components =
                 CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
-            let declaration = parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Order),
+            let declaration = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Order)),
                 components,
                 CssImportance::Normal,
             )
@@ -75,7 +79,7 @@ fn stylesheet_scalar_tokens_keep_actual_spans_and_snapshots_in_semantic_payloads
         ("opacity", "1e-999"),
     ] {
         let input = format!("{property}: {text} !important");
-        let report = parse_style_attribute(&input);
+        let report = CssParser::default().parse_block_contents(&input);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let declaration = &report.syntax()[0];
         let component = if property == "order" {
@@ -122,12 +126,16 @@ fn checked_opacity_tokens_keep_number_or_percentage_identity_without_rounding_or
     ] {
         for component in [
             CssComponentValue::try_token(text).unwrap(),
-            parse_component_values(text).unwrap().items()[0].clone(),
+            CssComponentValues::parse(&CssParser::default(), text)
+                .unwrap()
+                .items()[0]
+                .clone(),
         ] {
             let components =
                 CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
-            let declaration = parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Opacity),
+            let declaration = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Opacity)),
                 components,
                 CssImportance::Normal,
             )
@@ -195,25 +203,35 @@ fn signed_zero_has_nonnegative_semantics_and_positive_counts_reject_every_zero_s
 #[test]
 fn environment_indices_and_digit_counts_apply_their_actual_grammar_ranges() {
     for text in ["0", "+0000", "-0000", "2147483648"] {
-        let report = parse_style_attribute(&format!("width:env(viewport-segment-width {text} 0)"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("width:env(viewport-segment-width {text} 0)"));
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     }
     for text in ["-1", "-2147483649"] {
-        let report = parse_style_attribute(&format!("width:env(viewport-segment-width {text} 0)"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("width:env(viewport-segment-width {text} 0)"));
         assert!(!report.is_clean(), "negative environment index {text}");
     }
     for text in ["2", "+0003", "4"] {
-        assert!(parse_style_attribute(&format!("text-combine-upright:digits {text}")).is_clean());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("text-combine-upright:digits {text}"))
+                .is_clean()
+        );
     }
     for text in ["1", "5", "-0000", "2147483648"] {
-        assert!(!parse_style_attribute(&format!("text-combine-upright:digits {text}")).is_clean());
+        assert!(
+            !CssParser::default()
+                .parse_block_contents(format!("text-combine-upright:digits {text}"))
+                .is_clean()
+        );
     }
 }
 
 #[test]
 fn positive_column_counts_keep_exact_token_origins_at_small_and_large_magnitudes() {
     for text in ["+0002", "2147483648", "9999999999999999999999"] {
-        let report = parse_style_attribute(&format!("column-count:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("column-count:{text}"));
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let declaration = &report.syntax()[0];
         let CssKnownPropertyValueRef::ColumnCount(count) =

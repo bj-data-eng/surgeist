@@ -61,7 +61,8 @@ fn literal_checked_values_and_exact_expressions_resolve_through_the_public_front
         ("color-mix(in srgb, red 25%, blue)", [0.25, 0.0, 0.75], 1.0),
     ] {
         let root = color(text);
-        let result = resolve_authored_color(&root, &facts, facts.identity(), limits())
+        let result = root
+            .resolve(&facts, facts.identity(), limits())
             .unwrap_or_else(|error| panic!("{text}: {error:?}"));
         assert!(std::ptr::eq(result.authored(), &root));
         assert!(std::ptr::eq(result.facts(), &facts));
@@ -122,7 +123,8 @@ fn checked_branch_families_and_unreached_nonfinite_expressions_keep_literal_resu
         ),
     ] {
         let root = color(text);
-        let result = resolve_authored_color(&root, &facts, id, limits())
+        let result = root
+            .resolve(&facts, id, limits())
             .unwrap_or_else(|e| panic!("{text}: {e:?}"));
         let CssAuthoredColorOutcome::Used(value) = result.outcome() else {
             panic!("{text}: standard failure")
@@ -168,7 +170,8 @@ fn custom_profile_payloads_are_contiguous_and_keep_their_original_channel_order(
         "color(from red --p .1 .2 .3 .4 .5 / .5)",
     ] {
         let root = color(text);
-        let result = resolve_authored_color(&root, &facts, id, limits())
+        let result = root
+            .resolve(&facts, id, limits())
             .unwrap_or_else(|e| panic!("{text}: {e:?}"));
         let CssAuthoredColorOutcome::Used(value) = result.outcome() else {
             panic!("used")
@@ -183,7 +186,7 @@ fn custom_profile_payloads_are_contiguous_and_keep_their_original_channel_order(
 fn completed_standard_failure_owns_its_branch_path_and_take_does_not_clone_it() {
     let facts = facts();
     let root = color("light-dark(color-mix(in srgb,red calc(-1%),blue),blue)");
-    let result = resolve_authored_color(&root, &facts, facts.identity(), limits()).unwrap();
+    let result = root.resolve(&facts, facts.identity(), limits()).unwrap();
     let CssAuthoredColorOutcome::StandardFailure(failure) = result.outcome() else {
         panic!("a reached calculated negative weight is standard invalidity")
     };
@@ -210,13 +213,14 @@ fn initial_foreign_facts_and_ordinary_denials_keep_their_original_classes() {
     let mut denied = limits();
     denied.actions = 0;
     assert!(
-        resolve_authored_color(&root, &facts, CssColorFactIdentity::new(0, 0), denied).is_err_and(
-            |error| error.color_error().and_then(CssColorError::fact_defect)
-                == Some(CssColorFactDefect::Foreign)
-        )
+        root.resolve(&facts, CssColorFactIdentity::new(0, 0), denied)
+            .is_err_and(
+                |error| error.color_error().and_then(CssColorError::fact_defect)
+                    == Some(CssColorFactDefect::Foreign)
+            )
     );
     assert!(
-        resolve_authored_color(&root, &facts, facts.identity(), denied)
+        root.resolve(&facts, facts.identity(), denied)
             .as_ref()
             .is_err_and(
                 |error| error.exhausted_limit() == Some((CssColorOrdinaryResource::Actions, 0, 1))
@@ -226,7 +230,7 @@ fn initial_foreign_facts_and_ordinary_denials_keep_their_original_classes() {
     denied = limits();
     denied.path_steps = 0;
     assert!(
-        resolve_authored_color(&root, &facts, facts.identity(), denied)
+        root.resolve(&facts, facts.identity(), denied)
             .as_ref()
             .is_err_and(|error| error.exhausted_limit()
                 == Some((CssColorOrdinaryResource::PathSteps, 0, 1)))
@@ -234,7 +238,7 @@ fn initial_foreign_facts_and_ordinary_denials_keep_their_original_classes() {
     denied = limits();
     denied.algorithm_records = 0;
     assert!(
-        resolve_authored_color(&root, &facts, facts.identity(), denied)
+        root.resolve(&facts, facts.identity(), denied)
             .as_ref()
             .is_err_and(|error| error.exhausted_limit()
                 == Some((CssColorOrdinaryResource::AlgorithmRecords, 0, 1)))
@@ -260,7 +264,7 @@ fn original_programmatic_and_parsed_scalars_keep_spelling_and_resolve_unsigned_z
     };
     assert_eq!(a.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(a.numeric().representation(), "-0");
-    let result = resolve_authored_color(&root, &facts, facts.identity(), limits()).unwrap();
+    let result = root.resolve(&facts, facts.identity(), limits()).unwrap();
     let CssAuthoredColorOutcome::Used(value) = result.outcome() else {
         panic!("used")
     };
@@ -274,7 +278,7 @@ fn original_programmatic_and_parsed_scalars_keep_spelling_and_resolve_unsigned_z
         panic!("original parsed origin")
     };
     assert_eq!(origin.source().as_str(), "lab(50 -0 1e-999)");
-    let result = resolve_authored_color(&root, &facts, facts.identity(), limits()).unwrap();
+    let result = root.resolve(&facts, facts.identity(), limits()).unwrap();
     let CssAuthoredColorOutcome::Used(value) = result.outcome() else {
         panic!("used")
     };
@@ -300,7 +304,7 @@ fn programmatic_and_parsed_calculated_failures_keep_their_actual_origins() {
     )
     .unwrap();
     let recovered = CssCalculation::<CssPercentage>::try_from_components(
-        parse_component_values("calc(-1%)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(-1%)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -332,7 +336,7 @@ fn programmatic_and_parsed_calculated_failures_keep_their_actual_origins() {
             .calculation()
             .unwrap()
             .origin();
-        let result = resolve_authored_color(&root, &facts, facts.identity(), limits()).unwrap();
+        let result = root.resolve(&facts, facts.identity(), limits()).unwrap();
         let CssAuthoredColorOutcome::StandardFailure(failure) = result.outcome() else {
             panic!("negative weight")
         };
@@ -358,7 +362,7 @@ fn programmatic_and_parsed_calculated_failures_keep_their_actual_origins() {
 #[test]
 fn parser_produced_eof_recovery_remains_resolvable_and_retains_implicit_closures() {
     let text = "color: light-dark(red,rgb(0 0 calc(2 + 3";
-    let report = parse_declaration_list_text(text);
+    let report = CssParser::default().parse_block_contents(text);
     assert!(!report.is_clean());
     assert_eq!(report.syntax().len(), 1);
     let root = declaration_color(&report.syntax()[0]);
@@ -391,7 +395,7 @@ fn parser_produced_eof_recovery_remains_resolvable_and_retains_implicit_closures
         &[],
         CssDeviceColorFact::Absent,
     );
-    let result = resolve_authored_color(root, &facts, facts.identity(), limits()).unwrap();
+    let result = root.resolve(&facts, facts.identity(), limits()).unwrap();
     let CssAuthoredColorOutcome::Used(value) = result.outcome() else {
         panic!("recovered checked syntax remains valid")
     };

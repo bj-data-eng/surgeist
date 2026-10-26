@@ -49,7 +49,11 @@ fn suffix_list(value: &CssSelector) -> &CssPseudoSelectorList {
 }
 
 fn retained(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(!report.is_clean(), "{source}");
     assert!(report.diagnostics().iter().any(
         |diagnostic| diagnostic.action() == CssRecoveryAction::PreserveInvalidSelectorListItem
@@ -273,7 +277,11 @@ fn current_is_a_search_text_or_element_backed_suffix_and_resets_with_the_receive
     ));
 
     let source = "::search-text:is(:first-child,:current,:hover)";
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert_eq!(
         report
             .syntax()
@@ -292,7 +300,11 @@ fn new_receiver_classes_share_checked_child_and_logical_attachment_permissions()
     // Selectors4 §4.2/§16.1 keeps an empty Is after dropping the forbidden
     // structural member; Highlight still resets the element-backed permission.
     let source = "::details-content::highlight(Name):is(:first-child)";
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(!report.is_clean());
     let value = report.syntax().as_ref().unwrap();
     assert_eq!(
@@ -524,7 +536,11 @@ fn strict_forgiving_scope_and_supports_consumers_apply_their_actual_pseudo_bound
     }
     for function in ["is", "where"] {
         let source = format!(":{function}(::highlight(Name),.keep)");
-        let report = parse_selector(&source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         assert_eq!(
             report
                 .syntax()
@@ -536,7 +552,8 @@ fn strict_forgiving_scope_and_supports_consumers_apply_their_actual_pseudo_bound
         );
         assert_selector_item_dropped(&source, report, "::highlight(Name)");
     }
-    let scope = parse_sheet("@scope(::highlight(Name)){.lost{color:red}}.after{color:blue}");
+    let scope = CssParser::default()
+        .parse_sheet("@scope(::highlight(Name)){.lost{color:red}}.after{color:blue}");
     assert!(matches!(scope.syntax().rules(), [CssRule::Style(_)]));
     assert!(
         scope
@@ -550,7 +567,7 @@ fn strict_forgiving_scope_and_supports_consumers_apply_their_actual_pseudo_bound
         "selector(::first-letter::suffix)",
     ] {
         let value = CssCondition::<CssSupportsLeaf>::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             &CssNamespaceContext::default(),
             Default::default(),
         )
@@ -565,7 +582,7 @@ fn strict_forgiving_scope_and_supports_consumers_apply_their_actual_pseudo_bound
         );
     }
     let invalid = CssCondition::<CssSupportsLeaf>::try_from_components(
-        parse_component_values("selector(::highlight())").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "selector(::highlight())").unwrap(),
         &CssNamespaceContext::default(),
         Default::default(),
     )
@@ -579,7 +596,7 @@ fn strict_forgiving_scope_and_supports_consumers_apply_their_actual_pseudo_bound
 #[test]
 fn namespaces_and_lexical_probe_origins_survive_checked_reuse_without_payload_origins() {
     let source = "/*😀*/@namespace p 'urn:p';@supports selector(p|Input::HIGHLIGHT(\\4d iXeD)){p|Input::highlight(MiXeD){color:red}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Namespace(_), CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("namespace and Supports")
@@ -676,10 +693,10 @@ fn namespaces_and_lexical_probe_origins_survive_checked_reuse_without_payload_or
 fn nested_and_scoped_bodies_preserve_parent_context_source_order_and_canonical_pseudos() {
     let source = "/*😀*/.parent::details-content{color:red;@supports selector(.probe::highlight(Name)){color:blue;& .child::search-text:current{color:green}}}@scope(.root){.scoped::placeholder:hover{color:black}}";
     let expected = ".parent::details-content { color: red; @supports selector(.probe::highlight(Name)) { color: blue; & .child::search-text:current { color: green; } } }\n@scope (.root) { .scoped::placeholder:hover { color: black; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -755,7 +772,7 @@ fn nested_and_scoped_bodies_preserve_parent_context_source_order_and_canonical_p
         parent.selectors()[0].selector(),
         &parsed(".parent::details-content")
     );
-    let replay = parse_sheet(expected);
+    let replay = CssParser::default().parse_sheet(expected);
     assert!(replay.is_clean(), "{replay:?}");
     assert_eq!(
         replay
@@ -840,8 +857,8 @@ fn highlight_function_and_checked_rule_composition_respect_the_structural_ceilin
     // has its own check and is not the rejected boundary in this specimen.
     let accepted_source = format!("{}{leaf}{}", opening.repeat(255), "}".repeat(255));
     let rejected_source = format!("{}{leaf}{}", opening.repeat(256), "}".repeat(256));
-    let accepted = parse_sheet(&accepted_source);
-    let rejected = parse_sheet(&rejected_source);
+    let accepted = CssParser::default().parse_sheet(&accepted_source);
+    let rejected = CssParser::default().parse_sheet(&rejected_source);
     assert!(accepted.is_clean(), "{accepted:?}");
     let mut rules = accepted.syntax().rules();
     for _ in 0..255 {
@@ -910,10 +927,10 @@ fn highlight_function_and_checked_rule_composition_respect_the_structural_ceilin
     // Existing parsed descendants keep their genuine source position; new
     // wrappers have none. No forbidden logical pseudo-element graph is made.
     let original = "/*😀*/.leaf::highlight(Name){color:red}";
-    let parsed = parse_sheet(original);
+    let parsed = CssParser::default().parse_sheet(original);
     assert!(parsed.is_clean(), "{parsed:?}");
     let mut child = parsed.syntax().rules()[0].clone();
-    let query_report = parse_sheet("@media all{}");
+    let query_report = CssParser::default().parse_sheet("@media all{}");
     assert!(query_report.is_clean());
     let [CssRule::Media(query_rule)] = query_report.syntax().rules() else {
         panic!("query carrier")

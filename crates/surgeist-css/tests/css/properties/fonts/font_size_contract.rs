@@ -9,9 +9,8 @@ use surgeist_css::{
     CssContributionValueRef, CssContributions, CssExpansion, CssFontSize, CssFontValue,
     CssGlobalKeyword, CssImportance, CssInitialValueRef, CssKnownProperty,
     CssKnownPropertyValueRef, CssLengthPercentage, CssLonghandValueRef, CssNonNegative, CssNumeric,
-    CssPropertyKindRef, CssRecoveryAction, CssSerializationLimits, CssSerializedOrigin,
-    CssValueOrigin, CssValueTokenRef, expand_declaration, parse_component_values,
-    parse_style_attribute,
+    CssParser, CssPropertyKindRef, CssRecoveryAction, CssSerializationLimits, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
 };
 
 type SizeLengthPercentage = CssNumeric<CssLengthPercentage, CssNonNegative>;
@@ -21,7 +20,7 @@ fn scalar(text: &str) -> SizeLengthPercentage {
 }
 
 fn property(text: &str) -> CssFontSize {
-    let report = parse_style_attribute(&format!("font-size:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("font-size:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::FontSize(value) = report.syntax()[0]
         .known()
@@ -161,7 +160,8 @@ fn tiny_negatives_and_wrong_numeric_domains_fail_without_dropping_neighbors() {
         "calc(1deg)",
         "math 16px",
     ] {
-        let report = parse_style_attribute(&format!("color:red;font-size:{text};color:blue"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("color:red;font-size:{text};color:blue"));
         assert_eq!(report.syntax().len(), 2, "{text}");
         assert_eq!(report.diagnostics().len(), 1, "{text}");
         assert_eq!(
@@ -176,7 +176,7 @@ fn tiny_negatives_and_wrong_numeric_domains_fail_without_dropping_neighbors() {
 fn bare_calculation_roots_reenter_literal_admission_while_functions_stay_symbolic() {
     for (text, expected) in [("0px", "0px"), ("0", "0")] {
         let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -193,7 +193,7 @@ fn bare_calculation_roots_reenter_literal_admission_while_functions_stay_symboli
         );
     }
     let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
-        parse_component_values("1e999%").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "1e999%").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -204,7 +204,7 @@ fn bare_calculation_roots_reenter_literal_admission_while_functions_stay_symboli
         format!("1{}%", "0".repeat(999))
     );
     let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
-        parse_component_values("-1e-999px").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "-1e-999px").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -218,7 +218,7 @@ fn bare_calculation_roots_reenter_literal_admission_while_functions_stay_symboli
         ("calc(2px + 3%)", "calc(3% + 2px)"),
     ] {
         let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -257,10 +257,9 @@ fn current_wrapper_initial_and_importance_contributions_are_typed() {
         initial.view(),
         CssLonghandValueRef::FontSize(&CssFontSize::Medium)
     );
-    let report = parse_style_attribute("font-size:xxx-large!important");
+    let report = CssParser::default().parse_block_contents("font-size:xxx-large!important");
     let source = &report.syntax()[0];
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one contribution")
     };
@@ -279,10 +278,10 @@ fn current_wrapper_initial_and_importance_contributions_are_typed() {
         ("unset", CssGlobalKeyword::Unset),
         ("revert-layer", CssGlobalKeyword::RevertLayer),
     ] {
-        let report = parse_style_attribute(&format!("font-size:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("font-size:{text}"));
         assert!(report.is_clean(), "{text}");
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&report.syntax()[0]).unwrap()
+            report.syntax()[0].expand().unwrap()
         else {
             panic!("global contribution")
         };
@@ -295,9 +294,11 @@ fn current_wrapper_initial_and_importance_contributions_are_typed() {
 
 #[test]
 fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
-    let parsed =
-        normal_grammar_components("font-size", parse_component_values("1.250px ").unwrap())
-            .unwrap();
+    let parsed = normal_grammar_components(
+        "font-size",
+        CssComponentValues::parse(&CssParser::default(), "1.250px ").unwrap(),
+    )
+    .unwrap();
     let CssKnownPropertyValueRef::FontSize(value) =
         parsed.known().unwrap().property_value().unwrap()
     else {
@@ -363,12 +364,12 @@ fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
         CssKnownProperty::FontSize,
     );
 
-    let report = parse_style_attribute("font-size:env(size)!important");
+    let report = CssParser::default().parse_block_contents("font-size:env(size)!important");
     let source = &report.syntax()[0];
-    let CssExpansion::Pending(handle) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending size")
     };
-    let replacement = parse_component_values("1.250px ").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "1.250px ").unwrap();
     let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap() else {
         panic!("ordinary reentry")
     };
@@ -422,7 +423,9 @@ fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
     );
     assert!(
         handle
-            .reenter(parse_component_values("var(--still-pending)").unwrap())
+            .reenter(
+                CssComponentValues::parse(&CssParser::default(), "var(--still-pending)").unwrap()
+            )
             .unwrap_err()
             .is_residual_substitution()
     );
@@ -430,7 +433,7 @@ fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
 
 #[test]
 fn recovered_math_requires_parser_admission_before_typed_transfer() {
-    let report = parse_style_attribute("font-size:calc(1px");
+    let report = CssParser::default().parse_block_contents("font-size:calc(1px");
     assert_eq!(report.syntax().len(), 1);
     assert!(!report.is_clean());
     let CssKnownPropertyValueRef::FontSize(value) = report.syntax()[0]
@@ -483,7 +486,8 @@ fn shorthand_preserves_size_math_line_height_and_family_boundaries() {
             CssFontSize::LengthPercentage(
                 SizeLengthPercentage::try_from_calculation(
                     CssCalculation::<CssLengthPercentage>::try_from_components(
-                        parse_component_values("calc(16px + 2px)").unwrap(),
+                        CssComponentValues::parse(&CssParser::default(), "calc(16px + 2px)")
+                            .unwrap(),
                         Default::default(),
                     )
                     .unwrap(),
@@ -494,7 +498,7 @@ fn shorthand_preserves_size_math_line_height_and_family_boundaries() {
             true,
         ),
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let CssKnownPropertyValueRef::Font(value) = report.syntax()[0]
             .known()
@@ -519,7 +523,10 @@ fn shorthand_preserves_size_math_line_height_and_family_boundaries() {
         "font:xxx-large",
         "font:small-caps small-caps 16px serif",
     ] {
-        assert!(!parse_style_attribute(source).is_clean(), "{source}");
+        assert!(
+            !CssParser::default().parse_block_contents(source).is_clean(),
+            "{source}"
+        );
     }
 }
 

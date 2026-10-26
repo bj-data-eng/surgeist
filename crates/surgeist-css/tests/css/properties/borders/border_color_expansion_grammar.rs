@@ -1,6 +1,6 @@
 use surgeist_css::{
     CssBoxSideKind, CssColor, CssColorComponent, CssFourSides, CssGlobalKeyword,
-    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, parse_style_attribute,
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssParser,
 };
 
 // CSS Backgrounds and Borders 3, 2024-03-11, section 3.1 defines <color>{1,4}.
@@ -15,7 +15,7 @@ fn one_through_four_border_colors_are_retained_with_their_valid_sibling() {
         "lab(50% 20 30) /**/ rgb(1 2 3 / none)",
     ] {
         let source = format!("border-color: {authored}; opacity: 0.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 2, "{source}");
         let CssKnownPropertyValueRef::BorderColor(value) = report.syntax()[0]
@@ -37,7 +37,7 @@ fn one_through_four_border_colors_are_retained_with_their_valid_sibling() {
 
 #[test]
 fn single_border_color_preserves_its_typed_value() {
-    let report = parse_style_attribute("border-color: currentcolor");
+    let report = CssParser::default().parse_block_contents("border-color: currentcolor");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
     let CssKnownPropertyValueRef::BorderColor(value) = report.syntax()[0]
@@ -64,7 +64,7 @@ fn invalid_border_color_counts_and_components_recover_at_the_next_declaration() 
         "red initial",
     ] {
         let source = format!("border-color: {authored}; opacity: 0.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(
             report.syntax().len(),
             1,
@@ -90,7 +90,7 @@ fn border_color_globals_and_pending_substitution_keep_their_declared_value_branc
         ("revert-layer", CssGlobalKeyword::RevertLayer),
     ] {
         let source = format!("border-color: {authored}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{source}");
         let known = report.syntax()[0].known().expect("known border-color");
@@ -100,7 +100,7 @@ fn border_color_globals_and_pending_substitution_keep_their_declared_value_branc
     }
 
     let source = "border-color: red var(--remaining-colors, blue green)";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
     let known = report.syntax()[0].known().expect("known border-color");
@@ -116,7 +116,7 @@ fn border_color_value(
     authored: &str,
 ) -> surgeist_css::CssPropertyValue<surgeist_css::CssFourSides<surgeist_css::CssColor>> {
     let source = format!("border-color: {authored}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1, "{source}");
     let CssKnownPropertyValueRef::BorderColor(value) = report.syntax()[0]

@@ -2,7 +2,7 @@
 //! native protocol; no Runtime Window/task bank or event receipt is fabricated.
 use super::*;
 use crate::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest};
-use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
 use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
 
 fn cancel() -> AtomicBool {
@@ -174,20 +174,20 @@ fn style_resource(
         )
         .unwrap();
     let parser = CssParserContext::default();
-    let body = parser
-        .parse_sheet_utf16_with_limits(
+    let body = CssParser::new(parser, Default::default())
+        .parse_sheet_utf16(
             create.source().text().clone(),
             CssUtf16InputLimits::default(),
             || Ok::<_, ()>(()),
         )
         .unwrap();
-    let media = parser
-        .parse_media_query_list_utf16_with_limits(
-            Arc::new(Vec::new()),
-            CssUtf16InputLimits::default(),
-            || Ok::<_, ()>(()),
-        )
-        .unwrap();
+    let media = CssMediaQueryList::parse_utf16(
+        &CssParser::new(parser, Default::default()),
+        Arc::new(Vec::new()),
+        CssUtf16InputLimits::default(),
+        || Ok::<_, ()>(()),
+    )
+    .unwrap();
     let mut inputs = CssomSheetInputs::external(version, true);
     inputs.owner = Some("direct-style".into());
     let mut batch = root
@@ -521,20 +521,20 @@ fn actual_busy_poisoned_foreign_and_equal_revision_other_owner_keep_registration
     // Independent genuine create/remove publications reach the same numeric
     // revision; that does not grant the canonical producer's owner identity.
     let parser = CssParserContext::default();
-    let body = parser
-        .parse_sheet_utf16_with_limits(
+    let body = CssParser::new(parser, Default::default())
+        .parse_sheet_utf16(
             Arc::new("b {}".encode_utf16().collect()),
             CssUtf16InputLimits::default(),
             || Ok::<_, ()>(()),
         )
         .unwrap();
-    let media = parser
-        .parse_media_query_list_utf16_with_limits(
-            Arc::new(Vec::new()),
-            CssUtf16InputLimits::default(),
-            || Ok::<_, ()>(()),
-        )
-        .unwrap();
+    let media = CssMediaQueryList::parse_utf16(
+        &CssParser::new(parser, Default::default()),
+        Arc::new(Vec::new()),
+        CssUtf16InputLimits::default(),
+        || Ok::<_, ()>(()),
+    )
+    .unwrap();
     let mut batch = other
         .batch(CssomEditGuard::from_snapshot(&other.snapshot().unwrap()))
         .unwrap();

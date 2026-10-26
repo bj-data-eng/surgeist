@@ -232,10 +232,10 @@ fn exact_axes_retain_authored_arity_and_reenter_to_auto() {
     assert_eq!(y.view(), CssLonghandValueRef::OverflowY(&CssOverflow::Auto));
 
     let pending = parsed("overflow", "var(--axes)");
-    let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+    let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
         panic!("pending overflow")
     };
-    let replacement = parse_component_values("overlay clip").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "overlay clip").unwrap();
     let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap() else {
         panic!("reentered axis contributions")
     };

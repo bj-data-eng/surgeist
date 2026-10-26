@@ -5,7 +5,7 @@ use crate::css::support::property_admission::assert_component_rejected;
 use surgeist_css::*;
 
 fn scalar(text: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
-    let components = parse_component_values(text).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     if text.starts_with("calc(") {
         CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
             CssCalculation::<CssLengthPercentage>::try_from_components(
@@ -25,7 +25,7 @@ fn scalar(text: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
 }
 
 fn corner(name: &str, text: &str) -> CssSidePair<CssNumeric<CssLengthPercentage, CssNonNegative>> {
-    let report = parse_style_attribute(&format!("{name}:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("{name}:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let value = report.syntax()[0]
         .known()
@@ -99,7 +99,7 @@ fn checked_corner_preserves_omission_axes_origins_and_exact_literals() {
         ("1fr", NumericFailure::RootDomainMismatch),
         ("1", NumericFailure::RootDomainMismatch),
     ] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let [component] = values.items() else {
             panic!("one invalid scalar")
         };
@@ -324,7 +324,8 @@ fn physical_corners_preserve_exact_magnitudes_and_math_type() {
         "1e-100%",
         "16777216.00000000001px",
     ] {
-        let report = parse_style_attribute(&format!("border-top-left-radius:{text}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("border-top-left-radius:{text}"));
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
         let CssKnownPropertyValueRef::BorderTopLeftRadius(wrapper) = report.syntax()[0]
             .known()
@@ -358,7 +359,7 @@ fn physical_corners_preserve_exact_magnitudes_and_math_type() {
             format!("border-top-left-radius:{text}")
         );
     }
-    let report = parse_style_attribute("border-top-left-radius:calc(1px + 2%)");
+    let report = CssParser::default().parse_block_contents("border-top-left-radius:calc(1px + 2%)");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::BorderTopLeftRadius(wrapper) = report.syntax()[0]
         .known()
@@ -374,7 +375,7 @@ fn physical_corners_preserve_exact_magnitudes_and_math_type() {
         Some(CssNumericDimension::Length)
     );
     assert!(matches!(original.origin(), CssValueOrigin::Parsed(_)));
-    let report = parse_style_attribute("border-radius:1e100px / 2%");
+    let report = CssParser::default().parse_block_contents("border-radius:1e100px / 2%");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::BorderRadius(wrapper) = report.syntax()[0]
         .known()

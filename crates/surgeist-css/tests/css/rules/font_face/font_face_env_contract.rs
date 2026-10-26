@@ -2,18 +2,18 @@
 
 use surgeist_css::{
     CssAbsoluteFontWeight, CssAuthoredFontFaceDescriptorValue as Authored,
-    CssAuthoredFontFeatureSettings, CssFontDisplay, CssFontFaceDescriptor,
-    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Ordinary,
-    CssFontFaceDescriptors, CssFontFaceSource, CssFontFaceStyle, CssFontFaceWeight,
-    CssFontFaceWidth, CssFontWidth, CssFontWidthKeyword, CssNormalizedItem, CssRecoveryAction,
-    CssRule, CssRuleContextKindRef, CssValueOrigin, normalize_report, parse_component_values,
-    parse_font_face_descriptor_value, parse_sheet,
+    CssAuthoredFontFaceDescriptorValue, CssAuthoredFontFeatureSettings, CssComponentValues,
+    CssFontDisplay, CssFontFaceDescriptor, CssFontFaceDescriptorKind as Kind,
+    CssFontFaceDescriptorValue as Ordinary, CssFontFaceDescriptors, CssFontFaceSource,
+    CssFontFaceStyle, CssFontFaceWeight, CssFontFaceWidth, CssFontWidth, CssFontWidthKeyword,
+    CssNormalizedItem, CssParser, CssRecoveryAction, CssRule, CssRuleContextKindRef,
+    CssValueOrigin,
 };
 
 fn checked(kind: Kind, text: &str) -> Authored {
     Authored::try_from_components(
         kind,
-        parse_component_values(text).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         Default::default(),
     )
     .unwrap()
@@ -40,7 +40,7 @@ fn every_known_descriptor_defers_env_and_reenters_its_ordinary_grammar() {
         assert_eq!(pending.components().items().len(), 1);
         let ordinary = pending
             .reparse_after_substitution(
-                parse_component_values(replacement).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), replacement).unwrap(),
                 Default::default(),
             )
             .unwrap();
@@ -100,7 +100,7 @@ fn direct_typed_ordinary_record_has_no_invented_name_position() {
 #[test]
 fn last_admitted_occurrence_wins_even_when_pending_and_alias_names_mix() {
     let source = "@font-face{font-stretch:condensed;font-width:env(width);FONT-STRETCH:bad;font-family:Demo}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
@@ -131,7 +131,7 @@ fn last_admitted_occurrence_wins_even_when_pending_and_alias_names_mix() {
     assert!(face.descriptors().effective(Kind::FontDisplay).is_none());
 
     let source = "@font-face{font-width:env(width);font-stretch:75%}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("font face retained")
@@ -147,7 +147,11 @@ fn last_admitted_occurrence_wins_even_when_pending_and_alias_names_mix() {
 
 #[test]
 fn raw_and_sheet_pending_values_retain_original_parsed_component_origin() {
-    let raw = parse_font_face_descriptor_value("env(width, 75%)", Kind::FontWidth);
+    let raw = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        "env(width, 75%)",
+        Kind::FontWidth,
+    );
     assert!(raw.is_clean(), "{raw:?}");
     let Some(Authored::Pending(pending)) = raw.syntax() else {
         panic!("raw pending descriptor")
@@ -158,7 +162,7 @@ fn raw_and_sheet_pending_values_retain_original_parsed_component_origin() {
     assert_eq!(origin.source().as_str(), "env(width, 75%)");
 
     let source = "@font-face{FoNt-StReTcH:env(width, 75%)}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("font face retained")
@@ -179,9 +183,10 @@ fn raw_and_sheet_pending_values_retain_original_parsed_component_origin() {
 
 #[test]
 fn normalization_retains_ordered_pending_font_face_payload() {
-    let report = parse_sheet("@font-face{font-width:75%;font-stretch:env(width)}");
+    let report =
+        CssParser::default().parse_sheet("@font-face{font-width:75%;font-stretch:env(width)}");
     assert!(report.is_clean(), "{report:?}");
-    let normalized = normalize_report(&report).unwrap();
+    let normalized = report.normalize(Default::default()).unwrap();
     let [CssNormalizedItem::Rule(rule)] = normalized.syntax().items() else {
         panic!("one normalized font-face rule")
     };

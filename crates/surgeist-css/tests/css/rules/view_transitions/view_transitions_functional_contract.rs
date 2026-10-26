@@ -37,7 +37,11 @@ fn value(declaration: &CssDeclaration) -> &CssViewTransitionName {
     wrapper.value()
 }
 fn selector(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{source}: {report:?}");
     report.into_validation_result().unwrap().unwrap()
 }
@@ -54,7 +58,11 @@ fn rejected(source: &str) {
     );
 }
 fn rejected_as(source: &str, expected: &ExpectedRejection) {
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.syntax().is_none(), "{source}: {report:?}");
     expected.assert_first(&report);
 }
@@ -65,7 +73,11 @@ fn suffix_list(value: &CssSelector) -> &CssPseudoSelectorList {
     list
 }
 fn retained(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(!report.is_clean(), "{source}: {report:?}");
     assert!(
         report
@@ -234,9 +246,12 @@ fn parsed_value_window_and_checked_origins_remain_truthful_with_unicode() {
         (27, 32),
     );
     assert!(region.source().same_snapshot(parsed_name.source()));
-    let parsed = parse_component_values(r"\43 ard").unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ViewTransitionName),
+    let parsed = CssComponentValues::parse(&CssParser::default(), r"\43 ard").unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(
+            CssKnownProperty::ViewTransitionName,
+        )),
         parsed.clone(),
         CssImportance::Important,
     )
@@ -250,14 +265,20 @@ fn parsed_value_window_and_checked_origins_remain_truthful_with_unicode() {
         (0, 7),
         (0, 7),
     );
-    let space = parse_component_values(" ").unwrap().items()[0].clone();
+    let space = CssComponentValues::parse(&CssParser::default(), " ")
+        .unwrap()
+        .items()[0]
+        .clone();
     let mixed = CssComponentValues::try_new(
         vec![space, CssComponentValue::try_ident("Card").unwrap()],
         Default::default(),
     )
     .unwrap();
-    let mixed_checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ViewTransitionName),
+    let mixed_checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(
+            CssKnownProperty::ViewTransitionName,
+        )),
         mixed.clone(),
         CssImportance::Normal,
     )
@@ -278,7 +299,7 @@ fn parsed_value_window_and_checked_origins_remain_truthful_with_unicode() {
 #[test]
 fn invalid_property_values_drop_only_their_occurrence_with_original_responsible_token() {
     let source = "/*😀*/view-transition-name:AUTO;color:red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     let [sibling] = report.syntax().as_slice() else {
         panic!("valid later declaration survives")
     };
@@ -319,10 +340,13 @@ fn invalid_property_values_drop_only_their_occurrence_with_original_responsible_
         ("f(card)", rejected.clone().at("f(")),
         ("initial card", rejected.clone()),
     ] {
-        let components = parse_component_values(invalid).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
         let before = components.clone();
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ViewTransitionName),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::ViewTransitionName,
+            )),
             components.clone(),
             CssImportance::Normal,
         )
@@ -337,7 +361,7 @@ fn pending_property_reentry_is_strict_repeatable_and_preserves_source_and_replac
     for pending_css in ["var(--tag)", "env(tag)", "attr(data-tag)"] {
         let source = declaration(&format!("view-transition-name:{pending_css}!important"));
         assert!(source.known().unwrap().substitution_dependent().is_some());
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending name")
         };
         // VT1 §3.1: none | <custom-ident>, excluding auto; Values 4 §4.2
@@ -351,7 +375,7 @@ fn pending_property_reentry_is_strict_repeatable_and_preserves_source_and_replac
             ("var(--again)", None),
             ("env(again)", None),
         ] {
-            let replacement = parse_component_values(invalid).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
             let before = replacement.clone();
             let error = pending.reenter(replacement.clone()).unwrap_err();
             match token {
@@ -366,7 +390,7 @@ fn pending_property_reentry_is_strict_repeatable_and_preserves_source_and_replac
             assert_eq!(replacement, before);
             assert!(pending.source().same_occurrence(&source));
         }
-        let replacement = parse_component_values(r"\43 ard").unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), r"\43 ard").unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -386,7 +410,7 @@ fn pending_property_reentry_is_strict_repeatable_and_preserves_source_and_replac
             };
             assert_eq!(actual, &name("Card"));
         }
-        let recovered = parse_component_values("var(--tag").unwrap();
+        let recovered = CssComponentValues::parse(&CssParser::default(), "var(--tag").unwrap();
         assert!(
             pending
                 .reenter(recovered)
@@ -395,7 +419,7 @@ fn pending_property_reentry_is_strict_repeatable_and_preserves_source_and_replac
         );
         assert!(
             pending
-                .reenter(parse_component_values("none").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "none").unwrap())
                 .is_ok()
         );
     }
@@ -474,7 +498,11 @@ fn malformed_names_reject_and_implicit_function_eof_is_retained_but_not_clean() 
         );
     }
     let source = "::view-transition-old(Card";
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert_eq!(
         report
             .syntax()
@@ -644,7 +672,7 @@ fn retained_invalid_logical_items_require_actual_suffix_permission_inclusion() {
 fn supports_lexical_snapshot_keeps_function_opener_closer_and_identifier_spans_separate() {
     let source =
         "/*😀*/@supports selector(::view-transition-old(Δa)){.x{view-transition-name:Card}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("one actual Supports rule")
@@ -703,7 +731,7 @@ fn supports_lexical_snapshot_keeps_function_opener_closer_and_identifier_spans_s
 fn real_nested_scoped_rules_normalize_and_recover_whole_invalid_selector_units() {
     let source = ".p{view-transition-name:Card;@scope(.s){&::view-transition-new(Card):only-child{view-transition-name:none}}}";
     let expected = ".p { view-transition-name: Card; @scope (.s) { &::view-transition-new(Card):only-child { view-transition-name: none; } } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(
         report
@@ -712,7 +740,7 @@ fn real_nested_scoped_rules_normalize_and_recover_whole_invalid_selector_units()
             .unwrap(),
         expected
     );
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -723,7 +751,7 @@ fn real_nested_scoped_rules_normalize_and_recover_whole_invalid_selector_units()
         .collect();
     assert_eq!(values, vec![name("Card"), CssViewTransitionName::None]);
     let bad_source = "::view-transition-group(Card) > .bad{view-transition-name:Card}.after{view-transition-name:none}";
-    let bad = parse_sheet(bad_source);
+    let bad = CssParser::default().parse_sheet(bad_source);
     let [CssRule::Style(after)] = bad.syntax().rules() else {
         panic!("only later rule survives")
     };
@@ -803,10 +831,13 @@ fn proposed_scalar_and_selector_list_tariffs_are_cumulative_atomic_and_repeatabl
 #[test]
 fn checked_pending_components_obey_the_real_256_ceiling_and_keep_leaf_origins() {
     let accepted = format!("{}var(--tag){}", "f(".repeat(255), ")".repeat(255));
-    let components = parse_component_values(&accepted).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), &accepted).unwrap();
     let before = components.clone();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ViewTransitionName),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(
+            CssKnownProperty::ViewTransitionName,
+        )),
         components.clone(),
         CssImportance::Normal,
     )
@@ -821,11 +852,11 @@ fn checked_pending_components_obey_the_real_256_ceiling_and_keep_leaf_origins() 
     assert_eq!(declaration.value_components(), &before);
     let rejected = format!("{}var(--tag){}", "f(".repeat(256), ")".repeat(256));
     assert!(
-        parse_component_values(&rejected)
+        CssComponentValues::parse(&CssParser::default(), &rejected)
             .unwrap_err()
             .is_nesting_limit()
     );
-    let CssExpansion::Pending(pending) = expand_declaration(&declaration).unwrap() else {
+    let CssExpansion::Pending(pending) = declaration.expand().unwrap() else {
         panic!("deep authored pending name")
     };
     let replacement = CssComponentValues::try_new(

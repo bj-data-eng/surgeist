@@ -9,9 +9,9 @@ use crate::css::support::color_and_selector_fixtures::{
 use crate::css::support::validated_selector as parsed;
 use surgeist_css::{
     CssCompoundSelectorArgument, CssErrorCode, CssNamespaceContext, CssNthChildPattern,
-    CssNthPattern, CssPseudoClass, CssPseudoSelectorList, CssPseudoSelectorListItem,
-    CssRecoveryAction, CssRelativeSelector, CssRelativeSelectorList, CssSelector,
-    CssSelectorCombinator, CssSelectorList, parse_selector, parse_selector_list,
+    CssNthPattern, CssParsedStyleSelectors, CssParser, CssPseudoClass, CssPseudoSelectorList,
+    CssPseudoSelectorListItem, CssRecoveryAction, CssRelativeSelector, CssRelativeSelectorList,
+    CssSelector, CssSelectorCombinator, CssSelectorList, CssStyleSelectorContext,
 };
 
 fn class() -> CssSelector {
@@ -31,7 +31,11 @@ fn recovered_empty_pseudo(source: &str) -> CssSelector {
         ":where()" => (7, 7),
         _ => panic!("only explicit empty Is/Where fixtures are admitted"),
     };
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(!report.is_clean(), "expected recovered fixture: {report:?}");
     let [diagnostic] = report.diagnostics() else {
         panic!("one zero-width empty-member diagnostic: {report:?}")
@@ -298,7 +302,12 @@ fn ordinary_parser_rejects_relative_syntax_while_relative_factory_keeps_carrier(
     let source = "> .One";
     assert_selector_report_rejected(
         source,
-        parse_selector_list(source, &CssNamespaceContext::default()),
+        CssParsedStyleSelectors::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+            CssStyleSelectorContext::Ordinary,
+        ),
     );
     let member = relative(class());
     let list = CssRelativeSelectorList::try_new(vec![member.clone()], Default::default()).unwrap();

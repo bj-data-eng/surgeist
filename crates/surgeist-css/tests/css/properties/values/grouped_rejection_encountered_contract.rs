@@ -22,7 +22,7 @@ fn encountered(error: &dyn GrammarFacts) -> Option<String> {
 fn assert_encountered(name: &str, value: &str, expected: Option<&str>) {
     let property = CssKnownProperty::from_name(name).unwrap();
     let expected = expected.map(str::to_owned);
-    let report = parse_style_attribute(&format!("{name}: {value}"));
+    let report = CssParser::default().parse_block_contents(format!("{name}: {value}"));
     let [diagnostic] = report.diagnostics() else {
         panic!(
             "{name}: {value}: one diagnostic, got {:?}",
@@ -34,7 +34,7 @@ fn assert_encountered(name: &str, value: &str, expected: Option<&str>) {
         expected,
         "{name}: {value} (style)"
     );
-    let sheet = parse_sheet(&format!(".a{{{name}: {value}}}"));
+    let sheet = CssParser::default().parse_sheet(format!(".a{{{name}: {value}}}"));
     let [diagnostic] = sheet.diagnostics() else {
         panic!("{name}: {value}: one sheet diagnostic")
     };
@@ -43,9 +43,9 @@ fn assert_encountered(name: &str, value: &str, expected: Option<&str>) {
         expected,
         "{name}: {value} (sheet)"
     );
-    let text = parse_property_value_text(
+    let text = CssParser::default().parse_property_value(
         value,
-        CssPropertyNameRef::Known(property),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(property)),
         CssImportance::Normal,
     );
     let [diagnostic] = text.diagnostics() else {
@@ -57,12 +57,18 @@ fn assert_encountered(name: &str, value: &str, expected: Option<&str>) {
         "{name}: {value} (text)"
     );
     for grammar in [false, true] {
-        let components = parse_component_values(value).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
         let error = if grammar {
-            parse_property_value_for_grammar(property.grammar(), components, CssImportance::Normal)
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
+                components,
+                CssImportance::Normal,
+            )
         } else {
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components,
                 CssImportance::Normal,
             )

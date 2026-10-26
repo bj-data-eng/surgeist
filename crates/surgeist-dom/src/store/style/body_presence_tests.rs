@@ -74,7 +74,7 @@ fn owner_preparation_policy(dom: &Dom) -> crate::DomSourceLimits {
 #[ignore = "requires an instrumented DOM build; isolates post-CSSOM body discovery"]
 fn acknowledged_style_creation_discovers_body_without_scanning_unrelated_children() {
     use crate::{DomStyleCssomOwnerBinding, DomStyleCssomRoot, DomStyleInlineCspObservation};
-    use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+    use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
     // The fixed html/head/body classifiers read at most three namespace
     // headers plus their literal 28-unit HTML URI, and three local-name tests
@@ -178,20 +178,20 @@ fn acknowledged_style_creation_discovers_body_without_scanning_unrelated_childre
                 )
                 .unwrap();
             let parser = CssParserContext::default();
-            let report = parser
-                .parse_sheet_utf16_with_limits(
+            let report = CssParser::new(parser, Default::default())
+                .parse_sheet_utf16(
                     create.source().text().clone(),
                     CssUtf16InputLimits::default(),
                     || Ok::<_, ()>(()),
                 )
                 .unwrap();
-            let media = parser
-                .parse_media_query_list_utf16_with_limits(
-                    Arc::new(Vec::new()),
-                    CssUtf16InputLimits::default(),
-                    || Ok::<_, ()>(()),
-                )
-                .unwrap();
+            let media = CssMediaQueryList::parse_utf16(
+                &CssParser::new(parser, Default::default()),
+                Arc::new(Vec::new()),
+                CssUtf16InputLimits::default(),
+                || Ok::<_, ()>(()),
+            )
+            .unwrap();
             let mut inputs = CssomSheetInputs::external(version, true);
             inputs.owner = Some("inline".into());
             let mut edit = root

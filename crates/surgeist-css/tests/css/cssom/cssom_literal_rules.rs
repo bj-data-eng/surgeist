@@ -5,14 +5,13 @@ use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::value_assertions::clean_rule as rule;
 use std::error::Error;
 use surgeist_css::{
-    CssDeclarationBlockError, CssImportance, CssKnownProperty, CssNamespaceContext,
+    CssDeclarationBlockError, CssImportance, CssKnownProperty, CssNamespaceContext, CssParser,
     CssParserContext, CssParserMode, CssRecoveryAction, CssRule, CssRuleCssomFormat,
-    CssRuleSerializationError, CssSerializationLimits as Limits, parse_rule, parse_selector,
-    parse_sheet,
+    CssRuleSerializationError, CssSelector, CssSerializationLimits as Limits,
 };
 
 fn exact(source: &str, expected: &str) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {report:?}");
     let before = report.clone();
     assert_eq!(
@@ -43,16 +42,28 @@ fn limits(source: &str, expected: &str, inputs: usize, projections: usize) {
 #[test]
 fn one_rule_boundary_rejects_extra_input_and_whole_invalid_selectors() {
     for source in ["", "a{} b{}", "a{} ;", "a{} }", "@unknown x;", ".a, > b{}"] {
-        let report = parse_rule(source, &CssNamespaceContext::default());
+        let report = CssRule::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         assert!(!report.is_clean());
     }
     assert!(
-        parse_selector(".a, > b", &CssNamespaceContext::default())
-            .syntax()
-            .is_none()
+        CssSelector::parse(
+            &CssParser::default(),
+            ".a, > b",
+            &CssNamespaceContext::default()
+        )
+        .syntax()
+        .is_none()
     );
-    let report = parse_rule("a{} b{}", &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        "a{} b{}",
+        &CssNamespaceContext::default(),
+    );
     let [diagnostic] = report.diagnostics() else {
         panic!("one outer rejection")
     };
@@ -63,7 +74,11 @@ fn one_rule_boundary_rejects_extra_input_and_whole_invalid_selectors() {
 
 #[test]
 fn local_declaration_recovery_preserves_rule_diagnostics_and_real_eof() {
-    let report = parse_rule(".a{width:red;opacity:0}", &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        ".a{width:red;opacity:0}",
+        &CssNamespaceContext::default(),
+    );
     assert!(!report.is_clean());
     let [diagnostic] = report.diagnostics() else {
         panic!("local declaration rejection")
@@ -77,7 +92,11 @@ fn local_declaration_recovery_preserves_rule_diagnostics_and_real_eof() {
     );
     assert_eq!(report, before);
     let source = ".a{opacity:0";
-    let eof = parse_rule(source, &CssNamespaceContext::default());
+    let eof = CssRule::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(!eof.is_clean());
     assert!(
         eof.diagnostics()
@@ -102,7 +121,11 @@ fn local_declaration_recovery_preserves_rule_diagnostics_and_real_eof() {
 #[test]
 fn parser_context_and_original_unicode_coordinates_survive_literal_output() {
     let source = "/*😀*/\n.a{opacity:0}";
-    let report = parse_rule(source, &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean());
     let CssRule::Style(style) = report.syntax().as_ref().unwrap() else {
         panic!("style")
@@ -144,7 +167,11 @@ fn parser_context_and_original_unicode_coordinates_survive_literal_output() {
     );
     assert!(original.same_occurrence(&saved));
     let quirks = CssParserContext::new(CssParserMode::Quirks);
-    let report = quirks.parse_rule(".a{width:1}", &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::new(quirks, Default::default()),
+        ".a{width:1}",
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{report:?}");
     let CssRule::Style(style) = report.syntax().as_ref().unwrap() else {
         panic!("style")
@@ -159,7 +186,11 @@ fn parser_context_and_original_unicode_coordinates_survive_literal_output() {
             .unwrap(),
         ".a { width: 1px; }"
     );
-    let standards = parse_rule(".a{width:1}", &CssNamespaceContext::default());
+    let standards = CssRule::parse(
+        &CssParser::default(),
+        ".a{width:1}",
+        &CssNamespaceContext::default(),
+    );
     crate::css::support::value_assertions::assert_first_property_diagnostic(
         standards.diagnostics(),
         ".a{width:1}",
@@ -367,7 +398,8 @@ fn font_face_uses_effective_modern_order_alias_ranges_and_present_only_values() 
         r#"@font-face{line-gap-override:normal;descent-override:normal;ascent-override:normal;font-language-override:normal;font-named-instance:auto;font-variation-settings:normal;font-display:auto;font-style:italic;font-weight:400;font-stretch:100%;font-feature-settings:normal;unicode-range:U+0-7F;src:local('Demo');font-family:Demo}"#,
         r#"@font-face { font-family: Demo; src: local("Demo"); unicode-range: U+0-7F; font-feature-settings: normal; font-width: 100%; font-weight: 400; font-style: italic; font-display: auto; font-variation-settings: normal; font-named-instance: auto; font-language-override: normal; ascent-override: normal; descent-override: normal; line-gap-override: normal; }"#,
     );
-    let report = parse_rule(
+    let report = CssRule::parse(
+        &CssParser::default(),
         "@font-face{font-family:Demo;font-variant:small-caps;font-weight:500!important}",
         &CssNamespaceContext::default(),
     );
@@ -413,7 +445,8 @@ fn selected_keyframes_wrapper_keytext_and_normal_blocks_use_shared_inverse() {
         );
         assert_eq!(value, before);
     }
-    let report = parse_rule(
+    let report = CssRule::parse(
+        &CssParser::default(),
         "@keyframes k{from{opacity:0!important;--X:ready!important;animation-duration:1s;animation-timing-function:linear;opacity:1}}",
         &CssNamespaceContext::default(),
     );
@@ -463,7 +496,7 @@ fn pending(
 
 #[test]
 fn pending_nested_run_and_keyframe_errors_retain_original_source_and_actual_paths() {
-    let report = parse_sheet(".ok{}.a{.b{}opacity:0;margin:var(--M)}");
+    let report = CssParser::default().parse_sheet(".ok{}.a{.b{}opacity:0;margin:var(--M)}");
     assert!(report.is_clean());
     let before = report.clone();
     let CssRule::Style(style) = &report.syntax().rules()[1] else {
@@ -498,7 +531,7 @@ fn pending_nested_run_and_keyframe_errors_retain_original_source_and_actual_path
     );
     assert_eq!(report, before);
 
-    let report = parse_sheet(
+    let report = CssParser::default().parse_sheet(
         ".ok{}@media screen{@keyframes k{from{opacity:0}to{opacity:1;margin:var(--M)}}}",
     );
     assert!(report.is_clean());
@@ -557,7 +590,7 @@ fn page_cssom_is_available_at_ordinary_nested_and_sheet_paths() {
         assert_eq!(value.serialize_cssom(Default::default()).unwrap(), expected);
         assert_eq!(value, before);
     }
-    let report = parse_sheet(".a{}@page{} .b{}");
+    let report = CssParser::default().parse_sheet(".a{}@page{} .b{}");
     assert!(report.is_clean());
     assert_eq!(
         report.syntax().serialize_cssom(Default::default()).unwrap(),
@@ -626,7 +659,7 @@ fn modern_unselected_whole_formats_keep_typed_limits_and_meaningful_compact_prov
             compact
         );
         assert_eq!(value, before);
-        let report = parse_sheet(&format!(".ok{{}}{source}"));
+        let report = CssParser::default().parse_sheet(format!(".ok{{}}{source}"));
         assert!(report.is_clean(), "{report:?}");
         assert_eq!(
             report
@@ -674,7 +707,7 @@ fn exact_rule_tariffs_include_shared_projection_and_retained_losing_occurrences(
 
 #[test]
 fn sheet_budget_is_cumulative_at_later_sibling_and_retry_preserves_the_tree() {
-    let report = parse_sheet(".a{}.b{}");
+    let report = CssParser::default().parse_sheet(".a{}.b{}");
     assert!(report.is_clean());
     let before = report.clone();
     let expected = ".a { }\n.b { }";
@@ -703,7 +736,7 @@ fn sheet_budget_is_cumulative_at_later_sibling_and_retry_preserves_the_tree() {
         assert_eq!(report, before);
         assert_eq!(report.syntax().serialize_cssom(exact).unwrap(), expected);
     }
-    let empty = parse_sheet("");
+    let empty = CssParser::default().parse_sheet("");
     assert_eq!(
         empty
             .syntax()
@@ -834,7 +867,7 @@ fn universal_case(
     namespaces: &CssNamespaceContext,
 ) {
     let source = format!("{authored}{{}}");
-    let report = parse_rule(&source, namespaces);
+    let report = CssRule::parse(&CssParser::default(), &source, namespaces);
     assert!(report.is_clean(), "{source}: {report:?}");
     let before = report.clone();
     let value = report.syntax().as_ref().unwrap();
@@ -847,7 +880,7 @@ fn universal_case(
         format!("{compact_selector} {{ }}")
     );
     assert_eq!(report, before);
-    let selector_report = parse_selector(authored, namespaces);
+    let selector_report = CssSelector::parse(&CssParser::default(), authored, namespaces);
     assert!(
         selector_report.is_clean(),
         "{authored}: {selector_report:?}"
@@ -1178,7 +1211,11 @@ fn literal_universal_omission_retains_input_projection_visits_and_saves_only_sta
     );
     let compact_failure = value.serialize_specified(Limits::new(7, 7, 6)).unwrap_err();
     assert!(compact_failure.is_byte_limit(), "{compact_failure:?}");
-    let selector_report = parse_selector("*.a", &CssNamespaceContext::default());
+    let selector_report = CssSelector::parse(
+        &CssParser::default(),
+        "*.a",
+        &CssNamespaceContext::default(),
+    );
     let selector = selector_report.syntax().as_ref().unwrap();
     assert_eq!(
         selector.serialize_specified(Limits::new(3, 3, 3)).unwrap(),
@@ -1195,7 +1232,7 @@ fn literal_universal_omission_retains_input_projection_visits_and_saves_only_sta
 
 #[test]
 fn literal_universal_omission_sheet_budget_remains_cumulative_at_late_sibling() {
-    let report = parse_sheet("*.a{}*.b{}");
+    let report = CssParser::default().parse_sheet("*.a{}*.b{}");
     assert!(report.is_clean());
     let before = report.clone();
     let expected = ".a { }\n.b { }";

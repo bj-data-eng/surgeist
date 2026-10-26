@@ -61,13 +61,14 @@ fn abandoned_metadata_never_aliases_any_later_sheet_ingress_but_revision_can_rep
             0 => edit.create_typed_sheet(CssSheet::new(), inputs()).unwrap(),
             1 => edit.create_parsed_sheet("a{}", inputs()).unwrap(),
             2 => {
-                let report = CssParserContext::default().parse_sheet("b{}");
+                let report = CssParser::new(CssParserContext::default(), Default::default())
+                    .parse_sheet("b{}");
                 edit.create_parsed_sheet_report(report, inputs()).unwrap()
             }
             _ => {
                 let context = CssParserContext::default();
-                let sheet = context.parse_sheet("c{}");
-                let media = parse_media_query_list("screen");
+                let sheet = CssParser::new(context, Default::default()).parse_sheet("c{}");
+                let media = CssMediaQueryList::parse(&CssParser::default(), "screen");
                 edit.create_parsed_sheet_with_media_reports(sheet, media, inputs())
                     .unwrap()
                     .ticket()

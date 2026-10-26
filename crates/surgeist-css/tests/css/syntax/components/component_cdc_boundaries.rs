@@ -3,15 +3,21 @@
 
 use surgeist_css::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssNumericTokenKind, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
-    parse_component_values,
+    CssNumericTokenKind, CssParser, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
 };
 
 const HAZARDOUS_LEFT_SPELLINGS: [&str; 7] = ["-", "@", "#", "1", "1e3", "+1", "-1"];
 
 fn parsed_pair(left: &str) -> CssComponentValues {
-    let mut items = parse_component_values(left).unwrap().items().to_vec();
-    items.extend_from_slice(parse_component_values("-->").unwrap().items());
+    let mut items = CssComponentValues::parse(&CssParser::default(), left)
+        .unwrap()
+        .items()
+        .to_vec();
+    items.extend_from_slice(
+        CssComponentValues::parse(&CssParser::default(), "-->")
+            .unwrap()
+            .items(),
+    );
     CssComponentValues::try_new(items, Default::default()).unwrap()
 }
 
@@ -41,7 +47,7 @@ fn assert_left_token(value: &CssComponentValue, spelling: &str) {
 
 fn assert_pair_survives(values: &CssComponentValues, left: &str) {
     let output = values.serialize_tokens(Default::default()).unwrap();
-    let reparsed = parse_component_values(output.as_css()).unwrap();
+    let reparsed = CssComponentValues::parse(&CssParser::default(), output.as_css()).unwrap();
     assert_left_token(&reparsed.items()[0], left);
     let [_, separator, cdc] = reparsed.items() else {
         panic!("retain the left token, separating comment, and CDC: {output:?}");
@@ -170,7 +176,7 @@ fn harmless_delimiters_before_cdc_do_not_gain_separators() {
             .serialize_tokens(Default::default())
             .unwrap();
         assert_eq!(output.as_css(), format!("{delimiter}-->"));
-        let reparsed = parse_component_values(output.as_css()).unwrap();
+        let reparsed = CssComponentValues::parse(&CssParser::default(), output.as_css()).unwrap();
         let [left, right] = reparsed.items() else {
             panic!("retain exactly the delimiter and CDC: {output:?}");
         };
@@ -186,10 +192,10 @@ fn harmless_delimiters_before_cdc_do_not_gain_separators() {
 #[test]
 fn authored_whitespace_and_comments_already_separate_cdc() {
     for source in ["- -->", "-/*kept*/-->", "1 -->", "1/*kept*/-->"] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let output = values.serialize_tokens(Default::default()).unwrap();
         assert_eq!(output.as_css(), source);
-        let reparsed = parse_component_values(output.as_css()).unwrap();
+        let reparsed = CssComponentValues::parse(&CssParser::default(), output.as_css()).unwrap();
         let [left, separator, right] = reparsed.items() else {
             panic!("retain the original three components: {output:?}");
         };

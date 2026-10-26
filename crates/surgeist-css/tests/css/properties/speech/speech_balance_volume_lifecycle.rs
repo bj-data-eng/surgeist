@@ -23,9 +23,10 @@ fn assert_admitted(name: &str, text: &str) {
     assert!(known.property_value().is_some());
     assert!(known.global().is_none());
     assert!(known.substitution_dependent().is_none());
-    let components = parse_component_values(text).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(property(name)),
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
         components.clone(),
         CssImportance::Important,
     )
@@ -34,8 +35,18 @@ fn assert_admitted(name: &str, text: &str) {
     assert_eq!(checked.value_components(), &components);
     assert!(checked.position().is_none());
     assert_eq!(checked.importance(), CssImportance::Important);
-    assert!(validate_style_attribute(&format!("{name}:{text}")).is_ok());
-    assert!(validate_sheet(&format!(".speech{{{name}:{text}}}")).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(format!("{name}:{text}"))
+            .into_validation_result()
+            .is_ok()
+    );
+    assert!(
+        CssParser::default()
+            .parse_sheet(format!(".speech{{{name}:{text}}}"))
+            .into_validation_result()
+            .is_ok()
+    );
     let values = expanded(&source);
     let [value] = values.items() else {
         panic!("one completed mixing terminal")
@@ -190,7 +201,7 @@ fn mixing_wrong_domains_duplicates_and_silent_companions_drop_only_the_invalid_d
     ] {
         for text in invalid {
             let source = format!("color:red;{name}:{text};height:1px");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(report.syntax().len(), 2, "{source}");
             assert_eq!(
                 report.syntax()[0].known().unwrap().property(),
@@ -207,14 +218,19 @@ fn mixing_wrong_domains_duplicates_and_silent_companions_drop_only_the_invalid_d
             assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
             assert_ne!(diagnostic.error().code(), CssErrorCode::UnsupportedProperty);
             assert_eq!(
-                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
             assert!(
-                parse_property_value(
-                    CssPropertyNameRef::Known(property(name)),
-                    parse_component_values(text).unwrap(),
-                    CssImportance::Normal,
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
+                    CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                    CssImportance::Normal
                 )
                 .is_err(),
                 "checked {name}:{text}"
@@ -262,17 +278,20 @@ fn mixing_metadata_initials_globals_and_expansion_preserve_inherited_terminal_id
             assert_eq!(value.property(), known);
             assert_eq!(value.value(), CssContributionValueRef::Global(keyword));
             assert!(value.source().same_occurrence(&source));
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(known),
-                parse_component_values(text).unwrap(),
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(known)),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssImportance::Important,
             )
             .unwrap();
             assert_eq!(checked.known().unwrap().global(), Some(keyword));
             assert!(
-                parse_property_value(
-                    CssPropertyNameRef::Known(known),
-                    parse_component_values(&format!("{text} {initial}")).unwrap(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(known)),
+                    CssComponentValues::parse(&CssParser::default(), format!("{text} {initial}"))
+                        .unwrap(),
                     CssImportance::Normal
                 )
                 .is_err()
@@ -297,11 +316,11 @@ fn mixing_substitution_reentry_rechecks_grammar_and_retains_original_and_replace
                 .as_css(),
             "var(--mixing)"
         );
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending mixing substitution")
         };
         for text in [valid, "inherit"] {
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("completed mixing replacement")
@@ -329,7 +348,7 @@ fn mixing_substitution_reentry_rechecks_grammar_and_retains_original_and_replace
             "medium;color:red",
         ] {
             let error = handle
-                .reenter(parse_component_values(text).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                 .unwrap_err();
             assert!(
                 error.replacement_error().is_some(),
@@ -338,13 +357,13 @@ fn mixing_substitution_reentry_rechecks_grammar_and_retains_original_and_replace
         }
         assert!(
             handle
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
         assert!(
             handle
-                .reenter(parse_component_values(valid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), valid).unwrap())
                 .is_ok()
         );
     }
@@ -360,7 +379,7 @@ fn mixing_case_escapes_comments_exact_coefficients_and_raw_byte_limits_preserve_
         (r"voice\2d volume", "voice-volume", r"-6d\42 /**/s\6f ft"),
         ("voice-volume", "voice-volume", "1e-400dB"),
     ] {
-        let report = parse_style_attribute(&format!("{name}:{text}!important"));
+        let report = CssParser::default().parse_block_contents(format!("{name}:{text}!important"));
         assert!(
             report.is_clean(),
             "{name}:{text}: {:?}",
@@ -391,8 +410,9 @@ fn mixing_case_escapes_comments_exact_coefficients_and_raw_byte_limits_preserve_
                 .as_css(),
             text
         );
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(property(canonical)),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property(canonical))),
             components.clone(),
             CssImportance::Important,
         )
@@ -406,7 +426,7 @@ fn silent_companion_diagnostics_preserve_crlf_non_bmp_positions_and_original_com
     let prefix = "/*😀*/\r\ncolor:red;";
     let invalid = "voice-volume:silent 6db;";
     let source = format!("{prefix}{invalid}height:1px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("one silent companion diagnostic")
@@ -435,10 +455,14 @@ fn silent_companion_diagnostics_preserve_crlf_non_bmp_positions_and_original_com
         prefix.len() + invalid.len()
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
-    let components = parse_component_values("silent 6db").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "silent 6db").unwrap();
     let token = components
         .items()
         .iter()
@@ -449,8 +473,9 @@ fn silent_companion_diagnostics_preserve_crlf_non_bmp_positions_and_original_com
             )
         })
         .unwrap();
-    let error = parse_property_value(
-        CssPropertyNameRef::Known(property("voice-volume")),
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property("voice-volume"))),
         components.clone(),
         CssImportance::Normal,
     )
@@ -460,7 +485,7 @@ fn silent_companion_diagnostics_preserve_crlf_non_bmp_positions_and_original_com
         CssSerializedOrigin::Token(token.origin().clone())
     );
     let sheet_source = format!(".a{{{source}}}");
-    let sheet = parse_sheet(&sheet_source);
+    let sheet = CssParser::default().parse_sheet(&sheet_source);
     let [CssRule::Style(rule)] = sheet.syntax().rules() else {
         panic!("retained style rule")
     };
@@ -475,7 +500,11 @@ fn silent_companion_diagnostics_preserve_crlf_non_bmp_positions_and_original_com
         responsible + 3
     );
     assert_eq!(
-        validate_sheet(&sheet_source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(&sheet_source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         sheet.diagnostics()
     );
 }

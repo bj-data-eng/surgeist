@@ -373,10 +373,10 @@ impl CssomBatch {
                             maximum: this.limits.max_input_bytes,
                         });
                     }
-                    this.staged
-                        .context
-                        .parser_context()
-                        .parse_media_query_list(text)
+                    CssMediaQueryList::parse(
+                        &CssParser::new(this.staged.context.parser_context(), Default::default()),
+                        text,
+                    )
                 }
                 CssomOwnerMediaInput::Parsed(report) => report,
             };
@@ -456,7 +456,7 @@ fn parse_media(
             maximum: limits.max_input_bytes,
         });
     }
-    let report = context.parse_media_query_list(source);
+    let report = CssMediaQueryList::parse(&CssParser::new(context, Default::default()), source);
     check_resource_diagnostics(report.diagnostics())?;
     Ok(report.into_parts())
 }

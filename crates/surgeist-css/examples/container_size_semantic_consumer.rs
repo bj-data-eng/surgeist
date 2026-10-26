@@ -92,7 +92,7 @@ fn main() {
         "future-size(1px)",
     ] {
         let condition = CssCondition::<CssContainerLeaf>::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             Default::default(),
         )
         .unwrap();

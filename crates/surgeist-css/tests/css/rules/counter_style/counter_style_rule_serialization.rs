@@ -5,12 +5,12 @@ use crate::css::support::failure_classes::SerializationFailure as Kind;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
     CssCounterStyleDescriptorKind as DescriptorKind, CssCounterStyleDescriptorRef,
-    CssCounterStyleRule, CssCounterStyleSystem, CssRule, CssSerializationLimits as Limits,
-    parse_sheet,
+    CssCounterStyleRule, CssCounterStyleSystem, CssParser, CssRule,
+    CssSerializationLimits as Limits,
 };
 
 fn rule(source: &str) -> CssCounterStyleRule {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::CounterStyle(value)] = report.syntax().rules() else {
         panic!("expected one counter-style rule")

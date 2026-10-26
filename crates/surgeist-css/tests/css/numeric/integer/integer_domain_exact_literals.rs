@@ -5,11 +5,11 @@
 //! CSS retains exact authored bounds before downstream implementation-range policy;
 //! the counter-style standard separately permits supported-range clamping.
 
-use surgeist_css::{CssKnownPropertyValueRef, CssRule, parse_sheet, parse_style_attribute};
+use surgeist_css::{CssKnownPropertyValueRef, CssParser, CssRule};
 
 fn serialized_columns(value: &str) -> String {
     let source = format!("grid-template-columns: {value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::GridTemplateColumns(wrapper) = report.syntax()[0]
         .known()
@@ -51,7 +51,7 @@ fn ordinary_repeat_literals_and_integer_calculations_keep_their_grammar() {
     );
     for count in ["0", "-0", "-1", "2.0", "2e0"] {
         let source = format!("grid-template-columns: repeat({count}, 1px); color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(!report.is_clean(), "{source}");
         assert_eq!(report.syntax().len(), 1, "{source}");
     }
@@ -63,7 +63,7 @@ fn huge_strictly_descending_additive_weights_are_distinct() {
         "@counter-style exact { system: additive; ",
         "additive-symbols: 2147483649 \"a\", 2147483648 \"b\"; }"
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("valid additive definition must survive");
@@ -77,7 +77,7 @@ fn equal_additive_weights_with_different_spelling_remain_invalid() {
         "@counter-style exact { system: additive; ",
         "additive-symbols: +0007 \"a\", 7 \"b\"; } .after { color: red; }"
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(!report.is_clean());
     let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("invalid additive descriptor is dropped while the valid rule and sibling survive");
@@ -102,7 +102,7 @@ fn reversed_huge_range_is_rejected_before_implementation_range_policy() {
         "@counter-style exact { system: cyclic; symbols: \"a\"; ",
         "range: 2147483649 2147483648; } .after { color: red; }"
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(
         !report.is_clean(),
         "exact reversed bounds must be diagnosed"

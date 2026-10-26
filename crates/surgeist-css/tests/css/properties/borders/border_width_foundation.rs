@@ -73,8 +73,7 @@ fn accepted(name: &str, value: &str) {
 
 fn one_value(name: &str, value: &str) -> CssLonghandValue {
     let source = declaration(name, value);
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("{name} has a terminal contribution")
     };
@@ -208,7 +207,7 @@ fn logical_width_pairs_expand_start_then_end_and_repeat_omitted_end() {
             let source = declaration(pair, authored);
             checked(pair, authored);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("{pair} expands to logical longhands")
             };
@@ -251,7 +250,7 @@ fn four_side_width_accepts_both_roles_but_expansion_selects_four_sides() {
         "logical thin medium thick 1e100px",
     ] {
         accepted(FOUR_SIDE, value);
-        assert_four_expansion(expand_declaration(&declaration(FOUR_SIDE, value)));
+        assert_four_expansion(declaration(FOUR_SIDE, value).expand());
     }
     for (value, token) in [
         ("", None),
@@ -269,12 +268,12 @@ fn four_side_width_accepts_both_roles_but_expansion_selects_four_sides() {
         grammar.metadata().unwrap().kind(),
         CssPropertyKindRef::FourSideShorthand(_)
     ));
-    let report = parse_sheet(&format!(
+    let report = CssParser::default().parse_sheet(format!(
         ".a{{color:red;{FOUR_SIDE}:logical thin medium;color:blue}}"
     ));
     assert!(report.is_clean());
     let before = report.syntax().clone();
-    assert!(normalize_sheet(report.syntax()).is_ok());
+    assert!(report.syntax().normalize(Default::default()).is_ok());
     assert_eq!(report.syntax(), &before);
 }
 
@@ -295,7 +294,7 @@ fn physical_border_triples_share_exact_widths_and_intrinsic_defaults() {
         }
         let source = declaration(name, "solid");
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("{name} expands to border facets")
         };
@@ -362,7 +361,7 @@ fn physical_border_triples_share_exact_widths_and_intrinsic_defaults() {
         }
         let exact = declaration(name, "1e100px solid");
         let CssExpansion::Contributions(CssContributions::Longhands(exact_values)) =
-            expand_declaration(&exact).unwrap()
+            exact.expand().unwrap()
         else {
             panic!("{name} retains exact width contributions")
         };
@@ -378,7 +377,7 @@ fn physical_border_triples_share_exact_widths_and_intrinsic_defaults() {
 fn css_wide_all_and_pending_reentry_preserve_original_grammar_and_occurrence() {
     let all_source = declaration("all", "initial");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all_source).unwrap()
+        all_source.expand().unwrap()
     else {
         panic!("all is a symbolic universal reset")
     };
@@ -395,10 +394,10 @@ fn css_wide_all_and_pending_reentry_preserve_original_grammar_and_occurrence() {
             let source = declaration(name, text);
             checked(name, text);
             if name == FOUR_SIDE {
-                assert_four_expansion(expand_declaration(&source));
+                assert_four_expansion(source.expand());
             } else {
                 let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                    expand_declaration(&source).unwrap()
+                    source.expand().unwrap()
                 else {
                     panic!("{name} has symbolic global contributions")
                 };
@@ -421,24 +420,28 @@ fn css_wide_all_and_pending_reentry_preserve_original_grammar_and_occurrence() {
         }
         for pending in ["var(--width)", "env(--width)"] {
             let source = declaration(name, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("{name} retains pending substitution")
             };
             assert!(handle.source().same_occurrence(&source));
             assert!(
-                expect_rejection(handle.reenter(parse_component_values("1%").unwrap()))
-                    .replacement_error()
-                    .is_some()
+                expect_rejection(
+                    handle.reenter(CssComponentValues::parse(&CssParser::default(), "1%").unwrap())
+                )
+                .replacement_error()
+                .is_some()
             );
             assert!(
-                expect_rejection(handle.reenter(parse_component_values("var(--again)").unwrap()))
-                    .is_residual_substitution()
+                expect_rejection(handle.reenter(
+                    CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                ))
+                .is_residual_substitution()
             );
             if PAIRS.contains(&name) {
                 assert!(
-                    expect_rejection(
-                        handle.reenter(parse_component_values("logical 1px").unwrap()),
-                    )
+                    expect_rejection(handle.reenter(
+                        CssComponentValues::parse(&CssParser::default(), "logical 1px").unwrap()
+                    ),)
                     .replacement_error()
                     .is_some()
                 );
@@ -448,11 +451,15 @@ fn css_wide_all_and_pending_reentry_preserve_original_grammar_and_occurrence() {
             } else {
                 "1px"
             };
-            let replacement = parse_component_values(replacement_text).unwrap();
+            let replacement =
+                CssComponentValues::parse(&CssParser::default(), replacement_text).unwrap();
             if name == FOUR_SIDE {
                 assert_four_contributions(handle.reenter(replacement));
                 assert_four_contributions(
-                    handle.reenter(parse_component_values("logical thin medium").unwrap()),
+                    handle.reenter(
+                        CssComponentValues::parse(&CssParser::default(), "logical thin medium")
+                            .unwrap(),
+                    ),
                 );
             } else {
                 let CssContributions::Longhands(values) =
@@ -473,11 +480,9 @@ fn css_wide_all_and_pending_reentry_preserve_original_grammar_and_occurrence() {
 
 #[test]
 fn normalization_keeps_ordered_logical_names_and_pending_four_side_values() {
-    let report = parse_sheet(
-        ".a{border-top-width:1px;border-block-width:thin thick;border-inline-start-width:2px;border-width:var(--edge);border-left:solid}",
-    );
+    let report = CssParser::default().parse_sheet(".a{border-top-width:1px;border-block-width:thin thick;border-inline-start-width:2px;border-width:var(--edge);border-left:solid}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let authored = normalized
         .items()
         .iter()

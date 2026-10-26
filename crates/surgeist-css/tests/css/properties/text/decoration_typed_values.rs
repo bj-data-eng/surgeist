@@ -187,7 +187,7 @@ fn emphasis_strings_keep_decoded_content_and_provenance_without_ua_truncation() 
             &component
         );
         let serialized = value.serialize_specified(Default::default()).unwrap();
-        let parsed = parse_component_values(&serialized).unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), &serialized).unwrap();
         let parsed = CssTextEmphasisString::try_from_component(parsed.items()[0].clone()).unwrap();
         assert_eq!(parsed.as_str(), content);
         assert!(matches!(parsed.origin(), CssValueOrigin::Parsed(_)));
@@ -343,11 +343,11 @@ fn underline_offset_owner_compares_exact_numeric_structure_without_erasing_child
 #[test]
 fn checked_emphasis_string_and_aggregate_reject_recovered_quotes_without_losing_browser_values() {
     for text in ["'hello", "\"hello"] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let original = components.items()[0].clone();
         assert!(CssTextEmphasisString::try_from_component(original.clone()).is_none());
         assert!(matches!(original.origin(), CssValueOrigin::Parsed(_)));
-        let report = parse_style_attribute(&format!("text-emphasis:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("text-emphasis:{text}"));
         assert!(!report.is_clean());
         assert!(!report.diagnostics().is_empty());
         assert_eq!(report.syntax().len(), 1);
@@ -375,7 +375,7 @@ fn checked_emphasis_string_and_aggregate_reject_recovered_quotes_without_losing_
         );
     }
     for text in ["'hello'", "\"hello\""] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let string =
             CssTextEmphasisString::try_from_component(components.items()[0].clone()).unwrap();
         assert!(
@@ -498,7 +498,7 @@ fn checked_text_shadow_narrows_spread_but_reuses_retained_box_children() {
 
 #[test]
 fn checked_aggregates_reject_recovered_numeric_and_nested_color_graphs() {
-    let report = parse_style_attribute("text-decoration-thickness:calc(-1px");
+    let report = CssParser::default().parse_block_contents("text-decoration-thickness:calc(-1px");
     assert!(!report.is_clean());
     let CssKnownPropertyValueRef::TextDecorationThickness(value) = report.syntax()[0]
         .known()
@@ -512,7 +512,8 @@ fn checked_aggregates_reject_recovered_numeric_and_nested_color_graphs() {
         panic!("length")
     };
     assert!(CssTextUnderlineOffsetLength::try_new(value.clone()).is_none());
-    let report = parse_style_attribute("text-decoration-color:light-dark(red,rgb(calc(1 + 2),0,0");
+    let report = CssParser::default()
+        .parse_block_contents("text-decoration-color:light-dark(red,rgb(calc(1 + 2),0,0");
     assert!(!report.is_clean());
     let CssKnownPropertyValueRef::TextDecorationColor(value) = report.syntax()[0]
         .known()
@@ -528,11 +529,11 @@ fn checked_aggregates_reject_recovered_numeric_and_nested_color_graphs() {
         CssTextShadowLayer::try_new(false, length("1px"), length("2px"), None, None, Some(color))
             .is_none()
     );
-    let report = parse_style_attribute("text-shadow:calc(1px");
+    let report = CssParser::default().parse_block_contents("text-shadow:calc(1px");
     assert!(!report.is_clean());
     // The malformed missing-offset occurrence is rejected atomically.
     assert!(report.syntax().is_empty());
-    let report = parse_style_attribute("text-shadow:1px calc(2px");
+    let report = CssParser::default().parse_block_contents("text-shadow:1px calc(2px");
     assert!(!report.is_clean());
     let CssKnownPropertyValueRef::TextShadow(value) = report.syntax()[0]
         .known()
@@ -553,7 +554,7 @@ fn checked_aggregates_reject_recovered_numeric_and_nested_color_graphs() {
         "text-shadow:1px 2px calc(3px",
         "text-shadow:1px 2px 0 calc(4px",
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(!report.is_clean());
         let CssKnownPropertyValueRef::TextShadow(value) = report.syntax()[0]
             .known()

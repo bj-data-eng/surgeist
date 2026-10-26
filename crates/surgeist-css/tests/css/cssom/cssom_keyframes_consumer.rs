@@ -1,9 +1,9 @@
 //! Literal expectations from CSSOM's selected 2026 CSSKeyframesRule branch.
 
-use surgeist_css::{CssRule, CssSerializationLimits, parse_sheet};
+use surgeist_css::{CssParser, CssRule, CssSerializationLimits};
 
 fn rule(source: &str) -> CssRule {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {report:?}");
     let [rule] = report.syntax().rules() else {
         panic!("one keyframes rule");
@@ -65,7 +65,8 @@ fn reserved_decoded_names_keep_string_output() {
 
 #[test]
 fn selected_output_byte_failure_is_atomic_and_retry_keeps_original_occurrences() {
-    let report = parse_sheet("/*😀*/ @keyframes \"fade in\" { from { opacity:0 } }");
+    let report =
+        CssParser::default().parse_sheet("/*😀*/ @keyframes \"fade in\" { from { opacity:0 } }");
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let CssRule::Keyframes(frames) = &report.syntax().rules()[0] else {

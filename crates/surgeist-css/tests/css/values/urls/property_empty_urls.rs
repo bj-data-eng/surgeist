@@ -4,10 +4,10 @@
 
 use surgeist_css::{
     CssComponentValue, CssComponentValues, CssContentValue, CssContentValueItem, CssCursor,
-    CssCursorImageSource, CssCursorKeyword, CssImageValue, CssImportance, CssKnownProperty,
-    CssKnownPropertyValueRef, CssMaskLayer, CssMaskList, CssPropertyNameRef, CssRecoveryAction,
-    CssUrl, CssUrlModifier, CssValueOrigin, parse_property_value, parse_style_attribute,
-    validate_style_attribute,
+    CssCursorImageSource, CssCursorKeyword, CssDeclaration, CssImageValue, CssImportance,
+    CssKnownProperty, CssKnownPropertyValueRef, CssMaskLayer, CssMaskList, CssParser,
+    CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction, CssUrl, CssUrlModifier,
+    CssValueOrigin,
 };
 
 fn assert_url_payload(name: &str, value: CssKnownPropertyValueRef<'_>, expected: &str) {
@@ -78,10 +78,16 @@ fn assert_clean_url(name: &str, authored: &str, expected: &str) {
         authored.to_owned()
     };
     let source = format!("{name}: {value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1, "{source}");
-    assert!(validate_style_attribute(&source).is_ok(), "{source}");
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_ok(),
+        "{source}"
+    );
     let known = report.syntax()[0].known().expect("known URL property");
     assert_eq!(known.property().canonical_name(), name);
     assert_url_payload(
@@ -129,7 +135,7 @@ fn quoted_whitespace_remains_data_and_nonempty_urls_remain_valid() {
 fn empty_quoted_url_keeps_modifiers_and_valid_neighbors() {
     let source =
         "color: red; background-image: url(\"\" cors integrity(\"sha256\")) !important; width: 2px";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 3);
     assert_eq!(
@@ -163,8 +169,9 @@ fn empty_quoted_url_keeps_modifiers_and_valid_neighbors() {
 fn checked_component_construction_keeps_programmatic_empty_url_origin() {
     let url = CssComponentValue::try_url("").unwrap();
     let components = CssComponentValues::try_new(vec![url], Default::default()).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage)),
         components,
         CssImportance::Important,
     )
@@ -185,7 +192,7 @@ fn checked_component_construction_keeps_programmatic_empty_url_origin() {
 fn malformed_urls_and_modifier_tokens_drop_only_their_declaration() {
     for invalid in ["url(foo\"bar)", "url(\"\" 2)"] {
         let source = format!("color: red; background-image: {invalid}; width: 2px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -201,7 +208,11 @@ fn malformed_urls_and_modifier_tokens_drop_only_their_declaration() {
             CssKnownProperty::Width
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics(),
             "{source}"
         );

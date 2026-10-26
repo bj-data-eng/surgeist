@@ -12,9 +12,10 @@ use crate::css::support::value_assertions::positive_literal;
 use surgeist_css::*;
 
 fn parsed_for(property: CssKnownProperty, source: &str) -> CssEasingList {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(property),
-        parse_component_values(source).unwrap(),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -30,7 +31,7 @@ fn parsed(source: &str) -> CssEasingList {
 }
 
 fn number(source: &str) -> CssNumeric<CssNumber> {
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     CssNumeric::<CssNumber>::try_from_calculation(
         CssCalculation::<CssNumber>::try_from_components(components, Default::default()).unwrap(),
     )
@@ -291,7 +292,7 @@ fn invalid_grammar_drops_only_easing_and_strict_validation_agrees() {
         ("steps(calc((1px + 1%) / 1px))", At("calc(")),
     ] {
         let source = format!("transition-timing-function:{invalid};color:red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(!report.is_clean(), "{invalid}");
         assert_eq!(report.syntax().len(), 1, "{invalid}");
         assert_eq!(
@@ -309,7 +310,11 @@ fn invalid_grammar_drops_only_easing_and_strict_validation_agrees() {
             token,
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -330,7 +335,8 @@ fn checked_ranges_and_pure_roots_share_admission_with_parsing() {
         .unwrap();
         assert!(positive_literal(integer).is_none());
     }
-    let contextual = parse_component_values("calc((1px + 1%) / 1px)").unwrap();
+    let contextual =
+        CssComponentValues::parse(&CssParser::default(), "calc((1px + 1%) / 1px)").unwrap();
     assert_numeric_rejected(
         CssCalculation::<CssNumber>::try_from_components(contextual.clone(), Default::default()),
         NumericFailure::RootDomainMismatch,
@@ -340,7 +346,7 @@ fn checked_ranges_and_pure_roots_share_admission_with_parsing() {
         NumericFailure::RootDomainMismatch,
     );
     let fraction = CssCalculation::<CssInteger>::try_from_components(
-        parse_component_values("calc(1.5)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(1.5)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -490,7 +496,8 @@ fn list_order_and_shorthand_omissions_survive_canonical_output() {
         "ease-out, step-start, steps(4, jump-start), step-end, linear",
         "ease-out, steps(1, start), steps(4, jump-start), steps(1), linear",
     );
-    let report = parse_style_attribute("transition:opacity 1s;animation:fade 2s step-start");
+    let report = CssParser::default()
+        .parse_block_contents("transition:opacity 1s;animation:fade 2s step-start");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::Transition(value) = report.syntax()[0]
         .known()
@@ -525,11 +532,11 @@ fn list_order_and_shorthand_omissions_survive_canonical_output() {
 
 #[test]
 fn both_timing_families_expand_their_typed_easing_lists() {
-    let report =
-        parse_style_attribute("transition-timing-function:steps(2,end);animation:fade 1s ease");
+    let report = CssParser::default()
+        .parse_block_contents("transition-timing-function:steps(2,end);animation:fade 1s ease");
     assert!(report.is_clean());
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&report.syntax()[0]).unwrap()
+        report.syntax()[0].expand().unwrap()
     else {
         panic!("ordinary transition easing")
     };
@@ -548,7 +555,7 @@ fn both_timing_families_expand_their_typed_easing_lists() {
         "steps(2)"
     );
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&report.syntax()[1]).unwrap()
+        report.syntax()[1].expand().unwrap()
     else {
         panic!("ordinary animation")
     };

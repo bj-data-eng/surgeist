@@ -4,7 +4,7 @@ use crate::css::support::value_assertions::exact_dimension;
 use surgeist_css::*;
 
 fn parsed_shape(shape: &str) -> CssBasicShape {
-    let report = parse_style_attribute(&format!("clip-path: {shape}"));
+    let report = CssParser::default().parse_block_contents(format!("clip-path: {shape}"));
     assert!(report.is_clean(), "{shape}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
         .known()
@@ -140,7 +140,7 @@ fn calculated_polygon_keeps_typed_shape() {
 
 #[test]
 fn calculated_blur_keeps_typed_filter_expression() {
-    let report = parse_style_attribute("filter: blur(calc(1px + 2px))");
+    let report = CssParser::default().parse_block_contents("filter: blur(calc(1px + 2px))");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Filter(value) = report.syntax()[0]
         .known()
@@ -185,7 +185,7 @@ fn literal_shapes_and_percentage_circle_use_typed_graph() {
 
 #[test]
 fn literal_blur_keeps_typed_filter_length() {
-    let report = parse_style_attribute("filter: blur(3px)");
+    let report = CssParser::default().parse_block_contents("filter: blur(3px)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Filter(value) = report.syntax()[0]
         .known()

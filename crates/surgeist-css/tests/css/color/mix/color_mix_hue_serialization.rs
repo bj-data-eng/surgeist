@@ -170,9 +170,12 @@ fn shorter_omission_preserves_style_importance_and_authored_tokens() {
     let source = "color-mix(in lch shorter hue, red, blue)";
     let style = format!("color: {source} !important; opacity: .5");
     let authored = format!(" {source} ");
-    let report = parse_style_attribute(&style);
+    let report = CssParser::default().parse_block_contents(&style);
     assert!(report.diagnostics().is_empty());
-    validate_style_attribute(&style).unwrap();
+    CssParser::default()
+        .parse_block_contents(&style)
+        .into_validation_result()
+        .unwrap();
     assert_eq!(report.syntax().len(), 2);
     let declaration = &report.syntax()[0];
     assert_eq!(declaration.importance(), CssImportance::Important);

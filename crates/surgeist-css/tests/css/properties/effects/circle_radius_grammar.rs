@@ -1,10 +1,10 @@
 //! CSS Shapes `circle()` has one nonnegative length-percentage radius.
 //! The selected WebKit Shapes consumer admits the same domain before `at`.
-use surgeist_css::{CssKnownProperty, CssRecoveryAction, parse_style_attribute};
+use surgeist_css::{CssKnownProperty, CssParser, CssRecoveryAction};
 
 fn accepted(radius: &str) {
     let source = format!("clip-path: {radius}; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2, "{source}");
     assert_eq!(
@@ -21,7 +21,7 @@ fn accepted(radius: &str) {
 
 fn rejected(radius: &str) {
     let source = format!("clip-path: {radius}; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(report.syntax().len(), 1, "{source}");
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),

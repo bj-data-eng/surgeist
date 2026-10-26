@@ -592,7 +592,7 @@ const O_SYNTAX3: CssSpecificationSource = dated_source!(
     "CSS Syntax",
     "3",
     CssSpecificationTier::Snapshot2026Official,
-    "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/"
+    "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/"
 );
 const O_STYLE_ATTR: CssSpecificationSource = dated_source!(
     "O-STYLE-ATTR",
@@ -2592,21 +2592,21 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 794] = [
         CssFeatureKind::Value,
         "<rule-list>",
         O_SYNTAX3,
-        "#declaration-rule-list",
+        "#typedef-rule-list",
     ),
     CssFeatureMetadata::complete(
         "official.value.declaration-list",
         CssFeatureKind::Value,
         "<declaration-list>",
         O_SYNTAX3,
-        "#declaration-rule-list",
+        "#typedef-declaration-list",
     ),
     CssFeatureMetadata::complete(
         "official.value.style-block",
         CssFeatureKind::Value,
         "<style-block>",
         O_SYNTAX3,
-        "#declaration-rule-list",
+        "#typedef-block-contents",
     ),
     CssFeatureMetadata::complete(
         "official.value.declaration-value",
@@ -2634,7 +2634,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 794] = [
         CssFeatureKind::Value,
         "<urange>",
         O_SYNTAX3,
-        "#urange-syntax",
+        "#consume-unicode-range-value",
     ),
     CssFeatureMetadata::partial(
         "baseline.declaration.custom-property",

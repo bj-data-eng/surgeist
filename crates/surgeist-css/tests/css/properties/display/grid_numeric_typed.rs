@@ -1,14 +1,14 @@
 use crate::css::support::value_assertions::positive_literal;
 use surgeist_css::{
     CssCalculation, CssCalculationExpressionRef, CssCalculationType, CssCalculationValueRef,
-    CssComponentValue, CssComponentValueRef, CssFlex, CssGridAutoRepeat, CssGridAutoRepeatKind,
-    CssGridAutoTrackComponent, CssGridAutoTrackList, CssGridFixedRepeatComponent,
-    CssGridFixedRepeatContent, CssGridFixedSize, CssGridGeneralTrackComponent,
-    CssGridGeneralTrackList, CssGridIntegerTrackRepeat, CssGridLineNames, CssGridTrackBreadth,
-    CssGridTrackList, CssGridTrackRepeatComponent, CssGridTrackRepeatContent, CssGridTrackSize,
-    CssGridTrackSizeList, CssKnownPropertyValueRef, CssLengthPercentage, CssNonNegative,
-    CssNumeric, CssNumericDimension, CssSerializationLimits, CssValueOrigin, CssValueTokenRef,
-    parse_component_values, parse_style_attribute,
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssFlex, CssGridAutoRepeat,
+    CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridAutoTrackList,
+    CssGridFixedRepeatComponent, CssGridFixedRepeatContent, CssGridFixedSize,
+    CssGridGeneralTrackComponent, CssGridGeneralTrackList, CssGridIntegerTrackRepeat,
+    CssGridLineNames, CssGridTrackBreadth, CssGridTrackList, CssGridTrackRepeatComponent,
+    CssGridTrackRepeatContent, CssGridTrackSize, CssGridTrackSizeList, CssKnownPropertyValueRef,
+    CssLengthPercentage, CssNonNegative, CssNumeric, CssNumericDimension, CssParser,
+    CssSerializationLimits, CssValueOrigin, CssValueTokenRef,
 };
 
 fn flex(text: &str) -> CssNumeric<CssFlex, CssNonNegative> {
@@ -63,7 +63,7 @@ fn exact_flex_scalar_has_checked_programmatic_origin() {
     assert!(matches!(error.origin(), Some(CssValueOrigin::Programmatic)));
 
     let bare_negative = CssCalculation::<CssFlex>::try_from_components(
-        parse_component_values("-1fr").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "-1fr").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -74,7 +74,7 @@ fn exact_flex_scalar_has_checked_programmatic_origin() {
     );
     let deferred_negative = CssNumeric::<CssFlex, CssNonNegative>::try_from_calculation(
         CssCalculation::<CssFlex>::try_from_components(
-            parse_component_values("calc(-1fr)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(-1fr)").unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -109,7 +109,7 @@ fn exact_flex_scalar_has_checked_programmatic_origin() {
 #[test]
 fn flex_calculation_keeps_its_unhinted_type_and_function_tree() {
     let calculation = CssCalculation::<CssFlex>::try_from_components(
-        parse_component_values("calc(1fr * (1% / 1%))").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(1fr * (1% / 1%))").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -134,7 +134,7 @@ fn flex_calculation_keeps_its_unhinted_type_and_function_tree() {
     let canonical = breadth.serialize_specified(Default::default()).unwrap();
     assert_eq!(canonical, "calc(1fr)");
     let reparsed = CssCalculation::<CssFlex>::try_from_components(
-        parse_component_values(&canonical).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), &canonical).unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -145,7 +145,7 @@ fn flex_calculation_keeps_its_unhinted_type_and_function_tree() {
 #[test]
 fn length_percentage_math_retains_its_percentage_child_and_hint() {
     let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
-        parse_component_values("calc(10px + 5%)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(10px + 5%)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -312,7 +312,8 @@ fn checked_track_graph_rejects_adjacent_line_name_blocks() {
 
 #[test]
 fn parsed_track_graph_serializes_with_one_cumulative_budget() {
-    let report = parse_style_attribute("grid-auto-rows: 1e50fr fit-content(1e-50px)");
+    let report =
+        CssParser::default().parse_block_contents("grid-auto-rows: 1e50fr fit-content(1e-50px)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::GridAutoRows(wrapper) = report.syntax()[0]
         .known()

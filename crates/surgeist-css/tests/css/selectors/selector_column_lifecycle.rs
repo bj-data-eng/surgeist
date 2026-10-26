@@ -79,7 +79,10 @@ fn column_tokens_preserve_relation_and_namespace_boundaries() {
         &CssQualifiedNamePrefix::ExplicitNone
     );
     for source in ["col||", "col|||", "||td", "svg| Col", "[svg |Data]"] {
-        assert_selector_input_rejected(source, parse_selector(source, &namespaces));
+        assert_selector_input_rejected(
+            source,
+            CssSelector::parse(&CssParser::default(), source, &namespaces),
+        );
     }
 }
 
@@ -172,7 +175,7 @@ fn constructed_column_relatives_share_the_node_and_utf8_limits() {
 #[test]
 fn column_nested_rules_keep_the_complete_parent_binding_in_normalization() {
     let source = ".Parent, #Alternate { || .Cell { color:red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("parent")
@@ -185,7 +188,7 @@ fn column_nested_rules_keep_the_complete_parent_binding_in_normalization() {
     };
     assert_eq!(relative.combinator(), CssSelectorCombinator::Column);
     assert_eq!(relative.selector(), &CssSelector::Class("Cell".into()));
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -222,7 +225,7 @@ fn column_nested_rules_keep_the_complete_parent_binding_in_normalization() {
         .serialize_specified(Default::default())
         .unwrap();
     assert!(emitted.contains("|| .Cell"), "{emitted}");
-    assert!(parse_sheet(&emitted).is_clean());
+    assert!(CssParser::default().parse_sheet(&emitted).is_clean());
     assert_eq!(
         child.position().byte_offset().value(),
         source.find("||").unwrap()
@@ -231,7 +234,8 @@ fn column_nested_rules_keep_the_complete_parent_binding_in_normalization() {
 
 #[test]
 fn column_scope_and_supports_hosts_reuse_the_same_typed_provider() {
-    let report = parse_sheet("@scope (col||td) { || .Cell {} } @supports selector(.x || .y) {}");
+    let report = CssParser::default()
+        .parse_sheet("@scope (col||td) { || .Cell {} } @supports selector(.x || .y) {}");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Scope(scope), CssRule::Supports(supports)] = report.syntax().rules() else {
         panic!("two hosts")
@@ -264,7 +268,7 @@ fn column_scope_and_supports_hosts_reuse_the_same_typed_provider() {
         .syntax()
         .serialize_specified(Default::default())
         .unwrap();
-    let roundtrip = parse_sheet(&emitted);
+    let roundtrip = CssParser::default().parse_sheet(&emitted);
     assert!(roundtrip.is_clean(), "{emitted}: {roundtrip:?}");
 }
 
@@ -304,7 +308,11 @@ fn column_relative_graphs_inherit_nested_has_and_pseudo_element_exclusions() {
 #[test]
 fn class_dot_reports_the_first_whitespace_after_comments_in_original_coordinates() {
     for source in ["./*😀*/ Name", "./*😀\r\né*/ Name"] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.syntax().is_none(), "{report:?}");
         let [diagnostic] = report.diagnostics() else {
             panic!("one rejection")
@@ -334,7 +342,10 @@ fn class_dot_adjacency_is_shared_by_nested_scope_logical_has_and_supports_hosts(
         ":is(./**/Cell) {}",
         ":has(> ./**/Cell) {}",
     ] {
-        assert!(parse_sheet(source).is_clean(), "{source:?}");
+        assert!(
+            CssParser::default().parse_sheet(source).is_clean(),
+            "{source:?}"
+        );
     }
     for source in [
         ".Parent { > . Cell {} }",
@@ -342,13 +353,13 @@ fn class_dot_adjacency_is_shared_by_nested_scope_logical_has_and_supports_hosts(
         ":is(. Cell) {}",
         ":has(> . Cell) {}",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(!report.is_clean(), "{source:?}");
         assert_strict_validation_rejects(report);
     }
     // Balanced unsupported selector syntax is the existing general-enclosed
     // supports alternative; it must not become a typed selector test.
-    let report = parse_sheet("@supports selector(. Cell) {}");
+    let report = CssParser::default().parse_sheet("@supports selector(. Cell) {}");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Supports(supports)] = report.syntax().rules() else {
         panic!("supports")

@@ -3,8 +3,9 @@
 //! functions surviving that recovery, not all lexically open functions.
 
 use surgeist_css::{
-    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssSelector, parse_selector, parse_selector_list,
+    CssNamespaceContext, CssParsedStyleSelectors, CssParser, CssPseudoClass,
+    CssPseudoSelectorListItem, CssRecoveryAction, CssRecoveryDiagnostic, CssSelector,
+    CssStyleSelectorContext,
 };
 
 fn assert_retained_closures(
@@ -46,7 +47,11 @@ fn assert_retained_closures(
 
 #[test]
 fn discarded_unclosed_function_does_not_claim_a_retained_closure() {
-    let report = parse_selector(":is(???f(", &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        ":is(???f(",
+        &CssNamespaceContext::default(),
+    );
     let Some(CssSelector::PseudoClass(CssPseudoClass::Is(members))) = report.syntax() else {
         panic!("retained is selector");
     };
@@ -56,7 +61,11 @@ fn discarded_unclosed_function_does_not_claim_a_retained_closure() {
 
 #[test]
 fn nested_retained_functions_keep_their_own_closures_after_member_recovery() {
-    let report = parse_selector(":is(:where(.kept,???f(", &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        ":is(:where(.kept,???f(",
+        &CssNamespaceContext::default(),
+    );
     let Some(CssSelector::PseudoClass(CssPseudoClass::Is(outer))) = report.syntax() else {
         panic!("retained is selector");
     };
@@ -77,11 +86,20 @@ fn nested_retained_functions_keep_their_own_closures_after_member_recovery() {
 
 #[test]
 fn selector_list_preserves_siblings_and_only_surviving_function_closures() {
-    let report = parse_selector_list(".first,:where(.kept,???f(", &CssNamespaceContext::default());
+    let report = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        ".first,:where(.kept,???f(",
+        &CssNamespaceContext::default(),
+        CssStyleSelectorContext::Ordinary,
+    );
     let members = report.syntax().as_ref().unwrap().selectors();
-    assert_eq!(members.len(), 2);
-    assert_eq!(members[0].selector(), &CssSelector::Class("first".into()));
-    let CssSelector::PseudoClass(CssPseudoClass::Where(inner)) = members[1].selector() else {
+    assert_eq!(members.selectors().len(), 2);
+    assert_eq!(
+        members.selectors()[0].selector(),
+        &CssSelector::Class("first".into())
+    );
+    let CssSelector::PseudoClass(CssPseudoClass::Where(inner)) = members.selectors()[1].selector()
+    else {
         panic!("retained where selector");
     };
     assert_eq!(
@@ -95,7 +113,11 @@ fn selector_list_preserves_siblings_and_only_surviving_function_closures() {
 
 #[test]
 fn accepted_unclosed_function_without_discarded_members_keeps_its_closure() {
-    let report = parse_selector(":is(.kept", &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        ":is(.kept",
+        &CssNamespaceContext::default(),
+    );
     assert!(report.syntax().is_some());
     let [closure] = report.diagnostics() else {
         panic!("one retained closure");

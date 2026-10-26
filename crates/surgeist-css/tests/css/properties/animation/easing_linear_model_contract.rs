@@ -15,7 +15,7 @@ use surgeist_css::*;
 fn number(source: &str) -> CssNumeric<CssNumber> {
     CssNumeric::<CssNumber>::try_from_calculation(
         CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -26,7 +26,7 @@ fn number(source: &str) -> CssNumeric<CssNumber> {
 fn percentage(source: &str) -> CssNumeric<CssPercentage> {
     CssNumeric::<CssPercentage>::try_from_calculation(
         CssCalculation::<CssPercentage>::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -35,9 +35,12 @@ fn percentage(source: &str) -> CssNumeric<CssPercentage> {
 }
 
 fn parsed(source: &str) -> CssLinearEasing {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::TransitionTimingFunction),
-        parse_component_values(source).unwrap(),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(
+            CssKnownProperty::TransitionTimingFunction,
+        )),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -90,7 +93,7 @@ fn checked_numeric_domains_and_original_recovered_math_are_rejected_before_compo
     ] {
         assert_numeric_rejected(
             CssCalculation::<CssNumber>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default(),
             ),
             kind,
@@ -104,7 +107,7 @@ fn checked_numeric_domains_and_original_recovered_math_are_rejected_before_compo
     ] {
         assert_numeric_rejected(
             CssCalculation::<CssPercentage>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default(),
             ),
             kind,
@@ -126,7 +129,7 @@ fn checked_numeric_domains_and_original_recovered_math_are_rejected_before_compo
 fn browser_retains_recovered_numeric_math_but_public_linear_constructors_reject_it() {
     for source in ["linear(0, calc(1", "linear(0, 1 calc(20%"] {
         let css = format!("transition-timing-function:{source}");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         assert_implicit_closure(&css, &report);
         let [declaration] = report.syntax().as_slice() else {
             panic!("browser retains recovered numeric graph")
@@ -142,9 +145,12 @@ fn browser_retains_recovered_numeric_math_but_public_linear_constructors_reject_
         let last = &value.stops()[1];
         assert!(CssLinearStop::try_new(last.output().clone(), last.inputs().to_vec()).is_none());
         assert!(CssLinearEasing::try_new(value.stops().to_vec()).is_none());
-        assert_checked_closure_rejected(parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::TransitionTimingFunction),
-            parse_component_values(source).unwrap(),
+        assert_checked_closure_rejected(CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::TransitionTimingFunction,
+            )),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             CssImportance::Normal,
         ));
         assert_eq!(value.stops().len(), 2);
@@ -298,7 +304,7 @@ fn shorthand_inverse_reconstructs_both_timing_consumers_without_fixup() {
             "1s linear(0 80% 20%, 1) fade",
         ),
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.is_clean());
         let block = CssSpecifiedDeclarationBlock::try_from_declarations(
             report.syntax(),

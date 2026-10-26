@@ -2,18 +2,23 @@
 //! imported Extensions 1 name grammar and adopted feature-candidate precedence.
 //! These tests deliberately use only the public surface preceding custom media.
 use surgeist_css::{
-    CssConditionKind, CssErrorCode, CssMediaLeaf, CssMediaQuery, CssMediaType, CssNormalizedItem,
-    CssRecoveryAction, CssRule, CssUnknownMediaFeatureReason, normalize_sheet, parse_media_query,
-    parse_media_query_list, parse_sheet, validate_sheet,
+    CssConditionKind, CssErrorCode, CssMediaLeaf, CssMediaQuery, CssMediaQueryList, CssMediaType,
+    CssNormalizedItem, CssParser, CssRecoveryAction, CssRule, CssUnknownMediaFeatureReason,
 };
 
 #[test]
 fn root_definitions_retain_boolean_query_and_empty_bodies() {
     for body in ["true", "FALSE", "screen", "(color), (hover)", ""] {
         let source = format!("@custom-media --mode {body}; .after {{ color: red; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{body}: {:?}", report.diagnostics());
-        assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+        assert_eq!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap(),
+            *report.syntax()
+        );
         assert_eq!(report.syntax().rules().len(), 2, "{body}");
         assert!(matches!(
             report.syntax().rules().last(),
@@ -26,7 +31,7 @@ fn root_definitions_retain_boolean_query_and_empty_bodies() {
 fn extension_names_include_bare_hyphens_and_escaped_identifiers() {
     for name in ["--", "------", "--Case", r"--\6d ode"] {
         let source = format!("@custom-media {name} true;");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{name}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().rules().len(), 1, "{name}");
     }
@@ -40,10 +45,10 @@ fn duplicates_and_cycles_survive_normalization_in_authored_order() {
         "@custom-media --a false;\n",
         "@custom-media --self (--self);"
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().rules().len(), 4);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let expected: Vec<_> = source
         .match_indices("@custom-media")
         .map(|(at, _)| at)
@@ -66,7 +71,8 @@ fn duplicates_and_cycles_survive_normalization_in_authored_order() {
 
 #[test]
 fn definitions_are_allowed_after_ordinary_root_style_rules() {
-    let report = parse_sheet(".before { color: red; } @custom-media --x true;");
+    let report =
+        CssParser::default().parse_sheet(".before { color: red; } @custom-media --x true;");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().rules().len(), 2);
     assert!(matches!(
@@ -85,10 +91,10 @@ fn unrestricted_root_group_contexts_retain_definitions() {
         "@scope (.root)",
     ] {
         let source = format!("{group} {{ @custom-media --x true; }} .after {{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{group}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().rules().len(), 2);
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let [
             CssNormalizedItem::Rule(group_context),
             CssNormalizedItem::Rule(definition),
@@ -131,7 +137,7 @@ fn style_ancestors_reject_definitions_without_losing_parent_or_sibling() {
             format!("{group} {{ @custom-media --x true; }}")
         };
         let source = format!(".parent {{ color: red; {nested} }} .after {{ color: blue; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             matches!(
                 report.syntax().rules(),
@@ -156,7 +162,7 @@ fn style_ancestors_reject_definitions_without_losing_parent_or_sibling() {
 #[test]
 fn retained_definition_closes_the_import_prefix() {
     let source = "@custom-media --x true; @import 'late.css'; .after { color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.syntax().rules().len(), 2);
     assert!(matches!(
         report.syntax().rules().last(),
@@ -189,7 +195,7 @@ fn malformed_definition_rules_leave_following_style_rules_eligible() {
         "@custom-media --x true {}",
     ] {
         let source = format!("{invalid} .after {{ color: red; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             matches!(report.syntax().rules(), [CssRule::Style(_)]),
             "{invalid}"
@@ -206,7 +212,7 @@ fn malformed_definition_rules_leave_following_style_rules_eligible() {
 #[test]
 fn boolean_custom_references_are_not_unknown_ordinary_features() {
     for source in ["(--x)", "(--)", r"(--\78)"] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}");
         let CssMediaQuery::Condition(condition) = report.syntax() else {
             panic!("condition")
@@ -233,7 +239,7 @@ fn matched_nonboolean_custom_features_recover_only_their_comma_member() {
         "(--x < future)",
     ] {
         let source = format!("{invalid}, screen");
-        let report = parse_media_query_list(&source);
+        let report = CssMediaQueryList::parse(&CssParser::default(), &source);
         let [CssMediaQuery::Never(_), CssMediaQuery::Typed(screen)] = report.syntax().queries()
         else {
             panic!("member recovery: {source}")
@@ -250,7 +256,7 @@ fn matched_nonboolean_custom_features_recover_only_their_comma_member() {
 #[test]
 fn committed_custom_context_errors_survive_nested_speculation() {
     for invalid in ["not ((--x: 1))", "screen and ((1 < --x))"] {
-        let report = parse_media_query_list(&format!("{invalid}, screen"));
+        let report = CssMediaQueryList::parse(&CssParser::default(), format!("{invalid}, screen"));
         assert!(
             matches!(report.syntax().queries(), [CssMediaQuery::Never(_), CssMediaQuery::Typed(screen)] if screen.media_type() == CssMediaType::Screen),
             "{invalid}"
@@ -266,7 +272,7 @@ fn committed_custom_context_errors_survive_nested_speculation() {
 #[test]
 fn feature_first_width_rejects_custom_looking_values_with_unknown_truth() {
     for source in ["(width > --x)", "(width: --x)"] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let CssMediaQuery::Condition(condition) = report.syntax() else {
             panic!("condition")
@@ -282,7 +288,7 @@ fn feature_first_width_rejects_custom_looking_values_with_unknown_truth() {
 #[test]
 fn ambiguous_operands_keep_feature_candidate_precedence() {
     let source = "(--x < width)";
-    let report = parse_media_query(source);
+    let report = CssMediaQuery::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssMediaQuery::Condition(condition) = report.syntax() else {
         panic!("condition")
@@ -292,7 +298,7 @@ fn ambiguous_operands_keep_feature_candidate_precedence() {
     };
     assert_eq!(feature.name(), "width");
     assert_eq!(feature.reason(), CssUnknownMediaFeatureReason::InvalidValue);
-    let report = parse_media_query("(future < --x)");
+    let report = CssMediaQuery::parse(&CssParser::default(), "(future < --x)");
     assert!(report.is_clean());
     let CssMediaQuery::Condition(condition) = report.syntax() else {
         panic!("condition")
@@ -303,7 +309,7 @@ fn ambiguous_operands_keep_feature_candidate_precedence() {
     assert_eq!(feature.name(), "future");
     assert_eq!(feature.reason(), CssUnknownMediaFeatureReason::UnknownName);
     for source in ["(--x:)", "(--x: arbitrary())"] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(
             matches!(report.syntax(), CssMediaQuery::Condition(condition) if matches!(condition.kind(), CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_)))),
@@ -315,7 +321,7 @@ fn ambiguous_operands_keep_feature_candidate_precedence() {
 #[test]
 fn eof_closed_query_body_retains_definition_and_distinct_statement_and_closure_diagnostics() {
     let source = "@custom-media --x (color";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.syntax().rules().len(), 1);
     assert_eq!(report.diagnostics().len(), 2);
     let statement = report
@@ -341,7 +347,9 @@ fn eof_closed_query_body_retains_definition_and_distinct_statement_and_closure_d
     assert_eq!(closure.span().start().byte_offset().value(), source.len());
     assert_eq!(closure.span().end().byte_offset().value(), source.len());
     assert_eq!(
-        validate_sheet(source),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
         report.clone().into_validation_result()
     );
 }
@@ -349,7 +357,7 @@ fn eof_closed_query_body_retains_definition_and_distinct_statement_and_closure_d
 #[test]
 fn invalid_definition_media_member_preserves_definition_and_sibling() {
     let source = "@custom-media --x (color), ???, screen; .after { color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.syntax().rules().len(), 2);
     assert!(matches!(
         report.syntax().rules().last(),
@@ -365,7 +373,7 @@ fn invalid_definition_media_member_preserves_definition_and_sibling() {
 #[test]
 fn eof_statement_reports_missing_terminator_without_inventing_enclosure() {
     let source = "@custom-media --x true";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.syntax().rules().len(), 1);
     let [diagnostic] = report.diagnostics() else {
         panic!("one statement EOF diagnostic");
@@ -395,7 +403,9 @@ fn eof_statement_reports_missing_terminator_without_inventing_enclosure() {
         "a semicolon or block terminating an at-rule"
     );
     assert_eq!(
-        validate_sheet(source),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
         report.clone().into_validation_result()
     );
 }

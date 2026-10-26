@@ -3,7 +3,7 @@
 use surgeist_css::*;
 
 fn selectors(input: &str) -> CssKeyframeSelectorList {
-    let report = parse_keyframe_selector_list(input);
+    let report = CssParsedKeyframeSelectors::parse(&CssParser::default(), input);
     assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
     report.syntax().as_ref().unwrap().selectors().clone()
 }

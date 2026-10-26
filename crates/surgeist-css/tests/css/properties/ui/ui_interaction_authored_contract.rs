@@ -207,7 +207,7 @@ const CARET_SPECIFIED_WITNESSES: &[(&str, &str)] = &[
 fn invalid(name: &str, value: &str) {
     let p = property(name);
     let css = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert_eq!(report.syntax().len(), 2, "{css}");
     assert!(
         report
@@ -230,10 +230,14 @@ fn invalid(name: &str, value: &str) {
         other => panic!("owned grammar diagnostic for {css}: {other:?}"),
     }
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
-    let components = parse_component_values(value).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     let before = components.clone();
     for grammar in [false, true] {
         assert!(
@@ -244,8 +248,16 @@ fn invalid(name: &str, value: &str) {
         );
     }
     for report in [
-        parse_property_value_text(value, CssPropertyNameRef::Known(p), CssImportance::Normal),
-        parse_property_value_text_for_grammar(value, p.grammar(), CssImportance::Normal),
+        CssParser::default().parse_property_value(
+            value,
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(p)),
+            CssImportance::Normal,
+        ),
+        CssParser::default().parse_property_value(
+            value,
+            CssPropertyTextTarget::Grammar(p.grammar()),
+            CssImportance::Normal,
+        ),
     ] {
         assert!(report.syntax().is_none());
         assert!(!report.is_clean());
@@ -385,7 +397,7 @@ fn flow_flex_grid_item_and_color_controls_execute_independently_of_ui_metadata()
         ("item-flow", "row", "item-flow: row auto normal normal;", 4),
         ("color", "red", "color: red;", 1),
     ] {
-        let report = parse_style_attribute(&format!("{name}:{input}"));
+        let report = CssParser::default().parse_block_contents(format!("{name}:{input}"));
         assert!(report.is_clean());
         for source in report.syntax().iter() {
             assert_eq!(
@@ -393,7 +405,7 @@ fn flow_flex_grid_item_and_color_controls_execute_independently_of_ui_metadata()
                 expected
             );
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("supported independent control")
             };
@@ -416,10 +428,13 @@ fn canonical_and_standard_alias_share_one_identity_and_original_name_provenance(
         );
         for text in SELECTION {
             let css = format!("/*😀*/{alias}:{text}!important");
-            let report = parse_style_attribute(&css);
+            let report = CssParser::default().parse_block_contents(&css);
             assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
             assert_eq!(
-                validate_style_attribute(&css).unwrap(),
+                CssParser::default()
+                    .parse_block_contents(&css)
+                    .into_validation_result()
+                    .unwrap(),
                 report.syntax().clone()
             );
             let [source] = report.syntax().as_slice() else {
@@ -444,7 +459,7 @@ fn canonical_and_standard_alias_share_one_identity_and_original_name_provenance(
         }
     }
     let css = r"\2d webkit-user-select:ALL!important";
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert!(report.is_clean());
     assert_eq!(report.syntax()[0].known().unwrap().property(), canonical);
     assert_eq!(
@@ -472,7 +487,7 @@ fn standard_alias_rejects_invalid_grammar_and_original_checked_closures() {
             invalid(alias, text);
         }
         for text in ["ALL/*", "initial/*", "var(--ui", "env(ui", "attr(data-ui *"] {
-            let components = parse_component_values(text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let before = components.clone();
             let origin = implicit_origin(&components);
             for grammar in [false, true] {
@@ -646,7 +661,7 @@ fn caret_imports_complete_color_families_and_delegates_canonical_child_output() 
     // child provider. Supplied components also permit exact origin-bearing graph
     // comparison, which is a composition assertion rather than a text oracle.
     for &(text, expected) in CARET_SPECIFIED_WITNESSES {
-        let supplied = parse_component_values(text).unwrap();
+        let supplied = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let color = checked_components("color", supplied.clone(), true).unwrap();
         let CssKnownPropertyValueRef::Color(child) =
             color.known().unwrap().property_value().unwrap()
@@ -705,7 +720,7 @@ fn original_function_closure_is_strict_for_imported_colors_cursor_sets_and_math(
         ("cursor", "image-set(url(a) 1x"),
         ("cursor", "url(a) calc(1 + 2"),
     ] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let before = components.clone();
         let origin = implicit_origin(&components);
         for grammar in [false, true] {
@@ -716,7 +731,7 @@ fn original_function_closure_is_strict_for_imported_colors_cursor_sets_and_math(
             );
         }
         let source = checked(name, "var(--ui)", true);
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         for _ in 0..2 {
@@ -728,7 +743,7 @@ fn original_function_closure_is_strict_for_imported_colors_cursor_sets_and_math(
         }
         assert!(
             handle
-                .reenter(parse_component_values(initial(name)).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), initial(name)).unwrap())
                 .is_ok()
         );
         assert_eq!(components, before);
@@ -751,10 +766,10 @@ fn imported_replacements_retain_supplied_graphs_origins_and_original_occurrences
         for pending in ["var(--ui)", "env(ui)", "attr(data-ui *)"] {
             let source = parsed(name, pending);
             let before = source.clone();
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("pending")
             };
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let snapshot = replacement.clone();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -791,7 +806,9 @@ fn imported_replacements_retain_supplied_graphs_origins_and_original_occurrences
             ] {
                 assert!(
                     handle
-                        .reenter(parse_component_values(residual).unwrap())
+                        .reenter(
+                            CssComponentValues::parse(&CssParser::default(), residual).unwrap()
+                        )
                         .unwrap_err()
                         .is_residual_substitution()
                 );
@@ -805,7 +822,7 @@ fn imported_replacements_retain_supplied_graphs_origins_and_original_occurrences
 #[test]
 fn cursor_checked_payload_retains_order_omissions_descriptors_and_exact_scalar_origins() {
     let text = "image-set(\"first.png\" type(\"image/png\") 96.000dpi,url(second.png)) -3.500 +4.250,url(last.cur),pointer";
-    let supplied = parse_component_values(text).unwrap();
+    let supplied = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     for grammar in [false, true] {
         let source = checked_components("cursor", supplied.clone(), grammar).unwrap();
         let CssKnownPropertyValueRef::Cursor(wrapper) =
@@ -867,13 +884,11 @@ fn cursor_checked_payload_retains_order_omissions_descriptors_and_exact_scalar_o
 }
 #[test]
 fn normalization_keeps_ui_order_contexts_alias_pending_importance_and_exact_counts() {
-    let report = parse_sheet(
-        "@media screen{.a{caret-color:auto!important;cursor:pointer;pointer-events:none;user-select:all;resize:block;-webkit-user-select:var(--ui);cursor:unset!important;resize:inline;color:red}}",
-    );
+    let report = CssParser::default().parse_sheet("@media screen{.a{caret-color:auto!important;cursor:pointer;pointer-events:none;user-select:all;resize:block;-webkit-user-select:var(--ui);cursor:unset!important;resize:inline;color:red}}");
     assert!(report.is_clean());
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(1, 2, 9, 9).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -961,7 +976,7 @@ fn normalization_keeps_ui_order_contexts_alias_pending_importance_and_exact_coun
         ),
     ] {
         for _ in 0..2 {
-            let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+            let error = report.syntax().normalize(limits).unwrap_err();
             assert_eq!(error.exhausted_limit(), Some((resource, 8)));
             assert_eq!(error.declaration_order(), Some(8));
             assert!(
@@ -973,7 +988,7 @@ fn normalization_keeps_ui_order_contexts_alias_pending_importance_and_exact_coun
         }
     }
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 fn primitive_css(
     source: &CssDeclaration,
@@ -1125,9 +1140,7 @@ fn huge_rgb_scalar_suppression_uses_only_final_output_bytes_and_keeps_source_reu
 fn sheet_siblings_share_final_bytes_and_nodes_and_remain_reusable_after_failure() {
     use CssSerializationLimits as Limits;
 
-    let report = parse_sheet(
-        ".a{caret-color:auto!important;cursor:url(a) 30 -.25,pointer}.b{pointer-events:none;-webkit-user-select:all}.c{resize:block}",
-    );
+    let report = CssParser::default().parse_sheet(".a{caret-color:auto!important;cursor:url(a) 30 -.25,pointer}.b{pointer-events:none;-webkit-user-select:all}.c{resize:block}");
     assert!(report.is_clean());
     let sheet = report.syntax();
     let before = sheet.clone();

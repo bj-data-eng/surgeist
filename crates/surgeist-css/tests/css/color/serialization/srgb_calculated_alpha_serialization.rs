@@ -32,7 +32,7 @@ fn assert_value(value: &CssColor, expected: &str) {
 fn assert_text(source: &str, expected: &str) {
     let checked = declaration(source);
     assert_eq!(checked.value_components(), &components(source));
-    let report = parse_style_attribute(&format!("color:{source}!important"));
+    let report = CssParser::default().parse_block_contents(format!("color:{source}!important"));
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
     for value in [&checked, &report.syntax()[0]] {

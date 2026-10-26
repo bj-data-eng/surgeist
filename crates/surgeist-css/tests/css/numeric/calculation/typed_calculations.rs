@@ -8,7 +8,7 @@ use surgeist_css::*;
 
 #[test]
 fn core_font_calculations_preserve_number_and_length_percentage_domains() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "font-size: calc((1em + 10%) * 2); ",
         "line-height: calc(1 + 0.5); ",
         "line-height: calc((1em + 10%) * 2)",
@@ -66,7 +66,7 @@ fn core_font_calculations_preserve_number_and_length_percentage_domains() {
 
 #[test]
 fn relative_color_calculations_retain_typed_domains_and_closed_channel_references() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "color: rgb(from red calc(r + 1) calc(g * 2) calc(b / 2) / calc(alpha * 0.5)); ",
         "color: hsl(from red calc(h + 20) calc(s + 10) l); ",
         "color: oklch(from red l c calc(h + 0.25))",
@@ -119,7 +119,7 @@ fn relative_color_calculations_retain_typed_domains_and_closed_channel_reference
 
 #[test]
 fn perceptual_color_channels_preserve_typed_calculation_domains() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "color: lab(calc(40% + 10%) calc(1 + 2) calc(20% - 5%)); ",
         "color: lch(calc(50 + 10) calc(30% + 5%) calc(1turn - 90deg)); ",
         "color: color(rec2020 calc(1 + 2) calc(10% + 20%) none)",
@@ -189,7 +189,7 @@ fn number_calculation_literal_preserves_finite_authored_value() {
 fn property_consumers_accept_typed_products_and_groups_with_later_siblings() {
     for value in ["calc(1px * 2)", "calc((1px + 2px))"] {
         let source = format!("width: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 2);
         let CssKnownPropertyValueRef::Width(width) = report.syntax()[0]
@@ -358,8 +358,8 @@ fn opacity_percentage_calculation_preserves_exact_depth_boundary() {
 
 #[test]
 fn typed_length_consumer_exposes_exact_products_and_sums() {
-    let report =
-        parse_style_attribute("width: calc(1px + 2%); height: calc((1px + 2%) * 3); color: red");
+    let report = CssParser::default()
+        .parse_block_contents("width: calc(1px + 2%); height: calc((1px + 2%) * 3); color: red");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
     let width = report.syntax()[0].known().expect("known width");
@@ -421,7 +421,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
         "flex: calc(2 * 3) calc(-1 + 2) calc((10px * 2)); ",
         "flow-tolerance: calc((5% + 1px) * 2)"
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
     let CssKnownPropertyValueRef::Opacity(value) = report.syntax()[0]
@@ -531,7 +531,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
 
 #[test]
 fn opacity_keeps_number_and_percentage_calculation_roots_symbolic() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "opacity: calc(-1.5 * 2); opacity: calc((25% + 25%) * 2); color: red",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -582,7 +582,7 @@ fn opacity_keeps_number_and_percentage_calculation_roots_symbolic() {
 
 #[test]
 fn scalar_property_accessors_preserve_exact_literal_domains() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "opacity: 0.5; flex-grow: 2; flex-shrink: 0; order: -2; z-index: auto; \
          aspect-ratio: 1.5; flex: 2 0 10rem",
     );
@@ -714,17 +714,18 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
 
 #[test]
 fn ratio_literal_zero_and_symbolic_negative_math_keep_their_domains() {
-    let literal_report = parse_style_attribute("aspect-ratio: 0; color: red");
+    let literal_report = CssParser::default().parse_block_contents("aspect-ratio: 0; color: red");
     assert_eq!(literal_report.syntax().len(), 2);
     assert!(literal_report.is_clean());
-    let calculation_report = parse_style_attribute("aspect-ratio: calc(-1 * 2); color: red");
+    let calculation_report =
+        CssParser::default().parse_block_contents("aspect-ratio: calc(-1 * 2); color: red");
     assert!(calculation_report.is_clean());
     assert_eq!(calculation_report.syntax().len(), 2);
 }
 
 #[test]
 fn filter_amount_calculations_keep_number_and_percentage_roots_symbolic() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "filter: brightness(calc(-1 + 2)) opacity(calc(25% + 25%)); color: red",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -760,10 +761,8 @@ fn calculation_body(
 
 #[test]
 fn exact_construction_preserves_mixed_origins_and_canonical_operator_mapping() {
-    use surgeist_css::{
-        CssComponentValue, CssComponentValues, CssValueOrigin, parse_component_values,
-    };
-    let children = parse_component_values("1px + 2px").unwrap();
+    use surgeist_css::{CssComponentValue, CssComponentValues, CssValueOrigin};
+    let children = CssComponentValues::parse(&CssParser::default(), "1px + 2px").unwrap();
     let original = children.items()[0].origin().clone();
     let operator = children.items()[2].origin().clone();
     let function = CssComponentValue::try_function("CALC", children).unwrap();
@@ -802,9 +801,13 @@ fn exact_construction_preserves_mixed_origins_and_canonical_operator_mapping() {
 
 #[test]
 fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_distinct() {
-    use surgeist_css::{CssCalculation, CssNumericConstant, CssResolution, parse_component_values};
+    use surgeist_css::{CssCalculation, CssNumericConstant, CssResolution};
     let integer = CssCalculation::<CssInteger>::try_from_components(
-        parse_component_values("1234567890123456789012345678901234567890").unwrap(),
+        CssComponentValues::parse(
+            &CssParser::default(),
+            "1234567890123456789012345678901234567890",
+        )
+        .unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -817,13 +820,13 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
         "1234567890123456789012345678901234567890"
     );
     let rounded = CssCalculation::<CssInteger>::try_from_components(
-        parse_component_values("calc(1.5)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(1.5)").unwrap(),
         Default::default(),
     )
     .unwrap();
     assert!(rounded.requires_rounding());
     let finite = CssCalculation::<CssNumber>::try_from_components(
-        parse_component_values("calc(1e99999)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(1e99999)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -831,7 +834,7 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
         matches!(calculation_body(finite.expression()), CssCalculationExpressionRef::Value(v) if v.literal().representation() == "1e99999")
     );
     let symbolic = CssCalculation::<CssNumber>::try_from_components(
-        parse_component_values("calc(infinity)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(infinity)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -839,7 +842,7 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
         matches!(calculation_body(symbolic.expression()), CssCalculationExpressionRef::Constant(v) if v.value() == CssNumericConstant::Infinity)
     );
     let zero = CssCalculation::<CssNumber>::try_from_components(
-        parse_component_values("-0").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "-0").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -848,7 +851,7 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
     );
     assert_eq!(
         CssCalculation::<CssResolution>::try_from_components(
-            parse_component_values("calc(-1dppx / 0)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(-1dppx / 0)").unwrap(),
             Default::default()
         )
         .unwrap()
@@ -859,7 +862,7 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
     );
     assert!(
         CssCalculation::<CssLength>::try_from_components(
-            parse_component_values("calc(1px + 2%)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(1px + 2%)").unwrap(),
             Default::default()
         )
         .unwrap_err()
@@ -867,7 +870,7 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
     );
     assert!(
         CssCalculation::<CssLengthPercentage>::try_from_components(
-            parse_component_values("calc(1px + 2%)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(1px + 2%)").unwrap(),
             Default::default()
         )
         .is_ok()
@@ -876,8 +879,8 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
 
 #[test]
 fn checked_numeric_construction_reports_resource_substitution_and_recovery_failures() {
-    use surgeist_css::{CssComponentValueLimits, parse_component_values};
-    let components = parse_component_values("calc(1*2)").unwrap();
+    use surgeist_css::CssComponentValueLimits;
+    let components = CssComponentValues::parse(&CssParser::default(), "calc(1*2)").unwrap();
     for limits in [
         CssComponentValueLimits::try_new(0, 4, 11).unwrap(),
         CssComponentValueLimits::try_new(1, 3, 11).unwrap(),
@@ -904,7 +907,7 @@ fn checked_numeric_construction_reports_resource_substitution_and_recovery_failu
         assert_eq!(
             numeric_failure(
                 &CssCalculation::<CssNumber>::try_from_components(
-                    parse_component_values(source).unwrap(),
+                    CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                     Default::default()
                 )
                 .unwrap_err()

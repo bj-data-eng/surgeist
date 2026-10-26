@@ -67,14 +67,14 @@ fn fragment_runs(scope: &CssScopeRule, source: &str) {
 fn public_fragments_retain_ordered_typed_runs_and_original_value_origins() {
     let ns = CssNamespaceContext::default();
     let source = ".p{@scope{color:red;.child{color:blue}color:green}}";
-    let report = parse_rule(source, &ns);
+    let report = CssRule::parse(&CssParser::default(), source, &ns);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let Some(CssRule::Style(style)) = report.syntax() else {
         panic!("style")
     };
     fragment_runs(scope_from_style(style), source);
     let source = "{@scope{color:red;.child{color:blue}color:green}}";
-    let report = parse_style_block(source, &ns);
+    let report = CssStyleBlock::parse(&CssParser::default(), source, &ns);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Scope(scope)] = report.syntax().as_ref().unwrap().rules() else {
         panic!("scope")
@@ -107,7 +107,7 @@ fn rejected_rule_boundaries_preserve_distinct_scoped_runs_and_eof_retention() {
         ),
     ] {
         let source = format!(".p{{@scope{{color:red;{rejected}color:green");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         expected.assert_first(&report);
         let [CssRule::Style(style)] = report.syntax().rules() else {
             panic!("style")
@@ -124,7 +124,7 @@ fn rejected_rule_boundaries_preserve_distinct_scoped_runs_and_eof_retention() {
         "\\2d -bad:var(){color:blue};",
     ] {
         let source = format!(".p{{@scope{{color:red;{rejected}color:green}}}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Style(style)] = report.syntax().rules() else {
             panic!("style")
         };
@@ -140,9 +140,9 @@ fn rejected_rule_boundaries_preserve_distinct_scoped_runs_and_eof_retention() {
 #[test]
 fn scoped_anchor_child_and_ordinary_grandchild_have_independent_selector_parents() {
     let source = ".p{@scope{color:red;& .child{color:blue;.grand{color:green}}color:black}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let sheet = normalize_sheet(report.syntax()).unwrap();
+    let sheet = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = sheet
         .items()
         .iter()
@@ -191,7 +191,7 @@ fn bounded_scoped_splicing_splits_a_run_around_the_deferred_child() {
             "@media all{".repeat(depth),
             "}".repeat(depth)
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let [CssRule::Style(style)] = report.syntax().rules() else {
             panic!("style")
@@ -201,7 +201,7 @@ fn bounded_scoped_splicing_splits_a_run_around_the_deferred_child() {
         };
         color(&run(red).declarations()[0], "red", &source);
         color(&run(green).declarations()[0], "green", &source);
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let values: Vec<_> = normalized
             .items()
             .iter()
@@ -233,7 +233,7 @@ fn depth_ceiling_keeps_detached_run_payload_and_selector_identity_on_small_stack
                 "@scope{".repeat(255),
                 "}".repeat(255)
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(report.is_clean(), "{:?}", report.diagnostics());
             let [CssRule::Style(style)] = report.syntax().rules() else {
                 panic!("style")
@@ -249,7 +249,7 @@ fn depth_ceiling_keeps_detached_run_payload_and_selector_identity_on_small_stack
                 panic!("run")
             };
             let detached = run(leaf).clone();
-            let normalized = normalize_sheet(report.syntax()).unwrap();
+            let normalized = report.syntax().normalize(Default::default()).unwrap();
             let declaration = normalized
                 .items()
                 .iter()
@@ -275,7 +275,7 @@ fn depth_ceiling_keeps_detached_run_payload_and_selector_identity_on_small_stack
                 "@scope{".repeat(256),
                 "}".repeat(256)
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(
                 report
                     .diagnostics()

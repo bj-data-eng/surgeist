@@ -240,7 +240,7 @@ fn every_descriptor_selects_last_valid_duplicate_after_whole_value_recovery() {
         let source = format!(
             ".before{{}} @counter-style Custom {{ symbols:a; {initial}; {invalid}; {last}; }} .after{{}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [
             CssRule::Style(_),
             CssRule::CounterStyle(rule),
@@ -274,7 +274,11 @@ fn every_descriptor_selects_last_valid_duplicate_after_whole_value_recovery() {
             start + invalid.len() + 1
         );
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
         let _ = rule.serialize_specified(Default::default()).unwrap();
@@ -285,7 +289,7 @@ fn every_descriptor_selects_last_valid_duplicate_after_whole_value_recovery() {
 #[test]
 fn unknown_descriptor_and_unsupported_value_recover_independently() {
     let source = "@counter-style Custom { symbols:a; Future-Descriptor: f([unknown]); system:future-system; suffix:'.'; } .after{}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("counter and following rule");
     };
@@ -312,7 +316,7 @@ fn descriptor_annotations_invalidate_only_the_annotated_descriptor() {
         let source = format!(
             "@counter-style Custom {{ symbols:a; prefix:'kept'; prefix:'bad' {annotation}; suffix:'.'; }} .after{{}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("annotation recovery");
         };
@@ -329,7 +333,11 @@ fn descriptor_annotations_invalidate_only_the_annotated_descriptor() {
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDescriptor);
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -338,7 +346,7 @@ fn descriptor_annotations_invalidate_only_the_annotated_descriptor() {
 #[test]
 fn descriptor_body_at_rules_follow_forward_recovery_without_losing_valid_values() {
     let source = "@counter-style Custom { prefix:'before'; @future-body { nested:([x]); } @counter-style forbidden { symbols:x; } symbols:a; suffix:'after'; } .after{}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("whole unknown nested units recover");
     };
@@ -393,7 +401,7 @@ fn extends_symbol_conflicts_keep_authored_rules_and_invalid_descriptors_recover_
         let source = format!(
             ".before{{}} @counter-style Custom {{ system:extends Missing; {descriptor} }} .after{{}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean());
         assert!(matches!(
             report.syntax().rules(),
@@ -405,7 +413,7 @@ fn extends_symbol_conflicts_keep_authored_rules_and_invalid_descriptors_recover_
         ));
     }
     let source = "@counter-style Custom { system:extends Missing; symbols:; additive-symbols:1 I, 1 X; suffix:'.'; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("invalid symbol descriptors are ignored before effective combination validation");
     };
@@ -576,7 +584,7 @@ fn huge_integer_fields_and_signed_zero_keep_authored_tokens_without_range_clampi
 #[test]
 fn inside_and_case_sensitive_names_remain_valid_unresolved_rule_and_reference_names() {
     let source = "@counter-style inside { symbols:MiXeD; fallback:Inside; speak-as:Voice; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("inside is a valid rule name");
@@ -598,7 +606,7 @@ fn inside_and_case_sensitive_names_remain_valid_unresolved_rule_and_reference_na
 #[test]
 fn eof_body_recovery_keeps_valid_occurrences_and_matches_strict_diagnostics() {
     let source = "@counter-style Custom { symbols:a; suffix:'.'";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("EOF retains completed descriptors");
     };
@@ -614,11 +622,15 @@ fn eof_body_recovery_keeps_valid_occurrences_and_matches_strict_diagnostics() {
     );
     assert!(!report.is_clean());
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_eq!(
-        normalize_report(&report).unwrap().diagnostics(),
+        report.normalize(Default::default()).unwrap().diagnostics(),
         report.diagnostics()
     );
 }

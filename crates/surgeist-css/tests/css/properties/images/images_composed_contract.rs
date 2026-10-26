@@ -8,25 +8,33 @@ use surgeist_css::*;
 
 fn fronts(property: CssKnownProperty, text: &str) -> Vec<(CssDeclaration, String)> {
     let css = format!("/*😀*/{}:{text}!important", property.canonical_name());
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert_eq!(validate_style_attribute(&css).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     let [parsed] = report.syntax().as_slice() else {
         panic!("one image declaration")
     };
     let mut declarations = vec![(parsed.clone(), css)];
-    let components = parse_component_values(text).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let original = components.clone();
     for grammar in [false, true] {
         let declaration = if grammar {
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Important,
             )
         } else {
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Important,
             )
@@ -122,7 +130,7 @@ fn rejects_background(text: &str) {
     let prefix = "/*😀*/color:red;";
     let unit = format!("background-image:{text};");
     let source = format!("{prefix}{unit}color:blue!important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [first, last] = report.syntax().as_slice() else {
         panic!("only the two valid neighbors remain: {source}")
     };
@@ -147,21 +155,29 @@ fn rejects_background(text: &str) {
         prefix.len() + unit.len(),
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics(),
     );
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let original = values.clone();
     for grammar in [false, true] {
         let result = if grammar {
-            parse_property_value_for_grammar(
-                CssKnownProperty::BackgroundImage.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(CssKnownProperty::BackgroundImage.grammar()),
                 values.clone(),
                 CssImportance::Normal,
             )
         } else {
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                    CssKnownProperty::BackgroundImage,
+                )),
                 values.clone(),
                 CssImportance::Normal,
             )
@@ -400,7 +416,7 @@ fn nested_src_and_repeating_gradient_pairs_cross_real_image_consumers_without_br
                 expected
             );
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&declaration).unwrap()
+                declaration.expand().unwrap()
             else {
                 panic!("ordinary image longhand")
             };
@@ -417,14 +433,15 @@ fn nested_src_and_repeating_gradient_pairs_cross_real_image_consumers_without_br
 
 #[test]
 fn image_reentry_keeps_nested_numeric_origins_and_retries_after_invalid_whole_replacement() {
-    let report = parse_style_attribute("/*😀*/list-style-image:var(--art)!important");
+    let report =
+        CssParser::default().parse_block_contents("/*😀*/list-style-image:var(--art)!important");
     assert!(report.is_clean());
     let source = &report.syntax()[0];
-    let CssExpansion::Pending(pending) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("whole symbolic image replacement")
     };
     let text = "light-dark(src(\"#art\"), repeating-radial-gradient(red -10%, 40%, blue 120%))";
-    let replacement = parse_component_values(text).unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let before = replacement.clone();
     for invalid in [
         "light-dark(src(\"#art\"), repeating-radial-gradient(red,))",
@@ -432,7 +449,7 @@ fn image_reentry_keeps_nested_numeric_origins_and_retries_after_invalid_whole_re
     ] {
         assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some()

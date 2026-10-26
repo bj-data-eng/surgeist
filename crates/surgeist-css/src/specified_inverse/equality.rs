@@ -732,7 +732,8 @@ mod linear_equality_tests {
     use super::*;
 
     fn easing(source: &str) -> CssEasing {
-        let report = crate::parse_style_attribute(&format!("transition-timing-function:{source}"));
+        let report = crate::CssParser::default()
+            .parse_block_contents(format!("transition-timing-function:{source}"));
         assert!(report.is_clean());
         let CssKnownPropertyValueRef::TransitionTimingFunction(value) = report.syntax()[0]
             .known()

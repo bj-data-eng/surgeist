@@ -84,8 +84,7 @@ fn context(
     }
 }
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("completed longhands")
     };
@@ -190,9 +189,10 @@ fn all_selected_blend_and_isolation_keywords_reach_typed_views_through_three_fro
                 css.to_ascii_uppercase()
             ));
             let grammar = checked(property, css);
-            let named = parse_property_value(
-                CssPropertyNameRef::Known(property),
-                parse_component_values(css).unwrap(),
+            let named = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+                CssComponentValues::parse(&CssParser::default(), css).unwrap(),
                 CssImportance::Important,
             )
             .unwrap();
@@ -250,9 +250,10 @@ fn sixty_four_authored_blend_entries_keep_every_index_duplicate_and_decoded_orde
     for source in [
         parsed(&format!("background-blend-mode:{css}!important")),
         checked(P::BackgroundBlendMode, &css),
-        parse_property_value(
-            CssPropertyNameRef::Known(P::BackgroundBlendMode),
-            parse_component_values(&css).unwrap(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(P::BackgroundBlendMode)),
+            CssComponentValues::parse(&CssParser::default(), &css).unwrap(),
             CssImportance::Important,
         )
         .unwrap(),
@@ -296,7 +297,7 @@ fn sixty_four_authored_blend_entries_keep_every_index_duplicate_and_decoded_orde
 #[test]
 fn checked_programmatic_keywords_preserve_component_origins_and_original_grammar() {
     for (property, css) in FAMILY {
-        let parsed_components = parse_component_values(css).unwrap();
+        let parsed_components = CssComponentValues::parse(&CssParser::default(), css).unwrap();
         let mut items = parsed_components.items().to_vec();
         let last = items
             .iter()
@@ -318,14 +319,16 @@ fn checked_programmatic_keywords_preserve_component_origins_and_original_grammar
         items[last] = programmatic.clone();
         let components = CssComponentValues::try_new(items, Default::default()).unwrap();
         for source in [
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Important,
             )
             .unwrap(),
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Important,
             )
@@ -376,18 +379,20 @@ fn pending_family_handles_retry_strict_original_eof_grammar_residual_and_provide
                 "/*😀*/{}:var(--mode)!important",
                 property.canonical_name()
             )),
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 programmatic.clone(),
                 CssImportance::Important,
             )
             .unwrap(),
         ] {
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("pending")
             };
             let recovered_text = format!("{good}/*");
-            let recovered = parse_component_values(&recovered_text).unwrap();
+            let recovered =
+                CssComponentValues::parse(&CssParser::default(), &recovered_text).unwrap();
             let origin = eof_closure_origin(&recovered, &recovered_text);
             let before = recovered.clone();
             let error = handle.reenter(recovered.clone()).unwrap_err();
@@ -397,9 +402,10 @@ fn pending_family_handles_retry_strict_original_eof_grammar_residual_and_provide
             assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
             assert_eq!(error.origin(), CssSerializedOrigin::End(Some(origin)));
             assert_eq!(recovered, before);
-            let invalid = parse_component_values("plus-lighter").unwrap();
-            let expected = parse_property_value_for_grammar(
-                property.grammar(),
+            let invalid = CssComponentValues::parse(&CssParser::default(), "plus-lighter").unwrap();
+            let expected = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 invalid.clone(),
                 CssImportance::Normal,
             )
@@ -411,11 +417,13 @@ fn pending_family_handles_retry_strict_original_eof_grammar_residual_and_provide
             assert_eq!(error, &expected);
             assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
                     .is_residual_substitution()
             );
-            let replacement = parse_component_values(good).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), good).unwrap();
             let CssContributions::Longhands(first) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("completed replacement")
@@ -569,7 +577,7 @@ fn ordinary_background_resets_to_one_normal_independently_of_layer_or_explicit_l
 #[test]
 fn global_and_pending_backgrounds_keep_nine_terminals_and_reset_replacement_context() {
     let source = parsed("/*😀*/background:var(--layers)!important");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending background")
     };
     for (css, keyword) in GLOBALS {
@@ -586,7 +594,7 @@ fn global_and_pending_backgrounds_keep_nine_terminals_and_reset_replacement_cont
         for item in values.items() {
             assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
         }
-        let replacement = parse_component_values(css).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), css).unwrap();
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
             panic!("global replacement")
@@ -607,7 +615,7 @@ fn global_and_pending_backgrounds_keep_nine_terminals_and_reset_replacement_cont
     for bad in ["red, none", "none,", "/cover"] {
         assert!(
             handle
-                .reenter(parse_component_values(bad).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), bad).unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some()
@@ -615,7 +623,7 @@ fn global_and_pending_backgrounds_keep_nine_terminals_and_reset_replacement_cont
     }
     assert!(
         handle
-            .reenter(parse_component_values("env(layers)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "env(layers)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
@@ -647,14 +655,12 @@ fn global_and_pending_backgrounds_keep_nine_terminals_and_reset_replacement_cont
 
 #[test]
 fn normalized_order_counts_the_singleton_reset_and_recovers_atomically_at_one_short() {
-    let report = parse_sheet(
-        ".a{background-blend-mode:screen,multiply!important;background:none, red!important}.b{isolation:var(--isolation)}",
-    );
+    let report = CssParser::default().parse_sheet(".a{background-blend-mode:screen,multiply!important;background:none, red!important}.b{isolation:var(--isolation)}");
     assert!(report.is_clean());
     let before = report.clone();
     // One explicit list, nine Background terminals, one pending occurrence.
     let exact = CssNormalizationLimits::try_new(0, 2, 3, 11).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -697,11 +703,10 @@ fn normalized_order_counts_the_singleton_reset_and_recovers_atomically_at_one_sh
         CssExpansion::Pending(_)
     ));
     for (budget, order) in [(9, 1), (10, 2)] {
-        let error = normalize_sheet_with_limits(
-            report.syntax(),
-            CssNormalizationLimits::try_new(0, 2, 3, budget).unwrap(),
-        )
-        .unwrap_err();
+        let error = report
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(0, 2, 3, budget).unwrap())
+            .unwrap_err();
         assert_eq!(
             error.exhausted_limit(),
             Some((CssNormalizationResource::Contributions, budget))
@@ -714,7 +719,7 @@ fn normalized_order_counts_the_singleton_reset_and_recovers_atomically_at_one_sh
                 .same_occurrence(declarations[order].source())
         );
         assert_eq!(report, before);
-        assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+        assert!(report.syntax().normalize(exact).is_ok());
     }
 }
 
@@ -722,11 +727,11 @@ fn normalized_order_counts_the_singleton_reset_and_recovers_atomically_at_one_sh
 fn browser_recovered_comments_preserve_typed_payloads_and_unclean_report_normalization() {
     for (property, css) in FAMILY {
         let source = format!(".a{{{}:{css}/*", property.canonical_name());
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean());
         let before = report.clone();
         let exact = CssNormalizationLimits::try_new(0, 1, 1, 1).unwrap();
-        let normalized = normalize_report_with_limits(&report, exact).unwrap();
+        let normalized = report.normalize(exact).unwrap();
         assert!(!normalized.is_clean());
         assert_eq!(normalized.diagnostics(), report.diagnostics());
         let declaration = normalized
@@ -754,13 +759,15 @@ fn browser_recovered_comments_preserve_typed_payloads_and_unclean_report_normali
         let components = declaration.source().value_components().clone();
         let origin = eof_closure_origin(&components, &source);
         for result in [
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Important,
             ),
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Important,
             ),
@@ -770,11 +777,9 @@ fn browser_recovered_comments_preserve_typed_payloads_and_unclean_report_normali
                 CssSerializedOrigin::End(Some(origin.clone()))
             );
         }
-        let error = normalize_report_with_limits(
-            &report,
-            CssNormalizationLimits::try_new(0, 1, 1, 0).unwrap(),
-        )
-        .unwrap_err();
+        let error = report
+            .normalize(CssNormalizationLimits::try_new(0, 1, 1, 0).unwrap())
+            .unwrap_err();
         assert_eq!(
             error.exhausted_limit(),
             Some((CssNormalizationResource::Contributions, 0))
@@ -786,6 +791,6 @@ fn browser_recovered_comments_preserve_typed_payloads_and_unclean_report_normali
                 .same_occurrence(declaration.source())
         );
         assert_eq!(report, before);
-        assert!(normalize_report_with_limits(&report, exact).is_ok());
+        assert!(report.normalize(exact).is_ok());
     }
 }

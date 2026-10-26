@@ -14,7 +14,7 @@ macro_rules! cases {
             assert_eq!(value.serialize_specified(Default::default()).unwrap(), expected);
             assert_node_limits(expected, 1, |limits| value.serialize_specified(limits));
             let authored = expected.to_ascii_uppercase();
-            let report = parse_declaration(&format!("{}:{}!important", $property, authored));
+            let report = CssDeclaration::parse(&CssParser::default(), &format!("{}:{}!important", $property, authored));
             assert!(report.is_clean(), "{}:{}: {:?}", $property, authored, report.diagnostics());
             let declaration = report.syntax().as_ref().unwrap();
             let CssKnownPropertyValueRef::$view(wrapper) = declaration.known().unwrap().property_value().unwrap()
@@ -318,7 +318,8 @@ fn transform_box_checked_edges_emit_canonical_keywords() {
 
 #[test]
 fn escaped_keyword_identity_canonicalizes_without_changing_authored_text() {
-    let report = parse_declaration(r"object-fit:s\63 ale-down!important");
+    let report =
+        CssDeclaration::parse(&CssParser::default(), r"object-fit:s\63 ale-down!important");
     assert!(report.is_clean());
     let declaration = report.syntax().as_ref().unwrap();
     let CssKnownPropertyValueRef::ObjectFit(wrapper) =

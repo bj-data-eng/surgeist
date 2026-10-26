@@ -9,24 +9,8 @@ use crate::syntax_consumption::{
 use crate::{CssParseReport, CssRecoveryAction, CssRecoveryDiagnostic};
 use std::borrow::Cow;
 
-/// Parses exactly one authored component, ignoring outer whitespace and comments.
-///
-/// Empty input, extra nontrivia components, and checked lexical failures return
-/// `None` with original-source diagnostics. Functions and blocks closed by EOF
-/// remain available with implicit closure origins and recovery diagnostics;
-/// such reports fail clean-report validation. This entry selects no value grammar.
 #[must_use]
-pub fn parse_component_value(source: &str) -> CssParseReport<Option<CssComponentValue>> {
-    parse_component_value_with_limits(source, CssComponentValueLimits::default())
-}
-
-/// Parses one authored component under whole-input resource limits.
-///
-/// Limits include all source bytes and components, including ignored outer
-/// trivia, and the generated spelling of the retained component. A resource
-/// failure rejects the complete input without retaining a partial component.
-#[must_use]
-pub fn parse_component_value_with_limits(
+pub(crate) fn parse_component_value_with_limits(
     source: &str,
     limits: CssComponentValueLimits,
 ) -> CssParseReport<Option<CssComponentValue>> {
@@ -52,29 +36,8 @@ pub fn parse_component_value_with_limits(
     crate::parser::finish_report(source, report)
 }
 
-/// Parses authored component lists separated by top-level comma tokens.
-///
-/// Every raw segment has one slot. Empty segments are valid empty lists,
-/// including empty input and the final segment after a trailing comma. Segment
-/// whitespace and comments are retained; nested commas do not split groups.
-/// A checked lexical failure produces `None` only for its segment, with a
-/// diagnostic spanning that segment. Implicit EOF closures retain syntax and
-/// diagnostics, so clean-report validation fails. No caller grammar is selected.
 #[must_use]
-pub fn parse_comma_separated_component_values(
-    source: &str,
-) -> CssParseReport<Vec<Option<CssComponentValues>>> {
-    parse_comma_separated_component_values_with_limits(source, CssComponentValueLimits::default())
-}
-
-/// Parses comma-separated authored lists under whole-input resource limits.
-///
-/// Source bytes, aggregate components and nesting are admitted once for the
-/// complete input, including separating commas and trivia. Generated spelling
-/// bytes are bounded across retained lists and separators. Any resource failure
-/// rejects the complete input and returns no slots.
-#[must_use]
-pub fn parse_comma_separated_component_values_with_limits(
+pub(crate) fn parse_comma_separated_component_values_with_limits(
     source: &str,
     limits: CssComponentValueLimits,
 ) -> CssParseReport<Vec<Option<CssComponentValues>>> {

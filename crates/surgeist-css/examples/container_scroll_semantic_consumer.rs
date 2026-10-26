@@ -4,8 +4,11 @@ use surgeist_css::*;
 
 fn main() {
     let condition = CssCondition::<CssContainerLeaf>::try_from_components(
-        parse_component_values("scroll-state((stuck: top) and (snapped: var(--axis, both)))")
-            .unwrap(),
+        CssComponentValues::parse(
+            &CssParser::default(),
+            "scroll-state((stuck: top) and (snapped: var(--axis, both)))",
+        )
+        .unwrap(),
         Default::default(),
     )
     .unwrap();

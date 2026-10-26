@@ -51,7 +51,9 @@ pub fn source_position(line: u32, column: u32) -> CssSourcePosition {
         "\n".repeat(line as usize),
         " ".repeat(column as usize)
     );
-    let error = parse_sheet(&source).expect_err("an unknown at-rule is diagnosed");
+    let error = CssParser::default()
+        .parse_sheet(&source)
+        .expect_err("an unknown at-rule is diagnosed");
     let position = error.position();
     assert_eq!(
         (
@@ -110,7 +112,9 @@ pub fn declaration_property(declaration: &CssDeclaration) -> Option<CssKnownProp
 
 /// The first declaration of `property` in the first style rule of a clean sheet.
 pub fn declaration(input: &str, property: CssKnownProperty) -> CssDeclaration {
-    let sheet = parse_sheet(input).expect("clean stylesheet");
+    let sheet = CssParser::default()
+        .parse_sheet(input)
+        .expect("clean stylesheet");
     style_rule(&sheet.rules()[0])
         .declarations()
         .iter()
@@ -121,7 +125,9 @@ pub fn declaration(input: &str, property: CssKnownProperty) -> CssDeclaration {
 
 /// The sole declaration of the sole style rule of a clean sheet.
 pub fn single_declaration(input: &str) -> CssDeclaration {
-    let sheet = parse_sheet(input).expect("clean stylesheet");
+    let sheet = CssParser::default()
+        .parse_sheet(input)
+        .expect("clean stylesheet");
     let [rule] = sheet.rules() else {
         panic!("{input} should parse exactly one rule");
     };
@@ -223,7 +229,7 @@ pub fn exact_percentage(component: Option<&CssComponentValue>, representation: &
 }
 
 pub fn signed_length(css: &str) -> CssNumeric<CssLength> {
-    let components = parse_component_values(css).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), css).unwrap();
     if css.contains('(') {
         CssNumeric::<CssLength>::try_from_calculation(
             CssCalculation::<CssLength>::try_from_components(components, Default::default())
@@ -237,7 +243,7 @@ pub fn signed_length(css: &str) -> CssNumeric<CssLength> {
 }
 
 pub fn nonnegative_length(css: &str) -> CssNumeric<CssLength, CssNonNegative> {
-    let components = parse_component_values(css).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), css).unwrap();
     if css.contains('(') {
         CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
             CssCalculation::<CssLength>::try_from_components(components, Default::default())
@@ -253,7 +259,7 @@ pub fn nonnegative_length(css: &str) -> CssNumeric<CssLength, CssNonNegative> {
 }
 
 pub fn signed_length_percentage(css: &str) -> CssNumeric<CssLengthPercentage> {
-    let components = parse_component_values(css).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), css).unwrap();
     if css.contains('(') {
         CssNumeric::<CssLengthPercentage>::try_from_calculation(
             CssCalculation::<CssLengthPercentage>::try_from_components(
@@ -272,7 +278,7 @@ pub fn signed_length_percentage(css: &str) -> CssNumeric<CssLengthPercentage> {
 }
 
 pub fn nonnegative_length_percentage(css: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
-    let components = parse_component_values(css).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), css).unwrap();
     if css.contains('(') {
         CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
             CssCalculation::<CssLengthPercentage>::try_from_components(
@@ -362,7 +368,9 @@ fn expected_property(name: &str, label: &str) -> Option<CssKnownProperty> {
 /// The first diagnostic of `input`, which must match `expected_error`.
 #[track_caller]
 pub fn assert_sheet_rejected(input: &str, expected_error: &ExpectedErrorKind) -> CssError {
-    let error = parse_sheet(input).expect_err("invalid CSS must report a diagnostic");
+    let error = CssParser::default()
+        .parse_sheet(input)
+        .expect_err("invalid CSS must report a diagnostic");
     expected_error.assert_matches(&error, input);
     error
 }
@@ -376,7 +384,9 @@ pub struct RejectedSheetCase {
 impl RejectedSheetCase {
     #[track_caller]
     pub fn assert_rejects(&self) -> CssError {
-        let error = parse_sheet(self.input).expect_err("invalid CSS must report a diagnostic");
+        let error = CssParser::default()
+            .parse_sheet(self.input)
+            .expect_err("invalid CSS must report a diagnostic");
         self.expected_error.assert_matches(&error, self.label);
         error
     }
@@ -467,7 +477,7 @@ pub fn assert_rejects_sheets(cases: &[RejectedSheetCase]) {
 /// that diagnostic.
 #[track_caller]
 pub fn assert_drops_sole_declaration(input: &str) -> CssError {
-    let report = parse_sheet(input);
+    let report = CssParser::default().parse_sheet(input);
     let [diagnostic] = report.diagnostics() else {
         panic!(
             "{input}: exactly one diagnostic: {:?}",
@@ -498,7 +508,7 @@ pub fn assert_drops_sole_declaration(input: &str) -> CssError {
 /// `selector` token.
 #[track_caller]
 pub fn assert_drops_invalid_keyframe_block(input: &str, selector: &str) {
-    let report = parse_sheet(input);
+    let report = CssParser::default().parse_sheet(input);
     assert_eq!(
         report.diagnostics().len(),
         1,
@@ -631,7 +641,9 @@ pub fn assert_rejection_matches(input: &str, error: &CssError, expected: Rejecti
 /// expected typed rejection, and returns it.
 #[track_caller]
 pub fn assert_rejection(input: &str, expected: Rejection) -> CssError {
-    let error = parse_sheet(input).expect_err("invalid CSS must report a diagnostic");
+    let error = CssParser::default()
+        .parse_sheet(input)
+        .expect_err("invalid CSS must report a diagnostic");
     assert_rejection_matches(input, &error, expected);
     error
 }

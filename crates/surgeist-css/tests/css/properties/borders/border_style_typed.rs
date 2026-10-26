@@ -181,7 +181,7 @@ fn parsed_styles_retain_authored_roles_and_arity() {
             vec![CssLineStyle::Solid, CssLineStyle::Dashed],
         ),
     ] {
-        let report = parse_style_attribute(css);
+        let report = CssParser::default().parse_block_contents(css);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let CssKnownPropertyValueRef::BorderStyle(value) = report.syntax()[0]
             .known()
@@ -204,7 +204,7 @@ fn parsed_styles_retain_authored_roles_and_arity() {
         );
     }
 
-    let report = parse_style_attribute("border-block-style:dotted dashed");
+    let report = CssParser::default().parse_block_contents("border-block-style:dotted dashed");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderBlockStyle(value) = report.syntax()[0]
         .known()

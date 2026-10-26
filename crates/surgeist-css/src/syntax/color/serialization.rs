@@ -2464,9 +2464,10 @@ mod suppressed_color_output_tests {
     use crate::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
 
     fn assert_suppressed_color(source: &str) {
-        let declaration = crate::parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
-            crate::parse_component_values(source).unwrap(),
+        let declaration = crate::CssDeclaration::try_from_components(
+            &crate::CssParser::default(),
+            crate::CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+            crate::component_values::parse_component_values(source).unwrap(),
             crate::CssImportance::Normal,
         )
         .unwrap();
@@ -2533,9 +2534,10 @@ mod suppressed_color_semantics_tests {
     use crate::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
 
     fn color(source: &str) -> CssColor {
-        let declaration = crate::parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
-            crate::parse_component_values(source).unwrap(),
+        let declaration = crate::CssDeclaration::try_from_components(
+            &crate::CssParser::default(),
+            crate::CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+            crate::component_values::parse_component_values(source).unwrap(),
             crate::CssImportance::Important,
         )
         .unwrap_or_else(|error| panic!("{source}: {error:?}"));
@@ -2791,9 +2793,10 @@ mod declared_literal_tests {
     use crate::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
 
     fn checked_color(source: &str) -> CssColor {
-        let declaration = crate::parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
-            crate::parse_component_values(source).unwrap(),
+        let declaration = crate::CssDeclaration::try_from_components(
+            &crate::CssParser::default(),
+            crate::CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+            crate::component_values::parse_component_values(source).unwrap(),
             crate::CssImportance::Normal,
         )
         .unwrap();

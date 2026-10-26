@@ -346,7 +346,7 @@ fn two_symbolic_integers_share_the_css_byte_budget_without_resolution() {
     let calculation = || {
         CssNumeric::<CssInteger>::try_from_calculation(
             CssCalculation::<CssInteger>::try_from_components(
-                parse_component_values("calc(2.5)").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "calc(2.5)").unwrap(),
                 Default::default(),
             )
             .unwrap(),

@@ -689,7 +689,7 @@ mod composed_value_tests {
         let math = crate::CssFlowTolerance::length_percentage(
             crate::CssNumeric::<crate::CssLengthPercentage>::try_from_calculation(
                 crate::CssCalculation::<crate::CssLengthPercentage>::try_from_components(
-                    crate::parse_component_values("calc(1px + 2em)").unwrap(),
+                    crate::component_values::parse_component_values("calc(1px + 2em)").unwrap(),
                     Default::default(),
                 )
                 .unwrap(),
@@ -774,7 +774,7 @@ mod composed_value_tests {
         // A math root; a bare root would re-enter literal admission.
         let calculation = CssNumeric::<CssInteger>::try_from_calculation(
             CssCalculation::try_from_components(
-                crate::parse_component_values("calc(2)").unwrap(),
+                crate::component_values::parse_component_values("calc(2)").unwrap(),
                 Default::default(),
             )
             .unwrap(),

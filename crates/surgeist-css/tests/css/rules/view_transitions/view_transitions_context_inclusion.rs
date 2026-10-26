@@ -5,7 +5,11 @@ use surgeist_css::*;
 // Current remains outside ordinary permission (Selectors4/Pseudo4).
 #[test]
 fn ordinary_invalid_logical_proof_can_be_reused_by_named_descendant_but_not_search_text() {
-    let report = parse_selector(":is(:NoPe(&))", &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        ":is(:NoPe(&))",
+        &CssNamespaceContext::default(),
+    );
     assert!(report.diagnostics().iter().any(|diagnostic| {
         diagnostic.action() == CssRecoveryAction::PreserveInvalidSelectorListItem
     }));

@@ -636,7 +636,11 @@ fn background_effect_and_animation_constructors_reject_invalid_states() {
         .is_none()
     );
     for css in ["translate()", "translate3d(1px, 2px, 3px, 4px)"] {
-        assert!(!parse_style_attribute(&format!("transform: {css}")).is_clean());
+        assert!(
+            !CssParser::default()
+                .parse_block_contents(format!("transform: {css}"))
+                .is_clean()
+        );
     }
     assert_eq!(CssScaleValues::try_new(Vec::new()), None);
     assert_eq!(
@@ -673,8 +677,9 @@ fn background_effect_and_animation_constructors_reject_invalid_states() {
 
 #[test]
 fn background_effect_and_animation_property_families_accept_supported_values() {
-    let sheet = parse_sheet(
-        ".panel {
+    let sheet = CssParser::default()
+        .parse_sheet(
+            ".panel {
             background-image: none;
             background-position: center;
             background-size: contain;
@@ -717,8 +722,8 @@ fn background_effect_and_animation_property_families_accept_supported_values() {
             animation-play-state: paused;
             animation: fade 1s ease-in-out infinite alternate both running;
         }",
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
     let declarations = style_rule(&sheet.rules()[0]).declarations();
 
     for property in [
@@ -832,7 +837,9 @@ fn preserves_valid_position_keyword_forms_after_duplicate_axis_rejection() {
         ".panel { transform-origin: right bottom; }",
         ".panel { mask: url(mask.png) left top / contain no-repeat; }",
     ] {
-        parse_sheet(input).unwrap_or_else(|error| panic!("{input} should parse: {error}"));
+        CssParser::default()
+            .parse_sheet(input)
+            .unwrap_or_else(|error| panic!("{input} should parse: {error}"));
     }
 }
 

@@ -243,7 +243,7 @@ mod tests {
     use crate::{CssComponentValueError, CssComponentValueErrorKind, CssValueOrigin};
 
     fn with_input<R>(css: &str, run: impl FnOnce(&mut Parser<'_, '_>) -> R) -> R {
-        let values = crate::parse_component_values(css).unwrap();
+        let values = crate::component_values::parse_component_values(css).unwrap();
         let document = normalize(
             SyntaxInput::CheckedComponents(values.items()),
             SyntaxInputLimits::default(),

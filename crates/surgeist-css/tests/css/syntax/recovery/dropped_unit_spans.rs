@@ -5,7 +5,7 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-comment
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
-use surgeist_css::{CssParseReport, CssRecoveryAction, parse_sheet, parse_style_attribute};
+use surgeist_css::{CssParseReport, CssParser, CssRecoveryAction};
 
 // The unit is the last occurrence of its text: every earlier copy lies in a
 // comment, a string or a preceding rule.
@@ -53,7 +53,12 @@ fn a_dropped_top_level_unit_starts_after_a_comment_holding_its_text() {
             CssRecoveryAction::DropAtRule,
         ),
     ] {
-        assert_unit(&parse_sheet(source), source, unit, action);
+        assert_unit(
+            &CssParser::default().parse_sheet(source),
+            source,
+            unit,
+            action,
+        );
     }
 }
 
@@ -107,14 +112,19 @@ fn a_dropped_nested_unit_starts_after_a_comment_holding_its_text() {
             CssRecoveryAction::DropAtRule,
         ),
     ] {
-        assert_unit(&parse_sheet(source), source, unit, action);
+        assert_unit(
+            &CssParser::default().parse_sheet(source),
+            source,
+            unit,
+            action,
+        );
     }
 }
 
 #[test]
 fn a_dropped_style_attribute_at_rule_starts_after_a_comment_holding_its_text() {
     let source = "/*@x;*/@x; width: 2px";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
-    assert_unit(&report, source, "@x;", CssRecoveryAction::DropDeclaration);
+    assert_unit(&report, source, "@x;", CssRecoveryAction::DropAtRule);
 }

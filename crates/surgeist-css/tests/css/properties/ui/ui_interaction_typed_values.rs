@@ -84,7 +84,10 @@ fn logical_resize_variants_emit_authored_axes_and_enforce_exact_primitive_limits
         );
         for source in [
             declaration("resize", expected),
-            parse_style_attribute(&format!("resize:{expected}!important")).syntax()[0].clone(),
+            CssParser::default()
+                .parse_block_contents(format!("resize:{expected}!important"))
+                .syntax()[0]
+                .clone(),
         ] {
             let CssKnownPropertyValueRef::Resize(wrapper) =
                 source.known().unwrap().property_value().unwrap()
@@ -93,7 +96,7 @@ fn logical_resize_variants_emit_authored_axes_and_enforce_exact_primitive_limits
             };
             assert_eq!(*wrapper.value(), value);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("one logical Resize terminal")
             };
@@ -110,14 +113,12 @@ fn logical_resize_variants_emit_authored_axes_and_enforce_exact_primitive_limits
 
 #[test]
 fn new_ui_borrowed_views_preserve_complete_authored_payloads_and_occurrences() {
-    let report = parse_style_attribute(
-        "caret-color:contrast-color(hsl(0 100% 50%))!important;cursor:image-set(\"first.png\" type(\"not a MIME type\") 96.000dpi,url(second.png)) -3.500 +4.250, pointer!important;pointer-events:none!important;-webkit-user-select:contain!important;resize:inline!important",
-    );
+    let report = CssParser::default().parse_block_contents("caret-color:contrast-color(hsl(0 100% 50%))!important;cursor:image-set(\"first.png\" type(\"not a MIME type\") 96.000dpi,url(second.png)) -3.500 +4.250, pointer!important;pointer-events:none!important;-webkit-user-select:contain!important;resize:inline!important");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     for source in report.syntax().iter() {
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("ordinary UI terminal")
         };
@@ -146,13 +147,14 @@ fn new_ui_borrowed_views_retain_replacement_graphs_under_original_occurrences() 
     ] {
         let source = declaration(name, "var(--ui)");
         let before = source.clone();
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending UI occurrence")
         };
-        let replacement = parse_component_values(text).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let snapshot = replacement.clone();
-        let expected = parse_property_value_for_grammar(
-            source.known().unwrap().grammar(),
+        let expected = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(source.known().unwrap().grammar()),
             replacement.clone(),
             CssImportance::Important,
         )

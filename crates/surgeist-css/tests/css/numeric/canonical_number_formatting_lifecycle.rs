@@ -10,7 +10,7 @@ use crate::css::support::value_assertions::literal_specified;
 use surgeist_css::*;
 
 fn component(source: &str) -> CssComponentValue {
-    let values = parse_component_values(source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let [value] = values.items() else {
         panic!("one component: {source}")
     };
@@ -356,7 +356,7 @@ fn calculation_text_keeps_its_node_and_byte_budgets() {
     use crate::css::support::failure_classes::SerializationFailure as K;
     use CssSerializationLimits as L;
     let calculation = CssCalculation::<CssFrequency>::try_from_components(
-        parse_component_values("calc(1hz + 2hz)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(1hz + 2hz)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -389,7 +389,7 @@ fn calculation_text_keeps_its_node_and_byte_budgets() {
     }
     let math = CssNumeric::<CssNumber>::try_from_calculation(
         CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values("calc(1 / 3)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(1 / 3)").unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -403,9 +403,10 @@ fn calculation_text_keeps_its_node_and_byte_budgets() {
 
 #[test]
 fn integer_color_and_signed_media_keep_their_distinct_public_text_contracts() {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Order),
-        parse_component_values("round(-2.5)").unwrap(),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Order)),
+        CssComponentValues::parse(&CssParser::default(), "round(-2.5)").unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -421,9 +422,14 @@ fn integer_color_and_signed_media_keep_their_distinct_public_text_contracts() {
             .unwrap(),
         "calc(-2)"
     );
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        parse_component_values("rgb(99.999999999999999999999999999999% 0 0)").unwrap(),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+        CssComponentValues::parse(
+            &CssParser::default(),
+            "rgb(99.999999999999999999999999999999% 0 0)",
+        )
+        .unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -439,7 +445,7 @@ fn integer_color_and_signed_media_keep_their_distinct_public_text_contracts() {
             .unwrap(),
         "rgb(254.99999999999999999999999999999745, 0, 0)"
     );
-    let report = parse_media_query("(width: -0.12345649px)");
+    let report = CssMediaQuery::parse(&CssParser::default(), "(width: -0.12345649px)");
     assert!(report.is_clean());
     let query = report.syntax();
     let before = query.clone();
@@ -457,15 +463,16 @@ mod composed_ordinary_values {
     use CssSerializationLimits as L;
 
     fn declaration(property: CssKnownProperty, authored: &str) -> CssDeclaration {
-        let report = parse_style_attribute(&format!(
+        let report = CssParser::default().parse_block_contents(format!(
             "{}:{authored}!important",
             property.canonical_name()
         ));
         assert!(report.is_clean(), "{authored}: {:?}", report.diagnostics());
         let parsed = report.syntax()[0].clone();
-        let components = parse_component_values(authored).unwrap();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let components = CssComponentValues::parse(&CssParser::default(), authored).unwrap();
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components.clone(),
             CssImportance::Important,
         )
@@ -649,9 +656,7 @@ mod composed_ordinary_values {
 
     #[test]
     fn timing_and_easing_preserve_list_identity_while_their_children_round() {
-        let report = parse_style_attribute(
-            "transition-duration:0.0001ms,1.1234565s;transition-delay:-0.0001ms;transition-timing-function:cubic-bezier(.12345649,-.1234565,.9999996,.1234565)",
-        );
+        let report = CssParser::default().parse_block_contents("transition-duration:0.0001ms,1.1234565s;transition-delay:-0.0001ms;transition-timing-function:cubic-bezier(.12345649,-.1234565,.9999996,.1234565)");
         assert!(report.is_clean());
         let declarations = report.syntax();
         let before = declarations.clone();

@@ -204,7 +204,7 @@ fn child_equality_and_lifetimes_do_not_depend_on_unrelated_siblings() {
 
 #[test]
 fn original_token_boundaries_survive_recognized_style_serialization() {
-    let numeric = parse_component_values("/*😀*/1")
+    let numeric = CssComponentValues::parse(&CssParser::default(), "/*😀*/1")
         .unwrap()
         .items()
         .last()
@@ -236,7 +236,7 @@ fn original_token_boundaries_survive_recognized_style_serialization() {
 #[test]
 fn checked_resource_limits_apply_before_recognized_and_opaque_classification() {
     for source in ["(width:1px)", "style(--x)", "Future()", "((width:1px))"] {
-        let components = parse_component_values(source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let exact = CssComponentValueLimits::try_new(
             components.nesting_depth(),
             components.component_count(),
@@ -295,7 +295,7 @@ fn checked_resource_limits_apply_before_recognized_and_opaque_classification() {
 
 #[test]
 fn trusted_enclosure_recovery_preserves_recognized_grouping_and_closure_origins() {
-    let components = parse_component_values("((width:1px").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "((width:1px").unwrap();
     let from_components = CssCondition::<CssContainerLeaf>::try_from_components(
         components.clone(),
         Default::default(),

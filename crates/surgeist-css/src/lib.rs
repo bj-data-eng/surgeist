@@ -3,7 +3,7 @@
 #![recursion_limit = "512"]
 //! Browser-recovering CSS ingestion for Surgeist.
 //!
-//! [`parse_sheet`] and [`parse_style_attribute`] parse UTF-8 input into CSS-owned
+//! `CssParser::parse_sheet` and `CssParser::parse_block_contents` parse UTF-8 input into CSS-owned
 //! authored syntax plus every structured recovery diagnostic in source order.
 //! Retained nodes are valid by construction. Unsupported or malformed source
 //! units are recovered at their grammar boundary so later valid siblings remain
@@ -16,11 +16,9 @@
 //! # Stylesheets and recovery
 //!
 //! ```
-//! use surgeist_css::{CssErrorCode, CssRecoveryAction, CssRule, parse_sheet};
+//! use surgeist_css::{CssErrorCode, CssRecoveryAction, CssRule, CssParser};
 //!
-//! let report = parse_sheet(
-//!     ".before { color: red; } @unknown value; .after { color: blue; }",
-//! );
+//! let report = CssParser::default().parse_sheet(".before { color: red; } @unknown value; .after { color: blue; }");
 //! assert_eq!(report.syntax().rules().len(), 2);
 //! assert!(matches!(report.syntax().rules()[0], CssRule::Style(_)));
 //! let diagnostic = &report.diagnostics()[0];
@@ -35,9 +33,9 @@
 //! after a nested rule without selecting cascade winners or expanding parent selectors.
 //!
 //! ```
-//! use surgeist_css::{CssRule, parse_sheet};
+//! use surgeist_css::{CssRule, CssParser};
 //!
-//! let report = parse_sheet(".card, #featured { color: red; &:hover { opacity: 1; } color: blue; }");
+//! let report = CssParser::default().parse_sheet(".card, #featured { color: red; &:hover { opacity: 1; } color: blue; }");
 //! assert!(report.is_clean());
 //! let [CssRule::Style(parent)] = report.syntax().rules() else { unreachable!() };
 //! assert_eq!(parent.selectors().selectors().len(), 2);
@@ -57,13 +55,9 @@
 //! and terminal [`CssImportance`].
 //!
 //! ```
-//! use surgeist_css::{
-//!     CssImportance, CssKnownProperty, CssPropertyNameRef, parse_style_attribute,
-//! };
+//! use surgeist_css::{CssImportance, CssKnownProperty, CssPropertyNameRef, CssParser};
 //!
-//! let report = parse_style_attribute(
-//!     "--Theme: RGB(1, 2, var(--fallback)); mystery: 1; width: var(--size, 2px) !important",
-//! );
+//! let report = CssParser::default().parse_block_contents("--Theme: RGB(1, 2, var(--fallback)); mystery: 1; width: var(--size, 2px) !important");
 //! assert_eq!(report.syntax().len(), 2);
 //! assert_eq!(report.diagnostics().len(), 1);
 //! assert_eq!(
@@ -92,7 +86,7 @@
 //!
 //! # Declaration inspection and API evolution
 //!
-//! Parsing and [`parse_property_value`] construct [`CssKnownDeclaration`] through the same
+//! Parsing and `CssDeclaration::try_from_components` construct [`CssKnownDeclaration`] through the same
 //! property grammar. Its fields are private, and [`CssKnownDeclaration::property`] derives
 //! identity from the active coupled value, so callers cannot create a property/value mismatch.
 //! [`CssKnownDeclaration::declared_value`] returns exactly one of the
@@ -107,12 +101,9 @@
 //! variants:
 //!
 //! ```
-//! use surgeist_css::{
-//!     CssBoxSize, CssImportance, CssKnownDeclaredValueRef, CssKnownPropertyValueRef, CssSizeValue,
-//!     parse_style_attribute,
-//! };
+//! use surgeist_css::{CssBoxSize, CssImportance, CssKnownDeclaredValueRef, CssKnownPropertyValueRef, CssSizeValue, CssParser};
 //!
-//! let report = parse_style_attribute("width: calc(100% - 12px) !important");
+//! let report = CssParser::default().parse_block_contents("width: calc(100% - 12px) !important");
 //! let declaration = &report.syntax()[0];
 //! assert_eq!(declaration.importance(), CssImportance::Important);
 //! let known = declaration.known().expect("known declaration");
@@ -276,12 +267,9 @@
 //! [`CssNumeric<CssLength>`] length.
 //!
 //! ```
-//! use surgeist_css::{
-//!     CssHorizontalPosition, CssKnownPropertyValueRef, CssPositionRef, CssVerticalPosition,
-//!     parse_style_attribute,
-//! };
+//! use surgeist_css::{CssHorizontalPosition, CssKnownPropertyValueRef, CssPositionRef, CssVerticalPosition, CssParser};
 //!
-//! let report = parse_style_attribute(concat!(
+//! let report = CssParser::default().parse_block_contents(concat!(
 //!     "background-position: left 10px top; ",
 //!     "mask-position: right 5% bottom 2px; ",
 //!     "object-position: center 25%; ",
@@ -416,13 +404,9 @@
 //! These operations preserve symbolic math/colors and diagnostic origins.
 //!
 //! ```
-//! use surgeist_css::{
-//!     CssBasicShape, CssClipPath, CssFilterFunction, CssFilter,
-//!     CssKnownPropertyValueRef, CssTransformFunction, CssTransform,
-//!     parse_style_attribute,
-//! };
+//! use surgeist_css::{CssBasicShape, CssClipPath, CssFilterFunction, CssFilter, CssKnownPropertyValueRef, CssTransformFunction, CssTransform, CssParser};
 //!
-//! let report = parse_style_attribute(concat!(
+//! let report = CssParser::default().parse_block_contents(concat!(
 //!     "transform: translate3d(10%, 2px, 4em) rotate(45deg); ",
 //!     "filter: blur(2px) drop-shadow(red 1px 2px 3px); ",
 //!     "clip-path: polygon(round 2px, 0 0, 100% 0)",
@@ -552,9 +536,9 @@
 //! It returns `None` for representations outside this fixed keyword projection.
 //!
 //! ```
-//! use surgeist_css::{CssKnownPropertyValueRef, CssSystemColor, parse_style_attribute};
+//! use surgeist_css::{CssKnownPropertyValueRef, CssSystemColor, CssParser};
 //!
-//! let report = parse_style_attribute("color: ActiveBorder; border: solid #fff");
+//! let report = CssParser::default().parse_block_contents("color: ActiveBorder; border: solid #fff");
 //! assert!(report.is_clean());
 //! let CssKnownPropertyValueRef::Color(color) = report.syntax()[0]
 //!     .known().unwrap().property_value().unwrap()
@@ -641,12 +625,9 @@
 //! preserves complete wrap/pack groups and emits all four constituents.
 //!
 //! ```rust
-//! use surgeist_css::{
-//!     CssKnownPropertyValueRef, CssItemWrap, CssItemWrapOrder,
-//!     parse_style_attribute,
-//! };
+//! use surgeist_css::{CssKnownPropertyValueRef, CssItemWrap, CssItemWrapOrder, CssParser};
 //!
-//! let report = parse_style_attribute("item-flow: balance dense reverse -2px row");
+//! let report = CssParser::default().parse_block_contents("item-flow: balance dense reverse -2px row");
 //! assert!(report.is_clean());
 //! let CssKnownPropertyValueRef::ItemFlow(flow) = report.syntax()[0]
 //!     .known().unwrap().property_value().unwrap()
@@ -669,17 +650,14 @@
 //! These values do not execute text processing or resolve contextual wrapping.
 //!
 //! ```rust
-//! use surgeist_css::{
-//!     CssKnownPropertyValueRef, CssTextWrap, CssTextWrapMode, CssTextWrapStyle,
-//!     CssWhiteSpaceKeyword, parse_style_attribute,
-//! };
+//! use surgeist_css::{CssKnownPropertyValueRef, CssTextWrap, CssTextWrapMode, CssTextWrapStyle, CssWhiteSpaceKeyword, CssParser};
 //!
 //! let wrapping = CssTextWrap::try_new(
 //!     Some(CssTextWrapMode::NoWrap), Some(CssTextWrapStyle::Balance),
 //! ).unwrap();
 //! assert_eq!(wrapping.serialize_specified(Default::default()).unwrap(), "nowrap balance");
 //! assert!(CssTextWrap::try_new(None, None).is_none());
-//! let report = parse_style_attribute("white-space: pre-wrap");
+//! let report = CssParser::default().parse_block_contents("white-space: pre-wrap");
 //! assert!(report.is_clean());
 //! let CssKnownPropertyValueRef::WhiteSpace(value) = report.syntax()[0]
 //!     .known().unwrap().property_value().unwrap()
@@ -706,10 +684,7 @@
 //! alignment and tab-stop execution belong to downstream owners.
 //!
 //! ```rust
-//! use surgeist_css::{
-//!     CssKnownPropertyValueRef, CssTabSize, CssTextTransform, CssTextTransformCase,
-//!     CssTextTransformSet, parse_style_attribute,
-//! };
+//! use surgeist_css::{CssKnownPropertyValueRef, CssTabSize, CssTextTransform, CssTextTransformCase, CssTextTransformSet, CssParser};
 //!
 //! let set = CssTextTransformSet::try_new(
 //!     Some(CssTextTransformCase::Uppercase), true, false,
@@ -721,7 +696,7 @@
 //! let transform = CssTextTransform::Transforms(set);
 //! assert_eq!(transform.serialize_specified(Default::default()).unwrap(), "uppercase full-width");
 //!
-//! let report = parse_style_attribute("text-transform:full-width uppercase;tab-size:0px");
+//! let report = CssParser::default().parse_block_contents("text-transform:full-width uppercase;tab-size:0px");
 //! assert!(report.is_clean());
 //! let CssKnownPropertyValueRef::TextTransform(value) = report.syntax()[0]
 //!     .known().unwrap().property_value().unwrap()
@@ -753,15 +728,10 @@
 //! [reference](https://github.com/bj-data-eng/surgeist/blob/main/crates/surgeist-css/docs/reference.md#authored-hyphenation-justification-and-spacing).
 //!
 //! ```rust
-//! use surgeist_css::{
-//!     CssContributions, CssExpansion, CssKnownProperty, expand_declaration,
-//!     parse_style_attribute,
-//! };
+//! use surgeist_css::{CssContributions, CssExpansion, CssKnownProperty, CssParser};
 //!
-//! let report = parse_style_attribute(
-//!     "hyphenate-limit-chars:auto 2;text-justify:no-compress distribute;\
-//!      text-spacing:replace punctuation trim-both",
-//! );
+//! let report = CssParser::default().parse_block_contents("hyphenate-limit-chars:auto 2;text-justify:no-compress distribute;\
+//!      text-spacing:replace punctuation trim-both");
 //! assert!(report.is_clean());
 //! assert_eq!(report.syntax()[0].serialize_specified(Default::default()).unwrap(),
 //!     "hyphenate-limit-chars: auto 2;");
@@ -770,7 +740,7 @@
 //! assert_eq!(report.syntax()[2].serialize_specified(Default::default()).unwrap(),
 //!     "text-spacing: trim-both punctuation replace;");
 //! let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-//!     expand_declaration(&report.syntax()[2]).unwrap()
+//!     report.syntax()[2].expand().unwrap()
 //! else { panic!("two spacing terminals") };
 //! assert_eq!(values.items().iter().map(|v| v.property()).collect::<Vec<_>>(),
 //!     [CssKnownProperty::TextSpacingTrim, CssKnownProperty::TextAutospace]);
@@ -811,12 +781,9 @@
 //! records identify the implemented grammar and its dated source.
 //!
 //! ```
-//! use surgeist_css::{
-//!     CssFontValue, CssKnownPropertyValueRef, CssSystemFont,
-//!     parse_style_attribute,
-//! };
+//! use surgeist_css::{CssFontValue, CssKnownPropertyValueRef, CssSystemFont, CssParser};
 //!
-//! let report = parse_style_attribute("font: menu; font-weight: 725");
+//! let report = CssParser::default().parse_block_contents("font: menu; font-weight: 725");
 //! assert!(report.is_clean());
 //! let CssKnownPropertyValueRef::Font(font) = report.syntax()[0]
 //!     .known().expect("known font")
@@ -976,13 +943,10 @@
 //! range processing remain unfinished.
 //!
 //! ```
-//! use surgeist_css::{
-//!     CssKnownPropertyValueRef, CssNonNegative, CssNumeric, CssNumericLiteral, CssTime,
-//!     CssTimeUnit, parse_style_attribute,
-//! };
+//! use surgeist_css::{CssKnownPropertyValueRef, CssNonNegative, CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit, CssParser};
 //! let negative = CssNumericLiteral::<CssTime>::try_new("-1", CssTimeUnit::Seconds).unwrap();
 //! assert!(CssNumeric::<CssTime, CssNonNegative>::try_from_literal(negative).is_err());
-//! let report = parse_style_attribute("transition-duration: calc(-1s + 2s); transition-delay: -250ms");
+//! let report = CssParser::default().parse_block_contents("transition-duration: calc(-1s + 2s); transition-delay: -250ms");
 //! assert!(report.is_clean());
 //! let CssKnownPropertyValueRef::TransitionDuration(duration) = report.syntax()[0]
 //!     .known().unwrap().property_value().unwrap() else { panic!("duration"); };
@@ -1011,11 +975,9 @@
 //! attributes are always `ExplicitNone`.
 //!
 //! ```
-//! use surgeist_css::{
-//!     CssNamespaceConstraint, CssPseudoElement, CssPseudoElementSegment, CssRule, CssSelector, parse_sheet,
-//! };
+//! use surgeist_css::{CssNamespaceConstraint, CssPseudoElement, CssPseudoElementSegment, CssRule, CssSelector, CssParser};
 //!
-//! let report = parse_sheet(concat!(
+//! let report = CssParser::default().parse_sheet(concat!(
 //!     "@namespace svg \"urn:svg\";",
 //!     "svg|a#first#second[|lang]::first-line { color: red; }",
 //! ));
@@ -1114,7 +1076,7 @@
 //! `bleed`) alongside applicable shared properties and custom values. Sixteen canonical
 //! margin-box rule names retain ordered children. Shared property grammars and symbolic
 //! values are reused, including font-relative lengths; no layout or variable lookup runs.
-//! [`parse_page_property_value`], [`parse_page_descriptor_value`], and [`parse_margin_block`]
+//! `CssDeclaration::try_from_components`, `CssPageDescriptorValue::parse`, and `CssBlockFragment::parse`
 //! check detached inputs with genuine origins. Checked selected blocks and borrowed
 //! [`CssPageRuleView`] support immutable edits without re-expanding authored shorthands.
 //! Page and margin CSSOM output follows the adopted Blink whole-rule wrapper under one
@@ -1122,9 +1084,9 @@
 //! inheritance resolution, and generated-marker execution remain downstream.
 //!
 //! ```
-//! use surgeist_css::{CssCounterStyleSystem, CssPagePseudo, CssRule, parse_sheet};
+//! use surgeist_css::{CssCounterStyleSystem, CssPagePseudo, CssRule, CssParser};
 //!
-//! let report = parse_sheet(concat!(
+//! let report = CssParser::default().parse_sheet(concat!(
 //!     "@counter-style digits { system: numeric; symbols: \"0\" \"1\"; suffix: \".\"; } ",
 //!     "@page :left { margin-left: -12mm; margin-right: 10%; }",
 //! ));
@@ -1179,12 +1141,9 @@
 //! cumulative limits and return no partial public result on failure.
 //!
 //! ```
-//! use surgeist_css::{
-//!     CssBlendMode, CssFeatureKind, CssKnownProperty, CssKnownPropertyValueRef,
-//!     CssSupportStatus, feature_metadata, parse_style_attribute,
-//! };
+//! use surgeist_css::{CssBlendMode, CssFeatureKind, CssKnownProperty, CssKnownPropertyValueRef, CssSupportStatus, feature_metadata, CssParser};
 //!
-//! let report = parse_style_attribute(concat!(
+//! let report = CssParser::default().parse_block_contents(concat!(
 //!     "border-spacing: 2px 3px; ",
 //!     "glyph-orientation-vertical: 90; ",
 //!     "background-blend-mode: multiply, luminosity",
@@ -1212,7 +1171,7 @@
 //!
 //! [`CssCondition<CssWhenLeaf>`] owns the adopted symbolic grammar: homogeneous boolean
 //! terms, explicit groups, single media-feature and supports-declaration leaves,
-//! and valid opaque enclosures. [`parse_when_condition`] returns checked syntax
+//! and valid opaque enclosures. `CssCondition::<CssWhenLeaf>::parse` returns checked syntax
 //! without evaluation. [`CssWhenRule`] and [`CssElseRule`] retain ordinary children;
 //! their scoped counterparts retain the separate scoped grammar. Parsed Else
 //! chains require original-token adjacency after complete recovery reconstruction.
@@ -1235,11 +1194,9 @@
 //! [`CssRecoveryAction::ReplaceMediaQueryWithNever`], allowing later comma siblings to survive.
 //!
 //! ```
-//! use surgeist_css::{
-//!     CssConditionKind, CssMediaLeaf, CssMediaQuery, CssRecoveryAction, CssRule, parse_sheet,
-//! };
+//! use surgeist_css::{CssConditionKind, CssMediaLeaf, CssMediaQuery, CssRecoveryAction, CssRule, CssParser};
 //!
-//! let report = parse_sheet("@media (future-mode: active), ???, print {}");
+//! let report = CssParser::default().parse_sheet("@media (future-mode: active), ???, print {}");
 //! let [CssRule::Media(media)] = report.syntax().rules() else {
 //!     panic!("expected retained media rule");
 //! };
@@ -1273,9 +1230,9 @@
 //! general-enclosed fallback; lexical and resource failures remain terminal.
 //!
 //! ```
-//! use surgeist_css::{CssConditionKind, CssRule, CssSupportsLeaf, parse_sheet};
+//! use surgeist_css::{CssConditionKind, CssRule, CssSupportsLeaf, CssParser};
 //!
-//! let report = parse_sheet(concat!(
+//! let report = CssParser::default().parse_sheet(concat!(
 //!     "@supports selector(.card > .item:hover) {}",
 //!     "@supports future-layout(mode) {}",
 //! ));
@@ -1303,9 +1260,9 @@
 //! evaluation, cascade, selector matching, and root/sibling lowering are downstream work.
 //!
 //! ```
-//! use surgeist_css::{CssConditionKind, CssImportLayer, CssRule, CssSupportsLeaf, parse_sheet};
+//! use surgeist_css::{CssConditionKind, CssImportLayer, CssRule, CssSupportsLeaf, CssParser};
 //!
-//! let report = parse_sheet(concat!(
+//! let report = CssParser::default().parse_sheet(concat!(
 //!     "@layer reset; ",
 //!     "@import url(theme.css) layer(theme) supports(display: grid) print;",
 //! ));
@@ -1431,12 +1388,9 @@
 //! without adding an authored input node.
 //!
 //! ```
-//! use surgeist_css::{
-//!     CssGradient, CssImageValue, CssKnownPropertyValueRef, CssSupportStatus,
-//!     feature_metadata, parse_style_attribute,
-//! };
+//! use surgeist_css::{CssGradient, CssImageValue, CssKnownPropertyValueRef, CssSupportStatus, feature_metadata, CssParser};
 //!
-//! let report = parse_style_attribute(concat!(
+//! let report = CssParser::default().parse_block_contents(concat!(
 //!     "background-image: linear-gradient(to right, red 0%, 40%, blue); ",
 //!     "border-image: url(frame.png) 10 fill / 2 / 1 round",
 //! ));
@@ -1482,12 +1436,9 @@
 //! are public Complete atomic metadata.
 //!
 //! ```
-//! use surgeist_css::{
-//!     CssColumnCount, CssFlexDirection, CssKnownPropertyValueRef, CssSupportStatus,
-//!     feature_metadata, parse_style_attribute,
-//! };
+//! use surgeist_css::{CssColumnCount, CssFlexDirection, CssKnownPropertyValueRef, CssSupportStatus, feature_metadata, CssParser};
 //!
-//! let report = parse_style_attribute("flex-flow: column wrap; columns: 3 12em");
+//! let report = CssParser::default().parse_block_contents("flex-flow: column wrap; columns: 3 12em");
 //! assert!(report.is_clean(), "{:?}", report.diagnostics());
 //!
 //! let CssKnownPropertyValueRef::FlexFlow(flow) = report.syntax()[0]
@@ -1594,7 +1545,7 @@
 //! and inventory boundaries do not change accepted CSS, retained syntax,
 //! diagnostics, positions, spans, or recovery actions.
 //!
-//! [`validate_sheet`] and [`validate_style_attribute`] are always available.
+//! `CssParseReport::into_validation_result` and `CssParseReport::into_validation_result` are always available.
 //! Each validator consumes ordinary parsing semantics
 //! and its report, accepts exactly a clean report, and otherwise preserves the
 //! complete non-empty diagnostic sequence in [`CssValidationFailure`]. The
@@ -1602,8 +1553,8 @@
 //!
 //! # Immutable stylesheet normalization
 //!
-//! [`normalize_sheet`] preserves an ordered stream of rule occurrences and
-//! grouped declaration contributions. [`normalize_report`] also retains every
+//! `CssSheet::normalize` preserves an ordered stream of rule occurrences and
+//! grouped declaration contributions. `CssParseReport::normalize` also retains every
 //! original recovery diagnostic. Shared rule and selector contexts preserve
 //! nesting, empty rules, conditions, imports, layers, scopes, and complete
 //! nonstyle payloads without multiplying selectors or selecting cascade winners.
@@ -1611,10 +1562,10 @@
 //! outside it fail atomically with [`CssNormalizationError`].
 //!
 //! ```
-//! use surgeist_css::{CssNormalizedItem, normalize_report, parse_sheet};
+//! use surgeist_css::{CssNormalizedItem, CssParser};
 //!
-//! let report = parse_sheet(".a, #b { margin-block: 1px; & .child { padding-block: 2px } }");
-//! let normalized = normalize_report(&report).expect("supported expansion");
+//! let report = CssParser::default().parse_sheet(".a, #b { margin-block: 1px; & .child { padding-block: 2px } }");
+//! let normalized = report.normalize(Default::default()).expect("supported expansion");
 //! assert!(normalized.is_clean());
 //! assert_eq!(normalized.syntax().items().len(), 4);
 //! let [CssNormalizedItem::Rule(_), CssNormalizedItem::Declaration(parent),
@@ -1694,7 +1645,9 @@ pub use counter_definition::{
     CssCounterStyleDescriptorCollection, CssCounterStyleDescriptorEntry,
 };
 mod descriptor_values;
-pub use block_fragments::{CssBlockFragment, CssRuleList, CssStyleAncestor};
+pub use block_fragments::{
+    CssBlockBody, CssBlockContext, CssBlockFragment, CssRuleList, CssStyleAncestor,
+};
 mod stylesheet_input;
 mod syntax_consumption;
 pub use descriptor_values::{
@@ -1826,7 +1779,7 @@ pub use color::{
     CssColorResolveError, CssColorSchemeFact, CssColorSlot, CssColorSlotReceipt,
     CssColorSourceDescriptor, CssColorStandardFailure, CssColorStandardFailureKind,
     CssColorTransform, CssColorUnavailable, CssColorUnsupported, CssColorWriteSlot,
-    CssDeviceColorFact, CssUsedColorCheckpoint, parse_used_color, resolve_authored_color,
+    CssDeviceColorFact, CssUsedColorCheckpoint, parse_used_color,
 };
 pub use utf16_value::{
     CssColorSchemeParseReport, CssUtf16PropertyValueLimits, CssUtf16ValueAdmission,
@@ -1979,9 +1932,7 @@ pub use svg_glyph::{
 };
 mod properties;
 mod property_value;
-pub use parser_context::{
-    CssParserContext, CssParserMode, parse_css_supports_condition, parse_css_supports_declaration,
-};
+pub use parser_context::{CssParser, CssParserContext, CssParserMode};
 mod report;
 mod source;
 mod source_retention;
@@ -2021,9 +1972,7 @@ pub use component_values::{
     CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueLimits,
     CssComponentValueRef, CssComponentValues, CssFunctionValue, CssHashFlag, CssNumericTokenKind,
     CssNumericTokenRef, CssSerializedOrigin, CssSerializedOriginSegment, CssSerializedValue,
-    CssSimpleBlock, CssValueOrigin, CssValueTokenRef, parse_comma_separated_component_values,
-    parse_comma_separated_component_values_with_limits, parse_component_value,
-    parse_component_value_with_limits, parse_component_values, parse_component_values_with_limits,
+    CssSimpleBlock, CssValueOrigin, CssValueTokenRef,
 };
 pub use conformance::*;
 pub use content_values::*;
@@ -2040,7 +1989,7 @@ pub use expansion::{
     CssLonghandValue, CssLonghandValueRef, CssPendingSubstitution, CssPropertyKindRef,
     CssPropertyMetadata, CssPropertyMetadataError, CssShorthandMetadata,
     CssSvgGlyphOrientationVerticalContribution, CssUniversalReset, CssUniversalResetMetadata,
-    CssUserAgentInitial, expand_declaration,
+    CssUserAgentInitial,
 };
 pub use font_face_values::{
     CssFontMetricOverride, CssFontNamedInstance, CssFontNamedInstanceString,
@@ -2056,38 +2005,15 @@ pub use normalization::{
     CssNormalizationError, CssNormalizationLimits, CssNormalizationResource,
     CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedReport, CssNormalizedSelector,
     CssNormalizedSheet, CssRuleContext, CssRuleContextKindRef, CssSelectorBinding,
-    CssSelectorContext, normalize_report, normalize_report_with_limits, normalize_sheet,
-    normalize_sheet_with_limits,
+    CssSelectorContext,
 };
 pub use parser::{
     CssNamespaceContext, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
     CssParsedStyleSelectors, CssRuleAdmissionContext, CssRuleSyntax, CssRuleSyntaxKind,
-    CssStyleSelectorContext, classify_rule_syntax, classify_rule_syntax_with_limits,
-    parse_color_profile_block, parse_color_profile_descriptor_value, parse_counter_style_block,
-    parse_counter_style_descriptor_value, parse_cssom_media_query, parse_declaration,
-    parse_declaration_block_contents, parse_declaration_block_contents_with_limits,
-    parse_declaration_list_text, parse_font_face_block, parse_font_face_declaration_block_contents,
-    parse_font_face_declaration_block_contents_with_limits, parse_font_face_descriptor_value,
-    parse_font_feature_display_value, parse_font_feature_value, parse_font_feature_value_block,
-    parse_font_feature_values_block, parse_font_feature_values_family_list,
-    parse_font_feature_values_family_list_with_limits, parse_font_palette_descriptor_value,
-    parse_font_palette_values_block, parse_group_block, parse_keyframe_declaration_block,
-    parse_keyframe_rule, parse_keyframe_selector_list, parse_keyframes_block, parse_margin_block,
-    parse_media_query, parse_media_query_list, parse_page_block,
-    parse_page_declaration_block_contents, parse_page_declaration_block_contents_with_limits,
-    parse_page_descriptor_value, parse_page_margin_rule, parse_page_margin_rule_with_limits,
-    parse_page_selector_list, parse_property_value_text, parse_property_value_text_for_grammar,
-    parse_relative_selector_list, parse_rule, parse_scope_block, parse_scoped_group_block,
-    parse_selector, parse_selector_list, parse_sheet, parse_style_attribute, parse_style_block,
-    parse_style_selector_list, parse_style_selector_list_with_limits, parse_supports_test_block,
-    parse_supports_test_child, parse_supports_test_child_with_limits, parse_supports_test_contents,
-    parse_supports_test_contents_with_limits,
+    CssStyleSelectorContext,
 };
 pub use properties::*;
-pub use property_value::{
-    CssPropertyValueError, parse_margin_property_value, parse_page_property_value,
-    parse_property_value, parse_property_value_for_grammar,
-};
+pub use property_value::{CssPropertyTarget, CssPropertyTextTarget, CssPropertyValueError};
 pub use report::*;
 pub use source::*;
 pub use specified_declaration_block::{
@@ -2113,6 +2039,17 @@ pub(crate) mod sealed {
         const ROOT: Root;
     }
 
+    /// Parses a real-brace block as one grammar; only CSS implements it.
+    pub trait BlockBody: Sized {
+        /// Parses `source` as this body's block fragment.
+        #[track_caller]
+        fn parse_block(
+            parser: &crate::CssParser,
+            source: &str,
+            context: &crate::CssBlockContext<'_>,
+        ) -> crate::CssParseReport<Option<crate::CssBlockFragment<Self>>>;
+    }
+
     /// The range check behind `CssRange<T>`; only CSS implements it.
     pub trait RangeBounds<T: crate::CssNumericRoot> {
         /// Whether an exact literal of root `T` lies in this range, compared
@@ -2133,55 +2070,6 @@ pub(crate) mod sealed {
 const STRUCTURAL_NESTING_LIMIT: u32 = 256;
 #[cfg(test)]
 pub(crate) use test_support::CssParseReportTestExt;
-
-/// Validates a stylesheet by accepting only a clean ordinary parse report.
-///
-/// This application-strict wrapper consumes the ordinary [`parse_sheet`] report.
-/// A clean report yields its retained authored syntax; a recovered report yields
-/// every parser-produced diagnostic in unchanged order. Validation does not
-/// select a different grammar or perform cascade, substitution,
-/// contextual resolution, selector matching, or resource loading.
-///
-/// ```
-/// use surgeist_css::validate_sheet;
-///
-/// let sheet = validate_sheet(".x { color: red; }").expect("clean stylesheet");
-/// assert_eq!(sheet.rules().len(), 1);
-/// ```
-pub fn validate_sheet(input: &str) -> Result<CssSheet, CssValidationFailure> {
-    parser::parse_sheet(input).into_validation_result()
-}
-
-/// Validates a style attribute by accepting only a clean ordinary parse report.
-///
-/// This application-strict wrapper consumes the ordinary
-/// [`parse_style_attribute`] report. A clean report yields its retained authored
-/// declarations; a recovered report yields the complete parser-produced
-/// diagnostic sequence unchanged. It does not select a different declaration
-/// grammar or apply cascade,
-/// substitution, contextual resolution, selector matching, or resource loading.
-///
-/// ```
-/// use surgeist_css::validate_style_attribute;
-///
-/// let declarations = validate_style_attribute("color: red")
-///     .expect("clean style attribute");
-/// assert_eq!(declarations.len(), 1);
-/// ```
-pub fn validate_style_attribute(input: &str) -> Result<CssDeclarationList, CssValidationFailure> {
-    parser::parse_style_attribute(input).into_validation_result()
-}
-
-/// Validates raw declaration-list text by accepting exactly its clean parse report.
-///
-/// This uses the ordinary property grammar and raw unit synchronization of
-/// [`parse_declaration_list_text`]. Recovery returns the complete diagnostic
-/// sequence unchanged; no CSSOM projection, cascade or contextual resolution is applied.
-pub fn validate_declaration_list_text(
-    input: &str,
-) -> Result<CssDeclarationList, CssValidationFailure> {
-    parser::parse_declaration_list_text(input).into_validation_result()
-}
 
 #[cfg(test)]
 mod tests;

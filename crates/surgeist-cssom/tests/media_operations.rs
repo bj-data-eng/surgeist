@@ -116,7 +116,9 @@ fn exact_empty_setter_clears_before_any_parser_or_serialization_work() {
     )
     .unwrap();
     let mut inputs = input();
-    inputs.media = parse_media_query_list("screen").into_parts().0;
+    inputs.media = CssMediaQueryList::parse(&CssParser::default(), "screen")
+        .into_parts()
+        .0;
     let sheet = create(&mut store, "", inputs);
     let id = store.snapshot().sheet(&sheet).unwrap().media().clone();
     let before = store.snapshot();
@@ -338,7 +340,9 @@ fn complete_scan_budget_fails_atomically_including_later_members_and_retries() {
         )
         .unwrap();
         let mut inputs = input();
-        inputs.media = parse_media_query_list("screen, print").into_parts().0;
+        inputs.media = CssMediaQueryList::parse(&CssParser::default(), "screen, print")
+            .into_parts()
+            .0;
         let sheet = create(&mut store, "", inputs);
         let id = store.snapshot().sheet(&sheet).unwrap().media().clone();
         let before = store.snapshot();

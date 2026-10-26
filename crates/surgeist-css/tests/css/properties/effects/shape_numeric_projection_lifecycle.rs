@@ -46,8 +46,9 @@ fn assert_projection(authored: &str, expected: &str) {
             .unwrap(),
         expected
     );
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ClipPath)),
         components.clone(),
         CssImportance::Important,
     )

@@ -102,7 +102,9 @@ fn acceptance_css_wide_global_keyword_matrix_accepts_supported_globals() {
 
 #[test]
 fn typo_property_has_unknown_property_error_kind() {
-    let error = parse_sheet(".panel { widht: 10px; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { widht: 10px; }")
+        .expect_err("rejected parse report");
 
     let detail = &error;
     assert_eq!(
@@ -162,7 +164,7 @@ fn parses_all_property_global_keywords_as_authored_syntax() {
 #[test]
 fn rejects_non_global_all_values_with_typed_unsupported_value() {
     for input in [".panel { all: block; }", ".panel { all: 1px; }"] {
-        let error = parse_sheet(input).expect_err(input);
+        let error = CssParser::default().parse_sheet(input).expect_err(input);
 
         let detail = &error;
         assert_eq!(
@@ -176,7 +178,9 @@ fn rejects_non_global_all_values_with_typed_unsupported_value() {
 
 #[test]
 fn global_keyword_must_be_the_whole_value() {
-    let error = parse_sheet(".panel { width: inherit 10px; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { width: inherit 10px; }")
+        .expect_err("rejected parse report");
 
     assert!(
         (error.code() == CssErrorCode::InvalidPropertyValue

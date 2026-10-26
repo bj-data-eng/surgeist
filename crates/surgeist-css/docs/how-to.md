@@ -5,16 +5,14 @@ They use the public exports from [src/lib.rs](../src/lib.rs).
 
 ## Handle a recovery report
 
-Call `parse_sheet` for a stylesheet or `parse_style_attribute` for a declaration
-list. Read both `syntax()` and `diagnostics()` before deciding whether recovered
+Call `CssParser::parse_sheet` for a stylesheet or `CssParser::parse_block_contents` for a
+declaration list. Read both `syntax()` and `diagnostics()` before deciding whether recovered
 input is acceptable. For example:
 
 ```rust
-use surgeist_css::{CssRecoveryAction, CssRule, parse_sheet};
+use surgeist_css::{CssRecoveryAction, CssRule, CssParser};
 
-let report = parse_sheet(
-    ".before { color: red; } @unknown value; .after { color: blue; }",
-);
+let report = CssParser::default().parse_sheet(".before { color: red; } @unknown value; .after { color: blue; }");
 assert_eq!(report.syntax().rules().len(), 2);
 assert!(matches!(report.syntax().rules()[0], CssRule::Style(_)));
 assert_eq!(
@@ -32,9 +30,9 @@ wildcard for non-exhaustive variants. See [source coordinates and diagnostics](r
 Style attributes use the same ordinary declaration parser as style-rule blocks. Declarations retain their authored order, source position, coupled property/value type, and terminal `!important` state.
 
 ```rust
-use surgeist_css::{CssImportance, CssPropertyNameRef, parse_style_attribute};
+use surgeist_css::{CssImportance, CssPropertyNameRef, CssParser};
 
-let report = parse_style_attribute("color: red; mystery: 1; width: 2px !important");
+let report = CssParser::default().parse_block_contents("color: red; mystery: 1; width: 2px !important");
 assert_eq!(report.syntax().len(), 2);
 assert_eq!(report.diagnostics().len(), 1);
 let width = &report.syntax()[1];
@@ -66,13 +64,9 @@ Ordinary property values are borrowed through the non-exhaustive
 wildcard for future variants:
 
 ```rust
-use surgeist_css::{
-    CssBoxSize, CssImportance, CssKnownDeclaredValueRef, CssKnownPropertyValueRef,
-    CssSizeValue,
-    parse_style_attribute,
-};
+use surgeist_css::{CssBoxSize, CssImportance, CssKnownDeclaredValueRef, CssKnownPropertyValueRef, CssSizeValue, CssParser};
 
-let report = parse_style_attribute("width: calc(100% - 12px) !important");
+let report = CssParser::default().parse_block_contents("width: calc(100% - 12px) !important");
 let declaration = &report.syntax()[0];
 assert_eq!(declaration.importance(), CssImportance::Important);
 let known = declaration.known().expect("known declaration");
@@ -122,21 +116,21 @@ The crate defines no optional features. Call the matching validator when every
 recovery should reject the input:
 
 ```rust
-use surgeist_css::{CssRecoveryAction, validate_style_attribute};
+use surgeist_css::{CssRecoveryAction, CssParser};
 
-let declarations = validate_style_attribute("color: red")
+let declarations = CssParser::default().parse_block_contents("color: red").into_validation_result()
     .expect("clean style attribute");
 assert_eq!(declarations.len(), 1);
 
-let failure = validate_style_attribute("color: red; mystery: 1")
+let failure = CssParser::default().parse_block_contents("color: red; mystery: 1").into_validation_result()
     .expect_err("unknown property requires recovery");
 assert_eq!(failure.diagnostics().len(), 1);
 assert_eq!(failure.first().action(), CssRecoveryAction::DropDeclaration);
 ```
 
 The first call returns retained declarations; the second returns the complete
-recovery diagnostic sequence. For stylesheets, use `validate_sheet`. Each
-validator accepts exactly a clean ordinary parse report using the same grammar.
+recovery diagnostic sequence. Call `into_validation_result()` on a report to accept exactly a clean ordinary parse
+report using the same grammar.
 Use the ordinary parser when recovered syntax and
 its diagnostics are useful to the caller.
 
@@ -176,11 +170,9 @@ Pass the actual namespace environment and rule role to the pure selector owner.
 The parsed wrapper retains its admission role and original occurrence:
 
 ```rust
-use surgeist_css::{CssNamespaceContext, CssStyleSelectorContext,
-    parse_style_selector_list};
+use surgeist_css::{CssNamespaceContext, CssStyleSelectorContext, CssParsedStyleSelectors, CssParser};
 let namespaces = CssNamespaceContext::default();
-let report = parse_style_selector_list(
-    ".card, > [|data-x]", &namespaces, CssStyleSelectorContext::Nested);
+let report = CssParsedStyleSelectors::parse(&CssParser::default(), ".card, > [|data-x]", &namespaces, CssStyleSelectorContext::Nested);
 let parsed = report.syntax().as_ref().expect("admitted nested list");
 assert_eq!(parsed.serialize_cssom(&namespaces).unwrap(), "& .card, & > [data-x]");
 assert_eq!(parsed.origin().source().as_str(), ".card, > [|data-x]");

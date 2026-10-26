@@ -55,7 +55,11 @@ fn named(source: &str) -> CssPseudoClass {
 }
 
 fn reject(source: &str) {
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(
         report.syntax().is_none(),
         "no rejected graph: {source}: {report:?}"
@@ -291,16 +295,28 @@ fn every_named_state_composes_with_ordinary_function_and_shadow_arguments() {
             exact(&source, &expected);
         }
         let source = format!(":{name},.Other");
-        let report = parse_selector_list(&source, &CssNamespaceContext::default());
+        let report = CssParsedStyleSelectors::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+            CssStyleSelectorContext::Ordinary,
+        );
         assert!(report.is_clean(), "{source}: {report:?}");
         let list = report.into_validation_result().unwrap().unwrap();
-        assert_eq!(list.selectors()[0].selector(), &parsed(&format!(":{name}")));
         assert_eq!(
-            list.selectors()[1].selector(),
+            list.selectors().selectors()[0].selector(),
+            &parsed(&format!(":{name}"))
+        );
+        assert_eq!(
+            list.selectors().selectors()[1].selector(),
             &CssSelector::Class("Other".into())
         );
         let source = format!("> :{name},+ .Other");
-        let report = parse_relative_selector_list(&source, &CssNamespaceContext::default());
+        let report = CssRelativeSelectorList::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.is_clean(), "{source}: {report:?}");
         let list = report.into_validation_result().unwrap().unwrap();
         assert_eq!(
@@ -326,12 +342,21 @@ fn every_named_state_preserves_strict_atomic_and_forgiving_member_recovery() {
         ] {
             assert_selector_input_rejected(
                 &source,
-                parse_selector_list(&source, &CssNamespaceContext::default()),
+                CssParsedStyleSelectors::parse(
+                    &CssParser::default(),
+                    &source,
+                    &CssNamespaceContext::default(),
+                    CssStyleSelectorContext::Ordinary,
+                ),
             );
         }
         for function in ["is", "where"] {
             let source = format!("/*😀*/\r\n:{function}(:{name},:future,.After)");
-            let report = parse_selector(&source, &CssNamespaceContext::default());
+            let report = CssSelector::parse(
+                &CssParser::default(),
+                &source,
+                &CssNamespaceContext::default(),
+            );
             assert!(!report.is_clean());
             let selector = report
                 .syntax()
@@ -409,7 +434,11 @@ fn every_named_state_obeys_element_backed_and_restricted_suffix_admission() {
             reject(&format!("{receiver}:{name}"));
             reject(&format!("{receiver}:not(:{name})"));
             let source = format!("{receiver}:is(:{name},:hover)");
-            let report = parse_selector(&source, &CssNamespaceContext::default());
+            let report = CssSelector::parse(
+                &CssParser::default(),
+                &source,
+                &CssNamespaceContext::default(),
+            );
             assert_eq!(
                 report
                     .syntax()
@@ -453,9 +482,15 @@ fn every_named_state_obeys_element_backed_and_restricted_suffix_admission() {
 fn every_named_state_reuses_rules_nesting_scope_supports_and_original_positions() {
     for name in NAMES {
         let source = format!("/*😀*/\r\n:{name}{{color:red; > :{name}{{color:blue}}}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
-        assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+        assert_eq!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap(),
+            *report.syntax()
+        );
         let [CssRule::Style(rule)] = report.syntax().rules() else {
             panic!("named style rule");
         };
@@ -478,7 +513,7 @@ fn every_named_state_reuses_rules_nesting_scope_supports_and_original_positions(
         assert_eq!(relative.combinator(), CssSelectorCombinator::Child);
         assert_eq!(relative.selector(), &parsed(&format!(":{name}")));
         let source = format!("selector(:{})", name.to_ascii_uppercase());
-        let components = parse_component_values(&source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
         let original = components.clone();
         let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
             components,
@@ -504,7 +539,7 @@ fn every_named_state_reuses_rules_nesting_scope_supports_and_original_positions(
         let source = format!(
             "@scope (:{name}) to (:{name}) {{ :{name}{{}} }} @supports selector(:{name}) {{ :{name}{{}} }}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert!(matches!(
             report.syntax().rules(),
@@ -525,7 +560,7 @@ fn named_rule_rejection_drops_only_its_complete_recovery_unit() {
     for name in NAMES {
         let rejected = format!(":{name}(){{color:red; .Child{{}}}}");
         let source = format!(".Before{{}}{rejected}.After{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Style(before), CssRule::Style(after)] = report.syntax().rules() else {
             panic!("only neighboring rules retained: {report:?}");
         };
@@ -549,7 +584,12 @@ fn named_rule_rejection_drops_only_its_complete_recovery_unit() {
             diagnostic.span().end().byte_offset().value(),
             ".Before{}".len() + rejected.len()
         );
-        assert!(validate_sheet(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
 }
 
@@ -717,7 +757,11 @@ fn checked_named_graphs_preserve_each_function_attachment_and_complex_relation()
 fn named_leaves_preserve_eof_recovery_and_the_function_depth_boundary() {
     for name in NAMES {
         let source = format!(":is(:{name}");
-        let report = parse_selector(&source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         assert_eq!(
             report
                 .syntax()
@@ -747,7 +791,11 @@ fn named_leaves_preserve_eof_recovery_and_the_function_depth_boundary() {
         let source = format!("{}:{name}{}", ":is(".repeat(256), ")".repeat(256));
         exact(&source, &source);
         let source = format!("{}:{name}{}", ":is(".repeat(257), ")".repeat(257));
-        let report = parse_selector(&source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.syntax().is_none());
         let [diagnostic] = report.diagnostics() else {
             panic!("one nesting stop");

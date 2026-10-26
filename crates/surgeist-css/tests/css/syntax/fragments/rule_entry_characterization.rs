@@ -1,9 +1,8 @@
 //! Selected Syntax 3 (2026-10-01) §§5, 5.4.6, 5.5.1–5.5.3.
 //! Existing string fronts only; supplied token/component consumers are separate.
 use surgeist_css::{
-    CssConditionKind, CssErrorCode, CssImportTarget, CssImportance, CssNamespaceContext,
-    CssRecoveryAction, CssRule, CssSelector, CssSupportsLeaf, CssTokenKind, parse_rule,
-    parse_sheet,
+    CssConditionKind, CssErrorCode, CssImportTarget, CssImportance, CssNamespaceContext, CssParser,
+    CssRecoveryAction, CssRule, CssSelector, CssSupportsLeaf, CssTokenKind,
 };
 
 fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
@@ -83,10 +82,10 @@ fn statement_eof_returns_the_context_valid_at_rule_with_an_original_eof_error() 
         (
             source,
             kind,
-            parse_sheet(source),
-            parse_rule(source, &context),
-            parse_sheet(terminated),
-            parse_rule(terminated, &context),
+            CssParser::default().parse_sheet(source),
+            CssRule::parse(&CssParser::default(), source, &context),
+            CssParser::default().parse_sheet(terminated),
+            CssRule::parse(&CssParser::default(), terminated, &context),
         )
     });
     for (source, kind, sheet, fragment, terminated_sheet, terminated_fragment) in cases {
@@ -124,8 +123,12 @@ fn statement_eof_returns_the_context_valid_at_rule_with_an_original_eof_error() 
 fn delimiters_inside_prelude_components_do_not_end_the_outer_at_rule() {
     let source =
         "/*😀*/\r\n@supports future(\";{}\" [a;b] {c;d} (@hidden;)){.kept{color:red!important}}";
-    let sheet = parse_sheet(source);
-    let fragment = parse_rule(source, &CssNamespaceContext::default());
+    let sheet = CssParser::default().parse_sheet(source);
+    let fragment = CssRule::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(sheet.is_clean(), "{sheet:?}");
     assert!(fragment.is_clean(), "{fragment:?}");
     let [CssRule::Supports(supports)] = sheet.syntax().rules() else {
@@ -169,8 +172,12 @@ fn delimiters_inside_prelude_components_do_not_end_the_outer_at_rule() {
 fn semicolon_and_at_keyword_inside_qualified_prelude_do_not_restart_rule_consumption() {
     let failed = ".bad;@supports (color:red){.hidden{color:blue}}";
     let source = format!("{failed}.after{{color:red}}");
-    let sheet = parse_sheet(&source);
-    let fragment = parse_rule(failed, &CssNamespaceContext::default());
+    let sheet = CssParser::default().parse_sheet(&source);
+    let fragment = CssRule::parse(
+        &CssParser::default(),
+        failed,
+        &CssNamespaceContext::default(),
+    );
     let [after] = sheet.syntax().rules() else {
         panic!("only following sibling survives: {sheet:?}")
     };
@@ -204,8 +211,12 @@ fn semicolon_and_at_keyword_inside_qualified_prelude_do_not_restart_rule_consump
 fn qualified_eof_without_a_body_returns_no_rule_and_preserves_previous_sheet_sibling() {
     let fragment_source = " /*😀*/\r\n.missing";
     let sheet_source = " /*😀*/\r\n.before{color:red}.missing";
-    let fragment = parse_rule(fragment_source, &CssNamespaceContext::default());
-    let sheet = parse_sheet(sheet_source);
+    let fragment = CssRule::parse(
+        &CssParser::default(),
+        fragment_source,
+        &CssNamespaceContext::default(),
+    );
+    let sheet = CssParser::default().parse_sheet(sheet_source);
     assert!(fragment.syntax().is_none());
     let [before] = sheet.syntax().rules() else {
         panic!("only completed sibling survives")
@@ -259,8 +270,8 @@ fn nested_html_tokens_keep_the_following_at_keyword_in_one_failed_qualified_unit
         let unit = format!("{html}@supports (color:red){{.hidden{{color:red}}}}");
         let top_source = format!("{unit}.kept{{color:blue}}");
         let nested_source = format!("@media all{{{unit}.kept{{color:blue}}}}.after{{color:red}}");
-        let top = parse_sheet(&top_source);
-        let nested = parse_sheet(&nested_source);
+        let top = CssParser::default().parse_sheet(&top_source);
+        let nested = CssParser::default().parse_sheet(&nested_source);
         assert!(top.is_clean(), "{top:?}");
         let [CssRule::Supports(supports), kept] = top.syntax().rules() else {
             panic!("top-level HTML token is ignored")
@@ -304,8 +315,12 @@ fn nested_html_tokens_keep_the_following_at_keyword_in_one_failed_qualified_unit
 fn same_source_retained_parent_has_equivalent_contextual_pruning_and_inner_diagnostics() {
     let failed = "@UnKnOwN future(\";\" [a;b] {c;d}) {.lost{color:red}}";
     let source = format!("/*😀*/\r\n@media all{{{failed}.kept{{color:blue}}}}");
-    let sheet = parse_sheet(&source);
-    let fragment = parse_rule(&source, &CssNamespaceContext::default());
+    let sheet = CssParser::default().parse_sheet(&source);
+    let fragment = CssRule::parse(
+        &CssParser::default(),
+        &source,
+        &CssNamespaceContext::default(),
+    );
     let [rule @ CssRule::Media(media)] = sheet.syntax().rules() else {
         panic!("retained outer parent")
     };

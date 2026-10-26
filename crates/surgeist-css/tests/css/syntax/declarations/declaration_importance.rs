@@ -3,12 +3,14 @@ use crate::css::support::parse_report as common;
 use common::CssParseReportTestExt;
 
 use surgeist_css::{
-    CssDeclarationContextRef, CssErrorCode, CssImportance, CssPropertyNameRef, CssRule,
-    CssTokenKind, parse_sheet,
+    CssDeclarationContextRef, CssErrorCode, CssImportance, CssParser, CssPropertyNameRef, CssRule,
+    CssTokenKind,
 };
 
 fn style_declarations(source: &str) -> surgeist_css::CssDeclarationList {
-    let sheet = parse_sheet(source).expect("stylesheet must parse");
+    let sheet = CssParser::default()
+        .parse_sheet(source)
+        .expect("stylesheet must parse");
     let [CssRule::Style(rule)] = sheet.rules() else {
         panic!("expected one style rule");
     };
@@ -67,7 +69,9 @@ fn declaration_importance_malformed_annotations_report_first_bang() {
         (".x { width: 1px !important extra; }", 16),
         (".x { --custom: value !oops; }", 21),
     ] {
-        let error = parse_sheet(source).expect_err("annotation must be rejected");
+        let error = CssParser::default()
+            .parse_sheet(source)
+            .expect_err("annotation must be rejected");
         assert_eq!(
             error.code(),
             CssErrorCode::InvalidDeclarationAnnotation,
@@ -95,7 +99,9 @@ fn declaration_importance_malformed_annotations_report_first_bang() {
 #[test]
 fn declaration_importance_strict_sheet_rejects_bad_declaration_between_valid_siblings() {
     let source = ".x { height: 1px; width: 2px !oops; opacity: 1; }";
-    let error = parse_sheet(source).expect_err("current strict parser must reject the sheet");
+    let error = CssParser::default()
+        .parse_sheet(source)
+        .expect_err("current strict parser must reject the sheet");
     assert_eq!(error.code(), CssErrorCode::InvalidDeclarationAnnotation);
     assert_eq!(
         error.position().byte_offset().value(),
@@ -105,7 +111,8 @@ fn declaration_importance_strict_sheet_rejects_bad_declaration_between_valid_sib
 
 #[test]
 fn declaration_importance_keyframes_use_distinct_unimportant_declarations() {
-    let sheet = parse_sheet("@keyframes fade { from { opacity: 0 } to { opacity: 1; } }")
+    let sheet = CssParser::default()
+        .parse_sheet("@keyframes fade { from { opacity: 0 } to { opacity: 1; } }")
         .expect("keyframes must parse");
     let [CssRule::Keyframes(rule)] = sheet.rules() else {
         panic!("expected keyframes");
@@ -120,7 +127,7 @@ fn declaration_importance_keyframes_use_distinct_unimportant_declarations() {
     ));
 
     let source = "@keyframes fade { from { opacity: 0 !important; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Keyframes(keyframes)] = report.syntax().rules() else {
         panic!("invalid importance must leave the authored keyframes structure");
     };
@@ -146,7 +153,7 @@ fn declaration_importance_keyframes_use_distinct_unimportant_declarations() {
     ));
 
     let custom_source = "@keyframes fade { from { --phase: ready !important; } }";
-    let report = parse_sheet(custom_source);
+    let report = CssParser::default().parse_sheet(custom_source);
     let [CssRule::Keyframes(keyframes)] = report.syntax().rules() else {
         panic!("invalid custom importance must leave the authored keyframes structure");
     };
@@ -176,7 +183,9 @@ fn declaration_importance_keyframes_use_distinct_unimportant_declarations() {
 #[test]
 fn declaration_importance_font_face_occurrences_retain_positions_and_reject_annotations() {
     let source = "@font-face { font-family: Inter; src: url(inter.woff2); font-display: swap; }";
-    let sheet = parse_sheet(source).expect("font-face must parse");
+    let sheet = CssParser::default()
+        .parse_sheet(source)
+        .expect("font-face must parse");
     let [CssRule::FontFace(rule)] = sheet.rules() else {
         panic!("expected font-face");
     };
@@ -227,7 +236,9 @@ fn declaration_importance_font_face_occurrences_retain_positions_and_reject_anno
         "unicode-range: U+0-7F !important",
     ] {
         let source = format!("@font-face {{ font-family: Inter; src: url(i); {descriptor}; }}");
-        let error = parse_sheet(&source).expect_err("descriptor annotation must fail");
+        let error = CssParser::default()
+            .parse_sheet(&source)
+            .expect_err("descriptor annotation must fail");
         assert_eq!(
             error.code(),
             CssErrorCode::InvalidDeclarationAnnotation,
@@ -265,7 +276,9 @@ fn declaration_importance_font_face_occurrences_retain_positions_and_reject_anno
         "font-display: swap !important !important",
     ] {
         let source = format!("@font-face {{ font-family: Inter; src: url(i); {authored}; }}");
-        let error = parse_sheet(&source).expect_err("descriptor annotation must fail");
+        let error = CssParser::default()
+            .parse_sheet(&source)
+            .expect_err("descriptor annotation must fail");
         assert_eq!(error.code(), CssErrorCode::InvalidDeclarationAnnotation);
         let detail = &error;
         assert_eq!(

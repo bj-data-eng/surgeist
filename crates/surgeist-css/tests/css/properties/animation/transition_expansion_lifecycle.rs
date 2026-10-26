@@ -24,8 +24,7 @@ const MEMBERS: [P; 4] = [
 ];
 
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("completed ordinary longhands")
     };
@@ -300,9 +299,10 @@ fn all_five_properties_preserve_twenty_parsed_and_checked_entries() {
             property.canonical_name()
         ));
         let by_grammar = checked(property, &css);
-        let by_property = parse_property_value(
-            CssPropertyNameRef::Known(property),
-            parse_component_values(&css).unwrap(),
+        let by_property = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+            CssComponentValues::parse(&CssParser::default(), &css).unwrap(),
             CssImportance::Important,
         )
         .unwrap();
@@ -364,7 +364,8 @@ fn sparse_items_clone_explicit_time_children_and_supply_scalar_defaults() {
 
 #[test]
 fn checked_mixed_origin_children_survive_projection_and_reentry() {
-    let parsed = parse_component_values("opacity 1s ease-in -250ms").unwrap();
+    let parsed =
+        CssComponentValues::parse(&CssParser::default(), "opacity 1s ease-in -250ms").unwrap();
     let programmatic = CssComponentValue::try_dimension("125", "ms").unwrap();
     let mut items = parsed.items().to_vec();
     let duration_index = items
@@ -378,8 +379,9 @@ fn checked_mixed_origin_children_survive_projection_and_reentry() {
         .unwrap();
     items[duration_index] = programmatic.clone();
     let components = CssComponentValues::try_new(items, Default::default()).unwrap();
-    let source = parse_property_value_for_grammar(
-        P::Transition.grammar(),
+    let source = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(P::Transition.grammar()),
         components.clone(),
         CssImportance::Important,
     )
@@ -408,7 +410,7 @@ fn checked_mixed_origin_children_survive_projection_and_reentry() {
         original.value().values()[0].delay().unwrap(),
     );
     let pending = checked(P::Transition, "var(--timing)");
-    let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+    let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
         panic!("pending")
     };
     let CssContributions::Longhands(reentered) = handle.reenter(components.clone()).unwrap() else {
@@ -433,7 +435,7 @@ fn late_recovered_time_children_keep_their_implicit_graph_and_source_snapshot() 
         ("transition:opacity 1s, transform calc((2s", true),
         ("transition:opacity 1s, transform 2s calc((-250ms", false),
     ] {
-        let report = parse_style_attribute(css);
+        let report = CssParser::default().parse_block_contents(css);
         assert_implicit_closure(css, &report);
         let [source] = report.syntax().as_slice() else {
             panic!("one retained shorthand")
@@ -480,7 +482,11 @@ fn late_recovered_time_children_keep_their_implicit_graph_and_source_snapshot() 
             CssValueOrigin::ImplicitClosure { .. }
         ));
         assert_eq!(
-            validate_style_attribute(css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -567,19 +573,25 @@ fn each_property_rejects_intrinsic_negatives_through_all_admission_front_doors()
                 "invalid declaration dropped: {css}"
             );
             assert_eq!(
-                validate_style_attribute(&css).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&css)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics(),
                 "{css}"
             );
-            let components = parse_component_values(invalid).unwrap();
-            let by_grammar = parse_property_value_for_grammar(
-                property.grammar(),
+            let components = CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
+            let by_grammar = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Normal,
             )
             .unwrap_err();
-            let by_property = parse_property_value(
-                CssPropertyNameRef::Known(property),
+            let by_property = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components,
                 CssImportance::Normal,
             )
@@ -731,10 +743,10 @@ fn pending_names_and_easing_reject_original_closures_and_remain_retryable() {
             "{}:var(--replacement)!important",
             property.canonical_name()
         ));
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending family member")
         };
-        let replacement = parse_component_values(recovered).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), recovered).unwrap();
         let before = replacement.clone();
         let error = handle.reenter(replacement.clone()).unwrap_err();
         let Some(actual) = error.replacement_error() else {
@@ -750,8 +762,9 @@ fn pending_names_and_easing_reject_original_closures_and_remain_retryable() {
         assert_eq!(at.span().start().byte_offset().value(), recovered.len());
         assert_eq!(
             actual,
-            &parse_property_value_for_grammar(
-                property.grammar(),
+            &CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 replacement.clone(),
                 CssImportance::Normal
             )
@@ -759,7 +772,7 @@ fn pending_names_and_easing_reject_original_closures_and_remain_retryable() {
         );
         assert_eq!(replacement, before);
         assert!(handle.source().same_occurrence(&source));
-        let replacement = parse_component_values(valid).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), valid).unwrap();
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
             panic!("valid retry completes")

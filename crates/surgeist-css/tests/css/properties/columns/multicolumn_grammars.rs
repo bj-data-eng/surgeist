@@ -5,7 +5,7 @@ use surgeist_css::*;
 
 #[test]
 fn multicolumn_properties_retain_typed_structure() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "column-count: 3; ",
         "column-fill: balance-all; ",
         "column-rule: thick dashed rebeccapurple; ",
@@ -100,7 +100,7 @@ fn multicolumn_properties_retain_typed_structure() {
 
 #[test]
 fn multicolumn_shorthands_accept_permutations_and_preserve_omitted_components() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "columns: 12em; columns: 2; columns: auto 12em; ",
         "columns: 2 auto; columns: auto auto; columns: 12em 2; ",
         "column-rule: red solid 2px; column-rule: dashed; column-rule: thin blue",
@@ -157,7 +157,7 @@ fn multicolumn_shorthands_accept_permutations_and_preserve_omitted_components() 
 
 #[test]
 fn multicolumn_calculations_remain_symbolic_and_checked_constructors_reject_literals() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "column-count: calc(1 + 2); ",
         "column-width: calc(10px - 20px); ",
         "column-rule-width: calc(1px * 2)",
@@ -218,7 +218,7 @@ fn every_multicolumn_property_keeps_globals_and_substitutions_distinct() {
         ("columns", CssKnownProperty::Columns),
     ] {
         let source = format!("{name}: inherit; {name}: var(--multicol, initial)");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 2, "{source}");
         assert_eq!(report.syntax()[0].known().unwrap().property(), property);
@@ -259,7 +259,7 @@ fn multicolumn_mutations_drop_exact_declaration_and_retain_siblings() {
     ] {
         let declaration = format!("{name}: {invalid};");
         let source = format!("--emoji: \"😀\"; color: red; {declaration} width: 1px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 3, "{source}");
         assert_eq!(
             report.syntax()[1].known().unwrap().property(),
@@ -320,7 +320,9 @@ fn multicolumn_mutations_drop_exact_declaration_and_retain_siblings() {
         );
 
         assert_eq!(
-            surgeist_css::validate_style_attribute(&source)
+            surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects invalid multicolumn syntax")
                 .diagnostics(),
             report.diagnostics(),

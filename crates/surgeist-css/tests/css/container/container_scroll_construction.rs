@@ -287,7 +287,7 @@ fn escaped_names_keywords_and_function_case_keep_original_lexical_origins() {
         source
     );
     let input = format!("@container {source}{{}}");
-    let report = parse_sheet(&input);
+    let report = CssParser::default().parse_sheet(&input);
     assert!(report.is_clean());
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("rule")
@@ -312,7 +312,7 @@ fn escaped_names_keywords_and_function_case_keep_original_lexical_origins() {
 
 #[test]
 fn mixed_origin_pending_components_keep_token_boundaries_after_parent_drop() {
-    let number = parse_component_values("/*😀*/1")
+    let number = CssComponentValues::parse(&CssParser::default(), "/*😀*/1")
         .unwrap()
         .items()
         .last()
@@ -364,7 +364,7 @@ fn mixed_origin_pending_components_keep_token_boundaries_after_parent_drop() {
 #[test]
 fn limits_and_recovered_closures_keep_typed_resource_and_source_information() {
     let source = "scroll-state((stuck:var(--edge,)))";
-    let values = parse_component_values(source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let exact = CssComponentValueLimits::try_new(
         values.nesting_depth(),
         values.component_count(),
@@ -418,11 +418,10 @@ fn limits_and_recovered_closures_keep_typed_resource_and_source_information() {
             .is_byte_limit()
     );
     assert!(
-        parse_component_values(&format!(
-            "scroll-state({}stuck{})",
-            "(".repeat(256),
-            ")".repeat(256)
-        ))
+        CssComponentValues::parse(
+            &CssParser::default(),
+            format!("scroll-state({}stuck{})", "(".repeat(256), ")".repeat(256))
+        )
         .unwrap_err()
         .is_nesting_limit()
     );

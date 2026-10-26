@@ -1,6 +1,6 @@
 use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssConditionKind, CssRule,
-    CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin, parse_component_values, parse_sheet,
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssConditionKind, CssParser,
+    CssRule, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin,
 };
 
 // Authored syntax preserves the complete opaque enclosure, including escapes,
@@ -10,7 +10,7 @@ fn supports_opaque_enclosures_preserve_spelling_and_original_positions() {
     for enclosure in [r"f\75 ture(/*🦊*/ +001.2300e+02 [x])", "(/*🦊*/ 2px [x])"] {
         let prefix = "/*🦊*/\n@supports ";
         let source = format!("{prefix}{enclosure} {{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let [CssRule::Supports(rule)] = report.syntax().rules() else {
             panic!("expected one supports rule");
@@ -35,7 +35,7 @@ fn supports_opaque_enclosures_preserve_spelling_and_original_positions() {
 #[test]
 fn eof_function_serialization_retains_the_implicit_closing_origin() {
     let source = "future(/*🦊*/ +001.2300e+02";
-    let values = parse_component_values(source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let [component] = values.items() else {
         panic!("expected one component");
     };
@@ -61,7 +61,7 @@ fn eof_function_serialization_retains_the_implicit_closing_origin() {
 // provenance remains attached to the actual parsed input.
 #[test]
 fn programmatic_function_preserves_parsed_child_and_delimiter_origins() {
-    let children = parse_component_values("+001.2300e+02").unwrap();
+    let children = CssComponentValues::parse(&CssParser::default(), "+001.2300e+02").unwrap();
     let child_origin = children.items()[0].origin().clone();
     let component = CssComponentValue::try_function("future", children).unwrap();
     assert_eq!(component.origin(), &CssValueOrigin::Programmatic);
@@ -80,7 +80,7 @@ fn programmatic_function_preserves_parsed_child_and_delimiter_origins() {
 }
 
 fn enclosed(source: &str) -> surgeist_css::CssGeneralEnclosed {
-    let values = parse_component_values(source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let [component] = values.items() else {
         panic!("expected exactly one component");
     };
@@ -131,7 +131,7 @@ fn cloned_parsed_components_retain_the_complete_authored_slice_and_closure() {
 
 #[test]
 fn supplied_enclosures_have_no_fabricated_authored_span_even_with_parsed_children() {
-    let children = parse_component_values("1e+003").unwrap();
+    let children = CssComponentValues::parse(&CssParser::default(), "1e+003").unwrap();
     let expected_origin = children.items()[0].origin().clone();
     for value in [
         surgeist_css::CssGeneralEnclosed::try_function("future", children.clone()).unwrap(),
@@ -173,7 +173,7 @@ fn supplied_enclosures_have_no_fabricated_authored_span_even_with_parsed_childre
 #[test]
 fn wrong_outer_components_report_the_supplied_origin() {
     for source in ["x", "[x]", "{x}", "/*x*/", " "] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let component = values.items()[0].clone();
         let origin = component.origin().clone();
         let error = surgeist_css::CssGeneralEnclosed::try_from_component(component).unwrap_err();
@@ -247,7 +247,9 @@ fn equality_compares_spelling_and_source_text_but_not_snapshot_identity() {
     // Parsed numeric components and supplied tokens differ even though both
     // spell the exact same number; programmatic token parsing leaks no origin.
     assert_ne!(
-        parse_component_values("1").unwrap().items()[0],
+        CssComponentValues::parse(&CssParser::default(), "1")
+            .unwrap()
+            .items()[0],
         CssComponentValue::try_token("1").unwrap()
     );
 }
@@ -255,7 +257,7 @@ fn equality_compares_spelling_and_source_text_but_not_snapshot_identity() {
 #[test]
 fn supports_fallback_collects_only_its_own_enclosure_and_shares_the_sheet_snapshot() {
     let source = "/*🦊*/\n@supports future(1) and (2px) and selector(undeclared|x) {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("expected supports");

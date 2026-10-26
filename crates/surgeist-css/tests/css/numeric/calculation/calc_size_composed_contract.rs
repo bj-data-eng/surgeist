@@ -102,7 +102,7 @@ fn checked_and_raw_width(
     basis_end: usize,
     closing_start: usize,
 ) -> CssCalcSize {
-    let components = parse_component_values(raw).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), raw).unwrap();
     let original_components = components.clone();
     let [component] = components.items() else {
         panic!("one original calc-size function")
@@ -153,8 +153,9 @@ fn checked_and_raw_width(
         raw
     );
 
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Width),
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
         components.clone(),
         CssImportance::Important,
     )
@@ -172,9 +173,9 @@ fn checked_and_raw_width(
     assert_eq!(checked, before_checked);
     assert!(checked.same_occurrence(&before_checked));
 
-    let report = parse_property_value_text(
+    let report = CssParser::default().parse_property_value(
         raw,
-        CssPropertyNameRef::Known(CssKnownProperty::Width),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
         CssImportance::Important,
     );
     assert!(report.is_clean(), "{raw}: {:?}", report.diagnostics());
@@ -256,7 +257,7 @@ fn nested_basis_and_both_calculations_simplify_without_flattening_the_basis() {
 #[test]
 fn pending_function_basis_reentry_preserves_occurrence_origins_and_allows_retry() {
     const SOURCE: &str = "width:calc-size(var(--basis), size + 1px)!important";
-    let report = parse_style_attribute(SOURCE);
+    let report = CssParser::default().parse_block_contents(SOURCE);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [source] = report.syntax().as_slice() else {
         panic!("one authored pending width")
@@ -279,7 +280,7 @@ fn pending_function_basis_reentry_preserves_occurrence_origins_and_allows_retry(
         27,
         28,
     );
-    let CssExpansion::Pending(handle) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("the whole property awaits substitution")
     };
     assert!(handle.source().same_occurrence(source));
@@ -292,7 +293,7 @@ fn pending_function_basis_reentry_preserves_occurrence_origins_and_allows_retry(
     ] {
         assert!(
             handle
-                .reenter(parse_component_values(residual).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), residual).unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
@@ -301,14 +302,16 @@ fn pending_function_basis_reentry_preserves_occurrence_origins_and_allows_retry(
     }
     assert!(
         handle
-            .reenter(parse_component_values("calc-size(any, size)").unwrap())
+            .reenter(
+                CssComponentValues::parse(&CssParser::default(), "calc-size(any, size)").unwrap()
+            )
             .unwrap_err()
             .replacement_error()
             .is_some()
     );
 
     const REPLACEMENT: &str = "calc-size(min-content, size + 2px + 3px)";
-    let replacement = parse_component_values(REPLACEMENT).unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), REPLACEMENT).unwrap();
     let replacement_before = replacement.clone();
     function_boundaries(&replacement.items()[0], REPLACEMENT, 0, 10, 39, 40);
     for _ in 0..2 {
@@ -367,7 +370,7 @@ fn pending_function_basis_reentry_preserves_occurrence_origins_and_allows_retry(
     // Reuse that same handle for a genuinely nested percentage basis. Reentry
     // checks the complete replacement; it does not implement var substitution.
     const NESTED: &str = "calc-size(calc-size(25% + 25%, size + 2px), size + 3px)";
-    let nested = parse_component_values(NESTED).unwrap();
+    let nested = CssComponentValues::parse(&CssParser::default(), NESTED).unwrap();
     function_boundaries(&nested.items()[0], NESTED, 0, 10, 54, 55);
     let CssComponentValueRef::Function(nested_function) = nested.items()[0].view() else {
         panic!("original nested calc-size component")

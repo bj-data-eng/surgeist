@@ -70,8 +70,7 @@ fn containment(source: &CssDeclaration) -> &CssContain {
     value.value()
 }
 fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one ordinary longhand")
     };
@@ -189,7 +188,7 @@ fn escaped_style_tokens_preserve_original_components_source_coordinates_and_impo
         }
     }
     let input = r"/*😀*/\73 tyle";
-    let components = parse_component_values(input).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), input).unwrap();
     let token=components.items().iter().find(|v|matches!(v.view(),CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) if name=="style")).unwrap();
     let CssValueOrigin::Parsed(origin) = token.origin() else {
         panic!("original escaped style origin")
@@ -241,11 +240,11 @@ fn intrinsic_metadata_is_noninherited_with_an_ordinary_initial_and_one_terminal(
 fn normalization_counts_one_terminal_per_occurrence_and_preserves_order_importance_and_pending_state()
  {
     let css = ".a{contain:paint size!important;contain:style;contain:inherit!important;contain:var(--contain)}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean());
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(0, 1, 4, 4).unwrap();
-    let normalized = normalize_report_with_limits(&report, exact).unwrap();
+    let normalized = report.normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .syntax()
         .items()
@@ -285,18 +284,16 @@ fn normalization_counts_one_terminal_per_occurrence_and_preserves_order_importan
             assert_terminals(values, item.source());
         }
     }
-    let error = normalize_report_with_limits(
-        &report,
-        CssNormalizationLimits::try_new(0, 1, 4, 3).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .normalize(CssNormalizationLimits::try_new(0, 1, 4, 3).unwrap())
+        .unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 3))
     );
     assert_eq!(error.declaration_order(), Some(3));
     assert_eq!(report, before);
-    assert!(normalize_report_with_limits(&report, exact).is_ok());
+    assert!(report.normalize(exact).is_ok());
 }
 
 #[test]
@@ -370,7 +367,7 @@ fn sibling_sheet_output_shares_a_cumulative_byte_budget_and_remains_reusable_aft
     let input = ".a{contain:paint style size!important;contain:strict;contain:content}";
     let expected =
         ".a { contain: size style paint !important; contain: strict; contain: content; }";
-    let report = parse_sheet(input);
+    let report = CssParser::default().parse_sheet(input);
     assert!(report.is_clean());
     let before = report.clone();
     let limits = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len());

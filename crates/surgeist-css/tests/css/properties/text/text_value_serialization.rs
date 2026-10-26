@@ -6,7 +6,9 @@
 
 use crate::css::support::serialization_limits::assert_limits_with_zero as budget;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{CssSerializationLimits as L, *};
+use surgeist_css::{
+    CssComponentValue, CssComponentValues, CssParser, CssSerializationLimits as L, *,
+};
 
 fn length(text: &str) -> CssNumeric<CssLengthPercentage> {
     CssNumeric::<CssLengthPercentage>::try_from_component(
@@ -18,7 +20,7 @@ fn length(text: &str) -> CssNumeric<CssLengthPercentage> {
 fn calculation(text: &str) -> CssNumeric<CssLengthPercentage> {
     CssNumeric::<CssLengthPercentage>::try_from_calculation(
         CssCalculation::<CssLengthPercentage>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -110,13 +112,18 @@ fn every_indent_permutation_reenters_the_same_semantic_value() {
         "1px sideways",
     ] {
         let source = format!("text-indent:{text}; color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(!report.is_clean(), "{source}");
         let [sibling] = report.syntax().as_slice() else {
             panic!("only valid sibling")
         };
         assert_eq!(sibling.known().unwrap().property(), CssKnownProperty::Color);
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
 }
 

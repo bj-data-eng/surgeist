@@ -1108,17 +1108,20 @@ mod tests {
     fn checked(
         values: CssComponentValues,
     ) -> std::result::Result<CssDeclaration, CssPropertyValueError> {
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+        crate::CssDeclaration::try_from_components(
+            &crate::CssParser::default(),
+            crate::CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
             values,
             CssImportance::Normal,
         )
     }
 
     fn parsed(text: &str) -> std::result::Result<CssColor, String> {
-        let report = parse_property_value_text(
+        let report = crate::CssParser::default().parse_property_value(
             text,
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+            crate::CssPropertyTextTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::Color,
+            )),
             CssImportance::Normal,
         );
         // CSS Syntax 3 (CRD 2026-10-01) §5.5.10 closes an unclosed function at
@@ -1138,7 +1141,7 @@ mod tests {
     }
 
     fn components(text: &str) -> std::result::Result<CssColor, String> {
-        checked(parse_component_values(text).unwrap())
+        checked(crate::component_values::parse_component_values(text).unwrap())
             .map(|declaration| color_of(&declaration))
             .map_err(|error| format!("{error:?}"))
     }

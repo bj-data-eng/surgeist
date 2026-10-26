@@ -1,16 +1,20 @@
 //! Public-consumer expectations from the adopted Blink Page/margin witness.
-use surgeist_css::{CssRule, parse_sheet};
+use surgeist_css::{
+    CssBlockContext, CssBlockFragment, CssPageDescriptorValue, CssPageSelectorList, CssParser,
+    CssRule,
+};
 
 #[test]
 fn named_page_is_admitted() {
-    let report = parse_sheet("@page invoice {}");
+    let report = CssParser::default().parse_sheet("@page invoice {}");
     assert!(report.is_clean(), "named Page must be admitted: {report:?}");
     assert!(matches!(report.syntax().rules()[0], CssRule::Page(_)));
 }
 
 #[test]
 fn page_size_and_margin_child_are_retained() {
-    let report = parse_sheet("@page { size:A4; @top-left { content:\"X\"; } }");
+    let report =
+        CssParser::default().parse_sheet("@page { size:A4; @top-left { content:\"X\"; } }");
     assert!(
         report.is_clean(),
         "supported Page payload must be retained: {report:?}"
@@ -23,7 +27,7 @@ fn page_size_and_margin_child_are_retained() {
 
 #[test]
 fn declaration_only_page_has_adopted_cssom_output() {
-    let report = parse_sheet("@page { margin:1px; }");
+    let report = CssParser::default().parse_sheet("@page { margin:1px; }");
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     assert_eq!(
@@ -42,12 +46,11 @@ use surgeist_css::{
     CssImportance, CssMarginBox, CssMarginDeclarationBlock, CssMarginRule, CssPageBody,
     CssPageDeclaration, CssPageDeclarationBlock, CssPageDescriptor, CssPageDescriptorKind as K,
     CssPageDescriptorValueRef as V, CssPagePseudo as P, CssSerializationLimits as Limits,
-    parse_margin_block, parse_page_block, parse_page_descriptor_value, parse_page_selector_list,
 };
 #[test]
 fn complete_page_selector_getter_preserves_compounds_lists_and_original_coordinates() {
     let source = " /*😀*/ \\69 nvoice:FIRST:left, :blank:recto:verso ";
-    let report = parse_page_selector_list(source);
+    let report = CssPageSelectorList::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{report:?}");
     let value = report.syntax().as_ref().unwrap();
     assert_eq!(
@@ -69,7 +72,7 @@ fn complete_page_selector_getter_preserves_compounds_lists_and_original_coordina
         10
     );
     assert_eq!(value.origin().unwrap().source().as_str(), source);
-    let empty = parse_page_selector_list(" /*empty*/ ");
+    let empty = CssPageSelectorList::parse(&CssParser::default(), " /*empty*/ ");
     assert!(empty.is_clean());
     assert!(empty.syntax().as_ref().unwrap().is_empty());
     assert_eq!(
@@ -95,14 +98,15 @@ fn foreign_or_incomplete_page_selectors_reject_the_whole_raw_input() {
         "invoice > :first",
         "invoice {}",
     ] {
-        let report = parse_page_selector_list(source);
+        let report = CssPageSelectorList::parse(&CssParser::default(), source);
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         assert!(!report.is_clean());
     }
 }
 #[test]
 fn selector_limits_charge_lists_names_and_pseudos_and_allow_atomic_retry() {
-    let report = parse_page_selector_list("invoice:first:left, :blank:recto");
+    let report =
+        CssPageSelectorList::parse(&CssParser::default(), "invoice:first:left, :blank:recto");
     let value = report.syntax().as_ref().unwrap();
     let before = value.clone();
     let expected = "invoice:first:left, :blank:recto";
@@ -130,7 +134,7 @@ fn page_descriptor_grammars_and_getters_keep_their_distinct_domains() {
         (K::Bleed, "-2pt", "-2pt"),
         (K::Bleed, "inherit", "inherit"),
     ] {
-        let report = parse_page_descriptor_value(input, kind);
+        let report = CssPageDescriptorValue::parse(&CssParser::default(), input, kind);
         assert!(report.is_clean(), "{input}: {report:?}");
         let value = report.syntax().as_ref().unwrap();
         assert_eq!(
@@ -150,7 +154,9 @@ fn page_descriptor_grammars_and_getters_keep_their_distinct_domains() {
         (K::Size, "A4 !important"),
     ] {
         assert!(
-            parse_page_descriptor_value(input, kind).syntax().is_none(),
+            CssPageDescriptorValue::parse(&CssParser::default(), input, kind)
+                .syntax()
+                .is_none(),
             "{input}"
         );
     }
@@ -158,7 +164,7 @@ fn page_descriptor_grammars_and_getters_keep_their_distinct_domains() {
 #[test]
 fn page_domains_retain_applicable_properties_custom_values_and_margin_order() {
     let source = "@page invoice:first { color:red; size:A4; margin:1em; --x: RAW; @TOP-LEFT { content:\"X\"; color:blue; } page-orientation:rotate-right; @bottom-right { content:counter(page); } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!()
@@ -178,9 +184,7 @@ fn page_domains_retain_applicable_properties_custom_values_and_margin_order() {
 }
 #[test]
 fn page_and_margin_recovery_drop_invalid_owned_units_without_losing_neighbors() {
-    let report = parse_sheet(
-        "@page { size:bogus; size:A4; @top-left bad {content:'bad'} @top-right {content:'good'; size:A4; width:3px} marks:crop; }",
-    );
+    let report = CssParser::default().parse_sheet("@page { size:bogus; size:A4; @top-left bad {content:'bad'} @top-right {content:'good'; size:A4; width:3px} marks:crop; }");
     crate::css::support::value_assertions::assert_first_diagnostic(
         report.diagnostics(),
         "@page { size:bogus; size:A4; @top-left bad {content:'bad'} @top-right {content:'good'; size:A4; width:3px} marks:crop; }",
@@ -199,11 +203,15 @@ fn page_and_margin_recovery_drop_invalid_owned_units_without_losing_neighbors() 
 }
 #[test]
 fn page_typed_reconstruction_retains_occurrences_and_raw_edit_provenance() {
-    let report = parse_page_block("{ margin:1px; size:A4; @top-left {content:'X'} }");
+    let report = CssBlockFragment::<CssPageBody>::parse(
+        &CssParser::default(),
+        "{ margin:1px; size:A4; @top-left {content:'X'} }",
+        &CssBlockContext::default(),
+    );
     assert!(report.is_clean(), "{report:?}");
     let body = report.syntax().as_ref().unwrap().body();
     let original = body.declarations().properties()[0].clone();
-    let raw = parse_page_descriptor_value(" /*edit*/ A3 ", K::Size);
+    let raw = CssPageDescriptorValue::parse(&CssParser::default(), " /*edit*/ A3 ", K::Size);
     let raw = raw.syntax().as_ref().unwrap().clone();
     assert!(matches!(raw.view(), V::Size(_)));
     let mut occurrences = body.declarations().occurrences().to_vec();
@@ -220,13 +228,17 @@ fn page_typed_reconstruction_retains_occurrences_and_raw_edit_provenance() {
         block.serialize_cssom(Default::default()).unwrap(),
         "margin: 1px; size: a3 !important;"
     );
-    let margin = parse_margin_block("{content:'Y'}");
+    let margin = CssBlockFragment::<CssMarginDeclarationBlock>::parse(
+        &CssParser::default(),
+        "{content:'Y'}",
+        &CssBlockContext::default(),
+    );
     let margin = margin.syntax().as_ref().unwrap().body().clone();
     let new_body = CssPageBody::new(
         block,
         vec![CssMarginRule::new(CssMarginBox::TopCenter, margin)],
     );
-    let sheet = parse_sheet("@page invoice {}");
+    let sheet = CssParser::default().parse_sheet("@page invoice {}");
     let CssRule::Page(page) = &sheet.syntax().rules()[0] else {
         panic!()
     };
@@ -243,7 +255,7 @@ fn page_margin_projection_does_not_emit_ordinary_size_extension() {
         "@page { width:1px; height:2px; }",
         "@page { @top-left {width:1px;height:2px} }",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{report:?}");
         let output = report.syntax().serialize_cssom(Default::default()).unwrap();
         assert!(output.contains("width: 1px; height: 2px;"), "{output}");
@@ -257,7 +269,7 @@ fn empty_page_and_margin_whitespace_is_exact() {
         ("@page invoice {}", "@page invoice { }"),
         ("@page { @top-left {} }", "@page { @top-left { } }"),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean());
         assert_eq!(
             report.syntax().serialize_cssom(Default::default()).unwrap(),
@@ -267,7 +279,8 @@ fn empty_page_and_margin_whitespace_is_exact() {
 }
 #[test]
 fn page_cumulative_budget_reports_margin_child_and_retry_preserves_source() {
-    let report = parse_sheet("@page { size:A4; @top-left {content:'X'} @top-right {content:'Y'} }");
+    let report = CssParser::default()
+        .parse_sheet("@page { size:A4; @top-left {content:'X'} @top-right {content:'Y'} }");
     assert!(report.is_clean());
     let before = report.clone();
     let expected = report.syntax().serialize_cssom(Default::default()).unwrap();
@@ -288,7 +301,11 @@ fn page_cumulative_budget_reports_margin_child_and_retry_preserves_source() {
         report.syntax().serialize_cssom(Default::default()).unwrap(),
         expected
     );
-    let raw = parse_margin_block("{content:'X'}");
+    let raw = CssBlockFragment::<CssMarginDeclarationBlock>::parse(
+        &CssParser::default(),
+        "{content:'X'}",
+        &CssBlockContext::default(),
+    );
     let raw = raw.syntax().as_ref().unwrap().body();
     assert!(
         CssMarginDeclarationBlock::try_new(
@@ -313,7 +330,7 @@ fn selected_page_terminal_edits_preserve_sources_and_do_not_expand_the_original_
         CssSpecifiedPageDeclarationEntry as E,
     };
     let source = "@page invoice:first { margin:1px 2px; size:A4; margin-left:3px; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!("Page")
     };
@@ -407,7 +424,7 @@ fn selected_page_and_margin_views_preserve_pending_occurrence_and_order_and_reje
         CssMarginRuleView, CssPageRuleView, CssSpecifiedDeclarationBlock,
         CssSpecifiedPageDeclarationBlock as B, CssSpecifiedPageDeclarationEntry as E,
     };
-    let report = parse_sheet(
+    let report = CssParser::default().parse_sheet(
         "@page { margin-top:var(--m); @top-left { content:'X'; color:red } @bottom-center{} }",
     );
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
@@ -462,7 +479,7 @@ fn selected_page_and_margin_views_preserve_pending_occurrence_and_order_and_reje
         CssSpecifiedDeclarationBlock::try_from_entries(first.entries(), Default::default())
             .unwrap();
     assert!(CssMarginRuleView::try_new(CssMarginBox::TopLeft, &ordinary).is_none());
-    let invalid = parse_sheet(".x { transform:none }");
+    let invalid = CssParser::default().parse_sheet(".x { transform:none }");
     let CssRule::Style(style) = &invalid.syntax().rules()[0] else {
         panic!("style")
     };
@@ -485,7 +502,8 @@ fn selected_page_and_margin_views_preserve_pending_occurrence_and_order_and_reje
 #[test]
 fn edited_page_and_margin_projection_share_atomic_node_projection_and_byte_limits() {
     use surgeist_css::{CssMarginRuleView, CssPageRuleView};
-    let report = parse_sheet("@page named { size:A4; @top-left {content:'X'} }");
+    let report =
+        CssParser::default().parse_sheet("@page named { size:A4; @top-left {content:'X'} }");
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!("Page")
     };
@@ -532,13 +550,14 @@ fn page_descriptors_retain_pending_phases_and_select_effective_priority_without_
         (K::Marks, "var(--marks, crop)"),
         (K::Bleed, "calc(env(bleed) + 1px)"),
     ] {
-        let report = parse_page_descriptor_value(text, kind);
+        let report = CssPageDescriptorValue::parse(&CssParser::default(), text, kind);
         assert!(report.is_clean(), "{report:?}");
         let value = report.syntax().as_ref().unwrap();
         assert!(matches!(value.view(), V::Pending(_)));
         assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
     }
-    let report = parse_sheet("@page {size:A4;size:letter!important;size:legal;marks:cross crop;}");
+    let report = CssParser::default()
+        .parse_sheet("@page {size:A4;size:letter!important;size:legal;marks:cross crop;}");
     assert!(report.is_clean());
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!("Page")
@@ -581,7 +600,7 @@ fn every_canonical_margin_name_and_shared_shorthand_grammar_survives_owning_doma
         source.push_str(&format!("@{name}{{}}"));
     }
     source.push('}');
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean());
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!("Page")
@@ -599,9 +618,7 @@ fn every_canonical_margin_name_and_shared_shorthand_grammar_survives_owning_doma
         report.syntax().serialize_cssom(Default::default()).unwrap(),
         expected
     );
-    let report = parse_sheet(
-        "@page { font:italic 12px serif; border-style:solid; @TOP-LEFT { overflow:hidden; background:red; } }",
-    );
+    let report = CssParser::default().parse_sheet("@page { font:italic 12px serif; border-style:solid; @TOP-LEFT { overflow:hidden; background:red; } }");
     assert!(report.is_clean(), "{report:?}");
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!("Page")

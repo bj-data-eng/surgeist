@@ -4,8 +4,9 @@ use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
 fn display(values: CssComponentValues) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Display),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Display)),
         values,
         CssImportance::Important,
     )
@@ -14,7 +15,10 @@ fn display(values: CssComponentValues) -> CssDeclaration {
 
 #[test]
 fn programmatic_functions_preserve_mixed_origins_and_separators() {
-    let name = parse_component_values("Future").unwrap().items()[0].clone();
+    let name = CssComponentValues::parse(&CssParser::default(), "Future")
+        .unwrap()
+        .items()[0]
+        .clone();
     let index = CssComponentValue::try_token("2").unwrap();
     // Separate tokens must not become the single environment name Future2.
     let arguments =
@@ -67,7 +71,7 @@ fn decoded_names_and_nested_functions_keep_authored_case_and_comments() {
         "env(--Future)",
         "env(foo, f([a;b!c], {d:e}))",
     ] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let declaration = display(values.clone());
         assert_eq!(declaration.value_components(), &values);
         assert_eq!(
@@ -80,7 +84,7 @@ fn decoded_names_and_nested_functions_keep_authored_case_and_comments() {
             text
         );
         assert!(matches!(
-            expand_declaration(&declaration).unwrap(),
+            declaration.expand().unwrap(),
             CssExpansion::Pending(_)
         ));
     }
@@ -95,7 +99,7 @@ fn property_substitution_does_not_admit_env_as_size_or_scroll_operands() {
         "scroll-state(scrollable:env(foo))",
     ] {
         let condition = CssCondition::<CssContainerLeaf>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -106,7 +110,7 @@ fn property_substitution_does_not_admit_env_as_size_or_scroll_operands() {
         assert_eq!(opaque.authored(), Some(text));
     }
     let style = CssCondition::<CssContainerLeaf>::try_from_components(
-        parse_component_values("style(--x:env(foo))").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "style(--x:env(foo))").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -118,7 +122,7 @@ fn property_substitution_does_not_admit_env_as_size_or_scroll_operands() {
 
 #[test]
 fn style_env_components_obey_explicit_enclosing_resource_limits() {
-    let values = parse_component_values("style(--x:env(foo))").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "style(--x:env(foo))").unwrap();
     for (limits, kind) in [
         (
             CssComponentValueLimits::try_new(1, usize::MAX, usize::MAX).unwrap(),
@@ -162,21 +166,24 @@ fn style_env_components_obey_explicit_enclosing_resource_limits() {
 #[test]
 fn recovered_neighbor_and_pending_normalization_keep_occurrence_order() {
     let source = ".a{display:env(first);display:env(foo -1);display:env(second)!important}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
-    let sheet = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap(),
-    )
-    .unwrap();
+    let sheet = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap())
+        .unwrap();
     let declarations: Vec<_> = sheet
         .items()
         .iter()
@@ -216,11 +223,10 @@ fn recovered_neighbor_and_pending_normalization_keep_occurrence_order() {
         );
     }
     // The second retained declaration exceeds a one-declaration budget.
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 1, 2).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 1, 2).unwrap())
+        .unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Declarations, 1))

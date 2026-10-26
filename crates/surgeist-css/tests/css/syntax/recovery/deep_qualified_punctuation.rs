@@ -4,8 +4,8 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
 use surgeist_css::{
-    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSelector, CssSheet,
-    CssTokenKind, parse_sheet, validate_sheet,
+    CssErrorCode, CssParser, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSelector,
+    CssSheet, CssTokenKind,
 };
 
 fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
@@ -42,8 +42,10 @@ fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
 
 fn assert_style_semicolon_control() {
     let source = ".host{;color:red;;}";
-    let report = parse_sheet(source);
-    let validation = validate_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
+    let validation = CssParser::default()
+        .parse_sheet(source)
+        .into_validation_result();
     assert!(
         report.is_clean(),
         "style-body separator control: {:?}",
@@ -150,8 +152,10 @@ fn check_nested(ancestors: usize, body_media_depth: usize) {
         "@media all{".repeat(ancestors),
         "}".repeat(ancestors)
     );
-    let report = parse_sheet(&source);
-    let validation = validate_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
+    let validation = CssParser::default()
+        .parse_sheet(&source)
+        .into_validation_result();
     // This genuine distinct-grammar control completes before any nested assertion.
     assert_style_semicolon_control();
     assert_nested_siblings(
@@ -188,8 +192,10 @@ fn bounded_deep_block_semicolon_is_discarded_before_supports() {
 fn root_rule_list_semicolon_keeps_supports_in_one_failed_qualified_unit() {
     let unit = semicolon_prefixed_supports(0);
     let source = format!("/*😀*/\r\n{unit}.kept{{color:blue}}.after{{color:red}}");
-    let report = parse_sheet(&source);
-    let validation = validate_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
+    let validation = CssParser::default()
+        .parse_sheet(&source)
+        .into_validation_result();
     assert_style_semicolon_control();
     let [kept, after] = report.syntax().rules() else {
         panic!("root qualified unit cannot promote Supports or its hidden child")

@@ -519,7 +519,7 @@ fn nonnegative_consumers_reject_tiny_negative_literals_and_pure_context_percenta
         "clip:rect(0, 1%, 0, 0)",
         "filter:blur(1e-999)",
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(!report.is_clean(), "invalid domain accepted: {source}");
         assert!(
             report.syntax().is_empty(),

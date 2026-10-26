@@ -7,20 +7,21 @@
 //! and https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-tech-values
 
 use surgeist_css::{
-    CssCondition, CssConditionKind, CssNamespaceContext, CssRule, CssSupportsLeaf,
-    parse_component_values, parse_sheet,
+    CssComponentValues, CssCondition, CssConditionKind, CssNamespaceContext, CssParser, CssRule,
+    CssSupportsLeaf,
 };
 
 fn assert_opaque_classification(condition: &str, expected_opaque: bool) {
     let checked = CssCondition::<CssSupportsLeaf>::try_from_components(
-        parse_component_values(condition).expect("valid component syntax"),
+        CssComponentValues::parse(&CssParser::default(), condition)
+            .expect("valid component syntax"),
         &CssNamespaceContext::default(),
         Default::default(),
     )
     .expect("valid authored supports condition");
 
     let source = format!("@supports {condition} {{}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::Supports(parsed)] = report.syntax().rules() else {
         panic!("{source}: expected one retained supports group");

@@ -365,9 +365,10 @@ mod tests {
                 9,
             ),
         ] {
-            let value =
-                CssImage1D::try_from_components(crate::parse_component_values(text).unwrap())
-                    .unwrap();
+            let value = CssImage1D::try_from_components(
+                crate::component_values::parse_component_values(text).unwrap(),
+            )
+            .unwrap();
             let before = value.stripes().original_component().unwrap().clone();
             crate::ui_serialization::provider_tests::shared(
                 expected,

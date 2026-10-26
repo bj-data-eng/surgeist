@@ -6,13 +6,12 @@
 use crate::css::support::authored_syntax::{component_list as components, component_token};
 use surgeist_css::{
     CssBlockKind, CssComponentValue, CssComponentValueRef, CssCondition, CssContainerLeaf,
-    CssErrorCode, CssGeneralEnclosed, CssRecoveryAction, CssRule, CssValueOrigin, parse_sheet,
-    validate_sheet,
+    CssErrorCode, CssGeneralEnclosed, CssParser, CssRecoveryAction, CssRule, CssValueOrigin,
 };
 
 fn parsed_condition(query: &str) -> CssCondition<CssContainerLeaf> {
     let source = format!("@container {query} {{}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {report:?}");
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("one retained container rule: {source}: {report:?}");
@@ -159,8 +158,11 @@ fn explicit_grouping_allows_boolean_combinations_without_ungrouped_negation() {
         parsed_condition(query);
         let source = format!("@container {query} {{}}");
         assert_eq!(
-            validate_sheet(&source).unwrap(),
-            *parse_sheet(&source).syntax(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap(),
+            *CssParser::default().parse_sheet(&source).syntax(),
             "{query}"
         );
     }
@@ -175,7 +177,7 @@ fn ungrouped_operator_mixtures_reject_only_the_container_rule() {
         "(width > 1px) and (height > 2px) or (inline-size > 3px)",
     ] {
         let source = format!(".before {{}} @container {query} {{ .inside {{}} }} .after {{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             matches!(
                 report.syntax().rules(),
@@ -196,6 +198,12 @@ fn ungrouped_operator_mixtures_reject_only_the_container_rule() {
             CssErrorCode::InvalidAtRulePrelude,
             "{query}"
         );
-        assert!(validate_sheet(&source).is_err(), "{query}");
+        assert!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .is_err(),
+            "{query}"
+        );
     }
 }

@@ -802,7 +802,7 @@ fn detached_outer_keeps_stable_children_and_accepts_inert_edits() {
 #[test]
 fn typed_empty_definition_cannot_bypass_retained_input_byte_limit() {
     let source = format!("/*{}*/ @supports-condition --x {{}}", "padding".repeat(100));
-    let sheet = parse_sheet(&source).into_parts().0;
+    let sheet = CssParser::default().parse_sheet(&source).into_parts().0;
     let mut store = CssomStore::new(
         CssomLimits {
             max_input_bytes: 100,

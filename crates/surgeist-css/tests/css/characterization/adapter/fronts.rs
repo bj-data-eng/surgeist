@@ -7,17 +7,6 @@ use surgeist_css::*;
 use super::report::{Retained, property_id};
 use super::{Limited, Observation, Stop, nonempty, parse_charge, serialization, utf16_charge};
 
-/// Calls the `CssParserContext` method when the case names a parser mode, and
-/// the free function of the same name otherwise.
-macro_rules! via {
-    ($context:expr, $front:ident($($argument:expr),* $(,)?)) => {
-        match $context {
-            Some(context) => context.$front($($argument),*),
-            None => $front($($argument),*),
-        }
-    };
-}
-
 /// A parser mode prefix: `quirks` or `standards`, alone or as `mode:rest`.
 /// The context methods run only for a named mode.
 fn mode(argument: &str) -> (Option<CssParserContext>, &str) {
@@ -49,17 +38,18 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
     let utf16_context = context.unwrap_or_default();
     match front {
         "sheet" => {
-            let report = via!(context, parse_sheet(input));
+            let report =
+                CssParser::new(context.unwrap_or_default(), Default::default()).parse_sheet(input);
             let mut observation = sheet(&report);
             retained_rules(&mut observation, report.syntax().rules());
             observation
         }
         "sheet.with-options" => {
-            let options = CssStylesheetParseOptions {
-                location: (argument != "-")
-                    .then(|| CssStylesheetLocation::new(argument.to_owned())),
-            };
-            let report = parse_sheet_with_options(input, options);
+            let location =
+                (argument != "-").then(|| CssStylesheetLocation::new(argument.to_owned()));
+            let report = CssParser::default()
+                .parse_sheet(input)
+                .with_location(location);
             let mut observation = sheet(&report);
             retained_rules(&mut observation, report.syntax().rules());
             observation
@@ -72,28 +62,37 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             });
             observation
         }
-        "sheet.validate" => validation(validate_sheet(input), |observation, sheet| {
-            sheet_serializations(observation, sheet)
-        }),
-        "sheet.normalize" => normalized_sheet(&parse_sheet(input), argument),
+        "sheet.validate" => validation(
+            CssParser::default()
+                .parse_sheet(input)
+                .into_validation_result(),
+            sheet_serializations,
+        ),
+        "sheet.normalize" => normalized_sheet(&CssParser::default().parse_sheet(input), argument),
         "style" => {
-            let report = via!(context, parse_style_attribute(input));
+            let report = CssParser::new(context.unwrap_or_default(), Default::default())
+                .parse_block_contents(input);
             let mut observation = declaration_list(&report);
             let retained = Retained::declarations(report.syntax().as_slice());
             observation.retained = nonempty(retained.identities.join("~"));
             observation.authored = nonempty(retained.authored.join("~"));
             observation
         }
-        "style.validate" => validation(validate_style_attribute(input), list_serializations),
+        "style.validate" => validation(
+            CssParser::default()
+                .parse_block_contents(input)
+                .into_validation_result(),
+            list_serializations,
+        ),
         "declaration.expand" => {
-            let report = parse_style_attribute(input);
+            let report = CssParser::default().parse_block_contents(input);
             let mut observation = Observation::shaped("report");
             observation.report(&report);
             observation.add_fact(
                 report
                     .syntax()
                     .iter()
-                    .map(|declaration| match expand_declaration(declaration) {
+                    .map(|declaration| match declaration.expand() {
                         Ok(expansion) => expansion_facts(&expansion),
                         Err(error) => format!("err:{}", super::error_text(&error)),
                     })
@@ -103,12 +102,15 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             observation
         }
         "block-contents" => with_parse_charge(
-            declaration_list(&via!(context, parse_declaration_block_contents(input))),
+            declaration_list(
+                &CssParser::new(context.unwrap_or_default(), Default::default())
+                    .parse_block_contents(input),
+            ),
             |limits| {
-                declaration_list(&via!(
-                    context,
-                    parse_declaration_block_contents_with_limits(input, limits)
-                ))
+                declaration_list(
+                    &CssParser::new(context.unwrap_or_default(), limits)
+                        .parse_block_contents(input),
+                )
             },
         ),
         "block-contents.utf16" => {
@@ -133,35 +135,41 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
         }
         "block-contents.page" => with_parse_charge(
             optional(
-                &via!(context, parse_page_declaration_block_contents(input)),
+                &CssParser::new(context.unwrap_or_default(), Default::default())
+                    .parse_page_block_contents(input),
                 page_declarations,
             ),
             |limits| {
                 optional(
-                    &via!(
-                        context,
-                        parse_page_declaration_block_contents_with_limits(input, limits)
-                    ),
+                    &CssParser::new(context.unwrap_or_default(), limits)
+                        .parse_page_block_contents(input),
                     page_declarations,
                 )
             },
         ),
         "block-contents.font-face" => with_parse_charge(
             optional(
-                &parse_font_face_declaration_block_contents(input),
+                &CssParser::default().parse_font_face_block_contents(input),
                 font_face_descriptors,
             ),
             |limits| {
                 optional(
-                    &parse_font_face_declaration_block_contents_with_limits(input, limits),
+                    &CssParser::new(CssParserContext::default(), limits)
+                        .parse_font_face_block_contents(input),
                     font_face_descriptors,
                 )
             },
         ),
-        "declaration-list" => declaration_list(&via!(context, parse_declaration_list_text(input))),
-        "declaration-list.validate" => {
-            validation(validate_declaration_list_text(input), list_serializations)
-        }
+        "declaration-list" => declaration_list(
+            &CssParser::new(context.unwrap_or_default(), Default::default())
+                .parse_block_contents(input),
+        ),
+        "declaration-list.validate" => validation(
+            CssParser::default()
+                .parse_block_contents(input)
+                .into_validation_result(),
+            list_serializations,
+        ),
         "property-value.text" => property_value_text(context, argument, input),
         "property-value.components" => {
             property_value_components(context, argument, input, "ordinary")
@@ -171,37 +179,56 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
         "property-value.grammar.text" => {
             let grammar = grammar(argument);
             optional(
-                &via!(
-                    context,
-                    parse_property_value_text_for_grammar(input, grammar, CssImportance::Normal)
-                ),
+                &CssParser::new(context.unwrap_or_default(), Default::default())
+                    .parse_property_value(
+                        input,
+                        CssPropertyTextTarget::Grammar(grammar),
+                        CssImportance::Normal,
+                    ),
                 declaration,
             )
         }
         "property-value.grammar.components" => {
             let grammar = grammar(argument);
             components_then(input, |values| {
-                checked_declaration(via!(
-                    context,
-                    parse_property_value_for_grammar(grammar, values, CssImportance::Normal)
+                checked_declaration(CssDeclaration::try_from_components(
+                    &CssParser::new(context.unwrap_or_default(), Default::default()),
+                    CssPropertyTarget::Grammar(grammar),
+                    values,
+                    CssImportance::Normal,
                 ))
             })
         }
         "svg-glyph-orientation-vertical.text" => optional(
-            &svg_context(context).parse_svg_glyph_orientation_vertical_attribute_value(input),
+            &CssSvgGlyphOrientationVerticalDeclaration::parse_attribute(
+                &CssParser::new(svg_context(context), Default::default()),
+                input,
+            ),
             declaration,
         ),
         "svg-glyph-orientation-vertical.components" => components_then(input, |values| {
             checked_declaration(
-                svg_context(context)
-                    .parse_svg_glyph_orientation_vertical_attribute_components(values),
+                CssSvgGlyphOrientationVerticalDeclaration::try_attribute_from_components(
+                    &CssParser::new(svg_context(context), Default::default()),
+                    values,
+                ),
             )
         }),
-        "declaration" => optional(&via!(context, parse_declaration(input)), declaration),
+        "declaration" => optional(
+            &CssDeclaration::parse(
+                &CssParser::new(context.unwrap_or_default(), Default::default()),
+                input,
+            ),
+            declaration,
+        ),
         "rule" => {
             let namespaces = namespaces(argument);
             optional(
-                &via!(context, parse_rule(input, &namespaces)),
+                &CssRule::parse(
+                    &CssParser::new(context.unwrap_or_default(), Default::default()),
+                    input,
+                    &namespaces,
+                ),
                 |observation, rule| {
                     rule_serializations(observation, std::slice::from_ref(rule));
                     retained_rules(observation, std::slice::from_ref(rule));
@@ -211,16 +238,22 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
         "rule-graph" => rule_graph(input),
         "edited-rule" => edited_rule(input),
         "rule-syntax" => with_parse_charge(
-            optional(&classify_rule_syntax(input), rule_syntax),
+            optional(
+                &CssRuleSyntax::classify(&CssParser::default(), input),
+                rule_syntax,
+            ),
             |limits| {
                 optional(
-                    &classify_rule_syntax_with_limits(input, limits),
+                    &CssRuleSyntax::classify(
+                        &CssParser::new(CssParserContext::default(), limits),
+                        input,
+                    ),
                     rule_syntax,
                 )
             },
         ),
         "selector" => optional(
-            &parse_selector(input, &namespaces(argument)),
+            &CssSelector::parse(&CssParser::default(), input, &namespaces(argument)),
             |observation, selector| {
                 serialization(observation, "specified", Limited::Values, |limits| {
                     selector.serialize_specified(limits)
@@ -230,11 +263,19 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
         "selector-list" => {
             let namespaces = namespaces(argument);
             optional(
-                &parse_selector_list(input, &namespaces),
+                &CssParsedStyleSelectors::parse(
+                    &CssParser::default(),
+                    input,
+                    &namespaces,
+                    CssStyleSelectorContext::Ordinary,
+                ),
                 |observation, selectors| {
-                    observation.add_fact(format!("selectors={}", selectors.selectors().len()));
+                    observation.add_fact(format!(
+                        "selectors={}",
+                        selectors.selectors().selectors().len()
+                    ));
                     serialization(observation, "cssom", Limited::Values, |limits| {
-                        selectors.serialize_cssom(
+                        selectors.selectors().serialize_cssom(
                             &namespaces,
                             CssStyleSelectorContext::Ordinary,
                             limits,
@@ -254,13 +295,18 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
                 })
             };
             with_parse_charge(
-                render(&parse_style_selector_list(input, &namespaces, context)),
+                render(&CssParsedStyleSelectors::parse(
+                    &CssParser::default(),
+                    input,
+                    &namespaces,
+                    context,
+                )),
                 |limits| {
-                    render(&parse_style_selector_list_with_limits(
+                    render(&CssParsedStyleSelectors::parse(
+                        &CssParser::new(CssParserContext::default(), limits),
                         input,
                         &namespaces,
                         context,
-                        limits,
                     ))
                 },
             )
@@ -268,7 +314,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
         "relative-selector-list" => {
             let namespaces = CssNamespaceContext::default();
             optional(
-                &parse_relative_selector_list(input, &namespaces),
+                &CssRelativeSelectorList::parse(&CssParser::default(), input, &namespaces),
                 |observation, selectors| {
                     serialization(observation, "specified", Limited::Values, |limits| {
                         selectors.serialize_specified(limits)
@@ -280,15 +326,21 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             )
         }
         "media-query" => {
-            let report = parse_media_query(input);
+            let report = CssMediaQuery::parse(&CssParser::default(), input);
             let mut observation = Observation::shaped("report");
             observation.report(&report);
             media_query(&mut observation, report.syntax());
             observation
         }
-        "media-query.cssom" => optional(&parse_cssom_media_query(input), media_query),
+        "media-query.cssom" => optional(
+            &CssMediaQuery::parse_medium(&CssParser::default(), input),
+            media_query,
+        ),
         "media-query-list" => {
-            let report = via!(context, parse_media_query_list(input));
+            let report = CssMediaQueryList::parse(
+                &CssParser::new(context.unwrap_or_default(), Default::default()),
+                input,
+            );
             let mut observation = Observation::shaped("report");
             observation.report(&report);
             media_query_list(&mut observation, report.syntax());
@@ -306,15 +358,19 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             let namespaces = namespaces(argument);
             with_parse_charge(
                 checked(
-                    utf16_context.parse_supports_condition(input, &namespaces),
+                    CssCondition::<CssSupportsLeaf>::parse(
+                        &CssParser::new(utf16_context, Default::default()),
+                        input,
+                        &namespaces,
+                    ),
                     supports_condition,
                 ),
                 |limits| {
                     checked(
-                        utf16_context.parse_supports_condition_with_limits(
+                        CssCondition::<CssSupportsLeaf>::parse(
+                            &CssParser::new(utf16_context, limits),
                             input,
                             &namespaces,
-                            limits,
                         ),
                         supports_condition,
                     )
@@ -322,11 +378,18 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             )
         }
         "supports.css-text" => checked(
-            via!(context, parse_css_supports_condition(input)),
+            CssCondition::<CssSupportsLeaf>::parse_condition_text(
+                &CssParser::new(context.unwrap_or_default(), Default::default()),
+                input,
+            ),
             supports_condition,
         ),
         "supports.declaration" => checked(
-            via!(context, parse_css_supports_declaration(argument, input)),
+            CssSupportsDeclaration::parse(
+                &CssParser::new(context.unwrap_or_default(), Default::default()),
+                argument,
+                input,
+            ),
             |observation, declaration| {
                 serialization(observation, "specified", Limited::Bytes, |limits| {
                     declaration
@@ -336,38 +399,62 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             },
         ),
         "supports.test-child" => with_parse_charge(
-            optional(&parse_supports_test_child(input), supports_test_child),
+            optional(
+                &CssSupportsTestChild::parse(&CssParser::default(), input),
+                supports_test_child,
+            ),
             |limits| {
                 optional(
-                    &parse_supports_test_child_with_limits(input, limits),
+                    &CssSupportsTestChild::parse(
+                        &CssParser::new(CssParserContext::default(), limits),
+                        input,
+                    ),
                     supports_test_child,
                 )
             },
         ),
         "supports.test-body" => with_parse_charge(
-            optional(&parse_supports_test_contents(input), supports_test_body),
+            optional(
+                &CssSupportsTestBody::parse(&CssParser::default(), input),
+                supports_test_body,
+            ),
             |limits| {
                 optional(
-                    &parse_supports_test_contents_with_limits(input, limits),
+                    &CssSupportsTestBody::parse(
+                        &CssParser::new(CssParserContext::default(), limits),
+                        input,
+                    ),
                     supports_test_body,
                 )
             },
         ),
         "when-condition" => with_parse_charge(
-            checked(via!(context, parse_when_condition(input)), when_condition),
+            checked(
+                CssCondition::<CssWhenLeaf>::parse(
+                    &CssParser::new(context.unwrap_or_default(), Default::default()),
+                    input,
+                ),
+                when_condition,
+            ),
             |limits| {
                 checked(
-                    via!(context, parse_when_condition_with_limits(input, limits)),
+                    CssCondition::<CssWhenLeaf>::parse(
+                        &CssParser::new(context.unwrap_or_default(), limits),
+                        input,
+                    ),
                     when_condition,
                 )
             },
         ),
         "keyframe-rule" => optional(
-            &via!(context, parse_keyframe_rule(input)),
+            &CssParsedKeyframeRule::parse(
+                &CssParser::new(context.unwrap_or_default(), Default::default()),
+                input,
+            ),
             |observation, rule| keyframe_block(observation, rule.block()),
         ),
         "keyframe-selectors" => optional(
-            &parse_keyframe_selector_list(input),
+            &CssParsedKeyframeSelectors::parse(&CssParser::default(), input),
             |observation, selectors| {
                 serialization(observation, "specified", Limited::Values, |limits| {
                     selectors.selectors().serialize_key_text(limits)
@@ -375,7 +462,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             },
         ),
         "page-selectors" => optional(
-            &parse_page_selector_list(input),
+            &CssPageSelectorList::parse(&CssParser::default(), input),
             |observation, selectors| {
                 serialization(observation, "cssom", Limited::Values, |limits| {
                     selectors.serialize_cssom(limits)
@@ -383,31 +470,43 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             },
         ),
         "page-margin-rule" => with_parse_charge(
-            optional(&via!(context, parse_page_margin_rule(input)), margin_rule),
+            optional(
+                &CssMarginRule::parse(
+                    &CssParser::new(context.unwrap_or_default(), Default::default()),
+                    input,
+                ),
+                margin_rule,
+            ),
             |limits| {
                 optional(
-                    &via!(context, parse_page_margin_rule_with_limits(input, limits)),
+                    &CssMarginRule::parse(
+                        &CssParser::new(context.unwrap_or_default(), limits),
+                        input,
+                    ),
                     margin_rule,
                 )
             },
         ),
         "font-feature-family-list" => with_parse_charge(
             optional(
-                &via!(context, parse_font_feature_values_family_list(input)),
+                &CssFontFeatureValuesFamilyList::parse(
+                    &CssParser::new(context.unwrap_or_default(), Default::default()),
+                    input,
+                ),
                 family_list,
             ),
             |limits| {
                 optional(
-                    &via!(
-                        context,
-                        parse_font_feature_values_family_list_with_limits(input, limits)
+                    &CssFontFeatureValuesFamilyList::parse(
+                        &CssParser::new(context.unwrap_or_default(), limits),
+                        input,
                     ),
                     family_list,
                 )
             },
         ),
         "font-feature-value" => optional(
-            &parse_font_feature_value(input, font_feature_kind(argument)),
+            &CssFontFeatureValue::parse(&CssParser::default(), input, font_feature_kind(argument)),
             |observation, value| {
                 serialization(observation, "specified", Limited::Values, |limits| {
                     value.serialize_specified(limits)
@@ -415,7 +514,7 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             },
         ),
         "font-feature-display-value" => optional(
-            &parse_font_feature_display_value(input),
+            &CssFontFeatureDisplayValue::parse(&CssParser::default(), input),
             |observation, value| {
                 serialization(observation, "specified", Limited::Values, |limits| {
                     value.serialize_specified(limits)
@@ -423,7 +522,11 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             },
         ),
         "descriptor.color-profile" => optional(
-            &parse_color_profile_descriptor_value(input, color_profile_descriptor(argument)),
+            &CssColorProfileDescriptorValue::parse(
+                &CssParser::default(),
+                input,
+                color_profile_descriptor(argument),
+            ),
             |observation, value| {
                 serialization(observation, "specified", Limited::Values, |limits| {
                     value.serialize_specified(limits)
@@ -431,7 +534,11 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             },
         ),
         "descriptor.counter-style" => optional(
-            &parse_counter_style_descriptor_value(input, counter_style_descriptor(argument)),
+            &CssCounterStyleDescriptorValue::parse(
+                &CssParser::default(),
+                input,
+                counter_style_descriptor(argument),
+            ),
             |observation, value| {
                 serialization(observation, "specified", Limited::Values, |limits| {
                     value.serialize_specified(limits)
@@ -439,7 +546,11 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             },
         ),
         "descriptor.font-face" => optional(
-            &parse_font_face_descriptor_value(input, font_face_descriptor(argument)),
+            &CssAuthoredFontFaceDescriptorValue::parse(
+                &CssParser::default(),
+                input,
+                font_face_descriptor(argument),
+            ),
             |observation, value| {
                 serialization(observation, "specified", Limited::Values, |limits| {
                     value.serialize_specified(limits)
@@ -447,7 +558,11 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             },
         ),
         "descriptor.font-palette" => optional(
-            &parse_font_palette_descriptor_value(input, font_palette_descriptor(argument)),
+            &CssFontPaletteDescriptorValue::parse(
+                &CssParser::default(),
+                input,
+                font_palette_descriptor(argument),
+            ),
             |observation, value| {
                 serialization(observation, "specified", Limited::Values, |limits| {
                     value.serialize_specified(limits)
@@ -455,15 +570,20 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             },
         ),
         "descriptor.page" => optional(
-            &parse_page_descriptor_value(input, page_descriptor(argument)),
+            &CssPageDescriptorValue::parse(&CssParser::default(), input, page_descriptor(argument)),
             |observation, value| {
                 serialization(observation, "specified", Limited::Values, |limits| {
                     value.serialize_specified(limits)
                 });
             },
         ),
-        "block.color-profile" => {
-            optional(&parse_color_profile_block(input), |observation, block| {
+        "block.color-profile" => optional(
+            &CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+                &CssParser::default(),
+                input,
+                &CssBlockContext::default(),
+            ),
+            |observation, block| {
                 let descriptors = block.body();
                 observation.add_fact(format!("descriptors={}", descriptors.len()));
                 serialization(observation, "specified", Limited::Values, |limits| {
@@ -471,30 +591,52 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
                         descriptor.serialize_specified(limits)
                     })
                 });
-            })
-        }
-        "block.counter-style" => {
-            optional(&parse_counter_style_block(input), |observation, block| {
+            },
+        ),
+        "block.counter-style" => optional(
+            &CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+                &CssParser::default(),
+                input,
+                &CssBlockContext::default(),
+            ),
+            |observation, block| {
                 observation.add_fact(format!("entries={}", block.body().entries().len()));
-            })
-        }
-        "block.font-face" => optional(&parse_font_face_block(input), |observation, block| {
-            font_face_descriptors(observation, block.body())
-        }),
+            },
+        ),
+        "block.font-face" => optional(
+            &CssBlockFragment::<CssFontFaceDescriptors>::parse(
+                &CssParser::default(),
+                input,
+                &CssBlockContext::default(),
+            ),
+            |observation, block| font_face_descriptors(observation, block.body()),
+        ),
         "block.font-feature-value" => optional(
-            &parse_font_feature_value_block(input, font_feature_kind(argument)),
+            &CssBlockFragment::<CssFontFeatureValueBlock>::parse_definition(
+                &CssParser::default(),
+                input,
+                font_feature_kind(argument),
+            ),
             |observation, block| {
                 observation.add_fact(format!("definitions={}", block.body().definitions().len()));
             },
         ),
         "block.font-feature-values" => optional(
-            &parse_font_feature_values_block(input),
+            &CssBlockFragment::<Vec<CssFontFeatureValuesItem>>::parse(
+                &CssParser::default(),
+                input,
+                &CssBlockContext::default(),
+            ),
             |observation, block| {
                 observation.add_fact(format!("items={}", block.body().len()));
             },
         ),
         "block.font-palette-values" => optional(
-            &parse_font_palette_values_block(input),
+            &CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+                &CssParser::default(),
+                input,
+                &CssBlockContext::default(),
+            ),
             |observation, block| {
                 let descriptors = block.body();
                 observation.add_fact(format!("descriptors={}", descriptors.len()));
@@ -508,7 +650,11 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
         "block.group" => {
             let namespaces = namespaces(argument);
             optional(
-                &via!(context, parse_group_block(input, &namespaces)),
+                &CssBlockFragment::<CssRuleList>::parse(
+                    &CssParser::new(context.unwrap_or_default(), Default::default()),
+                    input,
+                    &CssBlockContext::group(&namespaces),
+                ),
                 |observation, block| {
                     rule_serializations(observation, block.body().rules());
                     retained_rules(observation, block.body().rules());
@@ -516,7 +662,11 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             )
         }
         "block.keyframe-declarations" => optional(
-            &via!(context, parse_keyframe_declaration_block(input)),
+            &CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+                &CssParser::new(context.unwrap_or_default(), Default::default()),
+                input,
+                &CssBlockContext::default(),
+            ),
             |observation, block| {
                 serialization(observation, "cssom", Limited::Values, |limits| {
                     block.body().serialize_cssom(limits)
@@ -524,7 +674,11 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             },
         ),
         "block.keyframes" => optional(
-            &via!(context, parse_keyframes_block(input)),
+            &CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+                &CssParser::new(context.unwrap_or_default(), Default::default()),
+                input,
+                &CssBlockContext::default(),
+            ),
             |observation, block| {
                 observation.add_fact(format!("blocks={}", block.body().len()));
                 serialization(observation, "specified", Limited::Values, |limits| {
@@ -540,7 +694,11 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             },
         ),
         "block.margin" => optional(
-            &via!(context, parse_margin_block(input)),
+            &CssBlockFragment::<CssMarginDeclarationBlock>::parse(
+                &CssParser::new(context.unwrap_or_default(), Default::default()),
+                input,
+                &CssBlockContext::default(),
+            ),
             |observation, block| {
                 serialization(observation, "cssom", Limited::Values, |limits| {
                     block.body().serialize_cssom(limits)
@@ -548,7 +706,11 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             },
         ),
         "block.page" => optional(
-            &via!(context, parse_page_block(input)),
+            &CssBlockFragment::<CssPageBody>::parse(
+                &CssParser::new(context.unwrap_or_default(), Default::default()),
+                input,
+                &CssBlockContext::default(),
+            ),
             |observation, block| {
                 let body = block.body();
                 page_declarations(observation, body.declarations());
@@ -558,9 +720,10 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
         "block.scope" => {
             let namespaces = CssNamespaceContext::default();
             optional(
-                &via!(
-                    context,
-                    parse_scope_block(input, &namespaces, ancestry(argument))
+                &CssBlockFragment::<CssRuleList>::parse(
+                    &CssParser::new(context.unwrap_or_default(), Default::default()),
+                    input,
+                    &CssBlockContext::scope(&namespaces, ancestry(argument)),
                 ),
                 |observation, block| retained_scoped(observation, block.body().rules()),
             )
@@ -568,22 +731,30 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
         "block.scoped-group" => {
             let namespaces = CssNamespaceContext::default();
             optional(
-                &via!(
-                    context,
-                    parse_scoped_group_block(input, &namespaces, ancestry(argument))
+                &CssBlockFragment::<CssRuleList>::parse(
+                    &CssParser::new(context.unwrap_or_default(), Default::default()),
+                    input,
+                    &CssBlockContext::scoped_group(&namespaces, ancestry(argument)),
                 ),
                 |observation, block| retained_scoped(observation, block.body().rules()),
             )
         }
-        "block.supports-test" => {
-            optional(&parse_supports_test_block(input), |observation, block| {
-                supports_test_body(observation, block.body())
-            })
-        }
+        "block.supports-test" => optional(
+            &CssBlockFragment::<CssSupportsTestBody>::parse(
+                &CssParser::default(),
+                input,
+                &CssBlockContext::default(),
+            ),
+            |observation, block| supports_test_body(observation, block.body()),
+        ),
         "block.style" => {
             let namespaces = CssNamespaceContext::default();
             optional(
-                &via!(context, parse_style_block(input, &namespaces)),
+                &CssStyleBlock::parse(
+                    &CssParser::new(context.unwrap_or_default(), Default::default()),
+                    input,
+                    &namespaces,
+                ),
                 |observation, block| {
                     list_serializations(observation, block.declarations());
                     rule_serializations_into(observation, "rules", block.rules());
@@ -596,28 +767,44 @@ pub fn observe(front: &str, argument: &str, input: &str) -> Observation {
             )
         }
         "component-value" => with_parse_charge(
-            optional(&parse_component_value(input), component_value),
+            optional(
+                &CssComponentValue::parse(&CssParser::default(), input),
+                component_value,
+            ),
             |limits| {
                 optional(
-                    &parse_component_value_with_limits(input, limits),
+                    &CssComponentValue::parse(
+                        &CssParser::new(CssParserContext::default(), limits),
+                        input,
+                    ),
                     component_value,
                 )
             },
         ),
         "component-values" => with_parse_charge(
-            checked(parse_component_values(input), component_values),
+            checked(
+                CssComponentValues::parse(&CssParser::default(), input),
+                component_values,
+            ),
             |limits| {
                 checked(
-                    parse_component_values_with_limits(input, limits),
+                    CssComponentValues::parse(
+                        &CssParser::new(CssParserContext::default(), limits),
+                        input,
+                    ),
                     component_values,
                 )
             },
         ),
         "component-values.comma" => with_parse_charge(
-            comma_values(&parse_comma_separated_component_values(input)),
+            comma_values(&CssComponentValues::parse_comma_separated(
+                &CssParser::default(),
+                input,
+            )),
             |limits| {
-                comma_values(&parse_comma_separated_component_values_with_limits(
-                    input, limits,
+                comma_values(&CssComponentValues::parse_comma_separated(
+                    &CssParser::new(CssParserContext::default(), limits),
+                    input,
                 ))
             },
         ),
@@ -840,9 +1027,11 @@ fn sheet_bytes(argument: &str, input: &str) -> Observation {
         protocol_label: (argument != "-").then_some(argument),
         environment_encoding: None,
     };
-    match decode_stylesheet_bytes(input.as_bytes(), hints) {
+    match CssDecodedStylesheetInput::decode(input.as_bytes(), hints, Default::default()) {
         Ok(decoded) => {
-            let report = parse_decoded_stylesheet(&decoded, None);
+            let report = CssParser::default()
+                .parse_sheet_bytes(&decoded)
+                .with_location(None);
             let mut observation = sheet(&report);
             observation.add_fact(format!("encoding={}", decoded.encoding().name()));
             observation.add_fact(format!("replacements={}", decoded.had_replacements()));
@@ -869,7 +1058,11 @@ fn utf16_failure<E: std::fmt::Debug + std::fmt::Display + 'static>(
 }
 
 fn sheet_utf16(context: CssParserContext, input: &str, limits: CssUtf16InputLimits) -> Observation {
-    match context.parse_sheet_utf16_with_limits(utf16(input), limits, || Ok::<(), Stop>(())) {
+    match CssParser::new(context, Default::default()).parse_sheet_utf16(
+        utf16(input),
+        limits,
+        || Ok::<(), Stop>(()),
+    ) {
         Ok(report) => {
             let mut observation = sheet(&report);
             retained_rules(&mut observation, report.syntax().rules());
@@ -885,10 +1078,9 @@ fn block_contents_utf16(
     input_limits: CssUtf16InputLimits,
     component_limits: CssComponentValueLimits,
 ) -> Observation {
-    match context.parse_declaration_block_contents_utf16_with_limits(
+    match CssParser::new(context, component_limits).parse_block_contents_utf16(
         utf16(input),
         input_limits,
-        component_limits,
         || Ok::<(), Stop>(()),
     ) {
         Ok(report) => declaration_list(report.report()),
@@ -901,9 +1093,12 @@ fn media_query_list_utf16(
     input: &str,
     limits: CssUtf16InputLimits,
 ) -> Observation {
-    match context
-        .parse_media_query_list_utf16_with_limits(utf16(input), limits, || Ok::<(), Stop>(()))
-    {
+    match CssMediaQueryList::parse_utf16(
+        &CssParser::new(context, Default::default()),
+        utf16(input),
+        limits,
+        || Ok::<(), Stop>(()),
+    ) {
         Ok(report) => {
             let mut observation = Observation::shaped("report");
             observation.report(&report);
@@ -917,12 +1112,12 @@ fn media_query_list_utf16(
 fn color_scheme_utf16(context: CssParserContext, input: &str) -> Observation {
     let limits = CssUtf16PropertyValueLimits {
         input: CssUtf16InputLimits::default(),
-        syntax: CssComponentValueLimits::default(),
         max_work: 4_000_000,
         max_live_bytes: 16 * 1024 * 1024,
         max_retained_bytes: 16 * 1024 * 1024,
     };
-    match context.parse_color_scheme_utf16_with_limits(
+    match CssColorScheme::parse_utf16(
+        &CssParser::new(context, Default::default()),
         utf16(input),
         limits,
         |_| Ok::<(), Stop>(()),
@@ -1017,9 +1212,10 @@ fn property_value_text(
 ) -> Observation {
     let property = PropertyArgument::parse(argument);
     optional(
-        &via!(
-            context,
-            parse_property_value_text(input, property.name(), property.importance)
+        &CssParser::new(context.unwrap_or_default(), Default::default()).parse_property_value(
+            input,
+            CssPropertyTextTarget::Property(property.name()),
+            property.importance,
         ),
         declaration,
     )
@@ -1034,15 +1230,24 @@ fn property_value_components(
     let property = PropertyArgument::parse(argument);
     components_then(input, |values| {
         checked_declaration(match target {
-            "ordinary" => via!(
-                context,
-                parse_property_value(property.name(), values, property.importance)
+            "ordinary" => CssDeclaration::try_from_components(
+                &CssParser::new(context.unwrap_or_default(), Default::default()),
+                CssPropertyTarget::Property(property.name()),
+                values,
+                property.importance,
             ),
-            "page" => via!(
-                context,
-                parse_page_property_value(property.name(), values, property.importance)
+            "page" => CssDeclaration::try_from_components(
+                &CssParser::new(context.unwrap_or_default(), Default::default()),
+                CssPropertyTarget::PageProperty(property.name()),
+                values,
+                property.importance,
             ),
-            "margin" => parse_margin_property_value(property.name(), values, property.importance),
+            "margin" => CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::MarginProperty(property.name()),
+                values,
+                property.importance,
+            ),
             other => unreachable!("unknown property context {other}"),
         })
     })
@@ -1065,7 +1270,7 @@ fn components_then(
     input: &str,
     front: impl FnOnce(CssComponentValues) -> Observation,
 ) -> Observation {
-    match parse_component_values(input) {
+    match CssComponentValues::parse(&CssParser::default(), input) {
         Ok(values) => front(values),
         Err(error) => {
             let mut observation = Observation::shaped("components:err");
@@ -1348,7 +1553,7 @@ fn normalized_sheet(report: &CssParseReport<CssSheet>, argument: &str) -> Observ
     let render = |limits: Option<CssNormalizationLimits>| {
         let mut observation = Observation::shaped("normalized");
         let result = match (argument, limits) {
-            ("report", None) => normalize_report(report).map(|normalized| {
+            ("report", None) => report.normalize(Default::default()).map(|normalized| {
                 observation.clean = normalized.is_clean().to_string();
                 observation.diagnostics =
                     nonempty(super::report::diagnostics(normalized.diagnostics()).join("~"));
@@ -1359,19 +1564,21 @@ fn normalized_sheet(report: &CssParseReport<CssSheet>, argument: &str) -> Observ
                     .map(item_facts)
                     .collect::<Vec<_>>()
             }),
-            ("report", Some(limits)) => {
-                normalize_report_with_limits(report, limits).map(|normalized| {
-                    normalized
-                        .syntax()
-                        .items()
-                        .iter()
-                        .map(item_facts)
-                        .collect::<Vec<_>>()
-                })
-            }
-            ("sheet", None) => normalize_sheet(report.syntax())
+            ("report", Some(limits)) => report.normalize(limits).map(|normalized| {
+                normalized
+                    .syntax()
+                    .items()
+                    .iter()
+                    .map(item_facts)
+                    .collect::<Vec<_>>()
+            }),
+            ("sheet", None) => report
+                .syntax()
+                .normalize(Default::default())
                 .map(|sheet| sheet.items().iter().map(item_facts).collect::<Vec<_>>()),
-            ("sheet", Some(limits)) => normalize_sheet_with_limits(report.syntax(), limits)
+            ("sheet", Some(limits)) => report
+                .syntax()
+                .normalize(limits)
                 .map(|sheet| sheet.items().iter().map(item_facts).collect::<Vec<_>>()),
             (other, _) => panic!("unknown normalization input `{other}`"),
         };
@@ -1558,7 +1765,7 @@ fn unbounded_depth(values: CssSerializationLimits) -> CssRuleSerializationLimits
 /// The rule graph of each parsed rule, and of the first style rule rebuilt
 /// from its selectors and specified declarations.
 fn rule_graph(input: &str) -> Observation {
-    let report = parse_sheet(input);
+    let report = CssParser::default().parse_sheet(input);
     let mut observation = Observation::shaped("report");
     observation.report(&report);
     let namespaces = CssNamespaceContext::from_sheet(report.syntax());
@@ -1618,7 +1825,7 @@ fn rule_graph(input: &str) -> Observation {
 /// Graph inputs of each parsed rule, and of the first style rule rebuilt
 /// from its selectors and specified declarations.
 fn edited_rule(input: &str) -> Observation {
-    let report = parse_sheet(input);
+    let report = CssParser::default().parse_sheet(input);
     let mut observation = Observation::shaped("report");
     observation.report(&report);
     let namespaces = CssNamespaceContext::from_sheet(report.syntax());

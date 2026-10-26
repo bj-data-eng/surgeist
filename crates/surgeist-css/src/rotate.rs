@@ -495,7 +495,7 @@ mod serialization_tests {
     }
     fn math_angle() -> CssNumeric<CssAngle> {
         let components: CssComponentValues =
-            crate::parse_component_values("calc(15deg + 15deg)").unwrap();
+            crate::component_values::parse_component_values("calc(15deg + 15deg)").unwrap();
         CssNumeric::<CssAngle>::try_from_calculation(
             crate::CssCalculation::<crate::CssAngle>::try_from_components(
                 components,

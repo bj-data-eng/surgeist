@@ -85,10 +85,12 @@ fn slots(property: CssKnownProperty) -> &'static [bool] {
 
 fn declaration(property: CssKnownProperty, body: &str, prefix: &str) -> CssDeclaration {
     let source = format!("{prefix}{}:{body}", property.canonical_name());
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(
-        validate_style_attribute(&source),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result(),
         Ok(report.syntax().clone())
     );
     let declaration = report.syntax().last().expect("retained time declaration");
@@ -110,21 +112,23 @@ fn huge_ordinary_times_are_clean(property: CssKnownProperty) {
     for &delay_slot in slots(property) {
         let body = value(property, "1e999s", delay_slot);
         let source = format!("{}:{body}", property.canonical_name());
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         if !report.is_clean() {
             failures.push(format!("{source}: {:?}", report.diagnostics()));
             continue;
         }
         let parsed = declaration(property, &body, "");
-        let components = parse_component_values(&body).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &body).unwrap();
         for result in [
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Normal,
             ),
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Normal,
             ),
@@ -249,7 +253,7 @@ fn concatenate(parts: &[CssComponentValues]) -> CssComponentValues {
 }
 
 fn recovered_function(source: &str) -> (CssComponentValues, CssValueOrigin) {
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let CssComponentValueRef::Function(function) = components.items()[0].view() else {
         panic!("recovered function fixture")
     };
@@ -278,17 +282,27 @@ fn constructors_reject_first_original_closure(property: CssKnownProperty) {
         ("pending envelope", pending.clone(), pending_origin.clone()),
         (
             "CSS-wide envelope with later recovery",
-            concatenate(&[parse_component_values("initial ").unwrap(), late.clone()]),
+            concatenate(&[
+                CssComponentValues::parse(&CssParser::default(), "initial ").unwrap(),
+                late.clone(),
+            ]),
             late_origin.clone(),
         ),
         (
             "later time child",
-            concatenate(&[parse_component_values(prefix).unwrap(), late.clone()]),
+            concatenate(&[
+                CssComponentValues::parse(&CssParser::default(), prefix).unwrap(),
+                late.clone(),
+            ]),
             late_origin.clone(),
         ),
         (
             "first of two mixed-source closures",
-            concatenate(&[pending, parse_component_values(" ").unwrap(), nested]),
+            concatenate(&[
+                pending,
+                CssComponentValues::parse(&CssParser::default(), " ").unwrap(),
+                nested,
+            ]),
             pending_origin,
         ),
     ];
@@ -298,16 +312,18 @@ fn constructors_reject_first_original_closure(property: CssKnownProperty) {
         for (front_door, result) in [
             (
                 "property",
-                parse_property_value(
-                    CssPropertyNameRef::Known(property),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                     components.clone(),
                     CssImportance::Important,
                 ),
             ),
             (
                 "grammar",
-                parse_property_value_for_grammar(
-                    property.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(property.grammar()),
                     components.clone(),
                     CssImportance::Important,
                 ),
@@ -391,7 +407,7 @@ time_property_tests!(animation, Animation, "1e-999s", "2e-999s");
 fn assert_invalid_duration(property: CssKnownProperty, coefficient: &str) {
     let body = value(property, coefficient, false);
     let source = format!("{}:{body};color:red", property.canonical_name());
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [retained] = report.syntax().as_slice() else {
         panic!(
             "invalid duration dropped; only color remains: {source}: actual declaration count {}",
@@ -421,7 +437,11 @@ fn assert_invalid_duration(property: CssKnownProperty, coefficient: &str) {
     );
     assert_eq!(detail.known_property().unwrap(), property);
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -469,14 +489,18 @@ fn ordinary_range_malformed_unit_and_trailing_junk_controls() {
                 value(property, invalid, false)
             };
             let source = format!("{}:{body}", property.canonical_name());
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.syntax().is_empty(), "{source}");
             crate::css::support::value_assertions::assert_first_property_rejection(
                 report.diagnostics(),
                 property,
             );
             crate::css::support::value_assertions::assert_first_property_rejection(
-                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 property,
             );
         }
@@ -487,14 +511,18 @@ fn ordinary_range_malformed_unit_and_trailing_junk_controls() {
     ] {
         for invalid in ["0", "1hz", "1s junk", "1s,"] {
             let source = format!("{}:{invalid}", property.canonical_name());
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.syntax().is_empty(), "{source}");
             crate::css::support::value_assertions::assert_first_property_rejection(
                 report.diagnostics(),
                 property,
             );
             crate::css::support::value_assertions::assert_first_property_rejection(
-                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 property,
             );
         }
@@ -572,7 +600,7 @@ fn parsed_recovered_math_is_retained_with_non_clean_validation() {
     for property in TIME_PROPERTIES {
         let body = value(property, "calc(-1s", false);
         let source = format!("{}:{body}", property.canonical_name());
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(
             report.syntax().len(),
             1,
@@ -590,7 +618,11 @@ fn parsed_recovered_math_is_retained_with_non_clean_validation() {
                 )
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -600,9 +632,9 @@ fn parsed_recovered_math_is_retained_with_non_clean_validation() {
 fn both_timing_families_retain_pending_substitution_occurrences() {
     for property in TIME_PROPERTIES {
         let source = format!("{}:var(--time)", property.canonical_name());
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-        let CssExpansion::Pending(handle) = expand_declaration(&report.syntax()[0]).unwrap() else {
+        let CssExpansion::Pending(handle) = report.syntax()[0].expand().unwrap() else {
             panic!("timing substitution is pending")
         };
         assert!(handle.source().same_occurrence(&report.syntax()[0]));
@@ -668,10 +700,12 @@ fn shorthand_signed_tiny_delays_have_distinct_typed_identity() {
 #[test]
 fn non_time_iteration_and_easing_controls_preserve_exact_values_and_ranges() {
     let source = "animation-iteration-count:2.5,calc(1 + 1),infinite;transition-timing-function:cubic-bezier(0.1,-2,0.9,3),steps(2,jump-none)";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(
-        validate_style_attribute(source),
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result(),
         Ok(report.syntax().clone())
     );
     let CssKnownPropertyValueRef::AnimationIterationCount(counts) = report.syntax()[0]
@@ -725,7 +759,11 @@ fn non_time_iteration_and_easing_controls_preserve_exact_values_and_ranges() {
         ),
     ] {
         crate::css::support::value_assertions::assert_first_property_rejection(
-            validate_style_attribute(source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             property,
         );
     }
@@ -756,13 +794,13 @@ mod construction {
     }
     fn calculation(source: &str) -> CssCalculation<CssTime> {
         CssCalculation::<CssTime>::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             Default::default(),
         )
         .unwrap()
     }
     fn parsed_duration(source: &str) -> CssNumeric<CssTime, CssNonNegative> {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         let wrapper = report
             .syntax()
             .iter()
@@ -808,7 +846,7 @@ mod construction {
                 CssNumericTokenKind::Integer,
             ),
         ] {
-            let components = parse_component_values(source).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
             let component = components.items()[0].clone();
             let value =
                 CssNumericLiteral::<CssTime>::try_from_component(component.clone()).unwrap();
@@ -831,7 +869,7 @@ mod construction {
     #[test]
     fn intrinsic_literal_errors_retain_the_responsible_component_origin() {
         for source in ["0", "1px", "1%", "infinity", "NaN", "\"1s\"", "calc(1s)"] {
-            let components = parse_component_values(source).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
             let component = components.items()[0].clone();
             let error =
                 CssNumericLiteral::<CssTime>::try_from_component(component.clone()).unwrap_err();
@@ -861,7 +899,7 @@ mod construction {
         }
         for source in ["1", "calc(1px)", "calc(1%)"] {
             let error = CssCalculation::<CssTime>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default(),
             )
             .unwrap_err();
@@ -903,13 +941,17 @@ mod construction {
     #[test]
     fn strict_admission_and_aggregate_construction_reject_original_recovery() {
         let source = "transition-duration: calc(1s";
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         crate::css::support::value_assertions::assert_first_code(
             report.diagnostics(),
             CssErrorCode::UnexpectedEnd,
         );
         crate::css::support::value_assertions::assert_first_code(
-            validate_style_attribute(source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             CssErrorCode::UnexpectedEnd,
         );
         let duration = parsed_duration(source);
@@ -950,7 +992,7 @@ mod construction {
             })
             .is_none()
         );
-        let report = parse_style_attribute("transition: opacity calc(1s");
+        let report = CssParser::default().parse_block_contents("transition: opacity calc(1s");
         let CssKnownPropertyValueRef::Transition(wrapper) = report.syntax()[0]
             .known()
             .unwrap()
@@ -960,7 +1002,7 @@ mod construction {
             panic!("transition recovery");
         };
         assert!(CssTransitionList::try_new(wrapper.value().values().to_vec()).is_none());
-        let report = parse_style_attribute("animation: fade calc(1s");
+        let report = CssParser::default().parse_block_contents("animation: fade calc(1s");
         let CssKnownPropertyValueRef::Animation(wrapper) = report.syntax()[0]
             .known()
             .unwrap()
@@ -1246,7 +1288,7 @@ mod construction {
             assert_eq!(
                 numeric_failure(
                     &CssCalculation::<CssTime>::try_from_components(
-                        parse_component_values(source).unwrap(),
+                        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                         Default::default()
                     )
                     .unwrap_err()
@@ -1257,13 +1299,22 @@ mod construction {
     }
     #[test]
     fn checked_negative_duration_maps_to_the_original_later_mixed_source_token() {
-        let negative = parse_component_values("-1e-999s").unwrap().items()[0].clone();
-        let mut items = parse_component_values("1s, ").unwrap().items().to_vec();
+        let negative = CssComponentValues::parse(&CssParser::default(), "-1e-999s")
+            .unwrap()
+            .items()[0]
+            .clone();
+        let mut items = CssComponentValues::parse(&CssParser::default(), "1s, ")
+            .unwrap()
+            .items()
+            .to_vec();
         items.push(negative.clone());
         let components = CssComponentValues::try_new(items, Default::default()).unwrap();
         let before = components.clone();
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::TransitionDuration),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::TransitionDuration,
+            )),
             components.clone(),
             CssImportance::Normal,
         )

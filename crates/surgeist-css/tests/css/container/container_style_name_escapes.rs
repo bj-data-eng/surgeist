@@ -6,7 +6,7 @@ use surgeist_css::*;
 
 fn style_query(authored: &str) -> CssCondition<CssStyleQueryLeaf> {
     let source = format!("@container style({authored}) {{ .x {{ color:red }} }}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("one retained container rule")

@@ -5,8 +5,8 @@ use crate::css::support::isolated_stack;
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
-    CssCalculation, CssComponentValueError, CssComponentValueLimits, CssLengthPercentage,
-    CssNumber, parse_component_values,
+    CssCalculation, CssComponentValueError, CssComponentValueLimits, CssComponentValues,
+    CssLengthPercentage, CssNumber, CssParser,
 };
 
 #[derive(Default)]
@@ -34,7 +34,7 @@ fn mixed_number_tree_owned_lifecycle_completes_at_supported_depth() {
         || {
             let source = format!("{}1{}", "calc(1 + 2 * ".repeat(256), ")".repeat(256));
             let value = CssCalculation::<CssNumber>::try_from_components(
-                parse_component_values(&source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
                 Default::default(),
             )
             .unwrap();
@@ -68,7 +68,7 @@ fn mixed_length_tree_owned_lifecycle_completes_at_supported_depth() {
         || {
             let source = format!("{}1px{}", "calc(1px + 2 * ".repeat(256), ")".repeat(256));
             let value = CssCalculation::<CssLengthPercentage>::try_from_components(
-                parse_component_values(&source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
                 Default::default(),
             )
             .unwrap();
@@ -101,7 +101,7 @@ fn tighter_limits_reject_and_release_deep_inputs_without_aborting_the_caller() {
         "css::numeric::calculation::numeric_lifecycle_stack::tighter_limits_reject_and_release_deep_inputs_without_aborting_the_caller",
         || {
             let source = format!("{}1{}", "calc(1 + 2 * ".repeat(256), ")".repeat(256));
-            let components = parse_component_values(&source).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
             let admitted = CssCalculation::<CssNumber>::try_from_components(
                 components.clone(),
                 Default::default(),

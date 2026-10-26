@@ -4,7 +4,7 @@
 use surgeist_css::*;
 
 fn line(source: &str) -> CssGridLine {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one Grid line declaration")

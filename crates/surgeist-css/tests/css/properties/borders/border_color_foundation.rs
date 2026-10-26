@@ -72,8 +72,7 @@ fn accepted(name: &str, value: &str) {
 
 fn one_value(name: &str, value: &str) -> CssLonghandValue {
     let source = declaration(name, value);
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("{name} has a terminal contribution")
     };
@@ -326,7 +325,7 @@ fn logical_color_pairs_assign_exact_start_and_end_with_omission() {
             let source = declaration(pair, authored);
             checked(pair, authored);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("{pair} expands to two logical colors")
             };
@@ -369,7 +368,7 @@ fn four_side_colors_accept_both_role_modes_and_expand_selected_sides() {
         "logical red #12abef currentcolor rgb(1 2 3 / none)",
     ] {
         accepted(FOUR_SIDE, value);
-        assert_four_expansion(expand_declaration(&declaration(FOUR_SIDE, value)));
+        assert_four_expansion(declaration(FOUR_SIDE, value).expand());
     }
     for (value, token) in [
         ("", None),
@@ -389,10 +388,10 @@ fn four_side_colors_accept_both_role_modes_and_expand_selected_sides() {
     ));
 
     let source = ".a{color:red;border-color:logical currentcolor #12abef;color:blue}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean());
     let before = report.syntax().clone();
-    assert!(normalize_sheet(report.syntax()).is_ok());
+    assert!(report.syntax().normalize(Default::default()).is_ok());
     assert_eq!(report.syntax(), &before);
 }
 
@@ -414,7 +413,7 @@ fn physical_border_triples_preserve_color_and_currentcolor_default() {
         ] {
             let source = declaration(name, authored);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("{name} expands to border facets")
             };
@@ -437,7 +436,7 @@ fn physical_border_triples_preserve_color_and_currentcolor_default() {
 fn globals_all_and_pending_reentry_keep_color_members_and_occurrence() {
     let all_source = declaration("all", "initial");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all_source).unwrap()
+        all_source.expand().unwrap()
     else {
         panic!("all is a symbolic universal reset")
     };
@@ -455,10 +454,10 @@ fn globals_all_and_pending_reentry_keep_color_members_and_occurrence() {
             let source = declaration(name, text);
             checked(name, text);
             if name == FOUR_SIDE {
-                assert_four_expansion(expand_declaration(&source));
+                assert_four_expansion(source.expand());
             } else {
                 let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                    expand_declaration(&source).unwrap()
+                    source.expand().unwrap()
                 else {
                     panic!("{name} has symbolic global contributions")
                 };
@@ -475,24 +474,29 @@ fn globals_all_and_pending_reentry_keep_color_members_and_occurrence() {
         }
         for pending in ["var(--border-color)", "env(--border-color)"] {
             let source = declaration(name, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("{name} retains pending substitution")
             };
             assert!(handle.source().same_occurrence(&source));
             assert!(
-                rejected(handle.reenter(parse_component_values("var(--again)").unwrap()))
-                    .is_residual_substitution()
+                rejected(handle.reenter(
+                    CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                ))
+                .is_residual_substitution()
             );
             assert!(
-                rejected(handle.reenter(parse_component_values("none").unwrap()))
-                    .replacement_error()
-                    .is_some()
+                rejected(
+                    handle
+                        .reenter(CssComponentValues::parse(&CssParser::default(), "none").unwrap())
+                )
+                .replacement_error()
+                .is_some()
             );
             if name == FOUR_SIDE {
                 for replacement in ["red blue", "logical red #12abef"] {
-                    assert_four_contributions(
-                        handle.reenter(parse_component_values(replacement).unwrap()),
-                    );
+                    assert_four_contributions(handle.reenter(
+                        CssComponentValues::parse(&CssParser::default(), replacement).unwrap(),
+                    ));
                 }
             } else {
                 let replacement = if PAIRS.contains(&name) {
@@ -500,7 +504,8 @@ fn globals_all_and_pending_reentry_keep_color_members_and_occurrence() {
                 } else {
                     "red"
                 };
-                let components = parse_component_values(replacement).unwrap();
+                let components =
+                    CssComponentValues::parse(&CssParser::default(), replacement).unwrap();
                 let CssContributions::Longhands(values) =
                     handle.reenter(components.clone()).unwrap()
                 else {
@@ -527,11 +532,9 @@ fn globals_all_and_pending_reentry_keep_color_members_and_occurrence() {
 
 #[test]
 fn normalization_retains_authored_order_with_pending_four_side_color() {
-    let report = parse_sheet(
-        ".a{border-top-color:red;border-block-color:#12abef currentcolor;border-inline-start-color:rgb(1 2 3 / none);border-color:var(--c);border-left-color:blue}",
-    );
+    let report = CssParser::default().parse_sheet(".a{border-top-color:red;border-block-color:#12abef currentcolor;border-inline-start-color:rgb(1 2 3 / none);border-color:var(--c);border-left-color:blue}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let authored = normalized
         .items()
         .iter()

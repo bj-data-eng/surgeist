@@ -372,7 +372,8 @@ fn map_cardinality_failure_poisoning_and_order_are_atomic() {
 #[test]
 fn computed_readonly_owner_and_null_base_are_independent_explicit_inputs() {
     let mut store = new_store();
-    let declarations = parse_declaration_block_contents("color: red;")
+    let declarations = CssParser::default()
+        .parse_block_contents("color: red;")
         .into_parts()
         .0;
     for computed in [false, true] {
@@ -940,7 +941,8 @@ fn unavailable_symbolic_projection_is_retained_but_resource_failures_abort() {
 
 #[test]
 fn typed_unavailable_values_cannot_bypass_input_and_component_quotas() {
-    let raw = parse_declaration_block_contents("inset:var(--inset);")
+    let raw = CssParser::default()
+        .parse_block_contents("inset:var(--inset);")
         .into_parts()
         .0;
     let mut nodes = CssomStore::new(
@@ -1019,7 +1021,8 @@ fn media_with_only_empty_nested_child_keeps_literal_two_newline_frame() {
 #[test]
 fn constructed_creation_filters_imports_and_repeated_checked_ingress_gets_fresh_ids() {
     let mut store = new_store();
-    let source = parse_sheet("@import 'child.css'; a {color:red;}")
+    let source = CssParser::default()
+        .parse_sheet("@import 'child.css'; a {color:red;}")
         .into_parts()
         .0;
     let mut edit = batch(&store);
@@ -1043,7 +1046,13 @@ fn constructed_creation_filters_imports_and_repeated_checked_ingress_gets_fresh_
     assert_eq!(store.snapshot().sheet_rules(&sheet).unwrap().len(), 1);
     let mut edit = batch(&store);
     let typed = edit
-        .create_typed_sheet(parse_sheet("@import 'only.css';").into_parts().0, inputs())
+        .create_typed_sheet(
+            CssParser::default()
+                .parse_sheet("@import 'only.css';")
+                .into_parts()
+                .0,
+            inputs(),
+        )
         .unwrap();
     let parsed = edit
         .create_parsed_sheet("@import 'only.css';", inputs())
@@ -1171,7 +1180,13 @@ fn parsed_ingress_uses_current_parser_facts_and_typed_ingress_keeps_its_own() {
         .create_parsed_sheet("a { width: 10; }", inputs())
         .unwrap();
     let typed = edit
-        .create_typed_sheet(parse_sheet("b { height: 10; }").syntax().clone(), inputs())
+        .create_typed_sheet(
+            CssParser::default()
+                .parse_sheet("b { height: 10; }")
+                .syntax()
+                .clone(),
+            inputs(),
+        )
         .unwrap();
     let receipt = store.commit(edit).unwrap();
     let after = store.snapshot();

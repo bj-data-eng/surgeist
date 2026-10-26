@@ -5,7 +5,7 @@ use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn images(css: &str) -> CssImageValueList {
-    let report = parse_style_attribute(&format!("background-image: {css}"));
+    let report = CssParser::default().parse_block_contents(format!("background-image: {css}"));
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BackgroundImage(value) = report.syntax()[0]
         .known()
@@ -23,7 +23,7 @@ fn only(css: &str) -> CssImageValue {
 }
 
 fn color(css: &str) -> CssColor {
-    let report = parse_style_attribute(&format!("color: {css}"));
+    let report = CssParser::default().parse_block_contents(format!("color: {css}"));
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Color(value) = report.syntax()[0]
         .known()

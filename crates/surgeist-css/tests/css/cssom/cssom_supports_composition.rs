@@ -10,11 +10,11 @@ use std::error::Error;
 use surgeist_css::{
     CssGroupPreludeRef as Prelude, CssKeyframeRuleView, CssKeyframesName, CssKeyframesString,
     CssKnownProperty as K, CssMarginBox, CssMarginRuleView, CssNamespaceContext, CssPageRuleView,
-    CssPropertyNameRef, CssRule, CssRuleCssomFormat, CssRuleGraphInput as View,
-    CssSerializationError, CssSerializationLimits as Limits, CssSpecifiedDeclarationBlock as Block,
+    CssPageSelectorList, CssParsedKeyframeSelectors, CssParser, CssPropertyNameRef, CssRule,
+    CssRuleCssomFormat, CssRuleGraphInput as View, CssSerializationError,
+    CssSerializationLimits as Limits, CssSpecifiedDeclarationBlock as Block,
     CssSpecifiedDeclarationEntry as Entry, CssSpecifiedPageDeclarationBlock as PageBlock,
-    CssSpecifiedPageDeclarationEntry as PageEntry, CssValueOrigin, parse_keyframe_selector_list,
-    parse_page_selector_list, parse_rule, parse_sheet,
+    CssSpecifiedPageDeclarationEntry as PageEntry, CssValueOrigin,
 };
 
 fn property(block: &Block, name: K) -> &Entry {
@@ -42,7 +42,8 @@ fn page_property(block: &PageBlock, name: K) -> &Entry {
 
 #[test]
 fn parsed_supports_condition_and_child_share_exact_limits_and_retry_atomically() {
-    let report = parse_rule(
+    let report = CssRule::parse(
+        &CssParser::default(),
         "@supports(display:grid){.x{}}",
         &CssNamespaceContext::default(),
     );
@@ -96,7 +97,7 @@ fn parsed_supports_condition_and_child_share_exact_limits_and_retry_atomically()
 
 #[test]
 fn omitted_empty_children_consume_work_and_preserve_the_next_child_failure_index() {
-    let report = parse_sheet("@supports(display:grid){} .x{}");
+    let report = CssParser::default().parse_sheet("@supports(display:grid){} .x{}");
     assert!(report.is_clean());
     let [CssRule::Supports(supports), child] = report.syntax().rules() else {
         panic!("rules");
@@ -148,7 +149,7 @@ fn omitted_empty_children_consume_work_and_preserve_the_next_child_failure_index
 
 #[test]
 fn all_empty_children_have_exact_bytes_but_retain_their_own_work_tariffs() {
-    let report = parse_sheet("@supports(display:grid){}");
+    let report = CssParser::default().parse_sheet("@supports(display:grid){}");
     let CssRule::Supports(supports) = &report.syntax().rules()[0] else {
         panic!("Supports")
     };
@@ -179,7 +180,8 @@ fn all_empty_children_have_exact_bytes_but_retain_their_own_work_tariffs() {
 
 #[test]
 fn unavailable_descendants_keep_their_typed_cause_and_index_after_an_empty_child() {
-    let report = parse_sheet("@supports(display:grid){} @container(width>1px){}");
+    let report =
+        CssParser::default().parse_sheet("@supports(display:grid){} @container(width>1px){}");
     assert!(report.is_clean());
     let [CssRule::Supports(supports), container] = report.syntax().rules() else {
         panic!("rules")
@@ -210,7 +212,7 @@ fn unavailable_descendants_keep_their_typed_cause_and_index_after_an_empty_child
 fn supports_preserves_actual_sheet_namespace_bindings_and_detached_symbolic_spelling() {
     let source =
         "/*😀*/ @namespace n 'urn:x'; @namespace 'urn:x'; @supports(display:grid){n|leaf[|a]{}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean());
     let before = report.clone();
     assert_eq!(
@@ -234,9 +236,7 @@ fn supports_preserves_actual_sheet_namespace_bindings_and_detached_symbolic_spel
 
 #[test]
 fn nested_supports_preserves_logical_and_future_condition_tokens_without_simplification() {
-    let report = parse_sheet(
-        "@supports ((display:grid) or (display:flex)) and (future-token(foo)) { @supports not (color:red) { .x{} } }",
-    );
+    let report = CssParser::default().parse_sheet("@supports ((display:grid) or (display:flex)) and (future-token(foo)) { @supports not (color:red) { .x{} } }");
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let expected = "@supports ((display:grid) or (display:flex)) and (future-token(foo)) {\n  @supports not (color:red) {\n  .x { }\n}\n}";
@@ -254,7 +254,7 @@ fn nested_supports_preserves_logical_and_future_condition_tokens_without_simplif
 #[test]
 fn supports_composes_current_page_margin_and_keyframe_edits_without_source_reconstruction() {
     let source = "@supports(display:grid){@page old{margin:1px 2px 3px 4px;size:A4;@top-left{margin:5px 6px}} @keyframes old{from{margin:1px 2px}}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let CssRule::Supports(supports) = &report.syntax().rules()[0] else {
@@ -287,7 +287,7 @@ fn supports_composes_current_page_margin_and_keyframe_edits_without_source_recon
     let current_margin =
         Block::try_from_margin_entries(std::slice::from_ref(left), Default::default()).unwrap();
     let margins = [CssMarginRuleView::try_new(CssMarginBox::TopCenter, &current_margin).unwrap()];
-    let selectors = parse_page_selector_list(" /*edit*/ invoice:left ");
+    let selectors = CssPageSelectorList::parse(&CssParser::default(), " /*edit*/ invoice:left ");
     assert!(selectors.is_clean());
     let page_view = View::page(CssPageRuleView::new(
         selectors.syntax().as_ref().unwrap(),
@@ -304,7 +304,7 @@ fn supports_composes_current_page_margin_and_keyframe_edits_without_source_recon
     let current_keyframe =
         Block::try_from_keyframe_entries(std::slice::from_ref(keyframe_right), Default::default())
             .unwrap();
-    let keys = parse_keyframe_selector_list(" /*edit*/ 50% ");
+    let keys = CssParsedKeyframeSelectors::parse(&CssParser::default(), " /*edit*/ 50% ");
     assert!(keys.is_clean());
     let blocks = [CssKeyframeRuleView::try_new(
         keys.syntax().as_ref().unwrap().selectors(),

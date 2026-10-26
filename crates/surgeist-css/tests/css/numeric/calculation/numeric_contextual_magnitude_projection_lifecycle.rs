@@ -95,7 +95,7 @@ fn contextual_hypot_projects_same_unit_norms_including_zero_coefficients() {
 #[test]
 fn percentage_hypot_distinguishes_raw_norms_from_unknown_signed_bases() {
     let source = "hypot(3%,4%)";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let raw = CssCalculation::<CssPercentage>::try_from_components(
         components.clone(),
         Default::default(),
@@ -143,7 +143,7 @@ fn sign_retains_unknown_zero_bases_and_mixed_unit_magnitudes() {
     ] {
         let value = CssNumeric::<CssNumber>::try_from_calculation(
             CssCalculation::<CssNumber>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -164,7 +164,7 @@ fn sign_retains_unknown_zero_bases_and_mixed_unit_magnitudes() {
 #[test]
 fn percentage_abs_distinguishes_raw_coefficients_from_unknown_signed_bases() {
     let source = "abs(-2%)";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let raw = CssCalculation::<CssPercentage>::try_from_components(
         components.clone(),
         Default::default(),
@@ -284,9 +284,10 @@ fn numeric_color_consumption_censors_only_after_nested_arithmetic() {
         ("rgb(0 0 0 / calc(1 / calc(0 * -1)))", "rgba(0, 0, 0, 0)"),
         ("rgb(0 0 0 / calc(1 / (0 * 1)))", "rgb(0, 0, 0)"),
     ] {
-        let components = parse_component_values(source).unwrap();
-        let declaration = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
             components.clone(),
             CssImportance::Normal,
         )
@@ -309,7 +310,7 @@ fn numeric_color_consumption_censors_only_after_nested_arithmetic() {
     ] {
         let value = CssNumeric::<CssNumber>::try_from_calculation(
             CssCalculation::<CssNumber>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default(),
             )
             .unwrap(),

@@ -40,7 +40,7 @@ pub(super) struct RuleEnvelope {
 
 /// One complete generic CSS Syntax rule, retaining its original input occurrence.
 ///
-/// Construction is exclusively through [`classify_rule_syntax`]. A candidate
+/// Construction is exclusively through [`crate::CssRuleSyntax::classify`]. A candidate
 /// is retained even when its name, selector or feature grammar is unsupported.
 /// Its origin excludes surrounding trivia; its snapshot is the complete input.
 /// Semantic admission uses the selected original unit and the existing grammar
@@ -209,25 +209,8 @@ impl CssRuleSyntax {
     }
 }
 
-/// Classifies exactly one complete CSS Syntax rule over unmodified original input.
-///
-/// Empty/whitespace-only input, a qualified candidate lacking a body, a custom
-/// property-shaped qualified candidate, and trailing nontrivia return `None`.
-/// `@unknown {}` and `@import;` retain candidates independently of semantic
-/// admission. No BOM, CDO/CDC or fabricated wrapper is stripped or introduced.
-/// Recovery and resource diagnostics remain distinct from candidate retention.
 #[must_use]
-pub fn classify_rule_syntax(source: &str) -> CssParseReport<Option<CssRuleSyntax>> {
-    classify_rule_syntax_with_limits(source, CssComponentValueLimits::default())
-}
-
-/// Classifies with cumulative limits over the complete original input.
-///
-/// Bytes include trailing input. Components include all descendants and trivia,
-/// not one fresh allowance per rule or parsing stage. Resource failure publishes
-/// no candidate; retrying with a larger allowance creates a new source occurrence.
-#[must_use]
-pub fn classify_rule_syntax_with_limits(
+pub(crate) fn classify_rule_syntax_with_limits(
     source: &str,
     limits: CssComponentValueLimits,
 ) -> CssParseReport<Option<CssRuleSyntax>> {
@@ -432,5 +415,21 @@ pub(super) fn admit_inner(
                 CssRecoveryAction::RejectInput,
             )],
         ),
+    }
+}
+impl CssRuleSyntax {
+    /// Classifies with cumulative limits over the complete original input.
+    ///
+    /// Bytes include trailing input. Components include all descendants and trivia,
+    /// not one fresh allowance per rule or parsing stage. Resource failure publishes
+    /// no candidate; retrying with a larger allowance creates a new source occurrence.
+    ///
+    /// The parser supplies the cumulative component limits.
+    #[must_use]
+    pub fn classify(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> CssParseReport<Option<CssRuleSyntax>> {
+        classify_rule_syntax_with_limits(source.as_ref(), parser.component_limits())
     }
 }

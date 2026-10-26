@@ -10,14 +10,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let value = CssContainer::new(names, CssContainerType::InlineSizeScrollState);
     let limits = CssComponentValueLimits::try_new(0, 16, 128).expect("leaf limits");
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Container),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Container)),
         value.to_components(limits)?,
         CssImportance::Normal,
     )?;
     assert!(declaration.position().is_none());
-    let CssExpansion::Contributions(CssContributions::Longhands(members)) =
-        expand_declaration(&declaration)?
+    let CssExpansion::Contributions(CssContributions::Longhands(members)) = declaration.expand()?
     else {
         panic!("ordinary shorthand")
     };

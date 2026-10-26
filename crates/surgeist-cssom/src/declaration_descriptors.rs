@@ -1,6 +1,8 @@
 //! Common declaration orchestration over the CSS-owned Page and Fonts descriptor domains.
 use super::*;
-use surgeist_css::CssFontFaceDescriptors;
+use surgeist_css::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptors, CssPageDescriptorValue, CssParser,
+};
 
 #[derive(Clone, Copy)]
 pub(super) enum DescriptorName {
@@ -160,7 +162,8 @@ impl CssomBatch {
         }
         let (value, diagnostics) = match kind {
             DescriptorName::Page(kind) => {
-                let (value, diagnostics) = parse_page_descriptor_value(value, kind).into_parts();
+                let (value, diagnostics) =
+                    CssPageDescriptorValue::parse(&CssParser::default(), value, kind).into_parts();
                 (
                     value.map(|value| {
                         CssomDeclarationValue::PageDescriptor(CssPageDescriptor::new(
@@ -172,7 +175,8 @@ impl CssomBatch {
             }
             DescriptorName::FontFace(kind) => {
                 let (value, diagnostics) =
-                    parse_font_face_descriptor_value(value, kind).into_parts();
+                    CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), value, kind)
+                        .into_parts();
                 (
                     value.map(|value| {
                         CssomDeclarationValue::FontFaceDescriptor(CssFontFaceDescriptor::new(value))

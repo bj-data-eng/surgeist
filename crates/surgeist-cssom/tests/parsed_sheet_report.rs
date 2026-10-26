@@ -34,8 +34,8 @@ fn batch(owner: &CssomStore) -> CssomBatch {
 #[test]
 fn report_ingress_preserves_recovery_and_shared_original_after_owner_drop() {
     let raw = Arc::new("@unknown x;\r\n.a { color: red }".encode_utf16().collect());
-    let report = CssParserContext::default()
-        .parse_sheet_utf16_with_limits(raw, CssUtf16InputLimits::default(), || Ok::<_, ()>(()))
+    let report = CssParser::new(CssParserContext::default(), Default::default())
+        .parse_sheet_utf16(raw, CssUtf16InputLimits::default(), || Ok::<_, ()>(()))
         .unwrap();
     let source = report.syntax().parse_source().unwrap().source().clone();
     let diagnostics = report.diagnostics().to_vec();
@@ -82,7 +82,10 @@ fn empty_and_fully_recovered_reports_check_full_context_including_glyph_choice()
             let before = owner.snapshot();
             let mut edit = batch(&owner);
             assert!(matches!(
-                edit.create_parsed_sheet_report(actual.parse_sheet(text), inputs()),
+                edit.create_parsed_sheet_report(
+                    CssParser::new(actual, Default::default()).parse_sheet(text),
+                    inputs()
+                ),
                 Err(CssomError::InvalidInput(
                     "stylesheet parser context mismatch"
                 ))
@@ -91,8 +94,11 @@ fn empty_and_fully_recovered_reports_check_full_context_including_glyph_choice()
             assert_eq!(owner.snapshot().revision(), before.revision());
             let mut owner = CssomStore::new(CssomLimits::default(), context(actual)).unwrap();
             let mut edit = batch(&owner);
-            edit.create_parsed_sheet_report(actual.parse_sheet(text), inputs())
-                .unwrap();
+            edit.create_parsed_sheet_report(
+                CssParser::new(actual, Default::default()).parse_sheet(text),
+                inputs(),
+            )
+            .unwrap();
             owner.commit(edit).unwrap();
         }
     }
@@ -111,7 +117,7 @@ fn complete_input_limit_does_not_depend_on_surviving_rules() {
         .unwrap();
         let mut edit = batch(&owner);
         assert!(matches!(
-            edit.create_parsed_sheet_report(parse_sheet(text), inputs()),
+            edit.create_parsed_sheet_report(CssParser::default().parse_sheet(text), inputs()),
             Err(CssomError::Limit {
                 resource: "parse input bytes",
                 ..
@@ -124,7 +130,7 @@ fn complete_input_limit_does_not_depend_on_surviving_rules() {
 #[test]
 fn report_import_rejects_actual_resource_recovery_atomically() {
     let text = format!("{}x{}", "@media all{".repeat(258), "}".repeat(258));
-    let report = parse_sheet(&text);
+    let report = CssParser::default().parse_sheet(&text);
     assert!(
         report
             .diagnostics()

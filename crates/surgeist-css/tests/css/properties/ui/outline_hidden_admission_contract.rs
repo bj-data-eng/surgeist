@@ -31,7 +31,7 @@ fn property_name(property: CssKnownProperty) -> &'static str {
 fn parsed_rejects(property: CssKnownProperty, value: &str) {
     let name = property_name(property);
     let source = format!("/* 🦀 */ color:red !important; {name}:{value} !important; width:1px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(
         !report.is_clean(),
         "hidden is forbidden for {name}: {source}"
@@ -80,8 +80,10 @@ fn parsed_rejects(property: CssKnownProperty, value: &str) {
     let offset = responsible.byte_offset().value();
     assert!((start..=end).contains(&offset));
     position(responsible, &source, offset);
-    let failure =
-        validate_style_attribute(&source).expect_err("strict validator rejects recovered outline");
+    let failure = CssParser::default()
+        .parse_block_contents(&source)
+        .into_validation_result()
+        .expect_err("strict validator rejects recovered outline");
     assert_eq!(failure.diagnostics(), report.diagnostics());
 }
 
@@ -90,7 +92,8 @@ fn checked_rejects(
     value: &str,
     grammar: bool,
 ) -> CssPropertyValueError {
-    let components = parse_component_values(value).expect("well-formed components");
+    let components =
+        CssComponentValues::parse(&CssParser::default(), value).expect("well-formed components");
     checked_components_rejects(property, components, grammar)
 }
 
@@ -100,10 +103,16 @@ fn checked_components_rejects(
     grammar: bool,
 ) -> CssPropertyValueError {
     let result = if grammar {
-        parse_property_value_for_grammar(property.grammar(), components, CssImportance::Important)
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(property.grammar()),
+            components,
+            CssImportance::Important,
+        )
     } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components,
             CssImportance::Important,
         )
@@ -132,7 +141,13 @@ macro_rules! hidden_contract {
                 property_name($known),
                 $value
             );
-            assert!(validate_style_attribute(&source).is_err(), "{source}");
+            assert!(
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .is_err(),
+                "{source}"
+            );
         }
         #[test]
         fn $property() {
@@ -181,7 +196,7 @@ fn hidden_case_and_escape_spellings_reject_in_outline_longhand_and_shorthand() {
 fn original_hidden_origin(property: CssKnownProperty) {
     for spelling in HIDDEN_SPELLINGS {
         let source = format!("/* 🦀 */ {spelling}");
-        let components = parse_component_values(&source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
         let hidden = components.items().iter().find(|component| matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Ident(ident)) if ident.eq_ignore_ascii_case("hidden"))).expect("decoded hidden identifier");
         let supplied =
             CssComponentValues::try_new(vec![hidden.clone()], Default::default()).unwrap();
@@ -220,7 +235,7 @@ fn admitted(property: CssKnownProperty, value: &str) -> Vec<CssDeclaration> {
         "/* 🦀 */ color:red !important; {}:{value} !important; width:1px",
         property_name(property)
     );
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [before, declaration, after] = report.syntax().as_slice() else {
         panic!("all valid occurrences survive")
@@ -229,16 +244,23 @@ fn admitted(property: CssKnownProperty, value: &str) -> Vec<CssDeclaration> {
     assert_eq!(before.importance(), CssImportance::Important);
     assert_eq!(after.known().unwrap().property(), CssKnownProperty::Width);
     assert_eq!(after.importance(), CssImportance::Normal);
-    assert!(validate_style_attribute(&source).is_ok());
-    let components = parse_component_values(value).unwrap();
-    let by_property = parse_property_value(
-        CssPropertyNameRef::Known(property),
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_ok()
+    );
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
+    let by_property = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
         components.clone(),
         CssImportance::Important,
     )
     .unwrap();
-    let by_grammar = parse_property_value_for_grammar(
-        property.grammar(),
+    let by_grammar = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(property.grammar()),
         components.clone(),
         CssImportance::Important,
     )

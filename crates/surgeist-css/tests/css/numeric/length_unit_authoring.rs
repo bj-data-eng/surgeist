@@ -351,7 +351,9 @@ fn unit_matrix_rejects_unknown_length_units_in_ordinary_and_calc_contexts() {
 
 #[test]
 fn unknown_dimension_units_are_reported_as_unknown_units() {
-    let error = parse_sheet(".panel { width: 1quux; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { width: 1quux; }")
+        .expect_err("rejected parse report");
 
     let detail = &error;
     assert_eq!(
@@ -364,8 +366,9 @@ fn unknown_dimension_units_are_reported_as_unknown_units() {
 
 #[test]
 fn unknown_calc_dimension_units_are_reported_as_unknown_units() {
-    let error =
-        parse_sheet(".panel { width: calc(1quux + 2px); }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { width: calc(1quux + 2px); }")
+        .expect_err("rejected parse report");
 
     let detail = &error;
     assert_eq!(
@@ -408,14 +411,17 @@ fn flow_tolerance_calc_is_preserved_as_css_syntax() {
 
 #[test]
 fn rejects_unknown_calc_functions() {
-    let error = parse_sheet(".panel { width: unknown-math(10px, 20px); }")
+    let error = CssParser::default()
+        .parse_sheet(".panel { width: unknown-math(10px, 20px); }")
         .expect_err("rejected parse report");
     assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
 fn parses_calc_in_edge_shorthands() {
-    let sheet = parse_sheet(".panel { margin: calc(4px + 1%) 2px; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(".panel { margin: calc(4px + 1%) 2px; }")
+        .expect("clean parse report");
     let edges = property_payload!(
         declaration(
             ".panel { margin: calc(4px + 1%) 2px; }",

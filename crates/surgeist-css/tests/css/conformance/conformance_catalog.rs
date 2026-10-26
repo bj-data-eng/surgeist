@@ -379,8 +379,14 @@ fn conformance_catalog_vectors_cover_each_supported_and_unsupported_boundary() {
 
 fn diagnostics(input: Input) -> Vec<(CssErrorCode, Option<&'static str>)> {
     let diagnostics = match input {
-        Input::Sheet(source) => parse_sheet(source).diagnostics().to_vec(),
-        Input::Style(source) => parse_style_attribute(source).diagnostics().to_vec(),
+        Input::Sheet(source) => CssParser::default()
+            .parse_sheet(source)
+            .diagnostics()
+            .to_vec(),
+        Input::Style(source) => CssParser::default()
+            .parse_block_contents(source)
+            .diagnostics()
+            .to_vec(),
     };
     diagnostics
         .iter()
@@ -399,7 +405,7 @@ fn diagnostics(input: Input) -> Vec<(CssErrorCode, Option<&'static str>)> {
 
 /// Asserts that one authored declaration is retained cleanly with the given identity.
 fn assert_single_known_declaration(source: &str, id: &str) {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("{source}: expected one retained declaration");
@@ -410,7 +416,7 @@ fn assert_single_known_declaration(source: &str, id: &str) {
 
 /// Asserts that an authored declaration outside its property grammar is dropped.
 fn assert_dropped_declaration(source: &str) {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.syntax().is_empty(), "{source}");
     let [diagnostic] = report.diagnostics() else {
         panic!(
@@ -455,11 +461,9 @@ fn removed_track_properties_have_no_current_catalogue_metadata() {
 
 #[test]
 fn normalization_retains_current_alignment_contributions_after_obsolete_property_recovery() {
-    let report = parse_sheet(
-        ".x { align-tracks: initial; align-content: center !important; justify-tracks: var(--old); justify-content: space-between; }",
-    );
+    let report = CssParser::default().parse_sheet(".x { align-tracks: initial; align-content: center !important; justify-tracks: var(--old); justify-content: space-between; }");
     assert_eq!(report.diagnostics().len(), 2);
-    let normalized = normalize_report(&report).unwrap();
+    let normalized = report.normalize(Default::default()).unwrap();
     assert_eq!(normalized.diagnostics(), report.diagnostics());
     let [
         CssNormalizedItem::Rule(_),
@@ -517,11 +521,11 @@ fn display_sources_separate_base_grammar_from_grid_lanes_additions() {
         "grid-lanes",
         "inline-grid-lanes",
     ] {
-        let report = parse_style_attribute(&format!("display:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("display:{text}"));
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     }
     for text in ["inline grid-lanes", "grid-lanes block", "list-item flex"] {
-        let report = parse_style_attribute(&format!("display:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("display:{text}"));
         assert_eq!(report.diagnostics().len(), 1);
         assert!(report.syntax().is_empty());
     }
@@ -551,13 +555,13 @@ fn selected_font_family_and_shorthand_metadata_match_their_grammar_boundaries() 
         "font: 16px generic(fangsong)",
         "font: 450.5 16px serif",
     ] {
-        let report = parse_style_attribute(authored);
+        let report = CssParser::default().parse_block_contents(authored);
         assert!(report.is_clean(), "{authored}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{authored}");
     }
 
     for authored in ["font: xxx-large serif", "font: math serif"] {
-        let report = parse_style_attribute(authored);
+        let report = CssParser::default().parse_block_contents(authored);
         assert!(report.is_clean(), "{authored}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{authored}");
     }
@@ -586,12 +590,12 @@ fn font_properties_and_font_face_descriptors_parse_their_selected_grammar() {
         ),
         ("font-variant-position", "super"),
     ] {
-        let report = parse_style_attribute(&format!("{property}: {authored}"));
+        let report = CssParser::default().parse_block_contents(format!("{property}: {authored}"));
         assert!(report.is_clean(), "{property}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{property}");
     }
 
-    let font_face = parse_sheet(concat!(
+    let font_face = CssParser::default().parse_sheet(concat!(
         "@font-face { font-family: Demo Sans; ",
         "src: local(\"Demo Sans\"), url(demo.woff2) format(\"woff2\"); ",
         "font-style: oblique; font-weight: 700; font-width: condensed; ",
@@ -600,24 +604,25 @@ fn font_properties_and_font_face_descriptors_parse_their_selected_grammar() {
     assert!(font_face.is_clean(), "{:?}", font_face.diagnostics());
     assert_eq!(font_face.syntax().rules().len(), 1);
 
-    let display =
-        parse_sheet("@font-face { font-family: Demo; src: url(demo.woff2); font-display: swap; }");
+    let display = CssParser::default()
+        .parse_sheet("@font-face { font-family: Demo; src: url(demo.woff2); font-display: swap; }");
     assert!(display.is_clean(), "{:?}", display.diagnostics());
 
-    let feature_values = parse_sheet("@font-feature-values Demo { @styleset { nice: 1; } }");
+    let feature_values =
+        CssParser::default().parse_sheet("@font-feature-values Demo { @styleset { nice: 1; } }");
     assert!(feature_values.is_clean());
     assert!(matches!(
         feature_values.syntax().rules(),
         [CssRule::FontFeatureValues(_)]
     ));
 
-    let numeric_weight = parse_style_attribute("font-weight: 725");
+    let numeric_weight = CssParser::default().parse_block_contents("font-weight: 725");
     assert!(
         numeric_weight.is_clean(),
         "{:?}",
         numeric_weight.diagnostics()
     );
-    let invalid_numeric_weight = parse_style_attribute("font-weight: 1001");
+    let invalid_numeric_weight = CssParser::default().parse_block_contents("font-weight: 1001");
     assert!(invalid_numeric_weight.syntax().is_empty());
     assert_eq!(invalid_numeric_weight.diagnostics().len(), 1);
     assert_eq!(
@@ -631,12 +636,12 @@ fn font_properties_and_font_face_descriptors_parse_their_selected_grammar() {
         "font-style: oblique -10deg 20deg",
         "font-style: oblique 91deg",
     );
-    let report = parse_sheet(&format!(
+    let report = CssParser::default().parse_sheet(format!(
         "@font-face {{ font-family: Demo; src: url(demo.woff2); {authored}; }}"
     ));
     assert!(report.is_clean(), "{id}: {:?}", report.diagnostics());
 
-    let rejected_report = parse_sheet(&format!(
+    let rejected_report = CssParser::default().parse_sheet(format!(
         "@font-face {{ font-family: Demo; src: url(demo.woff2); {rejected}; }}"
     ));
     assert_eq!(rejected_report.diagnostics().len(), 1, "{id}");
@@ -646,12 +651,12 @@ fn font_properties_and_font_face_descriptors_parse_their_selected_grammar() {
         "{id}"
     );
 
-    let modern_hints = parse_sheet(concat!(
+    let modern_hints = CssParser::default().parse_sheet(concat!(
         "@font-face { font-family: Demo; ",
         "src: url(demo.woff2) format(woff2) tech(variations, color-colrv1); }"
     ));
     assert!(modern_hints.is_clean(), "{:?}", modern_hints.diagnostics());
-    let unknown_hint = parse_sheet(
+    let unknown_hint = CssParser::default().parse_sheet(
         "@font-face { font-family: Demo; src: url(demo.woff2) format(woff3) tech(unknown); }",
     );
     let [CssRule::FontFace(face)] = unknown_hint.syntax().rules() else {
@@ -709,7 +714,7 @@ fn selected_font_width_records_keep_historical_ids_and_canonical_names() {
     assert_eq!(range.status(), CssSupportStatus::Complete);
 
     for name in ["font-width", "font-stretch"] {
-        let report = parse_sheet(&format!(
+        let report = CssParser::default().parse_sheet(format!(
             "@font-face {{ font-family: Demo; src: url(demo.woff2); {name}: 125% 75%; }}"
         ));
         assert!(report.is_clean(), "{name}: {:?}", report.diagnostics());
@@ -736,17 +741,29 @@ fn selected_font_width_records_keep_historical_ids_and_canonical_names() {
 
 #[test]
 fn selected_font_weight_records_keep_historical_ids_and_complete_authored_grammar() {
-    let property = parse_style_attribute("font-weight: 725.25");
+    let property = CssParser::default().parse_block_contents("font-weight: 725.25");
     assert!(property.is_clean(), "{:?}", property.diagnostics());
-    let descriptor = parse_sheet("@font-face { font-weight: bold 300; }");
+    let descriptor = CssParser::default().parse_sheet("@font-face { font-weight: bold 300; }");
     assert!(descriptor.is_clean(), "{:?}", descriptor.diagnostics());
 }
 
 #[test]
 fn selected_font_style_records_keep_historical_ids_and_complete_authored_grammar() {
-    assert!(parse_style_attribute("font-style: oblique 10deg").is_clean());
-    assert!(parse_sheet("@font-face { font-style: oblique 20deg -10deg; }").is_clean());
-    assert!(parse_style_attribute("font: oblique calc(10deg) 16px serif").is_clean());
+    assert!(
+        CssParser::default()
+            .parse_block_contents("font-style: oblique 10deg")
+            .is_clean()
+    );
+    assert!(
+        CssParser::default()
+            .parse_sheet("@font-face { font-style: oblique 20deg -10deg; }")
+            .is_clean()
+    );
+    assert!(
+        CssParser::default()
+            .parse_block_contents("font: oblique calc(10deg) 16px serif")
+            .is_clean()
+    );
 }
 
 #[test]
@@ -763,10 +780,10 @@ fn selected_font_size_record_keeps_historical_id_with_current_fonts_source() {
         "font-size: 1e-999px",
         "font-size: calc(-1px)",
     ] {
-        let report = parse_style_attribute(input);
+        let report = CssParser::default().parse_block_contents(input);
         assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
     }
-    let rejected = parse_style_attribute("font-size: -1e-999px");
+    let rejected = CssParser::default().parse_block_contents("font-size: -1e-999px");
     assert!(rejected.syntax().is_empty());
     assert_eq!(rejected.diagnostics().len(), 1);
 }
@@ -785,7 +802,7 @@ fn selected_line_height_record_keeps_css2_identity_and_complete_authored_grammar
         "line-height: 120%",
         "line-height: calc(-1)",
     ] {
-        let report = parse_style_attribute(input);
+        let report = CssParser::default().parse_block_contents(input);
         assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
     }
     for input in [
@@ -793,7 +810,7 @@ fn selected_line_height_record_keeps_css2_identity_and_complete_authored_grammar
         "line-height: -1e-999px",
         "line-height: -1e-999%",
     ] {
-        let report = parse_style_attribute(input);
+        let report = CssParser::default().parse_block_contents(input);
         assert!(report.syntax().is_empty(), "{input}");
         assert_eq!(report.diagnostics().len(), 1, "{input}");
     }
@@ -829,7 +846,7 @@ fn attribute_substitution_metadata_matches_pending_known_property_behavior() {
         "width: attr(data-width <length>, 1px)",
         "content: attr(data-label)",
     ] {
-        let report = parse_style_attribute(authored);
+        let report = CssParser::default().parse_block_contents(authored);
         assert!(report.is_clean(), "{authored}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{authored}");
         let pending = report.syntax()[0]
@@ -843,7 +860,7 @@ fn attribute_substitution_metadata_matches_pending_known_property_behavior() {
 
 fn assert_clean_color(authored: &str) {
     let source = format!("color: {authored}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1, "{source}");
     assert_eq!(
@@ -855,7 +872,7 @@ fn assert_clean_color(authored: &str) {
 
 fn assert_rejected_color(authored: &str) {
     let source = format!("color: {authored}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.syntax().is_empty(), "{source}");
     assert_eq!(report.diagnostics().len(), 1, "{source}");
     assert_eq!(
@@ -892,7 +909,7 @@ fn color4_value_and_property_metadata_match_public_authored_behavior() {
     assert_eq!(color.feature().supported_subset(), None);
     assert_eq!(color.feature().unsupported_remainder(), None);
 
-    let opacity_report = parse_style_attribute("opacity: 150%");
+    let opacity_report = CssParser::default().parse_block_contents("opacity: 150%");
     assert!(
         opacity_report.is_clean(),
         "{:?}",
@@ -968,7 +985,7 @@ fn color_mix_preserved_subset_rejects_cross_space_hue_methods() {
 
 #[test]
 fn grid_metadata_matches_preserved_boundaries() {
-    let grid = parse_style_attribute(concat!(
+    let grid = CssParser::default().parse_block_contents(concat!(
         "grid-template-columns: repeat(auto-fit, 10px); ",
         "grid-auto-rows: minmax(10px, auto)",
     ));
@@ -983,7 +1000,7 @@ fn grid_metadata_matches_preserved_boundaries() {
         Some(CssKnownProperty::GridAutoRows),
     );
 
-    let invalid_grid = parse_style_attribute(
+    let invalid_grid = CssParser::default().parse_block_contents(
         "grid-template-columns: repeat(auto-fit, minmax(1fr, 10px)); color: red",
     );
     assert_eq!(invalid_grid.syntax().len(), 1);
@@ -998,7 +1015,7 @@ fn grid_metadata_matches_preserved_boundaries() {
         CssRecoveryAction::DropDeclaration
     );
 
-    let keyframes = parse_sheet(concat!(
+    let keyframes = CssParser::default().parse_sheet(concat!(
         "@keyframes fade { ",
         "from, 0%, from { } ",
         "from { opacity: 0; } ",
@@ -1065,7 +1082,7 @@ fn numeric_value_types_construct_checked_literals_and_drop_cross_type_declaratio
     );
     assert!(CssCalculation::<CssFrequency>::try_literal("-inf", CssFrequencyUnit::Hertz).is_err());
 
-    let parsed = parse_style_attribute(concat!(
+    let parsed = CssParser::default().parse_block_contents(concat!(
         "width: calc((1cqw + 2%) * 3); ",
         "transform: rotate(calc((1turn + 180deg) / 2)); ",
         "transition-delay: calc((-1s + 250ms) * 2); ",
@@ -1086,7 +1103,7 @@ fn numeric_value_types_construct_checked_literals_and_drop_cross_type_declaratio
         ],
     );
 
-    let recovered = parse_style_attribute(concat!(
+    let recovered = CssParser::default().parse_block_contents(concat!(
         "width: 1deg; ",
         "rotate: 1hz; ",
         "transition-delay: 1px; ",
@@ -1136,7 +1153,7 @@ fn partial_color_and_selector_extensions_accept_their_supported_subset() {
         assert!(diagnostics(input).is_empty(), "{id} public positive vector");
     }
 
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@font-feature-values Demo { @styleset { nice: 1; } } ",
         ".tail { color: red; }",
     ));
@@ -1156,7 +1173,7 @@ fn partial_color_and_selector_extensions_accept_their_supported_subset() {
 
 #[test]
 fn official_position_metadata_matches_generic_position_behavior() {
-    let report = parse_style_attribute("object-position: right 5% bottom 2px");
+    let report = CssParser::default().parse_block_contents("object-position: right 5% bottom 2px");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::ObjectPosition(value) = report.syntax()[0]
         .known()
@@ -1180,7 +1197,7 @@ fn official_position_metadata_matches_generic_position_behavior() {
 
 #[test]
 fn official_background_position_metadata_matches_three_component_layer_behavior() {
-    let report = parse_style_attribute("background-position: left 10px top");
+    let report = CssParser::default().parse_block_contents("background-position: left 10px top");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BackgroundPosition(value) = report.syntax()[0]
         .known()
@@ -1203,7 +1220,8 @@ fn official_background_position_metadata_matches_three_component_layer_behavior(
 
 #[test]
 fn background_position_property_metadata_matches_layer_list_behavior() {
-    let report = parse_style_attribute("background-position: left top, right 4px bottom 8%");
+    let report = CssParser::default()
+        .parse_block_contents("background-position: left top, right 4px bottom 8%");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = report.syntax()[0]
         .known()
@@ -1220,7 +1238,7 @@ fn background_position_property_metadata_matches_layer_list_behavior() {
 
 #[test]
 fn object_position_property_metadata_matches_semantic_accessor_behavior() {
-    let report = parse_style_attribute("object-position: center 25%");
+    let report = CssParser::default().parse_block_contents("object-position: center 25%");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = report.syntax()[0].known().expect("known object-position");
     assert_eq!(declaration.property(), CssKnownProperty::ObjectPosition);
@@ -1243,7 +1261,7 @@ fn object_position_property_metadata_matches_semantic_accessor_behavior() {
 
 #[test]
 fn transform_origin_property_metadata_matches_directed_z_behavior() {
-    let report = parse_style_attribute("transform-origin: left top 50px");
+    let report = CssParser::default().parse_block_contents("transform-origin: left top 50px");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = report.syntax()[0].known().expect("known transform-origin");
     assert_eq!(declaration.property(), CssKnownProperty::TransformOrigin);
@@ -1267,7 +1285,8 @@ fn transform_origin_property_metadata_matches_directed_z_behavior() {
 
 #[test]
 fn mask_position_property_metadata_matches_generic_layer_behavior() {
-    let report = parse_style_attribute("mask-position: left 10px bottom 20%, center 25%");
+    let report = CssParser::default()
+        .parse_block_contents("mask-position: left 10px bottom 20%, center 25%");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = report.syntax()[0].known().expect("known mask-position");
     assert_eq!(declaration.property(), CssKnownProperty::MaskPosition);
@@ -1349,7 +1368,7 @@ fn official_length_metadata_matches_checked_length_behavior() {
 
 #[test]
 fn official_length_percentage_metadata_matches_mixed_length_parser_behavior() {
-    let report = parse_style_attribute("width: calc((1px + 2%) * 3)");
+    let report = CssParser::default().parse_block_contents("width: calc((1px + 2%) * 3)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),
@@ -1448,14 +1467,14 @@ fn official_resolution_metadata_matches_checked_resolution_behavior() {
         "@media (resolution: 2dppx) { .x { color: red; } }",
         "@media (min-resolution: 192dpi) { .x { color: red; } }",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     }
 }
 
 #[test]
 fn official_calc_metadata_matches_typed_calculation_parser_behavior() {
-    let report = parse_style_attribute("width: calc((1px + 2%) * 3)");
+    let report = CssParser::default().parse_block_contents("width: calc((1px + 2%) * 3)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),
@@ -1531,7 +1550,11 @@ fn complete_media_range_metadata_preserves_original_comparison_evidence() {
         let metadata = feature_metadata(&id).expect("range metadata");
         assert_eq!(metadata.status(), CssSupportStatus::Complete);
         assert_eq!(metadata.source().id().as_str(), "X-MEDIA5");
-        assert!(parse_sheet(&format!("@media {css} {{}}")).is_clean());
+        assert!(
+            CssParser::default()
+                .parse_sheet(format!("@media {css} {{}}"))
+                .is_clean()
+        );
     }
 }
 
@@ -1543,7 +1566,7 @@ fn media_supports_and_import_preludes_parse_cleanly() {
         "@supports selector(.card > .item:hover) { .x { color: red; } }",
         "@layer reset; @import url(theme.css) layer(theme) supports(display: grid) print;",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(
             report.is_clean(),
             "paired grammar behavior must be clean for {source:?}: {:?}",
@@ -1572,7 +1595,7 @@ fn media_supports_and_import_preludes_parse_cleanly() {
 
 #[test]
 fn selectors3_and_namespace_selectors_parse_into_typed_supports_conditions() {
-    let selectors = parse_sheet(concat!(
+    let selectors = CssParser::default().parse_sheet(concat!(
         ":root,:link,:visited,:target,:lang(en),:hover,:active,:focus,",
         ":enabled,:disabled,:checked,:indeterminate,:first-child,:last-child,",
         ":only-child,:empty,:nth-child(2n+1),:nth-last-child(2),",
@@ -1590,7 +1613,7 @@ fn selectors3_and_namespace_selectors_parse_into_typed_supports_conditions() {
         selectors.diagnostics()
     );
 
-    let qualified = parse_sheet(concat!(
+    let qualified = CssParser::default().parse_sheet(concat!(
         "@namespace svg \"urn:svg\";",
         "svg|a,svg|*,*|a,|a,[svg|href],[*|title],[|lang],[plain] { color: red; }",
         "@supports selector(svg|a) {}",
@@ -1612,7 +1635,7 @@ fn selectors3_and_namespace_selectors_parse_into_typed_supports_conditions() {
         CssConditionKind::Leaf(CssSupportsLeaf::Selector(_))
     ));
 
-    let general_enclosed = parse_sheet("@supports selector(.x ||) {}");
+    let general_enclosed = CssParser::default().parse_sheet("@supports selector(.x ||) {}");
     assert!(
         general_enclosed.is_clean(),
         "balanced selector remainder: {:?}",
@@ -1827,7 +1850,7 @@ fn residual_css2_and_level_three_properties_parse_with_their_catalog_owner() {
         assert_eq!(property.canonical_name(), name, "{id} canonical name");
 
         let source = format!("{name}: {authored_value}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{id}: {:?}", report.diagnostics());
         let [declaration] = report.syntax().as_slice() else {
             panic!("{id}: expected one retained declaration");
@@ -1852,7 +1875,7 @@ fn residual_css2_and_level_three_properties_parse_with_their_catalog_owner() {
     assert_eq!(alias.status(), CssSupportStatus::Partial);
     assert!(alias.supported_subset().is_some());
     assert!(alias.unsupported_remainder().is_some());
-    let alias_report = parse_style_attribute("glyph-orientation-vertical: 90");
+    let alias_report = CssParser::default().parse_block_contents("glyph-orientation-vertical: 90");
     assert!(alias_report.is_clean(), "{:?}", alias_report.diagnostics());
     assert_eq!(
         alias_report.syntax()[0]
@@ -1889,7 +1912,7 @@ fn residual_css2_and_level_three_properties_parse_with_their_catalog_owner() {
         assert_eq!(metadata.source().id().as_str(), source, "{id} source");
         assert_eq!(metadata.production(), production, "{id} production");
         assert_eq!(metadata.status(), CssSupportStatus::Complete, "{id} status");
-        let report = parse_style_attribute(vector);
+        let report = CssParser::default().parse_block_contents(vector);
         assert!(report.is_clean(), "{id}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{id} parser vector");
     }
@@ -1937,7 +1960,7 @@ fn residual_css2_and_level_three_properties_parse_with_their_catalog_owner() {
 fn font_source_complete_grammar_retains_legacy_controls_and_rejects_malformed_src() {
     // Fonts 4 src accepts local names and legacy format labels; Values 4 src()
     // still requires a quoted string payload.
-    let malformed = parse_sheet("@font-face { src: src(foo); }");
+    let malformed = CssParser::default().parse_sheet("@font-face { src: src(foo); }");
     assert!(!malformed.is_clean());
     assert_eq!(malformed.diagnostics().len(), 1);
     assert_eq!(
@@ -1952,7 +1975,7 @@ fn font_source_complete_grammar_retains_legacy_controls_and_rejects_malformed_sr
             .effective(CssFontFaceDescriptorKind::Src)
             .is_none()
     );
-    let report = parse_sheet("@font-face { src: local(system-ui); }");
+    let report = CssParser::default().parse_sheet("@font-face { src: local(system-ui); }");
     assert!(!report.is_clean());
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
@@ -1969,7 +1992,8 @@ fn font_source_complete_grammar_retains_legacy_controls_and_rejects_malformed_sr
     );
 
     for (name, decoded) in [("\"system-ui\"", "system-ui"), ("menu", "menu")] {
-        let report = parse_sheet(&format!("@font-face {{ src: local({name}); }}"));
+        let report =
+            CssParser::default().parse_sheet(format!("@font-face {{ src: local({name}); }}"));
         assert!(report.is_clean());
         let [CssRule::FontFace(face)] = report.syntax().rules() else {
             panic!("expected a retained font face");
@@ -1988,7 +2012,8 @@ fn font_source_complete_grammar_retains_legacy_controls_and_rejects_malformed_sr
         };
         assert_eq!(local.as_str(), decoded);
     }
-    let report = parse_sheet("@font-face { src: url(demo.woff2) format(\"woff2-variations\"); }");
+    let report = CssParser::default()
+        .parse_sheet("@font-face { src: url(demo.woff2) format(\"woff2-variations\"); }");
     assert!(report.is_clean());
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("expected a retained font face");
@@ -2130,7 +2155,7 @@ fn container_scrollbar_and_generated_records_cite_their_dated_sources() {
         feature_metadata("official.selector.generated").expect("atomic generated pseudo-element");
     assert_eq!(generated.source().id().as_str(), "O-SELECTORS3");
 
-    let report = parse_sheet(".note::before { color: red; }");
+    let report = CssParser::default().parse_sheet(".note::before { color: red; }");
     assert!(
         report.is_clean(),
         "atomic parser case: {:?}",
@@ -2148,7 +2173,7 @@ fn every_pseudo_element_and_media_feature_record_has_public_parser_evidence() {
         "@media screen and (min-width: 1px), print { .x { color: red; } }",
         "@media (orientation: landscape) { .x { color: red; } }",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     }
     for (source, code) in [
@@ -2167,7 +2192,7 @@ fn every_pseudo_element_and_media_feature_record_has_public_parser_evidence() {
             CssErrorCode::InvalidMediaQuery,
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert_eq!(
             report.diagnostics().first().map(|d| d.error().code()),
             Some(code),
@@ -2395,7 +2420,7 @@ fn every_pseudo_element_and_media_feature_record_has_public_parser_evidence() {
     for (id, source_id, css) in clean_cases {
         let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing `{id}`"));
         assert_eq!(metadata.source().id().as_str(), source_id, "{id}");
-        let report = parse_sheet(css);
+        let report = CssParser::default().parse_sheet(css);
         assert!(report.is_clean(), "{id}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().rules().len(), 1, "{id}");
     }
@@ -2404,7 +2429,7 @@ fn every_pseudo_element_and_media_feature_record_has_public_parser_evidence() {
         .expect("malformed-member recovery target");
     assert_eq!(malformed.source().id().as_str(), "X-MEDIA5");
     let source = "@media screen, ??? { .x { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.syntax().rules().len(), 1);
     let [diagnostic] = report.diagnostics() else {
         panic!("expected one malformed-member diagnostic");
@@ -2430,7 +2455,7 @@ fn every_pseudo_element_and_media_feature_record_has_public_parser_evidence() {
 
 #[test]
 fn official_two_dimensional_transform_metadata_matches_typed_functions() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "transform: matrix(1, 0, 0, 1, 10, 20) translate(1px, 2%) ",
         "translateX(3px) translateY(4%) scale(1.5, 2) scaleX(.5) scaleY(2) ",
         "rotate(45deg) skew(10deg, 20deg) skewX(5deg) skewY(6deg)"
@@ -2467,7 +2492,7 @@ fn official_two_dimensional_transform_metadata_matches_typed_functions() {
 
 #[test]
 fn transform_matrix3d_exposes_sixteen_finite_components() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "transform: matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1)",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -2490,7 +2515,8 @@ fn transform_matrix3d_exposes_sixteen_finite_components() {
 
 #[test]
 fn transform_perspective_accepts_none_and_zero_and_rejects_invalid_dimensions() {
-    let report = parse_style_attribute("transform: perspective(none) perspective(0)");
+    let report =
+        CssParser::default().parse_block_contents("transform: perspective(none) perspective(0)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Transform(transform) = report.syntax()[0]
         .known()
@@ -2512,13 +2538,21 @@ fn transform_perspective_accepts_none_and_zero_and_rejects_invalid_dimensions() 
         CssTransformFunction::Perspective(CssTransformPerspective::Length(length))
             if matches!(length.literal().map(|literal| literal.component()).map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number))) if number.representation() == "0")
     ));
-    assert!(!parse_style_attribute("transform: perspective(10%)").is_clean());
-    assert!(!parse_style_attribute("transform: perspective(-1px)").is_clean());
+    assert!(
+        !CssParser::default()
+            .parse_block_contents("transform: perspective(10%)")
+            .is_clean()
+    );
+    assert!(
+        !CssParser::default()
+            .parse_block_contents("transform: perspective(-1px)")
+            .is_clean()
+    );
 }
 
 #[test]
 fn transform_three_dimensional_rotations_are_typed() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "transform: rotate3d(1, 0, -1, 45deg) rotateX(10deg) rotateY(20deg) rotateZ(30deg)",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -2546,7 +2580,8 @@ fn transform_three_dimensional_rotations_are_typed() {
 
 #[test]
 fn transform_three_dimensional_scales_preserve_number_and_percentage_operands() {
-    let report = parse_style_attribute("transform: scale3d(1, 50%, 2) scaleZ(125%)");
+    let report =
+        CssParser::default().parse_block_contents("transform: scale3d(1, 50%, 2) scaleZ(125%)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Transform(transform) = report.syntax()[0]
         .known()
@@ -2575,7 +2610,8 @@ fn transform_three_dimensional_scales_preserve_number_and_percentage_operands() 
 
 #[test]
 fn transform_three_dimensional_translations_keep_z_length_only() {
-    let report = parse_style_attribute("transform: translate3d(10%, 2px, 4em) translateZ(3px)");
+    let report = CssParser::default()
+        .parse_block_contents("transform: translate3d(10%, 2px, 4em) translateZ(3px)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Transform(transform) = report.syntax()[0]
         .known()
@@ -2595,14 +2631,16 @@ fn transform_three_dimensional_translations_keep_z_length_only() {
             CssTransformFunction::TranslateZ(_),
         ]
     ));
-    assert!(!parse_style_attribute("transform: translate3d(1px, 2px, 3%)").is_clean());
+    assert!(
+        !CssParser::default()
+            .parse_block_contents("transform: translate3d(1px, 2px, 3%)")
+            .is_clean()
+    );
 }
 
 #[test]
 fn official_easing_metadata_matches_typed_functions() {
-    let report = parse_style_attribute(
-        "transition-timing-function: ease, cubic-bezier(.25, 0, .75, 1), steps(2, jump-none), linear(0, 1)",
-    );
+    let report = CssParser::default().parse_block_contents("transition-timing-function: ease, cubic-bezier(.25, 0, .75, 1), steps(2, jump-none), linear(0, 1)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::TransitionTimingFunction(value) = report.syntax()[0]
         .known()
@@ -2633,7 +2671,8 @@ fn official_easing_metadata_matches_typed_functions() {
 
 #[test]
 fn official_shadow_metadata_matches_typed_box_shadow() {
-    let report = parse_style_attribute("box-shadow: red inset -1px 2px 3px -4px");
+    let report =
+        CssParser::default().parse_block_contents("box-shadow: red inset -1px 2px 3px -4px");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BoxShadow(value) = report.syntax()[0]
         .known()
@@ -2652,7 +2691,7 @@ fn official_shadow_metadata_matches_typed_box_shadow() {
 
 #[test]
 fn filter_function_list_preserves_typed_authored_order() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "filter: url(\"filters.svg#rough\") blur(2px) drop-shadow(1px 2px red) opacity(50%)",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -2680,7 +2719,7 @@ fn filter_function_list_preserves_typed_authored_order() {
 
 #[test]
 fn every_filter_amount_function_has_exact_typed_domain() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "filter: blur(2px) brightness() contrast(25%) grayscale(.5) ",
         "hue-rotate(45deg) invert(10%) opacity(.75) saturate(2) sepia(30%)"
     ));
@@ -2714,7 +2753,7 @@ fn every_filter_amount_function_has_exact_typed_domain() {
 
 #[test]
 fn drop_shadow_rejects_box_shadow_only_components() {
-    let report = parse_style_attribute("filter: drop-shadow(red 1px 2px 3px)");
+    let report = CssParser::default().parse_block_contents("filter: drop-shadow(red 1px 2px 3px)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Filter(value) = report.syntax()[0]
         .known()
@@ -2731,8 +2770,16 @@ fn drop_shadow_rejects_box_shadow_only_components() {
         functions.functions(),
         [CssFilterFunction::DropShadow(_)]
     ));
-    assert!(!parse_style_attribute("filter: drop-shadow(inset 1px 2px)").is_clean());
-    assert!(!parse_style_attribute("filter: drop-shadow(1px 2px 3px 4px)").is_clean());
+    assert!(
+        !CssParser::default()
+            .parse_block_contents("filter: drop-shadow(inset 1px 2px)")
+            .is_clean()
+    );
+    assert!(
+        !CssParser::default()
+            .parse_block_contents("filter: drop-shadow(1px 2px 3px 4px)")
+            .is_clean()
+    );
 }
 
 #[test]
@@ -2747,13 +2794,13 @@ fn all_basic_shape_functions_have_complete_authored_metadata() {
         "polygon(0 0, 100% 0)",
         "shape(from 0 0, line to 1px 1px)",
     ] {
-        let report = parse_style_attribute(&format!("clip-path: {value}"));
+        let report = CssParser::default().parse_block_contents(format!("clip-path: {value}"));
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     }
 }
 #[test]
 fn every_selected_basic_shape_has_typed_public_components() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "clip-path: inset(1px round 2px); ",
         "clip-path: circle(10px at center); ",
         "clip-path: ellipse(10px 20% at left top); ",
@@ -2792,7 +2839,8 @@ fn every_selected_basic_shape_has_typed_public_components() {
 
 #[test]
 fn backdrop_filter_preserves_typed_authored_grammar_with_the_named_source() {
-    let report = parse_style_attribute("backdrop-filter: blur(2px) opacity(50%)");
+    let report =
+        CssParser::default().parse_block_contents("backdrop-filter: blur(2px) opacity(50%)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BackdropFilter(value) = report.syntax()[0]
         .known()
@@ -2831,14 +2879,14 @@ fn clip_path_complete_metadata_matches_all_authored_alternatives() {
         "circle(at x-start y-end)",
         "ellipse(at block-start inline-end)",
     ] {
-        let report = parse_style_attribute(&format!("clip-path: {value}"));
+        let report = CssParser::default().parse_block_contents(format!("clip-path: {value}"));
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     }
 }
 
 #[test]
 fn completed_function_property_metadata_matches_public_current_accessors() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "transform: translate(1px, 2%); ",
         "box-shadow: 1px 2px 3px red; ",
         "filter: blur(2px); ",
@@ -2975,7 +3023,7 @@ fn exclusion_registry_exposes_named_official_audit_facts() {
 
 #[test]
 fn images_three_properties_are_publicly_recognized() {
-    let object = parse_style_attribute("object-position: left top");
+    let object = CssParser::default().parse_block_contents("object-position: left top");
     assert!(object.is_clean(), "{:?}", object.diagnostics());
     assert_eq!(
         object.syntax()[0]
@@ -2991,7 +3039,7 @@ fn images_three_properties_are_publicly_recognized() {
         ("image-orientation", "from-image"),
     ] {
         let source = format!("{property}: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 2, "{source}");
         assert_eq!(
@@ -3251,7 +3299,7 @@ fn images_and_backgrounds_records_parse_their_authored_vectors() {
             assert!(std::ptr::eq(metadata, property.feature()), "{id} owner");
         }
 
-        let report = parse_style_attribute(vector);
+        let report = CssParser::default().parse_block_contents(vector);
         assert!(report.is_clean(), "{id}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{id} parser vector");
     }
@@ -3333,13 +3381,13 @@ fn linguistic_selector_metadata_matches_effective_authored_grammar() {
         ":lang(en, 'de-DE')",
     ] {
         let source = format!("{selector} {{ color: red; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().rules().len(), 1);
     }
     for selector in [":dir(1)", ":dir('ltr')", ":lang(en en)", ":lang(en,)"] {
         let source = format!("{selector} {{ color: red; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean(), "{source}");
         assert!(report.syntax().rules().is_empty(), "{source}");
         assert_eq!(
@@ -3355,7 +3403,7 @@ fn required_shadow_definitions_supersede_prior_negative_catalog_examples() {
         ".host:host { color: red; }",
         ".item::part(label) { color: red; }",
     ] {
-        let report = surgeist_css::parse_sheet(source);
+        let report = surgeist_css::CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().rules().len(), 1);
     }
@@ -3393,7 +3441,11 @@ fn container_property_metadata_cites_each_selected_conditional_definition() {
             Some("https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/")
         );
         assert_eq!(metadata.production(), production);
-        assert!(parse_style_attribute(&format!("{name}:{value}")).is_clean());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("{name}:{value}"))
+                .is_clean()
+        );
     }
 }
 
@@ -3438,7 +3490,11 @@ fn canonical_writing_modes_sources_include_selected_level_four_sideways_values()
         assert_eq!(metadata.status(), CssSupportStatus::Complete);
     }
     for text in ["sideways-rl", "sideways-lr"] {
-        assert!(parse_style_attribute(&format!("writing-mode:{text}")).is_clean());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("writing-mode:{text}"))
+                .is_clean()
+        );
     }
 }
 
@@ -3449,7 +3505,11 @@ fn text_combine_upright_uses_selected_level_four_digits_grammar() {
     assert_eq!(metadata.production(), "#propdef-text-combine-upright");
     assert_eq!(metadata.status(), CssSupportStatus::Complete);
     for text in ["digits", "digits 2", "digits 4", "digits calc(2.5)"] {
-        assert!(parse_style_attribute(&format!("text-combine-upright:{text}")).is_clean());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("text-combine-upright:{text}"))
+                .is_clean()
+        );
     }
 }
 
@@ -3474,11 +3534,11 @@ fn complete_z_index_catalogue_matches_the_typed_authored_lifecycle() {
         ("+0002147483648", "2147483648"),
         ("calc(1.5)", "calc(1.5)"),
     ] {
-        let report = parse_style_attribute(&format!("z-index:{text}!important"));
+        let report = CssParser::default().parse_block_contents(format!("z-index:{text}!important"));
         assert!(report.is_clean());
         let source = &report.syntax()[0];
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("one longhand")
         };
@@ -3505,7 +3565,8 @@ fn quirky_length_metadata_matches_scoped_pixel_admission() {
     assert_eq!(metadata.production(), "#deprecated-quirky-length");
     assert_eq!(metadata.status(), CssSupportStatus::Complete);
     let context = CssParserContext::new(CssParserMode::Quirks);
-    let report = context.parse_declaration("margin-top:7");
+    let report =
+        CssDeclaration::parse(&CssParser::new(context, Default::default()), "margin-top:7");
     assert!(report.is_clean());
     assert_eq!(
         report
@@ -3516,6 +3577,12 @@ fn quirky_length_metadata_matches_scoped_pixel_admission() {
             .unwrap(),
         "margin-top: 7px;"
     );
-    assert!(!parse_declaration("margin-top:7").is_clean());
-    assert!(!context.parse_declaration("background:7 8").is_clean());
+    assert!(!CssDeclaration::parse(&CssParser::default(), "margin-top:7").is_clean());
+    assert!(
+        !CssDeclaration::parse(
+            &CssParser::new(context, Default::default()),
+            "background:7 8"
+        )
+        .is_clean()
+    );
 }

@@ -264,8 +264,9 @@ fn parses_order_flex_and_content_alignment() {
 
 #[test]
 fn grid_and_flex_property_families_accept_supported_values() {
-    let sheet = parse_sheet(
-        ".panel {
+    let sheet = CssParser::default()
+        .parse_sheet(
+            ".panel {
             grid-template-rows: [top] 100px 1fr;
             grid-template-columns: repeat(2, minmax(10px, 1fr));
             grid-template-areas: \"header header\" \"nav main\";
@@ -286,8 +287,8 @@ fn grid_and_flex_property_families_accept_supported_values() {
             justify-content: space-between;
             align-content: stretch;
         }",
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
     let declarations = style_rule(&sheet.rules()[0]).declarations();
 
     for property in [
@@ -386,7 +387,8 @@ fn rejects_grid_auto_flow_shorthand_without_explicit_tracks() {
 
 #[test]
 fn invalid_parser_custom_ident_errors_keep_source_location() {
-    let error = parse_sheet(".panel {\n  grid-template-columns: [auto] 1fr;\n}")
+    let error = CssParser::default()
+        .parse_sheet(".panel {\n  grid-template-columns: [auto] 1fr;\n}")
         .expect_err("rejected parse report");
 
     assert!(error.code() == CssErrorCode::InvalidPropertyValue);
@@ -396,7 +398,8 @@ fn invalid_parser_custom_ident_errors_keep_source_location() {
 
 #[test]
 fn rejects_inconsistent_grid_template_area_row_widths() {
-    let error = parse_sheet(".panel { grid-template-areas: \"a a\" \"b\"; }")
+    let error = CssParser::default()
+        .parse_sheet(".panel { grid-template-areas: \"a a\" \"b\"; }")
         .expect_err("rejected parse report");
 
     assert!(error.code() == CssErrorCode::InvalidPropertyValue);

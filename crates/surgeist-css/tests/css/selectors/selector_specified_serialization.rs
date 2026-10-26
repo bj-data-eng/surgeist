@@ -2,11 +2,11 @@
 use crate::css::support::failure_classes::SerializationFailure as Kind;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
-    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorList, CssRule, CssSelector,
-    CssSerializationLimits as Limits, CssStyleSelector, parse_selector, parse_sheet,
+    CssNamespaceContext, CssParser, CssPseudoClass, CssPseudoSelectorList, CssRule, CssSelector,
+    CssSerializationLimits as Limits, CssStyleSelector,
 };
 fn parsed(source: &str) -> CssSelector {
-    let report = parse_sheet(&format!("{source} {{ }}"));
+    let report = CssParser::default().parse_sheet(format!("{source} {{ }}"));
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::Style(rule)] = report.syntax().rules() else {
         panic!("style")
@@ -44,7 +44,8 @@ fn identifiers_attributes_and_combinators_have_meaningful_boundaries() {
 }
 #[test]
 fn qualified_names_reuse_authored_prefix_identity() {
-    let report = parse_sheet("@namespace n 'urn:x'; n|leaf[n|key='v']{} *|*[|key]{} |leaf{}");
+    let report = CssParser::default()
+        .parse_sheet("@namespace n 'urn:x'; n|leaf[n|key='v']{} *|*[|key]{} |leaf{}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let expected = [r#"n|leaf[n|key="v"]"#, "*|*[|key]", "|leaf"];
     for (rule, expected) in report.syntax().rules()[1..].iter().zip(expected) {
@@ -224,7 +225,11 @@ fn compound_attribute_and_logical_children_share_exact_semantic_node_budget() {
 
 #[test]
 fn symbolic_nesting_anchor_and_scope_pseudo_keep_distinct_authored_identity() {
-    let report = parse_selector("& :scope", &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        "& :scope",
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let selector = report.syntax().as_ref().unwrap();
     let before = selector.clone();

@@ -10,7 +10,8 @@ use crate::css::support::{
 use surgeist_css::*;
 
 fn scalar(text: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
-    let components = parse_component_values(text).expect("valid component syntax");
+    let components =
+        CssComponentValues::parse(&CssParser::default(), text).expect("valid component syntax");
     if text.starts_with("calc(") {
         CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
             CssCalculation::<CssLengthPercentage>::try_from_components(
@@ -206,7 +207,9 @@ fn negative_literals_and_non_gap_tokens_are_invalid_but_math_remains_symbolic() 
     for name in ["row-gap", "column-gap", "gap"] {
         for value in ["calc(1px + 2%)", "calc(1px - 2px)"] {
             assert!(
-                parse_style_attribute(&format!("{name}:{value}")).is_clean(),
+                CssParser::default()
+                    .parse_block_contents(format!("{name}:{value}"))
+                    .is_clean(),
                 "{name}:{value}"
             );
             checked(name, value);
@@ -283,7 +286,7 @@ fn parsed_aliases_keep_exact_authored_name_and_typed_canonical_identity() {
     };
     let source = parsed("all", "initial");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&source).expect("all expands symbolically")
+        source.expand().expect("all expands symbolically")
     else {
         panic!("all has a universal reset")
     };

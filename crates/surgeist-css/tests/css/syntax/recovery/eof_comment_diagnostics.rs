@@ -5,13 +5,11 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-comments
 
 use surgeist_css::{
-    CssCustomMediaBody, CssErrorCode, CssFontFaceDescriptorKind, CssImportance, CssKnownProperty,
-    CssMediaQuery, CssNamespaceContext, CssParseReport, CssPropertyGrammar, CssPropertyNameRef,
-    CssRecoveryAction, CssRule, parse_declaration, parse_font_face_descriptor_value,
-    parse_media_query, parse_media_query_list, parse_property_value_text,
-    parse_property_value_text_for_grammar, parse_rule, parse_selector, parse_selector_list,
-    parse_sheet, parse_style_attribute, parse_style_block, validate_sheet,
-    validate_style_attribute,
+    CssAuthoredFontFaceDescriptorValue, CssCustomMediaBody, CssDeclaration, CssErrorCode,
+    CssFontFaceDescriptorKind, CssImportance, CssKnownProperty, CssMediaQuery, CssMediaQueryList,
+    CssNamespaceContext, CssParseReport, CssParsedStyleSelectors, CssParser, CssPropertyGrammar,
+    CssPropertyNameRef, CssPropertyTextTarget, CssRecoveryAction, CssRule, CssSelector,
+    CssStyleBlock, CssStyleSelectorContext,
 };
 
 fn assert_comment<T>(source: &str, report: &CssParseReport<T>, opening: usize) {
@@ -37,25 +35,33 @@ fn assert_comment<T>(source: &str, report: &CssParseReport<T>, opening: usize) {
 fn unfinished_comment_only_inputs_are_recovered_empty_but_unclean() {
     for source in ["/*", "/*/", "/**", "/*text", "/**//*unfinished"] {
         let opening = if source.starts_with("/**/") { 4 } else { 0 };
-        let sheet = parse_sheet(source);
+        let sheet = CssParser::default().parse_sheet(source);
         assert!(sheet.syntax().rules().is_empty());
         assert_comment(source, &sheet, opening);
         assert_eq!(sheet.diagnostics().len(), 1);
         assert_eq!(
-            validate_sheet(source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             sheet.diagnostics()
         );
 
-        let declarations = parse_style_attribute(source);
+        let declarations = CssParser::default().parse_block_contents(source);
         assert!(declarations.syntax().is_empty());
         assert_comment(source, &declarations, opening);
         assert_eq!(declarations.diagnostics().len(), 1);
         assert_eq!(
-            validate_style_attribute(source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             declarations.diagnostics()
         );
 
-        let media = parse_media_query_list(source);
+        let media = CssMediaQueryList::parse(&CssParser::default(), source);
         assert!(media.syntax().queries().is_empty());
         assert_comment(source, &media, opening);
         assert_eq!(media.diagnostics().len(), 1);
@@ -65,7 +71,7 @@ fn unfinished_comment_only_inputs_are_recovered_empty_but_unclean() {
 #[test]
 fn trailing_comments_preserve_completed_sheet_and_declaration_units() {
     let source = ".x{color:red}/*";
-    let sheet = parse_sheet(source);
+    let sheet = CssParser::default().parse_sheet(source);
     let [CssRule::Style(style)] = sheet.syntax().rules() else {
         panic!("retained style: {sheet:?}");
     };
@@ -73,17 +79,25 @@ fn trailing_comments_preserve_completed_sheet_and_declaration_units() {
     assert_comment(source, &sheet, 13);
     assert_eq!(sheet.diagnostics().len(), 1);
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         sheet.diagnostics()
     );
 
     let source = "color:red;/*";
-    let declarations = parse_style_attribute(source);
+    let declarations = CssParser::default().parse_block_contents(source);
     assert_eq!(declarations.syntax().len(), 1);
     assert_comment(source, &declarations, 10);
     assert_eq!(declarations.diagnostics().len(), 1);
     assert_eq!(
-        validate_style_attribute(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         declarations.diagnostics()
     );
 }
@@ -99,32 +113,53 @@ fn successful_singular_fragments_preserve_syntax_and_report_comment_eof() {
             assert_eq!(report.diagnostics().len(), 1);
         }};
     }
-    retained!("color:red/*", parse_declaration("color:red/*"));
-    retained!(".x/*", parse_selector(".x/*", &context));
-    retained!(".x,.y/*", parse_selector_list(".x,.y/*", &context));
-    retained!(".x{}/*", parse_rule(".x{}/*", &context));
+    retained!(
+        "color:red/*",
+        CssDeclaration::parse(&CssParser::default(), "color:red/*")
+    );
+    retained!(
+        ".x/*",
+        CssSelector::parse(&CssParser::default(), ".x/*", &context)
+    );
+    retained!(
+        ".x,.y/*",
+        CssParsedStyleSelectors::parse(
+            &CssParser::default(),
+            ".x,.y/*",
+            &context,
+            CssStyleSelectorContext::Ordinary
+        )
+    );
+    retained!(
+        ".x{}/*",
+        CssRule::parse(&CssParser::default(), ".x{}/*", &context)
+    );
     retained!(
         "{color:red}/*",
-        parse_style_block("{color:red}/*", &context)
+        CssStyleBlock::parse(&CssParser::default(), "{color:red}/*", &context)
     );
     retained!(
         "Demo/*",
-        parse_font_face_descriptor_value("Demo/*", CssFontFaceDescriptorKind::FontFamily)
-    );
-    retained!(
-        "red/*",
-        parse_property_value_text(
-            "red/*",
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
-            CssImportance::Normal,
+        CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            "Demo/*",
+            CssFontFaceDescriptorKind::FontFamily
         )
     );
     retained!(
         "red/*",
-        parse_property_value_text_for_grammar(
+        CssParser::default().parse_property_value(
             "red/*",
-            CssPropertyGrammar::from_name("color").unwrap(),
-            CssImportance::Normal,
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+            CssImportance::Normal
+        )
+    );
+    retained!(
+        "red/*",
+        CssParser::default().parse_property_value(
+            "red/*",
+            CssPropertyTextTarget::Grammar(CssPropertyGrammar::from_name("color").unwrap()),
+            CssImportance::Normal
         )
     );
 }
@@ -132,11 +167,11 @@ fn successful_singular_fragments_preserve_syntax_and_report_comment_eof() {
 #[test]
 fn valid_media_fragments_keep_their_query_when_a_comment_reaches_eof() {
     let source = "screen/*";
-    let query = parse_media_query(source);
+    let query = CssMediaQuery::parse(&CssParser::default(), source);
     assert!(!matches!(query.syntax(), CssMediaQuery::Never(_)));
     assert_comment(source, &query, 6);
     assert_eq!(query.diagnostics().len(), 1);
-    let list = parse_media_query_list(source);
+    let list = CssMediaQueryList::parse(&CssParser::default(), source);
     assert_eq!(list.syntax().queries().len(), 1);
     assert!(!matches!(
         list.syntax().queries()[0],
@@ -152,7 +187,7 @@ fn custom_media_boolean_and_empty_query_definitions_survive_comment_eof() {
         ("@custom-media --x true/*", true),
         ("@custom-media --x/*", false),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [CssRule::CustomMedia(definition)] = report.syntax().rules() else {
             panic!("retained definition: {report:?}");
         };
@@ -195,7 +230,11 @@ fn custom_media_boolean_and_empty_query_definitions_survive_comment_eof() {
                     == CssRecoveryAction::RetainWithImplicitClosure)
         );
         assert_eq!(
-            validate_sheet(source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -208,7 +247,7 @@ fn discarded_rules_and_rejected_fragments_do_not_suppress_or_duplicate_comments(
         "@unknown fn(/*",
         "@custom-media ordinary true/*",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.syntax().rules().is_empty());
         assert_comment(source, &report, source.len() - 2);
         assert_eq!(report.diagnostics().len(), 2, "{source}: {report:?}");
@@ -222,7 +261,7 @@ fn discarded_rules_and_rejected_fragments_do_not_suppress_or_duplicate_comments(
         );
     }
     let source = "color:???/*";
-    let report = parse_declaration(source);
+    let report = CssDeclaration::parse(&CssParser::default(), source);
     assert!(report.syntax().is_none());
     assert_comment(source, &report, source.len() - 2);
     assert_eq!(report.diagnostics().len(), 2);
@@ -240,7 +279,7 @@ fn discarded_rules_and_rejected_fragments_do_not_suppress_or_duplicate_comments(
 fn comment_error_composes_once_with_retained_structural_eof_closures() {
     for depth in [1, 65, 129] {
         let source = format!("{} .x{{color:red}}/*", "@layer x{".repeat(depth));
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(report.syntax().rules().len(), 1);
         assert_comment(&source, &report, source.len() - 2);
         assert_eq!(report.diagnostics().len(), depth + 1, "{report:?}");
@@ -258,7 +297,7 @@ fn comment_error_composes_once_with_retained_structural_eof_closures() {
 #[test]
 fn eof_comment_coordinates_use_original_bytes_and_utf16_after_crlf() {
     let source = "/*🦊*/\r\n.x{}/*🦊";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_comment(source, &report, 14);
     let diagnostic = &report.diagnostics()[0];
     assert_eq!(diagnostic.span().start().line().value(), 1);
@@ -280,12 +319,18 @@ fn terminated_comments_and_comment_lookalikes_in_token_payloads_stay_clean() {
         ".x{--text:\"/*\"}",
         "@font-face{src:url(a/*b)}",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{source}: {report:?}");
-        assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
+        assert_eq!(
+            CssParser::default()
+                .parse_sheet(source)
+                .into_validation_result()
+                .unwrap(),
+            *report.syntax()
+        );
     }
     let source = format!("/*{}*/.x{{}}", "([{\"".repeat(300));
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(report.syntax().rules().len(), 1);
 }
@@ -293,7 +338,7 @@ fn terminated_comments_and_comment_lookalikes_in_token_payloads_stay_clean() {
 #[test]
 fn bad_url_and_bad_string_payloads_do_not_create_comment_diagnostics() {
     for source in ["@font-face{src:url(a b/*)}", ".x{--text:\"/*\n}"] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(!report.is_clean(), "{source}: {report:?}");
         assert!(
             report

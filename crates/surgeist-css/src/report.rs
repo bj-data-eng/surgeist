@@ -71,6 +71,13 @@ impl<T> CssParseReport<T> {
     }
 
     /// Accepts exactly reports with no recovery diagnostics.
+    ///
+    /// # Errors
+    ///
+    /// Returns every parser-produced diagnostic, in their report order, for a
+    /// report that is not clean. Validation selects no other grammar and applies
+    /// no cascade, substitution, contextual resolution, selector matching or
+    /// resource loading.
     pub fn into_validation_result(self) -> Result<T, CssValidationFailure> {
         let (syntax, diagnostics) = self.into_parts();
         match CssValidationFailure::new(diagnostics) {
@@ -339,16 +346,31 @@ impl std::error::Error for CssValidationFailure {
     }
 }
 
+impl CssParseReport<crate::CssSheet> {
+    /// Attaches a symbolic host location to the parsed sheet.
+    ///
+    /// The location is the host's opaque stylesheet URL text. It never affects
+    /// parsing, and unlike a Unicode parse of a decoded byte input this
+    /// operation does not sniff or remove a BOM.
+    #[must_use]
+    pub fn with_location(mut self, location: Option<crate::CssStylesheetLocation>) -> Self {
+        self.syntax.set_location(location);
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{CssParseReport, CssRecoveryAction, CssRecoveryDiagnostic, CssValidationFailure};
     use crate::test_support::CssParseReportTestExt;
-    use crate::{CssError, CssSourcePosition, CssSourceSpan, parse_sheet};
+    use crate::{CssError, CssSourcePosition, CssSourceSpan};
 
     const INVALID_SOURCE: &str = ".x { mystery: 1; }";
 
     fn invalid_property_error() -> CssError {
-        parse_sheet(INVALID_SOURCE).expect_err("unknown property must remain a strict error")
+        crate::CssParser::default()
+            .parse_sheet(INVALID_SOURCE)
+            .expect_err("unknown property must remain a strict error")
     }
 
     fn diagnostic(action: CssRecoveryAction) -> CssRecoveryDiagnostic {
@@ -356,7 +378,9 @@ mod tests {
     }
 
     fn diagnostic_for(source: &str, action: CssRecoveryAction) -> CssRecoveryDiagnostic {
-        let error = parse_sheet(source).expect_err("diagnostic source must remain a strict error");
+        let error = crate::CssParser::default()
+            .parse_sheet(source)
+            .expect_err("diagnostic source must remain a strict error");
         let span = CssSourceSpan::new(
             error.position(),
             CssSourcePosition::from_byte_offset_in(source, source.len()),
@@ -432,7 +456,9 @@ mod tests {
     fn report_diagnostic_accepts_zero_width_missing_token_span_at_exclusive_end() {
         const SOURCE: &str = "@media screen;";
 
-        let error = parse_sheet(SOURCE).expect_err("media requires a missing block at EOF");
+        let error = crate::CssParser::default()
+            .parse_sheet(SOURCE)
+            .expect_err("media requires a missing block at EOF");
         let end = CssSourcePosition::from_byte_offset_in(SOURCE, SOURCE.len());
         assert_eq!(error.position(), end);
         let span = CssSourceSpan::new(end, end).expect("zero-width missing-token span");

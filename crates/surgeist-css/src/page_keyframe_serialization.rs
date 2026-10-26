@@ -205,7 +205,7 @@ impl SpecifiedRuleWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CssRule, CssSerializationLimits as Limits, parse_sheet};
+    use crate::{CssRule, CssSerializationLimits as Limits};
     use CssSpecifiedValueSerializationErrorKind as Kind;
 
     fn append_rule(writer: &mut SpecifiedRuleWriter, rule: &CssRule) -> Result<()> {
@@ -219,7 +219,7 @@ mod tests {
     }
 
     fn exact_budget(source: &str, expected: &str, nodes: usize) {
-        let report = parse_sheet(source);
+        let report = crate::CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let before = report.clone();
         let [rule] = report.syntax().rules() else {
@@ -303,7 +303,8 @@ mod tests {
 
     #[test]
     fn suppressed_keyframes_visit_later_blocks_and_restore_nested_output_modes() {
-        let report = parse_sheet("@keyframes k{0.0000011%{}to{opacity:initial}}");
+        let report = crate::CssParser::default()
+            .parse_sheet("@keyframes k{0.0000011%{}to{opacity:initial}}");
         assert!(report.is_clean());
         let before = report.clone();
         let rule = &report.syntax().rules()[0];
@@ -340,7 +341,8 @@ mod tests {
 
     #[test]
     fn suppressed_calculated_selectors_share_work_and_restore_output_after_failure() {
-        let report = parse_sheet("@keyframes k{calc(120%){}calc(-10%){} }");
+        let report =
+            crate::CssParser::default().parse_sheet("@keyframes k{calc(120%){}calc(-10%){} }");
         assert!(report.is_clean());
         let before = report.clone();
         let rule = &report.syntax().rules()[0];

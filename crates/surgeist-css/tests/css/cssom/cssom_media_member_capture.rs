@@ -1,12 +1,14 @@
 //! Ordered captures for the selected CSSOM MediaList byte-comparison algorithm.
 use crate::css::support::failure_classes::SerializationFailure as Kind;
 use crate::css::support::value_assertions::media_resource_kind;
-use surgeist_css::{CssSerializationLimits as Limits, CssSerializedOrigin, parse_media_query_list};
+use surgeist_css::{
+    CssMediaQueryList, CssParser, CssSerializationLimits as Limits, CssSerializedOrigin,
+};
 
 #[test]
 fn ordered_captures_keep_duplicates_recovery_and_owned_input_origins() {
     let source = String::from("SCREEN, ???, print, SCREEN, (future: AbC)");
-    let report = parse_media_query_list(&source);
+    let report = CssMediaQueryList::parse(&CssParser::default(), &source);
     let original = report.clone();
     let captures = report
         .syntax()
@@ -36,7 +38,7 @@ fn ordered_captures_keep_duplicates_recovery_and_owned_input_origins() {
 
 #[test]
 fn cumulative_member_limits_exclude_separators_and_retry_independently() {
-    let report = parse_media_query_list("screen, print");
+    let report = CssMediaQueryList::parse(&CssParser::default(), "screen, print");
     let exact = Limits::new(5, 5, 11);
     let captures = report.syntax().serialize_cssom_members(exact).unwrap();
     assert_eq!(captures[0].as_css(), "screen");
@@ -64,7 +66,7 @@ fn cumulative_member_limits_exclude_separators_and_retry_independently() {
 
 #[test]
 fn recovered_expansion_and_empty_aggregate_have_their_real_tariffs() {
-    let recovered = parse_media_query_list("???, screen");
+    let recovered = CssMediaQueryList::parse(&CssParser::default(), "???, screen");
     let exact = Limits::new(4, 6, 13);
     assert_eq!(
         recovered
@@ -89,7 +91,7 @@ fn recovered_expansion_and_empty_aggregate_have_their_real_tariffs() {
             expected
         );
     }
-    let empty = parse_media_query_list("");
+    let empty = CssMediaQueryList::parse(&CssParser::default(), "");
     assert!(
         empty
             .syntax()

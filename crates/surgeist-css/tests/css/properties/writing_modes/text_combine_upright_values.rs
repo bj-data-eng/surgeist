@@ -4,7 +4,7 @@ use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn parsed(text: &str) -> CssTextCombineUpright {
-    let report = parse_style_attribute(&format!("text-combine-upright:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("text-combine-upright:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::TextCombineUpright(value) = report.syntax()[0]
         .known()
@@ -83,7 +83,7 @@ fn integer_calculation_counts_remain_unrounded_unclamped_and_owned() {
         ("calc(NaN)", "digits calc(NaN)"),
         ("calc(1px / 1em)", "digits calc(1px / 1em)"),
     ] {
-        let components = parse_component_values(input).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), input).unwrap();
         let calculation = CssCalculation::<CssInteger>::try_from_components(
             components.clone(),
             Default::default(),
@@ -197,9 +197,10 @@ fn metadata_initial_and_reentry_keep_exact_current_payloads() {
         panic!("text combine")
     };
     assert_eq!(value, &CssTextCombineUpright::None);
-    let report = parse_style_attribute("text-combine-upright:var(--count)!important");
+    let report =
+        CssParser::default().parse_block_contents("text-combine-upright:var(--count)!important");
     let source = &report.syntax()[0];
-    let CssExpansion::Pending(pending) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending")
     };
     for (text, expected) in [
@@ -209,7 +210,7 @@ fn metadata_initial_and_reentry_keep_exact_current_payloads() {
             CssTextCombineUpright::Digits(Some(CssTextCombineDigitCount::try_literal(4).unwrap())),
         ),
     ] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let CssContributions::Longhands(values) = pending.reenter(components.clone()).unwrap()
         else {
             panic!("longhands")
@@ -271,18 +272,22 @@ fn calculation_leaf_budgets_include_outer_nodes_and_prefix_bytes() {
 #[test]
 fn recovered_counts_normalize_in_order_with_exact_contribution_budget() {
     let text = ".a{text-combine-upright:digits;text-combine-upright:digits 1;text-combine-upright:digits 4!important}";
-    let report = parse_sheet(text);
+    let report = CssParser::default().parse_sheet(text);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
-    assert!(validate_sheet(text).is_err());
-    let sheet = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap(),
-    )
-    .unwrap();
+    assert!(
+        CssParser::default()
+            .parse_sheet(text)
+            .into_validation_result()
+            .is_err()
+    );
+    let sheet = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap())
+        .unwrap();
     let items: Vec<_> = sheet
         .items()
         .iter()
@@ -342,7 +347,9 @@ fn recovered_counts_normalize_in_order_with_exact_contribution_budget() {
         ),
     ] {
         assert_eq!(
-            normalize_sheet_with_limits(report.syntax(), limits)
+            report
+                .syntax()
+                .normalize(limits)
                 .unwrap_err()
                 .exhausted_limit(),
             Some((resource, limit))

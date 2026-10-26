@@ -3,11 +3,11 @@
 
 use crate::css::support::authored_syntax::{assert_diagnostics, offset_of};
 use surgeist_css::{
-    CssErrorCode, CssImportance, CssRule, CssSupportsTestItem, CssValueTokenRef, parse_sheet,
+    CssErrorCode, CssImportance, CssParser, CssRule, CssSupportsTestItem, CssValueTokenRef,
 };
 
 fn body(source: &str) -> surgeist_css::CssSupportsTestBody {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
         panic!("one named definition: {report:?}");
@@ -41,13 +41,14 @@ fn declaration_first_accepts_sole_curly_value_and_custom_mixture() {
 fn empty_and_whitespace_only_qualified_preludes_retain_nested_tests() {
     for authored in ["{future:value}", " \t{future:value} "] {
         let source = format!("@supports-condition --x {{{authored}}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
             panic!("one definition");
         };
         let constructed = surgeist_css::CssSupportsTestBody::try_from_components(
-            surgeist_css::parse_component_values(authored).unwrap(),
+            surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), authored)
+                .unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -70,7 +71,7 @@ fn empty_and_whitespace_only_qualified_preludes_retain_nested_tests() {
         }
         let canonical = rule.serialize_specified(Default::default()).unwrap();
         assert_eq!(canonical, "@supports-condition --x { { future: value; } }");
-        let reparsed = parse_sheet(&canonical);
+        let reparsed = CssParser::default().parse_sheet(&canonical);
         assert!(reparsed.is_clean(), "{:?}", reparsed.diagnostics());
         let [CssRule::SupportsCondition(again)] = reparsed.syntax().rules() else {
             panic!("one roundtrip definition");
@@ -85,7 +86,7 @@ fn empty_and_whitespace_only_qualified_preludes_retain_nested_tests() {
 #[test]
 fn bare_double_hyphen_is_not_a_custom_property_for_mixed_curly_values() {
     let source = "@supports-condition --t{--:a{b:c}d;tail:yes}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     // `--` declares no custom property, so its value may not mix a
     // `{}`-block with other tokens. The nested qualified-rule fallback then
     // starts with an ident and a colon, so Syntax 3 consumes it from `--` as
@@ -119,7 +120,8 @@ fn terminal_importance_is_removed_before_noncustom_curly_restriction() {
         let source = format!("@supports-condition --t{{{authored}}}");
         let parsed = body(&source);
         let constructed = surgeist_css::CssSupportsTestBody::try_from_components(
-            surgeist_css::parse_component_values(authored).unwrap(),
+            surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), authored)
+                .unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -177,7 +179,7 @@ fn mixed_noncustom_curly_falls_back_at_first_block_and_leaves_sibling() {
 #[test]
 fn custom_property_lookalike_without_colon_is_a_qualified_test() {
     let source = "@supports-condition --t{--x no-colon{a:b};good:1}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
         panic!("definition retained");
@@ -245,11 +247,11 @@ fn ambient_group_depth_counts_toward_named_test_limit_even_after_bad_token() {
         format!("@media all{{@supports-condition --nested{{{body}}}}}")
     };
     let admitted = nested(254, "");
-    let report = parse_sheet(&admitted);
+    let report = CssParser::default().parse_sheet(&admitted);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
     for source in [nested(255, ""), nested(255, ")")] {
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean());
         assert!(
             report.diagnostics().iter().any(|diagnostic| {

@@ -3,13 +3,20 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/
 
 use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
-    CssValueOrigin, CssValueTokenRef, parse_component_values,
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssParser, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
 };
 
 fn joined(left: &str, right: &str) -> CssComponentValues {
-    let mut items = parse_component_values(left).unwrap().items().to_vec();
-    items.extend_from_slice(parse_component_values(right).unwrap().items());
+    let mut items = CssComponentValues::parse(&CssParser::default(), left)
+        .unwrap()
+        .items()
+        .to_vec();
+    items.extend_from_slice(
+        CssComponentValues::parse(&CssParser::default(), right)
+            .unwrap()
+            .items(),
+    );
     CssComponentValues::try_new(items, Default::default()).unwrap()
 }
 
@@ -33,7 +40,8 @@ fn hex_escape_endings_preserve_separately_originating_whitespace() {
             let values = joined(spelling, whitespace);
             let output = values.serialize_tokens(Default::default()).unwrap();
             assert_eq!(output.as_css(), format!("{spelling}/**/{whitespace}"));
-            let reparsed = parse_component_values(output.as_css()).unwrap();
+            let reparsed =
+                CssComponentValues::parse(&CssParser::default(), output.as_css()).unwrap();
             let [left, separator, right] = reparsed.items() else {
                 panic!("retain the left token, separator and whitespace: {output:?}");
             };
@@ -103,7 +111,7 @@ fn terminated_or_escaped_backslashes_do_not_create_extra_separators() {
         let values = joined(spelling, " ");
         let output = values.serialize_tokens(Default::default()).unwrap();
         assert_eq!(output.as_css(), format!("{spelling} "));
-        let reparsed = parse_component_values(output.as_css()).unwrap();
+        let reparsed = CssComponentValues::parse(&CssParser::default(), output.as_css()).unwrap();
         assert_eq!(reparsed.items().len(), 2, "{output:?}");
         assert!(matches!(
             reparsed.items()[1].view(),

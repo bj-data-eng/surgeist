@@ -8,8 +8,8 @@
 
 use surgeist_css::{
     CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValueRef,
-    CssComponentValues, CssNumericTokenKind, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
-    parse_component_values, parse_component_values_with_limits,
+    CssComponentValues, CssNumericTokenKind, CssParser, CssParserContext, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
 };
 
 fn identifier(value: &CssComponentValue) -> &str {
@@ -35,7 +35,8 @@ fn token_boundaries() {
             after: CssValueOrigin::Programmatic
         })
     ));
-    let reparsed = parse_component_values(serialized.as_css()).expect("token-preserving output");
+    let reparsed = CssComponentValues::parse(&CssParser::default(), serialized.as_css())
+        .expect("token-preserving output");
     assert!(matches!(reparsed.items()[0].view(),
         CssComponentValueRef::Token(CssValueTokenRef::Number(number))
             if number.representation() == "10" && number.kind() == CssNumericTokenKind::Integer));
@@ -50,12 +51,12 @@ fn token_boundaries() {
         ("10", "%", "10/**/%"),
         ("/", "*", "//**/*"),
     ] {
-        let mut items = parse_component_values(left)
+        let mut items = CssComponentValues::parse(&CssParser::default(), left)
             .expect("left component")
             .items()
             .to_vec();
         items.extend_from_slice(
-            parse_component_values(right)
+            CssComponentValues::parse(&CssParser::default(), right)
                 .expect("right component")
                 .items(),
         );
@@ -67,13 +68,17 @@ fn token_boundaries() {
     }
 
     // The empty replacement contributes no token and must not reset separation.
-    let mut items = parse_component_values("a")
+    let mut items = CssComponentValues::parse(&CssParser::default(), "a")
         .expect("left identifier")
         .items()
         .to_vec();
-    items.extend_from_slice(parse_component_values("").expect("empty stream").items());
     items.extend_from_slice(
-        parse_component_values("b")
+        CssComponentValues::parse(&CssParser::default(), "")
+            .expect("empty stream")
+            .items(),
+    );
+    items.extend_from_slice(
+        CssComponentValues::parse(&CssParser::default(), "b")
             .expect("right identifier")
             .items(),
     );
@@ -89,7 +94,8 @@ fn token_boundaries() {
 }
 
 fn checked_construction() {
-    let escaped = parse_component_values(r"\31 a").expect("escaped identifier");
+    let escaped =
+        CssComponentValues::parse(&CssParser::default(), r"\31 a").expect("escaped identifier");
     assert_eq!(identifier(&escaped.items()[0]), "1a");
     assert_eq!(
         escaped
@@ -155,7 +161,8 @@ fn checked_construction() {
         .expect("dimension stream")
         .serialize_tokens(Default::default())
         .expect("unambiguous dimension");
-    let roundtrip = parse_component_values(css.as_css()).expect("dimension reparse");
+    let roundtrip =
+        CssComponentValues::parse(&CssParser::default(), css.as_css()).expect("dimension reparse");
     assert!(matches!(roundtrip.items()[0].view(),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
             if number.representation() == "100" && unit == "E1m"));
@@ -185,7 +192,7 @@ fn checked_construction() {
     );
     let invalid_url = CssComponentValue::try_function(
         "url",
-        parse_component_values("x").expect("identifier argument"),
+        CssComponentValues::parse(&CssParser::default(), "x").expect("identifier argument"),
     );
     assert!(
         invalid_url
@@ -194,17 +201,17 @@ fn checked_construction() {
     );
 
     assert!(
-        parse_component_values("\"a\nb")
+        CssComponentValues::parse(&CssParser::default(), "\"a\nb")
             .expect_err("bad string token")
             .is_bad_string()
     );
     assert!(
-        parse_component_values("url(a b)")
+        CssComponentValues::parse(&CssParser::default(), "url(a b)")
             .expect_err("bad URL token")
             .is_bad_url()
     );
     assert!(
-        parse_component_values("]")
+        CssComponentValues::parse(&CssParser::default(), "]")
             .expect_err("unmatched closer")
             .is_unmatched_closing_delimiter()
     );
@@ -214,7 +221,7 @@ fn checked_construction() {
 fn whitespace_and_closures() {
     for css in ["calc(1 + 2)", "calc(1/**/+/**/2)", "calc(1 +2)", "\\\na"] {
         assert_eq!(
-            parse_component_values(css)
+            CssComponentValues::parse(&CssParser::default(), css)
                 .expect("component syntax")
                 .serialize_tokens(Default::default())
                 .expect("representation-preserving serialization")
@@ -222,7 +229,8 @@ fn whitespace_and_closures() {
             css
         );
     }
-    let values = parse_component_values("calc(1 + 2").expect("EOF closes the function");
+    let values = CssComponentValues::parse(&CssParser::default(), "calc(1 + 2")
+        .expect("EOF closes the function");
     let serialized = values
         .serialize_tokens(Default::default())
         .expect("explicit closing serialization");
@@ -238,8 +246,9 @@ fn whitespace_and_closures() {
 }
 
 fn origins_and_limits() {
-    let source_a = parse_component_values("10").expect("replacement source");
-    let source_b = parse_component_values("px").expect("use-site source");
+    let source_a =
+        CssComponentValues::parse(&CssParser::default(), "10").expect("replacement source");
+    let source_b = CssComponentValues::parse(&CssParser::default(), "px").expect("use-site source");
     let joined = CssComponentValues::try_new(
         vec![source_a.items()[0].clone(), source_b.items()[0].clone()],
         Default::default(),
@@ -259,7 +268,7 @@ fn origins_and_limits() {
         }
     }
     let source = "😀\r\npx";
-    let unicode = parse_component_values(source).expect("UTF-8 source");
+    let unicode = CssComponentValues::parse(&CssParser::default(), source).expect("UTF-8 source");
     match unicode.items().last().expect("last identifier").origin() {
         CssValueOrigin::Parsed(origin) => {
             assert_eq!(origin.span().start().byte_offset().value(), 6);
@@ -270,15 +279,18 @@ fn origins_and_limits() {
     }
 
     let exact = CssComponentValueLimits::try_new(1, 3, 3).expect("valid limits");
-    assert!(parse_component_values_with_limits("a b", exact).is_ok());
     assert!(
-        parse_component_values_with_limits("abcd", exact)
+        CssComponentValues::parse(&CssParser::new(CssParserContext::default(), exact), "a b")
+            .is_ok()
+    );
+    assert!(
+        CssComponentValues::parse(&CssParser::new(CssParserContext::default(), exact), "abcd")
             .expect_err("input byte limit")
             .is_byte_limit()
     );
     let fewer = CssComponentValueLimits::try_new(1, 2, 3).expect("valid limits");
     assert!(
-        parse_component_values_with_limits("a b", fewer)
+        CssComponentValues::parse(&CssParser::new(CssParserContext::default(), fewer), "a b")
             .expect_err("component limit")
             .is_component_limit()
     );
@@ -294,18 +306,18 @@ fn origins_and_limits() {
 
     let at_limit = format!("{}x{}", "(".repeat(256), ")".repeat(256));
     assert_eq!(
-        parse_component_values(&at_limit)
+        CssComponentValues::parse(&CssParser::default(), &at_limit)
             .expect("256 blocks supported")
             .nesting_depth(),
         256
     );
     let excessive = format!("({at_limit})");
     assert!(
-        parse_component_values(&excessive)
+        CssComponentValues::parse(&CssParser::default(), &excessive)
             .expect_err("257 blocks rejected")
             .is_nesting_limit()
     );
-    let mut constructed = parse_component_values("x").expect("leaf");
+    let mut constructed = CssComponentValues::parse(&CssParser::default(), "x").expect("leaf");
     for _ in 0..256 {
         constructed = CssComponentValues::try_new(
             vec![

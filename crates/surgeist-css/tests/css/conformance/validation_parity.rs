@@ -1,12 +1,13 @@
 use surgeist_css::{
     CssConditionKind, CssDeclarationList, CssErrorCode, CssMediaFeatureQuery, CssMediaLeaf,
-    CssMediaQuery, CssParseReport, CssRecoveryAction, CssRule, CssSheet, parse_sheet,
-    parse_style_attribute, validate_sheet, validate_style_attribute,
+    CssMediaQuery, CssParseReport, CssParser, CssRecoveryAction, CssRule, CssSheet,
 };
 
 fn assert_sheet_parity(source: &str) -> CssParseReport<CssSheet> {
-    let ordinary = parse_sheet(source);
-    let strict = validate_sheet(source);
+    let ordinary = CssParser::default().parse_sheet(source);
+    let strict = CssParser::default()
+        .parse_sheet(source)
+        .into_validation_result();
 
     if ordinary.is_clean() {
         assert_eq!(strict, Ok(ordinary.syntax().clone()), "{source}");
@@ -25,8 +26,10 @@ fn assert_sheet_parity(source: &str) -> CssParseReport<CssSheet> {
 }
 
 fn assert_style_parity(source: &str) -> CssParseReport<CssDeclarationList> {
-    let ordinary = parse_style_attribute(source);
-    let strict = validate_style_attribute(source);
+    let ordinary = CssParser::default().parse_block_contents(source);
+    let strict = CssParser::default()
+        .parse_block_contents(source)
+        .into_validation_result();
 
     if ordinary.is_clean() {
         assert_eq!(strict, Ok(ordinary.syntax().clone()), "{source}");
@@ -494,11 +497,8 @@ fn validation_parity_preserves_structural_and_specialized_depth_diagnostics() {
     style.push_str(&"f(".repeat(257));
     style.push('x');
     style.push_str(&")".repeat(257));
-    let style = assert_style_parity(&style);
-    assert!(
-        style
-            .diagnostics()
-            .iter()
-            .any(|diagnostic| { diagnostic.action() == CssRecoveryAction::StopAtNestingLimit })
-    );
+    let report = assert_style_parity(&style);
+    // Block contents charges the component limits for the whole input.
+    assert!(report.syntax().is_empty());
+    crate::css::support::parse_report::assert_contents_refused(&report, &style, "style depth 257");
 }

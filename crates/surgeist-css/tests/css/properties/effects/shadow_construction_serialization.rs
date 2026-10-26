@@ -8,7 +8,9 @@ use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{CssSerializationLimits as L, *};
+use surgeist_css::{
+    CssComponentValue, CssComponentValues, CssParser, CssSerializationLimits as L, *,
+};
 
 #[test]
 fn resumed_lengths_report_the_responsible_token_and_utf16_column() {
@@ -18,7 +20,7 @@ fn resumed_lengths_report_the_responsible_token_and_utf16_column() {
         "backdrop-filter:drop-shadow(1px 2px red 3px)",
     ] {
         let css = format!("/* 🦀 */ {declaration}; color:blue");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         let [diagnostic] = report.diagnostics() else {
             panic!("one diagnostic")
         };
@@ -36,7 +38,11 @@ fn resumed_lengths_report_the_responsible_token_and_utf16_column() {
         };
         assert_eq!(sibling.known().unwrap().property(), CssKnownProperty::Color);
         assert_eq!(
-            validate_style_attribute(&css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -506,7 +512,7 @@ fn typed_initial_and_ordinary_borrowed_variant_have_box_shadow_values() {
             panic!("box")
         };
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("ordinary")
         };
@@ -524,9 +530,9 @@ fn typed_initial_and_ordinary_borrowed_variant_have_box_shadow_values() {
 #[test]
 fn mixed_normalization_preserves_order_provenance_and_one_unit_per_shadow() {
     let css = ".a{box-shadow:red 1px 2px!important;color:blue;box-shadow:inherit}.b{box-shadow:var(--shadow)}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -580,7 +586,7 @@ fn mixed_normalization_preserves_order_provenance_and_one_unit_per_shadow() {
     }
     for (limit, order) in [(2, 2), (3, 3)] {
         let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, limit).unwrap();
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+        let error = report.syntax().normalize(limits).unwrap_err();
         assert_eq!(
             error.exhausted_limit(),
             Some((CssNormalizationResource::Contributions, limit))

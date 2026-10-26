@@ -45,7 +45,7 @@ fn component(text: &str, programmatic: bool) -> CssColorComponent {
             )
             .unwrap()
         } else {
-            parse_component_values(text).unwrap()
+            CssComponentValues::parse(&CssParser::default(), text).unwrap()
         };
         return if text.contains('%') {
             CssColorComponent::PercentageCalculation(
@@ -62,7 +62,10 @@ fn component(text: &str, programmatic: bool) -> CssColorComponent {
     let token = if programmatic {
         CssComponentValue::try_token(text).unwrap()
     } else {
-        parse_component_values(text).unwrap().items()[0].clone()
+        CssComponentValues::parse(&CssParser::default(), text)
+            .unwrap()
+            .items()[0]
+            .clone()
     };
     if text.ends_with('%') {
         CssColorComponent::Percentage(CssColorPercentageLiteral::try_from_component(token).unwrap())
@@ -135,9 +138,15 @@ fn spelling(family: &str, alpha: Option<&str>) -> String {
 }
 fn declaration(family: &str, alpha: Option<&str>) -> CssDeclaration {
     let source = format!("color:{}", spelling(family, alpha));
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     report.syntax()[0].clone()
 }
 fn authored<'a>(color: &'a CssColor, family: &str) -> Option<&'a CssColorComponent> {
@@ -458,7 +467,7 @@ fn legacy_rgb_and_hsl_payloads_expose_the_same_intrinsic_direct_alpha() {
             "150%",
         ),
     ] {
-        let report = parse_style_attribute(&format!("color:{source}"));
+        let report = CssParser::default().parse_block_contents(format!("color:{source}"));
         assert!(report.is_clean());
         assert_scalar(
             color_of(&report.syntax()[0]),
@@ -493,16 +502,11 @@ fn assert_expansion(expansion: &CssExpansion, family: &str, text: &str, source: 
 fn expanded_and_normalized_transport_preserves_raw_alpha_and_exact_parsed_view() {
     for family in FAMILIES {
         let declaration = declaration(family, Some("150%"));
-        assert_expansion(
-            &expand_declaration(&declaration).unwrap(),
-            family,
-            "150%",
-            &declaration,
-        );
+        assert_expansion(&declaration.expand().unwrap(), family, "150%", &declaration);
         let source = format!(".a{{color:{}}}", spelling(family, Some("150%")));
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean());
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let items: Vec<_> = normalized
             .items()
             .iter()

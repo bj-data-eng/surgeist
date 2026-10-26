@@ -53,7 +53,7 @@ fn logical_members(selector: &CssSelector) -> &[CssPseudoSelectorListItem] {
 }
 
 fn reject_in(source: &str, context: &CssNamespaceContext) {
-    let report = parse_selector(source, context);
+    let report = CssSelector::parse(&CssParser::default(), source, context);
     assert!(
         report.syntax().is_none(),
         "invalid selector retained: {source:?}: {report:?}"
@@ -80,7 +80,12 @@ fn reject(source: &str) {
 }
 
 fn reject_list_in(source: &str, context: &CssNamespaceContext) {
-    let report = parse_selector_list(source, context);
+    let report = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        source,
+        context,
+        CssStyleSelectorContext::Ordinary,
+    );
     assert!(
         report.syntax().is_none(),
         "partial strict list retained: {source:?}: {report:?}"
@@ -188,16 +193,30 @@ fn non_css_whitespace_is_identifier_content_or_an_invalid_token() {
 
 #[test]
 fn class_whitespace_invalidates_the_complete_strict_list() {
-    let control = parse_selector_list(".first,.class,.last", &CssNamespaceContext::default());
+    let control = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        ".first,.class,.last",
+        &CssNamespaceContext::default(),
+        CssStyleSelectorContext::Ordinary,
+    );
     assert!(control.is_clean());
-    assert_eq!(control.syntax().as_ref().unwrap().selectors().len(), 3);
+    assert_eq!(
+        control
+            .syntax()
+            .as_ref()
+            .unwrap()
+            .selectors()
+            .selectors()
+            .len(),
+        3
+    );
     reject_list_in(".first,. class,.last", &CssNamespaceContext::default());
 }
 
 #[test]
 fn class_whitespace_drops_its_style_rule_and_preserves_neighbors() {
     let source = ".before{} . class { color:red; .child{} } .after{}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let rules = report.syntax().rules();
     assert_eq!(
         rules.len(),
@@ -724,16 +743,20 @@ fn checked_complex_and_list_construction_preserve_nonempty_order() {
 
 #[test]
 fn strict_lists_keep_root_commas_distinct_from_nested_commas_and_reject_atomically() {
-    let report = parse_selector_list(
+    let report = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
         r#".One,:is(.Two,#Three),[Data="a,b"]"#,
         &CssNamespaceContext::default(),
+        CssStyleSelectorContext::Ordinary,
     );
     assert!(report.is_clean(), "{report:?}");
     let members = report.syntax().as_ref().unwrap().selectors();
-    assert_eq!(members.len(), 3);
-    for (member, expected) in members
-        .iter()
-        .zip([".One", ":is(.Two, #Three)", r#"[Data="a,b"]"#])
+    assert_eq!(members.selectors().len(), 3);
+    for (member, expected) in
+        members
+            .selectors()
+            .iter()
+            .zip([".One", ":is(.Two, #Three)", r#"[Data="a,b"]"#])
     {
         assert!(matches!(member, CssStyleSelector::Selector(_)));
         assert_eq!(
@@ -881,7 +904,11 @@ fn valid_checked_nth_and_logical_graphs_emit_canonical_grammar() {
 fn forgiving_members_drop_invalid_selectors_without_becoming_strict_clean_reports() {
     for name in ["is", "where"] {
         let source = format!(":{name}(.One, :unknown(x,y), #Two)");
-        let report = parse_selector(&source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         let selector = report
             .syntax()
             .as_ref()
@@ -918,7 +945,11 @@ fn forgiving_members_drop_invalid_selectors_without_becoming_strict_clean_report
 #[test]
 fn forgiving_empty_lists_remain_valid_authored_states() {
     for name in ["is", "where"] {
-        let empty = parse_selector(&format!(":{name}()"), &CssNamespaceContext::default());
+        let empty = CssSelector::parse(
+            &CssParser::default(),
+            format!(":{name}()"),
+            &CssNamespaceContext::default(),
+        );
         assert!(logical_members(empty.syntax().as_ref().expect("valid empty result")).is_empty());
         assert_eq!(
             empty
@@ -929,8 +960,9 @@ fn forgiving_empty_lists_remain_valid_authored_states() {
                 .unwrap(),
             format!(":{name}()")
         );
-        let report = parse_selector(
-            &format!(":{name}(::before,???)"),
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            format!(":{name}(::before,???)"),
             &CssNamespaceContext::default(),
         );
         assert!(logical_members(report.syntax().as_ref().unwrap()).is_empty());
@@ -987,7 +1019,11 @@ fn pseudo_elements_and_nested_has_are_restricted_through_nested_logical_function
             ":has(.bad)",
         ),
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert_eq!(
             report
                 .syntax()
@@ -1017,7 +1053,11 @@ fn lexical_envelope_failure_cannot_be_forgiven_even_with_valid_members() {
 #[test]
 fn missing_eof_closure_is_reported_only_for_retained_syntax() {
     let source = ":is(.One";
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert_eq!(
         logical_members(report.syntax().as_ref().unwrap()),
         [CssPseudoSelectorListItem::Selector(CssSelector::Class(
@@ -1047,7 +1087,11 @@ fn nested_logical_members_inherit_compound_only_and_suffix_restrictions() {
     for function in [":host", ":host-context", "::slotted"] {
         for name in ["is", "where"] {
             let source = format!("{function}(:{name}(.bad > .child,.One))");
-            let report = parse_selector(&source, &CssNamespaceContext::default());
+            let report = CssSelector::parse(
+                &CssParser::default(),
+                &source,
+                &CssNamespaceContext::default(),
+            );
             assert_eq!(
                 report
                     .syntax()
@@ -1059,7 +1103,11 @@ fn nested_logical_members_inherit_compound_only_and_suffix_restrictions() {
             );
             assert_selector_item_dropped(&source, report, ".bad > .child");
             let source = format!("{function}(:{name}(:not(.bad > .child),.One))");
-            let report = parse_selector(&source, &CssNamespaceContext::default());
+            let report = CssSelector::parse(
+                &CssParser::default(),
+                &source,
+                &CssNamespaceContext::default(),
+            );
             assert_eq!(
                 report
                     .syntax()
@@ -1071,7 +1119,11 @@ fn nested_logical_members_inherit_compound_only_and_suffix_restrictions() {
             );
             assert_selector_item_dropped(&source, report, ":not(.bad > .child)");
             let empty_source = format!("{function}(:{name}())");
-            let empty = parse_selector(&empty_source, &CssNamespaceContext::default());
+            let empty = CssSelector::parse(
+                &CssParser::default(),
+                &empty_source,
+                &CssNamespaceContext::default(),
+            );
             assert_eq!(
                 empty
                     .syntax()
@@ -1085,7 +1137,8 @@ fn nested_logical_members_inherit_compound_only_and_suffix_restrictions() {
         reject(&format!("{function}(:not(.bad > .child))"));
         reject(&format!("{function}(:not(:not(.bad > .child)))"));
     }
-    let report = parse_selector(
+    let report = CssSelector::parse(
+        &CssParser::default(),
         "::before:where(:focus,.bad)",
         &CssNamespaceContext::default(),
     );
@@ -1174,7 +1227,8 @@ fn relative_has_keeps_each_explicit_or_implicit_anchor_relation() {
 
 #[test]
 fn admitted_nested_relative_forms_keep_boundary_without_rewriting_anchors() {
-    let report = parse_sheet(".Parent { > .One { } + .Two { } ~ .Three { } & > .Four { } }");
+    let report = CssParser::default()
+        .parse_sheet(".Parent { > .One { } + .Two { } ~ .Three { } & > .Four { } }");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("parent")
@@ -1310,7 +1364,11 @@ fn public_has_graph_cannot_emit_has_nested_through_logical_arguments() {
 }
 
 fn parsed_empty_list() -> CssPseudoSelectorList {
-    let report = parse_selector(":is(???)", &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        ":is(???)",
+        &CssNamespaceContext::default(),
+    );
     let Some(CssSelector::PseudoClass(CssPseudoClass::Is(list))) = report.syntax() else {
         panic!("empty is")
     };
@@ -1342,7 +1400,7 @@ fn empty_forgiving_list_cannot_be_transplanted_to_public_nth_of_graph() {
 fn malformed_strict_list_discards_complete_rule_contents_with_exact_recovery_unit() {
     let failed = ".One, ??? { color:red; .never { color:blue } }";
     let source = format!("/*😀*/\r\n.before{{}} {failed} .after{{}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let [CssRule::Style(before), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("only valid surrounding rules retained: {report:?}");
     };
@@ -1382,7 +1440,11 @@ fn malformed_strict_list_discards_complete_rule_contents_with_exact_recovery_uni
 #[test]
 fn lexical_bad_token_keeps_original_unicode_byte_and_utf16_coordinates() {
     let source = "/*😀*/\r\n/*é*/:is(.One,])";
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.syntax().is_none());
     let [diagnostic] = report.diagnostics() else {
         panic!("one lexical rejection: {report:?}")
@@ -1509,12 +1571,26 @@ fn deep_logical_parse_clone_emit_and_limit_recovery_work_on_an_ordinary_stack() 
                     clone.serialize_specified(Default::default()).unwrap(),
                     source
                 );
-                let report = parse_selector_list(&source, &context);
+                let report = CssParsedStyleSelectors::parse(
+                    &CssParser::default(),
+                    &source,
+                    &context,
+                    CssStyleSelectorContext::Ordinary,
+                );
                 assert!(report.is_clean());
-                assert_eq!(report.syntax().as_ref().unwrap().selectors().len(), 1);
+                assert_eq!(
+                    report
+                        .syntax()
+                        .as_ref()
+                        .unwrap()
+                        .selectors()
+                        .selectors()
+                        .len(),
+                    1
+                );
             }
             let source = format!("{}.One{}", ":is(".repeat(257), ")".repeat(257));
-            let report = parse_selector(&source, &context);
+            let report = CssSelector::parse(&CssParser::default(), &source, &context);
             assert!(report.syntax().is_none());
             let [limit] = report.diagnostics() else {
                 panic!("one first over-limit failure")

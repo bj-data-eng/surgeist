@@ -62,7 +62,10 @@ fn create(
     owner: bool,
 ) -> CssomBlockId {
     let mut edit = batch(store);
-    let values = parse_declaration_block_contents(text).into_parts().0;
+    let values = CssParser::default()
+        .parse_block_contents(text)
+        .into_parts()
+        .0;
     let ticket = edit
         .create_declarations(
             values,
@@ -1639,8 +1642,8 @@ fn independent_svg_terminal_has_supplied_support_and_uses_existing_metadata_iden
     };
     let mut store = CssomStore::new(CssomLimits::default(), context).unwrap();
     let mut edit = batch(&store);
-    let declarations = parser
-        .parse_declaration_block_contents("glyph-orientation-vertical:45deg")
+    let declarations = CssParser::new(parser, Default::default())
+        .parse_block_contents("glyph-orientation-vertical:45deg")
         .into_parts()
         .0;
     let ticket = edit

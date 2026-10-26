@@ -462,7 +462,7 @@ fn rounded_nested_origin_capture_controls_scratch_and_source_visit_precedence() 
 #[test]
 fn declarations_retain_raw_components_importance_and_recovery_siblings() {
     let source = "color: rgb(from red calc(r / 3) g b) !important; opacity: .5";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
     let declaration = &report.syntax()[0];
@@ -488,7 +488,8 @@ fn invalid_grammars_recover_and_substitutions_remain_pending() {
         "color(from red --P calc(Cyan + 1px))",
         "alpha(from red / calc(alpha + 1px))",
     ] {
-        let report = parse_style_attribute(&format!("color: {invalid}; opacity: .5"));
+        let report =
+            CssParser::default().parse_block_contents(format!("color: {invalid}; opacity: .5"));
         assert_eq!(report.diagnostics().len(), 1);
         assert_eq!(report.syntax().len(), 1);
         assert_eq!(
@@ -506,7 +507,7 @@ fn invalid_grammars_recover_and_substitutions_remain_pending() {
         assert!(known.property_value().is_none());
         assert_eq!(known.substitution_dependent().unwrap().as_css(), pending);
         assert!(matches!(
-            expand_declaration(&declaration).unwrap(),
+            declaration.expand().unwrap(),
             CssExpansion::Pending(_)
         ));
     }

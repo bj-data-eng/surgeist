@@ -12,7 +12,7 @@
 
 use crate::css::support::serialization_limits::assert_limits as exact_bounds;
 use crate::css::support::sole_declaration;
-use surgeist_css::{CssSerializationLimits as L, *};
+use surgeist_css::{CssComponentValue, CssSerializationLimits as L, *};
 
 fn parsed(property: &str, css: &str) -> CssBackgroundSizeList {
     match sole_declaration(&format!("{property}:{css}"))

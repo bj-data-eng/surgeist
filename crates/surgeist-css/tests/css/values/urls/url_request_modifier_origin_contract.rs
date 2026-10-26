@@ -51,7 +51,7 @@ const COUNTERS: [(CssCounterStyleDescriptorKind, &str); 6] = [
 
 fn detached(text: &str) -> (String, CssComponentValues) {
     let source = format!("{}{text}", " ".repeat(PREFIX_BYTES));
-    let parsed = parse_component_values(&source).unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     assert!(matches!(
         parsed.items()[0].view(),
         CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
@@ -151,8 +151,9 @@ fn checked_property(
     property: CssKnownProperty,
     input: CssComponentValues,
 ) -> Result<CssDeclaration, CssPropertyValueError> {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
         input,
         CssImportance::Normal,
     )
@@ -337,10 +338,10 @@ fn detached_counter_rejections_return_typed_errors_with_original_argument_origin
 fn detached_property_reentry_rejects_with_original_origin_and_allows_valid_retry() {
     let authored = checked_property(
         CssKnownProperty::BackgroundImage,
-        parse_component_values("src(var(--asset))").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "src(var(--asset))").unwrap(),
     )
     .unwrap();
-    let CssExpansion::Pending(pending) = expand_declaration(&authored).unwrap() else {
+    let CssExpansion::Pending(pending) = authored.expand().unwrap() else {
         panic!("pending property")
     };
     for (modifier, _, opening) in INVALID {
@@ -378,7 +379,7 @@ fn detached_property_reentry_rejects_with_original_origin_and_allows_valid_retry
 fn detached_profile_reentry_rejects_with_original_origin_and_allows_valid_retry() {
     let pending = CssColorProfileDescriptorValue::try_new(
         CssColorProfileDescriptorKind::Src,
-        parse_component_values("env(profile)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "env(profile)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -408,7 +409,7 @@ fn detached_profile_reentry_rejects_with_original_origin_and_allows_valid_retry(
 fn detached_font_reentry_rejects_with_original_origin_and_allows_valid_retry() {
     let authored = CssAuthoredFontFaceDescriptorValue::try_from_components(
         CssFontFaceDescriptorKind::Src,
-        parse_component_values("env(font)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "env(font)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -440,7 +441,7 @@ fn detached_font_reentry_rejects_with_original_origin_and_allows_valid_retry() {
 fn detached_counter_reentry_rejects_with_original_origin_and_allows_valid_retry() {
     let pending = CssCounterStyleDescriptorValue::try_from_components(
         CssCounterStyleDescriptorKind::Symbols,
-        parse_component_values("env(symbols)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "env(symbols)").unwrap(),
         Default::default(),
     )
     .unwrap();

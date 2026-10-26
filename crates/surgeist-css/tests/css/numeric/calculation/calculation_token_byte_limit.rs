@@ -3,11 +3,11 @@
 //! less refuses with a byte-limit failure at the calculation's origin.
 
 use crate::css::support::byte_limits;
-use surgeist_css::{CssCalculation, CssLength, parse_component_values};
+use surgeist_css::{CssCalculation, CssComponentValues, CssLength, CssParser};
 
 #[test]
 fn calculation_tokens_refuse_one_byte_below_their_serialized_length() {
-    let values = parse_component_values("calc(1px + 2em)").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "calc(1px + 2em)").unwrap();
     let calculation =
         CssCalculation::<CssLength>::try_from_components(values, Default::default()).unwrap();
     let unlimited = calculation.serialize_tokens(Default::default()).unwrap();

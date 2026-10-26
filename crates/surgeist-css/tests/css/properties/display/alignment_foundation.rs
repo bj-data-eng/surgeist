@@ -17,9 +17,10 @@ const JUSTIFY_SELF: &str = "justify-self";
 
 fn accepted(name: &str, value: &str) {
     let declaration = parsed(name, value);
-    let checked = parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar(name)),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         CssImportance::Important,
     )
     .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"));
@@ -28,8 +29,7 @@ fn accepted(name: &str, value: &str) {
 }
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("intrinsic terminal alignment contributions")
     };
@@ -326,24 +326,24 @@ fn pending_shorthands_reenter_strictly_and_keep_authored_occurrence() {
         ),
     ] {
         let source = parsed(name, "var(--alignment)");
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("{name} remains pending")
         };
         assert!(pending.source().same_occurrence(&source));
         assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some()
         );
         assert!(
             pending
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
-        let replacement = parse_component_values(valid).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), valid).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -362,11 +362,9 @@ fn pending_shorthands_reenter_strictly_and_keep_authored_occurrence() {
 
 #[test]
 fn normalization_preserves_mixed_alignment_order_and_fails_at_pair_budget() {
-    let report = parse_sheet(
-        ".a{align-content:normal;place-content:baseline;justify-content:right;place-items:normal legacy;place-self:auto right}",
-    );
+    let report = CssParser::default().parse_sheet(".a{align-content:normal;place-content:baseline;justify-content:right;place-items:normal legacy;place-self:auto right}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -410,10 +408,10 @@ fn normalization_preserves_mixed_alignment_order_and_fails_at_pair_budget() {
                 .all(|item| item.source().same_occurrence(declarations[index].source()))
         );
     }
-    let one = parse_sheet(".a{place-content:baseline}");
+    let one = CssParser::default().parse_sheet(".a{place-content:baseline}");
     assert!(one.is_clean());
     let limits = CssNormalizationLimits::try_new(0, 1, 1, 1).unwrap();
-    let error = normalize_sheet_with_limits(one.syntax(), limits).unwrap_err();
+    let error = one.syntax().normalize(limits).unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 1))

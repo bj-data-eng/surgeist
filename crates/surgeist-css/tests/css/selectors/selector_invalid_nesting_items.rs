@@ -6,13 +6,17 @@ use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, assert_strict_validation_rejects,
 };
 use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem,
-    CssRecoveryAction, CssRule, CssSelector, CssSelectorCombinator, CssStyleSelector, CssTokenKind,
-    parse_relative_selector_list, parse_selector, parse_selector_list, parse_sheet,
+    CssErrorCode, CssNamespaceContext, CssParsedStyleSelectors, CssParser, CssPseudoClass,
+    CssPseudoSelectorListItem, CssRecoveryAction, CssRelativeSelectorList, CssRule, CssSelector,
+    CssSelectorCombinator, CssStyleSelector, CssStyleSelectorContext, CssTokenKind,
 };
 
 fn retained(source: &str, literal: &str) {
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     let selector = report
         .syntax()
         .as_ref()
@@ -38,7 +42,11 @@ fn retained(source: &str, literal: &str) {
         diagnostics
     );
 
-    let reparsed = parse_selector(literal, &CssNamespaceContext::default());
+    let reparsed = CssSelector::parse(
+        &CssParser::default(),
+        literal,
+        &CssNamespaceContext::default(),
+    );
     assert_eq!(
         reparsed
             .syntax()
@@ -77,7 +85,8 @@ fn is_and_where_preserve_unknown_ampersand_items_with_exact_spelling_and_order()
     ] {
         retained(source, literal);
     }
-    let report = parse_selector(
+    let report = CssSelector::parse(
+        &CssParser::default(),
         ":where(.Before,:NoPe(/*one*/&/*two*/),.Middle,:Other(&),.After)",
         &CssNamespaceContext::default(),
     );
@@ -91,7 +100,11 @@ fn is_and_where_preserve_unknown_ampersand_items_with_exact_spelling_and_order()
     // adds no padding, while valid members keep canonical comma-space padding.
     let literal = ":where(.Before,:NoPe(/*one*/&/*two*/), .Middle,:Other(&), .After)";
     assert_eq!(specified, literal);
-    let reparsed = parse_selector(literal, &CssNamespaceContext::default());
+    let reparsed = CssSelector::parse(
+        &CssParser::default(),
+        literal,
+        &CssNamespaceContext::default(),
+    );
     assert_eq!(
         reparsed
             .syntax()
@@ -143,16 +156,19 @@ fn nested_logical_and_public_list_fronts_retain_invalid_nesting_items() {
         ":is(:where(:NoPe(&),.Keep),.After)",
         ":is(:where(:NoPe(&), .Keep), .After)",
     );
-    let report = parse_selector_list(
+    let report = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
         ".Before,:where(:NoPe(&)),.After",
         &CssNamespaceContext::default(),
+        CssStyleSelectorContext::Ordinary,
     );
     let list = report.syntax().as_ref().unwrap();
-    assert_eq!(list.selectors().len(), 3);
-    for (member, literal) in list
-        .selectors()
-        .iter()
-        .zip([".Before", ":where(:NoPe(&))", ".After"])
+    assert_eq!(list.selectors().selectors().len(), 3);
+    for (member, literal) in
+        list.selectors()
+            .selectors()
+            .iter()
+            .zip([".Before", ":where(:NoPe(&))", ".After"])
     {
         assert_eq!(
             member
@@ -163,16 +179,17 @@ fn nested_logical_and_public_list_fronts_retain_invalid_nesting_items() {
         );
     }
     assert_eq!(
-        list.selectors()[0].selector(),
+        list.selectors().selectors()[0].selector(),
         &CssSelector::Class("Before".into())
     );
     assert_eq!(
-        list.selectors()[2].selector(),
+        list.selectors().selectors()[2].selector(),
         &CssSelector::Class("After".into())
     );
     assert_strict_validation_rejects(report);
 
-    let report = parse_relative_selector_list(
+    let report = CssRelativeSelectorList::parse(
+        &CssParser::default(),
         "> .Before,+ :is(:NoPe(&),.Keep)",
         &CssNamespaceContext::default(),
     );
@@ -196,7 +213,11 @@ fn nested_logical_and_public_list_fronts_retain_invalid_nesting_items() {
 #[test]
 fn preserved_item_keeps_original_unicode_source_error_identity_and_member_span() {
     let source = "/*😀*/\r\n:is(:NoPe(/*Ω*/&),.Keep)";
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert_eq!(
         report
             .syntax()
@@ -239,7 +260,7 @@ fn preserved_item_keeps_original_unicode_source_error_identity_and_member_span()
 #[test]
 fn nested_rule_preserves_the_invalid_item_without_losing_parent_or_siblings() {
     let source = ".Parent { :is(:NoPe(&),.Keep) { color:red; } .After {} } .Outside {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Style(parent), CssRule::Style(outside)] = report.syntax().rules() else {
         panic!("parent and surrounding rule");
     };
@@ -283,8 +304,9 @@ fn strings_comments_and_escaped_identifiers_do_not_turn_invalid_items_into_nesti
             r":NoPe(\&)",
             r":NoPe(\26)",
         ] {
-            let report = parse_selector(
-                &format!(":{name}({item},.Keep)"),
+            let report = CssSelector::parse(
+                &CssParser::default(),
+                format!(":{name}({item},.Keep)"),
                 &CssNamespaceContext::default(),
             );
             let selector = report.syntax().as_ref().unwrap();
@@ -310,7 +332,11 @@ fn strings_comments_and_escaped_identifiers_do_not_turn_invalid_items_into_nesti
 
 #[test]
 fn valid_nesting_members_remain_symbolic_and_distinct_from_literal_scope() {
-    let report = parse_selector(":is(&&.Keep,:scope)", &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        ":is(&&.Keep,:scope)",
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean());
     let selector = report.into_validation_result().unwrap().unwrap();
     let [
@@ -328,10 +354,14 @@ fn valid_nesting_members_remain_symbolic_and_distinct_from_literal_scope() {
         ":is(&&.Keep, :scope)"
     );
     assert_eq!(
-        parse_selector(":is(&&.Keep, :scope)", &CssNamespaceContext::default())
-            .into_validation_result()
-            .unwrap()
-            .unwrap(),
+        CssSelector::parse(
+            &CssParser::default(),
+            ":is(&&.Keep, :scope)",
+            &CssNamespaceContext::default()
+        )
+        .into_validation_result()
+        .unwrap()
+        .unwrap(),
         selector
     );
 }
@@ -340,7 +370,11 @@ fn valid_nesting_members_remain_symbolic_and_distinct_from_literal_scope() {
 fn empty_forgiving_results_strict_lists_and_enclosing_any_value_gate_keep_their_contracts() {
     for name in ["is", "where"] {
         let source = format!(":{name}()");
-        let empty = parse_selector(&source, &CssNamespaceContext::default());
+        let empty = CssSelector::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         let selector = empty
             .syntax()
             .as_ref()
@@ -366,8 +400,9 @@ fn empty_forgiving_results_strict_lists_and_enclosing_any_value_gate_keep_their_
             assert_eq!(position.column().value(), column);
         }
         assert_strict_validation_rejects(empty);
-        let discarded = parse_selector(
-            &format!(":{name}(:NoPe(.X))"),
+        let discarded = CssSelector::parse(
+            &CssParser::default(),
+            format!(":{name}(:NoPe(.X))"),
             &CssNamespaceContext::default(),
         );
         assert!(members(discarded.syntax().as_ref().unwrap()).is_empty());
@@ -395,10 +430,14 @@ fn empty_forgiving_results_strict_lists_and_enclosing_any_value_gate_keep_their_
     ] {
         assert_selector_input_rejected(
             source,
-            parse_selector(source, &CssNamespaceContext::default()),
+            CssSelector::parse(
+                &CssParser::default(),
+                source,
+                &CssNamespaceContext::default(),
+            ),
         );
     }
-    let report = parse_sheet(
+    let report = CssParser::default().parse_sheet(
         ".Parent { color:green; .Keep,:not(:NoPe(&)) { color:red; .Never {} } .After {} }",
     );
     let [CssRule::Style(parent)] = report.syntax().rules() else {

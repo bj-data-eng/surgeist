@@ -3,9 +3,9 @@
 //! and their immediate parents without assigning effective cascade identities.
 
 use surgeist_css::{
-    CssErrorCode, CssLayerBlockRule, CssNormalizedItem, CssNormalizedSheet, CssRecoveryAction,
-    CssRule, CssRuleContext, CssRuleContextKindRef, CssSelector, CssSourcePosition,
-    CssStyleSelector, normalize_report, normalize_sheet, parse_sheet, validate_sheet,
+    CssErrorCode, CssLayerBlockRule, CssNormalizedItem, CssNormalizedSheet, CssParser,
+    CssRecoveryAction, CssRule, CssRuleContext, CssRuleContextKindRef, CssSelector,
+    CssSourcePosition, CssStyleSelector,
 };
 
 fn position(actual: CssSourcePosition, byte: usize) {
@@ -76,7 +76,7 @@ fn relative_named_layers_retain_order_and_distinct_anonymous_parent_occurrences(
         "@layer named{@layer shared{.c{}}@layer shared{.d{}}}",
         "@layer named.shared{.e{}}",
     );
-    let report = parse_sheet(SOURCE);
+    let report = CssParser::default().parse_sheet(SOURCE);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [first, second, named, dotted] = report.syntax().rules() else {
         panic!("four original outer layer occurrences in authored order");
@@ -122,7 +122,10 @@ fn relative_named_layers_retain_order_and_distinct_anonymous_parent_occurrences(
     };
     empty_style(e, "e", 126);
 
-    let normalized = normalize_sheet(report.syntax()).expect("empty bodies normalize");
+    let normalized = report
+        .syntax()
+        .normalize(Default::default())
+        .expect("empty bodies normalize");
     let rules = contexts(&normalized);
     let bytes = [0, 7, 21, 27, 34, 48, 54, 67, 81, 86, 100, 106, 126];
     let parents = [
@@ -202,7 +205,7 @@ fn relative_named_layers_retain_order_and_distinct_anonymous_parent_occurrences(
 #[test]
 fn nested_import_is_dropped_without_erasing_later_layer_children_or_source_lineage() {
     const SOURCE: &str = "@layer host{@import \"lost.css\";@layer kept{.after{}}}.outside{}";
-    let report = parse_sheet(SOURCE);
+    let report = CssParser::default().parse_sheet(SOURCE);
     assert!(!report.is_clean());
     let [diagnostic] = report.diagnostics() else {
         panic!("one rejected nested import source unit");
@@ -215,7 +218,9 @@ fn nested_import_is_dropped_without_erasing_later_layer_children_or_source_linea
     position(diagnostic.span().start(), 12);
     position(diagnostic.span().end(), 31);
     assert_eq!(
-        validate_sheet(SOURCE)
+        CssParser::default()
+            .parse_sheet(SOURCE)
+            .into_validation_result()
             .expect_err("recovered sheet is not clean")
             .diagnostics(),
         report.diagnostics(),
@@ -234,7 +239,9 @@ fn nested_import_is_dropped_without_erasing_later_layer_children_or_source_linea
     empty_style(after, "after", 43);
     empty_style(outside, "outside", 53);
 
-    let normalized = normalize_report(&report).expect("retained bodies normalize");
+    let normalized = report
+        .normalize(Default::default())
+        .expect("retained bodies normalize");
     assert!(!normalized.is_clean());
     assert_eq!(normalized.diagnostics(), report.diagnostics());
     let rules = contexts(normalized.syntax());

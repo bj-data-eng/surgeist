@@ -28,7 +28,7 @@ fn relative_expression(
     domain: CssRelativeColorResultDomain,
 ) -> CssRelativeColorExpression {
     CssRelativeColorExpression::try_from_components(
-        parse_component_values(text).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         environment,
         domain,
         Default::default(),
@@ -266,7 +266,7 @@ fn relative_expression_construction_preserves_origin_and_precise_errors() {
     assert_eq!(calculation.result_type(), CssCalculationType::Number);
     assert_eq!(calculation.references(), &[CssRelativeColorChannel::H]);
 
-    let bad = parse_component_values(" /* gap */ 1px").unwrap();
+    let bad = CssComponentValues::parse(&CssParser::default(), " /* gap */ 1px").unwrap();
     let bad_index = bad.items().len() - 1;
     let bad_origin = bad.items()[bad_index].origin().clone();
     let error = CssRelativeColorExpression::try_from_components(
@@ -299,7 +299,7 @@ fn relative_expression_construction_preserves_origin_and_precise_errors() {
         ),
     ] {
         let error = CssRelativeColorExpression::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             environment,
             domain,
             Default::default(),
@@ -308,7 +308,7 @@ fn relative_expression_construction_preserves_origin_and_precise_errors() {
         assert_eq!(numeric_failure(&error), kind, "{text}");
         assert_eq!(error.path(), Some(&[0][..]));
     }
-    let extra_values = parse_component_values("h s").unwrap();
+    let extra_values = CssComponentValues::parse(&CssParser::default(), "h s").unwrap();
     let extra_origin = extra_values.items()[2].origin().clone();
     let extra = CssRelativeColorExpression::try_from_components(
         extra_values,
@@ -320,7 +320,7 @@ fn relative_expression_construction_preserves_origin_and_precise_errors() {
     assert!(extra.is_multiple_values(), "{extra:?}");
     assert_eq!(extra.origin(), Some(&extra_origin));
     assert_eq!(extra.path(), Some(&[2][..]));
-    let nested_values = parse_component_values("calc(h + 1px)").unwrap();
+    let nested_values = CssComponentValues::parse(&CssParser::default(), "calc(h + 1px)").unwrap();
     let CssComponentValueRef::Function(function) = nested_values.items()[0].view() else {
         panic!("expected calc function");
     };
@@ -346,7 +346,7 @@ fn relative_expression_construction_preserves_origin_and_precise_errors() {
         CssRelativeColorEnvironment::Xyz(PredefinedColorSpace::Srgb),
     ] {
         let error = CssRelativeColorExpression::try_from_components(
-            parse_component_values("r").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "r").unwrap(),
             environment,
             CssRelativeColorResultDomain::NumberPercentage,
             Default::default(),
@@ -449,7 +449,7 @@ fn mix_constructor_retains_order_weights_and_symbolic_calculation() {
         CssColorMixWeight::literal(CssColorMixPercentage::try_from_component(token(tiny)).unwrap());
     let symbolic = CssColorMixWeight::try_calculation(
         CssCalculation::<CssPercentage>::try_from_components(
-            parse_component_values("calc(25% + 10%)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(25% + 10%)").unwrap(),
             Default::default(),
         )
         .unwrap(),

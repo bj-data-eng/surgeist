@@ -1,7 +1,6 @@
 //! Nested rule-list context remains semantic across bounded structural replay.
 use surgeist_css::{
-    CssErrorCode, CssRecoveryAction, CssRule, CssSelector, CssSheet, CssTokenKind, parse_sheet,
-    validate_sheet,
+    CssErrorCode, CssParser, CssRecoveryAction, CssRule, CssSelector, CssSheet, CssTokenKind,
 };
 
 fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
@@ -85,7 +84,7 @@ fn check_html_token(html: &str, kind: CssTokenKind) {
                 "@media all{".repeat(ancestors),
                 "}".repeat(ancestors)
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             (
                 ancestors,
                 ancestors + body_media_depth + 2,
@@ -99,7 +98,7 @@ fn check_html_token(html: &str, kind: CssTokenKind) {
     // Run the genuine root control before any nested assertion can fail.
     // At the real stylesheet root only, both HTML tokens are discarded.
     let source = format!("{} .kept{{color:blue}}", html_unit(html, 0));
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(
         report.is_clean(),
         "root control: {:?}",
@@ -113,7 +112,13 @@ fn check_html_token(html: &str, kind: CssTokenKind) {
     };
     assert_style(hidden, &source, "hidden", "red");
     assert_style(kept, &source, "kept", "blue");
-    assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
 
     for (ancestors, max_depth, unit, source, report) in cases {
         assert_nested_siblings(report.syntax(), &source, ancestors, max_depth);
@@ -141,7 +146,11 @@ fn check_html_token(html: &str, kind: CssTokenKind) {
         assert_eq!(token.kind(), kind);
         assert_eq!(token.authored(), html);
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -166,7 +175,7 @@ fn check_root_only_statement(statement: &str, name: &str) {
                 "@media all{".repeat(depth),
                 "}".repeat(depth)
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             (depth, source, report)
         })
         .collect();
@@ -198,14 +207,18 @@ fn check_root_only_statement(statement: &str, name: &str) {
             "the stylesheet top level"
         );
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
 
     // The same valid spelling is admitted in the actual initial root phase.
     let source = format!("{statement}.after{{color:red}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(
         report.is_clean(),
         "root control: {:?}",
@@ -228,7 +241,13 @@ fn check_root_only_statement(statement: &str, name: &str) {
         _ => panic!("context-valid typed root owner"),
     }
     assert_style(after, &source, "after", "red");
-    assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
 }
 
 #[test]

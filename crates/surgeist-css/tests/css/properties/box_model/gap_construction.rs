@@ -7,7 +7,7 @@ fn scalar(text: &str) -> CssGapValue {
     if text.eq_ignore_ascii_case("normal") {
         return CssGapValue::Normal;
     }
-    let components = parse_component_values(text).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let numeric = if text.starts_with("calc(") {
         CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
             CssCalculation::<CssLengthPercentage>::try_from_components(
@@ -117,9 +117,10 @@ fn parsed_and_checked_wrappers_expose_exact_current_models() {
         ("column-gap", "calc(1px + 2%)"),
     ] {
         let parsed = declaration(name, value);
-        let checked = parse_property_value_for_grammar(
-            CssPropertyGrammar::from_name(name).unwrap(),
-            parse_component_values(value).unwrap(),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssPropertyGrammar::from_name(name).unwrap()),
+            CssComponentValues::parse(&CssParser::default(), value).unwrap(),
             CssImportance::Normal,
         )
         .unwrap();

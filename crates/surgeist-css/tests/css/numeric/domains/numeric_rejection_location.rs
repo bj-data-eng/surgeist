@@ -48,7 +48,7 @@ fn assert_responsible(marked: &str) {
         token,
     } in variants
     {
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let diagnostic = report
             .diagnostics()
             .first()

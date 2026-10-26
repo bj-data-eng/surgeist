@@ -1,5 +1,6 @@
 use surgeist_css::{
-    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, parse_page_block, parse_sheet,
+    CssBlockContext, CssBlockFragment, CssErrorCode, CssPageBody, CssParser, CssRecoveryAction,
+    CssRecoveryDiagnostic, CssRule,
 };
 
 fn closures(diagnostics: &[CssRecoveryDiagnostic], source: &str, expected: usize) {
@@ -33,7 +34,7 @@ fn retained_margin_child_and_page_each_report_their_own_implicit_eof_closure() {
         ("@page{@top-left{content:'🦀'}", 1),
         ("@page{@top-left{content:'🦀'}}", 0),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         closures(report.diagnostics(), source, expected);
         let [CssRule::Page(page)] = report.syntax().rules() else {
             panic!("retained Page")
@@ -57,7 +58,11 @@ fn raw_page_body_retains_each_margin_eof_closure_without_fabricated_outer_text()
         ("{@top-left{content:'🦀'}", 1),
         ("{@top-left{content:'🦀'}}", 0),
     ] {
-        let report = parse_page_block(source);
+        let report = CssBlockFragment::<CssPageBody>::parse(
+            &CssParser::default(),
+            source,
+            &CssBlockContext::default(),
+        );
         closures(report.diagnostics(), source, expected);
         let body = report.syntax().as_ref().unwrap().body();
         assert_eq!(body.margin_rules().len(), 1);

@@ -661,3 +661,28 @@ impl CssFontTechHint {
         }
     }
 }
+impl CssAuthoredFontFaceDescriptorValue {
+    /// Parses one complete raw `@font-face` descriptor value in the selected grammar.
+    ///
+    /// The source contains only the value, without a descriptor name, annotation or
+    /// declaration delimiter. The returned typed value has no fabricated name position.
+    /// Diagnostics use the original source's UTF-8 bytes, zero-based UTF-16 columns and
+    /// actual EOF. Invalid outer values return `None` with `RejectInput`; resource limits
+    /// retain `StopAtNestingLimit`. A retained `src` list can report discarded members.
+    /// Implicit closures are reported only for retained components. This does not require
+    /// surrounding `font-family` or `src` descriptors, match fonts, or load resources.
+    ///
+    /// The parser is not read: neither its document mode nor its component limits apply to this grammar, and only the fixed nesting ceiling bounds the input.
+    #[expect(
+        unused_variables,
+        reason = "this grammar does not read the parser configuration"
+    )]
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+        kind: CssFontFaceDescriptorKind,
+    ) -> crate::CssParseReport<Option<CssAuthoredFontFaceDescriptorValue>> {
+        crate::parser::parse_font_face_descriptor_value(source.as_ref(), kind)
+    }
+}

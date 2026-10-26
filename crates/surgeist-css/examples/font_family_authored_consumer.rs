@@ -17,12 +17,12 @@
 use surgeist_css::{
     CssExplicitFont, CssFontFaceFamily, CssFontFamilyList, CssFontFamilyName,
     CssFontFamilyNameKind, CssFontLocalName, CssFontSize, CssFontValue, CssGenericFontFamily,
-    CssImportance, CssKnownPropertyValueRef, CssSystemFont, parse_style_attribute,
+    CssImportance, CssKnownPropertyValueRef, CssParser, CssSystemFont,
 };
 
 fn parsed_name(authored: &str) -> CssFontFamilyName {
     let source = format!("font-family:{authored}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::FontFamily(value) = report.syntax()[0]
         .known()
@@ -279,7 +279,7 @@ fn system_spellings_in_literal_names_and_whole_shorthands() {
                 );
             }
             let source = format!("font:{spelling}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {report:?}");
             let CssKnownPropertyValueRef::Font(value) = report.syntax()[0]
                 .known()
@@ -329,7 +329,7 @@ fn current_property_and_font_values() {
     let authored_family = r#""", A B, GeNeRiC(KAI), SYSTEM-UI"#;
     let authored_font = format!("medium {authored_family}");
     let source = format!("font-family:{authored_family}!important;font:{authored_font}!important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
     for declaration in report.syntax().iter() {

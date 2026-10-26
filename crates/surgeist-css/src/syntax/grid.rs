@@ -1534,7 +1534,7 @@ mod aggregate_composition_contract {
 
     fn template(text: &str) -> CssGridTemplate {
         let source = format!("grid-template:{text}");
-        let report = crate::parse_style_attribute(&source);
+        let report = crate::CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let crate::CssKnownPropertyValueRef::GridTemplate(value) = report.syntax()[0]
             .known()
@@ -1549,7 +1549,7 @@ mod aggregate_composition_contract {
 
     fn grid(text: &str) -> CssGrid {
         let source = format!("grid:{text}");
-        let report = crate::parse_style_attribute(&source);
+        let report = crate::CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let crate::CssKnownPropertyValueRef::Grid(value) = report.syntax()[0]
             .known()

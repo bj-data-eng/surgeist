@@ -30,8 +30,7 @@ const MEMBERS: [P; 8] = [
 const INITIALS: [&str; 8] = ["0s", "ease", "0s", "1", "normal", "none", "running", "none"];
 
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("ordinary longhands")
     };
@@ -421,9 +420,10 @@ fn all_nine_properties_preserve_every_entry_of_twenty_item_lists_across_three_fr
             property.canonical_name()
         ));
         let grammar = checked(property, &css);
-        let named = parse_property_value(
-            CssPropertyNameRef::Known(property),
-            parse_component_values(&css).unwrap(),
+        let named = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+            CssComponentValues::parse(&CssParser::default(), &css).unwrap(),
             CssImportance::Important,
         )
         .unwrap();
@@ -620,8 +620,11 @@ fn symbolic_count_and_easing_children_retain_original_graphs_and_numeric_precisi
 
 #[test]
 fn mixed_programmatic_and_parsed_children_survive_checked_projection_and_reentry() {
-    let components =
-        parse_component_values("fade 1s ease-in -250ms 2.5 reverse both paused").unwrap();
+    let components = CssComponentValues::parse(
+        &CssParser::default(),
+        "fade 1s ease-in -250ms 2.5 reverse both paused",
+    )
+    .unwrap();
     let dimension = CssComponentValue::try_dimension("125", "ms").unwrap();
     let number = CssComponentValue::try_number("3.5").unwrap();
     let mut items = components.items().to_vec();
@@ -646,8 +649,9 @@ fn mixed_programmatic_and_parsed_children_survive_checked_projection_and_reentry
     items[duration] = dimension.clone();
     items[count] = number.clone();
     let replacement = CssComponentValues::try_new(items, Default::default()).unwrap();
-    let source = parse_property_value_for_grammar(
-        P::Animation.grammar(),
+    let source = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(P::Animation.grammar()),
         replacement.clone(),
         CssImportance::Important,
     )
@@ -676,7 +680,7 @@ fn mixed_programmatic_and_parsed_children_survive_checked_projection_and_reentry
         CssValueOrigin::Parsed(_)
     ));
     let pending = parsed("animation:var(--animation)!important");
-    let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+    let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
         panic!("pending")
     };
     let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap() else {
@@ -701,10 +705,10 @@ fn late_recovered_time_projections_keep_implicit_graphs_through_output_and_norma
         (".a{animation:fade 1s,slide calc((2s", true),
         (".a{animation:fade 1s,slide 2s calc((-250ms", false),
     ] {
-        let report = parse_sheet(css);
+        let report = CssParser::default().parse_sheet(css);
         assert_implicit_closure(css, &report);
         let limits = CssNormalizationLimits::try_new(0, 1, 1, 8).unwrap();
-        let normalized = normalize_report_with_limits(&report, limits).unwrap();
+        let normalized = report.normalize(limits).unwrap();
         assert!(!normalized.is_clean());
         assert_eq!(normalized.diagnostics(), report.diagnostics());
         let declaration = normalized
@@ -752,21 +756,23 @@ fn late_recovered_time_projections_keep_implicit_graphs_through_output_and_norma
         );
         assert_eq!(time.calculation().unwrap().components(), &raw);
         assert_eq!(
-            validate_sheet(css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
         let before = report.clone();
         assert_eq!(
-            normalize_report_with_limits(
-                &report,
-                CssNormalizationLimits::try_new(0, 1, 1, 7).unwrap()
-            )
-            .unwrap_err()
-            .exhausted_limit(),
+            report
+                .normalize(CssNormalizationLimits::try_new(0, 1, 1, 7).unwrap())
+                .unwrap_err()
+                .exhausted_limit(),
             Some((CssNormalizationResource::Contributions, 7))
         );
         assert_eq!(report.diagnostics(), before.diagnostics());
-        assert!(normalize_report_with_limits(&report, limits).is_ok());
+        assert!(report.normalize(limits).is_ok());
     }
 }
 
@@ -777,7 +783,7 @@ fn pending_handles_retry_original_eof_grammar_residual_and_output_resource_failu
             "{}:var(--animation)!important",
             property.canonical_name()
         ));
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         let good = if property == P::Animation {
@@ -786,7 +792,8 @@ fn pending_handles_retry_original_eof_grammar_residual_and_output_resource_failu
             INITIALS[MEMBERS.iter().position(|p| *p == property).unwrap()]
         };
         let recovered_source = format!("{good}/*");
-        let recovered = parse_component_values(&recovered_source).unwrap();
+        let recovered =
+            CssComponentValues::parse(&CssParser::default(), &recovered_source).unwrap();
         let origin = implicit_origin(&recovered, &recovered_source);
         let error = handle.reenter(recovered).unwrap_err();
         let Some(error) = error.replacement_error() else {
@@ -796,18 +803,18 @@ fn pending_handles_retry_original_eof_grammar_residual_and_output_resource_failu
         assert_eq!(error.origin(), CssSerializedOrigin::End(Some(origin)));
         assert!(
             handle
-                .reenter(parse_component_values("1px").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "1px").unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some()
         );
         assert!(
             handle
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
-        let replacement = parse_component_values(good).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), good).unwrap();
         let CssContributions::Longhands(first) = handle.reenter(replacement.clone()).unwrap()
         else {
             panic!("completed replacement")
@@ -1021,18 +1028,24 @@ fn each_animation_role_rejects_intrinsic_grammar_negatives_through_all_fronts() 
                 "invalid declaration dropped: {css}"
             );
             assert_eq!(
-                validate_style_attribute(&css).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&css)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
-            let components = parse_component_values(body).unwrap();
-            let grammar = parse_property_value_for_grammar(
-                property.grammar(),
+            let components = CssComponentValues::parse(&CssParser::default(), body).unwrap();
+            let grammar = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Normal,
             )
             .unwrap_err();
-            let named = parse_property_value(
-                CssPropertyNameRef::Known(property),
+            let named = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components,
                 CssImportance::Normal,
             )

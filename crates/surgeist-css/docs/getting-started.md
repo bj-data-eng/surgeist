@@ -24,10 +24,10 @@ dependencies to be available in your local Cargo cache.
 2. Put this program in the consumer's `src/main.rs`:
 
    ```rust
-   use surgeist_css::{CssRecoveryAction, parse_sheet};
+   use surgeist_css::{CssParser, CssRecoveryAction};
 
    fn main() {
-       let report = parse_sheet(
+       let report = CssParser::default().parse_sheet(
            ".before { color: red; } @unknown value; .after { color: blue; }",
        );
        assert_eq!(report.syntax().rules().len(), 2);

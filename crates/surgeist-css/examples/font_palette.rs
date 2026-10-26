@@ -2,11 +2,12 @@
 //! Inspect a symbolic palette mix without loading or mixing a font palette.
 use surgeist_css::{
     CssContributions, CssExpansion, CssFontPalette, CssFontPaletteMix, CssFontPaletteMixComponent,
-    CssKnownPropertyValueRef, expand_declaration, parse_style_attribute,
+    CssKnownPropertyValueRef, CssParser,
 };
 
 fn main() {
-    let report = parse_style_attribute("font-palette:palette-mix(30% light, dark)!important");
+    let report = CssParser::default()
+        .parse_block_contents("font-palette:palette-mix(30% light, dark)!important");
     assert!(report.is_clean());
     let source = &report.syntax()[0];
     let CssKnownPropertyValueRef::FontPalette(value) =
@@ -21,8 +22,7 @@ fn main() {
             .unwrap(),
         "palette-mix(light 30%, dark 70%)"
     );
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("intrinsic palette longhand")
     };

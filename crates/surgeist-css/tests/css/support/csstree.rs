@@ -37,7 +37,7 @@ use adapters::{
     PropertyOrDescriptor, REGISTRY, RegistryEntry, UnsupportedPolicy as RegistryUnsupportedPolicy,
 };
 #[cfg(test)]
-use surgeist_css::{parse_rule, parse_sheet};
+use surgeist_css::{CssParser, CssRule};
 
 const CORPUS_ROOT: &str = "tests/corpus/csstree";
 const EXPECTED_CLASSES_PATH: &str = "tests/csstree/expected-classes.json";
@@ -2700,7 +2700,7 @@ mod tests {
             value["diagnostics"][0]["span_start"],
             source.find("unknown").unwrap()
         );
-        let report = parse_rule(source, &corpus_namespace_context());
+        let report = CssRule::parse(&CssParser::default(), source, &corpus_namespace_context());
         let Some(surgeist_css::CssRule::Media(media)) = report.syntax() else {
             panic!("expected retained media rule");
         };
@@ -3129,7 +3129,7 @@ mod tests {
         let complete = adapters::Adapter::Stylesheet
             .wrap("@media;", None)
             .expect("whole-sheet input needs no wrapper");
-        let report = parse_sheet(complete.source());
+        let report = CssParser::default().parse_sheet(complete.source());
         assert!(!report.is_clean());
         assert!(report.syntax().rules().is_empty());
         assert_eq!(report.diagnostics().len(), 1);
@@ -3166,7 +3166,7 @@ mod tests {
             "{--surgeist-corpus-probe:0;}",
         )
         .expect("deliberately wrapped negative control preserves its payload");
-        let report = parse_sheet(complete.source());
+        let report = CssParser::default().parse_sheet(complete.source());
         assert!(report.diagnostics().iter().any(|diagnostic| {
             diagnostic.error().position().byte_offset().value() > complete.payload_span().end
         }));
@@ -3252,7 +3252,7 @@ mod tests {
         // Conditional 3's @media grammar retains this single authored rule,
         // including its empty rule list. The expected count is independent of
         // the copied oracle and the Supports/Scope extractor migration.
-        let report = parse_sheet("@media screen{}");
+        let report = CssParser::default().parse_sheet("@media screen{}");
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         assert!(matches!(
             report.syntax().rules(),

@@ -26,7 +26,7 @@ fn name(value: &str) -> CssFontFeatureValueName {
 fn ordinary(name: &str, value: &str) -> CssLonghandValue {
     let source = parsed(name, value);
     let CssExpansion::Contributions(CssContributions::Longhands(contributions)) =
-        expand_declaration(&source).unwrap()
+        source.expand().unwrap()
     else {
         panic!("{name} has terminal expansion")
     };
@@ -478,7 +478,7 @@ fn expansion_has_exact_seven_inherited_targets_and_preserves_sources() {
     ] {
         let source = parsed("font-variant", value);
         let CssExpansion::Contributions(CssContributions::Longhands(contributions)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("seven contributions")
         };
@@ -513,7 +513,7 @@ fn expansion_has_exact_seven_inherited_targets_and_preserves_sources() {
         let source = parsed("font-variant", value);
         checked("font-variant", value);
         let CssExpansion::Contributions(CssContributions::Longhands(contributions)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("CSS-wide contributions")
         };
@@ -550,26 +550,30 @@ fn pending_reentry_is_strict_and_keeps_occurrence_and_replacement() {
     ] {
         for pending in ["var(--variant)", "env(--variant)"] {
             let source = parsed(property, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("pending {property}")
             };
             assert!(handle.source().same_occurrence(&source));
             for residual in ["var(--again)", "env(--again)"] {
                 assert!(
                     handle
-                        .reenter(parse_component_values(residual).unwrap())
+                        .reenter(
+                            CssComponentValues::parse(&CssParser::default(), residual).unwrap()
+                        )
                         .unwrap_err()
                         .is_residual_substitution()
                 );
             }
             assert!(
                 handle
-                    .reenter(parse_component_values("unknown(A)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "unknown(A)").unwrap()
+                    )
                     .unwrap_err()
                     .replacement_error()
                     .is_some()
             );
-            let components = parse_component_values(replacement).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), replacement).unwrap();
             let CssContributions::Longhands(contributions) =
                 handle.reenter(components.clone()).unwrap()
             else {
@@ -591,7 +595,7 @@ fn pending_reentry_is_strict_and_keeps_occurrence_and_replacement() {
 #[test]
 fn recovered_eof_function_retains_diagnostic_but_strict_inputs_reject_it() {
     let source = "font-variant-alternates: stylistic(A";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     assert!(!report.is_clean());
     let CssKnownPropertyValueRef::FontVariantAlternates(wrapper) = report.syntax()[0]
@@ -606,11 +610,18 @@ fn recovered_eof_function_retains_diagnostic_but_strict_inputs_reject_it() {
         panic!("recovered stylistic choice")
     };
     assert_eq!(values.stylistic().unwrap().as_str(), "A");
-    assert!(validate_style_attribute(source).is_err());
-    let recovered_components = parse_component_values("stylistic(A").unwrap();
+    assert!(
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .is_err()
+    );
+    let recovered_components =
+        CssComponentValues::parse(&CssParser::default(), "stylistic(A").unwrap();
     assert_implicit_closure_rejection(
-        &parse_property_value_for_grammar(
-            grammar("font-variant-alternates"),
+        &CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(grammar("font-variant-alternates")),
             recovered_components.clone(),
             CssImportance::Normal,
         )
@@ -618,7 +629,7 @@ fn recovered_eof_function_retains_diagnostic_but_strict_inputs_reject_it() {
         "stylistic(A",
     );
     let pending = parsed("font-variant-alternates", "var(--alt)");
-    let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+    let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
         panic!("pending alternates")
     };
     assert!(
@@ -633,7 +644,7 @@ fn recovered_eof_function_retains_diagnostic_but_strict_inputs_reject_it() {
 #[test]
 fn invalid_alternates_keep_parsed_and_programmatic_error_origins() {
     let source = "font-variant-alternates: stylistic(A) stylistic(B); color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     let [diagnostic] = report.diagnostics() else {
         panic!("one duplicate-function diagnostic")
@@ -659,9 +670,10 @@ fn invalid_alternates_keep_parsed_and_programmatic_error_origins() {
         duplicate
     );
 
-    let checked_error = parse_property_value_for_grammar(
-        grammar("font-variant-alternates"),
-        parse_component_values("stylistic(A) stylistic(B)").unwrap(),
+    let checked_error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar("font-variant-alternates")),
+        CssComponentValues::parse(&CssParser::default(), "stylistic(A) stylistic(B)").unwrap(),
         CssImportance::Normal,
     )
     .unwrap_err();
@@ -676,8 +688,9 @@ fn invalid_alternates_keep_parsed_and_programmatic_error_origins() {
         Default::default(),
     )
     .unwrap();
-    let programmatic_error = parse_property_value_for_grammar(
-        grammar("font-variant-emoji"),
+    let programmatic_error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar("font-variant-emoji")),
         programmatic,
         CssImportance::Normal,
     )
@@ -692,7 +705,7 @@ fn invalid_alternates_keep_parsed_and_programmatic_error_origins() {
 #[test]
 fn reentry_keeps_programmatic_ident_token_boundaries() {
     let source = parsed("font-variant-alternates", "var(--alt)");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending alternates")
     };
     let separate_idents = CssComponentValues::try_new(
@@ -711,7 +724,7 @@ fn reentry_keeps_programmatic_ident_token_boundaries() {
             .is_some()
     );
     let CssContributions::Longhands(contributions) = handle
-        .reenter(parse_component_values("historical-forms").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "historical-forms").unwrap())
         .unwrap()
     else {
         panic!("one valid historical-forms contribution")
@@ -725,11 +738,11 @@ fn reentry_keeps_programmatic_ident_token_boundaries() {
 
 #[test]
 fn normalization_keeps_distinct_font_variant_occurrences_in_order() {
-    let report = parse_sheet(
+    let report = CssParser::default().parse_sheet(
         ".a{font-variant:emoji; font-variant-alternates:stylistic(A); font-variant:normal}",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()

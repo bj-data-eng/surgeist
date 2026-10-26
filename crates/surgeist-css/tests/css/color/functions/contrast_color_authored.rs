@@ -173,7 +173,7 @@ fn absolute_palette_construction_rejects_the_admitted_contextual_contrast_input(
                 .contextual_color(),
             Some(CssAbsoluteColorExclusion::ContrastColor)
         );
-        let report = parse_sheet(&format!(
+        let report = CssParser::default().parse_sheet(format!(
             "@font-palette-values --p {{ font-family: Demo; override-colors: 0 {source}; base-palette: light; }}"
         ));
         let [CssRule::FontPaletteValues(rule)] = report.syntax().rules() else {
@@ -213,7 +213,7 @@ fn exact_single_color_cardinality_and_exhaustion_drop_only_the_invalid_declarati
         "device-cmyk(0 0 1)",
     ] {
         let source = format!("color:{invalid};opacity:.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -228,7 +228,12 @@ fn exact_single_color_cardinality_and_exhaustion_drop_only_the_invalid_declarati
             "{source}"
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
 }
 
@@ -241,7 +246,8 @@ fn image_and_noncolor_property_contexts_reject_a_contrast_color() {
         "list-style-image",
         "opacity",
     ] {
-        let report = parse_style_attribute(&format!("{property}:contrast-color(red);color:green"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("{property}:contrast-color(red);color:green"));
         assert_eq!(report.syntax().len(), 1, "{property}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -270,7 +276,12 @@ fn registered_color_consumers_admit_contrast_without_evaluating_it() {
         let source = declaration(&css);
         assert_eq!(source.importance(), CssImportance::Important);
         assert!(source.known().unwrap().property_value().is_some());
-        assert!(validate_style_attribute(&css).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result()
+                .is_ok()
+        );
     }
     for css in [
         "border:1px solid contrast-color(red)",
@@ -340,7 +351,8 @@ fn nonfinal_or_duplicate_background_contrast_colors_preserve_sibling_recovery() 
         "contrast-color(red) blue",
         "contrast-color(red) contrast-color(blue)",
     ] {
-        let report = parse_style_attribute(&format!("background:{invalid};color:green"));
+        let report =
+            CssParser::default().parse_block_contents(format!("background:{invalid};color:green"));
         assert_eq!(report.syntax().len(), 1, "{invalid}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -361,7 +373,7 @@ fn parsed_programmatic_and_mixed_components_keep_origins_importance_and_raw_iden
         parsed.value_components().items()[0].origin(),
         CssValueOrigin::Parsed(_)
     ));
-    let mixed_child = parse_component_values("red").unwrap();
+    let mixed_child = CssComponentValues::parse(&CssParser::default(), "red").unwrap();
     let mixed_origin = mixed_child.items()[0].origin().clone();
     for child in [
         CssComponentValues::try_new(
@@ -376,8 +388,9 @@ fn parsed_programmatic_and_mixed_components_keep_origins_importance_and_raw_iden
             Default::default(),
         )
         .unwrap();
-        let source = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+        let source = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
             graph.clone(),
             CssImportance::Important,
         )
@@ -429,7 +442,7 @@ fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
         ),
     ] {
         let source = declaration(&format!("{property}:var(--choice)!important"));
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending")
         };
         for invalid in [
@@ -439,7 +452,7 @@ fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
         ] {
             assert!(
                 pending
-                    .reenter(parse_component_values(invalid).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                     .unwrap_err()
                     .replacement_error()
                     .is_some()
@@ -447,11 +460,11 @@ fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
         }
         assert!(
             pending
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
-        let replacement = parse_component_values(replacement).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), replacement).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -470,11 +483,9 @@ fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
 
 #[test]
 fn normalization_preserves_contrast_order_values_and_source_occurrences() {
-    let report = parse_sheet(
-        ".a{color:contrast-color(red)!important;background-color:contrast-color(blue);background-image:linear-gradient(contrast-color(green), blue)}",
-    );
+    let report = CssParser::default().parse_sheet(".a{color:contrast-color(red)!important;background-color:contrast-color(blue);background-image:linear-gradient(contrast-color(green), blue)}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -620,10 +631,11 @@ fn parsed_and_checked_contrast_chains_obey_the_complete_256_level_ceiling() {
         for _ in 0..wrappers {
             text = format!("contrast-color({text})");
         }
-        let components = parse_component_values(&text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
         assert_eq!(components.nesting_depth(), 256);
-        let source = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+        let source = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
             components,
             CssImportance::Normal,
         )
@@ -645,14 +657,11 @@ fn parsed_and_checked_contrast_chains_obey_the_complete_256_level_ceiling() {
                 .unwrap(),
             expected
         );
-        let report = parse_style_attribute(&format!("color:contrast-color({text})"));
-        assert!(!report.is_clean());
-        assert!(
-            report
-                .diagnostics()
-                .iter()
-                .any(|value| value.error().code() == CssErrorCode::NestingLimit)
-        );
+        // Block contents charges the component limits for the whole input.
+        let source = format!("color:contrast-color({text})");
+        let report = CssParser::default().parse_block_contents(&source);
+        assert!(report.syntax().is_empty());
+        crate::css::support::parse_report::assert_contents_refused(&report, &source, "depth 257");
     }
 }
 
@@ -669,11 +678,12 @@ fn complete_numeric_child_depth_is_counted_and_repeated_output_keeps_raw_graphs(
         );
         assert_eq!(value, before);
     }
-    let report = parse_style_attribute(&format!("color:contrast-color({text})"));
-    assert!(
-        report
-            .diagnostics()
-            .iter()
-            .any(|value| value.error().code() == CssErrorCode::NestingLimit)
+    let source = format!("color:contrast-color({text})");
+    let report = CssParser::default().parse_block_contents(&source);
+    assert!(report.syntax().is_empty());
+    crate::css::support::parse_report::assert_contents_refused(
+        &report,
+        &source,
+        "numeric child depth 257",
     );
 }

@@ -56,7 +56,7 @@ fn ratio_numerator(condition: &CssCondition<CssContainerLeaf>) -> &CssCalculatio
 }
 
 fn assert_context(sheet: &CssSheet, expected: &CssContainerPrelude) {
-    let normalized = normalize_sheet(sheet).unwrap();
+    let normalized = sheet.normalize(Default::default()).unwrap();
     let containers: Vec<_> = normalized
         .items()
         .iter()
@@ -117,7 +117,7 @@ fn assert_context(sheet: &CssSheet, expected: &CssContainerPrelude) {
 fn container_reuse_and_normalization_keep_tree_relative_unit_and_pending_inputs() {
     let source = "/*😀*/@container Card (width: calc(sibling-count() * 2em)), (aspect-ratio: sibling-index()), (height: calc(sibling-index() * var(--Unit, 1cqw))){.child::before{color:red}}";
     let expected = "@container Card (width: calc(sibling-count() * 2em)), (aspect-ratio: sibling-index()), (height: calc(sibling-index() * var(--Unit, 1cqw))) { .child::before { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     let rule = container(report.syntax());
@@ -209,7 +209,7 @@ fn container_reuse_and_normalization_keep_tree_relative_unit_and_pending_inputs(
         source,
         "sibling-index(",
     );
-    let emitted = parse_sheet(expected);
+    let emitted = CssParser::default().parse_sheet(expected);
     assert!(emitted.is_clean(), "{:?}", emitted.diagnostics());
     assert_eq!(
         emitted
@@ -231,7 +231,7 @@ fn escaped_tree_function_identity_keeps_authored_trivia_and_original_opening_ori
         r"/*😀*/@container (aspect-ratio: SIBLING-\63 OUNT( /**/ )){.child::before{color:red}}";
     let expected =
         r"@container (aspect-ratio: SIBLING-\63 OUNT( /**/ )) { .child::before { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let rule = container(report.syntax());
     let numerator = ratio_numerator(query(rule, 0));
@@ -254,7 +254,7 @@ fn escaped_tree_function_identity_keeps_authored_trivia_and_original_opening_ori
             .unwrap(),
         expected
     );
-    let emitted = parse_sheet(expected);
+    let emitted = CssParser::default().parse_sheet(expected);
     assert!(emitted.is_clean(), "{:?}", emitted.diagnostics());
     assert_eq!(
         tree(ratio_numerator(query(container(emitted.syntax()), 0)).expression()).function(),
@@ -281,7 +281,7 @@ fn unsupported_tree_arguments_and_wrong_domains_keep_opaque_query_and_body_on_re
     ] {
         let source = format!("@container {condition}{{.child::before{{color:red}}}}");
         let expected = format!("@container {condition} {{ .child::before {{ color: red; }} }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{condition}: {:?}", report.diagnostics());
         let rule = container(report.syntax());
         assert!(matches!(
@@ -303,7 +303,7 @@ fn unsupported_tree_arguments_and_wrong_domains_keep_opaque_query_and_body_on_re
                 .unwrap(),
             expected
         );
-        let emitted = parse_sheet(&expected);
+        let emitted = CssParser::default().parse_sheet(&expected);
         assert!(emitted.is_clean(), "{:?}", emitted.diagnostics());
         assert!(matches!(
             query(container(emitted.syntax()), 0).kind(),
@@ -324,7 +324,7 @@ fn unsupported_tree_arguments_and_wrong_domains_keep_opaque_query_and_body_on_re
 fn tree_query_output_byte_limit_is_cumulative_across_rules_and_atomic_on_failure() {
     let source = "@container (aspect-ratio: sibling-count(/*é*/)){}@container (aspect-ratio: sibling-index()){}";
     let expected = "@container (aspect-ratio: sibling-count(/*é*/)) { }\n@container (aspect-ratio: sibling-index()) { }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     let exact = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
@@ -345,7 +345,7 @@ fn tree_query_output_byte_limit_is_cumulative_across_rules_and_atomic_on_failure
         report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
-    let emitted = parse_sheet(expected);
+    let emitted = CssParser::default().parse_sheet(expected);
     assert!(emitted.is_clean(), "{:?}", emitted.diagnostics());
     assert_eq!(
         emitted

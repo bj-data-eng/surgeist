@@ -4,7 +4,7 @@ use surgeist_css::*;
 
 fn parsed_color(text: &str) -> CssColor {
     let source = format!("border-top-color:{text}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderTopColor(value) = report.syntax()[0]
         .known()
@@ -150,7 +150,7 @@ fn parsed_current_agrees_with_checked_aggregates_without_losing_color_graphs_or_
     let start = "rgb(1 2 3 / none)";
     let end = "lab(calc(50% + 10%) 20 -30 / 120%)";
     let source = format!("border-block-color:{start} {end}!important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = &report.syntax()[0];
     let CssKnownPropertyValueRef::BorderBlockColor(value) =
@@ -175,7 +175,7 @@ fn parsed_current_agrees_with_checked_aggregates_without_losing_color_graphs_or_
         "border-block-color:".len()
     );
 
-    let report = parse_style_attribute("border-inline-color:red #12abef");
+    let report = CssParser::default().parse_block_contents("border-inline-color:red #12abef");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderInlineColor(value) = report.syntax()[0]
         .known()
@@ -191,7 +191,7 @@ fn parsed_current_agrees_with_checked_aggregates_without_losing_color_graphs_or_
     );
 
     let source = "border-color:logical red blue transparent currentcolor";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderColor(value) = report.syntax()[0]
         .known()

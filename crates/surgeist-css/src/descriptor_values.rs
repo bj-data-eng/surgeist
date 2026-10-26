@@ -672,3 +672,82 @@ impl CssCounterStyleDescriptorValue {
         }
     }
 }
+impl CssCounterStyleDescriptorValue {
+    /// Parses one complete raw Counter Styles 3 descriptor value.
+    ///
+    /// The supplied kind selects the existing descriptor grammar without a rule name
+    /// or descriptor-name occurrence. Components and origin cover the complete input,
+    /// including trivia; exact numeric values retain their original token origins.
+    /// Cross-descriptor system/symbol requirements remain with the enclosing rule.
+    /// Empty, invalid, annotated or trailing input returns `None` with whole-input
+    /// rejection. The fixed 256-depth ceiling retains typed resource diagnostics.
+    /// Implicit lexical EOF recovery may retain a value with an unclean report;
+    /// generic clean-report validation accepts exactly reports without diagnostics.
+    ///
+    /// The parser is not read: neither its document mode nor its component limits apply to this grammar, and only the fixed nesting ceiling bounds the input.
+    #[expect(
+        unused_variables,
+        reason = "this grammar does not read the parser configuration"
+    )]
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+        kind: crate::CssCounterStyleDescriptorKind,
+    ) -> crate::CssParseReport<Option<CssCounterStyleDescriptorValue>> {
+        crate::parser::parse_counter_style_descriptor_value(source.as_ref(), kind)
+    }
+}
+impl CssFontFeatureDisplayValue {
+    /// Parses the outer `@font-feature-values` font-display descriptor's complete value.
+    ///
+    /// The five font-display keywords admit decoded escaped and ASCII-insensitive
+    /// spellings; valid env defers the whole value. There is no invented
+    /// descriptor-name position. Components and origin retain all original trivia.
+    /// Invalid or trailing input and root annotations reject the complete fragment;
+    /// resource failures preserve the fixed 256-depth ceiling. Lexical EOF recovery
+    /// remains visible in diagnostics and fails generic clean-report validation.
+    ///
+    /// The parser is not read: neither its document mode nor its component limits apply to this grammar, and only the fixed nesting ceiling bounds the input.
+    #[expect(
+        unused_variables,
+        reason = "this grammar does not read the parser configuration"
+    )]
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> crate::CssParseReport<Option<CssFontFeatureDisplayValue>> {
+        crate::parser::parse_font_feature_display_value(source.as_ref())
+    }
+}
+impl CssFontFeatureValue {
+    /// Parses one authored subsidiary feature value, including whole-value env deferral.
+    ///
+    /// Historical-forms/styleset admit one or more indexes, character-variant one or
+    /// two, and the other kinds exactly one. Integer token spelling is retained in
+    /// components; normalized exact indexes have no machine-integer upper bound.
+    /// Valid env defers the completed index grammar; plain var grants no exception.
+    /// No friendly definition name is created. Invalid, empty, annotated or trailing
+    /// input rejects the whole fragment; token failures use their original origins.
+    /// Components and carrier origin include all trivia. The fixed 256-depth ceiling
+    /// and lexical EOF diagnostics retain their existing owners; clean validation
+    /// accepts exactly reports without diagnostics and performs no font activation.
+    /// Name-free token/EOF diagnostics describe the selected integer grammar; root
+    /// `!` is rejected as its actual delimiter rather than a named annotation.
+    /// An overfull list reports its first surplus integer; empty input reports EOF.
+    ///
+    /// The parser is not read: neither its document mode nor its component limits apply to this grammar, and only the fixed nesting ceiling bounds the input.
+    #[expect(
+        unused_variables,
+        reason = "this grammar does not read the parser configuration"
+    )]
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+        kind: crate::CssFontFeatureValueKind,
+    ) -> crate::CssParseReport<Option<CssFontFeatureValue>> {
+        crate::parser::parse_font_feature_value(source.as_ref(), kind)
+    }
+}

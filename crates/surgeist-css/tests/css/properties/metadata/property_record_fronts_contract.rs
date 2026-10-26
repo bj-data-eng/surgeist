@@ -212,10 +212,13 @@ fn admit(
                 case.name.to_ascii_uppercase()
             };
             let css = format!("{PREFIX}{name}:{value}{}", important_suffix(importance));
-            let report = parse_style_attribute(&css);
+            let report = CssParser::default().parse_block_contents(&css);
             assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
             assert_eq!(
-                &validate_style_attribute(&css).unwrap(),
+                &CssParser::default()
+                    .parse_block_contents(&css)
+                    .into_validation_result()
+                    .unwrap(),
                 report.syntax(),
                 "{css}: validation"
             );
@@ -235,7 +238,7 @@ fn admit(
             source.clone()
         }
         Front::CheckedName | Front::CheckedGrammar => {
-            let components = parse_component_values(value).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
             let before = components.clone();
             let source = authored_property::checked_components(
                 property,
@@ -283,9 +286,17 @@ fn text_report(
     importance: CssImportance,
 ) -> CssParseReport<Option<CssDeclaration>> {
     if grammar {
-        parse_property_value_text_for_grammar(value, case.property.grammar(), importance)
+        CssParser::default().parse_property_value(
+            value,
+            CssPropertyTextTarget::Grammar(case.property.grammar()),
+            importance,
+        )
     } else {
-        parse_property_value_text(value, CssPropertyNameRef::Known(case.property), importance)
+        CssParser::default().parse_property_value(
+            value,
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(case.property)),
+            importance,
+        )
     }
 }
 
@@ -300,7 +311,7 @@ fn assert_specified(source: &CssDeclaration, expected: &str, label: &str) {
         "{label}"
     );
     assert_eq!(source, &before, "{label}: serialization mutated the source");
-    let report = parse_style_attribute(expected);
+    let report = CssParser::default().parse_block_contents(expected);
     assert!(
         report.is_clean(),
         "{label}: re-parse {expected:?}: {:?}",
@@ -406,7 +417,7 @@ fn assert_ordinary_contributions(
 
 #[track_caller]
 fn completed(source: &CssDeclaration) -> CssContributions {
-    let CssExpansion::Contributions(contributions) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Contributions(contributions) = source.expand().unwrap() else {
         panic!("completed expansion")
     };
     contributions
@@ -477,7 +488,7 @@ fn assert_closure(error: &CssPropertyValueError, origin: &CssValueOrigin, text: 
 #[track_caller]
 fn invalid(case: &PropertyExpectation, value: &str) {
     let css = format!("color:red;{}:{value};color:blue", case.name);
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     let retained: Vec<_> = report
         .syntax()
         .iter()
@@ -501,10 +512,14 @@ fn invalid(case: &PropertyExpectation, value: &str) {
         other => panic!("{css}: grammar diagnostic, got {other:?}"),
     }
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
-    let components = parse_component_values(value).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     let before = components.clone();
     for importance in IMPORTANCE {
         for grammar in [false, true] {
@@ -699,7 +714,7 @@ fn every_record_accepted_row_serializes_canonically_and_idempotently_through_eve
 fn every_record_rejected_row_drops_atomically_through_every_front_and_importance() {
     each_record(|case| {
         for value in case.rejected_rows() {
-            if parse_component_values(value).is_ok() {
+            if CssComponentValues::parse(&CssParser::default(), value).is_ok() {
                 invalid(case, value);
             } else {
                 // A bad URL fails tokenization (Syntax 3 §4.3.6), before any
@@ -718,7 +733,7 @@ fn every_record_rejected_row_drops_atomically_through_every_front_and_importance
                     case.name.to_ascii_uppercase(),
                     important_suffix(importance)
                 );
-                let report = parse_style_attribute(&css);
+                let report = CssParser::default().parse_block_contents(&css);
                 let retained: Vec<_> = report
                     .syntax()
                     .iter()
@@ -726,7 +741,7 @@ fn every_record_rejected_row_drops_atomically_through_every_front_and_importance
                     .collect();
                 assert_eq!(retained, [P::Color, P::Color], "{css}");
                 assert!(!report.is_clean(), "{css}");
-                if parse_component_values(value).is_err() {
+                if CssComponentValues::parse(&CssParser::default(), value).is_err() {
                     continue;
                 }
                 let [diagnostic] = report.diagnostics() else {
@@ -764,7 +779,7 @@ fn every_record_pending_substitution_is_admitted_and_reenters_strictly_and_repea
                     assert!(known.global().is_none(), "{label}");
                     assert!(known.property_value().is_none(), "{label}");
                     assert_specified(&source, &expected, &label);
-                    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+                    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                         panic!("{label}: pending handle")
                     };
                     assert!(handle.source().same_occurrence(&source), "{label}");
@@ -782,7 +797,8 @@ fn every_record_pending_substitution_is_admitted_and_reenters_strictly_and_repea
                         rejected.push(format!("{authored};color:red"));
                     }
                     for text in &residual {
-                        let replacement = parse_component_values(text).unwrap();
+                        let replacement =
+                            CssComponentValues::parse(&CssParser::default(), text).unwrap();
                         let snapshot = replacement.clone();
                         for _ in 0..2 {
                             assert!(
@@ -804,7 +820,9 @@ fn every_record_pending_substitution_is_admitted_and_reenters_strictly_and_repea
                         {
                             continue;
                         }
-                        let Ok(replacement) = parse_component_values(text) else {
+                        let Ok(replacement) =
+                            CssComponentValues::parse(&CssParser::default(), text)
+                        else {
                             continue;
                         };
                         let direct = authored_property::checked_components(
@@ -825,7 +843,9 @@ fn every_record_pending_substitution_is_admitted_and_reenters_strictly_and_repea
                     }
                     for (text, keyword) in GLOBALS {
                         for spelling in [text.to_owned(), format!("{PREFIX}{text}/**/")] {
-                            let replacement = parse_component_values(&spelling).unwrap();
+                            let replacement =
+                                CssComponentValues::parse(&CssParser::default(), &spelling)
+                                    .unwrap();
                             for _ in 0..2 {
                                 assert_global_contributions(
                                     case,
@@ -838,7 +858,8 @@ fn every_record_pending_substitution_is_admitted_and_reenters_strictly_and_repea
                         }
                     }
                     for (authored, _) in &accepted {
-                        let replacement = parse_component_values(authored).unwrap();
+                        let replacement =
+                            CssComponentValues::parse(&CssParser::default(), authored).unwrap();
                         let direct = authored_property::checked_components(
                             case.property,
                             replacement.clone(),
@@ -923,7 +944,7 @@ fn every_record_checked_fronts_and_reentry_reject_recovered_ordinary_values_at_o
             ));
         }
         for (text, authored, reentry) in texts {
-            let components = parse_component_values(&text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
             let before = components.clone();
             let origin = implicit_origin(&components);
             for importance in IMPORTANCE {
@@ -945,7 +966,7 @@ fn every_record_checked_fronts_and_reentry_reject_recovered_ordinary_values_at_o
                 }
                 for pending in PENDING {
                     let source = admit(Front::CheckedName, case, pending, importance);
-                    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+                    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                         panic!("pending handle")
                     };
                     for _ in 0..2 {
@@ -959,7 +980,8 @@ fn every_record_checked_fronts_and_reentry_reject_recovered_ordinary_values_at_o
                         continue;
                     };
                     for complete in [format!("{authored}/**/"), format!("{authored} /**/")] {
-                        let complete = parse_component_values(&complete).unwrap();
+                        let complete =
+                            CssComponentValues::parse(&CssParser::default(), &complete).unwrap();
                         let values = longhands(handle.reenter(complete.clone()).unwrap());
                         assert_ordinary_contributions(case, &values, &source, Some(&complete));
                         for grammar in [false, true] {
@@ -983,7 +1005,7 @@ fn every_record_checked_fronts_and_reentry_reject_recovered_ordinary_values_at_o
             .map(|(text, _)| format!("{text}/**/"))
             .chain(PENDING.map(|pending| format!("{pending}/**/")))
         {
-            let components = parse_component_values(&text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
             for importance in IMPORTANCE {
                 for grammar in [false, true] {
                     authored_property::checked_components(
@@ -1080,11 +1102,15 @@ fn every_record_sheet_recovery_retains_original_occurrences_within_exact_contrib
             .map(|(prefix, text, count)| (format!("{prefix}.a{{{}:{text}", case.name), count))
         {
             let css = text;
-            let report = parse_sheet(&css);
+            let report = CssParser::default().parse_sheet(&css);
             assert!(!report.is_clean(), "{css}");
             assert_implicit_closure(&css, &report);
             assert_eq!(
-                validate_sheet(&css).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_sheet(&css)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics(),
                 "{css}"
             );
@@ -1098,7 +1124,7 @@ fn every_record_sheet_recovery_retains_original_occurrences_within_exact_contrib
             );
             let before = report.clone();
             let exact = CssNormalizationLimits::try_new(0, 1, 1, count).unwrap();
-            let normalized = normalize_report_with_limits(&report, exact).unwrap();
+            let normalized = report.normalize(exact).unwrap();
             assert_eq!(normalized.diagnostics(), report.diagnostics());
             let declarations: Vec<_> = normalized
                 .syntax()
@@ -1131,11 +1157,9 @@ fn every_record_sheet_recovery_retains_original_occurrences_within_exact_contrib
                 }
                 other => panic!("{css}: retained lifecycle {other:?}"),
             }
-            let error = normalize_report_with_limits(
-                &report,
-                CssNormalizationLimits::try_new(0, 1, 1, count - 1).unwrap(),
-            )
-            .unwrap_err();
+            let error = report
+                .normalize(CssNormalizationLimits::try_new(0, 1, 1, count - 1).unwrap())
+                .unwrap_err();
             assert_eq!(
                 error.exhausted_limit(),
                 Some((CssNormalizationResource::Contributions, count - 1)),
@@ -1144,7 +1168,7 @@ fn every_record_sheet_recovery_retains_original_occurrences_within_exact_contrib
             assert_eq!(error.declaration_order(), Some(0));
             assert!(error.declaration().unwrap().same_occurrence(item.source()));
             assert_eq!(report, before);
-            assert!(normalize_report_with_limits(&report, exact).is_ok());
+            assert!(report.normalize(exact).is_ok());
         }
     });
 }
@@ -1262,7 +1286,7 @@ fn every_record_alias_keeps_the_canonical_lifecycle_and_alias_name_provenance() 
                     for importance in IMPORTANCE {
                         let css =
                             format!("{PREFIX}{spelling}:{value}{}", important_suffix(importance));
-                        let report = parse_style_attribute(&css);
+                        let report = CssParser::default().parse_block_contents(&css);
                         assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
                         let [source] = report.syntax().as_slice() else {
                             panic!("{css}: one alias occurrence")
@@ -1283,10 +1307,12 @@ fn every_record_alias_keeps_the_canonical_lifecycle_and_alias_name_provenance() 
                             &specified(case.name, &canonical, importance),
                             &css,
                         );
-                        match expand_declaration(source).unwrap() {
+                        match source.expand().unwrap() {
                             CssExpansion::Pending(handle) => {
                                 assert!(handle.source().same_occurrence(source));
-                                let replacement = parse_component_values("inherit").unwrap();
+                                let replacement =
+                                    CssComponentValues::parse(&CssParser::default(), "inherit")
+                                        .unwrap();
                                 assert_global_contributions(
                                     case,
                                     handle.reenter(replacement.clone()).unwrap(),
@@ -1295,7 +1321,9 @@ fn every_record_alias_keeps_the_canonical_lifecycle_and_alias_name_provenance() 
                                     Some(&replacement),
                                 );
                                 for (authored, _) in &accepted {
-                                    let replacement = parse_component_values(authored).unwrap();
+                                    let replacement =
+                                        CssComponentValues::parse(&CssParser::default(), authored)
+                                            .unwrap();
                                     assert_ordinary_contributions(
                                         case,
                                         &longhands(handle.reenter(replacement.clone()).unwrap()),
@@ -1338,7 +1366,7 @@ fn every_record_checked_fronts_reject_an_authored_importance_annotation_at_its_t
     each_record(|case| {
         for (authored, _) in case.accepted_rows() {
             let text = format!("{PREFIX}{authored}!important");
-            let components = parse_component_values(&text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
             let serialized = components.serialize_tokens(Default::default()).unwrap();
             let origin = serialized
                 .origin_at(serialized.as_css().rfind('!').unwrap())
@@ -1395,7 +1423,7 @@ fn every_record_name_is_ascii_case_insensitive_and_escapable_at_every_lookup() {
             .map_or("inherit", |(_, canonical)| *canonical);
         for importance in IMPORTANCE {
             let css = format!("{escaped}:{value}{}", important_suffix(importance));
-            let report = parse_style_attribute(&css);
+            let report = CssParser::default().parse_block_contents(&css);
             assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
             let [source] = report.syntax().as_slice() else {
                 panic!("{css}: one declaration")
@@ -1430,14 +1458,16 @@ fn every_record_substitution_after_an_ordinary_value_defers_the_whole_value() {
                     assert!(known.substitution_dependent().is_some(), "{label}");
                     assert!(known.property_value().is_none(), "{label}");
                     assert_specified(&source, &specified(case.name, &value, importance), &label);
-                    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+                    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                         panic!("{label}: whole-value pending")
                     };
                     assert!(handle.source().same_occurrence(&source), "{label}");
-                    let replacement = parse_component_values(authored).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), authored).unwrap();
                     let values = longhands(handle.reenter(replacement.clone()).unwrap());
                     assert_ordinary_contributions(case, &values, &source, Some(&replacement));
-                    let replacement = parse_component_values("unset").unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), "unset").unwrap();
                     assert_global_contributions(
                         case,
                         handle.reenter(replacement.clone()).unwrap(),
@@ -1469,7 +1499,8 @@ fn token_of_kind(error: &dyn GrammarFacts) -> String {
 /// The responsible token the stylesheet front reports for `value` declared
 /// inside a style rule, or `None` when it admits it.
 fn sheet_responsible_token(case: &PropertyExpectation, value: &str) -> Option<String> {
-    parse_sheet(&format!(".a{{{}: {value}}}", case.name))
+    CssParser::default()
+        .parse_sheet(format!(".a{{{}: {value}}}", case.name))
         .diagnostics()
         .first()
         .map(|diagnostic| token_of_kind(diagnostic.error()))
@@ -1486,14 +1517,15 @@ fn responsible_token(case: &PropertyExpectation, front: Front, value: &str) -> O
             } else {
                 case.name.to_ascii_uppercase()
             };
-            parse_style_attribute(&format!("{name}:{value}"))
+            CssParser::default()
+                .parse_block_contents(format!("{name}:{value}"))
                 .diagnostics()
                 .to_vec()
         }
         Front::CheckedName | Front::CheckedGrammar => {
             return authored_property::checked_components(
                 case.property,
-                parse_component_values(value).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), value).unwrap(),
                 matches!(front, Front::CheckedGrammar),
                 CssImportance::Normal,
             )

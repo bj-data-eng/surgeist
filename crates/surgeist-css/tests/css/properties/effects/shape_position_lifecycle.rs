@@ -33,10 +33,12 @@ fn accept(positions: &[&str]) {
         for function in ["circle", "ellipse"] {
             let value = format!("{function}(at {position})");
             let source = format!("clip-path:{value}!important");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(
-                validate_style_attribute(&source),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result(),
                 Ok(report.syntax().clone())
             );
             let [declaration] = report.syntax().as_slice() else {
@@ -44,7 +46,7 @@ fn accept(positions: &[&str]) {
             };
             assert_position(clip(declaration));
             let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-                expand_declaration(declaration).unwrap()
+                declaration.expand().unwrap()
             else {
                 panic!("ordinary shape terminal")
             };
@@ -65,9 +67,10 @@ fn accept(positions: &[&str]) {
                 panic!("clip-path")
             };
             assert_eq!(parsed.as_css(), value, "authored family and axis order");
-            let components = parse_component_values(&value).unwrap();
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
+            let components = CssComponentValues::parse(&CssParser::default(), &value).unwrap();
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ClipPath)),
                 components.clone(),
                 CssImportance::Important,
             )
@@ -186,7 +189,7 @@ fn reject(position: &str) {
         let prefix = "/*😀*/ ";
         let declaration = format!("clip-path:{function}(at {position});");
         let source = format!("{prefix}{declaration} color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [sibling] = report.syntax().as_slice() else {
             panic!("only sibling survives {source}: {:?}", report.syntax())
         };
@@ -220,7 +223,11 @@ fn reject(position: &str) {
             source[..byte].encode_utf16().count()
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
         assert_checked_matches_diagnostic(
@@ -280,7 +287,7 @@ fn invalid_arities_duplicate_axes_and_mixed_families_recover_once() {
 fn parsed_function_and_offset_origins_address_exact_non_bmp_source() {
     let source =
         "/*😀*/ clip-path:ellipse(at inline-end -1e-999px block-start calc(10% - 2px))!important";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = &report.syntax()[0];
     let component = &declaration.value_components().items()[0];
@@ -370,10 +377,11 @@ fn parsed_function_and_offset_origins_address_exact_non_bmp_source() {
 
 #[test]
 fn pending_shape_reentry_is_strict_reusable_and_retains_replacement_origins() {
-    let report = parse_style_attribute("/*😀*/ clip-path:var(--shape)!important");
+    let report =
+        CssParser::default().parse_block_contents("/*😀*/ clip-path:var(--shape)!important");
     assert!(report.is_clean());
     let source = &report.syntax()[0];
-    let CssExpansion::Pending(pending) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending clip-path")
     };
     for invalid in [
@@ -383,7 +391,7 @@ fn pending_shape_reentry_is_strict_reusable_and_retains_replacement_origins() {
     ] {
         assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some()
@@ -391,7 +399,10 @@ fn pending_shape_reentry_is_strict_reusable_and_retains_replacement_origins() {
     }
     assert!(
         pending
-            .reenter(parse_component_values("circle(at var(--again))").unwrap())
+            .reenter(
+                CssComponentValues::parse(&CssParser::default(), "circle(at var(--again))")
+                    .unwrap()
+            )
             .unwrap_err()
             .is_residual_substitution()
     );
@@ -400,7 +411,7 @@ fn pending_shape_reentry_is_strict_reusable_and_retains_replacement_origins() {
         "ellipse(at inline-end -2px block-start 10%)",
         "circle(at end start)",
     ] {
-        let replacement = parse_component_values(text).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -429,9 +440,9 @@ fn pending_shape_reentry_is_strict_reusable_and_retains_replacement_origins() {
 #[test]
 fn normalization_retains_logical_shapes_pending_and_surviving_source_order() {
     let source = ".a{clip-path:circle(at x-start y-end)!important;clip-path:ellipse(at start);clip-path:ellipse(at inline-end block-start);clip-path:var(--shape)}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1, "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()

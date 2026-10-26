@@ -5,9 +5,10 @@
 use surgeist_css::*;
 
 fn color(css: &str) -> CssColor {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        parse_component_values(css).unwrap(),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+        CssComponentValues::parse(&CssParser::default(), css).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -101,7 +102,7 @@ fn constructed_color_stops_keep_authored_color_and_signed_line_positions() {
     );
 
     let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
-        parse_component_values("calc(1px + 5%)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(1px + 5%)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -118,7 +119,8 @@ fn constructed_color_stops_keep_authored_color_and_signed_line_positions() {
 
 #[test]
 fn parsed_gradient_stop_equals_checked_reconstruction() {
-    let report = parse_style_attribute("background-image: linear-gradient(red, blue)");
+    let report =
+        CssParser::default().parse_block_contents("background-image: linear-gradient(red, blue)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BackgroundImage(value) = report.syntax()[0]
         .known()
@@ -182,7 +184,7 @@ fn linear_constructor_preserves_omitted_angle_and_side_directions() {
     assert!(CssSideOrCorner::try_new(None, None).is_none());
 
     let symbolic_angle = CssCalculation::<CssAngle>::try_from_components(
-        parse_component_values("calc(25deg + 5deg)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(25deg + 5deg)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -256,7 +258,7 @@ fn radial_constructor_checks_shape_size_matrix_without_inventing_defaults() {
     );
 
     let symbolic_radius = CssCalculation::<CssLengthPercentage>::try_from_components(
-        parse_component_values("calc(2px + 3px)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(2px + 3px)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -345,7 +347,8 @@ fn exact_dimension(
 fn nonnegative_length(
     css: &str,
 ) -> surgeist_css::CssNumeric<surgeist_css::CssLength, surgeist_css::CssNonNegative> {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+    let components =
+        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
     if css.contains('(') {
         surgeist_css::CssNumeric::<surgeist_css::CssLength, surgeist_css::CssNonNegative>::try_from_calculation(
             surgeist_css::CssCalculation::<surgeist_css::CssLength>::try_from_components(components, Default::default())
@@ -362,7 +365,8 @@ fn nonnegative_length(
 fn signed_length_percentage(
     css: &str,
 ) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage> {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+    let components =
+        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
     if css.contains('(') {
         surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_calculation(
             surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(
@@ -382,7 +386,8 @@ fn signed_length_percentage(
 fn nonnegative_length_percentage(
     css: &str,
 ) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage, surgeist_css::CssNonNegative> {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+    let components =
+        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
     if css.contains('(') {
         surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage, surgeist_css::CssNonNegative>::try_from_calculation(
             surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(

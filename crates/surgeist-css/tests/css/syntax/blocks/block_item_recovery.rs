@@ -1,7 +1,7 @@
 use crate::css::support::authored_syntax::property_names;
 use surgeist_css::{
-    CssDeclarationContextRef, CssErrorCode, CssRecoveryAction, CssRule, CssSelector,
-    CssSelectorCombinator, CssStyleSelector, CssTokenKind, parse_sheet,
+    CssDeclarationContextRef, CssErrorCode, CssParser, CssRecoveryAction, CssRule, CssSelector,
+    CssSelectorCombinator, CssStyleSelector, CssTokenKind,
 };
 
 fn assert_drop(
@@ -42,7 +42,7 @@ fn block_item_recovery_declaration_error_classes_retain_ordered_siblings() {
 
     for (unit, code, responsible_text) in cases {
         let source = format!(".x {{ color: red; {unit} --kept: yes; height: 3px; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Style(rule)] = report.syntax().rules() else {
             panic!("expected retained style rule for {unit}");
         };
@@ -71,7 +71,7 @@ fn block_item_recovery_declaration_error_classes_retain_ordered_siblings() {
 fn block_item_recovery_invalid_custom_annotation_retains_ordered_siblings_and_context() {
     let unit = "--Accent: ready !oops;";
     let source = format!(".x {{ color: red; {unit} width: 2px; }}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
 
     let [CssRule::Style(rule)] = report.syntax().rules() else {
         panic!("expected retained style rule");
@@ -112,7 +112,7 @@ fn block_item_recovery_balanced_semicolons_and_block_end_bound_one_declaration_e
         } else {
             format!(".x {{ width: 1px; {unit}}}")
         };
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Style(rule)] = report.syntax().rules() else {
             panic!("expected retained style rule");
         };
@@ -139,7 +139,7 @@ fn block_item_recovery_balanced_semicolons_and_block_end_bound_one_declaration_e
 #[test]
 fn block_item_recovery_repeated_declaration_failures_progress_to_later_valid_item() {
     let source = ".x { color: red; first: fn(a;b); second: nope; width: 2px !bad; height: 3px; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Style(rule)] = report.syntax().rules() else {
         panic!("expected retained style rule");
     };
@@ -180,7 +180,7 @@ fn block_item_recovery_repeated_declaration_failures_progress_to_later_valid_ite
 fn block_item_recovery_all_invalid_declarations_retain_empty_ordinary_style_in_order() {
     let unit = "mystery: 1;";
     let source = format!(".before {{ color: red; }} .x {{ {unit} }} .after {{ height: 2px; }}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
 
     let [
         CssRule::Style(before),
@@ -232,7 +232,7 @@ fn block_item_recovery_all_invalid_declarations_retain_empty_nested_style_in_ord
     let source = format!(
         ".host {{ color: red; & .child {{ {unit} }} opacity: 1; }} .after {{ height: 2px; }}"
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
 
     let [CssRule::Style(parent), CssRule::Style(sibling)] = report.syntax().rules() else {
         panic!("expected authored parent and following sibling");
@@ -292,7 +292,7 @@ fn block_item_recovery_all_invalid_declarations_retain_empty_nested_style_in_ord
 fn block_item_recovery_nested_and_scoped_style_lists_own_declaration_recovery() {
     let nested_source =
         ".host { color: red; & .child { width: 1px; bad: fn(a;b); height: 2px; } opacity: 1; }";
-    let nested = parse_sheet(nested_source);
+    let nested = CssParser::default().parse_sheet(nested_source);
     let [nested_diagnostic] = nested.diagnostics() else {
         panic!("expected exactly one nested declaration diagnostic");
     };
@@ -322,7 +322,7 @@ fn block_item_recovery_nested_and_scoped_style_lists_own_declaration_recovery() 
     assert_eq!(property_names(after.declarations()), ["opacity"]);
 
     let scoped_source = "@scope { :scope { color: red; bad: x; width: 2px; } }";
-    let scoped = parse_sheet(scoped_source);
+    let scoped = CssParser::default().parse_sheet(scoped_source);
     let [CssRule::Scope(scope)] = scoped.syntax().rules() else {
         panic!("expected retained scope rule");
     };
@@ -356,7 +356,7 @@ fn block_item_recovery_group_rule_merges_child_diagnostic_without_parent_drop() 
     let source = format!(
         ".before {{ color: red; }} @media screen {{ .inside {{ width: 1px; {unit} height: 2px; }} }} .after {{ opacity: 1; }}"
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert_eq!(report.syntax().rules().len(), 3);
     let CssRule::Media(media) = &report.syntax().rules()[1] else {
         panic!("expected retained media parent");
@@ -383,7 +383,7 @@ fn block_item_recovery_supports_merges_child_diagnostic_without_parent_drop() {
     let unit = "bad: fn({x; y});";
     let source =
         format!("@supports (display: grid) {{ .inside {{ width: 1px; {unit} height: 2px; }} }}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let [CssRule::Supports(supports)] = report.syntax().rules() else {
         panic!("expected retained supports parent");
     };
@@ -407,7 +407,7 @@ fn block_item_recovery_supports_merges_child_diagnostic_without_parent_drop() {
 #[test]
 fn block_item_recovery_font_face_drops_bad_and_retains_duplicate_optional_descriptors() {
     let source = "@font-face { font-family: Inter; mystery: fn(a;b); src: url(i); font-display: swap; font-display: block; unicode-range: U+0-7F; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("expected retained font face");
     };
@@ -455,7 +455,7 @@ fn block_item_recovery_font_face_drops_bad_and_retains_duplicate_optional_descri
 fn block_item_recovery_font_face_source_loss_preserves_authored_rule() {
     let source =
         "@font-face { font-family: Inter; src: nope; font-display: swap; } .after { color: blue; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::FontFace(face), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("descriptor recovery must retain the font face and later rule");
     };
@@ -501,7 +501,7 @@ fn block_item_recovery_each_font_face_descriptor_value_failure_has_exact_scope()
         let source = format!(
             "@font-face {{ {required_descriptors} {unit} font-display: swap; }} .after {{ color: blue; }}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let child = &report.diagnostics()[0];
         // A value without any authored token is located at the `;` that
         // ends it, as an empty property value is.
@@ -531,7 +531,7 @@ fn block_item_recovery_each_font_face_descriptor_value_failure_has_exact_scope()
 fn block_item_recovery_descriptor_annotation_and_block_end_retain_parent() {
     let unit = "font-display: swap !important";
     let source = format!("@font-face {{ font-family: Inter; src: url(i); {unit}}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("optional descriptor loss must retain font face");
     };
@@ -553,7 +553,7 @@ fn block_item_recovery_descriptor_annotation_and_block_end_retain_parent() {
 fn block_item_recovery_repeated_descriptor_failures_progress_to_required_siblings() {
     let source =
         "@font-face { one: fn(a;b); font-display: nope; two: x; font-family: Inter; src: url(i) }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("later required descriptors must retain font face");
     };

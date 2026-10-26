@@ -106,10 +106,9 @@ impl CssomBatch {
                 }
                 None => encode_input("", input_limits, &mut poll)?,
             };
-            let report = context.parse_declaration_block_contents_utf16_with_limits(
+            let report = CssParser::new(context, component_limits).parse_block_contents_utf16(
                 original,
                 input_limits,
-                component_limits,
                 poll,
             )?;
             this.prepare_attribute_report(id, report, budget)

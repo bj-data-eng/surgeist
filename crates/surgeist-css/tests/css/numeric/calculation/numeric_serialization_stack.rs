@@ -2,7 +2,7 @@
 //! including operator nodes between nested function components.
 use crate::css::support::isolated_stack;
 
-use surgeist_css::{CssCalculation, CssLengthPercentage, CssNumber, parse_component_values};
+use surgeist_css::{CssCalculation, CssComponentValues, CssLengthPercentage, CssNumber, CssParser};
 
 #[test]
 fn mixed_operator_calculations_serialize_at_the_supported_depth() {
@@ -11,7 +11,7 @@ fn mixed_operator_calculations_serialize_at_the_supported_depth() {
         || {
             let source = format!("{}1{}", "calc(1 + 2 * ".repeat(256), ")".repeat(256));
             let calculation = CssCalculation::<CssNumber>::try_from_components(
-                parse_component_values(&source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
                 Default::default(),
             )
             .unwrap();
@@ -34,7 +34,7 @@ fn mixed_operator_length_fragments_serialize_at_the_supported_depth() {
         || {
             let source = format!("{}1px{}", "calc(1px + 2 * ".repeat(256), ")".repeat(256));
             let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
-                parse_component_values(&source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
                 Default::default(),
             )
             .unwrap();

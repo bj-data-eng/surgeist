@@ -13,8 +13,7 @@ use surgeist_css::{
     CssCalculationValueRef, CssGridAutoRepeatKind, CssGridAutoTrackComponent,
     CssGridGeneralTrackComponent, CssGridLineNames, CssGridTrackList, CssGridTrackRepeatComponent,
     CssGridTrackSize, CssImportance, CssKnownProperty, CssKnownPropertyValueRef,
-    CssLengthPercentage, CssNonNegative, CssNumeric, parse_style_attribute,
-    validate_style_attribute,
+    CssLengthPercentage, CssNonNegative, CssNumeric, CssParser,
 };
 
 #[derive(Clone, Copy)]
@@ -90,7 +89,7 @@ fn auto_fit_repeat_preserves_trailing_line_names_after_a_typed_calculation() {
 
 fn assert_repeat(authored: &str, mode: RepeatMode, case: ContentCase) {
     let source = format!("GRID-TEMPLATE-COLUMNS:  {authored} !IMPORTANT; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration, sibling] = report.syntax().as_slice() else {
         panic!("{source}: the Grid declaration and following color must both remain");
@@ -160,7 +159,13 @@ fn assert_repeat(authored: &str, mode: RepeatMode, case: ContentCase) {
         panic!("{source}: expected the unchanged color sibling");
     };
     assert_eq!(color.as_css(), "red");
-    assert!(validate_style_attribute(&source).is_ok(), "{source}");
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_ok(),
+        "{source}"
+    );
 }
 
 fn ordered_repeat_content(

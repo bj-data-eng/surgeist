@@ -244,38 +244,6 @@ impl CssCondition<CssWhenLeaf> {
         context.append(output, value.as_css())
     }
 }
-/// Checks condition text without evaluating its supported or opaque tests.
-pub fn parse_when_condition(
-    source: &str,
-) -> Result<CssCondition<CssWhenLeaf>, CssConditionConstructionError> {
-    parse_when_condition_with_limits(source, CssComponentValueLimits::default())
-}
-pub fn parse_when_condition_with_limits(
-    source: &str,
-    limits: CssComponentValueLimits,
-) -> Result<CssCondition<CssWhenLeaf>, CssConditionConstructionError> {
-    CssParserContext::default().parse_when_condition_with_limits(source, limits)
-}
-impl CssParserContext {
-    pub fn parse_when_condition(
-        self,
-        source: &str,
-    ) -> Result<CssCondition<CssWhenLeaf>, CssConditionConstructionError> {
-        self.parse_when_condition_with_limits(source, CssComponentValueLimits::default())
-    }
-    pub fn parse_when_condition_with_limits(
-        self,
-        source: &str,
-        limits: CssComponentValueLimits,
-    ) -> Result<CssCondition<CssWhenLeaf>, CssConditionConstructionError> {
-        CssCondition::<CssWhenLeaf>::try_in_context(
-            parse_component_values_with_limits(source, limits)?,
-            limits,
-            self,
-        )
-    }
-}
-
 macro_rules! conditional_rule {
     ($name:ident, $condition:ty, $borrowed:ty, $get:ident) => {
         /// A checked authored conditional group fragment. Complete enclosing assembly
@@ -362,3 +330,23 @@ conditional_rule!(
     Option<&CssCondition<CssWhenLeaf>>,
     as_ref
 );
+impl CssCondition<CssWhenLeaf> {
+    /// Checks condition text without evaluating its supported or opaque tests.
+    ///
+    /// The parser supplies the document mode and the component limits.
+    ///
+    /// # Errors
+    ///
+    /// Returns the typed construction failure of the first test the grammar rejects.
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> Result<Self, CssConditionConstructionError> {
+        let limits = parser.component_limits();
+        Self::try_in_context(
+            crate::component_values::parse_component_values_with_limits(source.as_ref(), limits)?,
+            limits,
+            parser.context(),
+        )
+    }
+}

@@ -7,9 +7,15 @@ use surgeist_css::*;
 
 fn complete(property: CssKnownProperty, value: &str, expected_entries: usize) {
     let css = format!("{}:{value}!important", property.canonical_name());
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&css).is_ok(), "{css}");
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .is_ok(),
+        "{css}"
+    );
     let [declaration] = report.syntax().as_slice() else {
         panic!("one retained ordinary declaration")
     };

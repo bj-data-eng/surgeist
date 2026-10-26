@@ -433,14 +433,17 @@ fn all_selected_longhands_keep_exact_intrinsic_initial_and_noninheritance() {
 fn reusable_pending_handle_selects_replacement_mode_and_retains_both_origins() {
     for family in &FAMILIES {
         let source = declaration(family.name, "var(--edges)");
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending shorthand")
         };
         assert!(handle.source().same_occurrence(&source));
         for logical in [true, false, true] {
             for arity in 1..=4 {
-                let replacement =
-                    parse_component_values(&authored(family, logical, arity)).unwrap();
+                let replacement = CssComponentValues::parse(
+                    &CssParser::default(),
+                    authored(family, logical, arity),
+                )
+                .unwrap();
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
                 else {
@@ -465,7 +468,7 @@ fn reusable_pending_handle_selects_replacement_mode_and_retains_both_origins() {
             ("revert", CssGlobalKeyword::Revert),
             ("revert-layer", CssGlobalKeyword::RevertLayer),
         ] {
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("global replacement terminals")
@@ -487,7 +490,7 @@ fn reusable_pending_handle_selects_replacement_mode_and_retains_both_origins() {
 fn invalid_and_residual_reentry_are_atomic_and_keep_pending_source_usable() {
     for family in &FAMILIES {
         let source = declaration(family.name, "var(--edges)");
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending shorthand")
         };
         for invalid in [
@@ -498,7 +501,7 @@ fn invalid_and_residual_reentry_are_atomic_and_keep_pending_source_usable() {
         ] {
             assert!(
                 handle
-                    .reenter(parse_component_values(invalid).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                     .unwrap_err()
                     .replacement_error()
                     .is_some()
@@ -506,7 +509,7 @@ fn invalid_and_residual_reentry_are_atomic_and_keep_pending_source_usable() {
         }
         assert!(
             handle
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
@@ -533,18 +536,24 @@ fn parser_drops_invalid_quad_atomically_between_valid_neighbors() {
         ];
         for invalid in invalids {
             let text = format!("color:red;{}:{invalid};color:blue", family.name);
-            let report = parse_style_attribute(&text);
+            let report = CssParser::default().parse_block_contents(&text);
             let [diagnostic] = report.diagnostics() else {
                 panic!("one invalid declaration: {text}")
             };
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
             assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
             assert_eq!(report.syntax().len(), 2);
-            assert!(validate_style_attribute(&text).is_err());
             assert!(
-                parse_property_value_for_grammar(
-                    grammar(family.name),
-                    parse_component_values(&invalid).unwrap(),
+                CssParser::default()
+                    .parse_block_contents(&text)
+                    .into_validation_result()
+                    .is_err()
+            );
+            assert!(
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(grammar(family.name)),
+                    CssComponentValues::parse(&CssParser::default(), &invalid).unwrap(),
                     CssImportance::Normal
                 )
                 .is_err()
@@ -585,14 +594,13 @@ fn normalization_preserves_mode_interleaving_importance_sources_and_cumulative_l
             family.tokens[1],
             family.name
         );
-        let report = parse_sheet(&text);
+        let report = CssParser::default().parse_sheet(&text);
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
         let preserved = report.syntax().clone();
-        let normalized = normalize_sheet_with_limits(
-            report.syntax(),
-            CssNormalizationLimits::try_new(1, 1, 5, 11).unwrap(),
-        )
-        .unwrap();
+        let normalized = report
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(1, 1, 5, 11).unwrap())
+            .unwrap();
         let declarations = normalized
             .items()
             .iter()
@@ -644,12 +652,13 @@ fn normalization_preserves_mode_interleaving_importance_sources_and_cumulative_l
             (5, 10, CssNormalizationResource::Contributions, 10, 4),
             (4, 11, CssNormalizationResource::Declarations, 4, 4),
         ] {
-            let error = normalize_sheet_with_limits(
-                report.syntax(),
-                CssNormalizationLimits::try_new(1, 1, declarations_limit, contributions_limit)
-                    .unwrap(),
-            )
-            .unwrap_err();
+            let error = report
+                .syntax()
+                .normalize(
+                    CssNormalizationLimits::try_new(1, 1, declarations_limit, contributions_limit)
+                        .unwrap(),
+                )
+                .unwrap_err();
             assert_eq!(error.exhausted_limit(), Some((resource, limit)));
             assert_eq!(error.declaration_order(), Some(order));
             assert!(

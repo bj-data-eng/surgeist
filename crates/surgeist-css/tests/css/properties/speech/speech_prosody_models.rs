@@ -43,7 +43,7 @@ fn nonnegative_percentage(text: &str) -> CssNumeric<CssPercentage, CssNonNegativ
 }
 fn calculation(text: &str) -> CssCalculation<CssFrequencyPercentage> {
     CssCalculation::<CssFrequencyPercentage>::try_from_components(
-        parse_component_values(text).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         Default::default(),
     )
     .unwrap()
@@ -86,7 +86,7 @@ fn duration_checked_construction_distinguishes_auto_nonnegative_time_and_retaine
     }
     let time = CssNumeric::<CssTime>::try_from_calculation(
         CssCalculation::<CssTime>::try_from_components(
-            parse_component_values("calc(-1s)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(-1s)").unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -208,7 +208,12 @@ fn ordinary_absolute_frequency_fails_closed_when_shared_precision_rounds_to_zero
             let value = CssVoicePitchRange::try_absolute(frequency(text, unit)).unwrap();
             let css = value.serialize_specified(Default::default()).unwrap();
             assert_eq!(css, format!("0.000001{suffix} absolute"));
-            assert!(validate_style_attribute(&format!("voice-pitch:{css}")).is_ok());
+            assert!(
+                CssParser::default()
+                    .parse_block_contents(format!("voice-pitch:{css}"))
+                    .into_validation_result()
+                    .is_ok()
+            );
         }
     }
 }
@@ -269,7 +274,7 @@ fn absolute_frequency_calculations_defer_range_checks_and_reject_ordinary_root_c
     for text in ["calc(-20Hz)", "calc(0Hz)"] {
         let frequency = CssNumeric::<CssFrequency>::try_from_calculation(
             CssCalculation::<CssFrequency>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -278,7 +283,12 @@ fn absolute_frequency_calculations_defer_range_checks_and_reject_ordinary_root_c
         let value = CssVoicePitchRange::try_absolute(frequency).unwrap();
         assert!(value.absolute_frequency().unwrap().calculation().is_some());
         let output = value.serialize_specified(Default::default()).unwrap();
-        assert!(validate_style_attribute(&format!("voice-pitch:{output}")).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("voice-pitch:{output}"))
+                .into_validation_result()
+                .is_ok()
+        );
     }
     let ordinary = CssNumeric::<CssFrequency>::try_from_calculation(
         CssCalculation::<CssFrequency>::try_literal("0", CssFrequencyUnit::Hertz).unwrap(),
@@ -374,7 +384,7 @@ fn semitone_terminal_keeps_exact_signed_coefficients_and_rejects_other_units_and
             format!("low {output}")
         );
     }
-    let escaped = parse_component_values(r"-3.5S\54").unwrap();
+    let escaped = CssComponentValues::parse(&CssParser::default(), r"-3.5S\54").unwrap();
     let value = CssSemitoneLiteral::try_from_component(escaped.items()[0].clone()).unwrap();
     assert_eq!(value.component(), &escaped.items()[0]);
     assert_eq!(
@@ -382,7 +392,7 @@ fn semitone_terminal_keeps_exact_signed_coefficients_and_rejects_other_units_and
         "-3.5st"
     );
     for text in ["2Hz", "2s", "2deg", "2%", "2", "calc(2st)"] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         assert!(
             CssSemitoneLiteral::try_from_component(components.items()[0].clone())
                 .unwrap_err()
@@ -436,7 +446,7 @@ fn frequency_percentage_root_reuses_shared_hint_algebra_and_excludes_other_dimen
     ] {
         assert!(
             CssCalculation::<CssFrequencyPercentage>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default()
             )
             .is_err(),
@@ -445,7 +455,7 @@ fn frequency_percentage_root_reuses_shared_hint_algebra_and_excludes_other_dimen
     }
     assert!(
         CssCalculation::<CssFrequency>::try_from_components(
-            parse_component_values("calc(10Hz + 25%)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(10Hz + 25%)").unwrap(),
             Default::default()
         )
         .is_err()
@@ -472,7 +482,12 @@ fn mixed_offsets_preserve_unresolved_frequency_basis_during_shared_specified_pro
             format!("high {output}")
         );
         let before = value.clone();
-        assert!(validate_style_attribute(&format!("voice-range:high {output}")).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("voice-range:high {output}"))
+                .into_validation_result()
+                .is_ok()
+        );
         assert_eq!(value, before);
     }
     let ordinary = CssVoiceOffset::try_from_calculation(calculation("25%")).unwrap();
@@ -597,7 +612,7 @@ fn checked_composition_rejects_original_recovered_numeric_children() {
         ("voice-range", "high calc(25%"),
         ("voice-rate", "fast calc(-1%"),
     ] {
-        let report = parse_style_attribute(&format!("{name}:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("{name}:{text}"));
         assert!(!report.is_clean());
         let source = &report.syntax()[0];
         let error = match source.known().unwrap().property_value().unwrap() {

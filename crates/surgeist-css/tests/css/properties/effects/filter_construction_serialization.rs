@@ -7,7 +7,9 @@
 use crate::css::support::normal_declaration;
 use crate::css::support::property_admission::assert_reentry_rejected;
 use crate::css::support::serialization_limits::assert_limits_with_zero as budget;
-use surgeist_css::{CssSerializationLimits as L, *};
+use surgeist_css::{
+    CssComponentValue, CssComponentValues, CssParser, CssSerializationLimits as L, *,
+};
 
 fn filter(property: CssKnownProperty, css: &str) -> CssFilter {
     let source = normal_declaration(property.canonical_name(), css);
@@ -47,7 +49,7 @@ fn angle_math(css: &str) -> CssAngleOrZero {
     CssAngleOrZero::Angle(
         CssNumeric::<CssAngle>::try_from_calculation(
             CssCalculation::<CssAngle>::try_from_components(
-                parse_component_values(css).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), css).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -479,7 +481,7 @@ fn borrowed_filter_terminals_and_all_reset_keep_schema_identity() {
         ));
         let source = normal_declaration(property.canonical_name(), "hue-rotate()");
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("terminal")
         };
@@ -505,7 +507,7 @@ fn borrowed_filter_terminals_and_all_reset_keep_schema_identity() {
         assert!(!all.excludes(CssPropertyNameRef::Known(property)));
         let source = normal_declaration(CssKnownProperty::All.canonical_name(), "unset");
         let CssExpansion::Contributions(CssContributions::UniversalReset(all)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("all reset")
         };
@@ -517,11 +519,12 @@ fn borrowed_filter_terminals_and_all_reset_keep_schema_identity() {
 fn repeated_pending_reentry_preserves_replacement_child_origins_after_failure() {
     for property in [CssKnownProperty::Filter, CssKnownProperty::BackdropFilter] {
         let source = normal_declaration(property.canonical_name(), "var(--effect)!important");
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending")
         };
         assert_reentry_rejected(
-            pending.reenter(parse_component_values("blur(-1px)").unwrap()),
+            pending
+                .reenter(CssComponentValues::parse(&CssParser::default(), "blur(-1px)").unwrap()),
             property,
             Some("-1px"),
         );
@@ -529,7 +532,7 @@ fn repeated_pending_reentry_preserves_replacement_child_origins_after_failure() 
             "blur(2em) hue-rotate(calc(30deg + 60deg))",
             "blur(3px) hue-rotate()",
         ] {
-            let replacement = parse_component_values(css).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), css).unwrap();
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
             else {
                 panic!("longhands")

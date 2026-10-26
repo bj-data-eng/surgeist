@@ -8,7 +8,10 @@ fn number(text: &str, programmatic: bool) -> CssColorComponent {
     let component = if programmatic {
         CssComponentValue::try_number(text).unwrap()
     } else {
-        parse_component_values(text).unwrap().items()[0].clone()
+        CssComponentValues::parse(&CssParser::default(), text)
+            .unwrap()
+            .items()[0]
+            .clone()
     };
     let literal = CssColorNumberLiteral::try_from_component(component.clone()).unwrap();
     assert_eq!(literal.numeric().representation(), text);
@@ -18,18 +21,20 @@ fn number(text: &str, programmatic: bool) -> CssColorComponent {
 fn percentage(text: &str) -> CssColorComponent {
     CssColorComponent::Percentage(
         CssColorPercentageLiteral::try_from_component(
-            parse_component_values(text).unwrap().items()[0].clone(),
+            CssComponentValues::parse(&CssParser::default(), text)
+                .unwrap()
+                .items()[0]
+                .clone(),
         )
         .unwrap(),
     )
 }
 fn calculation(depth: usize, percent: bool) -> CssColorComponent {
     let scalar = if percent { "50%" } else { "0.5" };
-    let raw = parse_component_values(&format!(
-        "{}{scalar}{}",
-        "calc(".repeat(depth),
-        ")".repeat(depth)
-    ))
+    let raw = CssComponentValues::parse(
+        &CssParser::default(),
+        format!("{}{scalar}{}", "calc(".repeat(depth), ")".repeat(depth)),
+    )
     .unwrap();
     assert_eq!(raw.nesting_depth() as usize, depth);
     if percent {
@@ -244,7 +249,7 @@ fn each_numeric_channel_and_alpha_obeys_255_child_plus_one_function_depth() {
         );
         let channels = ["r", "g", "b"].map(|channel| {
             CssRelativeColorExpression::try_from_components(
-                parse_component_values(channel).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), channel).unwrap(),
                 CssRelativeColorEnvironment::Rgb,
                 CssRelativeColorResultDomain::NumberPercentage,
                 Default::default(),
@@ -285,7 +290,7 @@ fn each_numeric_channel_and_alpha_obeys_255_child_plus_one_function_depth() {
 #[test]
 fn parser_payload_keeps_typed_literals_calculations_and_sources() {
     let text = "color:device-cmyk(-.2 140% calc(1 / 2) calc(50%) / calc(25%))";
-    let report = parse_style_attribute(text);
+    let report = CssParser::default().parse_block_contents(text);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let payload = declaration_color(&report.syntax()[0])
         .device_cmyk_value()

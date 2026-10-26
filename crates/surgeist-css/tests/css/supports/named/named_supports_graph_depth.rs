@@ -1,8 +1,8 @@
 //! #644's new graph-depth contract counts every actual native child edge.
 use surgeist_css::{
     CssGroupPreludeRef, CssKeyframeRuleView, CssMarginBox, CssMarginRuleView, CssNamespaceContext,
-    CssPageRuleView, CssRule, CssRuleGraphInput as Input, CssRuleSerializationLimits,
-    CssSpecifiedDeclarationBlock as Block, CssStyleAncestor, parse_sheet,
+    CssPageRuleView, CssParser, CssRule, CssRuleGraphInput as Input, CssRuleSerializationLimits,
+    CssSpecifiedDeclarationBlock as Block, CssStyleAncestor,
 };
 
 fn format(
@@ -45,7 +45,7 @@ fn serializes_within_default_limits(input: Input<'_>, expected: &str) {
 
 #[test]
 fn parsed_ordinary_graph_counts_child_edges_and_keeps_root_zero() {
-    let report = parse_sheet("@media all { a {} }");
+    let report = CssParser::default().parse_sheet("@media all { a {} }");
     assert!(report.is_clean());
     let input = Input::from_rule(&report.syntax().rules()[0]);
     let expected = "@media all {\n  a { }\n}";
@@ -63,7 +63,7 @@ fn parsed_ordinary_graph_counts_child_edges_and_keeps_root_zero() {
 
 #[test]
 fn mixed_edited_parent_and_parsed_child_share_the_actual_depth() {
-    let report = parse_sheet("@media all { a {} }");
+    let report = CssParser::default().parse_sheet("@media all { a {} }");
     assert!(report.is_clean());
     let CssRule::Media(media) = &report.syntax().rules()[0] else {
         panic!()
@@ -80,7 +80,7 @@ fn mixed_edited_parent_and_parsed_child_share_the_actual_depth() {
 
 #[test]
 fn parsed_scoped_graph_counts_the_same_child_edges() {
-    let report = parse_sheet("@scope { @media all { a {} } }");
+    let report = CssParser::default().parse_sheet("@scope { @media all { a {} } }");
     assert!(report.is_clean(), "{report:?}");
     let CssRule::Scope(scope) = &report.syntax().rules()[0] else {
         panic!()
@@ -94,13 +94,13 @@ fn parsed_scoped_graph_counts_the_same_child_edges() {
 
 #[test]
 fn parsed_page_margin_is_a_native_child_edge() {
-    let empty = parse_sheet("@page {}");
+    let empty = CssParser::default().parse_sheet("@page {}");
     assert!(empty.is_clean());
     assert_eq!(
         format(Input::from_rule(&empty.syntax().rules()[0]), 0).unwrap(),
         "@page { }"
     );
-    let report = parse_sheet("@page { @top-left {} }");
+    let report = CssParser::default().parse_sheet("@page { @top-left {} }");
     assert!(report.is_clean());
     let input = Input::from_rule(&report.syntax().rules()[0]);
     let expected = "@page { @top-left { } }";
@@ -111,7 +111,7 @@ fn parsed_page_margin_is_a_native_child_edge() {
 
 #[test]
 fn selected_page_margin_is_a_native_child_edge() {
-    let report = parse_sheet("@page {}");
+    let report = CssParser::default().parse_sheet("@page {}");
     assert!(report.is_clean());
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!()
@@ -131,13 +131,13 @@ fn selected_page_margin_is_a_native_child_edge() {
 
 #[test]
 fn parsed_keyframe_block_is_a_native_child_edge() {
-    let empty = parse_sheet("@keyframes k {}");
+    let empty = CssParser::default().parse_sheet("@keyframes k {}");
     assert!(empty.is_clean());
     assert_eq!(
         format(Input::from_rule(&empty.syntax().rules()[0]), 0).unwrap(),
         "@keyframes k { \n}"
     );
-    let report = parse_sheet("@keyframes k { from {} }");
+    let report = CssParser::default().parse_sheet("@keyframes k { from {} }");
     assert!(report.is_clean());
     let input = Input::from_rule(&report.syntax().rules()[0]);
     let expected = "@keyframes k {   0% { }\n}";
@@ -148,7 +148,7 @@ fn parsed_keyframe_block_is_a_native_child_edge() {
 
 #[test]
 fn selected_keyframe_block_is_a_native_child_edge() {
-    let report = parse_sheet("@keyframes k { from {} }");
+    let report = CssParser::default().parse_sheet("@keyframes k { from {} }");
     assert!(report.is_clean());
     let CssRule::Keyframes(frames) = &report.syntax().rules()[0] else {
         panic!()
@@ -164,7 +164,8 @@ fn selected_keyframe_block_is_a_native_child_edge() {
 
 #[test]
 fn rendering_ancestors_reduce_the_native_child_allowance_without_resets() {
-    let report = parse_sheet("@media all { @page { @top-left {} } @keyframes k { from {} } }");
+    let report = CssParser::default()
+        .parse_sheet("@media all { @page { @top-left {} } @keyframes k { from {} } }");
     assert!(report.is_clean(), "{report:?}");
     let CssRule::Media(media) = &report.syntax().rules()[0] else {
         panic!()

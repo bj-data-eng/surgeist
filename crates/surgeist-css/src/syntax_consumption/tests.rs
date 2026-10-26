@@ -47,36 +47,6 @@ fn candidate_cursor_eof_is_the_excluded_semicolon_without_recharging_input() {
 }
 
 #[test]
-fn raw_declaration_candidates_keep_at_blocks_and_invalid_prefixes_as_whole_units() {
-    let document = source("@future f(a;b) { x:yes }; } lost:yes; kept:yes");
-    let items = consume_declaration_list(&mut document.cursor(document.root));
-    let [
-        GenericDeclarationListItem::At(at),
-        GenericDeclarationListItem::Declaration {
-            parsed: Err(_),
-            range,
-        },
-        GenericDeclarationListItem::Declaration {
-            parsed: Ok(kept), ..
-        },
-    ] = items.as_slice()
-    else {
-        panic!("three complete units");
-    };
-    assert!(at.block.is_some());
-    assert_eq!(
-        document.nodes[document.lists[range.list][range.start]]
-            .token()
-            .kind(),
-        TokenKind::Closing(CssBlockKind::CurlyBracket)
-    );
-    assert_eq!(
-        document.nodes[kept.name].token().kind(),
-        TokenKind::Ident("kept")
-    );
-}
-
-#[test]
 fn admitted_node_promotion_preserves_provider_payloads_and_implicit_group_owner() {
     let document = source("-0 #id #123 f(/*c*/A");
     let values = crate::component_values::promote_nodes(
@@ -85,7 +55,7 @@ fn admitted_node_promotion_preserves_provider_payloads_and_implicit_group_owner(
         crate::CssComponentValueLimits::default(),
     )
     .unwrap();
-    let expected = crate::parse_component_values("-0 #id #123 f(/*c*/A").unwrap();
+    let expected = crate::component_values::parse_component_values("-0 #id #123 f(/*c*/A").unwrap();
     assert_eq!(values, expected);
     let original = &document.source.as_ref().unwrap().original;
     let CssValueOrigin::ImplicitClosure { opening, at } = values.first_implicit_origin().unwrap()
@@ -322,8 +292,8 @@ fn block_contents_discard_semicolons_and_stop_qualified_rules_at_them() {
 
 #[test]
 fn grouped_inputs_preserve_structure_and_mixed_snapshot_identity() {
-    let first = crate::parse_component_values("A").unwrap();
-    let second = crate::parse_component_values("B").unwrap();
+    let first = crate::component_values::parse_component_values("A").unwrap();
+    let second = crate::component_values::parse_component_values("B").unwrap();
     let values = [
         first.items()[0].clone(),
         second.items()[0].clone(),

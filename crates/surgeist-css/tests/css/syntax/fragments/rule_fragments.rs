@@ -1,11 +1,15 @@
 //! Syntax 3 exact-one admission, with CSS-owned typed grammar and inner recovery.
 use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssRecoveryAction,
-    CssRule, CssSelector, CssStyleSelector, parse_rule,
+    CssErrorCode, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssParser,
+    CssRecoveryAction, CssRule, CssSelector, CssStyleSelector,
 };
 
 fn parse(source: &str) -> surgeist_css::CssParseReport<Option<CssRule>> {
-    parse_rule(source, &CssNamespaceContext::default())
+    CssRule::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    )
 }
 
 fn reject(source: &str) {
@@ -151,7 +155,7 @@ fn namespaces_and_unicode_positions_come_from_the_supplied_context_and_source() 
         CssNamespaceName::new("urn:svg"),
     )]);
     let source = "/*😀*/\r\nsvg|leaf&{color:red}";
-    let report = parse_rule(source, &context);
+    let report = CssRule::parse(&CssParser::default(), source, &context);
     assert!(report.is_clean(), "{report:?}");
     let Some(CssRule::Style(rule)) = report.syntax() else {
         panic!("style")
@@ -189,7 +193,11 @@ fn namespaces_and_unicode_positions_come_from_the_supplied_context_and_source() 
         diagnostic.error().position().byte_offset().value(),
         source.find("svg|leaf").unwrap()
     );
-    let namespace = parse_rule("@namespace svg 'urn:replacement';", &context);
+    let namespace = CssRule::parse(
+        &CssParser::default(),
+        "@namespace svg 'urn:replacement';",
+        &context,
+    );
     assert!(namespace.is_clean());
     assert_eq!(
         context.named_namespace(&prefix).unwrap().as_str(),

@@ -8,17 +8,20 @@ use surgeist_css::{
     CssColorProfileDescriptorValue as Value, CssColorProfileDescriptorValueRef as View,
     CssColorProfileName, CssColorProfileRenderingIntent as Intent, CssColorProfileRule,
     CssColorProfileRuleName as Name, CssComponentValue, CssComponentValueLimits,
-    CssComponentValueRef, CssComponentValues, CssErrorCode, CssNormalizedItem, CssRecoveryAction,
-    CssRule, CssRuleContextKindRef, CssSerializationLimits as EmitLimits, CssSerializedOrigin,
-    CssSupportStatus, CssUrlFunction, CssValueOrigin, CssValueTokenRef, feature_metadata,
-    normalize_report, parse_color_profile_descriptor_value as fragment, parse_component_values,
-    parse_sheet, validate_sheet,
+    CssComponentValueRef, CssComponentValues, CssErrorCode, CssNormalizedItem, CssParser,
+    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSerializationLimits as EmitLimits,
+    CssSerializedOrigin, CssSupportStatus, CssUrlFunction, CssValueOrigin, CssValueTokenRef,
+    feature_metadata,
 };
+
+fn fragment(source: &str, kind: Kind) -> surgeist_css::CssParseReport<Option<Value>> {
+    Value::parse(&CssParser::default(), source, kind)
+}
 
 fn value(kind: Kind, source: &str) -> Value {
     Value::try_new(
         kind,
-        parse_component_values(source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         Default::default(),
     )
     .unwrap()
@@ -42,7 +45,7 @@ fn typed_name_default_and_absence_are_independent_of_authored_occurrences() {
             assert!(rule.effective(kind).is_none());
         }
     }
-    let parsed = parse_sheet(
+    let parsed = CssParser::default().parse_sheet(
         r"@color-profile --Case {} @color-profile --case {} @color-profile d\65 vice-cmyk {}",
     );
     assert!(parsed.is_clean());
@@ -142,7 +145,7 @@ fn ordinary_components_exclude_only_none_and_keep_order_and_duplicates() {
         assert!(
             Value::try_new(
                 Kind::Components,
-                parse_component_values(invalid).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), invalid).unwrap(),
                 Default::default()
             )
             .unwrap_err()
@@ -154,9 +157,7 @@ fn ordinary_components_exclude_only_none_and_keep_order_and_duplicates() {
 
 #[test]
 fn effective_lookup_retains_last_pending_occurrence_without_selecting_profiles() {
-    let report = parse_sheet(
-        "@color-profile --x { rendering-intent: perceptual; rendering-intent: env(intent); src: url(a); src: url(b); } @color-profile --x {}",
-    );
+    let report = CssParser::default().parse_sheet("@color-profile --x { rendering-intent: perceptual; rendering-intent: env(intent); src: url(a); src: url(b); } @color-profile --x {}");
     assert!(report.is_clean());
     let [CssRule::ColorProfile(first), CssRule::ColorProfile(second)] = report.syntax().rules()
     else {
@@ -215,7 +216,7 @@ fn environment_only_admission_defers_whole_grammar_without_a_var_veto() {
             expected.assert_first(&report);
             let error = Value::try_new(
                 kind,
-                parse_component_values(invalid).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), invalid).unwrap(),
                 Default::default(),
             )
             .unwrap_err();
@@ -234,7 +235,10 @@ fn url_strings_and_escaped_names_do_not_confuse_data_with_substitution() {
     }
     for source in [r"v\61 r(--x)", r"ENV(x)"] {
         let error = pending(Kind::Src)
-            .reparse_after_substitution(parse_component_values(source).unwrap(), Default::default())
+            .reparse_after_substitution(
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                Default::default(),
+            )
             .unwrap_err();
         assert!(error.is_residual_substitution(), "{error:?}");
     }
@@ -249,7 +253,7 @@ fn replacement_reentry_returns_ordinary_values_or_typed_errors_never_pending() {
     ] {
         let checked = pending(kind)
             .reparse_after_substitution(
-                parse_component_values(replacement).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), replacement).unwrap(),
                 Default::default(),
             )
             .unwrap();
@@ -264,7 +268,7 @@ fn replacement_reentry_returns_ordinary_values_or_typed_errors_never_pending() {
         assert!(
             checked
                 .reparse_after_substitution(
-                    parse_component_values(replacement).unwrap(),
+                    CssComponentValues::parse(&CssParser::default(), replacement).unwrap(),
                     Default::default()
                 )
                 .unwrap_err()
@@ -281,7 +285,7 @@ fn replacement_reentry_returns_ordinary_values_or_typed_errors_never_pending() {
     ] {
         let error = pending(Kind::RenderingIntent)
             .reparse_after_substitution(
-                parse_component_values(invalid).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), invalid).unwrap(),
                 Default::default(),
             )
             .unwrap_err();
@@ -346,7 +350,10 @@ fn strict_construction_and_reentry_reject_recovered_closures_with_original_origi
 
 #[test]
 fn mixed_components_and_replacement_errors_keep_original_token_identity() {
-    let mut items = parse_component_values("red,").unwrap().items().to_vec();
+    let mut items = CssComponentValues::parse(&CssParser::default(), "red,")
+        .unwrap()
+        .items()
+        .to_vec();
     items.push(CssComponentValue::try_ident("Green").unwrap());
     let components = CssComponentValues::try_new(items, Default::default()).unwrap();
     let checked = pending(Kind::Components)
@@ -361,7 +368,10 @@ fn mixed_components_and_replacement_errors_keep_original_token_identity() {
         checked.components().items()[2].origin(),
         CssValueOrigin::Programmatic
     ));
-    let mut invalid = parse_component_values("red,").unwrap().items().to_vec();
+    let mut invalid = CssComponentValues::parse(&CssParser::default(), "red,")
+        .unwrap()
+        .items()
+        .to_vec();
     invalid.push(CssComponentValue::try_token("1").unwrap());
     let error = Value::try_new(
         Kind::Components,
@@ -428,7 +438,7 @@ fn root_annotations_fail_before_environment_deferral() {
             let report = fragment(source, kind);
             assert!(report.syntax().is_none(), "{source}");
             rejected(token).assert_first(&report);
-            if let Ok(components) = parse_component_values(source) {
+            if let Ok(components) = CssComponentValues::parse(&CssParser::default(), source) {
                 let error = Value::try_new(kind, components, Default::default()).unwrap_err();
                 let Some(detail) = error.diagnostic() else {
                     panic!("{source}: grammar failure: {error:?}")
@@ -458,7 +468,7 @@ fn matched_root_blocks_remain_data_under_environment_whole_grammar_deferral() {
             value(Kind::RenderingIntent, source).view(),
             View::Pending(_)
         ));
-        let sheet = parse_sheet(&format!(
+        let sheet = CssParser::default().parse_sheet(format!(
             "@color-profile --x {{ rendering-intent: {source}; }} .after {{ color: red; }}"
         ));
         assert!(sheet.is_clean(), "{:?}", sheet.diagnostics());
@@ -480,8 +490,8 @@ fn matched_root_blocks_remain_data_under_environment_whole_grammar_deferral() {
 #[test]
 fn normalization_borrows_typed_profile_payload_and_keeps_descriptor_origins() {
     let source = "@media all { @color-profile --x { src: url(a); rendering-intent: perceptual; } }";
-    let report = parse_sheet(source);
-    let normalized = normalize_report(&report).unwrap();
+    let report = CssParser::default().parse_sheet(source);
+    let normalized = report.normalize(Default::default()).unwrap();
     let [
         CssNormalizedItem::Rule(parent),
         CssNormalizedItem::Rule(terminal),
@@ -528,7 +538,7 @@ fn normalization_borrows_typed_profile_payload_and_keeps_descriptor_origins() {
 
 #[test]
 fn descriptor_and_component_limits_are_checked_at_construction_and_emission() {
-    let components = parse_component_values("red, green").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "red, green").unwrap();
     let error = Value::try_new(
         Kind::Components,
         components.clone(),
@@ -589,7 +599,7 @@ fn descriptor_and_keyframe_bodies_reject_profile_children_without_losing_followi
             CssErrorCode::InvalidAtRulePlacement,
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let expected = ExpectedRejection::new(code).in_rule("color-profile");
         expected.assert_first(&report);
         expected.assert_sheet(source);
@@ -637,7 +647,9 @@ fn programmatic_profile_composes_checked_descriptors_and_generic_writer() {
         expected
     );
     assert_eq!(
-        validate_sheet(expected)
+        CssParser::default()
+            .parse_sheet(expected)
+            .into_validation_result()
             .unwrap()
             .serialize_specified(Default::default())
             .unwrap(),
@@ -648,7 +660,7 @@ fn programmatic_profile_composes_checked_descriptors_and_generic_writer() {
 #[test]
 fn descriptor_recovery_reports_actual_token_offsets_and_preserves_valid_neighbors() {
     let source = "@color-profile --x { src: url(a); components: none; rendering-intent: saturation; } .after { color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(!report.is_clean());
     assert_eq!(report.diagnostics().len(), 1);
     let diagnostic = &report.diagnostics()[0];
@@ -667,7 +679,7 @@ fn descriptor_recovery_reports_actual_token_offsets_and_preserves_valid_neighbor
     );
     assert!(profile.effective(Kind::Components).is_none());
     assert_eq!(
-        normalize_report(&report).unwrap().diagnostics(),
+        report.normalize(Default::default()).unwrap().diagnostics(),
         report.diagnostics()
     );
 }

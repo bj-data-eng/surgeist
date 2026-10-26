@@ -11,7 +11,7 @@ fn number(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
     if text.starts_with("calc(") {
         CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
             CssCalculation::<CssNumber>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -68,9 +68,10 @@ fn outset(texts: &[&str]) -> CssBorderImageOutset {
 }
 
 fn declaration(text: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::BorderImage),
-        parse_component_values(text).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BorderImage)),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         CssImportance::Normal,
     )
     .unwrap()
@@ -89,7 +90,7 @@ fn image(text: &str) -> CssBorderImage {
 fn expanded_texts(text: &str) -> Vec<String> {
     let declaration = declaration(text);
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&declaration).unwrap()
+        declaration.expand().unwrap()
     else {
         panic!("completed border-image longhands");
     };
@@ -399,7 +400,7 @@ fn canonical_math_compression_preserves_symbolic_roots_and_all_projection_costs(
         CssBorderImageWidthComponent::LengthPercentage(
             CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
                 CssCalculation::<CssLengthPercentage>::try_from_components(
-                    parse_component_values(text).unwrap(),
+                    CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                     Default::default(),
                 )
                 .unwrap(),

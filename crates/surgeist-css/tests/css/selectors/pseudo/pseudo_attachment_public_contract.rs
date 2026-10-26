@@ -132,7 +132,7 @@ fn originating_compound_and_implied_universal_do_not_absorb_pseudo_suffix_condit
         Some(CssNamespacePrefix::try_new("Svg").unwrap()),
         CssNamespaceName::new("urn:svg"),
     )]);
-    let report = parse_selector("Svg|*::-WebKit-X", &context);
+    let report = CssSelector::parse(&CssParser::default(), "Svg|*::-WebKit-X", &context);
     assert!(report.is_clean(), "{report:?}");
     let value = report.syntax().as_ref().unwrap();
     let name = compound(value).type_selector().unwrap();
@@ -276,7 +276,11 @@ fn generic_suffixes_are_admitted_and_part_permission_resets_after_unknown_segmen
     reject("::part(label)::-webkit-x:autofill");
     selector("::part(label)::-webkit-x:focus");
     let source = "::part(label)::-webkit-x:is(:autofill,:hover)";
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     let value = report.syntax().as_ref().unwrap();
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
@@ -382,7 +386,11 @@ fn strict_and_forgiving_contexts_preserve_pseudo_exclusion_and_original_function
     }
     for function in ["is", "where"] {
         let source = format!(":{function}(::-webkit-x,.Keep)");
-        let report = parse_selector(&source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         assert_eq!(
             report
                 .syntax()
@@ -400,9 +408,15 @@ fn strict_and_forgiving_contexts_preserve_pseudo_exclusion_and_original_function
     let list = ".Keep,::-webkit-jkl(),.Tail";
     assert_selector_report_rejected(
         list,
-        parse_selector_list(list, &CssNamespaceContext::default()),
+        CssParsedStyleSelectors::parse(
+            &CssParser::default(),
+            list,
+            &CssNamespaceContext::default(),
+            CssStyleSelectorContext::Ordinary,
+        ),
     );
-    let scope = parse_sheet("@scope(::-webkit-x){.lost{color:red}}.after{color:blue}");
+    let scope =
+        CssParser::default().parse_sheet("@scope(::-webkit-x){.lost{color:red}}.after{color:blue}");
     assert!(matches!(scope.syntax().rules(), [CssRule::Style(_)]));
     assert!(
         scope
@@ -412,10 +426,10 @@ fn strict_and_forgiving_contexts_preserve_pseudo_exclusion_and_original_function
     );
 
     let raw = "/*😀*/\r\n/*é*/::-WeBkIt-JkL(x)";
-    let fragment = parse_selector(raw, &CssNamespaceContext::default());
+    let fragment = CssSelector::parse(&CssParser::default(), raw, &CssNamespaceContext::default());
     let rejected = format!("{raw}{{}}");
     let sheet_source = format!("{rejected}.after{{color:red}}");
-    let sheet = parse_sheet(&sheet_source);
+    let sheet = CssParser::default().parse_sheet(&sheet_source);
     assert!(fragment.syntax().is_none());
     let [CssRule::Style(after)] = sheet.syntax().rules() else {
         panic!("later valid sibling survives")
@@ -471,10 +485,10 @@ fn strict_and_forgiving_contexts_preserve_pseudo_exclusion_and_original_function
 fn canonical_pseudos_survive_nested_scoped_normalization_and_original_supports_components() {
     let source = "/*😀*/.Parent:-WEBKIT-AUTOFILL{color:red;@supports selector(.probe::-WebKit-X){color:blue;& .child::-WebKit-Y:focus{color:green}}}@scope(.root){.scoped::-WebKit-Z:hover{color:black}}";
     let expected = ".Parent:autofill { color: red; @supports selector(.probe::-WebKit-X) { color: blue; & .child::-webkit-y:focus { color: green; } } }\n@scope (.root) { .scoped::-webkit-z:hover { color: black; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -599,7 +613,7 @@ fn canonical_pseudos_survive_nested_scoped_normalization_and_original_supports_c
         parent.selectors()[0].selector(),
         &selector(".Parent:autofill")
     );
-    let replay = parse_sheet(expected);
+    let replay = CssParser::default().parse_sheet(expected);
     assert!(replay.is_clean(), "{replay:?}");
     assert_eq!(
         replay
@@ -615,7 +629,7 @@ fn canonical_pseudos_survive_nested_scoped_normalization_and_original_supports_c
     // vendor pseudo-element that a supports evaluator must treat as unsupported.
     let supported = |source: &str| {
         let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             &CssNamespaceContext::default(),
             Default::default(),
         )
@@ -633,7 +647,7 @@ fn canonical_pseudos_survive_nested_scoped_normalization_and_original_supports_c
     assert_eq!(unknown(&vendor).as_str(), "-webkit-x");
     assert!(compound(&vendor).type_selector().is_none());
     let invalid = CssCondition::<CssSupportsLeaf>::try_from_components(
-        parse_component_values("selector(::-webkit-x())").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "selector(::-webkit-x())").unwrap(),
         &CssNamespaceContext::default(),
         Default::default(),
     )
@@ -675,13 +689,19 @@ fn canonical_escaping_and_list_byte_budget_are_cumulative_and_atomic_for_checked
         CssSelectorList::try_new(members, Default::default()).unwrap(),
         list
     );
-    let replay = parse_selector_list(expected, &CssNamespaceContext::default());
+    let replay = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        expected,
+        &CssNamespaceContext::default(),
+        CssStyleSelectorContext::Ordinary,
+    );
     assert!(replay.is_clean(), "{replay:?}");
     assert_eq!(
         replay
             .syntax()
             .as_ref()
             .unwrap()
+            .selectors()
             .selectors()
             .iter()
             .map(CssStyleSelector::selector)

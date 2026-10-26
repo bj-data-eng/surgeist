@@ -640,9 +640,12 @@ mod filter_image_writer_tests {
     use crate::{CssSerializationLimits as L, CssSpecifiedValueSerializationErrorKind as K};
 
     fn value(text: &str) -> CssFilterImage {
-        let source = crate::parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
-            crate::parse_component_values(text).unwrap(),
+        let source = crate::CssDeclaration::try_from_components(
+            &crate::CssParser::default(),
+            crate::CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::BackgroundImage,
+            )),
+            crate::component_values::parse_component_values(text).unwrap(),
             CssImportance::Normal,
         )
         .unwrap();

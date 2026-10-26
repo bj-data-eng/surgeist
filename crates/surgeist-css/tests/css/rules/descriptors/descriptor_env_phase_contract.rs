@@ -9,25 +9,23 @@ use crate::css::support::failure_classes::component_failure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::assert_origin_bytes as point;
 use surgeist_css::{
-    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssCounterStyleDescriptorKind as CounterKind,
+    CssBlockContext, CssBlockFragment, CssComponentValue, CssComponentValueLimits,
+    CssComponentValueRef, CssComponentValues, CssCounterStyleDescriptorKind as CounterKind,
     CssCounterStyleDescriptorRef as CounterOccurrence, CssCounterStyleDescriptorValue as Counter,
-    CssCounterStyleDescriptorValueRef as CounterView, CssCounterStyleValueError, CssCounterSymbol,
-    CssFontDisplay, CssFontFeatureDisplayOccurrence, CssFontFeatureDisplayValue as Display,
-    CssFontFeatureDisplayValueRef as DisplayView, CssFontFeatureValue as Feature,
-    CssFontFeatureValueBlock, CssFontFeatureValueDefinition,
-    CssFontFeatureValueKind as FeatureKind, CssFontFeatureValueName,
+    CssCounterStyleDescriptorValue, CssCounterStyleDescriptorValueRef as CounterView,
+    CssCounterStyleDescriptors, CssCounterStyleValueError, CssCounterSymbol, CssFontDisplay,
+    CssFontFeatureDisplayOccurrence, CssFontFeatureDisplayValue as Display,
+    CssFontFeatureDisplayValue, CssFontFeatureDisplayValueRef as DisplayView,
+    CssFontFeatureValue as Feature, CssFontFeatureValue, CssFontFeatureValueBlock,
+    CssFontFeatureValueDefinition, CssFontFeatureValueKind as FeatureKind, CssFontFeatureValueName,
     CssFontFeatureValueRef as FeatureView, CssFontFeatureValuesError,
-    CssFontFeatureValuesItem as Item, CssNormalizedItem, CssParsedOrigin, CssRule,
-    CssRuleContextKindRef, CssSerializationLimits as EmitLimits, CssSerializedOrigin,
-    CssValueOrigin, CssValueTokenRef, normalize_report, parse_component_values,
-    parse_counter_style_block, parse_counter_style_descriptor_value,
-    parse_font_feature_display_value, parse_font_feature_value, parse_font_feature_values_block,
-    parse_sheet,
+    CssFontFeatureValuesItem as Item, CssFontFeatureValuesItem, CssNormalizedItem, CssParsedOrigin,
+    CssParser, CssRule, CssRuleContextKindRef, CssSerializationLimits as EmitLimits,
+    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
 };
 
 fn components(source: &str) -> CssComponentValues {
-    parse_component_values(source).unwrap()
+    CssComponentValues::parse(&CssParser::default(), source).unwrap()
 }
 fn counter(kind: CounterKind, source: &str) -> Counter {
     Counter::try_from_components(kind, components(source), Default::default()).unwrap()
@@ -235,17 +233,18 @@ fn raw_windows_are_optional_whole_values_and_function_origins_are_delimiters() {
         assert!(origin.source().same_snapshot(opening.source()));
         assert!(origin.source().same_snapshot(closing.source()));
     }
-    let raw = parse_counter_style_descriptor_value("env(x)", CounterKind::Prefix);
+    let raw =
+        CssCounterStyleDescriptorValue::parse(&CssParser::default(), "env(x)", CounterKind::Prefix);
     assert!(raw.is_clean());
     let value = raw.syntax().as_ref().unwrap();
     assert!(matches!(value.view(), CounterView::Pending(_)));
     check(value.origin().unwrap(), value.components());
-    let raw = parse_font_feature_display_value("env(x)");
+    let raw = CssFontFeatureDisplayValue::parse(&CssParser::default(), "env(x)");
     assert!(raw.is_clean());
     let value = raw.syntax().as_ref().unwrap();
     assert!(matches!(value.view(), DisplayView::Pending(_)));
     check(value.origin().unwrap(), value.components());
-    let raw = parse_font_feature_value("env(x)", FeatureKind::Styleset);
+    let raw = CssFontFeatureValue::parse(&CssParser::default(), "env(x)", FeatureKind::Styleset);
     assert!(raw.is_clean());
     let value = raw.syntax().as_ref().unwrap();
     assert!(matches!(value.view(), FeatureView::Pending(_)));
@@ -689,7 +688,8 @@ fn grammar_errors_keep_parsed_or_programmatic_responsible_tokens_and_empty_has_n
 
 #[test]
 fn invalid_or_empty_replacements_and_cardinality_fail_without_consuming_the_pending_phase() {
-    let raw = parse_counter_style_descriptor_value("env(x)", CounterKind::Prefix);
+    let raw =
+        CssCounterStyleDescriptorValue::parse(&CssParser::default(), "env(x)", CounterKind::Prefix);
     let a = raw.syntax().as_ref().unwrap();
     let before = a.clone();
     for source in ["", "1", "\"x\" \"y\""] {
@@ -785,7 +785,11 @@ fn definitions_and_display_occurrences_use_checked_values_without_manufactured_n
 #[test]
 fn parsed_body_values_keep_actual_name_windows_and_later_pending_effective_occurrences() {
     let source = "{prefix:\"a\";prefix:env(x);suffix:\"b\"}";
-    let report = parse_counter_style_block(source);
+    let report = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     assert!(report.is_clean(), "{report:?}");
     let descriptors = report.syntax().as_ref().unwrap().body();
     let occurrences = descriptors.occurrences().collect::<Vec<_>>();
@@ -819,7 +823,11 @@ fn parsed_body_values_keep_actual_name_windows_and_later_pending_effective_occur
             .same_snapshot(last.value().origin().unwrap().source())
     );
     let source = "{font-display:env(x);@styleset{Pick:env(y)}}";
-    let report = parse_font_feature_values_block(source);
+    let report = CssBlockFragment::<Vec<CssFontFeatureValuesItem>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     assert!(report.is_clean(), "{report:?}");
     let [Item::FontDisplay(display), Item::Block(block)] =
         report.syntax().as_ref().unwrap().body().as_slice()
@@ -840,11 +848,19 @@ fn parsed_body_values_keep_actual_name_windows_and_later_pending_effective_occur
 
 #[test]
 fn pending_system_does_not_invent_algorithm_and_extends_conflict_stays_authored() {
-    let accepted = parse_counter_style_block("{system:env(x);symbols:a b}");
+    let accepted = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        "{system:env(x);symbols:a b}",
+        &CssBlockContext::default(),
+    );
     assert!(accepted.is_clean(), "{accepted:?}");
     let system = accepted.syntax().as_ref().unwrap().body().system().unwrap();
     assert!(matches!(system.value().view(), CounterView::Pending(_)));
-    let conflict = parse_counter_style_block("{system:extends decimal;symbols:env(x)}");
+    let conflict = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        "{system:extends decimal;symbols:env(x)}",
+        &CssBlockContext::default(),
+    );
     assert!(conflict.is_clean());
     assert_eq!(
         conflict
@@ -918,7 +934,7 @@ fn suppressed_pending_occurrences_consume_complete_work_even_when_only_later_val
             EmitFailure::ProjectionNodeLimit,
         ),
     ] {
-        let simple = parse_sheet("@counter-style demo{prefix:\"ok\"}");
+        let simple = CssParser::default().parse_sheet("@counter-style demo{prefix:\"ok\"}");
         let [CssRule::CounterStyle(rule)] = simple.syntax().rules() else {
             panic!("counter")
         };
@@ -928,7 +944,7 @@ fn suppressed_pending_occurrences_consume_complete_work_even_when_only_later_val
             "\"ok\""
         );
         let source = format!("@counter-style demo{{prefix:env(x,{fallback});prefix:\"ok\"}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{report:?}");
         let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
             panic!("counter")
@@ -946,7 +962,8 @@ fn suppressed_pending_occurrences_consume_complete_work_even_when_only_later_val
             ),
             expected
         );
-        let simple = parse_sheet("@font-feature-values Demo{@styleset{Pick:1}}");
+        let simple =
+            CssParser::default().parse_sheet("@font-feature-values Demo{@styleset{Pick:1}}");
         assert!(
             simple.syntax().rules()[0]
                 .serialize_specified(limits)
@@ -954,7 +971,7 @@ fn suppressed_pending_occurrences_consume_complete_work_even_when_only_later_val
         );
         let source =
             format!("@font-feature-values Demo{{@styleset{{Pick:env(x,{fallback});Pick:1}}}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{report:?}");
         let rule = &report.syntax().rules()[0];
         assert_eq!(
@@ -1006,9 +1023,9 @@ fn matched_root_blocks_are_declaration_value_data_under_whole_env_deferral() {
 #[test]
 fn normalization_keeps_pending_typed_payloads_in_their_actual_parent_context() {
     let source = "@media all{@counter-style demo{prefix:env(x)}@font-feature-values Demo{@styleset{Pick:env(x)}}}";
-    let parsed = parse_sheet(source);
+    let parsed = CssParser::default().parse_sheet(source);
     assert!(parsed.is_clean(), "{parsed:?}");
-    let normalized = normalize_report(&parsed).unwrap();
+    let normalized = parsed.normalize(Default::default()).unwrap();
     let [
         CssNormalizedItem::Rule(parent),
         CssNormalizedItem::Rule(counter),

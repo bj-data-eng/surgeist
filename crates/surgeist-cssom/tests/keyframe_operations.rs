@@ -280,7 +280,7 @@ fn a_whole_reverse_search_shares_native_work_and_resource_failure_rolls_back_bat
     let (mut store, sheet, root, children) =
         fixture("@keyframes test { 10% {} 20% {} 30% {} }", limits.clone());
     let before = store.snapshot();
-    let (query, _) = parse_keyframe_selector_list("10%").into_parts();
+    let (query, _) = CssParsedKeyframeSelectors::parse(&CssParser::default(), "10%").into_parts();
     let query = query.unwrap();
     // Every isolated public pair is admissible at this allowance. The complete
     // CSSOM search must still fail because it shares one native request across

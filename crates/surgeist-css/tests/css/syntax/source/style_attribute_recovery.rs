@@ -1,14 +1,14 @@
 use crate::css::support::authored_syntax::property_names;
 use surgeist_css::{
-    CssDeclarationList, CssErrorCode, CssImportance, CssParseReport, CssRecoveryAction, CssRule,
-    parse_sheet, parse_style_attribute,
+    CssDeclarationList, CssErrorCode, CssImportance, CssParseReport, CssParser, CssRecoveryAction,
+    CssRule,
 };
 
 fn style_rule_report(
     source: &str,
 ) -> (CssDeclarationList, Vec<surgeist_css::CssRecoveryDiagnostic>) {
     let wrapped = format!(".x {{ {source} }}");
-    let report = parse_sheet(&wrapped);
+    let report = CssParser::default().parse_sheet(&wrapped);
     let [CssRule::Style(rule)] = report.syntax().rules() else {
         panic!("expected one retained style rule for `{source}`");
     };
@@ -18,7 +18,8 @@ fn style_rule_report(
 #[test]
 fn style_attribute_empty_trivia_and_optional_final_semicolon_are_clean() {
     for source in ["", " \t/**/\n", "color: red", "color: red;"] {
-        let report: CssParseReport<CssDeclarationList> = parse_style_attribute(source);
+        let report: CssParseReport<CssDeclarationList> =
+            CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source:?}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().is_empty(), !source.contains("color"));
     }
@@ -27,7 +28,7 @@ fn style_attribute_empty_trivia_and_optional_final_semicolon_are_clean() {
 #[test]
 fn style_attribute_ordinary_custom_global_substitution_and_importance_match_style_blocks() {
     let source = "width: 2px; --Theme: ready; color: inherit; height: var(--h, 8px) !important";
-    let attribute = parse_style_attribute(source);
+    let attribute = CssParser::default().parse_block_contents(source);
     let (block, block_diagnostics) = style_rule_report(source);
 
     assert!(attribute.is_clean());
@@ -68,7 +69,7 @@ fn style_attribute_declaration_error_classes_match_style_blocks_modulo_wrapper_o
         ("broken;", CssErrorCode::UnexpectedEnd, 6),
     ] {
         let source = format!("color: red; {unit} height: 3px;");
-        let attribute = parse_style_attribute(&source);
+        let attribute = CssParser::default().parse_block_contents(&source);
         let (block, block_diagnostics) = style_rule_report(&source);
 
         assert_eq!(property_names(attribute.syntax()), ["color", "height"]);
@@ -132,74 +133,98 @@ fn style_attribute_declaration_error_classes_match_style_blocks_modulo_wrapper_o
 #[test]
 fn style_attribute_non_declaration_units_drop_independently_in_source_order() {
     let source = "@unknown x; color: red; .nested { width: 1px; } opacity: 1; broken; height: 2px; ,; --kept: yes;";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
 
-    // A `.`-led or `,`-led unit is a malformed declaration whose remnants,
-    // blocks included, run to the next root `;` (Style Attributes §3; Syntax 3
-    // (2026 CRD) §5.5.6, not nested), so `opacity: 1` is inside the first one.
+    // Syntax 3 (2026 CRD) §5.5.5: an at-rule is consumed whole; any other unit that
+    // is not a declaration is reconsumed as a qualified rule with `;` as its stop
+    // token (§5.5.3), so `.nested { .. }` ends at its block and `opacity: 1` that
+    // follows it is a declaration of its own.
     assert_eq!(
         property_names(report.syntax()),
-        ["color", "height", "--kept"],
+        ["color", "opacity", "height", "--kept"],
         "{:?}",
         report.diagnostics()
     );
     let units = [
-        ("@unknown x;", CssErrorCode::UnknownAtRule, 0),
         (
-            ".nested { width: 1px; } opacity: 1",
+            "@unknown x;",
             CssErrorCode::UnexpectedToken,
+            CssRecoveryAction::DropAtRule,
             0,
         ),
-        ("broken;", CssErrorCode::UnexpectedEnd, "broken".len()),
-        (",", CssErrorCode::UnexpectedToken, 0),
+        (
+            ".nested { width: 1px; }",
+            CssErrorCode::UnexpectedToken,
+            CssRecoveryAction::DropQualifiedRule,
+            0,
+        ),
+        (
+            "broken;",
+            CssErrorCode::UnexpectedEnd,
+            CssRecoveryAction::DropDeclaration,
+            "broken".len(),
+        ),
+        (
+            ",;",
+            CssErrorCode::UnexpectedToken,
+            CssRecoveryAction::DropDeclaration,
+            0,
+        ),
     ];
     assert_eq!(report.diagnostics().len(), units.len());
-    for (diagnostic, (unit, code, responsible)) in report.diagnostics().iter().zip(units) {
+    for (diagnostic, (unit, code, action, responsible)) in report.diagnostics().iter().zip(units) {
         let start = source.find(unit).expect("invalid unit");
-        assert_eq!(diagnostic.error().code(), code);
-        assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
+        assert_eq!(diagnostic.error().code(), code, "{unit}");
+        assert_eq!(diagnostic.action(), action, "{unit}");
         assert_eq!(
             diagnostic.error().position().byte_offset().value(),
-            start + responsible
+            start + responsible,
+            "{unit}"
         );
-        assert_eq!(diagnostic.span().start().byte_offset().value(), start);
+        assert_eq!(
+            diagnostic.span().start().byte_offset().value(),
+            start,
+            "{unit}"
+        );
         assert_eq!(
             diagnostic.span().end().byte_offset().value(),
-            start + unit.len()
-        );
-        assert!(
-            (start..=start + unit.len())
-                .contains(&diagnostic.error().position().byte_offset().value())
+            start + unit.len(),
+            "{unit}"
         );
     }
 }
 
 #[test]
-fn style_attribute_block_at_rules_and_malformed_closers_drop_without_hiding_later_values() {
-    // A closer starts a malformed declaration discarded through its `;`
-    // (Style Attributes §3; Syntax 3 (2026 CRD) §5.5.6, not nested).
-    let source = "@unknown screen { color: red; } } color: red; top: 1px; ) width: 2px; left: 1px; ] height: 3px; right: 1px";
-    let report = parse_style_attribute(source);
+fn style_attribute_root_closer_ends_the_contents_after_a_dropped_at_rule() {
+    // §5.5.5: the root `}` ends the contents, so nothing after it is read.
+    let source = "@unknown screen { color: red; } } color: red; top: 1px";
+    let report = CssParser::default().parse_block_contents(source);
+    assert!(report.syntax().is_empty());
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one dropped at-rule: {:?}", report.diagnostics());
+    };
+    assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedToken);
+    assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
+    assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
+    assert_eq!(
+        diagnostic.span().end().byte_offset().value(),
+        "@unknown screen { color: red; }".len()
+    );
+}
+
+#[test]
+fn style_attribute_stray_closers_drop_their_unit_without_hiding_later_values() {
+    // A unit that starts with `)` or `]` is not a declaration; it is reconsumed as a
+    // qualified rule that ends at the `;` stop token (§5.5.5, §5.5.3).
+    let source = "top: 1px; ) width: 2px; left: 1px; ] height: 3px; right: 1px";
+    let report = CssParser::default().parse_block_contents(source);
 
     assert_eq!(property_names(report.syntax()), ["top", "left", "right"]);
-    let units = [
-        "@unknown screen { color: red; }",
-        "} color: red",
-        ") width: 2px",
-        "] height: 3px",
-    ];
-    let codes = [
-        CssErrorCode::UnknownAtRule,
-        CssErrorCode::UnexpectedToken,
-        CssErrorCode::UnexpectedToken,
-        CssErrorCode::UnexpectedToken,
-    ];
+    let units = [") width: 2px;", "] height: 3px;"];
     assert_eq!(report.diagnostics().len(), units.len());
-    let mut search_start = 0;
-    for ((diagnostic, unit), code) in report.diagnostics().iter().zip(units).zip(codes) {
-        let relative = source[search_start..].find(unit).expect("invalid unit");
-        let start = search_start + relative;
-        assert_eq!(diagnostic.error().code(), code);
+    for (diagnostic, unit) in report.diagnostics().iter().zip(units) {
+        let start = source.find(unit).expect("invalid unit");
+        assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedToken);
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         assert_eq!(diagnostic.error().position().byte_offset().value(), start);
         assert_eq!(diagnostic.span().start().byte_offset().value(), start);
@@ -207,14 +232,13 @@ fn style_attribute_block_at_rules_and_malformed_closers_drop_without_hiding_late
             diagnostic.span().end().byte_offset().value(),
             start + unit.len()
         );
-        search_start = start + unit.len();
     }
 }
 
 #[test]
 fn style_attribute_component_eof_closure_and_nesting_limit_match_shared_boundaries() {
     let implicit = "--value: fn([x";
-    let report = parse_style_attribute(implicit);
+    let report = CssParser::default().parse_block_contents(implicit);
     assert_eq!(property_names(report.syntax()), ["--value"]);
     assert_eq!(report.diagnostics().len(), 2);
     for diagnostic in report.diagnostics() {
@@ -231,7 +255,7 @@ fn style_attribute_component_eof_closure_and_nesting_limit_match_shared_boundari
     }
 
     let malformed = "background-image: url(bad url";
-    let report = parse_style_attribute(malformed);
+    let report = CssParser::default().parse_block_contents(malformed);
     assert!(report.syntax().is_empty());
     let [diagnostic] = report.diagnostics() else {
         panic!("malformed URL must drop one declaration");
@@ -245,7 +269,7 @@ fn style_attribute_component_eof_closure_and_nesting_limit_match_shared_boundari
 
     for depth in [255_usize, 256] {
         let source = format!("--deep: {}x{}", "f(".repeat(depth), ")".repeat(depth));
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(property_names(report.syntax()), ["--deep"], "depth {depth}");
         assert!(
             report.is_clean(),
@@ -261,17 +285,20 @@ fn style_attribute_component_eof_closure_and_nesting_limit_match_shared_boundari
         .nth(256)
         .expect("257th function")
         .0;
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
+    // Block contents charges the component limits for the whole input.
     assert!(report.syntax().is_empty());
+    crate::css::support::parse_report::assert_contents_refused(&report, &source, "depth 257");
     let [diagnostic] = report.diagnostics() else {
-        panic!("first over-limit declaration unit must have one diagnostic");
+        panic!("over-limit contents must have one diagnostic");
     };
-    assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
+    assert_eq!(
+        diagnostic.error().code(),
+        CssErrorCode::InvalidComponentValue
+    );
+    assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
     assert_eq!(
         diagnostic.error().position().byte_offset().value(),
         first_over_limit
     );
-    assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
-    assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
 }

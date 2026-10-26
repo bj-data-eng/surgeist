@@ -3,8 +3,8 @@ use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
     CssGridTemplateAreaCell as Cell, CssGridTemplateAreaName as Name,
     CssGridTemplateAreaRow as Row, CssGridTemplateAreas as Areas, CssInitialValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyKindRef,
-    CssSerializationLimits as Limits, parse_style_attribute,
+    CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef, CssParser, CssPropertyKindRef,
+    CssSerializationLimits as Limits,
 };
 
 fn named(value: &str) -> Cell {
@@ -18,7 +18,8 @@ fn row(cells: Vec<Cell>) -> Row {
 #[test]
 fn parsed_current_and_authored_text_remain_distinct_and_initial_is_none() {
     let authored = "\"1st...auto\\a A\\9 b\"";
-    let report = parse_style_attribute(&format!("grid-template-areas:{authored}"));
+    let report =
+        CssParser::default().parse_block_contents(format!("grid-template-areas:{authored}"));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::GridTemplateAreas(wrapper) = report.syntax()[0]
         .known()
@@ -47,7 +48,8 @@ fn parsed_current_and_authored_text_remain_distinct_and_initial_is_none() {
     );
 
     for (authored, decoded) in [("\"a\\a0 b\"", "a\u{a0}b"), ("\"a\u{85}b\"", "a\u{85}b")] {
-        let report = parse_style_attribute(&format!("grid-template-areas:{authored}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("grid-template-areas:{authored}"));
         assert!(
             report.is_clean(),
             "{authored:?}: {:?}",
@@ -75,7 +77,7 @@ fn parsed_current_and_authored_text_remain_distinct_and_initial_is_none() {
         );
     }
 
-    let ordinary = parse_style_attribute("grid-template-areas:\"A.b\"");
+    let ordinary = CssParser::default().parse_block_contents("grid-template-areas:\"A.b\"");
     assert!(ordinary.is_clean());
     let CssKnownPropertyValueRef::GridTemplateAreas(wrapper) = ordinary.syntax()[0]
         .known()
@@ -111,7 +113,8 @@ fn parsed_current_and_authored_text_remain_distinct_and_initial_is_none() {
 #[test]
 fn lexer_replacement_of_null_remains_an_ident_code_point() {
     for authored in ["\"a\\0 b\"", "\"a\0b\""] {
-        let report = parse_style_attribute(&format!("grid-template-areas:{authored}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("grid-template-areas:{authored}"));
         assert!(
             report.is_clean(),
             "{authored:?}: {:?}",

@@ -1,7 +1,7 @@
 use surgeist_css::{
     CssCalculation, CssCalculationExpressionRef, CssCalculationProductOperator,
     CssCalculationSumOperator, CssComponentValue, CssComponentValues, CssLength, CssNumber,
-    CssNumeric, CssValueOrigin, parse_component_values,
+    CssNumeric, CssParser, CssValueOrigin,
 };
 
 #[test]
@@ -12,7 +12,7 @@ fn shallow_clones_preserve_exact_leaves_function_strategy_and_absent_bounds() {
         "clamp(none, 2, none)",
     ] {
         let original = CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -31,7 +31,9 @@ fn shallow_clones_preserve_exact_leaves_function_strategy_and_absent_bounds() {
 
 #[test]
 fn mixed_origin_clone_keeps_owned_structure_and_provenance_after_original_drop() {
-    let children = parse_component_values("(1px + 2px) * 3 / 4 - min(5px, 6px)").unwrap();
+    let children =
+        CssComponentValues::parse(&CssParser::default(), "(1px + 2px) * 3 / 4 - min(5px, 6px)")
+            .unwrap();
     let CssValueOrigin::Parsed(parsed) = children.items()[0].origin().clone() else {
         panic!("parsed group");
     };

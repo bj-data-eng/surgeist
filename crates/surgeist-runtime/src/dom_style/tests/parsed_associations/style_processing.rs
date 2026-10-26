@@ -318,12 +318,13 @@ fn whole_session_move_and_pending_shutdown_retain_receipt_until_terminal_drop() 
 #[test]
 fn shared_actual_rule_classifier_distinguishes_imports_recovery_and_typed_admission() {
     let context = CssParserContext::default();
-    let imported = context.parse_sheet("@import 'real.css'; p{color:red}");
+    let imported =
+        CssParser::new(context, Default::default()).parse_sheet("@import 'real.css'; p{color:red}");
     assert_eq!(
         import_dependencies_with(&imported, || Ok::<_, ()>(())).unwrap(),
         ImportDependencies::Imports
     );
-    let recovered = context.parse_sheet("p{color:}");
+    let recovered = CssParser::new(context, Default::default()).parse_sheet("p{color:}");
     assert!(!recovered.diagnostics().is_empty());
     assert_eq!(
         import_dependencies_with(&recovered, || Ok::<_, ()>(())).unwrap(),

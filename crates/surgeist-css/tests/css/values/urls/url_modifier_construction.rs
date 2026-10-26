@@ -4,11 +4,11 @@
 
 use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue, CssComponentValue, CssComponentValueRef,
-    CssComponentValues, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue, CssFontFaceSource,
-    CssIdent, CssImageValue, CssImportRule, CssImportTarget, CssImportance, CssKnownProperty,
-    CssKnownPropertyValueRef, CssNamespaceContext, CssPropertyNameRef, CssRule, CssUrl,
-    CssUrlFunction, CssUrlModifier, CssUrlModifierFunction, CssValueOrigin, CssValueTokenRef,
-    parse_component_values, parse_property_value, parse_sheet, parse_style_attribute,
+    CssComponentValues, CssDeclaration, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+    CssFontFaceSource, CssIdent, CssImageValue, CssImportRule, CssImportTarget, CssImportance,
+    CssKnownProperty, CssKnownPropertyValueRef, CssNamespaceContext, CssParser, CssPropertyNameRef,
+    CssPropertyTarget, CssRule, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
+    CssValueOrigin, CssValueTokenRef,
 };
 
 fn modifier(url: &CssUrl) -> &CssUrlModifierFunction {
@@ -56,17 +56,19 @@ fn checked_decoded_identifiers_and_modifier_function_follow_token_grammar() {
         );
     }
 
-    let arguments = parse_component_values("\"asset\"").unwrap();
+    let arguments = CssComponentValues::parse(&CssParser::default(), "\"asset\"").unwrap();
     let url_name = CssIdent::try_new("url").unwrap();
     assert!(CssUrlModifierFunction::try_new(url_name.clone(), arguments).is_ok());
-    let invalid =
-        CssUrlModifierFunction::try_new(url_name, parse_component_values("asset").unwrap())
-            .unwrap_err();
+    let invalid = CssUrlModifierFunction::try_new(
+        url_name,
+        CssComponentValues::parse(&CssParser::default(), "asset").unwrap(),
+    )
+    .unwrap_err();
     assert!(invalid.is_invalid_function(), "{invalid:?}");
     assert!(
         CssUrlModifierFunction::try_new(
             CssIdent::try_new("opaque").unwrap(),
-            parse_component_values("asset").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "asset").unwrap(),
         )
         .is_ok()
     );
@@ -74,7 +76,10 @@ fn checked_decoded_identifiers_and_modifier_function_follow_token_grammar() {
 
 #[test]
 fn checked_modifier_retains_child_origins_and_old_text_equality() {
-    let parsed_child = parse_component_values("token").unwrap().items()[0].clone();
+    let parsed_child = CssComponentValues::parse(&CssParser::default(), "token")
+        .unwrap()
+        .items()[0]
+        .clone();
     let arguments = CssComponentValues::try_new(
         vec![
             CssComponentValue::try_ident("first").unwrap(),
@@ -98,7 +103,7 @@ fn checked_modifier_retains_child_origins_and_old_text_equality() {
 
     let same_text = CssUrlModifierFunction::try_new(
         CssIdent::try_new("m").unwrap(),
-        parse_component_values("first token").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "first token").unwrap(),
     )
     .unwrap();
     assert_eq!(function, same_text, "source origins are not URL equality");
@@ -119,7 +124,7 @@ fn checked_modifier_retains_child_origins_and_old_text_equality() {
 #[test]
 fn ordinary_and_checked_property_urls_keep_original_modifier_token_sources() {
     let source = "color:red;background-image:src(\"x\" m(original));width:2px";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let url = background_url(
         report.syntax()[1]
@@ -133,13 +138,14 @@ fn ordinary_and_checked_property_urls_keep_original_modifier_token_sources() {
     assert_parsed_child_from_source(function, source, "original");
 
     let authored = "src(\"x\" m(original))";
-    let components = parse_component_values(authored).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), authored).unwrap();
     let original_source = match components.items()[0].origin() {
         CssValueOrigin::Parsed(origin) => origin.source().clone(),
         other => panic!("parsed input: {other:?}"),
     };
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage)),
         components,
         CssImportance::Normal,
     )
@@ -162,7 +168,7 @@ fn ordinary_and_checked_property_urls_keep_original_modifier_token_sources() {
 fn ordinary_and_checked_import_and_font_urls_keep_original_sources() {
     let source =
         "@import src(\"a\" m(imported));@font-face{font-family:Demo;src:url(\"b\" m(fonted))}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Import(import), CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("import and font face");
@@ -186,7 +192,7 @@ fn ordinary_and_checked_import_and_font_urls_keep_original_sources() {
     assert_parsed_child_from_source(modifier(font.url()), source, "fonted");
 
     let authored_import = "@import src(\"a\" m(imported));";
-    let components = parse_component_values(authored_import).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), authored_import).unwrap();
     let original_source = match components.items()[0].origin() {
         CssValueOrigin::Parsed(origin) => origin.source().clone(),
         other => panic!("parsed import: {other:?}"),
@@ -209,7 +215,7 @@ fn ordinary_and_checked_import_and_font_urls_keep_original_sources() {
     assert!(origin.source().same_snapshot(&original_source));
 
     let authored_font = "url(\"b\" m(fonted))";
-    let components = parse_component_values(authored_font).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), authored_font).unwrap();
     let original_source = match components.items()[0].origin() {
         CssValueOrigin::Parsed(origin) => origin.source().clone(),
         other => panic!("parsed font: {other:?}"),
@@ -248,7 +254,8 @@ fn local_url_flag_tracks_decoded_fragment_prefix_without_resolution() {
         }
     }
     for (source, expected) in [("url(\"\\23 image\")", true), ("src(\" #image\")", false)] {
-        let report = parse_style_attribute(&format!("background-image:{source}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("background-image:{source}"));
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let url = background_url(
             report.syntax()[0]
@@ -288,8 +295,9 @@ fn programmatic_url_function() -> CssComponentValue {
 
 #[test]
 fn checked_property_import_and_font_preserve_programmatic_modifier_children() {
-    let property = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
+    let property = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage)),
         CssComponentValues::try_new(vec![programmatic_url_function()], Default::default()).unwrap(),
         CssImportance::Normal,
     )
@@ -346,7 +354,7 @@ fn checked_property_import_and_font_preserve_programmatic_modifier_children() {
 #[test]
 fn parsed_eof_modifier_arguments_retain_implied_closures_and_decoded_escape() {
     let source = "background-image:url(\"x\" m(f(";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     let [declaration] = report.syntax().as_slice() else {
         panic!("retained URL at EOF: {:?}", report.diagnostics());
     };
@@ -365,7 +373,7 @@ fn parsed_eof_modifier_arguments_retain_implied_closures_and_decoded_escape() {
     ));
 
     let source = "background-image:url(\"x\" m(a\\";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     let [declaration] = report.syntax().as_slice() else {
         panic!("retained escaped URL at EOF: {:?}", report.diagnostics());
     };

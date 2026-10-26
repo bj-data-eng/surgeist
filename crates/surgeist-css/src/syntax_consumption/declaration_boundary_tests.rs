@@ -66,7 +66,12 @@ fn unknown_and_empty_generic_declarations_reach_exact_eof_before_property_admiss
         assert!(declaration.importance_range.is_none());
         eof(&mut cursor, &snapshot, text.len());
         // Ordinary public admission is deliberately stronger than structure.
-        assert!(crate::parse_declaration(text).syntax().is_none(), "{text}");
+        assert!(
+            crate::CssDeclaration::parse(&crate::CssParser::default(), text)
+                .syntax()
+                .is_none(),
+            "{text}"
+        );
     }
 }
 
@@ -191,8 +196,8 @@ fn trimmed_components_keep_internal_trivia_and_original_post_colon_range() {
 
 #[test]
 fn supplied_unspelled_payload_and_distinct_source_origins_survive_priority_extraction() {
-    let first = crate::parse_component_values("same").unwrap();
-    let second = crate::parse_component_values("same").unwrap();
+    let first = crate::component_values::parse_component_values("same").unwrap();
+    let second = crate::component_values::parse_component_values("same").unwrap();
     let native = |token| SyntaxToken {
         payload: TokenPayload::Native(token),
         spelling: None,
@@ -289,180 +294,5 @@ fn supplied_unspelled_payload_and_distinct_source_origins_survive_priority_extra
             start: 5,
             end: 7
         })
-    );
-}
-
-#[test]
-fn normalized_mixed_lists_retain_at_candidates_and_whole_semicolon_bounded_declarations() {
-    let text =
-        " ; a:f(x;y); @future f(a;b); @block {hidden:one; deeper{lost:two}} kept:y; last:z; @eof";
-    let (_, original) = source(text);
-    let checked = crate::parse_component_values(text).unwrap();
-    let documents = [
-        normalize(
-            SyntaxInput::Components {
-                document: &original,
-                list: original.root,
-            },
-            SyntaxInputLimits::default(),
-            0,
-        )
-        .unwrap(),
-        normalize(
-            SyntaxInput::CheckedComponents(checked.items()),
-            SyntaxInputLimits::default(),
-            0,
-        )
-        .unwrap(),
-    ];
-    for document in std::iter::once(&original).chain(documents.iter()) {
-        let mut cursor = document.cursor(document.root);
-        let items = consume_declaration_list(&mut cursor);
-        let [
-            GenericDeclarationListItem::Declaration {
-                parsed: Ok(a),
-                range: a_range,
-            },
-            GenericDeclarationListItem::At(statement),
-            GenericDeclarationListItem::At(block),
-            GenericDeclarationListItem::Declaration {
-                parsed: Ok(kept), ..
-            },
-            GenericDeclarationListItem::Declaration {
-                parsed: Ok(last), ..
-            },
-            GenericDeclarationListItem::At(at_eof),
-        ] = items.as_slice()
-        else {
-            panic!("three declarations and three at candidates")
-        };
-        assert_eq!(document.nodes[a.name].token().kind(), TokenKind::Ident("a"));
-        assert_eq!(a.range, *a_range);
-        assert_eq!(a.value.len(), 1);
-        let nested = document.nodes[a.value[0]].children().unwrap();
-        assert_eq!(
-            spellings(document, &document.lists[nested]),
-            ["x", ";", "y"]
-        );
-        assert_eq!(
-            document.nodes[statement.name].token().kind(),
-            TokenKind::AtKeyword("future")
-        );
-        assert!(matches!(
-            statement.termination,
-            RuleTermination::Semicolon(_)
-        ));
-        assert!(statement.fault.is_none());
-        assert_eq!(
-            document.nodes[block.name].token().kind(),
-            TokenKind::AtKeyword("block")
-        );
-        assert!(matches!(block.termination, RuleTermination::Block));
-        assert!(block.block.is_some());
-        assert_eq!(
-            document.nodes[kept.name].token().kind(),
-            TokenKind::Ident("kept")
-        );
-        assert_eq!(
-            document.nodes[last.name].token().kind(),
-            TokenKind::Ident("last")
-        );
-        assert_eq!(
-            document.nodes[at_eof.name].token().kind(),
-            TokenKind::AtKeyword("eof")
-        );
-        assert!(matches!(at_eof.termination, RuleTermination::EndOfInput(_)));
-        assert_eq!(
-            at_eof.fault.as_ref().unwrap().kind,
-            GenericFaultKind::AtRuleEndOfInput
-        );
-        assert!(matches!(cursor.peek(), CursorItem::EndOfInput(_)));
-    }
-}
-
-#[test]
-fn malformed_list_units_do_not_promote_grouped_declarations_or_consume_later_siblings() {
-    let text = "a:x; ,f(inner;hidden) {lost:yes;} ignored:value; kept:y; missing colon; last:z";
-    let (_, document) = source(text);
-    let items = consume_declaration_list(&mut document.cursor(document.root));
-    let [
-        GenericDeclarationListItem::Declaration { parsed: Ok(a), .. },
-        GenericDeclarationListItem::Declaration {
-            parsed: Err(nonident),
-            range: invalid_range,
-        },
-        GenericDeclarationListItem::Declaration {
-            parsed: Ok(kept), ..
-        },
-        GenericDeclarationListItem::Declaration {
-            parsed: Err(missing_colon),
-            range: missing_range,
-        },
-        GenericDeclarationListItem::Declaration {
-            parsed: Ok(last), ..
-        },
-    ] = items.as_slice()
-    else {
-        panic!("one failed candidate per malformed semicolon-bounded unit")
-    };
-    assert_eq!(document.nodes[a.name].token().kind(), TokenKind::Ident("a"));
-    assert_eq!(nonident.kind, GenericFaultKind::InvalidDeclaration);
-    assert_eq!(missing_colon.kind, GenericFaultKind::InvalidDeclaration);
-    assert_eq!(
-        range_spelling(&document, invalid_range),
-        [",", "f(", " ", "{", " ", "ignored", ":", "value"]
-    );
-    assert_eq!(
-        range_spelling(&document, missing_range),
-        ["missing", " ", "colon"]
-    );
-    assert_eq!(
-        document.nodes[kept.name].token().kind(),
-        TokenKind::Ident("kept")
-    );
-    assert_eq!(
-        document.nodes[last.name].token().kind(),
-        TokenKind::Ident("last")
-    );
-}
-
-#[test]
-fn child_list_eof_bounds_a_final_at_candidate_without_exposing_parent_siblings() {
-    let text = "before{;a:f(x;y); @pending body} after:z";
-    let (snapshot, document) = source(text);
-    let [before, group, _, after, _, _] = document.lists[document.root].as_slice() else {
-        panic!("actual root body and following declaration")
-    };
-    assert_eq!(
-        document.nodes[*before].token().kind(),
-        TokenKind::Ident("before")
-    );
-    assert_eq!(
-        document.nodes[*after].token().kind(),
-        TokenKind::Ident("after")
-    );
-    let child = document.nodes[*group].children().unwrap();
-    let mut cursor = document.cursor(child);
-    let items = consume_declaration_list(&mut cursor);
-    let [
-        GenericDeclarationListItem::Declaration { parsed: Ok(a), .. },
-        GenericDeclarationListItem::At(at),
-    ] = items.as_slice()
-    else {
-        panic!("only child declaration and EOF at candidate")
-    };
-    assert_eq!(document.nodes[a.name].token().kind(), TokenKind::Ident("a"));
-    assert_eq!(
-        document.nodes[at.name].token().kind(),
-        TokenKind::AtKeyword("pending")
-    );
-    assert_eq!(
-        at.fault.as_ref().unwrap().kind,
-        GenericFaultKind::AtRuleEndOfInput
-    );
-    eof(&mut cursor, &snapshot, text.find('}').unwrap());
-    assert_eq!(
-        document.nodes[*after].token().kind(),
-        TokenKind::Ident("after")
     );
 }

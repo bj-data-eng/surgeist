@@ -2,7 +2,7 @@ use surgeist_css::*;
 
 #[test]
 fn css2_residual_properties_retain_typed_values() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "border-collapse: collapse; ",
         "border-spacing: 2px 3px; ",
         "caption-side: bottom; ",
@@ -261,7 +261,7 @@ fn css2_residual_keyword_numeric_list_and_separator_domains_are_complete() {
     ] {
         for value in values {
             let source = format!("{property}: {value}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(report.syntax().len(), 1, "{source}");
         }
@@ -288,7 +288,7 @@ fn css2_residual_keyword_numeric_list_and_separator_domains_are_complete() {
         "word-spacing: -2em",
         "word-spacing: calc(1em - 2px)",
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{source}");
     }
@@ -322,7 +322,7 @@ fn css2_residual_globals_and_substitutions_remain_whole_property_branches() {
     for property in PROPERTIES {
         for (keyword, expected) in GLOBALS {
             let source = format!("{property}: {keyword}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert!(matches!(
                 report.syntax()[0].known().unwrap().declared_value(),
@@ -331,7 +331,7 @@ fn css2_residual_globals_and_substitutions_remain_whole_property_branches() {
         }
 
         let source = format!("{property}: var(--residual, initial)");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(matches!(
             report.syntax()[0].known().unwrap().declared_value(),
@@ -370,7 +370,7 @@ fn css2_residual_invalid_values_drop_exact_declaration_and_keep_sibling() {
     ] {
         let invalid = format!("{property}: {value}");
         let source = format!("{invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -416,7 +416,9 @@ fn css2_residual_invalid_values_drop_exact_declaration_and_keep_sibling() {
         );
 
         assert_eq!(
-            surgeist_css::validate_style_attribute(&source)
+            surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects recovered residual syntax")
                 .diagnostics(),
             report.diagnostics(),
@@ -427,12 +429,12 @@ fn css2_residual_invalid_values_drop_exact_declaration_and_keep_sibling() {
 
 #[test]
 fn css2_residual_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
-    let clean_eof = parse_style_attribute("table-layout: fixed");
+    let clean_eof = CssParser::default().parse_block_contents("table-layout: fixed");
     assert!(clean_eof.is_clean(), "{:?}", clean_eof.diagnostics());
     assert_eq!(clean_eof.syntax().len(), 1);
 
     let invalid_eof_source = "quotes: \"open\"";
-    let invalid_eof = parse_style_attribute(invalid_eof_source);
+    let invalid_eof = CssParser::default().parse_block_contents(invalid_eof_source);
     let [diagnostic] = invalid_eof.diagnostics() else {
         panic!("odd quote at EOF must recover exactly once");
     };
@@ -453,7 +455,7 @@ fn css2_residual_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
     );
 
     let accepted = "--😀: 1; word-spacing: 10%; color: red";
-    let accepted_report = parse_style_attribute(accepted);
+    let accepted_report = CssParser::default().parse_block_contents(accepted);
     assert!(
         accepted_report.is_clean(),
         "{:?}",
@@ -477,19 +479,20 @@ fn css2_residual_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
     );
 
     let source = "--😀: 1; word-spacing: 1fr; color: red";
-    let [offending] = surgeist_css::parse_component_values("1fr")
-        .unwrap()
-        .items()
-        .to_vec()
-        .try_into()
-        .unwrap();
+    let [offending] =
+        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), "1fr")
+            .unwrap()
+            .items()
+            .to_vec()
+            .try_into()
+            .unwrap();
     assert!(matches!(
         offending.view(),
         surgeist_css::CssComponentValueRef::Token(
             surgeist_css::CssValueTokenRef::Dimension { unit, .. }
         ) if unit == "fr"
     ));
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("unsupported dimension must recover exactly once");

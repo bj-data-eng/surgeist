@@ -2,11 +2,12 @@
 //! Inspect authored synthesis choices without selecting or altering a font.
 use surgeist_css::{
     CssContributions, CssExpansion, CssFontSynthesis, CssFontSynthesisValues,
-    CssKnownPropertyValueRef, expand_declaration, parse_style_attribute,
+    CssKnownPropertyValueRef, CssParser,
 };
 
 fn main() {
-    let report = parse_style_attribute("font-synthesis:position weight!important");
+    let report =
+        CssParser::default().parse_block_contents("font-synthesis:position weight!important");
     assert!(report.is_clean());
     let source = &report.syntax()[0];
     let CssKnownPropertyValueRef::FontSynthesis(value) =
@@ -25,8 +26,7 @@ fn main() {
         CssFontSynthesisValues::try_new(true, false, false, true).unwrap(),
     );
     assert_eq!(value.value(), &checked);
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("four intrinsic longhand contributions")
     };

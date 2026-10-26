@@ -7,12 +7,13 @@ use surgeist_css::*;
 type Kind = CssFontFaceDescriptorKind;
 
 fn admitted(value: &str) {
-    let raw = parse_font_face_descriptor_value(value, Kind::FontWeight);
+    let raw =
+        CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), value, Kind::FontWeight);
     assert!(raw.is_clean(), "raw {value}: {:?}", raw.diagnostics());
     assert!(raw.syntax().is_some(), "raw descriptor: {value}");
 
     let source = format!("@font-face{{font-family:Demo;font-weight:{value}}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(
         report.is_clean(),
         "sheet {source}: {:?}",
@@ -33,7 +34,12 @@ fn admitted(value: &str) {
         record.position().unwrap().byte_offset().value(),
         source.find("font-weight:").unwrap()
     );
-    assert!(validate_sheet(&source).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .is_ok()
+    );
 }
 
 #[test]
@@ -48,7 +54,7 @@ fn auto_and_exact_single_absolute_weights_are_admitted() {
     for value in ["auto", "350.5", "1e0", "1e3", "calc(350 + 50)"] {
         admitted(value);
     }
-    let absent = parse_sheet("@font-face{font-family:Demo}");
+    let absent = CssParser::default().parse_sheet("@font-face{font-family:Demo}");
     let [CssRule::FontFace(rule)] = absent.syntax().rules() else {
         panic!("one font-face rule");
     };
@@ -72,7 +78,7 @@ fn two_absolute_endpoints_keep_mixed_order_descents_and_duplicates() {
         admitted(value);
     }
     let source = "@font-face{font-weight:auto;font-weight:normal bold;font-weight:900 100}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("one font-face rule");
@@ -107,14 +113,18 @@ fn invalid_relative_auto_arity_and_exact_out_of_range_values_drop_locally() {
         "50%",
         "400px",
     ] {
-        let raw = parse_font_face_descriptor_value(invalid, Kind::FontWeight);
+        let raw = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            invalid,
+            Kind::FontWeight,
+        );
         assert!(raw.syntax().is_none(), "raw accepted {invalid}: {raw:?}");
         invalid_descriptor("font-face", "font-weight").assert_first(&raw);
 
         let source = format!(
             "@font-face{{font-family:Demo;font-weight:normal;src:url(face);font-weight:{invalid};font-display:swap}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("font-face survives bad descriptor: {source}");
         };
@@ -142,14 +152,19 @@ fn invalid_relative_auto_arity_and_exact_out_of_range_values_drop_locally() {
             source.find("font-weight:normal").unwrap()
         );
         assert!(rule.descriptors().effective(Kind::FontDisplay).is_some());
-        assert!(validate_sheet(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
 }
 
 #[test]
 fn valid_env_defers_the_whole_descriptor_without_changing_ordinary_grammar() {
     let source = "@font-face{font-weight:normal;font-weight:wide env(weight)}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("one font-face rule");

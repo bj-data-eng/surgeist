@@ -38,7 +38,7 @@ fn both_checked_values_and_parsed_wrappers_have_distinct_symbolic_meanings() {
             value
         );
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&declaration).unwrap()
+            declaration.expand().unwrap()
         else {
             panic!("one ordinary marker-side contribution")
         };
@@ -61,8 +61,9 @@ fn programmatic_declaration_retains_origin_and_the_constructed_keyword() {
         Default::default(),
     )
     .unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::MarkerSide),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::MarkerSide)),
         components,
         CssImportance::Important,
     )
@@ -79,7 +80,7 @@ fn programmatic_declaration_retains_origin_and_the_constructed_keyword() {
         CssValueOrigin::Programmatic
     ));
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&declaration).unwrap()
+        declaration.expand().unwrap()
     else {
         panic!("programmatic declaration expands")
     };

@@ -10,13 +10,12 @@ use surgeist_css::{
     CssCalculation, CssComponentValue, CssComponentValues, CssContributionValueRef,
     CssContributions, CssExpansion, CssFontValue, CssGlobalKeyword, CssImportance,
     CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLengthPercentage,
-    CssLineHeight, CssLonghandValueRef, CssNonNegative, CssNumber, CssNumeric, CssPropertyKindRef,
-    CssSerializationLimits, CssSerializedOrigin, CssValueOrigin, expand_declaration,
-    parse_component_values, parse_style_attribute,
+    CssLineHeight, CssLonghandValueRef, CssNonNegative, CssNumber, CssNumeric, CssParser,
+    CssPropertyKindRef, CssSerializationLimits, CssSerializedOrigin, CssValueOrigin,
 };
 
 fn property(text: &str) -> CssLineHeight {
-    let report = parse_style_attribute(&format!("line-height:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("line-height:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::LineHeight(value) = report.syntax()[0]
         .known()
@@ -81,7 +80,8 @@ fn authored_branches_keep_number_zero_distinct_and_math_symbolic() {
         "calc(3% + 2px)"
     );
     for invalid in ["calc(1 + 2%)", "-1e-999", "-1e-999px", "-1e-999%"] {
-        let report = parse_style_attribute(&format!("color:red;line-height:{invalid};color:blue"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("color:red;line-height:{invalid};color:blue"));
         assert_eq!(report.syntax().len(), 2, "{invalid}");
         assert_eq!(report.diagnostics().len(), 1, "{invalid}");
     }
@@ -123,8 +123,11 @@ fn parsed_and_programmatic_values_have_distinct_origins_but_semantic_equality() 
         .unwrap();
     assert_eq!(parsed_length, &programmatic_length);
     assert_eq!(length, CssLineHeight::LengthPercentage(programmatic_length));
-    let checked_value =
-        normal_grammar_components("line-height", parse_component_values("1.250").unwrap()).unwrap();
+    let checked_value = normal_grammar_components(
+        "line-height",
+        CssComponentValues::parse(&CssParser::default(), "1.250").unwrap(),
+    )
+    .unwrap();
     let CssKnownPropertyValueRef::LineHeight(value) =
         checked_value.known().unwrap().property_value().unwrap()
     else {
@@ -145,9 +148,11 @@ fn parsed_and_programmatic_values_have_distinct_origins_but_semantic_equality() 
         invalid.origin(),
         CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
-    let invalid =
-        normal_grammar_components("line-height", parse_component_values("  -1e-999").unwrap())
-            .unwrap_err();
+    let invalid = normal_grammar_components(
+        "line-height",
+        CssComponentValues::parse(&CssParser::default(), "  -1e-999").unwrap(),
+    )
+    .unwrap_err();
     let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = invalid.origin() else {
         panic!("parsed invalid token origin")
     };
@@ -171,7 +176,7 @@ fn inherited_initial_current_wrapper_and_global_contributions_are_exact() {
         initial.view(),
         CssLonghandValueRef::LineHeight(&CssLineHeight::Normal)
     );
-    let report = parse_style_attribute("line-height:1.250!important");
+    let report = CssParser::default().parse_block_contents("line-height:1.250!important");
     let source = &report.syntax()[0];
     let CssKnownPropertyValueRef::LineHeight(value) =
         source.known().unwrap().property_value().unwrap()
@@ -179,8 +184,7 @@ fn inherited_initial_current_wrapper_and_global_contributions_are_exact() {
         panic!("current")
     };
     assert_eq!(value.value(), &property("1.250"));
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("contribution")
     };
@@ -201,9 +205,9 @@ fn inherited_initial_current_wrapper_and_global_contributions_are_exact() {
         ("revert", CssGlobalKeyword::Revert),
         ("revert-layer", CssGlobalKeyword::RevertLayer),
     ] {
-        let report = parse_style_attribute(&format!("line-height:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("line-height:{text}"));
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&report.syntax()[0]).unwrap()
+            report.syntax()[0].expand().unwrap()
         else {
             panic!("global")
         };
@@ -217,12 +221,12 @@ fn inherited_initial_current_wrapper_and_global_contributions_are_exact() {
 
 #[test]
 fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
-    let report = parse_style_attribute("line-height:env(lh)!important");
+    let report = CssParser::default().parse_block_contents("line-height:env(lh)!important");
     let source = &report.syntax()[0];
-    let CssExpansion::Pending(handle) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending")
     };
-    let replacement = parse_component_values("1.250 ").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "1.250 ").unwrap();
     let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap() else {
         panic!("ordinary")
     };
@@ -302,7 +306,7 @@ fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
         ("env(still)", None),
     ] {
         let error = handle
-            .reenter(parse_component_values(invalid).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
             .unwrap_err();
         match rest {
             Some(rest) => {
@@ -315,7 +319,7 @@ fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
     // its percentage operand.
     assert_invalid_replacement_at(
         &handle
-            .reenter(parse_component_values("calc(1 + 2%)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "calc(1 + 2%)").unwrap())
             .unwrap_err(),
         CssKnownProperty::LineHeight,
         "calc(1 + 2%)",
@@ -323,7 +327,7 @@ fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
     );
     assert!(
         handle
-            .reenter(parse_component_values("var(--still)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--still)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
@@ -333,7 +337,7 @@ fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
         ("16px/120% serif", false),
         ("16px/calc(-1) serif", true),
     ] {
-        let report = parse_style_attribute(&format!("font:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("font:{text}"));
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
         let CssKnownPropertyValueRef::Font(font) = report.syntax()[0]
             .known()
@@ -358,7 +362,7 @@ fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
         "16px/calc(1 + 2%) serif",
         "16px/math serif",
     ] {
-        let report = parse_style_attribute(&format!("font:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("font:{text}"));
         assert!(!report.is_clean(), "{text}");
     }
 }
@@ -367,7 +371,7 @@ fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
 fn recovered_math_is_retained_by_raw_parse_but_rejected_by_strict_construction_and_reentry() {
     for (text, number) in [("calc(1", true), ("calc(1px", false)] {
         let source = format!("line-height:{text}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{text}");
         assert!(!report.is_clean(), "{text}");
         let CssKnownPropertyValueRef::LineHeight(value) = report.syntax()[0]
@@ -425,13 +429,12 @@ fn recovered_math_is_retained_by_raw_parse_but_rejected_by_strict_construction_a
             }
             _ => panic!("retained math domain {text}"),
         }
-        let pending = parse_style_attribute("line-height:env(lh)");
-        let CssExpansion::Pending(handle) = expand_declaration(&pending.syntax()[0]).unwrap()
-        else {
+        let pending = CssParser::default().parse_block_contents("line-height:env(lh)");
+        let CssExpansion::Pending(handle) = pending.syntax()[0].expand().unwrap() else {
             panic!("pending")
         };
         let error = handle
-            .reenter(parse_component_values(text).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
             .unwrap_err();
         let Some(error) = error.replacement_error() else {
             panic!("{text}: {error:?}")

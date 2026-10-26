@@ -8,7 +8,6 @@ use crate::utf16_value::Control;
 use crate::{
     CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
     CssComponentValueRef as Component, CssValueOrigin, CssValueTokenRef as Token,
-    parse_component_values,
 };
 
 fn trivia(value: &CssComponentValue) -> bool {
@@ -154,7 +153,7 @@ fn syntax_valid_with_control(
                 );
                 (Some(source), parsed)
             } else {
-                (None, parse_component_values(value))
+                (None, crate::component_values::parse_component_values(value))
             };
             let values = match parsed {
                 Ok(values) => values,
@@ -390,7 +389,8 @@ mod tests {
 
     #[test]
     fn quoted_syntax_decode_budget_is_cumulative_and_reports_outer_string() {
-        let first = crate::parse_component_values("foo \"\\\"<length>\\\"\"").unwrap();
+        let first =
+            crate::component_values::parse_component_values("foo \"\\\"<length>\\\"\"").unwrap();
         let outer = first.items()[2].origin().clone();
         let error = syntax_valid(&first.items()[2..], 1).unwrap_err();
         assert_eq!(error.kind(), CssComponentValueErrorKind::NestingLimit);
@@ -401,13 +401,14 @@ mod tests {
     #[test]
     fn deeply_nested_decoded_syntax_reports_original_token() {
         let decoded = format!("{}x{}", "(".repeat(257), ")".repeat(257));
-        let arguments = crate::parse_component_values(&format!("foo \"{decoded}\"")).unwrap();
+        let arguments =
+            crate::component_values::parse_component_values(&format!("foo \"{decoded}\"")).unwrap();
         let origin = arguments.items()[2].origin().clone();
         let error = valid(arguments.items()).unwrap_err();
         assert_eq!(error.kind(), CssComponentValueErrorKind::NestingLimit);
         assert_eq!(error.origin(), &origin);
 
-        let outer = crate::parse_component_values(&format!("\"{decoded}\""))
+        let outer = crate::component_values::parse_component_values(&format!("\"{decoded}\""))
             .unwrap()
             .items()[0]
             .clone();

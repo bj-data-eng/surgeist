@@ -271,7 +271,8 @@ mod occurrence_composition_tests {
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
 
     fn declarations() -> CssDeclarationList {
-        let report = crate::parse_style_attribute("color:PURPLE!important;color:transparent");
+        let report = crate::CssParser::default()
+            .parse_block_contents("color:PURPLE!important;color:transparent");
         assert!(report.is_clean());
         report.syntax().clone()
     }
@@ -356,11 +357,14 @@ mod occurrence_composition_tests {
 
     #[test]
     fn suppressed_legacy_inverse_mapping_charges_generated_nodes_and_restores_output() {
-        let declaration = crate::parse_declaration("glyph-orientation-vertical:90")
-            .syntax()
-            .as_ref()
-            .unwrap()
-            .clone();
+        let declaration = crate::CssDeclaration::parse(
+            &crate::CssParser::default(),
+            "glyph-orientation-vertical:90",
+        )
+        .syntax()
+        .as_ref()
+        .unwrap()
+        .clone();
         let mut writer = SpecifiedRuleWriter::new(Limits::new(3, 4, 1));
         writer
             .without_output(|writer| declaration.append_to_rule_writer(writer))
@@ -388,11 +392,12 @@ mod occurrence_composition_tests {
 
     #[test]
     fn suppressed_retained_edge_trivia_charges_once_and_restores_after_failure() {
-        let declaration = crate::parse_declaration("--X: \tINITIAL \n")
-            .syntax()
-            .as_ref()
-            .unwrap()
-            .clone();
+        let declaration =
+            crate::CssDeclaration::parse(&crate::CssParser::default(), "--X: \tINITIAL \n")
+                .syntax()
+                .as_ref()
+                .unwrap()
+                .clone();
         let mut writer = SpecifiedRuleWriter::new(Limits::new(6, 6, 1));
         writer
             .without_output(|writer| declaration.append_to_rule_writer(writer))

@@ -1138,3 +1138,81 @@ pub(crate) fn component_depth(component: &CssComponentValue) -> u32 {
         _ => 0,
     }
 }
+impl CssMediaQuery {
+    /// Parses exactly one media query, replacing rejected input with a never-matching query.
+    ///
+    /// The parser is not read: neither its document mode nor its component limits apply to this front, and only the fixed nesting ceiling bounds the input. [`Self::parse_medium`] reads the parser's document mode.
+    #[expect(
+        unused_variables,
+        reason = "this grammar does not read the parser configuration"
+    )]
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> crate::CssParseReport<CssMediaQuery> {
+        crate::parser::parse_media_query(source.as_ref())
+    }
+
+    /// Parses the CSSOM single-query boundary through the owning media-query list parser.
+    ///
+    /// Exactly one list member is returned, including a diagnosed ignored member
+    /// whose CSSOM serialization is `not all`. Empty or multiple-member lists return
+    /// `None`. Diagnostics retain their original ordering, spans and recovery actions;
+    /// this operation performs no host evaluation and does not erase unknown syntax.
+    ///
+    /// ```
+    /// use surgeist_css::{CssMediaQuery, CssParser};
+    /// assert!(CssMediaQuery::parse_medium(&CssParser::default(), "screen, print").syntax().is_none());
+    /// let report = CssMediaQuery::parse_medium(&CssParser::default(), "???");
+    /// assert!(!report.is_clean());
+    /// assert_eq!(
+    ///     report.syntax().as_ref().unwrap().serialize_cssom(Default::default()).unwrap().as_css(),
+    ///     "not all"
+    /// );
+    /// ```
+    #[must_use]
+    pub fn parse_medium(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> crate::CssParseReport<Option<CssMediaQuery>> {
+        crate::parser::parse_cssom_media_query(source.as_ref(), parser.context())
+    }
+}
+impl CssMediaQueryList {
+    /// Parses a complete media query list with independent recovery for each comma member.
+    ///
+    /// An empty list is valid. Malformed members become `Never`, while grammatically
+    /// valid unknown features retain unknown truth. This operation
+    /// performs no matching or contextual evaluation.
+    ///
+    /// The parser supplies the document mode of the retained parse source.
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> crate::CssParseReport<CssMediaQueryList> {
+        crate::parser::parse_media_query_list_snapshot(
+            &crate::CssSourceSnapshot::new(source.as_ref()),
+            parser.context(),
+        )
+    }
+
+    /// Parses actual UTF16 media input through CSS preprocessing and the ordinary
+    /// media-query-list grammar, retaining the complete original input.
+    ///
+    /// # Errors
+    ///
+    /// Returns the preparation refusal or the caller's interruption, with no
+    /// partial report.
+    pub fn parse_utf16<E>(
+        parser: &crate::CssParser,
+        original: std::sync::Arc<Vec<u16>>,
+        limits: crate::CssUtf16InputLimits,
+        poll: impl FnMut() -> Result<(), E>,
+    ) -> Result<crate::CssParseReport<CssMediaQueryList>, crate::CssUtf16InputError<E>> {
+        crate::utf16_input::parse_utf16(original, limits, poll, |source| {
+            crate::parser::parse_media_query_list_snapshot(source, parser.context())
+        })
+    }
+}

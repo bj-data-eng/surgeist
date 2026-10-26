@@ -463,7 +463,7 @@ fn nested_and_contextual_origins_are_retained_without_conversion() {
 
 fn rejected(text: &str) {
     let source = format!("color:{text};opacity:0.5");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(report.diagnostics().len(), 1, "{source}");
     let diagnostic = &report.diagnostics()[0];
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidColorSyntax);
@@ -482,7 +482,10 @@ fn rejected(text: &str) {
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Opacity
     );
-    let failure = validate_style_attribute(&source).unwrap_err();
+    let failure = CssParser::default()
+        .parse_block_contents(&source)
+        .into_validation_result()
+        .unwrap_err();
     assert_eq!(failure.diagnostics(), report.diagnostics());
 }
 
@@ -609,13 +612,13 @@ fn expanded_and_normalized_transport_preserves_relative_graph_and_occurrence() {
             "color(from red {} -20% none 2 / calc(alpha * 0.5))",
             space.spelling
         );
-        let report = parse_style_attribute(&format!("color:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("color:{text}"));
         assert!(report.is_clean());
         let declaration = &report.syntax()[0];
-        assert_transport(&expand_declaration(declaration).unwrap(), declaration);
-        let report = parse_sheet(&format!(".a{{color:{text}}}"));
+        assert_transport(&declaration.expand().unwrap(), declaration);
+        let report = CssParser::default().parse_sheet(format!(".a{{color:{text}}}"));
         assert!(report.is_clean());
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let declarations: Vec<_> = normalized
             .items()
             .iter()

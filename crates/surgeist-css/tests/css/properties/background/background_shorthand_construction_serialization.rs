@@ -6,7 +6,7 @@ use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
 
 fn background(text: &str) -> CssBackground {
-    let report = parse_style_attribute(&format!("background: {text}"));
+    let report = CssParser::default().parse_block_contents(format!("background: {text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Background(value) = report.syntax()[0]
         .known()
@@ -246,10 +246,10 @@ fn terminal_text(value: CssLonghandValueRef<'_>) -> String {
 }
 
 fn expanded(text: &str) -> Vec<(CssKnownProperty, String)> {
-    let report = parse_style_attribute(&format!("background: {text}"));
+    let report = CssParser::default().parse_block_contents(format!("background: {text}"));
     assert!(report.is_clean());
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&report.syntax()[0]).unwrap()
+        report.syntax()[0].expand().unwrap()
     else {
         panic!("completed background")
     };

@@ -2,8 +2,8 @@
 
 use serde_json::Value;
 use surgeist_css::{
-    CssConditionKind, CssMediaLeaf, CssMediaQuery, CssUnknownMediaFeatureReason,
-    CssUnknownMediaFeatureRef, parse_media_query,
+    CssConditionKind, CssMediaLeaf, CssMediaQuery, CssParser, CssUnknownMediaFeatureReason,
+    CssUnknownMediaFeatureRef,
 };
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
@@ -19,7 +19,7 @@ fn reconciliation() -> Reconciliation {
 fn typed_node_reconciles(row: &Value) -> Result<(), String> {
     let id = text(row, "id");
     let input = text(row, "input");
-    let report = parse_media_query(input);
+    let report = CssMediaQuery::parse(&CssParser::default(), input);
     assert_eq!(
         report.clone().into_validation_result().is_ok(),
         row["clean"].as_bool().unwrap(),

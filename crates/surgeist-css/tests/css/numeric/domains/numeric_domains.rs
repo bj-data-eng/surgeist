@@ -167,7 +167,7 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         CssFlowToleranceRef::LengthPercentage(value) if exact_percentage(value.literal().map(|literal| literal.component()),"25")
     ));
 
-    let report = parse_style_attribute("flow-tolerance: 25%");
+    let report = CssParser::default().parse_block_contents("flow-tolerance: 25%");
     assert!(report.is_clean());
     let property = report.syntax()[0]
         .known()
@@ -192,7 +192,7 @@ fn opacity_rejects_bare_non_finite_keywords_and_unrelated_numeric_domains() {
         ("1px", "1px", CssTokenKind::Dimension),
     ] {
         let source = format!("opacity: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(
             report.syntax()[0]
@@ -233,7 +233,8 @@ fn opacity_preserves_finite_decimal_exponents_beyond_float_storage() {
     // A decimal exponent is mathematically finite. The tokenizer's infinity
     // cache does not change its authored numeric domain.
     for value in ["1e999", "1e999%"] {
-        let report = parse_style_attribute(&format!("opacity: {value}; color: red"));
+        let report =
+            CssParser::default().parse_block_contents(format!("opacity: {value}; color: red"));
         assert!(report.is_clean());
         assert_eq!(report.syntax().len(), 2);
         let CssKnownPropertyValueRef::Opacity(opacity) = report.syntax()[0]
@@ -270,7 +271,7 @@ fn calculations_preserve_finite_decimal_spellings_beyond_float_storage() {
         "opacity: calc(1e999%); color: red",
         "flow-tolerance: calc(3.5e38%); color: red",
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 2);
     }
@@ -279,7 +280,7 @@ fn calculations_preserve_finite_decimal_spellings_beyond_float_storage() {
 #[test]
 fn exact_huge_time_parse_retains_authored_payload_and_siblings() {
     let source = "color: red; transition-duration: 1e999s; width: 2px";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 3);
     assert_eq!(
@@ -318,7 +319,7 @@ fn exact_huge_time_parse_retains_authored_payload_and_siblings() {
 #[test]
 fn exact_huge_iteration_parse_retains_sheet_payload_and_siblings() {
     let source = ".before { width: 1px; }\n.middle { animation-iteration-count: 1e999; opacity: .5; }\n.after { height: 2px; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean());
     assert_eq!(report.syntax().rules().len(), 3);
     let CssRule::Style(middle) = &report.syntax().rules()[1] else {
@@ -364,7 +365,7 @@ fn flow_tolerance_nonzero_unitless_value_drops_declaration_and_retains_siblings(
     for (property, value, expected_property, responsible_offset) in cases {
         let invalid = format!("{property}: {value};");
         let source = format!("color: red; {invalid} width: 2px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
 
         assert_eq!(report.syntax().len(), 2, "source: {source}");
         let [diagnostic] = report.diagnostics() else {
@@ -420,7 +421,7 @@ fn flow_tolerance_retains_exact_ordinary_percentages_beyond_float_storage() {
     for spelling in ["3.5e38", "1e999"] {
         let token = format!("{spelling}%");
         let source = format!("color: red; flow-tolerance: {token}; width: 2px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 3);
         assert_eq!(

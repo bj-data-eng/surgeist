@@ -39,9 +39,15 @@ const BORDER_MEMBERS: &[&str] = &[
 
 fn admitted(name: &str, value: &str) -> CssDeclaration {
     let css = format!("/*😀*/{}:{value}!important", name.to_ascii_uppercase());
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert_eq!(&validate_style_attribute(&css).unwrap(), report.syntax());
+    assert_eq!(
+        &CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap(),
+        report.syntax()
+    );
     let [source] = report.syntax().as_slice() else {
         panic!("one declaration")
     };
@@ -64,18 +70,20 @@ fn fronts(name: &str, value: &str) -> Vec<CssDeclaration> {
     // Derive the dispatch target only from a successfully admitted declaration;
     // assert specified outcomes through every existing public grammar boundary.
     let property = parsed.known().unwrap().property();
-    let components = parse_component_values(value).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     let snapshot = components.clone();
     let mut sources = vec![parsed];
     for source in [
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components.clone(),
             CssImportance::Important,
         )
         .unwrap(),
-        parse_property_value_for_grammar(
-            property.grammar(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(property.grammar()),
             components.clone(),
             CssImportance::Important,
         )
@@ -88,12 +96,16 @@ fn fronts(name: &str, value: &str) -> Vec<CssDeclaration> {
         sources.push(source);
     }
     for report in [
-        parse_property_value_text(
+        CssParser::default().parse_property_value(
             value,
-            CssPropertyNameRef::Known(property),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(property)),
             CssImportance::Important,
         ),
-        parse_property_value_text_for_grammar(value, property.grammar(), CssImportance::Important),
+        CssParser::default().parse_property_value(
+            value,
+            CssPropertyTextTarget::Grammar(property.grammar()),
+            CssImportance::Important,
+        ),
     ] {
         assert!(
             report.is_clean(),
@@ -110,7 +122,7 @@ fn fronts(name: &str, value: &str) -> Vec<CssDeclaration> {
 
 fn rejected(name: &str, value: &str) {
     let css = format!("/*😀*/color:red;{name}:{value}!important;width:2px");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     let [before, after] = report.syntax().as_slice() else {
         panic!("only siblings: {css}")
     };
@@ -136,22 +148,28 @@ fn rejected(name: &str, value: &str) {
         css[..start].encode_utf16().count()
     );
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     // The real error's named property selects checked boundaries without absent enums.
     let property = detail.known_property().unwrap();
-    let components = parse_component_values(value).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     let snapshot = components.clone();
     for error in [
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components.clone(),
             CssImportance::Important,
         )
         .unwrap_err(),
-        parse_property_value_for_grammar(
-            property.grammar(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(property.grammar()),
             components.clone(),
             CssImportance::Important,
         )
@@ -194,8 +212,7 @@ fn canonical(name: &str, authored: &str, expected_value: &str) {
 }
 
 fn expanded(source: &CssDeclaration, members: &[&str]) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("complete intrinsic expansion")
     };
@@ -526,9 +543,7 @@ fn clip_rule_mask_type_and_layer_border_modes_keep_distinct_domains() {
     }
     // CSS basic shapes keep their own fill rule; clip-rule is a separate SVG
     // property, with no mutation of the neighboring clip-path authored model.
-    let report = parse_style_attribute(
-        "clip-rule:evenodd;clip-path:polygon(nonzero,0 0);mask-type:alpha;mask-mode:match-source;mask-border-mode:luminance",
-    );
+    let report = CssParser::default().parse_block_contents("clip-rule:evenodd;clip-path:polygon(nonzero,0 0);mask-type:alpha;mask-mode:match-source;mask-border-mode:luminance");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[1]
         .known()
@@ -567,7 +582,7 @@ fn lifecycle(name: &str, ordinary: &str, invalid: &str, members: &[&str]) {
     }
     for source in fronts(name, "var(--mask)") {
         let snapshot = source.clone();
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("whole declaration pending")
         };
         assert!(handle.source().same_occurrence(&source));
@@ -579,19 +594,19 @@ fn lifecycle(name: &str, ordinary: &str, invalid: &str, members: &[&str]) {
         ] {
             assert!(
                 handle
-                    .reenter(parse_component_values(residual).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), residual).unwrap())
                     .unwrap_err()
                     .is_residual_substitution()
             );
         }
         assert!(
             handle
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some()
         );
-        let replacement = parse_component_values(ordinary).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), ordinary).unwrap();
         let before = replacement.clone();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
@@ -600,7 +615,7 @@ fn lifecycle(name: &str, ordinary: &str, invalid: &str, members: &[&str]) {
             };
             assert_members(&values, &source, members, Some(&replacement));
         }
-        let global = parse_component_values("revert-layer").unwrap();
+        let global = CssComponentValues::parse(&CssParser::default(), "revert-layer").unwrap();
         let CssContributions::Longhands(values) = handle.reenter(global.clone()).unwrap() else {
             panic!("global retry")
         };
@@ -681,7 +696,7 @@ fn programmatic_keyword_replacements_keep_their_origin_and_original_occurrence()
     ] {
         let source = admitted(name, "var(--mask)");
         let snapshot = source.clone();
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         let replacement = CssComponentValues::try_new(
@@ -728,11 +743,11 @@ fn original_repaired_closures_fail_checked_and_reentry_but_closed_retry_succeeds
     ] {
         let source = admitted(name, "var(--mask)");
         let property = source.known().unwrap().property();
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         for input in [format!("{ordinary}/*"), "var(--mask".to_owned()] {
-            let components = parse_component_values(&input).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), &input).unwrap();
             let snapshot = components.clone();
             let serialized = components.serialize_tokens(Default::default()).unwrap();
             let origin = (0..=serialized.as_css().len())
@@ -756,14 +771,16 @@ fn original_repaired_closures_fail_checked_and_reentry_but_closed_retry_succeeds
                 })
                 .expect("original closure origin");
             for error in [
-                parse_property_value(
-                    CssPropertyNameRef::Known(property),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                     components.clone(),
                     CssImportance::Important,
                 )
                 .unwrap_err(),
-                parse_property_value_for_grammar(
-                    property.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(property.grammar()),
                     components.clone(),
                     CssImportance::Important,
                 )
@@ -794,7 +811,10 @@ fn original_repaired_closures_fail_checked_and_reentry_but_closed_retry_succeeds
         }
         assert!(
             handle
-                .reenter(parse_component_values(&format!("{ordinary}/**/")).unwrap())
+                .reenter(
+                    CssComponentValues::parse(&CssParser::default(), format!("{ordinary}/**/"))
+                        .unwrap()
+                )
                 .is_ok()
         );
         assert!(handle.source().same_occurrence(&source));
@@ -866,7 +886,7 @@ fn source_graph_tariffs_are_cumulative_exact_and_atomic_at_declaration_boundary(
 #[test]
 fn checked_component_source_budget_counts_comma_and_both_layers_cumulatively() {
     // Two four-byte identifiers plus one comma; all are depth-zero leaf tokens.
-    let components = parse_component_values("none,none").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "none,none").unwrap();
     let snapshot = components.clone();
     let exact = CssComponentValueLimits::try_new(0, 3, 9).unwrap();
     let admitted_components =
@@ -897,8 +917,9 @@ fn checked_component_source_budget_counts_comma_and_both_layers_cumulatively() {
         );
         assert_eq!(components, snapshot);
     }
-    let source = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Mask),
+    let source = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Mask)),
         admitted_components,
         CssImportance::Important,
     )
@@ -909,11 +930,11 @@ fn checked_component_source_budget_counts_comma_and_both_layers_cumulatively() {
 #[test]
 fn composed_normalization_retains_order_importance_and_exact_twenty_seven_contributions() {
     let css = "/*😀*/.a{mask:none!important;mask-border:none;mask-mode:alpha,luminance;clip-rule:evenodd;mask-type:alpha;clip-path:circle();clip:auto;mask-image:none;mask:var(--m)}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let snapshot = report.clone();
     let exact = CssNormalizationLimits::try_new(0, 1, 9, 27).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -968,11 +989,10 @@ fn composed_normalization_retains_order_importance_and_exact_twenty_seven_contri
             _ => panic!("composed expansion contract"),
         }
     }
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 9, 26).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 9, 26).unwrap())
+        .unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 26))
@@ -985,7 +1005,7 @@ fn composed_normalization_retains_order_importance_and_exact_twenty_seven_contri
             .same_occurrence(values[8].source())
     );
     assert_eq!(report, snapshot);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 
 // Functional implementation companions, not absent-symbol RED:

@@ -4,7 +4,7 @@
 
 use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
-    CssFontFaceSource, CssFontFaceUrlSource, CssRule, parse_sheet,
+    CssFontFaceSource, CssFontFaceUrlSource, CssParser, CssRule,
 };
 
 fn sources(hints: &[&str]) -> Vec<CssFontFaceUrlSource> {
@@ -14,7 +14,7 @@ fn sources(hints: &[&str]) -> Vec<CssFontFaceUrlSource> {
         .collect::<Vec<_>>()
         .join(", ");
     let text = format!("@font-face {{ src: {values}; }}");
-    let report = parse_sheet(&text);
+    let report = CssParser::default().parse_sheet(&text);
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("one font-face rule");

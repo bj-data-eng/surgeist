@@ -1,8 +1,8 @@
 //! Unicode-range expectations from selected Syntax 3 (2026-10-01) §§4.3.14 and 5.5.11.
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-value
 use surgeist_css::{
-    CssErrorCode, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue, CssRecoveryAction,
-    parse_font_face_descriptor_value,
+    CssAuthoredFontFaceDescriptorValue, CssErrorCode, CssFontFaceDescriptorKind,
+    CssFontFaceDescriptorValue, CssParser, CssRecoveryAction,
 };
 
 type RangeExpectation<'a> = (&'a str, &'a [(u32, u32)], bool);
@@ -97,8 +97,11 @@ fn raw_unicode_range_corpus_preserves_values_and_original_diagnostics() {
         let matching: Vec<_> = cases.iter().filter(|case| case["id"] == *id).collect();
         assert_eq!(matching.len(), 1, "one original input for {id}");
         let input = matching[0]["input"].as_str().unwrap();
-        let report =
-            parse_font_face_descriptor_value(input, CssFontFaceDescriptorKind::UnicodeRange);
+        let report = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            input,
+            CssFontFaceDescriptorKind::UnicodeRange,
+        );
         let clean = !ranges.is_empty();
         assert_eq!(report.is_clean(), clean, "{id}: {report:?}");
         let mut expected_class = serde_json::json!({

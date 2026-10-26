@@ -9,8 +9,7 @@ use surgeist_css::*;
 const NAME: &str = "marker-side";
 
 fn contribution(source: &CssDeclaration) -> CssLonghandContribution {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("marker-side expands to one longhand")
     };
@@ -84,7 +83,7 @@ fn malformed_marker_side_values_drop_only_their_declaration() {
         "1px",
     ] {
         let source = format!("color:red;{NAME}:{invalid};height:2px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(
             report
                 .syntax()
@@ -98,11 +97,16 @@ fn malformed_marker_side_values_drop_only_their_declaration() {
             panic!("one whole-declaration diagnostic: {source}")
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
 
     // The sibling list-style shorthand has its own three members and grammar.
-    let report = parse_style_attribute("list-style:outside none disc");
+    let report = CssParser::default().parse_block_contents("list-style:outside none disc");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let shorthand = CssKnownProperty::from_name("list-style").unwrap();
     let CssPropertyKindRef::Shorthand(metadata) = shorthand.metadata().unwrap().kind() else {
@@ -127,8 +131,9 @@ fn programmatic_components_use_the_same_grammar_and_origin() {
         Default::default(),
     )
     .unwrap();
-    let source = parse_property_value(
-        CssPropertyNameRef::Known(property),
+    let source = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
         components,
         CssImportance::Normal,
     )
@@ -145,8 +150,9 @@ fn programmatic_components_use_the_same_grammar_and_origin() {
     )
     .unwrap();
     assert_programmatic_rejection(
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             invalid,
             CssImportance::Normal,
         ),
@@ -157,14 +163,14 @@ fn programmatic_components_use_the_same_grammar_and_origin() {
 #[test]
 fn pending_reentry_is_strict_repeatable_and_preserves_source_and_replacement() {
     let source = validated_important_declaration(NAME, "var(--side)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("known marker-side with var() is pending")
     };
     assert!(pending.source().same_occurrence(&source));
     for invalid in ["outside", "match-parent match-self", ""] {
         assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some()
@@ -172,12 +178,12 @@ fn pending_reentry_is_strict_repeatable_and_preserves_source_and_replacement() {
     }
     assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
     for value in ["match-self", "match-parent", "inherit"] {
-        let replacement = parse_component_values(value).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), value).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -196,9 +202,10 @@ fn pending_reentry_is_strict_repeatable_and_preserves_source_and_replacement() {
 
 #[test]
 fn normalization_preserves_order_and_reports_an_atomic_contribution_limit() {
-    let report = parse_sheet(".a{marker-side:match-parent;color:red;marker-side:match-self}");
+    let report = CssParser::default()
+        .parse_sheet(".a{marker-side:match-parent;color:red;marker-side:match-self}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -229,7 +236,7 @@ fn normalization_preserves_order_and_reports_an_atomic_contribution_limit() {
         assert!(item.source().same_occurrence(declarations[order].source()));
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 2))

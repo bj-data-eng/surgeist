@@ -7,8 +7,7 @@ use crate::css::support::important_declaration;
 use surgeist_css::*;
 
 fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("ordinary opacity contribution")
     };
@@ -145,10 +144,10 @@ fn opacity_initial_is_exactly_one_and_all_reset_includes_its_terminal() {
         panic!("all metadata")
     };
     assert!(!metadata.excludes(CssPropertyNameRef::Known(CssKnownProperty::Opacity)));
-    let report = parse_style_attribute("all:unset");
+    let report = CssParser::default().parse_block_contents("all:unset");
     assert!(report.is_clean());
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&report.syntax()[0]).unwrap()
+        report.syntax()[0].expand().unwrap()
     else {
         panic!("symbolic all reset")
     };
@@ -179,8 +178,9 @@ fn parsed_and_programmatic_opacity_transport_preserves_exact_numeric_branches() 
             Default::default(),
         )
         .unwrap();
-        let constructed = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Opacity),
+        let constructed = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Opacity)),
             components.clone(),
             CssImportance::Important,
         )
@@ -221,8 +221,9 @@ fn parsed_and_programmatic_opacity_calculations_preserve_operations_and_origins(
             Default::default(),
         )
         .unwrap();
-        let constructed = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Opacity),
+        let constructed = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Opacity)),
             components.clone(),
             CssImportance::Important,
         )
@@ -238,11 +239,11 @@ fn parsed_and_programmatic_opacity_calculations_preserve_operations_and_origins(
 #[test]
 fn opacity_reentry_emits_exact_replacement_value_with_original_occurrence() {
     let source = important_declaration("opacity", "var(--opacity)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending opacity")
     };
     for replacement in ["150%", "calc(1 / 2)", "calc(25% + 25%)"] {
-        let components = parse_component_values(replacement).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), replacement).unwrap();
         let CssContributions::Longhands(values) = pending.reenter(components.clone()).unwrap()
         else {
             panic!("completed opacity")

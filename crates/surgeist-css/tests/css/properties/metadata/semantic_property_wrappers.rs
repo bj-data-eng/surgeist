@@ -2,7 +2,8 @@
 use surgeist_css::*;
 
 fn parsed(property: CssKnownProperty, css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{}:{css}", property.canonical_name()));
+    let report =
+        CssParser::default().parse_block_contents(format!("{}:{css}", property.canonical_name()));
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     report.syntax()[0].clone()
 }
@@ -22,9 +23,10 @@ fn all_keeps_only_global_and_substitution_dependent_declared_values() {
         assert_eq!(known.grammar(), CssKnownProperty::All.grammar());
         assert_eq!(known.global(), Some(keyword));
         assert_eq!(known.property_value(), None);
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::All),
-            parse_component_values(css).unwrap(),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::All)),
+            CssComponentValues::parse(&CssParser::default(), css).unwrap(),
             CssImportance::Normal,
         )
         .unwrap();
@@ -35,7 +37,11 @@ fn all_keeps_only_global_and_substitution_dependent_declared_values() {
     let known = declaration.known().unwrap();
     assert!(known.substitution_dependent().is_some());
     assert_eq!(known.property_value(), None);
-    assert!(!parse_style_attribute("all:normal").is_clean());
+    assert!(
+        !CssParser::default()
+            .parse_block_contents("all:normal")
+            .is_clean()
+    );
 }
 
 #[test]

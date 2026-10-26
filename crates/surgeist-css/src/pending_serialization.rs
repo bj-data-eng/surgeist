@@ -37,7 +37,7 @@ mod tests {
         // Syntax 3 makes `\` a delimiter only before a newline; without it,
         // `\` at EOF re-tokenizes as an escape. Public construction rejects
         // this stream, so the private harness drops the guarding newline.
-        let parsed = crate::parse_component_values("env(axis) \\\n").unwrap();
+        let parsed = crate::component_values::parse_component_values("env(axis) \\\n").unwrap();
         let items = parsed.items();
         assert!(matches!(
             items[items.len() - 1].view(),

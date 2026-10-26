@@ -37,8 +37,7 @@ fn accepted(name: &str, value: &str) {
 }
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!(
             "terminal contributions for {:?}",
@@ -230,7 +229,7 @@ fn unordered_rule_components_expand_with_omissions_reset_to_initials() {
 #[test]
 fn globals_and_pending_values_expand_all_six_properties_with_strict_reentry() {
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&declaration("all", "initial")).unwrap()
+        declaration("all", "initial").expand().unwrap()
     else {
         panic!("symbolic universal reset")
     };
@@ -261,13 +260,15 @@ fn globals_and_pending_values_expand_all_six_properties_with_strict_reentry() {
         }
         for pending in ["var(--multicol)", "env(--multicol)"] {
             let source = declaration(name, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("{name} remains pending until substitution")
             };
             assert!(handle.source().same_occurrence(&source));
             assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
                     .is_residual_substitution()
             );
@@ -282,12 +283,14 @@ fn globals_and_pending_values_expand_all_six_properties_with_strict_reentry() {
             };
             assert!(
                 handle
-                    .reenter(parse_component_values(invalid_text).unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), invalid_text).unwrap()
+                    )
                     .unwrap_err()
                     .replacement_error()
                     .is_some()
             );
-            let replacement = parse_component_values(valid).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), valid).unwrap();
             for _ in 0..2 {
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
@@ -304,7 +307,7 @@ fn globals_and_pending_values_expand_all_six_properties_with_strict_reentry() {
                 }
             }
             let CssContributions::Longhands(values) = handle
-                .reenter(parse_component_values("inherit").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
                 .unwrap()
             else {
                 panic!("{name} reenters a global keyword")
@@ -323,7 +326,7 @@ fn globals_and_pending_values_expand_all_six_properties_with_strict_reentry() {
 
 #[test]
 fn normalization_keeps_mixed_order_and_fails_atomically_at_contribution_limit() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         ".a{column-fill:balance;column-rule:red solid 2px;",
         "column-span:all;column-rule-width:1%}",
     ));
@@ -331,7 +334,7 @@ fn normalization_keeps_mixed_order_and_fails_atomically_at_contribution_limit() 
         panic!("one invalid width diagnostic: {:?}", report.diagnostics())
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -361,7 +364,7 @@ fn normalization_keeps_mixed_order_and_fails_atomically_at_contribution_limit() 
         }
     }
     let limit = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 3).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limit).unwrap_err();
+    let error = report.syntax().normalize(limit).unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 3))

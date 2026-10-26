@@ -18,9 +18,10 @@ const SIX: [(&str, &str, &str); 6] = [
 
 fn accepted(name: &str, value: &str) {
     let parsed = declaration(name, value);
-    let checked = parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar(name)),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         CssImportance::Normal,
     )
     .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"));
@@ -40,7 +41,7 @@ fn rejected<'a>(name: &str, value: &str, rest: impl Into<Option<&'a str>>) {
     // unregistered property, even when the parser preserves valid neighbors.
     let target = grammar(name).target_property();
     let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [diagnostic] = report.diagnostics() else {
         panic!("one value error for {source}: {:?}", report.diagnostics())
     };
@@ -60,14 +61,19 @@ fn rejected<'a>(name: &str, value: &str, rest: impl Into<Option<&'a str>>) {
             CssKnownProperty::Color
         );
     }
-    assert!(validate_style_attribute(&source).is_err());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_err()
+    );
     assert_checked_value_rejected_at(known_property(name), value, rest);
     assert_eq!(target.canonical_name(), name);
 }
 
 fn descriptor_accepted(name: &str, value: &str) {
     let source = format!("@font-face{{font-family:Demo;{name}:{value};src:url(face)}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("one font face: {source}")
@@ -77,7 +83,7 @@ fn descriptor_accepted(name: &str, value: &str) {
 
 fn descriptor_rejected(name: &str, value: &str) {
     let source = format!("@font-face{{font-family:Demo;{name}:{value};src:url(face)}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let [diagnostic] = report.diagnostics() else {
         panic!(
             "one descriptor error for {source}: {:?}",
@@ -89,7 +95,12 @@ fn descriptor_rejected(name: &str, value: &str) {
         panic!("valid font face remains")
     };
     assert_eq!(face.descriptors().occurrences().count(), 2);
-    assert!(validate_sheet(&source).is_err());
+    assert!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .is_err()
+    );
 }
 
 #[test]
@@ -286,7 +297,7 @@ fn variation_descriptor_has_independent_ordered_recovery_and_css_wide_rejection(
         descriptor_rejected("font-variation-settings", value);
     }
     let source = "@font-face{font-variation-settings:\"wght\" 1;font-variation-settings:bad;font-variation-settings:\"wght\" 2}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("font face retained")
@@ -308,7 +319,7 @@ fn six_inherited_longhands_have_initials_and_one_coupled_contribution() {
         };
         let source = declaration(name, ordinary_css);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("{name} must expand")
         };
@@ -320,7 +331,7 @@ fn six_inherited_longhands_have_initials_and_one_coupled_contribution() {
         assert_eq!(contribution.source().importance(), CssImportance::Important);
         assert!(contribution.replacement_components().is_none());
         let CssExpansion::Contributions(CssContributions::Longhands(expected)) =
-            expand_declaration(&declaration(name, initial_css)).unwrap()
+            declaration(name, initial_css).expand().unwrap()
         else {
             panic!("{name} initial expansion")
         };
@@ -333,7 +344,7 @@ fn six_longhands_preserve_css_wide_and_pending_reentry() {
     for (name, _, _) in SIX {
         let source = declaration(name, "inherit");
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("{name} inherit expands")
         };
@@ -346,13 +357,13 @@ fn six_longhands_preserve_css_wide_and_pending_reentry() {
         );
 
         let pending_source = declaration(name, "var(--font-control)");
-        let CssExpansion::Pending(pending) = expand_declaration(&pending_source).unwrap() else {
+        let CssExpansion::Pending(pending) = pending_source.expand().unwrap() else {
             panic!("{name} must defer var()")
         };
         assert!(pending.source().same_occurrence(&pending_source));
         assert!(
             pending
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .is_err()
         );
         let replacement = match name {
@@ -361,7 +372,7 @@ fn six_longhands_preserve_css_wide_and_pending_reentry() {
             _ => "normal",
         };
         let CssContributions::Longhands(values) = pending
-            .reenter(parse_component_values(replacement).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), replacement).unwrap())
             .unwrap()
         else {
             panic!("{name} reentry contributes")
@@ -382,7 +393,7 @@ fn feature_and_variation_descriptors_defer_env_and_reenter_strictly() {
         ("font-variation-settings", "\"wght\" -1.25"),
     ] {
         let source = format!("@font-face{{{name}:env(axis, fallback)}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [CssRule::FontFace(face)] = report.syntax().rules() else {
             panic!("font face retained")
@@ -397,7 +408,7 @@ fn feature_and_variation_descriptors_defer_env_and_reenter_strictly() {
         assert!(
             pending
                 .reparse_after_substitution(
-                    parse_component_values("env(axis)").unwrap(),
+                    CssComponentValues::parse(&CssParser::default(), "env(axis)").unwrap(),
                     Default::default()
                 )
                 .is_err()
@@ -405,7 +416,7 @@ fn feature_and_variation_descriptors_defer_env_and_reenter_strictly() {
         assert!(
             pending
                 .reparse_after_substitution(
-                    parse_component_values("inherit").unwrap(),
+                    CssComponentValues::parse(&CssParser::default(), "inherit").unwrap(),
                     Default::default()
                 )
                 .is_err()
@@ -413,7 +424,7 @@ fn feature_and_variation_descriptors_defer_env_and_reenter_strictly() {
         assert!(
             pending
                 .reparse_after_substitution(
-                    parse_component_values(ordinary).unwrap(),
+                    CssComponentValues::parse(&CssParser::default(), ordinary).unwrap(),
                     Default::default()
                 )
                 .is_ok()

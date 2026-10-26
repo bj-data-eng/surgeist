@@ -1,6 +1,6 @@
 use crate::css::support::isolated_stack;
 
-use surgeist_css::{CssCondition, CssMediaLeaf, CssMediaQuery, parse_component_values};
+use surgeist_css::{CssComponentValues, CssCondition, CssMediaLeaf, CssMediaQuery, CssParser};
 
 #[test]
 fn deepest_supported_media_construction_and_serialization_fit_an_ordinary_caller_stack() {
@@ -13,7 +13,7 @@ fn deepest_supported_media_construction_and_serialization_fit_an_ordinary_caller
         None,
         || {
             let source = format!("{}(width: 1px){}", "(".repeat(255), ")".repeat(255));
-            let components = parse_component_values(&source).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
             let condition = CssCondition::<CssMediaLeaf>::try_from_components(
                 components.clone(),
                 Default::default(),
@@ -41,7 +41,7 @@ fn deepest_supported_media_construction_and_serialization_fit_an_ordinary_caller
             drop(condition);
             let opaque = format!("(future: {}1{})", "calc(".repeat(255), ")".repeat(255));
             let condition = CssCondition::<CssMediaLeaf>::try_from_components(
-                parse_component_values(&opaque).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), &opaque).unwrap(),
                 Default::default(),
             )
             .unwrap();

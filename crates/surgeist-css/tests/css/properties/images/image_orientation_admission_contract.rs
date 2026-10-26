@@ -85,7 +85,7 @@ fn flip_angle<'a>(
 fn parsed_accepts(value: &str) -> CssDeclaration {
     let source =
         format!("/* 🦀 */ color:red !important; image-orientation:{value} !important; width:1px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [before, declaration, after] = report.syntax().as_slice() else {
         panic!("all three declarations must survive in source order")
@@ -112,16 +112,21 @@ fn parsed_accepts(value: &str) -> CssDeclaration {
 }
 
 fn checked_accepts(value: &str, grammar: bool) -> CssDeclaration {
-    let components = parse_component_values(value).expect("well-formed supplied components");
+    let components = CssComponentValues::parse(&CssParser::default(), value)
+        .expect("well-formed supplied components");
     let declaration = if grammar {
-        parse_property_value_for_grammar(
-            CssKnownProperty::ImageOrientation.grammar(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssKnownProperty::ImageOrientation.grammar()),
             components.clone(),
             CssImportance::Important,
         )
     } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ImageOrientation),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::ImageOrientation,
+            )),
             components.clone(),
             CssImportance::Important,
         )
@@ -154,7 +159,9 @@ fn flip_before_angle_retains_exact_angle_importance_provenance_and_siblings() {
 fn validator_admits_flip_before_angle() {
     for &(value, _, _, _) in FLIP_FIRST {
         assert!(
-            validate_style_attribute(&format!("image-orientation:{value} !important; color:blue"))
+            CssParser::default()
+                .parse_block_contents(format!("image-orientation:{value} !important; color:blue"))
+                .into_validation_result()
                 .is_ok(),
             "{value}"
         );
@@ -196,7 +203,9 @@ fn none_is_retained_as_an_ordinary_known_value_with_importance_and_siblings() {
 fn validator_admits_none_keyword_case_and_escape_spellings() {
     for value in NONE {
         assert!(
-            validate_style_attribute(&format!("image-orientation:{value} !important; color:blue"))
+            CssParser::default()
+                .parse_block_contents(format!("image-orientation:{value} !important; color:blue"))
+                .into_validation_result()
                 .is_ok(),
             "{value}"
         );
@@ -228,14 +237,18 @@ fn programmatic_flip_before_angle_retains_programmatic_scalar_origin() {
     )
     .unwrap();
     for declaration in [
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ImageOrientation),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::ImageOrientation,
+            )),
             components.clone(),
             CssImportance::Important,
         )
         .unwrap(),
-        parse_property_value_for_grammar(
-            CssKnownProperty::ImageOrientation.grammar(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssKnownProperty::ImageOrientation.grammar()),
             components.clone(),
             CssImportance::Important,
         )
@@ -264,7 +277,12 @@ fn from_image_flip_only_angle_first_and_angle_only_remain_accepted() {
         let parsed = parsed_accepts(value);
         let property = checked_accepts(value, false);
         let grammar = checked_accepts(value, true);
-        assert!(validate_style_attribute(&format!("image-orientation:{value}")).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("image-orientation:{value}"))
+                .into_validation_result()
+                .is_ok()
+        );
         for declaration in [&parsed, &property, &grammar] {
             match value {
                 "from-image" => assert!(matches!(
@@ -290,7 +308,7 @@ fn from_image_flip_only_angle_first_and_angle_only_remain_accepted() {
 fn parsed_rejects(value: &str) {
     let source =
         format!("/* 🦀 */ color:red !important; image-orientation:{value} !important; width:1px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [before, after] = report.syntax().as_slice() else {
         panic!("only valid neighboring declarations must survive: {source}")
     };
@@ -319,16 +337,20 @@ fn parsed_rejects(value: &str) {
 }
 
 fn checked_rejects(value: &str, grammar: bool) {
-    let components = parse_component_values(value).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     let result = if grammar {
-        parse_property_value_for_grammar(
-            CssKnownProperty::ImageOrientation.grammar(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssKnownProperty::ImageOrientation.grammar()),
             components,
             CssImportance::Important,
         )
     } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ImageOrientation),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::ImageOrientation,
+            )),
             components,
             CssImportance::Important,
         )
@@ -357,7 +379,10 @@ fn duplicate_exclusive_and_wrong_dimension_values_drop_only_the_invalid_declarat
 fn validator_rejects_duplicate_exclusive_and_wrong_dimension_values() {
     for value in INVALID {
         assert!(
-            validate_style_attribute(&format!("image-orientation:{value}; color:blue")).is_err(),
+            CssParser::default()
+                .parse_block_contents(format!("image-orientation:{value}; color:blue"))
+                .into_validation_result()
+                .is_err(),
             "{value}"
         );
     }

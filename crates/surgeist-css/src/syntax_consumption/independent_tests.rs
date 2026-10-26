@@ -174,7 +174,7 @@ fn independent_native_numeric_hash_string_and_bad_payloads_survive_direct_input(
             .is_none()
     );
 
-    let checked = crate::parse_component_values("+01").unwrap();
+    let checked = crate::component_values::parse_component_values("+01").unwrap();
     let checked_document = normalize(
         SyntaxInput::CheckedComponents(checked.items()),
         SyntaxInputLimits::default(),
@@ -205,8 +205,8 @@ fn independent_native_numeric_hash_string_and_bad_payloads_survive_direct_input(
 
 #[test]
 fn independent_mixed_equal_text_snapshots_and_unspelled_payload_have_no_invented_source() {
-    let first = crate::parse_component_values("é").unwrap();
-    let second = crate::parse_component_values("é").unwrap();
+    let first = crate::component_values::parse_component_values("é").unwrap();
+    let second = crate::component_values::parse_component_values("é").unwrap();
     let before_first = first.clone();
     let before_second = second.clone();
     let CssValueOrigin::Parsed(first_origin) = first.items()[0].origin() else {
@@ -430,7 +430,7 @@ fn independent_grouped_sublist_copy_remaps_implicit_end_and_at_rule_fault_to_its
 
 #[test]
 fn independent_repeated_checked_groups_charge_each_delimiter_once_and_retry_atomically() {
-    let parsed = crate::parse_component_values("{é}").unwrap();
+    let parsed = crate::component_values::parse_component_values("{é}").unwrap();
     let values = [parsed.items()[0].clone(), parsed.items()[0].clone()];
     let before = values.clone();
     let limits = SyntaxInputLimits {

@@ -54,7 +54,12 @@ pub fn normal_grammar_components(
     name: &str,
     components: CssComponentValues,
 ) -> Result<CssDeclaration, CssPropertyValueError> {
-    parse_property_value_for_grammar(selected_grammar(name), components, CssImportance::Normal)
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(selected_grammar(name)),
+        components,
+        CssImportance::Normal,
+    )
 }
 
 /// The important text front of `property`, by name or, when `grammar` is
@@ -156,7 +161,7 @@ pub fn assert_checked_value_rejected_at<'a>(
     rest: impl Into<Option<&'a str>>,
 ) {
     let rest = rest.into();
-    let components = parse_component_values(value).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     let serialized = components.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), value, "authored component text");
     let expected = rest.map(|rest| {
@@ -298,7 +303,7 @@ fn assert_attribute_rejected_at(
 ) {
     let prefix = format!("color:red;{name}:");
     let css = format!("{prefix}{value};color:blue");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert_eq!(
         report
             .syntax()
@@ -318,7 +323,11 @@ fn assert_attribute_rejected_at(
     );
     assert_value_diagnostic_at(diagnostic.error(), property, prefix.len(), value, rest);
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -351,8 +360,9 @@ pub fn invalid_named_value_at<'a>(name: &str, value: &str, rest: impl Into<Optio
 /// The longhand contributions of a completed expansion of `source`.
 #[track_caller]
 pub fn longhand_contributions(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap_or_else(|error| panic!("expansion: {error:?}"))
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source
+        .expand()
+        .unwrap_or_else(|error| panic!("expansion: {error:?}"))
     else {
         panic!("completed longhand contributions: {source:?}")
     };

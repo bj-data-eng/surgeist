@@ -6,10 +6,9 @@ use crate::css::support::authored_syntax::{
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
-    CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssErrorCode,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssValueOrigin, CssValueTokenRef,
-    parse_comma_separated_component_values, parse_comma_separated_component_values_with_limits,
-    parse_component_value, parse_component_value_with_limits,
+    CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValueRef,
+    CssComponentValues, CssErrorCode, CssParser, CssParserContext, CssRecoveryAction,
+    CssRecoveryDiagnostic, CssValueOrigin, CssValueTokenRef,
 };
 
 fn origin(origin: &CssValueOrigin, source: &str, range: std::ops::Range<usize>) {
@@ -49,7 +48,7 @@ fn ident(component: &CssComponentValue, expected: &str) {
 #[test]
 fn singular_entry_selects_complete_token_after_outer_trivia_with_original_occurrence() {
     let source = " \t/**/ \\61 /*tail*/ ";
-    let report = parse_component_value(source);
+    let report = CssComponentValue::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{report:?}");
     let component = report.syntax().as_ref().unwrap();
     ident(component, "a");
@@ -67,7 +66,7 @@ fn singular_entry_returns_one_complete_function_or_each_matching_block_kind() {
         (" /**/ (a,b) ", CssBlockKind::Parenthesis),
         (" /**/ {a,b} ", CssBlockKind::CurlyBracket),
     ] {
-        let report = parse_component_value(source);
+        let report = CssComponentValue::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{report:?}");
         let component = report.syntax().as_ref().unwrap();
         let CssComponentValueRef::Block(block) = component.view() else {
@@ -88,7 +87,7 @@ fn singular_entry_returns_one_complete_function_or_each_matching_block_kind() {
         );
     }
     let source = " /*c*/ f([a,b],{c,d}) ";
-    let report = parse_component_value(source);
+    let report = CssComponentValue::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{report:?}");
     let component = report.syntax().as_ref().unwrap();
     let CssComponentValueRef::Function(function) = component.view() else {
@@ -111,7 +110,7 @@ fn singular_entry_returns_one_complete_function_or_each_matching_block_kind() {
 #[test]
 fn singular_empty_or_trivia_only_input_rejects_at_real_eof() {
     for source in ["", " \t\n", " /**/ "] {
-        let report = parse_component_value(source);
+        let report = CssComponentValue::parse(&CssParser::default(), source);
         assert!(report.syntax().is_none());
         let [diagnostic] = report.diagnostics() else {
             panic!("one missing-component fault")
@@ -130,7 +129,7 @@ fn singular_empty_or_trivia_only_input_rejects_at_real_eof() {
 #[test]
 fn singular_extra_component_rejects_the_whole_fragment_at_first_extra_component() {
     for (source, extra) in [(" a /**/ f(x) ", 8..10), ("[x] {y}", 4..5), ("a,b", 1..2)] {
-        let report = parse_component_value(source);
+        let report = CssComponentValue::parse(&CssParser::default(), source);
         assert!(
             report.syntax().is_none(),
             "no partial first component: {report:?}"
@@ -158,7 +157,7 @@ fn singular_checked_admission_rejects_raw_bad_tokens_and_unmatched_closers() {
         ("}", ComponentFailure::UnmatchedClosingDelimiter, 0..1),
         ("f([)])", ComponentFailure::UnmatchedClosingDelimiter, 3..4),
     ] {
-        let report = parse_component_value(source);
+        let report = CssComponentValue::parse(&CssParser::default(), source);
         assert!(report.syntax().is_none());
         let [diagnostic] = report.diagnostics() else {
             panic!("original lexical rejection")
@@ -170,7 +169,7 @@ fn singular_checked_admission_rejects_raw_bad_tokens_and_unmatched_closers() {
 #[test]
 fn singular_implicit_function_and_all_block_ends_retain_syntax_but_reject_clean_validation() {
     for source in ["f(a", "[a", "(a", "{a"] {
-        let report = parse_component_value(source);
+        let report = CssComponentValue::parse(&CssParser::default(), source);
         let component = report.syntax().as_ref().unwrap();
         let closing = match component.view() {
             CssComponentValueRef::Function(f) => f.closing_origin(),
@@ -215,7 +214,7 @@ fn raw_comma_entry_preserves_empty_leading_double_and_final_slots() {
         ("a,,", vec![1, 0, 0]),
         (",a,,b,", vec![0, 1, 0, 1, 0]),
     ] {
-        let report = parse_comma_separated_component_values(source);
+        let report = CssComponentValues::parse_comma_separated(&CssParser::default(), source);
         assert!(report.is_clean(), "{report:?}");
         assert_eq!(
             report
@@ -235,7 +234,7 @@ fn raw_comma_entry_preserves_empty_leading_double_and_final_slots() {
 #[test]
 fn raw_comma_entry_retains_whitespace_comments_and_one_trivia_only_slot() {
     let source = " \t/**/ ";
-    let report = parse_comma_separated_component_values(source);
+    let report = CssComponentValues::parse_comma_separated(&CssParser::default(), source);
     assert!(report.is_clean());
     let [Some(values)] = report.syntax().as_slice() else {
         panic!("raw trivia source has one slot")
@@ -261,7 +260,7 @@ fn raw_comma_entry_retains_whitespace_comments_and_one_trivia_only_slot() {
 #[test]
 fn raw_comma_entry_keeps_all_nested_commas_in_their_function_or_block() {
     let source = "a,f(x,y),[x,y],(x,y),{x,y},,";
-    let report = parse_comma_separated_component_values(source);
+    let report = CssComponentValues::parse_comma_separated(&CssParser::default(), source);
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(report.syntax().len(), 7);
     let first = report.syntax()[0].as_ref().unwrap();
@@ -292,7 +291,7 @@ fn raw_comma_entry_keeps_all_nested_commas_in_their_function_or_block() {
 #[test]
 fn raw_comma_member_failure_preserves_later_slots_and_original_responsible_span() {
     let source = "a, url(a b) ,z";
-    let report = parse_comma_separated_component_values(source);
+    let report = CssComponentValues::parse_comma_separated(&CssParser::default(), source);
     let [Some(first), None, Some(last)] = report.syntax().as_slice() else {
         panic!("local bad-URL failure occupies only its original slot")
     };
@@ -310,7 +309,7 @@ fn raw_comma_member_failure_preserves_later_slots_and_original_responsible_span(
     lexical(diagnostic, source, ComponentFailure::BadUrl, 3..11, 2..12);
     assert!(report.into_validation_result().is_err());
     let source = "] ,a,\"bad\n,z";
-    let report = parse_comma_separated_component_values(source);
+    let report = CssComponentValues::parse_comma_separated(&CssParser::default(), source);
     let [None, Some(a), None, Some(z)] = report.syntax().as_slice() else {
         panic!("both malformed members retain independent failures")
     };
@@ -332,7 +331,7 @@ fn raw_comma_member_failure_preserves_later_slots_and_original_responsible_span(
 #[test]
 fn raw_comma_entry_retains_implicit_group_and_does_not_split_its_unclosed_child_comma() {
     let source = "a,f(x,y";
-    let report = parse_comma_separated_component_values(source);
+    let report = CssComponentValues::parse_comma_separated(&CssParser::default(), source);
     let [Some(first), Some(last)] = report.syntax().as_slice() else {
         panic!("child comma remains inside the last function")
     };
@@ -380,7 +379,10 @@ fn explicit_limits_charge_whole_original_input_and_fail_atomically_before_slot_p
             ComponentFailure::NestingLimit,
         ),
     ] {
-        let report = parse_comma_separated_component_values_with_limits(source, limits);
+        let report = CssComponentValues::parse_comma_separated(
+            &CssParser::new(CssParserContext::default(), limits),
+            source,
+        );
         assert!(
             report.syntax().is_empty(),
             "whole-input resource failure admits no partial first slot: {report:?}"
@@ -445,7 +447,8 @@ fn explicit_limits_charge_whole_original_input_and_fail_atomically_before_slot_p
             ComponentFailure::NestingLimit,
         ),
     ] {
-        let report = parse_component_value_with_limits(source, limits);
+        let report =
+            CssComponentValue::parse(&CssParser::new(CssParserContext::default(), limits), source);
         assert!(
             report.syntax().is_none(),
             "outer trivia and groups remain charged: {report:?}"
@@ -491,7 +494,10 @@ fn explicit_limits_charge_whole_original_input_and_fail_atomically_before_slot_p
     }
     let limits = CssComponentValueLimits::try_new(1, 4, 6).unwrap();
     let source = "a,f(x)";
-    let report = parse_comma_separated_component_values_with_limits(source, limits);
+    let report = CssComponentValues::parse_comma_separated(
+        &CssParser::new(CssParserContext::default(), limits),
+        source,
+    );
     assert!(
         report.is_clean(),
         "exact aggregate bounds admit a leaf, separator, function and its child: {report:?}"
@@ -504,16 +510,22 @@ fn generated_implicit_closers_and_root_separators_share_one_aggregate_byte_budge
     let source = "a,f(g(";
     // Original bytes fit six; selected spelling is a,f(g()), eight bytes.
     // The last segment's six generated bytes fit alone but not with a,.
-    let alone = parse_component_value_with_limits(
+    let alone = CssComponentValue::parse(
+        &CssParser::new(
+            CssParserContext::default(),
+            CssComponentValueLimits::try_new(2, 4, 6).unwrap(),
+        ),
         "f(g(",
-        CssComponentValueLimits::try_new(2, 4, 6).unwrap(),
     );
     assert!(alone.syntax().is_some());
     assert_eq!(alone.diagnostics().len(), 2);
     for limit in [6, 7] {
-        let report = parse_comma_separated_component_values_with_limits(
+        let report = CssComponentValues::parse_comma_separated(
+            &CssParser::new(
+                CssParserContext::default(),
+                CssComponentValueLimits::try_new(2, 4, limit).unwrap(),
+            ),
             source,
-            CssComponentValueLimits::try_new(2, 4, limit).unwrap(),
         );
         assert!(
             report.syntax().is_empty(),
@@ -542,9 +554,12 @@ fn generated_implicit_closers_and_root_separators_share_one_aggregate_byte_budge
         span(diagnostic.span(), 0..6);
         assert!(report.into_validation_result().is_err());
     }
-    let report = parse_comma_separated_component_values_with_limits(
+    let report = CssComponentValues::parse_comma_separated(
+        &CssParser::new(
+            CssParserContext::default(),
+            CssComponentValueLimits::try_new(2, 4, 8).unwrap(),
+        ),
         source,
-        CssComponentValueLimits::try_new(2, 4, 8).unwrap(),
     );
     let [Some(first), Some(last)] = report.syntax().as_slice() else {
         panic!("exact aggregate generated spelling bound admits both lists")
@@ -580,8 +595,11 @@ fn default_and_explicit_depth_limits_preserve_the_public_256_level_ceiling() {
     let source = format!("{}x{}", "f(".repeat(256), ")".repeat(256));
     let limits = CssComponentValueLimits::try_new(256, 257, 769).unwrap();
     for report in [
-        parse_component_value(&source),
-        parse_component_value_with_limits(&source, limits),
+        CssComponentValue::parse(&CssParser::default(), &source),
+        CssComponentValue::parse(
+            &CssParser::new(CssParserContext::default(), limits),
+            &source,
+        ),
     ] {
         assert!(
             report.is_clean(),
@@ -592,8 +610,11 @@ fn default_and_explicit_depth_limits_preserve_the_public_256_level_ceiling() {
     let source = format!("{}x{}", "f(".repeat(257), ")".repeat(257));
     let limits = CssComponentValueLimits::try_new(256, 258, 772).unwrap();
     for report in [
-        parse_component_value(&source),
-        parse_component_value_with_limits(&source, limits),
+        CssComponentValue::parse(&CssParser::default(), &source),
+        CssComponentValue::parse(
+            &CssParser::new(CssParserContext::default(), limits),
+            &source,
+        ),
     ] {
         assert!(report.syntax().is_none());
         let [diagnostic] = report.diagnostics() else {

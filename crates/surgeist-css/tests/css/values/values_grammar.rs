@@ -1,14 +1,13 @@
 use surgeist_css::{
     CssAnimationName, CssConditionKind, CssContentValue, CssContentValueItem, CssErrorCode,
     CssFontFamilyNameKind, CssGlobalKeyword, CssImageValue, CssKnownDeclaredValueRef,
-    CssKnownPropertyValueRef, CssNthPattern, CssPseudoClass, CssRecoveryAction, CssRule,
-    CssSelector, CssSupportStatus, CssSupportsLeaf, CssUrlModifier, feature_metadata, parse_sheet,
-    parse_style_attribute,
+    CssKnownPropertyValueRef, CssNthPattern, CssParser, CssPseudoClass, CssRecoveryAction, CssRule,
+    CssSelector, CssSupportStatus, CssSupportsLeaf, CssUrlModifier, feature_metadata,
 };
 
 #[test]
 fn shared_value_grammars_are_typed_with_feature_provenance() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "background-image: url(\"theme.css\" integrity(\"sha256\") cors); width: 2px",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -35,7 +34,7 @@ fn shared_value_grammars_are_typed_with_feature_provenance() {
                 )
     ));
 
-    let components = parse_style_attribute(
+    let components = CssParser::default().parse_block_contents(
         r#"--stream: token fn([x]) {y} "z"; width: 2px; --bad: one ! two; height: 3px"#,
     );
     assert_eq!(components.syntax().len(), 3);
@@ -61,7 +60,8 @@ fn shared_value_grammars_are_typed_with_feature_provenance() {
         CssRecoveryAction::DropDeclaration
     );
 
-    let any_value = parse_sheet("@supports future(fn({x; !}) [y]) { .x { color: red; } }");
+    let any_value =
+        CssParser::default().parse_sheet("@supports future(fn({x; !}) [y]) { .x { color: red; } }");
     assert!(any_value.is_clean(), "{:?}", any_value.diagnostics());
     let [CssRule::Supports(supports)] = any_value.syntax().rules() else {
         panic!("expected supports rule");
@@ -72,7 +72,7 @@ fn shared_value_grammars_are_typed_with_feature_provenance() {
             if value.authored() == Some("future(fn({x; !}) [y])")
     ));
 
-    let nth = parse_sheet(".item:nth-child(-2n + 3) { color: red; }");
+    let nth = CssParser::default().parse_sheet(".item:nth-child(-2n + 3) { color: red; }");
     assert!(nth.is_clean(), "{:?}", nth.diagnostics());
     let [CssRule::Style(rule)] = nth.syntax().rules() else {
         panic!("expected nth-child style rule");
@@ -88,14 +88,15 @@ fn shared_value_grammars_are_typed_with_feature_provenance() {
                 CssNthPattern::AnPlusB(value) if (value.a(), value.b()) == (-2, 3)
             )
     ));
-    let invalid_nth = parse_sheet(".bad:nth-child(2n+-3) { color: red; } .after { width: 2px; }");
+    let invalid_nth = CssParser::default()
+        .parse_sheet(".bad:nth-child(2n+-3) { color: red; } .after { width: 2px; }");
     assert!(matches!(invalid_nth.syntax().rules(), [CssRule::Style(_)]));
     assert_eq!(
         invalid_nth.diagnostics()[0].error().code(),
         CssErrorCode::InvalidSelector
     );
 
-    let unicode = parse_sheet(concat!(
+    let unicode = CssParser::default().parse_sheet(concat!(
         "@font-face { font-family: Demo; src: url(demo.woff2); ",
         "unicode-range: U+4??, U+10FFFF; }",
     ));
@@ -109,9 +110,7 @@ fn shared_value_grammars_are_typed_with_feature_provenance() {
     assert_eq!((ranges[0].start(), ranges[0].end()), (0x400, 0x4ff));
     assert_eq!((ranges[1].start(), ranges[1].end()), (0x10ffff, 0x10ffff));
 
-    let values = parse_style_attribute(
-        r#"width: ReVeRt-LaYeR; animation-name: Main; font-family: "inherit", Avenir\ Next; content: "line\a break""#,
-    );
+    let values = CssParser::default().parse_block_contents(r#"width: ReVeRt-LaYeR; animation-name: Main; font-family: "inherit", Avenir\ Next; content: "line\a break""#);
     assert!(values.is_clean(), "{:?}", values.diagnostics());
     assert!(matches!(
         values.syntax()[0]
@@ -159,7 +158,8 @@ fn shared_value_grammars_are_typed_with_feature_provenance() {
             if matches!(items.items(), [CssContentValueItem::String(value)] if value.as_str() == "line\nbreak")
     ));
 
-    let rejected_url = parse_style_attribute("background-image: url(theme.css cors); width: 2px");
+    let rejected_url = CssParser::default()
+        .parse_block_contents("background-image: url(theme.css cors); width: 2px");
     assert_eq!(rejected_url.syntax().len(), 1);
     assert_eq!(
         rejected_url.diagnostics()[0].error().code(),
@@ -213,7 +213,7 @@ fn shared_value_grammars_are_typed_with_feature_provenance() {
         (
             "official.value.unicode-range",
             "O-SYNTAX3",
-            "#urange-syntax",
+            "#consume-unicode-range-value",
         ),
         (
             "official.value.css-wide-keyword",

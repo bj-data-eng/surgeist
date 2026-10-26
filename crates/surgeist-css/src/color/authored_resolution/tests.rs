@@ -10,9 +10,10 @@ use crate::*;
 use surgeist_color::Color;
 
 fn color(source: &str) -> CssColor {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        parse_component_values(source).unwrap(),
+    let declaration = crate::CssDeclaration::try_from_components(
+        &crate::CssParser::default(),
+        crate::CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+        crate::component_values::parse_component_values(source).unwrap(),
         CssImportance::Important,
     )
     .unwrap_or_else(|error| panic!("{source}: {error:?}"));
@@ -523,7 +524,7 @@ fn controlled_and_ordinary_use_identical_actions_and_one_short_limits_refuse_the
         path_steps,
         actions: count,
     };
-    let result = resolve_authored_color(&root, &facts, facts.identity(), exact).unwrap();
+    let result = root.resolve(&facts, facts.identity(), exact).unwrap();
     assert!(
         matches!(result.outcome(),CssAuthoredColorOutcome::Used(value) if value.identical(controlled))
     );
@@ -547,7 +548,7 @@ fn controlled_and_ordinary_use_identical_actions_and_one_short_limits_refuse_the
             _ => short.actions -= 1,
         };
         assert!(
-            matches!(resolve_authored_color(&root,&facts,facts.identity(),short),Err(ref error) if error.exhausted_limit().is_some_and(|(actual, _, _)| actual == resource)),
+            matches!(root.resolve(&facts, facts.identity(), short),Err(ref error) if error.exhausted_limit().is_some_and(|(actual, _, _)| actual == resource)),
             "{resource:?}"
         );
     }
@@ -669,9 +670,7 @@ fn reached_unavailable_unsupported_and_malformed_facts_remain_site_less_and_reco
     let root = color("red");
     assert!(
         matches!(
-            resolve_authored_color(&root, &malformed, id, limits())
-                .unwrap()
-                .outcome(),
+            root.resolve(&malformed, id, limits()).unwrap().outcome(),
             CssAuthoredColorOutcome::Used(_)
         ),
         "unreached malformed palette is not read"
@@ -939,7 +938,7 @@ fn legitimate_contextual_unit_leaves_preserve_source_authored_reachability_and_o
             == Some(CssColorUnsupported::ContextualUnit(CssNumericUnit::Length(CssLengthUnit::Em)))
     ));
     let root = color("light-dark(red,rgb(calc(1em / 1em) 0 0))");
-    let result = resolve_authored_color(&root, &facts, facts.identity(), limits()).unwrap();
+    let result = root.resolve(&facts, facts.identity(), limits()).unwrap();
     assert!(
         matches!(result.outcome(),CssAuthoredColorOutcome::Used(value) if value.channels()==[Some(1.0),Some(0.0),Some(0.0)])
     );

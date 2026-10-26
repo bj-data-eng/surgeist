@@ -38,7 +38,10 @@ fn assert_primitive(value: Value, expected: &str) {
 #[test]
 fn named_instance_strings_keep_decoded_names_and_original_components() {
     let input = r#""Gr\6f tesque""#;
-    let component = parse_component_values(input).unwrap().items()[0].clone();
+    let component = CssComponentValues::parse(&CssParser::default(), input)
+        .unwrap()
+        .items()[0]
+        .clone();
     let name = CssFontNamedInstanceString::try_from_component(component.clone()).unwrap();
     assert_eq!(name.as_str(), "Grotesque");
     assert_eq!(name.component(), &component);
@@ -279,7 +282,7 @@ fn metric_calculations_preserve_authored_range_type_and_origins_on_atomic_failur
         }
     }
     let calculation = CssCalculation::<CssPercentage>::try_from_components(
-        parse_component_values("calc(-10%)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(-10%)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -301,12 +304,16 @@ fn substituted_values_return_concrete_descriptor_branches_and_original_replaceme
         (Kind::DescentOverride, "25%"),
         (Kind::LineGapOverride, "0%"),
     ] {
-        let pending_report = parse_font_face_descriptor_value("env(selection)", kind);
+        let pending_report = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            "env(selection)",
+            kind,
+        );
         let Some(CssAuthoredFontFaceDescriptorValue::Pending(pending)) = pending_report.syntax()
         else {
             panic!("whole env deferral")
         };
-        let replacement = parse_component_values(text).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let ordinary = pending
             .reparse_after_substitution(replacement, Default::default())
             .unwrap();

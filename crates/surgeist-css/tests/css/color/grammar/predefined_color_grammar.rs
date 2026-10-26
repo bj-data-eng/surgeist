@@ -265,7 +265,7 @@ fn checked_component_front_doors_exclude_dimensions_not_in_the_grammar() {
     for text in ["calc(1px)", "calc(1deg)", "calc(1s)"] {
         assert!(
             CssCalculation::<CssNumber>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default()
             )
             .unwrap_err()
@@ -274,7 +274,7 @@ fn checked_component_front_doors_exclude_dimensions_not_in_the_grammar() {
         );
         assert!(
             CssCalculation::<CssPercentage>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default()
             )
             .unwrap_err()

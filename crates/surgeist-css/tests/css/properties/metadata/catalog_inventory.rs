@@ -4,7 +4,7 @@ use property_expectations::{
     BoundaryOutcome, CASES, CatalogExpectation, KNOWN_SERIALIZATION_DEFECTS,
 };
 use surgeist_css::{
-    CssErrorCode, CssFeatureKind, CssSupportStatus, feature_metadata, parse_style_attribute,
+    CssErrorCode, CssFeatureKind, CssParser, CssSupportStatus, feature_metadata,
     property_support_metadata,
 };
 
@@ -179,7 +179,8 @@ fn authored_property_cases_exercise_public_parser_behavior() {
                 feature_id
             );
         }
-        let report = parse_style_attribute(&format!("{}: {}", case.name, positive));
+        let report =
+            CssParser::default().parse_block_contents(format!("{}: {}", case.name, positive));
         assert!(
             report.is_clean(),
             "{} positive diagnostics: {:?}",
@@ -237,7 +238,8 @@ fn authored_property_cases_exercise_public_parser_behavior() {
             "{} negative must not use substitution-dependent parsing",
             feature_id
         );
-        let report = parse_style_attribute(&format!("{}: {}", case.name, negative));
+        let report =
+            CssParser::default().parse_block_contents(format!("{}: {}", case.name, negative));
         if let BoundaryOutcome::Accepted(assertion) = boundary.outcome {
             // Accepted boundary stimuli and their typed assertions are explicit
             // in the independently authored records, including historical cases.
@@ -303,7 +305,8 @@ fn added_fonts_property_rows_expose_complete_authored_metadata() {
         else {
             continue;
         };
-        let report = parse_style_attribute(&format!("{}: {}", case.name, authored));
+        let report =
+            CssParser::default().parse_block_contents(format!("{}: {}", case.name, authored));
         assert!(
             report.is_clean(),
             "{}: {:?}",

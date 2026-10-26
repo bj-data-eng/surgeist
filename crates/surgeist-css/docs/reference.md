@@ -11,34 +11,29 @@ subset; it does not establish complete support for all CSS syntax.
 
 | Interface | Available with | Result |
 | --- | --- | --- |
-| `parse_sheet(&str)` | Default features | `CssParseReport<CssSheet>` |
-| `decode_stylesheet_bytes(bytes, hints)` | Default features | `Result<CssDecodedStylesheetInput, CssInputDecodeError>` |
-| `decode_stylesheet_bytes_with_limits(bytes, hints, limits)` | Default features | Atomic bounded byte decoding |
-| `parse_decoded_stylesheet(input, location)` | Default features | `CssParseReport<CssSheet>` using the exact decoded snapshot |
-| `parse_sheet_with_options(source, options)` | Default features | Unicode stylesheet with optional symbolic location |
-| `parse_style_attribute(&str)` | Default features | `CssParseReport<CssDeclarationList>` |
-| `parse_declaration_list_text(&str)` | Default features | `CssParseReport<CssDeclarationList>` with raw Syntax list recovery |
-| `parse_style_block(source, namespace_context)` | Default features | `CssParseReport<Option<CssStyleBlock>>` |
-| `parse_rule(source, namespace_context)` | Default features | `CssParseReport<Option<CssRule>>` |
-| `parse_declaration(&str)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
-| `parse_selector(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssSelector>>` |
-| `parse_selector_list(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssStyleSelectorList>>` |
-| `parse_relative_selector_list(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssRelativeSelectorList>>` |
-| `parse_style_selector_list(source, namespaces, CssStyleSelectorContext)` | Default features | `CssParseReport<Option<CssParsedStyleSelectors>>` |
-| `parse_style_selector_list_with_limits(source, namespaces, context, limits)` | Default features | Contextual raw selectors with cumulative component limits |
-| `parse_media_query(&str)` | Default features | `CssParseReport<CssMediaQuery>` |
-| `parse_media_query_list(&str)` | Default features | `CssParseReport<CssMediaQueryList>` |
-| `parse_font_face_descriptor_value(&str, CssFontFaceDescriptorKind)` | Default features | `CssParseReport<Option<CssFontFaceDescriptorValue>>` |
-| `parse_page_declaration_block_contents(&str)` / `_with_limits` | Default features | `CssParseReport<Option<CssPageDeclarationBlock>>` with raw block-contents recovery |
-| `parse_font_face_declaration_block_contents(&str)` / `_with_limits` | Default features | `CssParseReport<Option<CssFontFaceDescriptors>>` with raw block-contents recovery |
-| `validate_sheet(&str)` | Default features | `Result<CssSheet, CssValidationFailure>` |
-| `validate_style_attribute(&str)` | Default features | `Result<CssDeclarationList, CssValidationFailure>` |
-| `validate_declaration_list_text(&str)` | Default features | `Result<CssDeclarationList, CssValidationFailure>` |
-| `parse_component_values(&str)` | Default features | `Result<CssComponentValues, CssComponentValueError>` |
-| `parse_property_value_text(source, name, importance)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
-| `parse_property_value_text_for_grammar(source, grammar, importance)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
-| `parse_property_value(name, components, importance)` | Default features | `Result<CssDeclaration, CssPropertyValueError>` |
-| `expand_declaration(&declaration)` | Default features | `Result<CssExpansion, CssExpansionError>` |
+| `CssParser::new(context, component_limits)` | Default features | The configuration every source-text front takes first: a grammar context and the component limits |
+| `CssParser::parse_sheet(source)` | Default features | `CssParseReport<CssSheet>` |
+| `CssDecodedStylesheetInput::decode(bytes, hints, limits)` | Default features | `Result<CssDecodedStylesheetInput, CssInputDecodeError>`, atomic bounded byte decoding |
+| `CssParser::parse_sheet_bytes(&input)` | Default features | `CssParseReport<CssSheet>` using the exact decoded snapshot |
+| `CssParseReport<CssSheet>::with_location(location)` | Default features | The same report with an optional symbolic location |
+| `CssParser::parse_block_contents(source)` | Default features | `CssParseReport<CssDeclarationList>`: Syntax 3 2026 block contents for style attributes, `cssText` and raw lists |
+| `CssParser::parse_page_block_contents(source)` | Default features | `CssParseReport<Option<CssPageDeclarationBlock>>` with raw block-contents recovery |
+| `CssParser::parse_font_face_block_contents(source)` | Default features | `CssParseReport<Option<CssFontFaceDescriptors>>` with raw block-contents recovery |
+| `CssStyleBlock::parse(parser, source, namespaces)` | Default features | `CssParseReport<Option<CssStyleBlock>>` |
+| `CssRule::parse(parser, source, namespaces)` | Default features | `CssParseReport<Option<CssRule>>` |
+| `CssDeclaration::parse(parser, source)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
+| `CssSelector::parse(parser, source, namespaces)` | Default features | `CssParseReport<Option<CssSelector>>` |
+| `CssRelativeSelectorList::parse(parser, source, namespaces)` | Default features | `CssParseReport<Option<CssRelativeSelectorList>>` |
+| `CssParsedStyleSelectors::parse(parser, source, namespaces, CssStyleSelectorContext)` | Default features | `CssParseReport<Option<CssParsedStyleSelectors>>` with cumulative component limits; `CssStyleSelectorContext::Ordinary` is an ordinary selector list |
+| `CssMediaQuery::parse(parser, source)` | Default features | `CssParseReport<CssMediaQuery>` |
+| `CssMediaQueryList::parse(parser, source)` | Default features | `CssParseReport<CssMediaQueryList>` |
+| `CssAuthoredFontFaceDescriptorValue::parse(parser, source, kind)` | Default features | `CssParseReport<Option<CssAuthoredFontFaceDescriptorValue>>` |
+| `CssBlockFragment::<B>::parse(parser, source, &CssBlockContext)` | Default features | `CssParseReport<Option<CssBlockFragment<B>>>` for each sealed `CssBlockBody` |
+| `CssParseReport::into_validation_result()` | Default features | `Result<T, CssValidationFailure>` accepting exactly a clean report |
+| `CssComponentValues::parse(parser, source)` | Default features | `Result<CssComponentValues, CssComponentValueError>` |
+| `CssParser::parse_property_value(source, target, importance)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
+| `CssDeclaration::try_from_components(parser, target, components, importance)` | Default features | `Result<CssDeclaration, CssPropertyValueError>` |
+| `CssDeclaration::expand()` | Default features | `Result<CssExpansion, CssExpansionError>` |
 
 The [manifest](../Cargo.toml) declares package `surgeist-css`, library
 `surgeist_css`, version `0.1.0`, Rust edition 2024, and no default features.
@@ -47,9 +42,9 @@ Clean-report validation is always available. Production dependencies are pinned 
 `unicode-segmentation = 1.13.3`; test-only JSON support uses
 `serde = 1.0.228` and `serde_json = 1.0.145`.
 
-`parse_sheet` receives decoded Unicode text. A leading U+FEFF is preserved as
+`CssParser::parse_sheet` receives decoded Unicode text. A leading U+FEFF is preserved as
 identifier content, just like an interior U+FEFF. For byte streams, first use
-`decode_stylesheet_bytes`, then `parse_decoded_stylesheet`.
+`CssDecodedStylesheetInput::decode`, then `CssParser::parse_sheet_bytes`.
 For example, `\u{feff}a {}` retains the complete type-selector name,
 while a lone U+FEFF is an incomplete qualified rule and produces a diagnostic.
 
@@ -76,8 +71,9 @@ independently. Defaults follow component-input length policy, with no extra
 finite cap. Limit and checked-capacity failures return no partial input.
 `CssSheet::location()` is null by default. `CssStylesheetLocation` preserves
 host-supplied location text without URL parsing, canonicalization, resource URL
-resolution, loading or mutable CSSOM identity. `parse_sheet_with_options` supplies
-the same optional context to an already-decoded Unicode input.
+resolution, loading or mutable CSSOM identity. `CssParseReport::<CssSheet>::with_location`
+(or `CssSheet::with_location`) attaches the same optional context to a report of an
+already-decoded Unicode input.
 
 `CssParseReport` exposes `syntax()`, `diagnostics()`, `is_clean()`,
 `into_parts()`, and `into_validation_result()`. The consuming validation conversion
@@ -109,9 +105,9 @@ behavior and whether the move changed it.
 | §5.5.4 and §5.5.5 consume every block as block contents; a failed declaration is reconsumed as a qualified rule with a `;` stop token, and §7.1 makes rules invalid in a `<declaration-list>`. | Rule-list bodies moved under #1328. Declaration-list bodies (`@font-face`, keyframe blocks, `@font-palette-values`, `@color-profile`, `@font-feature-values` and its blocks) now drop a nested rule as one unit and keep the declarations around it; `@font-face` and keyframe blocks are no longer dropped whole. | Behavior change |
 | §5.5.6 rejects a non-custom declaration whose value holds a top-level `{}` block beside other tokens, and §5.5.5 keeps interleaved declarations as nested declaration runs. | Already implemented through the block-contents definition. | Unchanged |
 | §5.4.10 parse a comma-separated list of component values appends a group only while input remains, so a final comma followed by no token adds no group. | Media query lists, forgiving selector lists and `@font-face` `src` lists no longer report an empty final member; `@media screen,{}` keeps one clean query. Checked import and custom-media construction agree. | Behavior change |
-| §5.4.4 parse a stylesheet's contents and §5.4.5 parse a block's contents replace "parse a list of rules" and "parse a list of declarations". | `parse_declaration_list_text` still implements the removed 2021 list-of-declarations entry point; `parse_declaration_block_contents` already implements block contents. | Deferred: reconciling or removing the historical public front is a public API decision for #1353. |
+| §5.4.4 parse a stylesheet's contents and §5.4.5 parse a block's contents replace "parse a list of rules" and "parse a list of declarations". | `CssParser::parse_block_contents` is the single declaration-list front: it implements §5.5.5 "consume a block's contents" for style attributes, CSSOM `cssText` and raw lists. The removed 2021 "parse a list of declarations" entry point, `parse_declaration_list_text`, no longer exists (#1353 decision 1, #1396). | Behavior change |
 | §5.4.6 parse a rule, §5.4.7 parse a declaration (no trailing-input check; value stops at `;`), §5.4.8 and §5.4.9. | `parse_rule`, `parse_declaration`, `parse_component_values` and related fragment fronts keep their whole-input contracts; the conformance registry excludes these entry points (`excluded.O-SYNTAX3.fragment-api`). | Unchanged (outside the claimed boundary) |
-| §5.4.5 is the intended parser for style attributes, where a root `}` ends the block. | `parse_style_attribute` follows the selected CSS Style Attributes recommendation: a root `}` does not end the style data. Like any unit that starts with neither an identifier nor an at-keyword, it starts a malformed declaration whose remnants §5.5.6 consumes through the next root `;` (#1372). The value admits declarations only, so an identifier-started unit that is not a valid declaration, such as `a {} color: red`, is likewise one malformed declaration read through its `;` (CSS 2.1 §4.2, #1396), never a qualified rule ending at its `}`. CSSOM declaration-block parsing already uses `parse_declaration_block_contents`. | Deferred: ending the style attribute at a root `}` is a public contract decision for #1353. |
+| §5.4.5 is the intended parser for style attributes, where a root `}` ends the block. | `CssParser::parse_block_contents` parses a style attribute. A root `}` ends the contents, so `color: red } width: 1px` retains only `color`. A unit that is not a declaration is consumed as a nested rule, so `a {} color: red` retains `color`; a failed declaration is reconsumed as a qualified rule through its `;` stop token and reported as `DropDeclaration` with the `;` that ends it inside its span, while a unit that reached a `{}` block is a `DropQualifiedRule` whose span ends with that block. This supersedes the CSS Style Attributes recommendation's reading, in which a `}` is an ordinary invalid token (#1353 decision 1). Input nested past 256 levels refuses the whole contents with one resource diagnostic, as the block-contents front charges every component once. | Behavior change |
 | §5.5.2, §5.5.9 and §5.5.10 no longer mark EOF inside an at-rule, block or function as a parse error. | EOF closures keep their `ImplicitClosure` recovery diagnostics, which are this crate's report contract rather than a claim about parse errors. | Unchanged (report contract) |
 | §7.1 no longer states that `!important` is invalid on descriptors; validity is left to the owning rule's prose. | Descriptor grammars still reject an importance annotation. | Unchanged (owning rules define no important descriptors) |
 | §9 reuses preserved comments only when comments were originally between a token pair. | Component serialization already reuses authored comments and inserts `/**/` only where required. | Unchanged |
@@ -122,57 +118,59 @@ behavior and whether the move changed it.
 | §5.2 and §5.5.6 give a custom property declaration an "original text", and §5.3 requires token streams to reproduce declaration text. | Every parsed declaration already keeps its original name and value source snapshots, and custom values keep their authored text. | Unchanged |
 
 The public conformance registry keeps the Snapshot-official Syntax 3 source
-identity `O-SYNTAX3`, which names the 2021 publication and its anchors, such as
-`#urange-syntax`; moving that public metadata is deferred to #1353.
+identity `O-SYNTAX3`, which names the selected 2026-10-01 publication and its
+anchors, such as `#consume-unicode-range-value`. The 2021 `<urange>` and
+`<declaration-rule-list>` anchors have no counterpart in the 2026 text: `<urange>` is
+anchored at the unicode-range re-parse and `<rule-list>`, `<declaration-list>` and
+`<style-block>` at `#typedef-rule-list`, `#typedef-declaration-list` and
+`#typedef-block-contents`.
 
-## Raw declaration lists
+## Block contents
 
-`parse_declaration_list_text` consumes unwrapped ordinary-property declaration-list
-text using [CSS Syntax 3 (2021-12-24) §§5.3.8 and 5.4.5](../../../references/css-syntax-3--CRD-css-syntax-3-20211224--413b27acb4e1.md),
-the historical "parse a list of declarations" entry point that the selected
-2026 edition removes; see [deferred differences](#css-syntax-3-edition-differences).
-Ident-started units extend through the next root semicolon or actual EOF and use
-the shared property/custom/substitution/importance grammar. Complete generic
-at-rules are consumed through their block or semicolon and rejected once in this
-ordinary-property consumer; nested qualified rules and descriptors are not admitted.
-Other initial tokens, including stray closing delimiters, consume one invalid
-unit through the next root semicolon or EOF. Semicolons inside components, strings
-or comments never split the unit.
+`CssParser::parse_block_contents` consumes unwrapped declaration text with
+[CSS Syntax 3 (2026-10-01) §5.5.5](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md),
+"consume a block's contents". It serves style attributes, CSSOM `cssText` and raw
+declaration lists. A root `}` ends the contents and nothing after it is read, so
+`color: red } width: 1px` retains only `color`. Root semicolons, trivia and EOF are
+empty slots. An at-keyword starts an at-rule, which is consumed through its block
+or its `;` and dropped with `DropAtRule`. Anything else is tried as a declaration
+and, when that returns nothing, reconsumed as a qualified rule with `;` as the stop
+token (§5.5.3): the rule ends at its `{}` block, or before a root `;`, `}` or EOF.
+It is dropped as `DropQualifiedRule` when it reached its block and as `DropDeclaration`
+when it did not, as for a failed declaration. A `DropDeclaration` span includes the `;` that ends the unit; a `DropQualifiedRule` span ends with its block.
+A root `}` before a rule's block ends the rule and then the contents. A failed custom
+property is consumed whole through its `;` and reported as `DropDeclaration`.
 
-For example, raw `} color: red; width: 2px;` retains only Width and reports one
-`DropDeclaration` for `} color: red`; the style-attribute front drops the same
-malformed declaration with the same diagnostic. Diagnostic spans for raw units
-exclude the recovery semicolon; responsible tokens and EOF diagnostics refer to
-the actual input. Tokenizer recovery and structural-limit diagnostics preserve
-the shared policies and actions. No surrounding braces or generated names are used.
-
-Retained declarations preserve duplicates, order, custom-name case, importance,
-and shared original name/value snapshots. Parsing does not perform specified-block
-winner selection or shorthand coalescing. The free function uses the default
-Standards context; `CssParserContext::parse_declaration_list_text` selects the
-existing Quirks or explicit SVG authored grammar. The parser uses existing internal
-resource policy, with no separate text-limit API. Empty input and empty slots are
-clean; discarded input is nonclean even if nothing survives.
-`validate_declaration_list_text` accepts exactly the same clean report and preserves
-all diagnostics on failure. A context-selected report has the same clean conversion
-through `into_validation_result()`.
+For example, `} color: red; width: 2px;` retains nothing and is clean, while
+`a {} color: red; width: 2px;` retains `color` and `width` and reports one
+`DropQualifiedRule` for `a {}`. Retained declarations use the ordinary
+property/custom/substitution/importance grammar and preserve duplicates, order,
+custom-name case, importance and shared original name/value snapshots. Parsing
+does not perform specified-block winner selection or shorthand coalescing.
+The parser's context selects the existing Quirks or explicit SVG authored grammar;
+its component limits charge every original component once, including trivia and
+source after a root `}`. Empty input and empty slots are clean; discarded input
+is nonclean even if nothing survives. `CssParseReport::into_validation_result()`
+accepts exactly the clean report and preserves all diagnostics on failure.
+`CssParser::parse_block_contents_utf16` parses shared original UTF16 through the
+same front.
 
 ## Raw Page and FontFace declaration contents
 
-`parse_page_declaration_block_contents` and
-`parse_font_face_declaration_block_contents` admit the exact supplied unbraced
+`CssParser::parse_page_block_contents` and
+`CssParser::parse_font_face_block_contents` admit the exact supplied unbraced
 input for the selected [CSSOM declaration cssText setter](../../../references/cssom-1--editor-capture-20261009--d42e145ec395.md)
 and [Fonts4 descriptor interface](../../../references/css-fonts-4--WD-css-fonts-4-20260907--03626a0c8565.md).
 They share the existing CSS Syntax block-contents traversal and the actual
 Page/FontFace declaration callbacks. A root `}` stops consumption; at-rules
 and qualified rules are dropped as complete units. Invalid declarations recover
 locally, retaining valid neighbors, duplicate order and original source origins.
-No containing punctuation or rule is generated. The historical raw declaration
-list and the real-brace fragment policies remain distinct.
+No containing punctuation or rule is generated. The real-brace fragment policies
+remain distinct.
 
 Page contents keep Page descriptors, applicable ordinary properties and custom
-declarations as separate typed occurrences. `CssParserContext` provides the Page
-counterparts for document mode. Declaration replacement supplies no margin child
+declarations as separate typed occurrences. The parser's context supplies the
+document mode. Declaration replacement supplies no margin child
 rules. `CssPageDeclarationBlock::try_specified` composes the admitted block with
 the existing selected-block formatter. FontFace uses its descriptor grammar,
 rejects importance and recovers valid `src` members; its real-brace fragment,
@@ -690,7 +688,7 @@ whitespace and comments are accepted. Empty custom values are valid.
 
 Top-level semicolons, stray closing delimiters, multiple declarations, unknown
 properties, and invalid values reject the entire input. Thus `color:red;` belongs
-to `parse_style_attribute`, while `--x:{a:b;c:d}` is a valid singular declaration.
+to `CssParser::parse_block_contents`, while `--x:{a:b;c:d}` is a valid singular declaration.
 Rejection returns `None` and `RejectInput` over the original full input; resource
 exhaustion retains `StopAtNestingLimit`. Implicit EOF closure diagnostics appear
 only when the whole declaration survives grammar and full-consumption checks.
@@ -732,19 +730,12 @@ and trailing grammar tokens are errors. The result retains ordinary, CSS-wide
 and substitution-dependent values without resolving them.
 
 ```rust
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssImportance, CssKnownProperty,
-    CssPropertyNameRef, parse_property_value,
-};
+use surgeist_css::{CssComponentValue, CssComponentValues, CssImportance, CssKnownProperty, CssPropertyNameRef, CssDeclaration, CssParser, CssPropertyTarget};
 
 let value = CssComponentValues::try_new(vec![
     CssComponentValue::try_dimension("2", "px").unwrap(),
 ]).unwrap();
-let declaration = parse_property_value(
-    CssPropertyNameRef::Known(CssKnownProperty::Margin),
-    value,
-    CssImportance::Important,
-).unwrap();
+let declaration = CssDeclaration::try_from_components(&CssParser::default(), CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Margin)), value, CssImportance::Important).unwrap();
 assert_eq!(declaration.position(), None);
 assert!(declaration.same_occurrence(&declaration.clone()));
 ```
@@ -771,7 +762,7 @@ facts instead. This preserves the typed resource exception through the
 known-property parser; callers can inspect `code()`, `component_error()` and
 `origin()` without treating generated serialization coordinates as authored ones.
 
-Declarations read by `parse_sheet` and `parse_style_attribute` expose
+Declarations read by `CssParser::parse_sheet` and `CssParser::parse_block_contents` expose
 `parsed_name()` and `parsed_value()` with original spans and a shared input
 snapshot. The value span excludes the importance annotation and declaration
 delimiter. Structural recovery preserves that original snapshot even when it
@@ -1122,13 +1113,10 @@ percentages remain symbolic. `sign(-2em)` also stays symbolic because a zero fon
 size changes its result; [sign operates on the resolved magnitude](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#sign-funcs).
 
 ```rust
-use surgeist_css::{
-    CssNumberCalculation, CssSpecifiedNumber, CssSerializationLimits,
-    parse_component_values,
-};
+use surgeist_css::{CssNumberCalculation, CssSpecifiedNumber, CssSerializationLimits, CssComponentValues, CssParser};
 
 let calculation = CssNumberCalculation::try_from_components(
-    parse_component_values("calc(1 / 3)")?,
+    CssComponentValues::parse(&CssParser::default(), "calc(1 / 3)")?,
 )?;
 let number = CssSpecifiedNumber::try_from_calculation(calculation.clone())?;
 assert_eq!(
@@ -1591,11 +1579,9 @@ existing node budget, even when compression omits its text; the logical marker
 adds its own node charges and eight output bytes.
 
 ```rust
-use surgeist_css::{CssKnownPropertyValueRef, parse_style_attribute};
+use surgeist_css::{CssKnownPropertyValueRef, CssParser};
 
-let report = parse_style_attribute(
-    "scroll-padding-inline: .12345641px .12345642px",
-);
+let report = CssParser::default().parse_block_contents("scroll-padding-inline: .12345641px .12345642px");
 assert!(report.is_clean());
 let CssKnownPropertyValueRef::ScrollPaddingInline(value) = report.syntax()[0]
     .known().expect("known scroll padding")
@@ -2088,7 +2074,7 @@ rules and equal anonymous layers are not interned together. These handles are
 not mutable CSSOM identities, revisions, or stable keys across normalizations.
 Rule and failure positions are optional and never manufacture coordinates.
 
-`normalize_sheet_with_limits` and `normalize_report_with_limits` take
+`CssSheet::normalize` and `CssParseReport::<CssSheet>::normalize` take
 `CssNormalizationLimits::try_new(max_rule_depth, max_rules, max_declarations,
 max_contributions)`. Top-level rule depth is zero; the depth ceiling cannot
 exceed 256. Every visited rule counts, including implicit nested-declaration
@@ -2140,17 +2126,14 @@ zero is not a time dimension. A well-typed calculation remains symbolic even
 when its eventual duration range belongs to computed-value processing.
 
 ```rust
-use surgeist_css::{
-    CssDuration, CssKnownPropertyValueRef, CssTimeLiteral, CssTimeUnit,
-    CssTimeValue, parse_style_attribute,
-};
+use surgeist_css::{CssDuration, CssKnownPropertyValueRef, CssTimeLiteral, CssTimeUnit, CssTimeValue, CssParser};
 
 let negative = CssTimeValue::from_literal(
     CssTimeLiteral::try_new("-1", CssTimeUnit::Seconds).unwrap(),
 );
 assert!(CssDuration::try_new(negative).is_err());
 
-let report = parse_style_attribute(concat!(
+let report = CssParser::default().parse_block_contents(concat!(
     "transition-duration: calc(-1s + 2s); ",
     "transition-delay: -250ms",
 ));
@@ -2500,12 +2483,9 @@ return no partial text. Offsets remain signed and symbolic. Matching lists to
 background image counts and resolving positioning geometry belong downstream.
 
 ```rust
-use surgeist_css::{
-    CssHorizontalPosition, CssKnownPropertyValueRef,
-    parse_style_attribute,
-};
+use surgeist_css::{CssHorizontalPosition, CssKnownPropertyValueRef, CssParser};
 
-let report = parse_style_attribute(concat!(
+let report = CssParser::default().parse_block_contents(concat!(
     "background-position: left 10px top; ",
     "object-position: right 5% bottom 2px; ",
     "transform-origin: left top 50px",
@@ -2641,13 +2621,9 @@ wrappers expose the sole `CssEasingList` through `timing_functions()`.
 returns `CssBoxShadow`, and `clip-path.value()` returns `CssClipPath`.
 
 ```rust
-use surgeist_css::{
-    CssBasicShape, CssClipPath, CssFilterFunction, CssFilter,
-    CssKnownPropertyValueRef, CssTransformFunction, CssTransform,
-    parse_style_attribute,
-};
+use surgeist_css::{CssBasicShape, CssClipPath, CssFilterFunction, CssFilter, CssKnownPropertyValueRef, CssTransformFunction, CssTransform, CssParser};
 
-let report = parse_style_attribute(concat!(
+let report = CssParser::default().parse_block_contents(concat!(
     "transform: translate3d(10%, 2px, 4em) rotate(45deg); ",
     "filter: blur(2px) drop-shadow(red 1px 2px 3px); ",
     "clip-path: polygon(round 2px, 0 0, 100% 0)",
@@ -2904,11 +2880,9 @@ Every effective edge consumes its existing node budget, including compressed
 edges; byte limits apply to the selected output.
 
 ```rust
-use surgeist_css::{CssKnownPropertyValueRef, parse_style_attribute};
+use surgeist_css::{CssKnownPropertyValueRef, CssParser};
 
-let report = parse_style_attribute(
-    "border-image: .12345641 .12345642 .12345643 .12345644",
-);
+let report = CssParser::default().parse_block_contents("border-image: .12345641 .12345642 .12345643 .12345644");
 assert!(report.is_clean());
 let CssKnownPropertyValueRef::BorderImage(value) = report.syntax()[0]
     .known().expect("known border image")
@@ -4353,11 +4327,9 @@ name lookup belong to animation execution. Invalid selector diagnostics identify
 the responsible token after trivia while dropping the complete owning block.
 
 ```rust
-use surgeist_css::{CssKeyframesName, CssRule, parse_sheet};
+use surgeist_css::{CssKeyframesName, CssRule, CssParser};
 
-let report = parse_sheet(
-    r#"@keyframes "" { calc(120%) { opacity: .5; animation-timing-function: ease; } }"#,
-);
+let report = CssParser::default().parse_sheet(r#"@keyframes "" { calc(120%) { opacity: .5; animation-timing-function: ease; } }"#);
 assert!(report.is_clean());
 let [CssRule::Keyframes(rule)] = report.syntax().rules() else { panic!("keyframes") };
 assert!(matches!(rule.name(), CssKeyframesName::String(name) if name.as_str().is_empty()));
@@ -4638,12 +4610,9 @@ enum choices. Migrate `CssPropertyValue<CssFontVariantValue>::i01_subset()` cons
 `variant()` and inspect the `Normal`, `None`, or checked `Values` branch directly.
 
 ```rust
-use surgeist_css::{
-    CssFontValue, CssKnownPropertyValueRef, CssSystemFont,
-    parse_style_attribute,
-};
+use surgeist_css::{CssFontValue, CssKnownPropertyValueRef, CssSystemFont, CssParser};
 
-let report = parse_style_attribute("font: menu; font-weight: 725");
+let report = CssParser::default().parse_block_contents("font: menu; font-weight: 725");
 assert!(report.is_clean());
 let CssKnownPropertyValueRef::Font(font) = report.syntax()[0]
     .known().expect("known font")
@@ -5045,7 +5014,7 @@ Under the selected Fonts 4 source-list processing rules, each comma-separated
 order. If every member is invalid, or the enclosing descriptor has an invalid
 declaration annotation, the descriptor receives one `DropDescriptor` diagnostic;
 earlier valid descriptor occurrences remain available. Any such recovery makes
-the report unclean, so `validate_sheet` rejects it.
+the report unclean, so `into_validation_result()` rejects it.
 
 Empty URL strings remain valid authored sources. `url()` and `url("")`
 retain the empty string, while `url("  ")` preserves its quoted whitespace.
@@ -5403,11 +5372,9 @@ active. Without an active default, an unqualified type or universal selector is
 `local_name()` from universal `*` reported by `is_universal()`.
 
 ```rust
-use surgeist_css::{
-    CssNamespaceConstraint, CssPseudoElement, CssPseudoElementSegment, CssRule, CssSelector, parse_sheet,
-};
+use surgeist_css::{CssNamespaceConstraint, CssPseudoElement, CssPseudoElementSegment, CssRule, CssSelector, CssParser};
 
-let report = parse_sheet(concat!(
+let report = CssParser::default().parse_sheet(concat!(
     "@namespace svg \"urn:svg\";",
     "svg|a#first#second[|lang]::first-line { color: red; }",
 ));
@@ -5980,9 +5947,9 @@ selector. Style bodies retain their declaration grammar, where extra semicolons
 are valid separators.
 
 ```rust
-use surgeist_css::{CssCounterStyleSystem, CssPagePseudo, CssRule, parse_sheet};
+use surgeist_css::{CssCounterStyleSystem, CssPagePseudo, CssRule, CssParser};
 
-let report = parse_sheet(concat!(
+let report = CssParser::default().parse_sheet(concat!(
     "@counter-style digits { system: numeric; symbols: \"0\" \"1\"; suffix: \".\"; } ",
     "@page :left { margin-left: -12mm; margin-right: 10%; }",
 ));
@@ -6188,18 +6155,18 @@ keyframe views. `CssDeclaration::svg_glyph_orientation_vertical()` borrows it;
 `known()` and `custom()` return None for this independent body.
 
 ```rust
-use surgeist_css::{CssParserContext, CssParserMode, CssPropertyNameRef};
+use surgeist_css::{CssParserContext, CssParserMode, CssPropertyNameRef, CssDeclaration, CssParser, CssSvgGlyphOrientationVerticalDeclaration};
 
 let svg = CssParserContext::new(CssParserMode::Standards)
     .with_svg_glyph_orientation_vertical();
-let report = svg.parse_declaration("glyph-orientation-vertical: 180deg");
+let report = CssDeclaration::parse(&CssParser::new(svg, Default::default()), "glyph-orientation-vertical: 180deg");
 assert!(report.is_clean());
 let declaration = report.syntax().as_ref().unwrap();
 assert_eq!(declaration.property_name(), CssPropertyNameRef::SvgGlyphOrientationVertical);
 assert!(declaration.svg_glyph_orientation_vertical().unwrap().value().unwrap().angle().is_some());
 assert_eq!(declaration.to_specified_css().unwrap(), "glyph-orientation-vertical: 180deg;");
 
-let attribute = svg.parse_svg_glyph_orientation_vertical_attribute_value("90.0");
+let attribute = CssSvgGlyphOrientationVerticalDeclaration::parse_attribute(&CssParser::new(svg, Default::default()), "90.0");
 let attribute = attribute.syntax().as_ref().unwrap();
 assert!(attribute.svg_glyph_orientation_vertical().unwrap().is_presentation_attribute());
 assert_eq!(attribute.to_specified_css().unwrap(), "glyph-orientation-vertical: 90deg;");
@@ -6240,12 +6207,9 @@ imported. The finite alias remains Partial, and both genuine CSSWG8032 conflicts
 remain unresolved; operational SVG support does not establish normative consensus.
 
 ```rust
-use surgeist_css::{
-    CssBlendMode, CssFeatureKind, CssKnownProperty, CssKnownPropertyValueRef,
-    CssSupportStatus, feature_metadata, parse_style_attribute,
-};
+use surgeist_css::{CssBlendMode, CssFeatureKind, CssKnownProperty, CssKnownPropertyValueRef, CssSupportStatus, feature_metadata, CssParser};
 
-let report = parse_style_attribute(concat!(
+let report = CssParser::default().parse_block_contents(concat!(
     "border-spacing: 2px 3px; ",
     "glyph-orientation-vertical: 90; ",
     "background-blend-mode: multiply, luminosity",
@@ -6428,12 +6392,9 @@ and mode fields. See [authored Masking](#authored-masking) for their composed
 lifecycle and the mask-border domains.
 
 ```rust
-use surgeist_css::{
-    CssGradient, CssImageValue, CssKnownPropertyValueRef, CssSupportStatus,
-    feature_metadata, parse_style_attribute,
-};
+use surgeist_css::{CssGradient, CssImageValue, CssKnownPropertyValueRef, CssSupportStatus, feature_metadata, CssParser};
 
-let report = parse_style_attribute(concat!(
+let report = CssParser::default().parse_block_contents(concat!(
     "background-image: linear-gradient(to right, red 0%, 40%, blue); ",
     "border-image: url(frame.png) 10 fill / 2 / 1 round",
 ));
@@ -6579,12 +6540,9 @@ symbolic until their computed-value owners resolve them. Shorthand expansion
 sets only `column-width` and `column-count`, with no reset-only members.
 
 ```rust
-use surgeist_css::{
-    CssColumnCount, CssFlexDirection, CssKnownPropertyValueRef, CssSupportStatus,
-    feature_metadata, parse_style_attribute,
-};
+use surgeist_css::{CssColumnCount, CssFlexDirection, CssKnownPropertyValueRef, CssSupportStatus, feature_metadata, CssParser};
 
-let report = parse_style_attribute("flex-flow: column wrap; columns: 3 12em");
+let report = CssParser::default().parse_block_contents("flex-flow: column wrap; columns: 3 12em");
 assert!(report.is_clean(), "{:?}", report.diagnostics());
 
 let CssKnownPropertyValueRef::FlexFlow(flow) = report.syntax()[0]
@@ -7013,11 +6971,9 @@ Bad strings, bad URLs and unmatched delimiters preserve their typed component
 errors and original coordinates.
 
 ```rust
-use surgeist_css::{
-    CssConditionKind, CssMediaLeaf, CssMediaQuery, CssRecoveryAction, CssRule, parse_sheet,
-};
+use surgeist_css::{CssConditionKind, CssMediaLeaf, CssMediaQuery, CssRecoveryAction, CssRule, CssParser};
 
-let report = parse_sheet("@media (future-mode: active), ???, print {}");
+let report = CssParser::default().parse_sheet("@media (future-mode: active), ???, print {}");
 let [CssRule::Media(media)] = report.syntax().rules() else {
     panic!("expected retained media rule");
 };
@@ -7271,9 +7227,9 @@ slice. Existing stylesheet parsing still supplies the original positions and
 authored declaration text.
 
 ```rust
-use surgeist_css::{CssConditionKind, CssRule, CssSupportsLeaf, parse_sheet};
+use surgeist_css::{CssConditionKind, CssRule, CssSupportsLeaf, CssParser};
 
-let report = parse_sheet(concat!(
+let report = CssParser::default().parse_sheet(concat!(
     "@supports (display: grid) and (color: red) {}",
     "@supports selector(.card > .item:hover) {}",
     "@supports future-layout(mode) {}",

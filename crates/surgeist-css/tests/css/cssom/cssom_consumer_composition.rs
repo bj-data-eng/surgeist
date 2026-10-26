@@ -2,13 +2,12 @@
 
 use crate::css::support::{graph_cssom, graph_limits};
 use surgeist_css::{
-    CssDeclaration, CssGroupPreludeRef, CssImportance, CssInvalidKeyframeSourceReason,
-    CssKeyframeRuleView, CssKnownProperty, CssNamespaceContext, CssNamespaceName,
-    CssNamespacePrefix, CssPropertyNameRef, CssRecoveryAction, CssRule, CssRuleAdmissionContext,
-    CssRuleGraphInput, CssSerializationLimits as Limits, CssSpecifiedDeclarationBlock,
-    CssSpecifiedDeclarationEntry, CssStyleAncestor, classify_rule_syntax, parse_component_values,
-    parse_declaration_block_contents, parse_keyframe_rule, parse_keyframe_selector_list,
-    parse_property_value,
+    CssComponentValues, CssDeclaration, CssGroupPreludeRef, CssImportance,
+    CssInvalidKeyframeSourceReason, CssKeyframeRuleView, CssKnownProperty, CssNamespaceContext,
+    CssNamespaceName, CssNamespacePrefix, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
+    CssParser, CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction, CssRule,
+    CssRuleAdmissionContext, CssRuleGraphInput, CssRuleSyntax, CssSerializationLimits as Limits,
+    CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry, CssStyleAncestor,
 };
 
 fn terminal(
@@ -45,7 +44,7 @@ fn recovered_raw_terminals_form_an_edited_media_child_after_inputs_drop_and_budg
         "/*😀*/\r\nmargin:1px 2px 3px 4px; --Case:日本; .skip{width:9px} opacity:.5!important";
     let (edited, margin_origin, opacity_origin) = {
         let input = RAW.to_owned();
-        let report = parse_declaration_block_contents(&input);
+        let report = CssParser::default().parse_block_contents(&input);
         assert!(
             !report.is_clean(),
             "a nested rule is recovered out of the declaration block"
@@ -70,7 +69,7 @@ fn recovered_raw_terminals_form_an_edited_media_child_after_inputs_drop_and_budg
     };
     let selectors = {
         let input = ".composed {}".to_owned();
-        let classified = classify_rule_syntax(&input);
+        let classified = CssRuleSyntax::classify(&CssParser::default(), &input);
         assert!(classified.is_clean());
         let admitted = classified.syntax().as_ref().unwrap().admit(
             &CssNamespaceContext::default(),
@@ -84,7 +83,7 @@ fn recovered_raw_terminals_form_an_edited_media_child_after_inputs_drop_and_budg
     };
     let query = {
         let input = "@media print {}".to_owned();
-        let classified = classify_rule_syntax(&input);
+        let classified = CssRuleSyntax::classify(&CssParser::default(), &input);
         let admitted = classified.syntax().as_ref().unwrap().admit(
             &CssNamespaceContext::default(),
             CssRuleAdmissionContext::Stylesheet,
@@ -160,7 +159,7 @@ fn contextual_retry_and_recovered_rule_publish_a_selected_snapshot_with_original
     const INPUT: &str = "/*😀*/\r\n& > svg|leaf { padding:1px 2px; opacity:.25; rubbish; }";
     let (style, snapshot) = {
         let input = INPUT.to_owned();
-        let preliminary = classify_rule_syntax(&input);
+        let preliminary = CssRuleSyntax::classify(&CssParser::default(), &input);
         assert!(preliminary.is_clean());
         let syntax = preliminary.syntax().as_ref().unwrap();
         let snapshot = syntax.origin().source().clone();
@@ -234,7 +233,7 @@ fn detached_keyframe_accepts_checked_replacements_and_preserves_authored_and_pro
     const INPUT: &str = "/*😀*/\r\nFROM,25%,to { margin:1px 2px; opacity:.4; --Tone:日本 }";
     let (authored, original_opacity, selectors) = {
         let input = INPUT.to_owned();
-        let parsed = parse_keyframe_rule(&input);
+        let parsed = CssParsedKeyframeRule::parse(&CssParser::default(), &input);
         assert!(parsed.is_clean(), "{parsed:?}");
         let block = parsed.syntax().as_ref().unwrap().block();
         let authored = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
@@ -246,7 +245,8 @@ fn detached_keyframe_accepts_checked_replacements_and_preserves_authored_and_pro
             .source()
             .clone();
         let replacement_input = "to, from, 25%, 25%".to_owned();
-        let replacement = parse_keyframe_selector_list(&replacement_input);
+        let replacement =
+            CssParsedKeyframeSelectors::parse(&CssParser::default(), &replacement_input);
         assert!(replacement.is_clean());
         (
             authored,
@@ -254,9 +254,10 @@ fn detached_keyframe_accepts_checked_replacements_and_preserves_authored_and_pro
             replacement.syntax().as_ref().unwrap().selectors().clone(),
         )
     };
-    let programmatic = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Opacity),
-        parse_component_values(".75").unwrap(),
+    let programmatic = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Opacity)),
+        CssComponentValues::parse(&CssParser::default(), ".75").unwrap(),
         CssImportance::Normal,
     )
     .unwrap();

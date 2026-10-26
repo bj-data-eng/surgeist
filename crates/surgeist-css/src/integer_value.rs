@@ -38,16 +38,12 @@ pub(crate) fn nonnegative_integer_literal_controlled(
 mod controlled_index_tests {
 
     use super::*;
-    use crate::{
-        CssComponentValueLimits, CssUtf16InputLimits, CssUtf16PropertyValueLimits,
-        CssUtf16ValueAdmission,
-    };
+    use crate::{CssUtf16InputLimits, CssUtf16PropertyValueLimits, CssUtf16ValueAdmission};
     use std::cell::Cell;
 
     fn limits() -> CssUtf16PropertyValueLimits {
         CssUtf16PropertyValueLimits {
             input: CssUtf16InputLimits::default(),
-            syntax: CssComponentValueLimits::default(),
             max_work: 10_000,
             max_live_bytes: 0,
             max_retained_bytes: 0,
@@ -66,7 +62,7 @@ mod controlled_index_tests {
             ("1e2", false),
             ("none", false),
         ] {
-            let values = crate::parse_component_values(source).unwrap();
+            let values = crate::component_values::parse_component_values(source).unwrap();
             let admit = |action| {
                 assert!(matches!(action, CssUtf16ValueAdmission::Work));
                 Ok(())
@@ -84,8 +80,10 @@ mod controlled_index_tests {
 
     #[test]
     fn real_signed_zero_scan_is_cancellable_and_keeps_original_token() {
-        let values =
-            crate::parse_component_values("-000000000000000000000000000000000000").unwrap();
+        let values = crate::component_values::parse_component_values(
+            "-000000000000000000000000000000000000",
+        )
+        .unwrap();
         let before = values.clone();
         let work = Cell::new(0);
         let admit = |_| {
@@ -235,7 +233,7 @@ mod z_index_serialization_tests {
         let second = CssZIndexValue::Integer(
             CssNumeric::<CssInteger>::try_from_calculation(
                 CssCalculation::try_from_components(
-                    crate::parse_component_values("calc(2)").unwrap(),
+                    crate::component_values::parse_component_values("calc(2)").unwrap(),
                     Default::default(),
                 )
                 .unwrap(),

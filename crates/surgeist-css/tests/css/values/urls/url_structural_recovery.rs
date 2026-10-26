@@ -6,12 +6,12 @@
 
 use crate::css::support::value_assertions::assert_first_diagnostic;
 use surgeist_css::{
-    CssErrorCode, CssFontFaceSource, CssParseReport, CssRecoveryAction, CssRule, CssSheet,
-    parse_sheet, validate_sheet,
+    CssErrorCode, CssFontFaceSource, CssParseReport, CssParser, CssRecoveryAction, CssRule,
+    CssSheet,
 };
 
 fn assert_url(source: &str, expected: &str) -> CssParseReport<CssSheet> {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let Some(CssRule::FontFace(face)) = report.syntax().rules().last() else {
         panic!("expected retained font face: {source}: {report:?}");
     };
@@ -26,7 +26,13 @@ fn assert_url(source: &str, expected: &str) -> CssParseReport<CssSheet> {
 fn assert_clean_url(source: &str, expected: &str) {
     let report = assert_url(source, expected);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert!(validate_sheet(source).is_ok(), "{source}");
+    assert!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .is_ok(),
+        "{source}"
+    );
 }
 
 fn assert_eof_url(source: &str, expected: &str, discarded: usize, closures: usize) {
@@ -73,7 +79,11 @@ fn assert_eof_url(source: &str, expected: &str, discarded: usize, closures: usiz
         }
     }
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -137,7 +147,7 @@ fn raw_nul_in_unquoted_urls_is_preprocessed_before_the_bad_url_check() {
         "a\u{1}b", "a\u{8}b", "a\u{b}b", "a\u{e}b", "a\u{1f}b", "a\u{7f}b",
     ] {
         let source = format!("@font-face{{src:url({control})}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_first_diagnostic(
             report.diagnostics(),
             &source,
@@ -152,7 +162,11 @@ fn raw_nul_in_unquoted_urls_is_preprocessed_before_the_bad_url_check() {
             "bad-url source: {source:?}: {face:?}"
         );
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -188,7 +202,7 @@ fn url_payload_delimiters_do_not_consume_the_structural_depth_budget() {
         r"\66 oo(".repeat(255),
         ")".repeat(255),
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(style)] = report.syntax().rules() else {
         panic!("expected retained style: {report:?}");

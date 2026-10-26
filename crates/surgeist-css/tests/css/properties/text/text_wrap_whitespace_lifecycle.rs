@@ -7,7 +7,7 @@ use crate::css::support::authored_property::checked;
 
 fn parsed(p: P, value: &str) -> CssDeclaration {
     let css = format!("/*😀*/{}:{value}!important", p.canonical_name());
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     let [source] = report.syntax().as_slice() else {
         panic!("one occurrence")
@@ -496,14 +496,16 @@ fn programmatic_keyword_components_reenter_without_fabricated_parsed_origins() {
     );
     for grammar in [false, true] {
         let declaration = if grammar {
-            parse_property_value_for_grammar(
-                P::WhiteSpace.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(P::WhiteSpace.grammar()),
                 replacement.clone(),
                 CssImportance::Important,
             )
         } else {
-            parse_property_value(
-                CssPropertyNameRef::Known(P::WhiteSpace),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(P::WhiteSpace)),
                 replacement.clone(),
                 CssImportance::Important,
             )
@@ -522,7 +524,7 @@ fn programmatic_keyword_components_reenter_without_fabricated_parsed_origins() {
         assert_eq!(declaration.value_components(), &replacement);
     }
     let source = parsed(P::WhiteSpace, "var(--space)");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending")
     };
     let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap() else {
@@ -571,18 +573,20 @@ fn contiguous_trim_groups_permute_but_cannot_interleave_other_roles() {
         "discard-before preserve nowrap discard-inner",
         "none nowrap discard-before",
     ] {
-        let report = parse_style_attribute(&format!("white-space:{css}"));
+        let report = CssParser::default().parse_block_contents(format!("white-space:{css}"));
         assert!(report.syntax().is_empty());
         assert!(!report.is_clean());
         for result in [
-            parse_property_value(
-                CssPropertyNameRef::Known(P::WhiteSpace),
-                parse_component_values(css).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(P::WhiteSpace)),
+                CssComponentValues::parse(&CssParser::default(), css).unwrap(),
                 CssImportance::Normal,
             ),
-            parse_property_value_for_grammar(
-                P::WhiteSpace.grammar(),
-                parse_component_values(css).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(P::WhiteSpace.grammar()),
+                CssComponentValues::parse(&CssParser::default(), css).unwrap(),
                 CssImportance::Normal,
             ),
         ] {
@@ -599,7 +603,7 @@ fn new_constituent_browser_recovery_retains_eof_and_strict_checked_rejection() {
         (P::WhiteSpaceTrim, "discard-before discard-after"),
     ] {
         let text = format!("{}:{css}/*", p.canonical_name());
-        let report = parse_style_attribute(&text);
+        let report = CssParser::default().parse_block_contents(&text);
         assert!(!report.is_clean());
         let [source] = report.syntax().as_slice() else {
             panic!("retained browser occurrence")
@@ -626,13 +630,15 @@ fn new_constituent_browser_recovery_retains_eof_and_strict_checked_rejection() {
         let values = completed(source);
         assert_source(&values, source, None);
         for result in [
-            parse_property_value(
-                CssPropertyNameRef::Known(p),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(p)),
                 source.value_components().clone(),
                 CssImportance::Normal,
             ),
-            parse_property_value_for_grammar(
-                p.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(p.grammar()),
                 source.value_components().clone(),
                 CssImportance::Normal,
             ),
@@ -646,11 +652,12 @@ fn new_constituent_browser_recovery_retains_eof_and_strict_checked_rejection() {
         }
         assert_eq!(source, &before);
 
-        let report = parse_sheet(&format!(".a{{{}:{css}/*", p.canonical_name()));
+        let report =
+            CssParser::default().parse_sheet(format!(".a{{{}:{css}/*", p.canonical_name()));
         assert!(!report.is_clean());
         let before = report.clone();
         let exact = CssNormalizationLimits::try_new(0, 1, 1, 1).unwrap();
-        let normalized = normalize_report_with_limits(&report, exact).unwrap();
+        let normalized = report.normalize(exact).unwrap();
         assert_eq!(normalized.diagnostics(), report.diagnostics());
         let items: Vec<_> = normalized
             .syntax()
@@ -672,11 +679,9 @@ fn new_constituent_browser_recovery_retains_eof_and_strict_checked_rejection() {
         assert_eq!(values.items()[0].property(), p);
         assert_source(values, item.source(), None);
         for _ in 0..2 {
-            let error = normalize_report_with_limits(
-                &report,
-                CssNormalizationLimits::try_new(0, 1, 1, 0).unwrap(),
-            )
-            .unwrap_err();
+            let error = report
+                .normalize(CssNormalizationLimits::try_new(0, 1, 1, 0).unwrap())
+                .unwrap_err();
             assert_eq!(
                 error.exhausted_limit(),
                 Some((CssNormalizationResource::Contributions, 0))
@@ -684,7 +689,7 @@ fn new_constituent_browser_recovery_retains_eof_and_strict_checked_rejection() {
             assert!(error.declaration().unwrap().same_occurrence(item.source()));
         }
         assert_eq!(report, before);
-        assert!(normalize_report_with_limits(&report, exact).is_ok());
+        assert!(report.normalize(exact).is_ok());
     }
 }
 #[test]
@@ -699,15 +704,17 @@ fn typed_pending_retries_keep_original_occurrence_and_replacement_snapshots() {
     ] {
         let source = parsed(p, "var(--text)");
         let before = source.clone();
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
-        let replacement = parse_component_values(css).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), css).unwrap();
         for invalid in [bad.to_string(), format!("{css}/*"), "initial/*".into()] {
             for _ in 0..2 {
                 assert!(
                     handle
-                        .reenter(parse_component_values(&invalid).unwrap())
+                        .reenter(
+                            CssComponentValues::parse(&CssParser::default(), &invalid).unwrap()
+                        )
                         .unwrap_err()
                         .replacement_error()
                         .is_some()
@@ -730,7 +737,7 @@ fn typed_pending_retries_keep_original_occurrence_and_replacement_snapshots() {
         }
         assert!(
             handle
-                .reenter(parse_component_values("env(again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "env(again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
@@ -763,13 +770,11 @@ fn typed_pending_retries_keep_original_occurrence_and_replacement_snapshots() {
 }
 #[test]
 fn seven_property_normalization_shares_context_and_atomic_eleven_member_budget() {
-    let report = parse_sheet(
-        "@media screen{.a{text-wrap-mode:nowrap!important;text-wrap-style:auto;white-space-collapse:discard;white-space-trim:none;text-wrap:stable;white-space:pre-line;word-break:auto-phrase;white-space:var(--space)}}",
-    );
+    let report = CssParser::default().parse_sheet("@media screen{.a{text-wrap-mode:nowrap!important;text-wrap-style:auto;white-space-collapse:discard;white-space-trim:none;text-wrap:stable;white-space:pre-line;word-break:auto-phrase;white-space:var(--space)}}");
     assert!(report.is_clean());
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(1, 2, 8, 11).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let items: Vec<_> = normalized
         .items()
         .iter()
@@ -845,7 +850,7 @@ fn seven_property_normalization_shares_context_and_atomic_eleven_member_budget()
         ),
     ] {
         for _ in 0..2 {
-            let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+            let error = report.syntax().normalize(limits).unwrap_err();
             assert_eq!(error.exhausted_limit(), Some((resource, limit)));
             assert_eq!(error.declaration_order(), Some(7));
             assert!(
@@ -857,7 +862,7 @@ fn seven_property_normalization_shares_context_and_atomic_eleven_member_budget()
         }
     }
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 #[test]
 fn new_trim_declarations_and_sibling_rules_share_exact_provider_budgets() {
@@ -889,9 +894,7 @@ fn new_trim_declarations_and_sibling_rules_share_exact_provider_budgets() {
         source.serialize_specified(Default::default()).unwrap(),
         expected
     );
-    let report = parse_sheet(
-        ".a{white-space-trim:discard-after discard-before}.b{text-wrap-style:avoid-short-last-line}",
-    );
+    let report = CssParser::default().parse_sheet(".a{white-space-trim:discard-after discard-before}.b{text-wrap-style:avoid-short-last-line}");
     assert!(report.is_clean());
     let before = report.clone();
     let expected = ".a { white-space-trim: discard-before discard-after; }\n.b { text-wrap-style: avoid-short-last-line; }";

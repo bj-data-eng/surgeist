@@ -9,7 +9,7 @@ use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, nth_coefficients as coefficients,
 };
 use surgeist_css::{
-    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem, CssSelector, parse_selector,
+    CssNamespaceContext, CssParser, CssPseudoClass, CssPseudoSelectorListItem, CssSelector,
 };
 
 fn nth_pair(selector: &CssSelector) -> (i32, i32) {
@@ -152,7 +152,11 @@ fn trivia_and_escaped_units_do_not_admit_signed_or_number_flag_offsets_after_a_m
         let source = format!(":nth-child({argument})");
         assert_selector_input_rejected(
             &source,
-            parse_selector(&source, &CssNamespaceContext::default()),
+            CssSelector::parse(
+                &CssParser::default(),
+                &source,
+                &CssNamespaceContext::default(),
+            ),
         );
     }
 }

@@ -29,7 +29,7 @@ fn angle_math(text: &str) -> CssAngleOrZero {
     CssAngleOrZero::Angle(
         CssNumeric::<CssAngle>::try_from_calculation(
             CssCalculation::<CssAngle>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -68,7 +68,7 @@ fn parsed_context_angles(text: &str) -> Vec<CssAngleOrZero> {
     if text != "0" {
         source.push_str(&format!("; image-orientation: {text} flip"));
     }
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), if text == "0" { 4 } else { 5 });
     report
@@ -342,7 +342,7 @@ fn shared_angle_math_equality_ignores_raw_provenance() {
     for source in ["calc(1px)", "calc(1%)"] {
         assert_calculation_rejected(
             CssCalculation::<CssAngle>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default(),
             ),
             Some(NumericFailure::RootDomainMismatch),

@@ -37,7 +37,7 @@ const LONGHANDS: [(P, &str); 4] = [
 ];
 
 fn retained_recovered(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert!(!report.is_clean(), "recovered fixture: {css}");
     assert!(
         report
@@ -56,8 +56,9 @@ fn retained_recovered(css: &str) -> CssDeclaration {
 }
 
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("intrinsic contributions must be available")
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source
+        .expand()
+        .expect("intrinsic contributions must be available")
     else {
         panic!("completed terminal contributions")
     };
@@ -358,7 +359,7 @@ fn recovered_shorthand_time_projects_without_strict_reconstruction() {
 fn universal_reset_includes_timing_targets_without_resolving_the_full_inventory() {
     let source = parsed("all:revert-layer!important");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&source).unwrap()
+        source.expand().unwrap()
     else {
         panic!("symbolic universal reset")
     };
@@ -379,11 +380,11 @@ fn universal_reset_includes_timing_targets_without_resolving_the_full_inventory(
 fn every_timing_longhand_reenters_atomically_and_keeps_the_original_grammar() {
     for (property, css) in LONGHANDS {
         let source = checked(property, "var(--timing)");
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("whole-value pending longhand")
         };
         assert!(handle.source().same_occurrence(&source));
-        let replacement = parse_component_values(css).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), css).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -402,10 +403,11 @@ fn every_timing_longhand_reenters_atomically_and_keeps_the_original_grammar() {
 #[test]
 fn shorthand_reentry_is_reusable_after_grammar_and_residual_substitution_failures() {
     let source = parsed("/*😀*/transition:var(--timing)!important");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("whole-value pending shorthand")
     };
-    let replacement = parse_component_values("opacity 1s, transform ease-in").unwrap();
+    let replacement =
+        CssComponentValues::parse(&CssParser::default(), "opacity 1s, transform ease-in").unwrap();
     for invalid in [
         "",
         "opacity -1s",
@@ -413,9 +415,10 @@ fn shorthand_reentry_is_reusable_after_grammar_and_residual_substitution_failure
         "opacity 1s!important",
         "opacity 1s;color:red",
     ] {
-        let components = parse_component_values(invalid).unwrap();
-        let expected = parse_property_value_for_grammar(
-            P::Transition.grammar(),
+        let components = CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
+        let expected = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(P::Transition.grammar()),
             components.clone(),
             CssImportance::Normal,
         )
@@ -443,7 +446,7 @@ fn shorthand_reentry_is_reusable_after_grammar_and_residual_substitution_failure
     ] {
         assert!(
             handle
-                .reenter(parse_component_values(residual).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), residual).unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
@@ -478,7 +481,7 @@ fn shorthand_reentry_is_reusable_after_grammar_and_residual_substitution_failure
         }
     }
     let CssContributions::Longhands(values) = handle
-        .reenter(parse_component_values("unset").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "unset").unwrap())
         .unwrap()
     else {
         panic!("global replacement")
@@ -495,13 +498,14 @@ fn shorthand_reentry_is_reusable_after_grammar_and_residual_substitution_failure
 #[test]
 fn recovered_replacement_is_rejected_without_consuming_pending_handle() {
     let source = parsed("transition:var(--timing)!important");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending transition")
     };
     for css in ["opacity calc(1s", "opacity 1s calc(-250ms"] {
-        let recovered = parse_component_values(css).unwrap();
-        let expected = parse_property_value_for_grammar(
-            P::Transition.grammar(),
+        let recovered = CssComponentValues::parse(&CssParser::default(), css).unwrap();
+        let expected = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(P::Transition.grammar()),
             recovered.clone(),
             CssImportance::Normal,
         )
@@ -512,7 +516,9 @@ fn recovered_replacement_is_rejected_without_consuming_pending_handle() {
         };
         assert_eq!(actual, &expected);
         assert!(handle.source().same_occurrence(&source));
-        let replacement = parse_component_values("opacity 1s, transform ease-in").unwrap();
+        let replacement =
+            CssComponentValues::parse(&CssParser::default(), "opacity 1s, transform ease-in")
+                .unwrap();
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
             panic!("valid retry after recovered replacement")
@@ -531,13 +537,13 @@ fn recovered_replacement_is_rejected_without_consuming_pending_handle() {
 #[test]
 fn ordered_normalization_preserves_timing_groups_and_exact_contribution_budget() {
     let css = ".a{color:red;transition:opacity 1s,transform ease-in!important;transition-delay:-250ms}.b{transition:var(--timing);all:unset;--timing:opacity 1s}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     // Completed shorthand costs four members regardless of its two authored
     // items. Each longhand/custom/universal/pending declaration costs one.
     let exact = CssNormalizationLimits::try_new(0, 2, 6, 9).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -596,11 +602,10 @@ fn ordered_normalization_preserves_timing_groups_and_exact_contribution_budget()
         declarations[5].expansion(),
         CssExpansion::Contributions(CssContributions::Custom(_))
     ));
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 2, 6, 8).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 2, 6, 8).unwrap())
+        .unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 8))
@@ -613,15 +618,16 @@ fn ordered_normalization_preserves_timing_groups_and_exact_contribution_budget()
             .same_occurrence(declarations[5].source())
     );
     assert_eq!(report.diagnostics(), before.diagnostics());
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 
 #[test]
 fn a_sparse_shorthand_admits_four_members_and_fails_atomically_at_three() {
-    let report = parse_sheet(".a{transition:opacity 1s,transform ease-in!important}");
+    let report =
+        CssParser::default().parse_sheet(".a{transition:opacity 1s,transform ease-in!important}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let exact = CssNormalizationLimits::try_new(0, 1, 1, 4).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let source = normalized
         .items()
         .iter()
@@ -630,11 +636,10 @@ fn a_sparse_shorthand_admits_four_members_and_fails_atomically_at_three() {
             _ => None,
         })
         .unwrap();
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 1, 3).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 1, 3).unwrap())
+        .unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 3))
@@ -645,7 +650,7 @@ fn a_sparse_shorthand_admits_four_members_and_fails_atomically_at_three() {
         error.declaration().unwrap().importance(),
         CssImportance::Important
     );
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 
 #[test]
@@ -654,11 +659,11 @@ fn recovered_time_normalization_preserves_diagnostics_and_contribution_budget() 
         ".a{transition:opacity calc(1s",
         ".a{transition:opacity 1s calc(-250ms",
     ] {
-        let report = parse_sheet(css);
+        let report = CssParser::default().parse_sheet(css);
         assert_implicit_closure(css, &report);
         let before = report.clone();
         let exact = CssNormalizationLimits::try_new(0, 1, 1, 4).unwrap();
-        let normalized = normalize_report_with_limits(&report, exact).unwrap();
+        let normalized = report.normalize(exact).unwrap();
         assert!(!normalized.is_clean());
         assert_eq!(normalized.diagnostics(), report.diagnostics());
         let declarations: Vec<_> = normalized
@@ -687,11 +692,9 @@ fn recovered_time_normalization_preserves_diagnostics_and_contribution_budget() 
         for item in values.items() {
             assert_ordinary(item, declaration.source());
         }
-        let error = normalize_report_with_limits(
-            &report,
-            CssNormalizationLimits::try_new(0, 1, 1, 3).unwrap(),
-        )
-        .unwrap_err();
+        let error = report
+            .normalize(CssNormalizationLimits::try_new(0, 1, 1, 3).unwrap())
+            .unwrap_err();
         assert_eq!(
             error.exhausted_limit(),
             Some((CssNormalizationResource::Contributions, 3))
@@ -704,6 +707,6 @@ fn recovered_time_normalization_preserves_diagnostics_and_contribution_budget() 
                 .same_occurrence(declaration.source())
         );
         assert_eq!(report.diagnostics(), before.diagnostics());
-        assert!(normalize_report_with_limits(&report, exact).is_ok());
+        assert!(report.normalize(exact).is_ok());
     }
 }

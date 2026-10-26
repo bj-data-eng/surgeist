@@ -7,7 +7,7 @@ use surgeist_css::*;
 fn checked(value: &str, grammar: bool) -> Result<CssDeclaration, CssPropertyValueError> {
     check_property_components(
         known_property("offset"),
-        parse_component_values(value).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         grammar,
     )
 }
@@ -22,7 +22,8 @@ fn whole_rotation_and_distance_can_swap_without_splitting_rotation() {
             format!("none {modifier} 90deg 1px"),
             format!("none 90deg {modifier} 1px"),
         ] {
-            let report = parse_style_attribute(&format!("offset:{value}!important"));
+            let report =
+                CssParser::default().parse_block_contents(format!("offset:{value}!important"));
             assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
             assert_eq!(
                 report.syntax()[0].known().unwrap().property(),
@@ -56,7 +57,7 @@ fn distance_cannot_split_the_quoted_rotation_constituent() {
                 format!("none {angle} 1px {modifier}"),
             ] {
                 let css = format!("/*😀*/color:red;offset:{value}!important;color:blue");
-                let report = parse_style_attribute(&css);
+                let report = CssParser::default().parse_block_contents(&css);
                 assert_eq!(report.syntax().len(), 2, "interleaved {value}");
                 let [diagnostic] = report.diagnostics() else {
                     panic!("one grammar diagnostic")
@@ -68,7 +69,11 @@ fn distance_cannot_split_the_quoted_rotation_constituent() {
                     css.find("offset:").unwrap()
                 );
                 assert_eq!(
-                    validate_style_attribute(&css).unwrap_err().diagnostics(),
+                    CssParser::default()
+                        .parse_block_contents(&css)
+                        .into_validation_result()
+                        .unwrap_err()
+                        .diagnostics(),
                     report.diagnostics()
                 );
                 for grammar in [false, true] {
@@ -77,15 +82,17 @@ fn distance_cannot_split_the_quoted_rotation_constituent() {
                         "checked interleaved {value}"
                     );
                     let text = if grammar {
-                        parse_property_value_text_for_grammar(
+                        CssParser::default().parse_property_value(
                             &value,
-                            known_property("offset").grammar(),
+                            CssPropertyTextTarget::Grammar(known_property("offset").grammar()),
                             CssImportance::Important,
                         )
                     } else {
-                        parse_property_value_text(
+                        CssParser::default().parse_property_value(
                             &value,
-                            CssPropertyNameRef::Known(known_property("offset")),
+                            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(
+                                known_property("offset"),
+                            )),
                             CssImportance::Important,
                         )
                     };
@@ -98,15 +105,15 @@ fn distance_cannot_split_the_quoted_rotation_constituent() {
 
 #[test]
 fn pending_grouping_failure_preserves_source_and_allows_whole_rotation_retry() {
-    let report = parse_style_attribute("/*😀*/offset:var(--motion)!important");
+    let report = CssParser::default().parse_block_contents("/*😀*/offset:var(--motion)!important");
     assert!(report.is_clean());
     let source = report.syntax()[0].clone();
     assert_eq!(source.known().unwrap().property(), known_property("offset"));
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending")
     };
     for value in ["none reverse 1px 90deg", "none 90deg 1px reverse"] {
-        let replacement = parse_component_values(value).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), value).unwrap();
         let snapshot = replacement.clone();
         let error = handle.reenter(replacement.clone()).unwrap_err();
         assert!(error.replacement_error().is_some());
@@ -114,7 +121,8 @@ fn pending_grouping_failure_preserves_source_and_allows_whole_rotation_retry() {
         assert!(handle.source().same_occurrence(&source));
         assert_eq!(handle.source(), &source);
     }
-    let replacement = parse_component_values("none reverse 90deg 1px").unwrap();
+    let replacement =
+        CssComponentValues::parse(&CssParser::default(), "none reverse 90deg 1px").unwrap();
     let CssContributions::Longhands(items) = handle.reenter(replacement.clone()).unwrap() else {
         panic!("terminals")
     };

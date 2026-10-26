@@ -14,17 +14,23 @@ fn grammar<'a, T: Copy + Into<Responsible<'a>>>(
 ) {
     for value in accepted {
         let css = format!("{}:{value}", property.canonical_name());
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
         let [declaration] = report.syntax().as_slice() else {
             panic!("one retained occurrence")
         };
         assert_eq!(declaration.known().unwrap().property(), property);
         assert!(declaration.known().unwrap().property_value().is_some());
-        assert!(validate_style_attribute(&css).is_ok());
-        parse_property_value_for_grammar(
-            property.grammar(),
-            parse_component_values(value).unwrap(),
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result()
+                .is_ok()
+        );
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(property.grammar()),
+            CssComponentValues::parse(&CssParser::default(), value).unwrap(),
             CssImportance::Normal,
         )
         .unwrap();
@@ -38,9 +44,10 @@ fn grammar<'a, T: Copy + Into<Responsible<'a>>>(
             CssKnownProperty::Color
         );
         assert_checked_rejected(
-            parse_property_value_for_grammar(
-                property.grammar(),
-                parse_component_values(value).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
+                CssComponentValues::parse(&CssParser::default(), value).unwrap(),
                 CssImportance::Normal,
             ),
             property,

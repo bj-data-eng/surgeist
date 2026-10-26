@@ -86,8 +86,7 @@ fn output(value: CssLonghandValueRef<'_>) -> String {
     }
 }
 fn complete(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("completed Grid contributions")
     };
@@ -110,7 +109,7 @@ fn context(
 }
 fn invalid(property: P, text: &str) {
     let css = format!("color:red;{}:{text};color:blue", property.canonical_name());
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert_eq!(report.syntax().len(), 2, "{css}");
     let [diagnostic] = report.diagnostics() else {
         panic!("one atomic failure: {css}")
@@ -124,19 +123,25 @@ fn invalid(property: P, text: &str) {
     );
     assert_eq!(detail.known_property().unwrap(), property);
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let before = values.clone();
     for result in [
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             values.clone(),
             CssImportance::Important,
         ),
-        parse_property_value_for_grammar(
-            property.grammar(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(property.grammar()),
             values.clone(),
             CssImportance::Important,
         ),
@@ -337,7 +342,7 @@ fn length_percentage_fallback_preserves_hints_and_real_inflexible_contexts() {
 #[test]
 fn mathematical_negative_flex_stays_authored_while_bare_negative_literals_fail() {
     let negative = CssCalculation::<CssFlex>::try_from_components(
-        parse_component_values("rem(-5fr, 3fr)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "rem(-5fr, 3fr)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -361,7 +366,7 @@ fn mathematical_negative_flex_stays_authored_while_bare_negative_literals_fail()
     // This negative scalar is independently known without resolving a Flex basis.
     // The remainder graph above retains its contextual operands and step.
     let direct_negative = CssCalculation::<CssFlex>::try_from_components(
-        parse_component_values("calc(-2fr)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(-2fr)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -406,7 +411,7 @@ fn invalid_math_has_typed_numeric_errors_original_origins_and_atomic_property_re
         ("calc(1fr + 1%)", NumericFailure::RootDomainMismatch, "calc"),
         ("sin(1fr)", NumericFailure::InvalidArgumentType, "sin"),
     ] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let before = values.clone();
         for _ in 0..2 {
             let error =
@@ -429,7 +434,7 @@ fn invalid_math_has_typed_numeric_errors_original_origins_and_atomic_property_re
     // Checked property mapping keeps the responsible original token, including
     // a UTF-8 comment prefix; this is not a recreated canonical-input origin.
     let text = "/*😀*/calc(1fr + 10px)";
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let serialized = values.serialize_tokens(Default::default()).unwrap();
     let expected = serialized
         .origin_at(serialized.as_css().find("10px").unwrap())
@@ -437,13 +442,15 @@ fn invalid_math_has_typed_numeric_errors_original_origins_and_atomic_property_re
         .clone();
     for property in TRACKS {
         for result in [
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 values.clone(),
                 CssImportance::Important,
             ),
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 values.clone(),
                 CssImportance::Important,
             ),
@@ -549,11 +556,12 @@ fn pending_math_reentry_preserves_occurrence_replacement_origins_and_retry_after
         for pending_text in ["var(--grid)", "env(grid)", "attr(data-grid *)"] {
             for source in fronts(property, pending_text) {
                 let before = source.clone();
-                let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+                let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                     panic!("whole pending handle")
                 };
                 for invalid_text in ["round(1fr)", "var(--still-pending)"] {
-                    let invalid_values = parse_component_values(invalid_text).unwrap();
+                    let invalid_values =
+                        CssComponentValues::parse(&CssParser::default(), invalid_text).unwrap();
                     let invalid_before = invalid_values.clone();
                     for _ in 0..2 {
                         let error = handle.reenter(invalid_values.clone()).unwrap_err();
@@ -566,7 +574,8 @@ fn pending_math_reentry_preserves_occurrence_replacement_origins_and_retry_after
                     }
                     assert_eq!(invalid_values, invalid_before);
                 }
-                let replacement = parse_component_values(replacement_text).unwrap();
+                let replacement =
+                    CssComponentValues::parse(&CssParser::default(), replacement_text).unwrap();
                 let replacement_before = replacement.clone();
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
@@ -597,7 +606,8 @@ fn pending_math_reentry_preserves_occurrence_replacement_origins_and_retry_after
                     ("revert", CssGlobalKeyword::Revert),
                     ("revert-layer", CssGlobalKeyword::RevertLayer),
                 ] {
-                    let replacement = parse_component_values(text).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), text).unwrap();
                     let CssContributions::Longhands(values) =
                         handle.reenter(replacement.clone()).unwrap()
                     else {
@@ -616,7 +626,7 @@ fn pending_math_reentry_preserves_occurrence_replacement_origins_and_retry_after
 
 #[test]
 fn math_graph_and_sibling_serialization_limits_remain_cumulative_atomic_and_reusable() {
-    let values = parse_component_values("hypot(3fr, 4fr)").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "hypot(3fr, 4fr)").unwrap();
     let before = values.clone();
     let short = CssComponentValueLimits::try_new(256, 1, 100).unwrap();
     for _ in 0..2 {
@@ -672,11 +682,11 @@ fn math_graph_and_sibling_serialization_limits_remain_cumulative_atomic_and_reus
 #[test]
 fn math_normalization_counts_three_and_six_terminals_without_changing_order_or_importance() {
     let css = "@media screen{.a{grid:round(2.5fr, 1fr) / hypot(3fr, 4fr)!important;grid-template:abs(-2fr) / mod(5fr, 3fr)}}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean());
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(1, 2, 2, 9).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let items: Vec<_> = normalized
         .items()
         .iter()
@@ -712,7 +722,7 @@ fn math_normalization_counts_three_and_six_terminals_without_changing_order_or_i
     }
     let short = CssNormalizationLimits::try_new(1, 2, 2, 8).unwrap();
     for _ in 0..2 {
-        let error = normalize_sheet_with_limits(report.syntax(), short).unwrap_err();
+        let error = report.syntax().normalize(short).unwrap_err();
         assert_eq!(
             error.exhausted_limit(),
             Some((CssNormalizationResource::Contributions, 8))
@@ -726,12 +736,15 @@ fn math_normalization_counts_three_and_six_terminals_without_changing_order_or_i
         );
         assert_eq!(report, before);
     }
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 
 #[test]
 fn mixed_parsed_and_programmatic_math_children_keep_distinct_origins_through_grid_construction() {
-    let parsed_child = parse_component_values("3fr").unwrap().items()[0].clone();
+    let parsed_child = CssComponentValues::parse(&CssParser::default(), "3fr")
+        .unwrap()
+        .items()[0]
+        .clone();
     let programmatic_child = CssComponentValue::try_dimension("4", "fr").unwrap();
     let values = CssComponentValues::try_new(
         vec![
@@ -772,14 +785,16 @@ fn mixed_parsed_and_programmatic_math_children_keep_distinct_origins_through_gri
     }
     for property in TRACKS {
         for source in [
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 values.clone(),
                 CssImportance::Important,
             )
             .unwrap(),
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 values.clone(),
                 CssImportance::Important,
             )
@@ -811,7 +826,7 @@ fn checked_math_closure_and_browser_recovery_remain_distinct_controls() {
         } else {
             "10px / hypot(3fr, 4fr"
         };
-        let values = parse_component_values(recovered).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), recovered).unwrap();
         let before = values.clone();
         let origin = values
             .items()
@@ -823,13 +838,15 @@ fn checked_math_closure_and_browser_recovery_remain_distinct_controls() {
             .unwrap();
         assert!(matches!(origin, CssValueOrigin::ImplicitClosure { .. }));
         for result in [
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 values.clone(),
                 CssImportance::Important,
             ),
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 values.clone(),
                 CssImportance::Important,
             ),
@@ -842,7 +859,7 @@ fn checked_math_closure_and_browser_recovery_remain_distinct_controls() {
             );
         }
         let source = checked(property, "var(--grid)", true);
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         for _ in 0..2 {
@@ -859,17 +876,21 @@ fn checked_math_closure_and_browser_recovery_remain_distinct_controls() {
         let closed = format!("{recovered})");
         assert!(
             handle
-                .reenter(parse_component_values(&closed).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), &closed).unwrap())
                 .is_ok()
         );
         assert_eq!(values, before);
         assert!(handle.source().same_occurrence(&source));
         let css = format!("{}:{recovered}", property.canonical_name());
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         assert!(!report.is_clean());
         assert_eq!(report.syntax().len(), 1);
         assert_eq!(
-            validate_style_attribute(&css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
         assert_eq!(

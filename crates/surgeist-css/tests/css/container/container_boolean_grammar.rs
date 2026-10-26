@@ -1,7 +1,7 @@
 use crate::css::support::authored_syntax::assert_strict_rejection;
 use surgeist_css::{
-    CssConditionKind, CssContainerFeatureQuery, CssContainerLeaf, CssErrorCode, CssRecoveryAction,
-    CssRule, parse_sheet, validate_sheet,
+    CssConditionKind, CssContainerFeatureQuery, CssContainerLeaf, CssErrorCode, CssParser,
+    CssRecoveryAction, CssRule,
 };
 
 // Pinned Conditional Rules 5, section 5.4:
@@ -12,9 +12,15 @@ use surgeist_css::{
 #[test]
 fn grouped_size_queries_retain_their_boolean_structure() {
     let source = "@container ((width > 1px) or (height > 2px)) and (inline-size > 3px) {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("one accepted container rule must survive its empty body");
     };
@@ -56,7 +62,7 @@ fn grouped_size_queries_retain_their_boolean_structure() {
 #[test]
 fn negation_can_target_a_grouped_query() {
     let source = "@container not ((width > 1px) and (height > 2px)) {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("one container rule expected");
@@ -79,8 +85,13 @@ fn ungrouped_negations_drop_only_the_invalid_outer_rule() {
         "(width > 1px) or not (height > 2px)",
     ] {
         let source = format!(".before {{}} @container {query} {{ .child {{}} }} .after {{}}");
-        let report = parse_sheet(&source);
-        assert_strict_rejection(validate_sheet(&source), report.diagnostics());
+        let report = CssParser::default().parse_sheet(&source);
+        assert_strict_rejection(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result(),
+            report.diagnostics(),
+        );
         assert!(
             matches!(
                 report.syntax().rules(),
@@ -110,7 +121,7 @@ fn simple_queries_and_consistent_operator_lists_remain_accepted() {
         "style(--theme)",
     ] {
         let source = format!("@container {query} {{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{query}: {:?}", report.diagnostics());
         assert!(matches!(report.syntax().rules(), [CssRule::Container(_)]));
     }
@@ -119,7 +130,7 @@ fn simple_queries_and_consistent_operator_lists_remain_accepted() {
 #[test]
 fn mixed_operators_without_grouping_remain_invalid() {
     let source = "@container (width > 1px) and (height > 2px) or (inline-size > 3px) {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(!report.is_clean());
     assert!(report.syntax().rules().is_empty());
     assert_eq!(report.diagnostics().len(), 1);
@@ -132,7 +143,7 @@ fn grouped_queries_observe_the_component_nesting_limit() {
         "(".repeat(256),
         ")".repeat(256),
     );
-    let report = parse_sheet(&accepted);
+    let report = CssParser::default().parse_sheet(&accepted);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert!(matches!(report.syntax().rules(), [CssRule::Container(_)]));
 
@@ -141,7 +152,7 @@ fn grouped_queries_observe_the_component_nesting_limit() {
         "(".repeat(257),
         ")".repeat(257),
     );
-    let report = parse_sheet(&rejected);
+    let report = CssParser::default().parse_sheet(&rejected);
     assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
     let diagnostic = report
         .diagnostics()

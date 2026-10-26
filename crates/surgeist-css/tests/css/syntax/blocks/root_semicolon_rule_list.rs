@@ -5,8 +5,8 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
 use surgeist_css::{
-    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSelector, CssTokenKind,
-    parse_sheet, validate_sheet,
+    CssErrorCode, CssParser, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSelector,
+    CssTokenKind,
 };
 
 fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
@@ -99,8 +99,10 @@ fn unmatched_root_punctuation_consumes_the_following_style_body_as_one_invalid_q
     .map(|(punctuation, token)| {
         let unit = format!("{punctuation}/**/.after{{--punct:'}}';color:blue}}");
         let source = format!("/*😀*/\r\n.before{{color:red}} /*é*/\t{unit}.last{{color:green}}");
-        let report = parse_sheet(&source);
-        let validation = validate_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
+        let validation = CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result();
         (source, unit, token, report, validation)
     })
     .collect();
@@ -130,8 +132,10 @@ fn at_keyword_inside_punctuation_started_prelude_does_not_restart_at_rule_dispat
     .map(|(punctuation, token)| {
         let unit = format!("{punctuation} @supports (color:red){{.hidden{{color:blue}}}}");
         let source = format!("/*😀*/\r\n.before{{color:red}} /*é*/ {unit}.last{{color:green}}");
-        let report = parse_sheet(&source);
-        let validation = validate_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
+        let validation = CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result();
         (source, unit, token, report, validation)
     })
     .collect();
@@ -156,10 +160,14 @@ fn block_contents_discard_semicolons_in_group_and_style_bodies_but_not_at_the_ro
     let nested_source =
         "@media all{.before{color:red};.kept{color:blue}.last{color:green}}.outside{color:red}";
     let style_source = ".host{;color:red;;}";
-    let nested = parse_sheet(nested_source);
-    let style = parse_sheet(style_source);
-    let nested_validation = validate_sheet(nested_source);
-    let style_validation = validate_sheet(style_source);
+    let nested = CssParser::default().parse_sheet(nested_source);
+    let style = CssParser::default().parse_sheet(style_source);
+    let nested_validation = CssParser::default()
+        .parse_sheet(nested_source)
+        .into_validation_result();
+    let style_validation = CssParser::default()
+        .parse_sheet(style_source)
+        .into_validation_result();
     let [CssRule::Media(media), outside] = nested.syntax().rules() else {
         panic!("real parent closing brace ends nested list")
     };
@@ -202,7 +210,7 @@ fn top_level_semicolon_begins_a_dropped_qualified_rule() {
     // Consume a stylesheet's contents has no `<semicolon-token>` branch: `;.x{}`
     // is one qualified rule whose selector is invalid.
     let source = ";.x{color:red}.y{color:green}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Style(y)] = report.syntax().rules() else {
         panic!("only .y survives: {report:?}")
     };
@@ -221,7 +229,11 @@ fn top_level_semicolon_begins_a_dropped_qualified_rule() {
         source.find(".y").unwrap()
     );
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }

@@ -19,7 +19,7 @@ fn hue(text: &str) -> CssColorHue {
     if text.eq_ignore_ascii_case("none") {
         CssColorHue::None
     } else if text.starts_with("calc(") {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         if ["deg", "grad", "rad", "turn"]
             .iter()
             .any(|unit| text.contains(unit))
@@ -424,7 +424,7 @@ fn checked_scalar_front_doors_reject_dimensions_that_cannot_enter_the_models() {
     for text in ["calc(1px)", "calc(1deg)", "calc(1s)"] {
         assert!(
             CssCalculation::<CssNumber>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default()
             )
             .unwrap_err()
@@ -433,7 +433,7 @@ fn checked_scalar_front_doors_reject_dimensions_that_cannot_enter_the_models() {
         );
         assert!(
             CssCalculation::<CssPercentage>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default()
             )
             .unwrap_err()
@@ -444,7 +444,7 @@ fn checked_scalar_front_doors_reject_dimensions_that_cannot_enter_the_models() {
     for text in ["calc(1px)", "calc(1%)", "calc(1s)"] {
         assert!(
             CssCalculation::<CssAngle>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default()
             )
             .unwrap_err()

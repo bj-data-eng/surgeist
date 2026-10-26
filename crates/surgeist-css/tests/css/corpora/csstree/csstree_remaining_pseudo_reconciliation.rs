@@ -2,7 +2,7 @@
 //! diagnostic contracts. Expected values never come from the runtime or registry.
 
 use serde_json::{Value, json};
-use surgeist_css::{CssPseudoClass, CssSelector, parse_selector};
+use surgeist_css::{CssParser, CssPseudoClass, CssSelector};
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
 use crate::css::support::csstree::reconciliation::{
@@ -89,7 +89,11 @@ fn typed_meaning(selector: &CssSelector) -> Value {
 
 /// Public selector presence and typed meaning for one row.
 fn typed_pseudo_reconciles(row: &Value) -> Result<(), String> {
-    let report = parse_selector(text(row, "input"), &namespace_context());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        text(row, "input"),
+        &namespace_context(),
+    );
     let expected = &row["expected"];
     let actual = json!({"present": report.syntax().is_some(),
         "typed_expectation": report.syntax().as_ref().map(typed_meaning)});

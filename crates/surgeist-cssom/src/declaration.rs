@@ -362,7 +362,7 @@ pub(crate) fn complete_value_components(
     value: &str,
     limits: CssComponentValueLimits,
 ) -> Result<bool, CssomError> {
-    match parse_component_values_with_limits(value, limits) {
+    match CssComponentValues::parse(&CssParser::new(CssParserContext::default(), limits), value) {
         Ok(_) => Ok(true),
         Err(error)
             if error.is_bad_string()
@@ -486,9 +486,8 @@ impl CssomBatch {
             let context = this.staged.declaration_context(id)?.clone();
             let (items, diagnostics) =
                 if matches!(this.staged.block(id)?.data(), CssomBlockData::Page { .. }) {
-                    let report = context
-                        .parser_context()
-                        .parse_page_declaration_block_contents_with_limits(text, component_limits);
+                    let report = CssParser::new(context.parser_context(), component_limits)
+                        .parse_page_block_contents(text);
                     let (body, diagnostics) = report.into_parts();
                     check_resource_diagnostics(&diagnostics)?;
                     let body = body.ok_or_else(|| {
@@ -516,11 +515,9 @@ impl CssomBatch {
                     )
                 } else if matches!(this.staged.block(id)?.data(), CssomBlockData::FontFace(_)) {
                     let (body, diagnostics) =
-                        parse_font_face_declaration_block_contents_with_limits(
-                            text,
-                            component_limits,
-                        )
-                        .into_parts();
+                        CssParser::new(CssParserContext::default(), component_limits)
+                            .parse_font_face_block_contents(text)
+                            .into_parts();
                     check_resource_diagnostics(&diagnostics)?;
                     let body = body.ok_or(CssomError::InvalidInput(
                         "FontFace contents resource failure",
@@ -533,9 +530,8 @@ impl CssomBatch {
                         diagnostics,
                     )
                 } else {
-                    let report = context
-                        .parser_context()
-                        .parse_declaration_block_contents_with_limits(text, component_limits);
+                    let report = CssParser::new(context.parser_context(), component_limits)
+                        .parse_block_contents(text);
                     let (body, diagnostics) = report.into_parts();
                     check_resource_diagnostics(&diagnostics)?;
                     (
@@ -640,19 +636,25 @@ impl CssomBatch {
             }
             let context = context.parser_context();
             let report = match normalized {
-                Name::SvgGlyph => context.parse_property_value_text(
+                Name::SvgGlyph => CssParser::new(context, Default::default()).parse_property_value(
                     value,
-                    CssSvgGlyphOrientationVerticalDeclaration::metadata().property(),
+                    CssPropertyTextTarget::Property(
+                        CssSvgGlyphOrientationVerticalDeclaration::metadata().property(),
+                    ),
                     importance,
                 ),
-                Name::Known(grammar) => {
-                    context.parse_property_value_text_for_grammar(value, grammar, importance)
-                }
-                Name::Custom(name) => context.parse_property_value_text(
-                    value,
-                    CssPropertyNameRef::Custom(&name),
-                    importance,
-                ),
+                Name::Known(grammar) => CssParser::new(context, Default::default())
+                    .parse_property_value(
+                        value,
+                        CssPropertyTextTarget::Grammar(grammar),
+                        importance,
+                    ),
+                Name::Custom(name) => CssParser::new(context, Default::default())
+                    .parse_property_value(
+                        value,
+                        CssPropertyTextTarget::Property(CssPropertyNameRef::Custom(&name)),
+                        importance,
+                    ),
             };
             let (mut declaration, diagnostics) = report.into_parts();
             check_resource_diagnostics(&diagnostics)?;
@@ -1296,7 +1298,7 @@ impl CssomBatch {
             .map_or(declarations, |page| page.properties().as_slice());
         let expansions = declarations
             .iter()
-            .map(expand_declaration)
+            .map(CssDeclaration::expand)
             .collect::<Result<Vec<_>, _>>()?;
         let selected = match block.data() {
             CssomBlockData::Properties {

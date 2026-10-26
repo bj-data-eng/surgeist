@@ -145,13 +145,13 @@ fn balance_math_uses_only_pure_number_typing_and_keeps_its_authored_tree() {
     for text in ["calc(1%)", "calc(1 + 1%)", "calc(1px)", "calc(1db)"] {
         assert!(
             CssCalculation::<CssNumber>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default()
             )
             .is_err(),
             "{text}"
         );
-        let report = parse_style_attribute(&format!("voice-balance:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("voice-balance:{text}"));
         assert!(report.syntax().is_empty());
         assert!(!report.is_clean());
     }
@@ -161,13 +161,17 @@ fn balance_math_uses_only_pure_number_typing_and_keeps_its_authored_tree() {
 fn balance_recovered_math_is_retained_with_diagnostics_but_checked_construction_and_reentry_reject_it()
  {
     let source = "voice-balance:calc(101";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     let [declaration] = report.syntax().as_slice() else {
         panic!("retained recovered Number math")
     };
     assert!(!report.is_clean());
     assert_eq!(
-        validate_style_attribute(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     let value = balance(declaration);
@@ -180,15 +184,16 @@ fn balance_recovered_math_is_retained_with_diagnostics_but_checked_construction_
     ));
     let components = declaration.value_components().clone();
     assert!(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::VoiceBalance),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::VoiceBalance)),
             components.clone(),
             CssImportance::Normal
         )
         .is_err()
     );
     let pending = self::declaration("voice-balance", "var(--balance)");
-    let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+    let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
         panic!("pending")
     };
     assert!(
@@ -200,7 +205,7 @@ fn balance_recovered_math_is_retained_with_diagnostics_but_checked_construction_
     );
     assert!(
         handle
-            .reenter(parse_component_values("101").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "101").unwrap())
             .is_ok()
     );
 }

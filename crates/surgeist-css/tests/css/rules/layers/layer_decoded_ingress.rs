@@ -1,7 +1,7 @@
 use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::{
-    CssErrorCode, CssImportLayer, CssLayerName, CssNamespaceContext, CssRule, CssValueOrigin,
-    parse_rule, parse_sheet,
+    CssErrorCode, CssImportLayer, CssLayerName, CssNamespaceContext, CssParser, CssRule,
+    CssValueOrigin,
 };
 
 // Cascade 5 CR 2022-01-13 §6.4.2 takes <ident> components. CSS Syntax consumes an escaped
@@ -9,7 +9,11 @@ use surgeist_css::{
 #[test]
 fn published_css_layer_ingress_preserves_decoded_escaped_identifiers() {
     for source in [r"@layer \31 edge;", r"@layer outer.\31 edge {}"] {
-        let report = parse_rule(source, &CssNamespaceContext::default());
+        let report = CssRule::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let components = match report.syntax() {
             Some(CssRule::LayerStatement(rule)) => rule.names().names()[0].components(),
@@ -22,9 +26,7 @@ fn published_css_layer_ingress_preserves_decoded_escaped_identifiers() {
 
 #[test]
 fn published_css_sheet_keeps_escaped_layer_statement_between_actual_siblings() {
-    let report = parse_sheet(
-        r"@layer outer { @layer inner {} @layer {} } @layer outer.\31 edge, safe; .after { color: red; }",
-    );
+    let report = CssParser::default().parse_sheet(r"@layer outer { @layer inner {} @layer {} } @layer outer.\31 edge, safe; .after { color: red; }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [
         CssRule::LayerBlock(outer),
@@ -56,7 +58,11 @@ fn published_layer_name_constructor_accepts_decoded_identifier_values() {
             spelling
         );
         let source = format!("@layer {spelling};");
-        let report = parse_rule(&source, &CssNamespaceContext::default());
+        let report = CssRule::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let Some(CssRule::LayerStatement(rule)) = report.syntax() else {
             panic!("one named layer statement")
@@ -69,7 +75,7 @@ fn published_layer_name_constructor_accepts_decoded_identifier_values() {
 #[test]
 fn escaped_import_layer_is_named_and_keeps_original_input_after_input_drop() {
     let source = String::from(r"@import 'x.css' layer(theme.\31 x);");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     drop(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Import(import)] = report.syntax().rules() else {
@@ -124,7 +130,11 @@ fn decoded_admission_retains_reserved_keywords_and_actual_authored_grammar() {
         name.serialize_specified(Default::default()).unwrap(),
         "default.Case"
     );
-    let report = parse_rule("@layer default.Case;", &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        "@layer default.Case;",
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean());
     // Cascade 5 §6.4.2: <layer-name> = <ident> [ '.' <ident> ]* without
     // whitespace, and no component may be a CSS-wide keyword.
@@ -138,7 +148,11 @@ fn decoded_admission_retains_reserved_keywords_and_actual_authored_grammar() {
         (r"@layer \69 nherit;", prelude.clone()),
         ("@layer safe.INITIAL;", prelude.clone().at("INITIAL")),
     ] {
-        let report = parse_rule(invalid, &CssNamespaceContext::default());
+        let report = CssRule::parse(
+            &CssParser::default(),
+            invalid,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.syntax().is_none(), "{invalid}");
         expected.assert_first(&report);
     }

@@ -17,7 +17,7 @@ fn typed_edge(declaration: &CssDeclaration) -> CssTextBoxEdge {
 }
 
 fn block(css: &str) -> CssSpecifiedDeclarationBlock {
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
         .unwrap()
@@ -294,7 +294,7 @@ fn cssom_inverse_reconstructs_exact_longhand_roles_and_normal_and_preserves_pair
         );
         let reparsed = checked(CssKnownProperty::TextBox, expected);
         let CssExpansion::Contributions(CssContributions::Longhands(reexpanded)) =
-            expand_declaration(&reparsed).unwrap()
+            reparsed.expand().unwrap()
         else {
             panic!("ordinary inverse projection")
         };
@@ -306,7 +306,7 @@ fn cssom_inverse_reconstructs_exact_longhand_roles_and_normal_and_preserves_pair
                 .unwrap();
             let expected_declaration = checked(name, &expected_longhand);
             let CssExpansion::Contributions(CssContributions::Longhands(expected_values)) =
-                expand_declaration(&expected_declaration).unwrap()
+                expected_declaration.expand().unwrap()
             else {
                 panic!("one terminal")
             };

@@ -9,7 +9,7 @@ use surgeist_css::*;
 
 fn parsed(value: &str) -> CssDeclaration {
     let source = format!("grid-auto-flow: {value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     report.syntax()[0].clone()
 }
@@ -180,24 +180,22 @@ fn invalid_keyword_combinations_are_rejected_by_the_public_grammar() {
 
 #[test]
 fn normalization_charges_one_terminal_contribution_for_dense() {
-    let report = parse_sheet(".p{grid-auto-flow:dense}");
+    let report = CssParser::default().parse_sheet(".p{grid-auto-flow:dense}");
     assert!(report.is_clean());
     let original = report.syntax().clone();
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(1, 1, 1, 0).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(1, 1, 1, 0).unwrap())
+        .unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 0))
     );
     assert_eq!(report.syntax(), &original);
     assert!(
-        normalize_sheet_with_limits(
-            report.syntax(),
-            CssNormalizationLimits::try_new(1, 1, 1, 1).unwrap(),
-        )
-        .is_ok()
+        report
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(1, 1, 1, 1).unwrap())
+            .is_ok()
     );
 }

@@ -943,7 +943,7 @@ impl CssSpecifiedDeclarationBlock {
         let mut entries = Vec::new();
         reserve(&mut entries, count)?;
         for (ordinal, source) in sources.enumerate() {
-            let expansion = crate::expand_declaration(source)
+            let expansion = crate::expansion::expand_declaration(source)
                 .map_err(|e| CssDeclarationBlockError::from(e).at(source, ordinal, None))?;
             Self::append_group(&mut entries, &expansion, ordinal, domain, writer)?;
         }

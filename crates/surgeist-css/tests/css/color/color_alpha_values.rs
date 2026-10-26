@@ -4,7 +4,7 @@ use surgeist_css::*;
 
 fn alpha(text: &str) -> CssRelativeColorExpression {
     CssRelativeColorExpression::try_from_components(
-        parse_component_values(text).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         CssRelativeColorEnvironment::Alpha,
         CssRelativeColorResultDomain::Alpha,
         Default::default(),
@@ -58,7 +58,7 @@ fn alpha_math_keeps_transparency_references_and_rejects_foreign_environments() {
     ] {
         assert!(
             CssRelativeColorExpression::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssRelativeColorEnvironment::Alpha,
                 CssRelativeColorResultDomain::Alpha,
                 Default::default(),
@@ -221,7 +221,10 @@ fn nested_alpha_custom_and_mix_branches_remain_typed() {
 
 #[test]
 fn alpha_math_retains_parsed_leaf_in_a_programmatic_function() {
-    let leaf = parse_component_values("alpha").unwrap().items()[0].clone();
+    let leaf = CssComponentValues::parse(&CssParser::default(), "alpha")
+        .unwrap()
+        .items()[0]
+        .clone();
     let graph = CssComponentValues::try_new(
         vec![
             CssComponentValue::try_function(

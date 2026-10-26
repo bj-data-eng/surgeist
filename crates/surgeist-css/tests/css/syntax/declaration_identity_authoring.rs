@@ -7,7 +7,9 @@ use crate::css::support::sheet_cases::*;
 
 #[test]
 fn parsed_style_rule_is_explicit_rule_variant() {
-    let sheet = parse_sheet(".panel { width: 10px; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(".panel { width: 10px; }")
+        .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("style sheet should parse exactly one rule");
     };

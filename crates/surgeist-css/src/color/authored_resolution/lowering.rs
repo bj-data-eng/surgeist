@@ -1213,9 +1213,11 @@ mod tests {
 
     /// The `<color>` the production `color` property parser admits for `source`.
     fn parsed(source: &str) -> CssColor {
-        let report = crate::parse_property_value_text(
+        let report = crate::CssParser::default().parse_property_value(
             source,
-            crate::CssPropertyNameRef::Known(crate::CssKnownProperty::Color),
+            crate::CssPropertyTextTarget::Property(crate::CssPropertyNameRef::Known(
+                crate::CssKnownProperty::Color,
+            )),
             crate::CssImportance::Normal,
         );
         // CSS Syntax 3 (CRD 2026-10-01) §5.5.10 closes an unclosed function at

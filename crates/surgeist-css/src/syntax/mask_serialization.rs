@@ -214,9 +214,7 @@ mod tests {
 
     #[test]
     fn suppressed_gradient_math_and_url_visit_without_byte_scratch() {
-        let report = crate::parse_style_attribute(
-            "mask:linear-gradient(red calc(1px + 5%), blue) calc(10px + 1em) top / contain no-repeat, url(\"a\\\"b\")",
-        );
+        let report = crate::CssParser::default().parse_block_contents("mask:linear-gradient(red calc(1px + 5%), blue) calc(10px + 1em) top / contain no-repeat, url(\"a\\\"b\")");
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let crate::CssKnownPropertyValueRef::Mask(wrapper) = report.syntax()[0]
             .known()

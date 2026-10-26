@@ -6,8 +6,8 @@ use crate::css::support::property_admission::{
     assert_checked_rejected, assert_invalid_value, assert_style_attribute_rejected,
 };
 use surgeist_css::{
-    CssErrorCode, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
-    CssRecoveryAction, parse_component_values, parse_property_value, parse_style_attribute,
+    CssComponentValues, CssDeclaration, CssErrorCode, CssImportance, CssKnownProperty,
+    CssKnownPropertyValueRef, CssParser, CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction,
 };
 
 const BOX_PROPERTIES: &[CssKnownProperty] = &[
@@ -25,7 +25,7 @@ fn negative_literal_box_sizes_reject_in_parsing_and_checked_construction() {
     for &property in BOX_PROPERTIES {
         for value in ["-50%", "-1px", "-0.5em"] {
             let source = format!("{}:{value};color:red", property.canonical_name());
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(report.syntax().len(), 1, "{source}: {report:?}");
             assert_eq!(
                 report.syntax()[0].known().unwrap().property(),
@@ -41,9 +41,10 @@ fn negative_literal_box_sizes_reject_in_parsing_and_checked_construction() {
             );
             assert_invalid_value(diagnostic.error(), property, Some(value));
             assert_checked_rejected(
-                parse_property_value(
-                    CssPropertyNameRef::Known(property),
-                    parse_component_values(value).unwrap(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+                    CssComponentValues::parse(&CssParser::default(), value).unwrap(),
                     CssImportance::Normal,
                 ),
                 property,
@@ -61,7 +62,8 @@ fn negative_literal_box_sizes_reject_in_parsing_and_checked_construction() {
 fn nonnegative_box_sizes_keep_zero_and_positive_boundaries() {
     for &property in BOX_PROPERTIES {
         for value in ["0", "-0px", "0%", "1px", "50%"] {
-            let report = parse_style_attribute(&format!("{}:{value}", property.canonical_name()));
+            let report = CssParser::default()
+                .parse_block_contents(format!("{}:{value}", property.canonical_name()));
             assert!(
                 report.is_clean(),
                 "{}:{value}: {report:?}",
@@ -74,8 +76,8 @@ fn nonnegative_box_sizes_keep_zero_and_positive_boundaries() {
 
 #[test]
 fn signed_offsets_and_symbolic_box_calculations_remain_valid() {
-    let report =
-        parse_style_attribute("margin-left:-1px;left:-50%;text-indent:-2em;width:calc(-1px)");
+    let report = CssParser::default()
+        .parse_block_contents("margin-left:-1px;left:-50%;text-indent:-2em;width:calc(-1px)");
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(report.syntax().len(), 4);
     let CssKnownPropertyValueRef::Width(width) = report.syntax()[3]

@@ -64,7 +64,7 @@ fn every_descriptor_emits_the_same_canonical_value_after_raw_and_checked_admissi
         );
         let checked = Authored::try_from_components(
             kind,
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -107,13 +107,13 @@ fn every_descriptor_emits_the_same_canonical_value_after_raw_and_checked_admissi
 fn environment_pending_values_reenter_each_concrete_grammar_without_mutating_authored_input() {
     for (kind, replacement, expected) in cases() {
         let source = "/*😀*/env(face-value)";
-        let raw = parse_font_face_descriptor_value(source, kind)
+        let raw = CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), source, kind)
             .into_validation_result()
             .unwrap()
             .unwrap();
         let checked = Authored::try_from_components(
             kind,
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -125,7 +125,7 @@ fn environment_pending_values_reenter_each_concrete_grammar_without_mutating_aut
             let before = pending.components().clone();
             let value = pending
                 .reparse_after_substitution(
-                    parse_component_values(replacement).unwrap(),
+                    CssComponentValues::parse(&CssParser::default(), replacement).unwrap(),
                     Default::default(),
                 )
                 .unwrap();
@@ -138,7 +138,7 @@ fn environment_pending_values_reenter_each_concrete_grammar_without_mutating_aut
                 assert!(
                     pending
                         .reparse_after_substitution(
-                            parse_component_values(residual).unwrap(),
+                            CssComponentValues::parse(&CssParser::default(), residual).unwrap(),
                             Default::default()
                         )
                         .unwrap_err()
@@ -177,12 +177,13 @@ fn descriptor_boundaries_and_stylesheet_only_substitution_do_not_become_ordinary
             (format!("{source};"), ";"),
         ] {
             let expected = descriptor_rejected_at("font-face", kind.as_str(), token);
-            let report = parse_font_face_descriptor_value(&invalid, kind);
+            let report =
+                CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), &invalid, kind);
             assert!(report.syntax().is_none(), "{kind:?}: {invalid}: {report:?}");
             expected.assert_first(&report);
             let error = Authored::try_from_components(
                 kind,
-                parse_component_values(&invalid).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), &invalid).unwrap(),
                 Default::default(),
             )
             .unwrap_err();
@@ -232,7 +233,7 @@ fn list_members_and_suppressed_equal_endpoints_share_cumulative_visit_limits() {
 fn shared_strings_use_escaped_utf8_byte_limits_and_retain_original_string_origins() {
     let source = "/*😀*/'é\\\"Face'";
     let expected = "\"é\\\"Face\"";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let Authored::Ordinary(value) =
         Authored::try_from_components(Kind::FontNamedInstance, components, Default::default())
             .unwrap()
@@ -353,7 +354,7 @@ fn eof_string_recovery_stays_visible_and_checked_descriptor_reentry_rejects_it()
         (Kind::FontFamily, "'Demo"),
         (Kind::FontNamedInstance, "'Regular"),
     ] {
-        let report = parse_font_face_descriptor_value(source, kind);
+        let report = CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), source, kind);
         assert!(matches!(report.syntax(), Some(Authored::Ordinary(_))));
         let [diagnostic] = report.diagnostics() else {
             panic!("one retained EOF string diagnostic")
@@ -367,18 +368,21 @@ fn eof_string_recovery_stays_visible_and_checked_descriptor_reentry_rejects_it()
             source.len()
         );
         assert!(report.into_validation_result().is_err());
-        let components = parse_component_values(source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         assert!(
             Authored::try_from_components(kind, components.clone(), Default::default())
                 .unwrap_err()
                 .is_recovered_component(),
             "{kind:?}: {source}"
         );
-        let Authored::Pending(pending) = parse_font_face_descriptor_value("env(face-value)", kind)
-            .into_validation_result()
-            .unwrap()
-            .unwrap()
-        else {
+        let Authored::Pending(pending) = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            "env(face-value)",
+            kind,
+        )
+        .into_validation_result()
+        .unwrap()
+        .unwrap() else {
             panic!("pending descriptor")
         };
         assert!(
@@ -394,7 +398,7 @@ fn eof_string_recovery_stays_visible_and_checked_descriptor_reentry_rejects_it()
 #[test]
 fn stretch_alias_uses_width_grammar_while_removed_variant_has_no_descriptor_provider() {
     let source = "@font-face{font-stretch:75%;font-variant:normal;font-display:swap}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("retained face rule")
     };

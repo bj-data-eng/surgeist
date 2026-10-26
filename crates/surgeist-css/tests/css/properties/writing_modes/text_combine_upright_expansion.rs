@@ -77,7 +77,7 @@ fn keywords_and_globals_expand_once_with_source_importance() {
     for text in ["none", "all", "inherit"] {
         let source = important_declaration("text-combine-upright", text);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).expect("intrinsic longhand expansion")
+            source.expand().expect("intrinsic longhand expansion")
         else {
             panic!("longhands")
         };
@@ -105,11 +105,11 @@ fn keywords_and_globals_expand_once_with_source_importance() {
 #[test]
 fn pending_digits_reentry_preserves_property_and_replacement_occurrence() {
     let source = important_declaration("text-combine-upright", "var(--combine)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending known property")
     };
     for text in ["digits", "digits 4", "digits calc(2.5)"] {
-        let replacement = parse_component_values(text).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("longhands")
@@ -128,7 +128,7 @@ fn pending_digits_reentry_preserves_property_and_replacement_occurrence() {
     }
     assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
@@ -141,7 +141,7 @@ fn pending_digits_reentry_preserves_property_and_replacement_occurrence() {
     ] {
         assert!(
             pending
-                .reenter(parse_component_values(text).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some()
@@ -160,8 +160,9 @@ fn keyword_controls_keep_exact_views_and_programmatic_origin() {
             Default::default(),
         )
         .unwrap();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(PROPERTY),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(PROPERTY)),
             components.clone(),
             CssImportance::Normal,
         )
@@ -203,15 +204,16 @@ fn invalid_ordinary_counts_and_math_types_are_rejected_and_recovered() {
         "digits calc(2%)",
     ] {
         assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(PROPERTY),
-                parse_component_values(text).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(PROPERTY)),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssImportance::Normal
             )
             .is_err(),
             "{text}"
         );
-        let report = parse_style_attribute(&format!(
+        let report = CssParser::default().parse_block_contents(format!(
             "text-combine-upright:{text};text-combine-upright:none"
         ));
         assert!(!report.is_clean(), "{text}");
@@ -229,13 +231,13 @@ fn invalid_ordinary_counts_and_math_types_are_rejected_and_recovered() {
 
 #[test]
 fn all_reset_includes_text_combine_upright() {
-    let report = parse_style_attribute("all:initial!important");
+    let report = CssParser::default().parse_block_contents("all:initial!important");
     assert!(report.is_clean());
     let [source] = report.syntax().as_slice() else {
         panic!("all declaration")
     };
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(source).unwrap()
+        source.expand().unwrap()
     else {
         panic!("universal reset")
     };

@@ -38,7 +38,8 @@ fn mask_shorthand_retains_url_none_and_gradients() {
         assert_eq!(value.value(), &expected);
         assert_eq!(value.as_css(), css);
     }
-    let report = parse_style_attribute("mask: linear-gradient(red, blue); color: red");
+    let report =
+        CssParser::default().parse_block_contents("mask: linear-gradient(red, blue); color: red");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [mask, retained] = report.syntax().as_slice() else {
         panic!("mask and valid sibling remain");
@@ -292,7 +293,7 @@ fn ordered_mask_sources_and_gradients_expand_once_with_source_and_importance() {
 #[test]
 fn pending_image_list_reentry_is_strict_repeatable_and_provenanced() {
     let source = declaration("background-image:var(--art)!important");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("known image substitution must be pending")
     };
     assert!(pending.source().same_occurrence(&source));
@@ -304,7 +305,7 @@ fn pending_image_list_reentry_is_strict_repeatable_and_provenanced() {
     ] {
         assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some(),
@@ -313,7 +314,7 @@ fn pending_image_list_reentry_is_strict_repeatable_and_provenanced() {
     }
     assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
@@ -322,7 +323,7 @@ fn pending_image_list_reentry_is_strict_repeatable_and_provenanced() {
         "src(\"hero.svg\"), repeating-radial-gradient(red, blue)",
         "linear-gradient(red, blue), radial-gradient(red, blue)",
     ] {
-        let replacement = parse_component_values(replacement).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), replacement).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -339,7 +340,7 @@ fn pending_image_list_reentry_is_strict_repeatable_and_provenanced() {
         }
     }
     let CssContributions::Longhands(items) = pending
-        .reenter(parse_component_values("inherit").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
         .unwrap()
     else {
         panic!("global replacement")
@@ -353,7 +354,7 @@ fn pending_image_list_reentry_is_strict_repeatable_and_provenanced() {
 #[test]
 fn pending_mask_sources_reenter_strictly_and_retain_replacement_provenance() {
     let source = declaration("mask-image:var(--mask)!important");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("known mask image substitution must be pending")
     };
     assert!(pending.source().same_occurrence(&source));
@@ -365,7 +366,7 @@ fn pending_mask_sources_reenter_strictly_and_retain_replacement_provenance() {
     ] {
         assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some(),
@@ -374,7 +375,7 @@ fn pending_mask_sources_reenter_strictly_and_retain_replacement_provenance() {
     }
     assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
@@ -382,7 +383,7 @@ fn pending_mask_sources_reenter_strictly_and_retain_replacement_provenance() {
         "url(\"#clip\"), src(\"#mask\"), none",
         "repeating-linear-gradient(red, blue), radial-gradient(red, blue)",
     ] {
-        let replacement = parse_component_values(replacement).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), replacement).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -419,8 +420,9 @@ fn image_components_keep_parsed_and_checked_programmatic_origins() {
     ));
     let component = CssComponentValue::try_url("hero.svg").unwrap();
     let components = CssComponentValues::try_new(vec![component], Default::default()).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage)),
         components,
         CssImportance::Normal,
     )
@@ -437,8 +439,9 @@ fn image_components_keep_parsed_and_checked_programmatic_origins() {
         parsed_mask.value_components().items()[0].origin(),
         CssValueOrigin::Parsed(_)
     ));
-    let checked_mask = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::MaskImage),
+    let checked_mask = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::MaskImage)),
         CssComponentValues::try_new(
             vec![CssComponentValue::try_url("#mask").unwrap()],
             Default::default(),
@@ -505,13 +508,13 @@ fn both_initial_image_lists_use_one_cumulative_serialization_budget() {
 
 #[test]
 fn normalization_preserves_image_order_and_fails_atomically_on_contribution_limit() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         ".a{background-image:url(\"a.svg\");",
         "border-image-source:none;",
         "background-image:linear-gradient(red, blue), none}"
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -546,7 +549,7 @@ fn normalization_preserves_image_order_and_fails_atomically_on_contribution_limi
         assert!(item.source().same_occurrence(declarations[index].source()));
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 2))
@@ -560,13 +563,13 @@ fn normalization_preserves_image_order_and_fails_atomically_on_contribution_limi
 
 #[test]
 fn normalization_preserves_mask_image_order_and_exact_resource_failure() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         ".a{mask-image:url(\"#first\");",
         "border-image-source:none;",
         "mask-image:src(\"#second\"), none}"
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -601,7 +604,7 @@ fn normalization_preserves_mask_image_order_and_exact_resource_failure() {
         assert!(item.source().same_occurrence(declarations[index].source()));
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 2))

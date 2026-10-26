@@ -281,7 +281,7 @@ pub fn assert_parsed_span(origin: &CssValueOrigin, source: &str, start: usize, e
 /// The first non-whitespace component of input that must tokenize.
 #[track_caller]
 pub fn first_token(text: &str) -> CssComponentValue {
-    parse_component_values(text)
+    CssComponentValues::parse(&CssParser::default(), text)
         .unwrap()
         .items()
         .iter()
@@ -300,7 +300,7 @@ pub fn first_token(text: &str) -> CssComponentValue {
 pub fn calculated_number(source: &str) -> CssNumeric<CssNumber> {
     CssNumeric::<CssNumber>::try_from_calculation(
         CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -313,7 +313,7 @@ pub fn calculated_number(source: &str) -> CssNumeric<CssNumber> {
 pub fn calculated_length(source: &str) -> CssNumeric<CssLength> {
     CssNumeric::<CssLength>::try_from_calculation(
         CssCalculation::<CssLength>::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -401,7 +401,11 @@ pub fn specified_property_value(
 /// The one rule of a clean default-namespace rule parse.
 #[track_caller]
 pub fn clean_rule(source: &str) -> CssRule {
-    let report = parse_rule(source, &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{source}: {report:?}");
     report.syntax().clone().expect("one admitted rule")
 }
@@ -409,7 +413,7 @@ pub fn clean_rule(source: &str) -> CssRule {
 /// The one media query of a clean CSSOM media-query parse.
 #[track_caller]
 pub fn clean_media_query(source: &str) -> CssMediaQuery {
-    let report = parse_cssom_media_query(source);
+    let report = CssMediaQuery::parse_medium(&CssParser::default(), source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     report.into_parts().0.expect("one clean media query")
 }
@@ -437,10 +441,12 @@ pub fn media_resource_kind(error: &CssSerializationError) -> SerializationFailur
 /// validator accepts with the same declarations.
 #[track_caller]
 pub fn validated_sole_declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     assert_eq!(
-        validate_style_attribute(css),
+        CssParser::default()
+            .parse_block_contents(css)
+            .into_validation_result(),
         Ok(report.syntax().clone()),
         "{css}"
     );

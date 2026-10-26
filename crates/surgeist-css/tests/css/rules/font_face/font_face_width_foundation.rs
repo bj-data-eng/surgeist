@@ -4,7 +4,7 @@
 use surgeist_css::*;
 
 fn retained_count(source: &str) -> usize {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("one font-face rule: {source}")
@@ -17,7 +17,10 @@ fn retained_count(source: &str) -> usize {
         0
     );
     assert!(
-        validate_sheet(source).is_ok(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .is_ok(),
         "strict validation: {source}"
     );
     rule.descriptors().occurrences().len()
@@ -81,7 +84,7 @@ fn invalid_width_descriptor_drops_only_its_own_occurrence_at_its_source_position
         let source = format!(
             "@font-face{{font-family:Demo;src:url(face);font-stretch:condensed;{name}:{invalid};font-width:75%}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("font-face survives invalid descriptor: {source}")
         };
@@ -103,6 +106,11 @@ fn invalid_width_descriptor_drops_only_its_own_occurrence_at_its_source_position
             4,
             "valid neighbors survive"
         );
-        assert!(validate_sheet(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
 }

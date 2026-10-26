@@ -42,21 +42,22 @@ fn names(ids: &[CssLonghandProperty]) -> Vec<P> {
     ids.iter().map(|id| id.known_property()).collect()
 }
 fn construct(grammar: CssPropertyGrammar, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar,
-        parse_component_values(value).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         CssImportance::Important,
     )
     .unwrap()
 }
 fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
-    match expand_declaration(source).unwrap() {
+    match source.expand().unwrap() {
         CssExpansion::Contributions(CssContributions::Longhands(values)) => values,
         other => panic!("completed typed values: {other:?}"),
     }
 }
 fn pending(source: &CssDeclaration) -> CssPendingSubstitution {
-    match expand_declaration(source).unwrap() {
+    match source.expand().unwrap() {
         CssExpansion::Pending(value) => value,
         other => panic!("pending grammar: {other:?}"),
     }
@@ -252,7 +253,7 @@ fn memberships_and_resets() {
     ] {
         assert_eq!(meta.excludes(name), excluded);
         let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-            expand_declaration(&construct(P::All.grammar(), "unset")).unwrap()
+            construct(P::All.grammar(), "unset").expand().unwrap()
         else {
             panic!("all reset")
         };
@@ -360,24 +361,25 @@ fn grammar_identity_and_reentry() {
         ))
     ));
     assert!(
-        parse_property_value_for_grammar(
-            canonical,
-            parse_component_values("90deg").unwrap(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(canonical),
+            CssComponentValues::parse(&CssParser::default(), "90deg").unwrap(),
             CssImportance::Normal
         )
         .is_err()
     );
     let source = construct(legacy, "var(--angle)");
     let handle = pending(&source);
-    let replacement = parse_component_values("90deg").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "90deg").unwrap();
     assert!(
         handle
-            .reenter(parse_component_values("bogus").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "bogus").unwrap())
             .is_err()
     );
     assert!(
         handle
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
@@ -430,8 +432,13 @@ fn grammar_identity_and_reentry() {
     )
     .unwrap();
     assert!(
-        parse_property_value_for_grammar(legacy, separate_tokens.clone(), CssImportance::Normal)
-            .is_err()
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(legacy),
+            separate_tokens.clone(),
+            CssImportance::Normal
+        )
+        .is_err()
     );
     assert!(
         handle.reenter(separate_tokens).is_err(),
@@ -441,7 +448,7 @@ fn grammar_identity_and_reentry() {
 }
 fn construction_provenance_and_normalization() {
     let css = "/*x*/g\\6cyph-orientation-vertical:90deg!important;color:CanvasText";
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
     let old = &report.syntax()[0];
@@ -466,8 +473,9 @@ fn construction_provenance_and_normalization() {
         Default::default(),
     )
     .unwrap();
-    let built = parse_property_value_for_grammar(
-        grammar("glyph-orientation-vertical"),
+    let built = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar("glyph-orientation-vertical")),
         components,
         CssImportance::Normal,
     )
@@ -505,9 +513,10 @@ fn construction_provenance_and_normalization() {
             .known_property(),
         P::FontFamily
     );
-    let sheet = parse_sheet(".a {color:CanvasText!important; @media print {color:red} color:blue}");
+    let sheet = CssParser::default()
+        .parse_sheet(".a {color:CanvasText!important; @media print {color:red} color:blue}");
     assert!(sheet.is_clean(), "{:?}", sheet.diagnostics());
-    let normalized = normalize_sheet(sheet.syntax()).unwrap();
+    let normalized = sheet.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()

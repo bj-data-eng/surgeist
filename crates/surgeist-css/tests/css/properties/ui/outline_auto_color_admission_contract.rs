@@ -74,7 +74,7 @@ fn rejection_code(error: &dyn GrammarFacts, property: CssKnownProperty) -> CssEr
 
 fn parsed_admits(property: CssKnownProperty, value: &str) {
     let source = source(property, value);
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(
         report.is_clean(),
         "valid {}:{value}: {:?}",
@@ -121,9 +121,11 @@ fn parsed_admits(property: CssKnownProperty, value: &str) {
 
 fn validator_admits(property: CssKnownProperty, value: &str) {
     let source = source(property, value);
-    let validated = validate_style_attribute(&source)
+    let validated = CssParser::default()
+        .parse_block_contents(&source)
+        .into_validation_result()
         .unwrap_or_else(|error| panic!("valid {}:{value}: {error:?}", name(property)));
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean());
     assert_eq!(&validated, report.syntax());
     let [_, declaration, _] = validated.as_slice() else {
@@ -138,14 +140,16 @@ fn checked_components_admit(
     grammar: bool,
 ) {
     let declaration = if grammar {
-        parse_property_value_for_grammar(
-            property.grammar(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(property.grammar()),
             components.clone(),
             CssImportance::Important,
         )
     } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components.clone(),
             CssImportance::Important,
         )
@@ -167,7 +171,11 @@ fn checked_components_admit(
 }
 
 fn checked_admits(property: CssKnownProperty, value: &str, grammar: bool) {
-    checked_components_admit(property, parse_component_values(value).unwrap(), grammar);
+    checked_components_admit(
+        property,
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
+        grammar,
+    );
 }
 
 macro_rules! admission_contract {
@@ -219,7 +227,7 @@ admission_contract!(
 #[test]
 fn checked_outline_color_auto_preserves_supplied_escaped_token_origin() {
     let source = "/* 🦀 */ \\61 uto";
-    let values = parse_component_values(source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let auto = values.items().iter().find(|component| {
         matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Ident(value)) if value == "auto")
     }).unwrap();
@@ -288,7 +296,7 @@ fn duplicate_and_exclusive_outline_components_drop_only_the_invalid_declaration(
         (CssKnownProperty::Outline, "2px 3px auto"),
     ] {
         let source = source(property, value);
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [before, after] = report.syntax().as_slice() else {
             panic!("only invalid outline drops: {source}")
         };
@@ -327,20 +335,26 @@ fn duplicate_and_exclusive_outline_components_drop_only_the_invalid_declaration(
         assert!((start..=end).contains(&offset));
         position(responsible, &source, offset);
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
         for grammar in [false, true] {
-            let components = parse_component_values(value).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
             let error = if grammar {
-                parse_property_value_for_grammar(
-                    property.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(property.grammar()),
                     components,
                     CssImportance::Important,
                 )
             } else {
-                parse_property_value(
-                    CssPropertyNameRef::Known(property),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                     components,
                     CssImportance::Important,
                 )

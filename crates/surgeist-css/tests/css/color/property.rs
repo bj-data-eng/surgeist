@@ -18,9 +18,8 @@ use surgeist_css::{
     CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssColorFactIdentity, CssColorFacts,
     CssColorGrammarRequest, CssColorInput, CssColorOrdinaryLimits, CssColorOrdinaryOutcome,
     CssColorPaletteEntry, CssColorPropertyFacts, CssColorResolveError, CssColorSchemeFact,
-    CssDeviceColorFact, CssImportance, CssKnownProperty, CssKnownPropertyValueRef,
-    CssPropertyNameRef, CssSystemColor, parse_property_value_text, parse_used_color,
-    resolve_authored_color,
+    CssDeviceColorFact, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssParser,
+    CssPropertyNameRef, CssPropertyTextTarget, CssSystemColor, parse_used_color,
 };
 use surgeist_fuzz::engine::{PropertyConfig, run_property};
 use surgeist_fuzz::generation::property::bytes;
@@ -448,9 +447,9 @@ fn used(input: CssColorInput<'_>, facts: &CssColorFacts<'_>) -> Outcome {
 }
 /// Authored resolution of the retained `color` value, when the source is one.
 fn authored(source: &str, facts: &CssColorFacts<'_>) -> Option<Outcome> {
-    let report = parse_property_value_text(
+    let report = CssParser::default().parse_property_value(
         source,
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         CssImportance::Normal,
     );
     let declaration = report.syntax().as_ref()?;
@@ -460,7 +459,10 @@ fn authored(source: &str, facts: &CssColorFacts<'_>) -> Option<Outcome> {
         return None;
     };
     Some(
-        match resolve_authored_color(value.value(), facts, facts.identity(), AUTHORED_LIMITS) {
+        match value
+            .value()
+            .resolve(facts, facts.identity(), AUTHORED_LIMITS)
+        {
             Ok(result) => match result.outcome() {
                 CssAuthoredColorOutcome::Used(value) => Outcome::Used(*value),
                 CssAuthoredColorOutcome::StandardFailure(_) => Outcome::StandardFailure,
@@ -517,9 +519,9 @@ fn resolved(source: &str) -> Color {
         Ok(CssColorOrdinaryOutcome::Used(value)) => value,
         other => panic!("{source}: ordinary outcome {other:?}"),
     };
-    let report = parse_property_value_text(
+    let report = CssParser::default().parse_property_value(
         source,
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         CssImportance::Normal,
     );
     let Some(declaration) = report.syntax() else {
@@ -530,14 +532,16 @@ fn resolved(source: &str) -> Color {
     else {
         panic!("{source}: a typed color declaration");
     };
-    let authored =
-        match resolve_authored_color(value.value(), &facts, facts.identity(), AUTHORED_LIMITS) {
-            Ok(result) => match result.outcome() {
-                CssAuthoredColorOutcome::Used(value) => *value,
-                other => panic!("{source}: authored outcome {other:?}"),
-            },
-            Err(error) => panic!("{source}: authored error {error:?}"),
-        };
+    let authored = match value
+        .value()
+        .resolve(&facts, facts.identity(), AUTHORED_LIMITS)
+    {
+        Ok(result) => match result.outcome() {
+            CssAuthoredColorOutcome::Used(value) => *value,
+            other => panic!("{source}: authored outcome {other:?}"),
+        },
+        Err(error) => panic!("{source}: authored error {error:?}"),
+    };
     assert!(
         used.identical(authored),
         "{source}: fronts disagree {used:?} {authored:?}"

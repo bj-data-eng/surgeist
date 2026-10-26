@@ -4,8 +4,8 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
-    CssErrorCode, CssNamespacePrefix, CssNormalizedItem, CssRule, CssRuleContextKindRef,
-    CssSerializationLimits, normalize_report, parse_sheet, validate_sheet,
+    CssErrorCode, CssNamespacePrefix, CssNormalizedItem, CssParser, CssRule, CssRuleContextKindRef,
+    CssSerializationLimits,
 };
 
 #[test]
@@ -37,7 +37,7 @@ fn namespace_rule_output_preserves_literal_names_and_escaped_prefixes() {
             "a\"b\\c",
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{source}: {report:?}");
         let [original] = report.syntax().rules() else {
             panic!("one namespace")
@@ -50,7 +50,7 @@ fn namespace_rule_output_preserves_literal_names_and_escaped_prefixes() {
             .serialize_specified(Default::default())
             .expect("supported namespace rule");
         assert_eq!(output, expected);
-        let reparsed = parse_sheet(&output);
+        let reparsed = CssParser::default().parse_sheet(&output);
         assert!(reparsed.is_clean(), "{output}: {reparsed:?}");
         let [CssRule::Namespace(namespace)] = reparsed.syntax().rules() else {
             panic!("one namespace")
@@ -66,7 +66,7 @@ fn namespace_rule_output_preserves_literal_names_and_escaped_prefixes() {
 #[test]
 fn namespace_sheet_and_normalized_output_retain_duplicate_order_diagnostics_and_positions() {
     let source = "/*😀*/\r\n@namespace 'first';\r\n@namespace svg 'named';\r\n@namespace 'last';\r\n@namespace svg '';";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 2);
     for diagnostic in report.diagnostics() {
         assert_eq!(
@@ -75,7 +75,11 @@ fn namespace_sheet_and_normalized_output_retain_duplicate_order_diagnostics_and_
         );
     }
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     let expected = "@namespace url(\"first\");\n@namespace svg url(\"named\");\n@namespace url(\"last\");\n@namespace svg url(\"\");";
@@ -86,7 +90,7 @@ fn namespace_sheet_and_normalized_output_retain_duplicate_order_diagnostics_and_
             .expect("namespace-only sheet"),
         expected
     );
-    let normalized = normalize_report(&report).unwrap();
+    let normalized = report.normalize(Default::default()).unwrap();
     assert_eq!(normalized.diagnostics(), report.diagnostics());
     let mut emitted = Vec::new();
     for (index, item) in normalized.syntax().items().iter().enumerate() {
@@ -117,7 +121,8 @@ fn namespace_sheet_and_normalized_output_retain_duplicate_order_diagnostics_and_
 
 #[test]
 fn namespace_output_uses_shared_cumulative_resource_budgets() {
-    let report = parse_sheet("@namespace svg 'first';@namespace other 'second';");
+    let report =
+        CssParser::default().parse_sheet("@namespace svg 'first';@namespace other 'second';");
     assert!(report.is_clean(), "{report:?}");
     let expected = "@namespace svg url(\"first\");\n@namespace other url(\"second\");";
     assert_eq!(
@@ -176,7 +181,7 @@ fn namespace_output_uses_shared_cumulative_resource_budgets() {
 
 #[test]
 fn namespace_and_qualified_style_sibling_share_canonical_output() {
-    let report = parse_sheet("@namespace svg 'urn:svg';svg|leaf {}");
+    let report = CssParser::default().parse_sheet("@namespace svg 'urn:svg';svg|leaf {}");
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     assert_eq!(

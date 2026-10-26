@@ -18,7 +18,10 @@ use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::serialization_limits::assert_limits as primitive_budget;
 use authored_property::{ParserFront, assert_source, checked, invalid};
-use surgeist_css::{CssKnownProperty as P, CssSerializationLimits as L, *};
+use surgeist_css::{
+    CssComponentValue, CssComponentValues, CssDeclaration, CssKnownProperty as P, CssParser,
+    CssPropertyTarget, CssRule, CssSerializationLimits as L, *,
+};
 
 const FRONTS: [ParserFront; 5] = [
     ParserFront::StyleAttribute,
@@ -127,7 +130,7 @@ fn accept(property: P, values: &[(&str, &str)]) {
             let source = front.valid(property, input, expected);
             assert_wrapper(&source, input);
             let output = source.serialize_specified(Default::default()).unwrap();
-            let report = parse_style_attribute(&output);
+            let report = CssParser::default().parse_block_contents(&output);
             assert!(report.is_clean(), "{output}: {:?}", report.diagnostics());
             let [reparsed] = report.syntax().as_slice() else {
                 panic!("one output occurrence")
@@ -363,7 +366,7 @@ fn invalid_keyword_occurrences_keep_exact_recovery_span_and_adjacent_importance(
     for row in cases() {
         let declaration = format!("{}: bogus !important;", row.name);
         let css = format!("/*😀*/color:red!important;{declaration}color:blue");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         let [before, after] = report.syntax().as_slice() else {
             panic!("two neighbors")
         };
@@ -384,7 +387,11 @@ fn invalid_keyword_occurrences_keep_exact_recovery_span_and_adjacent_importance(
         point(diagnostic.span().start(), &css, start);
         point(diagnostic.span().end(), &css, start + declaration.len());
         assert_eq!(
-            validate_style_attribute(&css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -417,7 +424,7 @@ fn metadata(property: P) {
 }
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).expect("intrinsic Images expansion")
+        source.expand().expect("intrinsic Images expansion")
     else {
         panic!("completed terminal contribution")
     };
@@ -495,15 +502,17 @@ fn pending(property: P, valid: &str, expected: &str, rejected: &str) {
             assert_eq!(source, before);
             assert!(source.known().unwrap().substitution_dependent().is_some());
             assert!(source.known().unwrap().property_value().is_none());
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("whole-value pending")
             };
             assert!(handle.source().same_occurrence(&source));
             for _ in 0..2 {
                 for invalid_value in [rejected, "inherit bogus", "bogus"] {
-                    let components = parse_component_values(invalid_value).unwrap();
-                    let direct = parse_property_value(
-                        CssPropertyNameRef::Known(property),
+                    let components =
+                        CssComponentValues::parse(&CssParser::default(), invalid_value).unwrap();
+                    let direct = CssDeclaration::try_from_components(
+                        &CssParser::default(),
+                        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                         components.clone(),
                         CssImportance::Normal,
                     )
@@ -523,13 +532,17 @@ fn pending(property: P, valid: &str, expected: &str, rejected: &str) {
                 ] {
                     assert!(
                         handle
-                            .reenter(parse_component_values(residual).unwrap())
+                            .reenter(
+                                CssComponentValues::parse(&CssParser::default(), residual).unwrap()
+                            )
                             .unwrap_err()
                             .is_residual_substitution(),
                         "residual must win over invalid grammar"
                     );
                 }
-                let replacement = parse_component_values(&format!("/*😀*/{valid}")).unwrap();
+                let replacement =
+                    CssComponentValues::parse(&CssParser::default(), format!("/*😀*/{valid}"))
+                        .unwrap();
                 let old_replacement = replacement.clone();
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
@@ -545,7 +558,8 @@ fn pending(property: P, valid: &str, expected: &str, rejected: &str) {
                     format!("{}: {expected} !important;", property.canonical_name())
                 );
                 for (global, keyword) in GLOBALS {
-                    let replacement = parse_component_values(global).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), global).unwrap();
                     let CssContributions::Longhands(values) =
                         handle.reenter(replacement.clone()).unwrap()
                     else {
@@ -570,14 +584,14 @@ fn normalization(property: P, ordinary: &str) {
         property.canonical_name(),
         property.canonical_name()
     );
-    let report = parse_sheet(&css);
+    let report = CssParser::default().parse_sheet(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     let before = report.clone();
     let CssRule::Style(style) = &report.syntax().rules()[0] else {
         panic!("style owner")
     };
     let exact = CssNormalizationLimits::try_new(0, 1, 3, 3).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let [
         CssNormalizedItem::Rule(rule),
         CssNormalizedItem::Declaration(first),
@@ -625,7 +639,7 @@ fn normalization(property: P, ordinary: &str) {
         ),
     ] {
         for _ in 0..2 {
-            let error = normalize_sheet_with_limits(report.syntax(), limit).unwrap_err();
+            let error = report.syntax().normalize(limit).unwrap_err();
             assert_eq!(error.exhausted_limit(), Some((resource, 2)));
             assert_eq!(error.declaration_order(), Some(2));
             assert!(
@@ -638,7 +652,7 @@ fn normalization(property: P, ordinary: &str) {
             assert_eq!(report, before);
         }
     }
-    assert!(normalize_report_with_limits(&report, exact).is_ok());
+    assert!(report.normalize(exact).is_ok());
     assert_eq!(report, before);
 }
 macro_rules! lifecycle {
@@ -739,7 +753,7 @@ fn physical_position_children_share_one_declaration_budget_across_both_math_aren
 }
 #[test]
 fn sibling_image_roles_share_sheet_work_and_final_output_bytes_atomically() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         ".a{object-position:bottom 2% right 1px!important;image-orientation:flip 30deg}",
         ".b{image-rendering:pixelated;object-fit:scale-down}"
     ));
@@ -913,7 +927,7 @@ fn programmatic_checked_property_components_keep_origins_without_declaration_coo
 
 #[test]
 fn normalization_composes_all_four_image_roles_without_reordering_or_resolving_occurrences() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         ".image{object-position:right bottom!important;image-orientation:flip 30deg;",
         "image-rendering:pixelated!important;object-fit:scale-down;object-position:var(--p);",
         "image-orientation:env(orientation);image-rendering:attr(data-rendering);object-fit:unset}"
@@ -924,7 +938,7 @@ fn normalization_composes_all_four_image_roles_without_reordering_or_resolving_o
         panic!("image style")
     };
     let exact = CssNormalizationLimits::try_new(0, 1, 8, 8).unwrap();
-    let result = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let result = report.syntax().normalize(exact).unwrap();
     let declarations: Vec<_> = result
         .items()
         .iter()
@@ -952,11 +966,10 @@ fn normalization_composes_all_four_image_roles_without_reordering_or_resolving_o
             _ => panic!("ordinary, pending and global occurrences in exact order"),
         }
     }
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 8, 7).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 8, 7).unwrap())
+        .unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 7))
@@ -969,7 +982,7 @@ fn normalization_composes_all_four_image_roles_without_reordering_or_resolving_o
             .same_occurrence(&style.declarations()[7])
     );
     assert_eq!(report, before);
-    assert!(normalize_report_with_limits(&report, exact).is_ok());
+    assert!(report.normalize(exact).is_ok());
 }
 
 // Checked components must report their original EOF, even when the browser-style
@@ -1030,23 +1043,25 @@ fn is_original_closure(error: &CssPropertyValueError, origin: &CssValueOrigin) -
 fn strict_original_components(property: P, inputs: &[String]) {
     let mut failures = Vec::new();
     for text in inputs {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let before = components.clone();
         let origin = images_implicit_origin(&components);
         original_closure_coordinates(&origin, text);
         for (front, result) in [
             (
                 "property",
-                parse_property_value(
-                    CssPropertyNameRef::Known(property),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                     components.clone(),
                     CssImportance::Important,
                 ),
             ),
             (
                 "grammar",
-                parse_property_value_for_grammar(
-                    property.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(property.grammar()),
                     components.clone(),
                     CssImportance::Important,
                 ),
@@ -1117,7 +1132,7 @@ fn closed_component_controls(property: P, ordinary: &str) {
     }
     for text in values {
         for grammar in [false, true] {
-            let components = parse_component_values(&text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
             let before = components.clone();
             let source = authored_property::checked_components(
                 property,
@@ -1151,7 +1166,7 @@ fn recovered_images_report(property: P, ordinary: &str) {
             "/*😀*/.image{{color:red;{}:{value}",
             property.canonical_name()
         );
-        let report = parse_sheet(&css);
+        let report = CssParser::default().parse_sheet(&css);
         assert!(!report.is_clean());
         let before = report.clone();
         assert!(
@@ -1164,7 +1179,11 @@ fn recovered_images_report(property: P, ordinary: &str) {
                 )
         );
         assert_eq!(
-            validate_sheet(&css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
         let CssRule::Style(style) = &report.syntax().rules()[0] else {
@@ -1179,7 +1198,7 @@ fn recovered_images_report(property: P, ordinary: &str) {
         original_closure_coordinates(&implicit, &css);
         assert_eq!(source.parsed_name().unwrap().source().as_str(), css);
         let exact = CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap();
-        let normalized = normalize_report_with_limits(&report, exact).unwrap();
+        let normalized = report.normalize(exact).unwrap();
         assert!(!normalized.is_clean());
         assert_eq!(normalized.diagnostics(), report.diagnostics());
         let [
@@ -1205,21 +1224,19 @@ fn recovered_images_report(property: P, ordinary: &str) {
             _ => panic!("ordinary/global/pending recovered longhand"),
         }
         assert!(
-            normalize_report_with_limits(
-                &report,
-                CssNormalizationLimits::try_new(0, 1, 2, 1).unwrap()
-            )
-            .is_err()
+            report
+                .normalize(CssNormalizationLimits::try_new(0, 1, 2, 1).unwrap())
+                .is_err()
         );
         assert_eq!(report, before);
-        assert!(normalize_report_with_limits(&report, exact).is_ok());
+        assert!(report.normalize(exact).is_ok());
     }
 }
 fn closed_reentry(property: P, ordinary: &str) {
     for pending in PENDING_CLOSED {
         let source = checked(property, pending, true);
         let before = source.clone();
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending closure reentry")
         };
         let mut replacements: Vec<_> = std::iter::once(ordinary)
@@ -1231,7 +1248,7 @@ fn closed_reentry(property: P, ordinary: &str) {
             replacements.push(format!("/*😀*/{open}"));
         }
         for text in replacements {
-            let components = parse_component_values(&text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
             let components_before = components.clone();
             let origin = images_implicit_origin(&components);
             original_closure_coordinates(&origin, &text);
@@ -1259,7 +1276,7 @@ fn closed_reentry(property: P, ordinary: &str) {
             "[future(env(again",
             r"f(v\61 r(--again",
         ] {
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let old = replacement.clone();
             for _ in 0..2 {
                 assert!(
@@ -1281,7 +1298,7 @@ fn closed_reentry(property: P, ordinary: &str) {
             retry.push(closed.to_owned());
         }
         for text in retry {
-            let replacement = parse_component_values(&text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
             let old = replacement.clone();
             for _ in 0..2 {
                 let CssContributions::Longhands(items) =

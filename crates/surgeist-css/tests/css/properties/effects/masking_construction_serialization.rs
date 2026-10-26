@@ -246,7 +246,7 @@ fn border_constructor_reuses_checked_edges_and_rejects_impossible_slash_groups()
 #[test]
 fn parsed_border_children_retain_span_and_origin_through_failure_and_retry() {
     let authored = "/*😀*/mask-border:10 20% fill / auto / 2 round luminance!important";
-    let report = parse_style_attribute(authored);
+    let report = CssParser::default().parse_block_contents(authored);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = &report.syntax()[0];
     let CssKnownPropertyValueRef::MaskBorder(wrapper) =
@@ -303,7 +303,8 @@ fn source_retained_size_only_projection_and_all_new_children_compose() {
     );
     assert!(value.layers()[0].position().is_none());
     assert_eq!(value, before);
-    let report = parse_style_attribute("mask:0% 0% / contain view-box intersect match-source");
+    let report = CssParser::default()
+        .parse_block_contents("mask:0% 0% / contain view-box intersect match-source");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::Mask(wrapper) = report.syntax()[0]
         .known()
@@ -326,7 +327,8 @@ fn source_retained_size_only_projection_and_all_new_children_compose() {
 
 #[test]
 fn mask_border_math_retains_hinted_and_dimensioned_domains_with_shared_projection() {
-    let components = parse_component_values("calc((1px + 1%) / 1px)").unwrap();
+    let components =
+        CssComponentValues::parse(&CssParser::default(), "calc((1px + 1%) / 1px)").unwrap();
     let hinted = CssCalculation::<CssHintedNumber>::try_from_components(
         components.clone(),
         Default::default(),
@@ -378,7 +380,7 @@ fn mask_border_math_retains_hinted_and_dimensioned_domains_with_shared_projectio
         &value.width().unwrap().values()[0],
         CssBorderImageWidthComponent::HintedNumberCalculation(_)
     ));
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "mask-border:calc((1px + 1%) / 1px) / calc(1px + 2%) / calc(2px + 1em)",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());

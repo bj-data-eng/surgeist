@@ -8,10 +8,10 @@ use crate::css::support::serialization_limits::LimitFailure;
 use crate::css::support::validated_selector as parsed;
 use surgeist_css::{
     CssAttributeCaseSensitivity, CssAttributeMatcher, CssAttributeName, CssAttributeSelector,
-    CssCompoundSelector, CssIdent, CssNamespaceContext, CssPseudoClass, CssPseudoElement,
-    CssPseudoElementSegment as Segment, CssQualifiedAttributeName, CssQualifiedNamePrefix, CssRule,
-    CssSelector, CssSerializationLimits as Limits, CssSimpleSelector as Simple, CssStyleSelector,
-    CssStyleSelectorContext, CssValueOrigin, parse_rule, parse_sheet,
+    CssCompoundSelector, CssIdent, CssNamespaceContext, CssParser, CssPseudoClass,
+    CssPseudoElement, CssPseudoElementSegment as Segment, CssQualifiedAttributeName,
+    CssQualifiedNamePrefix, CssRule, CssSelector, CssSerializationLimits as Limits,
+    CssSimpleSelector as Simple, CssStyleSelector, CssStyleSelectorContext, CssValueOrigin,
 };
 
 const AUTHORED: &str = ".One#X:hover[A='é'].Two#Y:focus[B='two'].One#X:hover[A='é']";
@@ -92,7 +92,11 @@ fn interleaved_repetitions_keep_authored_order_through_checked_parse_and_rule_ou
     );
 
     let source = format!("/*😀*/\n{AUTHORED}{{opacity:0}}");
-    let report = parse_rule(&source, &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        &source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let rule = report.syntax().as_ref().unwrap();
@@ -123,7 +127,11 @@ fn interleaved_repetitions_keep_authored_order_through_checked_parse_and_rule_ou
         rule.serialize_specified(Default::default()).unwrap(),
         expected
     );
-    let roundtrip = parse_rule(&expected, &CssNamespaceContext::default());
+    let roundtrip = CssRule::parse(
+        &CssParser::default(),
+        &expected,
+        &CssNamespaceContext::default(),
+    );
     assert!(roundtrip.is_clean());
     let CssRule::Style(reparsed) = roundtrip.syntax().as_ref().unwrap() else {
         panic!("reparsed style")
@@ -192,7 +200,11 @@ fn authored_category_order_keeps_pseudo_element_attachments_order_sensitive() {
             Segment::PseudoElement(CssPseudoElement::Marker),
         ]
     ));
-    let report = parse_rule(&format!("{source}{{}}"), &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        format!("{source}{{}}"),
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{report:?}");
     let rule = report.syntax().as_ref().unwrap();
     assert_eq!(
@@ -209,7 +221,11 @@ fn authored_category_order_keeps_pseudo_element_attachments_order_sensitive() {
         "Leaf.c::before[A]",
         "Leaf.c::before > .tail",
     ] {
-        let rejected = parse_rule(&format!("{invalid}{{}}"), &CssNamespaceContext::default());
+        let rejected = CssRule::parse(
+            &CssParser::default(),
+            format!("{invalid}{{}}"),
+            &CssNamespaceContext::default(),
+        );
         assert!(rejected.syntax().is_none(), "{invalid}: {rejected:?}");
         crate::css::support::value_assertions::assert_first_code(
             rejected.diagnostics(),
@@ -220,7 +236,7 @@ fn authored_category_order_keeps_pseudo_element_attachments_order_sensitive() {
 
 #[test]
 fn interleaved_rule_siblings_share_exact_limits_and_failure_preserves_retry() {
-    let report = parse_sheet(&format!("{AUTHORED}{{}}{AUTHORED}{{}}"));
+    let report = CssParser::default().parse_sheet(format!("{AUTHORED}{{}}{AUTHORED}{{}}"));
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let expected = format!("{SERIALIZED} {{ }}\n{SERIALIZED} {{ }}");
@@ -265,7 +281,7 @@ fn interleaved_rule_siblings_share_exact_limits_and_failure_preserves_retry() {
 }
 
 fn nested_selector_texts(source: &str) -> Vec<(String, String, usize)> {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {report:?}");
     let [CssRule::Style(outer)] = report.syntax().rules() else {
         panic!("{source}: one outer style rule")
@@ -330,7 +346,8 @@ fn nesting_selector_serializes_at_its_authored_compound_position() {
 fn scope_anchor_serializes_at_its_authored_compound_position() {
     // Inside `@scope`, `&` is a scope anchor (Cascade 6 §2.5); it keeps its
     // authored compound position the same way.
-    let report = parse_sheet("@scope(.outer){.a&{color:green}:hover&.b{color:green}}");
+    let report =
+        CssParser::default().parse_sheet("@scope(.outer){.a&{color:green}:hover&.b{color:green}}");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("one scope rule")

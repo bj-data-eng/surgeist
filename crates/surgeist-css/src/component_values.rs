@@ -7,10 +7,6 @@
 mod entries;
 mod parse;
 mod retained;
-pub use entries::{
-    parse_comma_separated_component_values, parse_comma_separated_component_values_with_limits,
-    parse_component_value, parse_component_value_with_limits,
-};
 pub(crate) use parse::parse_controlled_snapshot;
 pub(crate) use parse::promote_nodes;
 pub(crate) use parse::{has_unescaped_final, odd_trailing_backslashes};
@@ -262,7 +258,8 @@ pub(crate) enum CssComponentValueErrorKind {
 /// including a refused deep parse, are grouped by [`Self::is_resource_limit`].
 ///
 /// ```
-/// let error = surgeist_css::parse_component_values(")").unwrap_err();
+/// use surgeist_css::{CssComponentValues, CssParser};
+/// let error = CssComponentValues::parse(&CssParser::default(), ")").unwrap_err();
 /// assert!(error.is_unmatched_closing_delimiter());
 /// assert!(!error.is_resource_limit());
 /// ```
@@ -270,7 +267,8 @@ pub(crate) enum CssComponentValueErrorKind {
 /// The kind behind the predicates is private, so it cannot be matched (CF27):
 ///
 /// ```compile_fail,E0599
-/// let error = surgeist_css::parse_component_values(")").unwrap_err();
+/// use surgeist_css::{CssComponentValues, CssParser};
+/// let error = CssComponentValues::parse(&CssParser::default(), ")").unwrap_err();
 /// let _ = error.kind();
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1621,20 +1619,75 @@ impl CssSerializedValue {
     }
 }
 
-/// Parses CSS component values, retaining trivia and closing blocks at EOF.
-///
-/// Bad string/URL tokens and unmatched closing delimiters return typed failures.
-/// This does not apply declaration-value or property-specific restrictions.
-pub fn parse_component_values(source: &str) -> Result<CssComponentValues, CssComponentValueError> {
+pub(crate) fn parse_component_values(
+    source: &str,
+) -> Result<CssComponentValues, CssComponentValueError> {
     parse_component_values_with_limits(source, CssComponentValueLimits::default())
 }
 
-/// Parses component values with explicit structural, count, and byte limits.
-pub fn parse_component_values_with_limits(
+pub(crate) fn parse_component_values_with_limits(
     source: &str,
     limits: CssComponentValueLimits,
 ) -> Result<CssComponentValues, CssComponentValueError> {
     parse::parse(source, limits)
+}
+
+impl CssComponentValue {
+    /// Parses exactly one authored component, ignoring outer whitespace and comments.
+    ///
+    /// Empty input, extra nontrivia components, and checked lexical failures return
+    /// `None` with original-source diagnostics. Functions and blocks closed by EOF
+    /// remain available with implicit closure origins and recovery diagnostics;
+    /// such reports fail clean-report validation. This entry selects no value grammar.
+    ///
+    /// The parser supplies the whole-input component limits.
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> crate::CssParseReport<Option<CssComponentValue>> {
+        entries::parse_component_value_with_limits(source.as_ref(), parser.component_limits())
+    }
+}
+
+impl CssComponentValues {
+    /// Parses CSS component values, retaining trivia and closing blocks at EOF.
+    ///
+    /// Bad string/URL tokens and unmatched closing delimiters return typed failures.
+    /// This does not apply declaration-value or property-specific restrictions.
+    ///
+    /// The parser supplies the structural, count and byte limits.
+    ///
+    /// # Errors
+    ///
+    /// Returns the typed failure of the first component the input cannot form.
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> Result<CssComponentValues, CssComponentValueError> {
+        parse_component_values_with_limits(source.as_ref(), parser.component_limits())
+    }
+
+    /// Parses authored component lists separated by top-level comma tokens.
+    ///
+    /// Every raw segment has one slot. Empty segments are valid empty lists,
+    /// including empty input and the final segment after a trailing comma. Segment
+    /// whitespace and comments are retained; nested commas do not split groups.
+    /// A checked lexical failure produces `None` only for its segment, with a
+    /// diagnostic spanning that segment. Implicit EOF closures retain syntax and
+    /// diagnostics, so clean-report validation fails. No caller grammar is selected.
+    ///
+    /// The parser supplies the whole-input component limits.
+    #[must_use]
+    pub fn parse_comma_separated(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> crate::CssParseReport<Vec<Option<CssComponentValues>>> {
+        entries::parse_comma_separated_component_values_with_limits(
+            source.as_ref(),
+            parser.component_limits(),
+        )
+    }
 }
 
 #[cfg(test)]

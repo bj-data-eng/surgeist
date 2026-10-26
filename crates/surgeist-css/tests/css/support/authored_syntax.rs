@@ -85,7 +85,7 @@ pub fn component_list(items: Vec<CssComponentValue>) -> CssComponentValues {
 #[track_caller]
 pub fn checked_container_condition(source: &str) -> CssCondition<CssContainerLeaf> {
     CssCondition::<CssContainerLeaf>::try_from_components(
-        parse_component_values(source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         Default::default(),
     )
     .unwrap()
@@ -96,7 +96,7 @@ pub fn checked_container_condition(source: &str) -> CssCondition<CssContainerLea
 #[track_caller]
 pub fn checked_supports_condition(source: &str) -> CssCondition<CssSupportsLeaf> {
     CssCondition::<CssSupportsLeaf>::try_from_components(
-        parse_component_values(source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         &CssNamespaceContext::default(),
         Default::default(),
     )
@@ -107,7 +107,7 @@ pub fn checked_supports_condition(source: &str) -> CssCondition<CssSupportsLeaf>
 #[track_caller]
 pub fn checked_supports_declaration(source: &str) -> CssSupportsDeclaration {
     CssSupportsDeclaration::try_from_components(
-        parse_component_values(source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         Default::default(),
     )
     .unwrap()
@@ -118,7 +118,7 @@ pub fn checked_supports_declaration(source: &str) -> CssSupportsDeclaration {
 #[track_caller]
 pub fn checked_import_rule(source: &str) -> CssImportRule {
     CssImportRule::try_from_components(
-        parse_component_values(source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         &CssNamespaceContext::default(),
         Default::default(),
     )
@@ -184,7 +184,7 @@ pub fn normalized_declarations(sheet: &CssNormalizedSheet) -> Vec<&CssNormalized
 /// The declaration retained by a clean `parse_declaration` of `source`.
 #[track_caller]
 pub fn parsed_declaration(source: &str) -> CssDeclaration {
-    let report = parse_declaration(source);
+    let report = CssDeclaration::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     report
         .syntax()
@@ -214,9 +214,10 @@ pub fn grammar_checked_declaration(
     value: &str,
     importance: CssImportance,
 ) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        CssPropertyGrammar::from_name(name).expect("known grammar"),
-        parse_component_values(value).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(CssPropertyGrammar::from_name(name).expect("known grammar")),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         importance,
     )
     .unwrap()
@@ -295,7 +296,12 @@ pub fn assert_strict_rejection<T: Debug>(
 #[track_caller]
 pub fn assert_unclean_sheet(source: &str, report: &CssParseReport<CssSheet>) {
     assert!(!report.is_clean());
-    assert_strict_rejection(validate_sheet(source), report.diagnostics());
+    assert_strict_rejection(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
+        report.diagnostics(),
+    );
     assert_strict_rejection(
         report.clone().into_validation_result(),
         report.diagnostics(),

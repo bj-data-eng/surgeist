@@ -3,8 +3,8 @@
 
 use surgeist_css::{
     CssAttributeName, CssIdent, CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName,
-    CssNamespacePrefix, CssQualifiedAttributeName, CssQualifiedNamePrefix,
-    CssQualifiedSelectorName, CssSelector, CssSerializedOrigin, CssValueOrigin, parse_selector,
+    CssNamespacePrefix, CssParser, CssQualifiedAttributeName, CssQualifiedNamePrefix,
+    CssQualifiedSelectorName, CssSelector, CssSerializedOrigin, CssValueOrigin,
 };
 
 fn context(default: Option<&str>) -> CssNamespaceContext {
@@ -149,7 +149,7 @@ fn serialized_names_roundtrip_decoded_names_and_all_authored_prefixes() {
                     .serialize_tokens(crate::css::support::byte_limits(usize::MAX))
                     .unwrap();
                 let source = format!("{}.mark", serialized.as_css());
-                let report = parse_selector(&source, &context);
+                let report = CssSelector::parse(&CssParser::default(), &source, &context);
                 assert!(report.is_clean(), "{source}: {report:?}");
                 let Some(CssSelector::Compound(compound)) = report.syntax() else {
                     panic!("typed name plus class: {report:?}")
@@ -165,7 +165,7 @@ fn serialized_names_roundtrip_decoded_names_and_all_authored_prefixes() {
                     .serialize_tokens(crate::css::support::byte_limits(usize::MAX))
                     .unwrap();
                 let source = format!("[{}]", serialized.as_css());
-                let report = parse_selector(&source, &context);
+                let report = CssSelector::parse(&CssParser::default(), &source, &context);
                 assert!(report.is_clean(), "{source}: {report:?}");
                 let Some(CssSelector::Compound(compound)) = report.syntax() else {
                     panic!("attribute: {report:?}")
@@ -179,7 +179,7 @@ fn serialized_names_roundtrip_decoded_names_and_all_authored_prefixes() {
             let serialized = universal
                 .serialize_tokens(crate::css::support::byte_limits(usize::MAX))
                 .unwrap();
-            let report = parse_selector(serialized.as_css(), &context);
+            let report = CssSelector::parse(&CssParser::default(), serialized.as_css(), &context);
             assert!(report.is_clean(), "{report:?}");
             let Some(CssSelector::Compound(compound)) = report.syntax() else {
                 panic!("universal: {report:?}")

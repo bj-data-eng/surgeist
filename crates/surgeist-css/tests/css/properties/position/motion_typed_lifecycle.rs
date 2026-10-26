@@ -5,7 +5,7 @@ use crate::css::support::named_property::longhand_contributions as contributions
 
 fn declaration(name: &str, input: &str) -> CssDeclaration {
     let css = format!("/*😀*/{name}:{input}!important");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     let [source] = report.syntax().as_slice() else {
         panic!("one occurrence: {css}")
@@ -216,7 +216,10 @@ fn rotation_rejects_empty_and_preserves_modifier_angle_omissions() {
 
 #[test]
 fn motion_angle_construction_uses_strict_angle_owner_errors_and_origins() {
-    let component = parse_component_values("0").unwrap().items()[0].clone();
+    let component = CssComponentValues::parse(&CssParser::default(), "0")
+        .unwrap()
+        .items()[0]
+        .clone();
     let origin = component.origin().clone();
     let error = CssNumericLiteral::<CssAngle>::try_from_component(component).unwrap_err();
     assert!(error.is_root_domain_mismatch(), "{error:?}");
@@ -244,7 +247,7 @@ fn motion_angle_construction_uses_strict_angle_owner_errors_and_origins() {
 
 #[test]
 fn recovered_bearing_graph_cannot_reenter_a_checked_motion_constructor() {
-    let report = parse_style_attribute("/*😀*/offset-path:ray(calc(90deg");
+    let report = CssParser::default().parse_block_contents("/*😀*/offset-path:ray(calc(90deg");
     assert!(!report.is_clean());
     let [source] = report.syntax().as_slice() else {
         panic!("retained recovered authored occurrence")
@@ -611,10 +614,11 @@ fn typed_extraction_preserves_parsed_programmatic_and_replacement_numeric_proven
     );
     assert!(model.rotate().unwrap().angle().unwrap().literal().is_some());
     let pending = declaration("offset", "var(--m)");
-    let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+    let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
         panic!("pending")
     };
-    let replacement = parse_component_values("ray(450deg) -2em reverse 90deg").unwrap();
+    let replacement =
+        CssComponentValues::parse(&CssParser::default(), "ray(450deg) -2em reverse 90deg").unwrap();
     let before = replacement.clone();
     let CssContributions::Longhands(items) = handle.reenter(replacement.clone()).unwrap() else {
         panic!("reentered")
@@ -640,7 +644,7 @@ fn typed_extraction_preserves_parsed_programmatic_and_replacement_numeric_proven
     assert_eq!(origin.source().as_str(), "ray(450deg) -2em reverse 90deg");
     assert!(
         handle
-            .reenter(parse_component_values("none").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "none").unwrap())
             .is_ok()
     );
 }

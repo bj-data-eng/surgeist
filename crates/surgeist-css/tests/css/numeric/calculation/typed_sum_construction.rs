@@ -4,15 +4,19 @@ use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
     CssCalculation, CssCalculationExpressionRef, CssCalculationSumOperator as Op,
-    CssComponentValueError, CssComponentValueLimits, CssComponentValueRef, CssLengthPercentage,
-    CssNumericConstructionError, CssSerializedOrigin, CssValueOrigin, parse_component_values,
+    CssComponentValueError, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssLengthPercentage, CssNumericConstructionError, CssParser, CssSerializedOrigin,
+    CssValueOrigin,
 };
 
 type Calculation = CssCalculation<CssLengthPercentage>;
 
 fn operand(source: &str) -> Calculation {
-    Calculation::try_from_components(parse_component_values(source).unwrap(), Default::default())
-        .unwrap()
+    Calculation::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+        Default::default(),
+    )
+    .unwrap()
 }
 
 fn resource(error: &CssNumericConstructionError, expected: ComponentFailure) {
@@ -185,7 +189,7 @@ fn root_only_unitless_zero_is_rechecked_as_an_arithmetic_operand() {
 #[test]
 fn trusted_parsed_recovery_remains_in_the_child_while_strict_component_admission_rejects_it() {
     use surgeist_css::*;
-    let report = parse_style_attribute("flow-tolerance:calc(1px");
+    let report = CssParser::default().parse_block_contents("flow-tolerance:calc(1px");
     crate::css::support::value_assertions::assert_first_code(
         report.diagnostics(),
         CssErrorCode::UnexpectedEnd,

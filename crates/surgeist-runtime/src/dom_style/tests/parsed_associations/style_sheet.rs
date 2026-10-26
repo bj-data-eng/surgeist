@@ -3,7 +3,7 @@ use super::super::meta::cancel;
 use super::super::*;
 use super::consumption::{envelope, report};
 use super::style_decision::{empty_policy, installed, observe, request_ready};
-use surgeist_css::CssUtf16Resource;
+use surgeist_css::{CssMediaQueryList, CssParser, CssUtf16Resource};
 use surgeist_dom::*;
 
 pub(super) fn ready(
@@ -150,10 +150,12 @@ fn original_empty_sheet_joins_exact_title_media_preference_and_stops_before_scri
     assert!(css.inputs().owner.is_some());
     assert_eq!(
         actual.media(css.media()).unwrap(),
-        &CssParserContext::default()
-            .parse_media_query_list("screen")
-            .into_parts()
-            .0
+        &CssMediaQueryList::parse(
+            &CssParser::new(CssParserContext::default(), Default::default()),
+            "screen"
+        )
+        .into_parts()
+        .0
     );
     assert_eq!(
         result.observation().preferred_name(),

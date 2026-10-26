@@ -35,7 +35,7 @@ const CASES: &[PropertyCase] = &[(
 
 fn contribution(source: &CssDeclaration) -> CssLonghandContribution {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("selected authored longhand expands")
+        source.expand().expect("selected authored longhand expands")
     else {
         panic!("one completed longhand")
     };
@@ -57,16 +57,18 @@ fn checked_construction_admits_the_same_grammar_and_preserves_input_origins() {
         let grammar = CssPropertyGrammar::from_name(name).unwrap();
         assert_eq!(grammar.target_property(), property);
         for &text in valid {
-            let components = parse_component_values(text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             for source in [
-                parse_property_value(
-                    CssPropertyNameRef::Known(property),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                     components.clone(),
                     CssImportance::Important,
                 )
                 .unwrap(),
-                parse_property_value_for_grammar(
-                    grammar,
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(grammar),
                     components.clone(),
                     CssImportance::Important,
                 )
@@ -83,8 +85,9 @@ fn checked_construction_admits_the_same_grammar_and_preserves_input_origins() {
             Default::default(),
         )
         .unwrap();
-        let source = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let source = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components.clone(),
             CssImportance::Normal,
         )
@@ -99,8 +102,9 @@ fn checked_construction_admits_the_same_grammar_and_preserves_input_origins() {
             Default::default(),
         )
         .unwrap();
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             invalid,
             CssImportance::Normal,
         )
@@ -150,7 +154,7 @@ fn invalid_recovery_control_preserves_neighbors_and_the_original_snapshot() {
     for &(name, _, _, _, invalid) in CASES {
         for &(value, token) in invalid {
             let text = format!("color:red;{name}:{value};height:2px!important");
-            let report = parse_style_attribute(&text);
+            let report = CssParser::default().parse_block_contents(&text);
             let snapshot = report.syntax().to_vec();
             let [diagnostic] = report.diagnostics() else {
                 panic!("one dropped invalid occurrence: {text}")
@@ -184,7 +188,11 @@ fn invalid_recovery_control_preserves_neighbors_and_the_original_snapshot() {
                 "2px"
             );
             assert_eq!(
-                validate_style_attribute(&text).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&text)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
             for (source, original) in report.syntax().iter().zip(&snapshot) {
@@ -201,14 +209,20 @@ fn color_lifecycle_control_exercises_the_same_shared_front_doors() {
     let item = contribution(&source);
     assert_eq!(item.property(), CssKnownProperty::Color);
     let source = declaration("color", "var(--control)");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("existing color control is pending")
     };
     assert!(matches!(
         handle
-            .reenter(parse_component_values("inherit").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
             .unwrap(),
         CssContributions::Longhands(_)
     ));
-    assert!(normalize_sheet(parse_sheet(".a{color:red!important;color:blue}").syntax()).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_sheet(".a{color:red!important;color:blue}")
+            .syntax()
+            .normalize(Default::default())
+            .is_ok()
+    );
 }

@@ -21,17 +21,18 @@ fn color_of(declaration: &CssDeclaration) -> CssColor {
 
 /// The `color` property's parse of authored value text.
 fn parsed_report(text: &str) -> CssParseReport<Option<CssDeclaration>> {
-    parse_property_value_text(
+    CssParser::default().parse_property_value(
         text,
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         CssImportance::Normal,
     )
 }
 
 /// The `color` property's check of component values.
 fn checked(values: CssComponentValues) -> Result<CssDeclaration, CssPropertyValueError> {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         values,
         CssImportance::Normal,
     )
@@ -46,7 +47,7 @@ fn parsed(text: &str) -> Result<CssColor, String> {
 }
 
 fn components(text: &str) -> Result<CssColor, String> {
-    checked(parse_component_values(text).unwrap())
+    checked(CssComponentValues::parse(&CssParser::default(), text).unwrap())
         .map(|declaration| color_of(&declaration))
         .map_err(|error| format!("{error:?}"))
 }
@@ -62,7 +63,7 @@ fn parsed_error(text: &str) -> CssError {
 
 /// The authored byte offset a component-value rejection reports.
 fn checked_value_error(text: &str) -> CssPropertyValueError {
-    checked(parse_component_values(text).unwrap()).unwrap_err()
+    checked(CssComponentValues::parse(&CssParser::default(), text).unwrap()).unwrap_err()
 }
 
 fn checked_error_offset(text: &str) -> usize {
@@ -342,7 +343,8 @@ fn custom_names_weights_order_and_nested_branches_are_not_resolved() {
         "{text}: {:?}",
         error
     );
-    let error = checked(parse_component_values(text).unwrap()).unwrap_err();
+    let error =
+        checked(CssComponentValues::parse(&CssParser::default(), text).unwrap()).unwrap_err();
     assert!(
         error.code() == Some(CssErrorCode::InvalidColorSyntax),
         "{text}: {error:?}"
@@ -370,7 +372,8 @@ fn grammar_failures_and_prefix_consumption_use_actual_boundaries() {
             "{text}: {:?}",
             error
         );
-        let error = checked(parse_component_values(text).unwrap()).unwrap_err();
+        let error =
+            checked(CssComponentValues::parse(&CssParser::default(), text).unwrap()).unwrap_err();
         assert!(
             error.code() == Some(CssErrorCode::InvalidColorSyntax),
             "{text}: {error:?}"

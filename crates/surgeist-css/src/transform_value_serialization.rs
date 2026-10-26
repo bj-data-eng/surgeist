@@ -366,7 +366,8 @@ mod tests {
     type L = crate::CssSerializationLimits;
 
     fn transform(source: &str) -> CssTransform {
-        let report = crate::parse_style_attribute(&format!("transform:{source}"));
+        let report =
+            crate::CssParser::default().parse_block_contents(format!("transform:{source}"));
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let CssKnownPropertyValueRef::Transform(value) = report.syntax()[0]
             .known()
@@ -561,7 +562,7 @@ mod tests {
         let perspective = CssPerspective::Length(
             crate::CssNumeric::<crate::CssLength, crate::CssNonNegative>::try_from_calculation(
                 crate::CssCalculation::<crate::CssLength>::try_from_components(
-                    crate::parse_component_values("calc(1px - 2px)").unwrap(),
+                    crate::component_values::parse_component_values("calc(1px - 2px)").unwrap(),
                     Default::default(),
                 )
                 .unwrap(),
@@ -600,7 +601,7 @@ mod tests {
         shared("0.5", 4, 4, |writer| value.append_to_rule_writer(writer));
         let symbolic = CssTransformScaleComponent::HintedNumberCalculation(
             crate::CssCalculation::<crate::CssHintedNumber>::try_from_components(
-                crate::parse_component_values("calc((1px + 1%) / 1px)").unwrap(),
+                crate::component_values::parse_component_values("calc((1px + 1%) / 1px)").unwrap(),
                 Default::default(),
             )
             .unwrap(),

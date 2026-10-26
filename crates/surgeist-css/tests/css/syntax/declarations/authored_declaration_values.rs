@@ -3,12 +3,14 @@ use crate::css::support::parse_report as common;
 use common::CssParseReportTestExt;
 use surgeist_css::{
     CssCustomPropertyDeclaredValue, CssCustomPropertyName, CssErrorCode, CssGlobalKeyword,
-    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssRule, CssTokenKind,
-    parse_sheet,
+    CssKnownProperty, CssKnownPropertyValueRef, CssParser, CssPropertyNameRef, CssRule,
+    CssTokenKind,
 };
 
 fn declarations(source: &str) -> Vec<surgeist_css::CssDeclaration> {
-    let sheet = parse_sheet(source).expect("valid authored declaration stylesheet");
+    let sheet = CssParser::default()
+        .parse_sheet(source)
+        .expect("valid authored declaration stylesheet");
     let [CssRule::Style(rule)] = sheet.rules() else {
         panic!("expected one style rule");
     };
@@ -206,7 +208,9 @@ fn authored_declaration_substitution_accepts_fallback_unusable_after_substitutio
 #[test]
 fn authored_declaration_rejects_top_level_semicolon_in_variable_fallback() {
     let source = ".x { width: var(--x, ;); }";
-    let error = parse_sheet(source).expect_err("top-level fallback semicolon must be rejected");
+    let error = CssParser::default()
+        .parse_sheet(source)
+        .expect_err("top-level fallback semicolon must be rejected");
 
     assert_eq!(error.code(), CssErrorCode::InvalidPropertyValue);
     assert_eq!(
@@ -237,7 +241,9 @@ fn authored_declaration_rejects_top_level_semicolon_in_variable_fallback() {
 #[test]
 fn authored_declaration_rejects_top_level_bang_in_variable_fallback() {
     let source = ".x { width: var(--x, !); }";
-    let error = parse_sheet(source).expect_err("top-level fallback bang must be rejected");
+    let error = CssParser::default()
+        .parse_sheet(source)
+        .expect_err("top-level fallback bang must be rejected");
 
     assert_eq!(error.code(), CssErrorCode::InvalidPropertyValue);
     assert_eq!(
@@ -283,7 +289,9 @@ fn authored_declaration_rejects_malformed_custom_names() {
         (".x { --: 1px; }", CssErrorCode::UnknownProperty, 5),
         (".x { --bad name: 1px; }", CssErrorCode::UnexpectedToken, 11),
     ] {
-        let error = parse_sheet(source).expect_err("invalid custom declaration must fail strictly");
+        let error = CssParser::default()
+            .parse_sheet(source)
+            .expect_err("invalid custom declaration must fail strictly");
         assert_eq!(error.code(), code, "unexpected error for `{source}`");
         assert_eq!(
             error.position().byte_offset().value(),
@@ -344,7 +352,9 @@ fn authored_declaration_malformed_substitution_and_tokens_remain_structured_erro
     ];
 
     for (source, code, is_width_value_error) in cases {
-        let error = parse_sheet(source).expect_err("malformed authored value must fail strictly");
+        let error = CssParser::default()
+            .parse_sheet(source)
+            .expect_err("malformed authored value must fail strictly");
         assert_eq!(error.code(), code, "unexpected error root for `{source}`");
         match (error.code(), is_width_value_error) {
             (CssErrorCode::InvalidPropertyValue, true) => {

@@ -7,8 +7,7 @@ use crate::css::support::important_declaration;
 use surgeist_css::*;
 
 fn expansion(source: &CssDeclaration) -> CssLonghandContribution {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("quotes expands to one terminal")
     };
@@ -115,7 +114,7 @@ fn escaped_and_empty_strings_are_values_but_odd_pairs_are_invalid() {
         "auto match-parent",
     ] {
         let source = format!("color:red;quotes:{invalid};height:2px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2, "{invalid}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -129,21 +128,26 @@ fn escaped_and_empty_strings_are_values_but_odd_pairs_are_invalid() {
             panic!("one whole-declaration diagnostic: {invalid}")
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
 }
 
 #[test]
 fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
     let source = important_declaration("quotes", "var(--quotes)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("quotes substitution is pending")
     };
     assert!(pending.source().same_occurrence(&source));
     for invalid in ["\"open\"", "auto \"a\" \"b\"", "match-parent none"] {
         assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some()
@@ -151,11 +155,11 @@ fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
     }
     assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
-    let replacement = parse_component_values("match-parent").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "match-parent").unwrap();
     for _ in 0..2 {
         let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
         else {
@@ -171,7 +175,7 @@ fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
         assert_eq!(item.replacement_components(), Some(&replacement));
     }
     let CssContributions::Longhands(items) = pending
-        .reenter(parse_component_values("inherit").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
         .unwrap()
     else {
         panic!("reentered symbolic global")
@@ -185,9 +189,9 @@ fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
 
 #[test]
 fn normalized_quotes_preserve_order_and_fail_atomically_at_contribution_limit() {
-    let report = parse_sheet(".a{quotes:auto;color:red;quotes:\"<\" \">\"}");
+    let report = CssParser::default().parse_sheet(".a{quotes:auto;color:red;quotes:\"<\" \">\"}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -222,7 +226,7 @@ fn normalized_quotes_preserve_order_and_fail_atomically_at_contribution_limit() 
         assert!(item.source().same_occurrence(declarations[index].source()));
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 2))

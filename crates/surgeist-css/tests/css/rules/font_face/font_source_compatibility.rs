@@ -7,7 +7,7 @@
 
 use surgeist_css::{
     CssErrorCode, CssFontFaceSource, CssFontFaceUrlSource, CssFontFormatHint, CssFontTechHint,
-    CssParseReport, CssRecoveryAction, CssRule, CssSheet, parse_sheet, validate_sheet,
+    CssParseReport, CssParser, CssRecoveryAction, CssRule, CssSheet,
 };
 
 fn url_sources(report: &CssParseReport<CssSheet>) -> Vec<&CssFontFaceUrlSource> {
@@ -33,9 +33,15 @@ fn url_sources(report: &CssParseReport<CssSheet>) -> Vec<&CssFontFaceUrlSource> 
 
 fn clean_sources(value: &str) -> CssParseReport<CssSheet> {
     let source = format!("@font-face{{font-family:Demo;src:{value}}}.after{{color:red}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
-    assert_eq!(&validate_sheet(&source).unwrap(), report.syntax());
+    assert_eq!(
+        &CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap(),
+        report.syntax()
+    );
     let [CssRule::FontFace(face), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("expected the font face and following style rule");
     };
@@ -228,7 +234,7 @@ fn string_compatibility_does_not_expand_the_keyword_or_hint_function_grammar() {
         let source = format!(
             "@font-face{{font-family:Demo;src:url(first),{invalid},url(last)}}.after{{color:red}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(
             url_sources(&report)
                 .iter()
@@ -255,7 +261,11 @@ fn string_compatibility_does_not_expand_the_keyword_or_hint_function_grammar() {
             start + invalid.len()
         );
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }

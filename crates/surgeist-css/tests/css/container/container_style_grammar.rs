@@ -23,7 +23,7 @@ fn assert_style(source: &str) {
     );
 
     let sheet_source = format!("@container {source} {{ .x {{ color: red }} }}");
-    let report = parse_sheet(&sheet_source);
+    let report = CssParser::default().parse_sheet(&sheet_source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("container rule")
@@ -51,7 +51,7 @@ fn assert_opaque(source: &str) {
             .as_css(),
         source
     );
-    let report = parse_sheet(&format!("@container {source} {{}}"));
+    let report = CssParser::default().parse_sheet(format!("@container {source} {{}}"));
     assert!(report.is_clean());
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("retained container with opaque style operand")

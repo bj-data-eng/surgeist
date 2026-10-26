@@ -37,8 +37,8 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use surgeist_css::{
-    CssParserContext, CssParserMode, CssRetainedPayloadError, CssRule, CssSourceRetention,
-    CssUtf16InputLimits,
+    CssMediaQueryList, CssParser, CssParserContext, CssParserMode, CssRetainedPayloadError,
+    CssRule, CssSourceRetention, CssUtf16InputLimits,
 };
 use surgeist_cssom::{
     CssomBatch, CssomCommit, CssomContext, CssomEditGuard, CssomInput, CssomInputData,
@@ -1406,8 +1406,8 @@ impl StyleState {
                         &mut batch,
                         cancel,
                     )?;
-                    let report = context
-                        .parse_sheet_utf16_with_limits(
+                    let report = CssParser::new(context, Default::default())
+                        .parse_sheet_utf16(
                             request.source().text().clone(),
                             self.limits.css_input,
                             poll,
@@ -1417,17 +1417,17 @@ impl StyleState {
                     // no @import means no transitive import graph exists.
                     let imports = import_dependencies_with(&report, || self.step(cancel))?
                         == ImportDependencies::Imports;
-                    let media = context
-                        .parse_media_query_list_utf16_with_limits(
-                            request
-                                .source()
-                                .media()
-                                .map(|value| value.shared_code_units().clone())
-                                .unwrap_or_default(),
-                            self.limits.css_input,
-                            poll,
-                        )
-                        .map_err(DomStyleRuntimeError::Css)?;
+                    let media = CssMediaQueryList::parse_utf16(
+                        &CssParser::new(context, Default::default()),
+                        request
+                            .source()
+                            .media()
+                            .map(|value| value.shared_code_units().clone())
+                            .unwrap_or_default(),
+                        self.limits.css_input,
+                        poll,
+                    )
+                    .map_err(DomStyleRuntimeError::Css)?;
                     let mut inputs = CssomSheetInputs::external(version, true);
                     inputs.owner = Some(label);
                     if matches!(
@@ -1577,23 +1577,23 @@ impl StyleState {
                     &mut batch,
                     cancel,
                 )?;
-                let report = context
-                    .parse_media_query_list_utf16_with_limits(
-                        request
-                            .source()
-                            .media()
-                            .map(|value| value.shared_code_units().clone())
-                            .unwrap_or_default(),
-                        self.limits.css_input,
-                        || {
-                            if cancel.load(Ordering::Relaxed) {
-                                Err(DomError::Cancelled)
-                            } else {
-                                Ok(())
-                            }
-                        },
-                    )
-                    .map_err(DomStyleRuntimeError::Css)?;
+                let report = CssMediaQueryList::parse_utf16(
+                    &CssParser::new(context, Default::default()),
+                    request
+                        .source()
+                        .media()
+                        .map(|value| value.shared_code_units().clone())
+                        .unwrap_or_default(),
+                    self.limits.css_input,
+                    || {
+                        if cancel.load(Ordering::Relaxed) {
+                            Err(DomError::Cancelled)
+                        } else {
+                            Ok(())
+                        }
+                    },
+                )
+                .map_err(DomStyleRuntimeError::Css)?;
                 let title = (request.source().root_kind()
                     == surgeist_dom::DomStyleRootKind::Document)
                     .then(|| request.source().title().map_or(&[][..], |s| s.code_units()));
@@ -4401,7 +4401,7 @@ mod tests {
             .unwrap();
         let ticket = batch
             .create_parsed_sheet_report(
-                CssParserContext::default().parse_sheet(""),
+                CssParser::new(CssParserContext::default(), Default::default()).parse_sheet(""),
                 CssomSheetInputs::external(
                     CssomInputVersion {
                         role: CssomInputRole::Owner,

@@ -4,11 +4,12 @@
 use crate::css::support::failure_classes::SerializationFailure as ErrorKind;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
-    CssHorizontalPosition as H, CssSerializationLimits as L, CssVerticalPosition as V, *,
+    CssComponentValues, CssHorizontalPosition as H, CssParser, CssSerializationLimits as L,
+    CssVerticalPosition as V, *,
 };
 
 fn parsed(input: &str) -> CssPosition {
-    let report = parse_style_attribute(&format!("mask-position: {input}"));
+    let report = CssParser::default().parse_block_contents(format!("mask-position: {input}"));
     assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::MaskPosition(value) = report.syntax()[0]
         .known()
@@ -70,7 +71,7 @@ fn typed_axes_preserve_offset_origin_and_symbolic_values() {
     );
 
     let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
-        parse_component_values("calc(1px + 5%)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(1px + 5%)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -172,7 +173,8 @@ fn typed_math_projection_is_cumulative_across_both_axes() {
 fn signed_length_percentage(
     css: &str,
 ) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage> {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+    let components =
+        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
     if css.contains('(') {
         surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_calculation(
             surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(

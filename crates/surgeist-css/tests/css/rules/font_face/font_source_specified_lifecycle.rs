@@ -77,9 +77,13 @@ fn local_names_always_use_the_quoted_string_wrapper() {
     assert!(CssFontFaceSourceList::try_new(Vec::new()).is_none());
     for invalid in ["local(serif)", "local(inherit)", "local()"] {
         assert!(
-            parse_font_face_descriptor_value(invalid, CssFontFaceDescriptorKind::Src)
-                .syntax()
-                .is_none()
+            CssAuthoredFontFaceDescriptorValue::parse(
+                &CssParser::default(),
+                invalid,
+                CssFontFaceDescriptorKind::Src
+            )
+            .syntax()
+            .is_none()
         );
     }
 }
@@ -331,7 +335,7 @@ fn source_children_share_exact_input_projection_and_final_byte_limits() {
 #[test]
 fn recovered_source_emission_preserves_the_original_report_and_diagnostic_spans() {
     let source = "/*😀*/\r\n@font-face{src:local(First),local(inherit),url(last);font-display:swap}.after{color:red}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let syntax = report.syntax().clone();
     let diagnostics = report.diagnostics().to_vec();
     let [diagnostic] = diagnostics.as_slice() else {
@@ -364,7 +368,11 @@ fn recovered_source_emission_preserves_the_original_report_and_diagnostic_spans(
     assert_eq!(report.syntax(), &syntax);
     assert_eq!(report.diagnostics(), diagnostics);
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         diagnostics
     );
 }

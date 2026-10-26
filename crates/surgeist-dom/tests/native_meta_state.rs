@@ -24,7 +24,6 @@ fn limits(work: u64) -> DomLimits {
     .unwrap()
     .with_meta_color_scheme_limits(surgeist_css::CssUtf16PropertyValueLimits {
         input: surgeist_css::CssUtf16InputLimits::default(),
-        syntax: surgeist_css::CssComponentValueLimits::default(),
         max_work: 1_000_000,
         max_live_bytes: 1_000_000,
         max_retained_bytes: 1_000_000,

@@ -12,10 +12,9 @@
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-src-parsing
 use crate::css::support::authored_syntax::parsed_origin;
 use surgeist_css::{
-    CssCustomMediaBody, CssCustomMediaRule, CssFontFaceDescriptorKind as Kind,
+    CssComponentValues, CssCustomMediaBody, CssCustomMediaRule, CssFontFaceDescriptorKind as Kind,
     CssFontFaceDescriptorValue, CssImportRule, CssMediaConstructionError, CssMediaQuery,
-    CssMediaQueryList, CssNamespaceContext, CssRecoveryAction, CssRule, parse_component_values,
-    parse_media_query_list, parse_selector, parse_sheet,
+    CssMediaQueryList, CssNamespaceContext, CssParser, CssRecoveryAction, CssRule, CssSelector,
 };
 
 fn never_count(list: &CssMediaQueryList) -> usize {
@@ -28,7 +27,7 @@ fn never_count(list: &CssMediaQueryList) -> usize {
 #[test]
 fn a_final_comma_without_a_following_token_adds_no_media_query() {
     for source in ["screen,", "screen,/**/", "screen,print,"] {
-        let report = parse_media_query_list(source);
+        let report = CssMediaQueryList::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source:?}: {report:?}");
         assert_eq!(never_count(report.syntax()), 0, "{source:?}");
         let expected = if source.contains("print") { 2 } else { 1 };
@@ -42,7 +41,7 @@ fn a_final_comma_without_a_following_token_adds_no_media_query() {
         (",", 1, 1),
         (",screen", 2, 1),
     ] {
-        let report = parse_media_query_list(source);
+        let report = CssMediaQueryList::parse(&CssParser::default(), source);
         assert_eq!(report.syntax().queries().len(), members, "{source:?}");
         assert_eq!(never_count(report.syntax()), never, "{source:?}");
         assert!(
@@ -58,7 +57,7 @@ fn a_final_comma_without_a_following_token_adds_no_media_query() {
 
 #[test]
 fn rule_preludes_share_the_final_comma_list_boundary() {
-    let report = parse_sheet("@media screen,{a{color:red}}");
+    let report = CssParser::default().parse_sheet("@media screen,{a{color:red}}");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("{report:?}")
@@ -66,14 +65,14 @@ fn rule_preludes_share_the_final_comma_list_boundary() {
     assert_eq!(media.query().queries().len(), 1);
     assert_eq!(media.rules().len(), 1);
 
-    let report = parse_sheet("@import 'x.css' screen,;");
+    let report = CssParser::default().parse_sheet("@import 'x.css' screen,;");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("{report:?}")
     };
     assert_eq!(import.media().unwrap().queries().len(), 1);
 
-    let report = parse_sheet("@custom-media --narrow screen,;");
+    let report = CssParser::default().parse_sheet("@custom-media --narrow screen,;");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::CustomMedia(custom)] = report.syntax().rules() else {
         panic!("{report:?}")
@@ -88,11 +87,11 @@ fn rule_preludes_share_the_final_comma_list_boundary() {
 fn forgiving_selector_lists_add_no_failure_for_a_final_comma() {
     let namespaces = CssNamespaceContext::default();
     for source in [":is(a,)", ":where(a,/**/)"] {
-        let report = parse_selector(source, &namespaces);
+        let report = CssSelector::parse(&CssParser::default(), source, &namespaces);
         assert!(report.is_clean(), "{source:?}: {report:?}");
         assert!(report.syntax().is_some());
     }
-    let report = parse_selector(":is(a, )", &namespaces);
+    let report = CssSelector::parse(&CssParser::default(), ":is(a, )", &namespaces);
     assert!(!report.is_clean(), "{report:?}");
     assert!(
         report
@@ -104,7 +103,7 @@ fn forgiving_selector_lists_add_no_failure_for_a_final_comma() {
 
 #[test]
 fn font_source_lists_add_no_failure_for_a_final_comma() {
-    let report = parse_sheet("@font-face{font-family:x;src:url(a),}");
+    let report = CssParser::default().parse_sheet("@font-face{font-family:x;src:url(a),}");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("{report:?}")
@@ -118,7 +117,7 @@ fn font_source_lists_add_no_failure_for_a_final_comma() {
     };
     assert_eq!(sources.sources().len(), 1);
 
-    let report = parse_sheet("@font-face{font-family:x;src:url(a), }");
+    let report = CssParser::default().parse_sheet("@font-face{font-family:x;src:url(a), }");
     assert_eq!(
         report
             .diagnostics()
@@ -134,7 +133,7 @@ fn checked_media_lists_share_the_final_comma_boundary() {
     let namespaces = CssNamespaceContext::default();
     let import = |source: &str| {
         CssImportRule::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             &namespaces,
             Default::default(),
         )
@@ -161,7 +160,7 @@ fn checked_media_lists_share_the_final_comma_boundary() {
 
     let custom = |source: &str| {
         CssCustomMediaRule::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             Default::default(),
         )
     };

@@ -45,7 +45,7 @@ fn permutations(words: &[&str]) -> Vec<String> {
 }
 
 fn components(input: &str) -> CssComponentValues {
-    parse_component_values(input).unwrap()
+    CssComponentValues::parse(&CssParser::default(), input).unwrap()
 }
 fn count(input: &str) -> CssHyphenateLimitCharsComponent {
     let value = CssNumericLiteral::<CssInteger>::try_from_component(
@@ -637,7 +637,7 @@ fn finite_hyphenation_and_group_alignment_domains_keep_typed_choices_and_leaf_co
 #[test]
 fn recovered_hyphenation_string_constructor_keeps_the_original_component_and_snapshot() {
     let css = ".a{hyphenate-character:\"😀";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(!report.is_clean());
     let before = report.clone();
     let [CssRule::Style(rule)] = report.syntax().rules() else {
@@ -936,7 +936,7 @@ fn spacing_constituent_boundaries_reject_interleaving_and_project_only_the_two_t
         let source = declaration("text-spacing", input);
         let before = source.clone();
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("ordinary projection")
         };

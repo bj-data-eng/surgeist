@@ -5,10 +5,14 @@
 //! list of identifiers or strings. These tests preserve authored syntax without
 //! evaluating directionality, language matching, or document inheritance.
 use crate::css::support::color_and_selector_fixtures::assert_selector_rejected as assert_rejected;
-use surgeist_css::{CssNamespaceContext, CssPseudoClass, CssSelector, parse_selector};
+use surgeist_css::{CssNamespaceContext, CssParser, CssPseudoClass, CssSelector};
 
 fn assert_clean_pseudo(source: &str) {
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{source}: {report:?}");
     assert!(
         matches!(report.syntax(), Some(CssSelector::PseudoClass(_))),
@@ -57,7 +61,11 @@ fn original_identifier_language_controls_preserve_decoded_payload() {
         (":LanG(en-US)", "en-US"),
         (r":lang(\65 n)", "en"),
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.is_clean(), "{source}: {report:?}");
         let Some(CssSelector::PseudoClass(CssPseudoClass::Lang(range))) = report.syntax() else {
             panic!("language pseudo: {source}: {report:?}")
@@ -121,7 +129,11 @@ fn invalid_language_token_coordinates_refer_to_original_unicode_source() {
     // rejection. Byte offsets and UTF-16 columns are different after the emoji.
     for source in [":lang(1)", "/*😀*/:lang(1)"] {
         assert_rejected(source);
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         let position = report.diagnostics()[0].error().position();
         let offset = source.find('1').unwrap();
         assert_eq!(position.byte_offset().value(), offset);

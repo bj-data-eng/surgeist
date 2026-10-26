@@ -19,7 +19,7 @@ fn grammar(name: &str) -> CssPropertyGrammar {
 
 fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("intrinsic expansion supported")
+        source.expand().expect("intrinsic expansion supported")
     else {
         panic!("completed longhands")
     };
@@ -88,7 +88,7 @@ fn rejected(name: &str, values: &[&str]) {
     let _ = grammar(name);
     for value in values {
         let source = format!("color:red;{name}:{value};display:block");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [before, after] = report.syntax().as_slice() else {
             panic!("only valid neighbors survive {source:?}: {report:?}")
         };
@@ -398,19 +398,19 @@ fn assert_pending(
 ) {
     let source = important_known_declaration(name, authored);
     assert!(source.known().unwrap().substitution_dependent().is_some());
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending")
     };
     assert!(pending.source().same_occurrence(&source));
     let error = pending
-        .reenter(parse_component_values("var(--still-pending)").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "var(--still-pending)").unwrap())
         .unwrap_err();
     assert!(error.is_residual_substitution());
     let error = pending
-        .reenter(parse_component_values(invalid).unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
         .unwrap_err();
     assert!(error.replacement_error().is_some());
-    let replacement = parse_component_values(replacement).unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), replacement).unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("completed replacement")
     };
@@ -428,7 +428,7 @@ fn assert_pending(
     }
     // Retry a different valid terminal branch after both failures and success.
     let CssContributions::Longhands(wide) = pending
-        .reenter(parse_component_values("revert-layer").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "revert-layer").unwrap())
         .unwrap()
     else {
         panic!("wide replacement")
@@ -480,11 +480,18 @@ fn container_pending_reentry_is_atomic_over_both_longhands() {
 #[test]
 fn checked_name_construction_preserves_hex_escape_and_separate_identifier_boundaries() {
     let value = grammar("container-name");
-    let mut tokens = parse_component_values(r"\31").unwrap().items().to_vec();
-    tokens.extend_from_slice(parse_component_values(" pane").unwrap().items());
+    let mut tokens = CssComponentValues::parse(&CssParser::default(), r"\31")
+        .unwrap()
+        .items()
+        .to_vec();
+    tokens.extend_from_slice(
+        CssComponentValues::parse(&CssParser::default(), " pane")
+            .unwrap()
+            .items(),
+    );
     let components = CssComponentValues::try_new(tokens, Default::default()).unwrap();
     let serialized = components.serialize_tokens(Default::default()).unwrap();
-    let reparsed = parse_component_values(serialized.as_css()).unwrap();
+    let reparsed = CssComponentValues::parse(&CssParser::default(), serialized.as_css()).unwrap();
     let names = reparsed
         .items()
         .iter()
@@ -494,9 +501,13 @@ fn checked_name_construction_preserves_hex_escape_and_separate_identifier_bounda
         })
         .collect::<Vec<_>>();
     assert_eq!(names, ["1", "pane"]);
-    let constructed =
-        parse_property_value_for_grammar(value, components.clone(), CssImportance::Important)
-            .unwrap();
+    let constructed = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(value),
+        components.clone(),
+        CssImportance::Important,
+    )
+    .unwrap();
     assert!(constructed.position().is_none());
     assert!(constructed.parsed_value().is_none());
     assert_eq!(constructed.value_components(), &components);
@@ -522,8 +533,13 @@ fn checked_type_construction_does_not_merge_adjacent_identifier_tokens() {
         Default::default(),
     )
     .unwrap();
-    let constructed =
-        parse_property_value_for_grammar(value, components, CssImportance::Important).unwrap();
+    let constructed = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(value),
+        components,
+        CssImportance::Important,
+    )
+    .unwrap();
     let values = expanded(&constructed);
     assert_eq!(
         member(&values, "container-type").ordinary_value(),
@@ -537,7 +553,7 @@ fn assert_style_identity(name: &str, authored_name: &str, valid_value: &str) {
     for value in [valid_value, "banana"] {
         let source = format!("style({authored_name}: {value})");
         let condition = CssCondition::<CssContainerLeaf>::try_from_components(
-            parse_component_values(&source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
             Default::default(),
         )
         .unwrap();

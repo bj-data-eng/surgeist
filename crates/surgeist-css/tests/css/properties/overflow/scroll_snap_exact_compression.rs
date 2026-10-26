@@ -18,7 +18,7 @@ type Error = CssSerializationError;
 
 fn component(text: &str, parsed: bool) -> CssComponentValue {
     if parsed {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let [component] = components.items() else {
             panic!("one component: {text}")
         };
@@ -390,9 +390,10 @@ fn negative_padding_is_rejected_before_any_lossy_rounding() {
         );
         let grammar = CssPropertyGrammar::from_name("scroll-padding-block").unwrap();
         assert!(
-            parse_property_value_for_grammar(
-                grammar,
-                parse_component_values(text).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(grammar),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssImportance::Normal
             )
             .is_err()
@@ -532,7 +533,7 @@ fn canonical_math_pair_and_quad_compression_keeps_actual_calculation_policy() {
     let calc = |text| {
         CssNumeric::<CssLength>::try_from_calculation(
             CssCalculation::<CssLength>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -567,7 +568,7 @@ fn canonical_math_pair_and_quad_compression_keeps_actual_calculation_policy() {
 #[test]
 fn parsed_property_pair_preserves_declaration_and_source_after_rounding() {
     let source = "scroll-padding-inline:.12345641px .12345642px!important";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one declaration")

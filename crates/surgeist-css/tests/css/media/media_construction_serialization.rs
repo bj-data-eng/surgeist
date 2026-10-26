@@ -5,9 +5,8 @@ use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
     CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValues, CssCondition,
-    CssConditionKind, CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery, CssMediaRangeRef,
-    CssSerializedOrigin, CssValueOrigin, parse_component_values, parse_media_query,
-    parse_media_query_list,
+    CssConditionKind, CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery, CssMediaQueryList,
+    CssMediaRangeRef, CssParser, CssSerializedOrigin, CssValueOrigin,
 };
 
 fn plain_width(value: CssComponentValue) -> CssComponentValues {
@@ -61,7 +60,7 @@ fn programmatic_numeric_queries_have_checked_values_without_source_coordinates()
 
 #[test]
 fn cloned_parsed_numeric_children_keep_their_original_source_in_programmatic_queries() {
-    let parsed = parse_component_values("/* 😀 */\n-2em").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "/* 😀 */\n-2em").unwrap();
     let operand = parsed.items().last().unwrap().clone();
     let expected = operand.origin().clone();
     let components = plain_width(operand);
@@ -116,7 +115,7 @@ fn opaque_programmatic_functions_preserve_original_components_and_token_boundari
 
 #[test]
 fn checked_construction_rejects_recovery_and_query_condition_context_mismatches() {
-    let recovered = parse_component_values("future(").unwrap();
+    let recovered = CssComponentValues::parse(&CssParser::default(), "future(").unwrap();
     assert!(
         CssMediaQuery::try_from_components(recovered, Default::default())
             .as_ref()
@@ -124,7 +123,7 @@ fn checked_construction_rejects_recovery_and_query_condition_context_mismatches(
     );
     assert!(
         CssCondition::<CssMediaLeaf>::try_from_components(
-            parse_component_values("screen").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "screen").unwrap(),
             Default::default()
         )
         .as_ref()
@@ -132,7 +131,7 @@ fn checked_construction_rejects_recovery_and_query_condition_context_mismatches(
     );
     assert!(
         CssMediaQuery::try_from_components(
-            parse_component_values("screen, print").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "screen, print").unwrap(),
             Default::default()
         )
         .as_ref()
@@ -142,7 +141,7 @@ fn checked_construction_rejects_recovery_and_query_condition_context_mismatches(
 
 #[test]
 fn grammar_errors_map_inserted_token_boundaries_back_to_original_input() {
-    let original = parse_component_values("/* 😀 */\nprint").unwrap();
+    let original = CssComponentValues::parse(&CssParser::default(), "/* 😀 */\nprint").unwrap();
     let extra = original.items().last().unwrap().clone();
     let origin = extra.origin().clone();
     let error = CssMediaQuery::try_from_components(
@@ -186,7 +185,7 @@ fn requested_component_limits_preserve_their_actual_failure_categories() {
 fn construction_byte_budget_includes_canonical_ratio_expansion() {
     let source = "(aspect-ratio:2)";
     let canonical = "(aspect-ratio: 2 / 1)";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let tight = CssComponentValueLimits::try_new(256, usize::MAX, source.len()).unwrap();
     let outer = CssMediaQuery::try_from_components(components.clone(), tight).unwrap_err();
     let Some(error) = outer.component_error() else {
@@ -213,14 +212,14 @@ fn canonical_queries_preserve_symbolic_values_and_authored_order() {
         ("future(1/**/e2)", "future(1/**/e2)"),
         ("(FuTuRe: ACTIVE)", "(FuTuRe: ACTIVE)"),
     ] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let output = report
             .syntax()
             .serialize_tokens(Default::default())
             .unwrap();
         assert_eq!(output.as_css(), expected);
-        let reparsed = parse_media_query(output.as_css());
+        let reparsed = CssMediaQuery::parse(&CssParser::default(), output.as_css());
         assert!(reparsed.is_clean());
         assert_eq!(
             reparsed
@@ -235,7 +234,7 @@ fn canonical_queries_preserve_symbolic_values_and_authored_order() {
 
 #[test]
 fn a_recovered_member_prevents_partial_list_serialization() {
-    let report = parse_media_query_list("screen and, print");
+    let report = CssMediaQueryList::parse(&CssParser::default(), "screen and, print");
     assert!(!report.is_clean());
     let error = report
         .syntax()
@@ -247,7 +246,7 @@ fn a_recovered_member_prevents_partial_list_serialization() {
     );
     assert!(matches!(error.origin(), Some(CssValueOrigin::Parsed(_))));
     assert_eq!(
-        parse_media_query("not all")
+        CssMediaQuery::parse(&CssParser::default(), "not all")
             .syntax()
             .serialize_tokens(Default::default())
             .unwrap()
@@ -255,7 +254,7 @@ fn a_recovered_member_prevents_partial_list_serialization() {
         "not all"
     );
     assert_eq!(
-        parse_media_query_list("")
+        CssMediaQueryList::parse(&CssParser::default(), "")
             .syntax()
             .serialize_tokens(Default::default())
             .unwrap()
@@ -276,7 +275,7 @@ fn unknown_features_keep_their_domain_reason_and_original_component() {
             CssUnknownMediaFeatureReason::InvalidOperation,
         ),
     ] {
-        let original = parse_component_values(source).unwrap();
+        let original = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let condition =
             CssCondition::<CssMediaLeaf>::try_from_components(original.clone(), Default::default())
                 .unwrap();
@@ -287,7 +286,7 @@ fn unknown_features_keep_their_domain_reason_and_original_component() {
         assert_eq!(unknown.component(), &original.items()[0]);
         assert_eq!(unknown.authored(), Some(source));
     }
-    let report = parse_media_query("(aspect-ratio: -1/2)");
+    let report = CssMediaQuery::parse(&CssParser::default(), "(aspect-ratio: -1/2)");
     let CssMediaQuery::Condition(condition) = report.syntax() else {
         panic!("retained enclosure");
     };
@@ -300,7 +299,7 @@ fn unknown_features_keep_their_domain_reason_and_original_component() {
 #[test]
 fn negation_preserves_unknown_conditions_and_separate_unknown_media_types() {
     for source in ["not (future: foo)", "not future()"] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean());
         let CssMediaQuery::Condition(condition) = report.syntax() else {
             panic!("condition negation");
@@ -314,7 +313,7 @@ fn negation_preserves_unknown_conditions_and_separate_unknown_media_types() {
                 | CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_))
         ));
     }
-    let report = parse_media_query("not future-type");
+    let report = CssMediaQuery::parse(&CssParser::default(), "not future-type");
     let CssMediaQuery::Typed(query) = report.syntax() else {
         panic!("typed media query");
     };
@@ -337,7 +336,7 @@ fn generic_feature_math_uses_named_numeric_domains_without_admitting_percentages
         "(future: calc(1% / 1%))",
         "(future: 3qu)",
     ] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let CssMediaQuery::Condition(condition) = report.syntax() else {
             panic!("condition");
@@ -351,7 +350,7 @@ fn generic_feature_math_uses_named_numeric_domains_without_admitting_percentages
         );
     }
     for source in ["(future: calc(1%))", "(future: calc(1px * 1px))"] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean());
         let CssMediaQuery::Condition(condition) = report.syntax() else {
             panic!("condition");
@@ -369,7 +368,7 @@ fn generic_feature_math_uses_named_numeric_domains_without_admitting_percentages
 #[test]
 fn repeated_identifiers_retain_the_middle_feature_names_own_origin() {
     let source = "(future < future < future)";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let surgeist_css::CssComponentValueRef::Block(block) = components.items()[0].view() else {
         panic!("parenthesized feature");
     };
@@ -385,7 +384,8 @@ fn repeated_identifiers_retain_the_middle_feature_names_own_origin() {
 
 #[test]
 fn media_tokens_refuse_one_byte_below_their_serialized_length() {
-    let report = parse_media_query_list("screen and (min-width: 10px), print");
+    let report =
+        CssMediaQueryList::parse(&CssParser::default(), "screen and (min-width: 10px), print");
     assert!(report.is_clean());
     let list = report.syntax();
     let unlimited = list.serialize_tokens(Default::default()).unwrap();

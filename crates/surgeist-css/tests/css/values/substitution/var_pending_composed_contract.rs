@@ -17,13 +17,14 @@ fn later_var_commas_are_retained_fallback_tokens_in_known_and_custom_values() {
         ),
     ] {
         let source = format!("display:{text}!important");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let parsed = &report.syntax()[0];
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let original = components.clone();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Display),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Display)),
             components.clone(),
             CssImportance::Important,
         )
@@ -66,14 +67,12 @@ fn later_var_commas_are_retained_fallback_tokens_in_known_and_custom_values() {
                     .count(),
                 comma_count,
             );
-            assert!(matches!(
-                expand_declaration(declaration),
-                Ok(CssExpansion::Pending(_))
-            ));
+            assert!(matches!(declaration.expand(), Ok(CssExpansion::Pending(_))));
         }
         let name = CssCustomPropertyName::try_new("--kept").unwrap();
-        let custom = parse_property_value(
-            CssPropertyNameRef::Custom(&name),
+        let custom = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
             components.clone(),
             CssImportance::Important,
         )
@@ -84,7 +83,7 @@ fn later_var_commas_are_retained_fallback_tokens_in_known_and_custom_values() {
         );
         assert_eq!(custom.value_components(), &original);
         assert!(matches!(
-            expand_declaration(&custom),
+            custom.expand(),
             Ok(CssExpansion::Contributions(_))
         ));
         assert_eq!(components, original);
@@ -94,7 +93,7 @@ fn later_var_commas_are_retained_fallback_tokens_in_known_and_custom_values() {
 #[test]
 fn valid_var_calls_cannot_form_property_names_or_selectors() {
     for source in ["var(--side):20px", "var(--side, margin-top):20px"] {
-        let report = parse_declaration(source);
+        let report = CssDeclaration::parse(&CssParser::default(), source);
         assert_first_diagnostic(
             report.diagnostics(),
             source,
@@ -108,7 +107,7 @@ fn valid_var_calls_cannot_form_property_names_or_selectors() {
     }
     let context = CssNamespaceContext::default();
     for selector in ["var(--selector)", ".item var(--selector, .chosen)"] {
-        let report = parse_selector(selector, &context);
+        let report = CssSelector::parse(&CssParser::default(), selector, &context);
         assert_first_diagnostic(
             report.diagnostics(),
             selector,
@@ -116,7 +115,11 @@ fn valid_var_calls_cannot_form_property_names_or_selectors() {
             "var(",
         );
         assert!(report.syntax().is_none(), "variable selector: {selector}");
-        let rule = parse_rule(&format!("{selector}{{color:red}}"), &context);
+        let rule = CssRule::parse(
+            &CssParser::default(),
+            format!("{selector}{{color:red}}"),
+            &context,
+        );
         assert_first_diagnostic(
             rule.diagnostics(),
             &format!("{selector}{{color:red}}"),
@@ -128,7 +131,7 @@ fn valid_var_calls_cannot_form_property_names_or_selectors() {
             "variable rule selector: {selector}"
         );
     }
-    let control = parse_declaration("display:var(--mode)");
+    let control = CssDeclaration::parse(&CssParser::default(), "display:var(--mode)");
     assert!(control.is_clean());
     assert!(
         control
@@ -140,14 +143,14 @@ fn valid_var_calls_cannot_form_property_names_or_selectors() {
             .substitution_dependent()
             .is_some()
     );
-    assert!(parse_selector(".item", &context).is_clean());
+    assert!(CssSelector::parse(&CssParser::default(), ".item", &context).is_clean());
 }
 
 #[test]
 fn strict_pending_reentry_retains_original_priority_source_after_failed_replacements() {
     const SOURCE: &str = "/*😀*/display:bogus VAR(--layout, red, blue)!/**/ImPoRtAnT";
     const VALUE: &str = "bogus VAR(--layout, red, blue)";
-    let report = parse_style_attribute(SOURCE);
+    let report = CssParser::default().parse_block_contents(SOURCE);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [source] = report.syntax().as_slice() else {
         panic!("one complete pending declaration")
@@ -180,12 +183,12 @@ fn strict_pending_reentry_retains_original_priority_source_after_failed_replacem
         origin.span().end().byte_offset().value(),
         SOURCE.find('!').unwrap()
     );
-    let CssExpansion::Pending(pending) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("whole value awaits replacement")
     };
     for invalid in ["block!important", "block;inline"] {
         let error = pending
-            .reenter(parse_component_values(invalid).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
             .unwrap_err();
         assert!(error.replacement_error().is_some());
         assert!(pending.source().same_occurrence(source));
@@ -197,11 +200,11 @@ fn strict_pending_reentry_retains_original_priority_source_after_failed_replacem
     }
     assert!(
         pending
-            .reenter(parse_component_values("var(x)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(x)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
-    let replacement = parse_component_values("block").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "block").unwrap();
     let original = replacement.clone();
     for _ in 0..2 {
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()

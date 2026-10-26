@@ -173,9 +173,10 @@ fn raw(component: &CssComponentValue) -> String {
         .to_owned()
 }
 fn image(text: &str) -> CssBorderImage {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::BorderImage),
-        parse_component_values(text).unwrap(),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BorderImage)),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();

@@ -15,7 +15,7 @@
 use surgeist_css::*;
 
 fn specified(declaration: &str) -> String {
-    let report = parse_declaration(declaration);
+    let report = CssDeclaration::parse(&CssParser::default(), declaration);
     assert!(
         report.is_clean(),
         "{declaration}: {:?}",

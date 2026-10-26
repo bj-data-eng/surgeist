@@ -6,7 +6,7 @@ use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn opacity(text: &str) -> CssOpacityValue {
-    let report = parse_style_attribute(&format!("opacity:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("opacity:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Opacity(value) = report.syntax()[0]
         .known()
@@ -421,7 +421,7 @@ fn intermediate_dimension_products_resolve_before_dimension_cancellation() {
 #[test]
 fn checked_calculation_construction_and_deep_projection_share_specified_semantics() {
     for source in ["calc(1 / 2)", "min(25%,50%)", "sign(1em - 1px)"] {
-        let components = parse_component_values(source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let typed = if source.contains('%') {
             CssOpacityValue::PercentageCalculation(
                 CssCalculation::<CssPercentage>::try_from_components(
@@ -446,7 +446,7 @@ fn checked_calculation_construction_and_deep_projection_share_specified_semantic
     // Existing public numeric construction supports 256 nested functions.
     let source = format!("{}1{}", "calc(1 + 0 * ".repeat(256), ")".repeat(256));
     let calculation = CssCalculation::<CssNumber>::try_from_components(
-        parse_component_values(&source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
         Default::default(),
     )
     .unwrap();

@@ -557,7 +557,7 @@ fn actual_creation_receipt(
     wrong: Option<WrongCreationInput>,
 ) {
     use std::sync::Arc;
-    use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+    use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
     use surgeist_dom::{
         DomSourceProgress, DomStyleCssomOwnerBinding, DomStyleInlineCspObservation,
@@ -671,24 +671,24 @@ fn actual_creation_receipt(
         DomStyleCssomOwnerBinding::new(&create, version.clone(), "inline-owner".into()).unwrap();
     lease.bind_cssom_owner(&create, binding, &cancel).unwrap();
     let context = CssParserContext::default();
-    let body = context
-        .parse_sheet_utf16_with_limits(
+    let body = CssParser::new(context, Default::default())
+        .parse_sheet_utf16(
             create.source().text().clone(),
             CssUtf16InputLimits::default(),
             || Ok::<_, ()>(()),
         )
         .unwrap();
-    let media = context
-        .parse_media_query_list_utf16_with_limits(
-            Arc::new(if matches!(wrong, Some(WrongCreationInput::Media)) {
-                "print".encode_utf16().collect()
-            } else {
-                Vec::new()
-            }),
-            CssUtf16InputLimits::default(),
-            || Ok::<_, ()>(()),
-        )
-        .unwrap();
+    let media = CssMediaQueryList::parse_utf16(
+        &CssParser::new(context, Default::default()),
+        Arc::new(if matches!(wrong, Some(WrongCreationInput::Media)) {
+            "print".encode_utf16().collect()
+        } else {
+            Vec::new()
+        }),
+        CssUtf16InputLimits::default(),
+        || Ok::<_, ()>(()),
+    )
+    .unwrap();
     let mut inputs = CssomSheetInputs::external(version, true);
     inputs.owner = Some("inline-owner".into());
     if matches!(wrong, Some(WrongCreationInput::Disabled)) {
@@ -861,7 +861,7 @@ fn exercise_wrong_owner_media(
     owner: &surgeist_dom::DomStyleCssomRoot,
     sheet: &surgeist_cssom::CssomSheetId,
 ) {
-    use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+    use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
     use surgeist_cssom::{
         CssomEditGuard, CssomInputRole, CssomInputVersion, CssomOwnerMediaInput,
         CssomSheetOwnerAttributes,
@@ -898,13 +898,13 @@ fn exercise_wrong_owner_media(
             &cancel,
         )
         .unwrap();
-    let wrong_media = CssParserContext::default()
-        .parse_media_query_list_utf16_with_limits(
-            std::sync::Arc::new("screen".encode_utf16().collect()),
-            CssUtf16InputLimits::default(),
-            || Ok::<_, ()>(()),
-        )
-        .unwrap();
+    let wrong_media = CssMediaQueryList::parse_utf16(
+        &CssParser::new(CssParserContext::default(), Default::default()),
+        std::sync::Arc::new("screen".encode_utf16().collect()),
+        CssUtf16InputLimits::default(),
+        || Ok::<_, ()>(()),
+    )
+    .unwrap();
     let mut batch = owner
         .batch(CssomEditGuard::from_snapshot(&owner.snapshot().unwrap()))
         .unwrap();
@@ -1916,7 +1916,7 @@ fn ascii_whitespace_media_matches_without_environment_and_respects_the_body_gate
 
 fn html_body_gate_and_blocking_cleanup(selected_media: Option<&str>) {
     use std::sync::Arc;
-    use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+    use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
     use surgeist_dom::{
         DomChange, DomSourceProgress, DomStyleCssomOwnerBinding, DomStyleCssomRoot,
@@ -1986,23 +1986,23 @@ fn html_body_gate_and_blocking_cleanup(selected_media: Option<&str>) {
             )
             .unwrap();
         let context = CssParserContext::default();
-        let report = context
-            .parse_sheet_utf16_with_limits(
+        let report = CssParser::new(context, Default::default())
+            .parse_sheet_utf16(
                 create.source().text().clone(),
                 CssUtf16InputLimits::default(),
                 || Ok::<_, ()>(()),
             )
             .unwrap();
-        let media = context
-            .parse_media_query_list_utf16_with_limits(
-                create
-                    .source()
-                    .media()
-                    .map_or_else(Arc::default, |value| value.shared_code_units().clone()),
-                CssUtf16InputLimits::default(),
-                || Ok::<_, ()>(()),
-            )
-            .unwrap();
+        let media = CssMediaQueryList::parse_utf16(
+            &CssParser::new(context, Default::default()),
+            create
+                .source()
+                .media()
+                .map_or_else(Arc::default, |value| value.shared_code_units().clone()),
+            CssUtf16InputLimits::default(),
+            || Ok::<_, ()>(()),
+        )
+        .unwrap();
         let mut inputs = CssomSheetInputs::external(version, true);
         inputs.owner = Some("inline".into());
         let mut edit = root
@@ -2649,7 +2649,7 @@ fn resume_after_meta_work_refusal(low: u64) {
 #[test]
 fn admitted_inert_parser_style_continues_after_creation_to_genuine_render_context() {
     use std::sync::Arc;
-    use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+    use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
     use surgeist_dom::{
         DomNativeInputPlatform, DomParsedDocumentEnvironment, DomParsedHtmlInstallLimits,
@@ -2796,20 +2796,20 @@ fn admitted_inert_parser_style_continues_after_creation_to_genuine_render_contex
         )
         .unwrap();
     let parser = CssParserContext::default();
-    let sheet = parser
-        .parse_sheet_utf16_with_limits(
+    let sheet = CssParser::new(parser, Default::default())
+        .parse_sheet_utf16(
             create.source().text().clone(),
             CssUtf16InputLimits::default(),
             || Ok::<_, ()>(()),
         )
         .unwrap();
-    let media = parser
-        .parse_media_query_list_utf16_with_limits(
-            create.source().media().unwrap().shared_code_units().clone(),
-            CssUtf16InputLimits::default(),
-            || Ok::<_, ()>(()),
-        )
-        .unwrap();
+    let media = CssMediaQueryList::parse_utf16(
+        &CssParser::new(parser, Default::default()),
+        create.source().media().unwrap().shared_code_units().clone(),
+        CssUtf16InputLimits::default(),
+        || Ok::<_, ()>(()),
+    )
+    .unwrap();
     let mut input = CssomSheetInputs::external(version, true);
     input.owner = Some("parser-style".into());
     let mut batch = root

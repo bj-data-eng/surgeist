@@ -2,7 +2,7 @@ use surgeist_css::*;
 
 #[test]
 fn images_and_gradients_retain_typed_structure() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "background-image: url(hero.png), none, ",
         "linear-gradient(to right top, red 0%, 25%, blue), ",
         "radial-gradient(circle closest-side at left 10px top 20%, red, blue 75%), ",
@@ -80,7 +80,7 @@ fn radial_extent_rules_accept_only_shape_compatible_sizes() {
         "radial-gradient(ellipse closest-side, red, blue)",
     ] {
         let source = format!("background-image: {valid}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{valid}: {:?}", report.diagnostics());
     }
 
@@ -93,7 +93,7 @@ fn radial_extent_rules_accept_only_shape_compatible_sizes() {
         "radial-gradient(ellipse 10px -2px, red, blue)",
     ] {
         let source = format!("background-image: {invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "retained {invalid}");
         assert_eq!(
             report.syntax()[0].known().map(|known| known.property()),
@@ -115,7 +115,7 @@ fn color_stop_hints_require_interleaved_stop_order() {
         "linear-gradient(red 20% blue)",
     ] {
         let source = format!("background-image: {invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "retained {invalid}");
         assert_eq!(
             report.syntax()[0].known().map(|known| known.property()),
@@ -128,7 +128,7 @@ fn color_stop_hints_require_interleaved_stop_order() {
 
 #[test]
 fn images_keep_globals_substitutions_and_exact_invalid_recovery_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "background-image: inherit; ",
         "background-image: var(--hero, linear-gradient(red, blue)); ",
         "background-image: url(hero.png)"
@@ -154,7 +154,7 @@ fn images_keep_globals_substitutions_and_exact_invalid_recovery_distinct() {
         "background-image: radial-gradient(circle 10% at center, red, blue); ",
         "color: red"
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("expected one invalid background-image diagnostic");
@@ -189,7 +189,9 @@ fn images_keep_globals_substitutions_and_exact_invalid_recovery_distinct() {
     );
 
     assert_eq!(
-        surgeist_css::validate_style_attribute(source)
+        surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects invalid radial size")
             .diagnostics(),
         report.diagnostics(),

@@ -4,7 +4,7 @@ use surgeist_css::*;
 
 fn object_position(value: &str) -> CssPosition {
     let source = format!("object-position: {value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::ObjectPosition(value) = report.syntax()[0]
         .known()
@@ -19,7 +19,7 @@ fn object_position(value: &str) -> CssPosition {
 
 fn transform_origin(value: &str) -> CssTransformOrigin {
     let source = format!("transform-origin: {value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::TransformOrigin(value) = report.syntax()[0]
         .known()
@@ -34,7 +34,7 @@ fn transform_origin(value: &str) -> CssTransformOrigin {
 
 fn assert_generic_position_accepted(value: &str) {
     let source = format!("mask-position: {value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1, "{source}");
     assert_eq!(
@@ -49,7 +49,7 @@ fn assert_generic_position_accepted(value: &str) {
 
 fn assert_generic_position_rejected(value: &str) {
     let source = format!("mask-position: {value}; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(report.syntax().len(), 1, "{source}");
     assert_eq!(report.diagnostics().len(), 1, "{source}");
     assert_eq!(
@@ -62,7 +62,9 @@ fn assert_generic_position_rejected(value: &str) {
     );
 
     {
-        let failure = surgeist_css::validate_style_attribute(&source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
             .expect_err("strict validation rejects a recovered generic position");
         assert_eq!(failure.diagnostics(), report.diagnostics(), "{source}");
     }
@@ -110,7 +112,7 @@ fn generic_position_rejects_axis_order_partial_pairs_and_duplicate_axes() {
 
 #[test]
 fn background_position_preserves_three_component_edge_origin() {
-    let report = parse_style_attribute("background-position: left 10px top");
+    let report = CssParser::default().parse_block_contents("background-position: left 10px top");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = report.syntax()[0]
         .known()
@@ -133,7 +135,7 @@ fn background_position_preserves_three_component_edge_origin() {
 
 #[test]
 fn transform_origin_preserves_two_planar_axes_plus_z() {
-    let report = parse_style_attribute("transform-origin: left top 10px");
+    let report = CssParser::default().parse_block_contents("transform-origin: left top 10px");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = report.syntax()[0]
         .known()
@@ -161,7 +163,7 @@ fn object_position_parser_preserves_ordinary_global_and_substitution_branches() 
         "object-position: inherit; ",
         "object-position: var(--position)",
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [ordinary, global, substitution] = report.syntax().as_slice() else {
         panic!("expected three retained object-position declarations");
@@ -244,7 +246,7 @@ fn transform_origin_accepts_every_directed_two_dimension_and_z_branch() {
         "50px top calc(1px * 2)",
     ] {
         let source = format!("transform-origin: {value}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{source}");
         let declaration = report.syntax()[0]
@@ -337,7 +339,7 @@ fn transform_origin_z_construction_accepts_only_authored_lengths() {
     }
     assert!(
         CssCalculation::<CssLength>::try_from_components(
-            parse_component_values("calc(40%)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(40%)").unwrap(),
             Default::default()
         )
         .is_err()
@@ -415,7 +417,7 @@ fn object_and_transform_origin_invalid_z_mutations_drop_only_the_declaration() {
 
     for (property, known_property, value, responsible, token_kind) in cases {
         let source = format!("{property}: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let declaration_end = source.find(';').expect("declaration semicolon") + 1;
         let responsible_offset = source.rfind(responsible).expect("responsible token");
         let mut reasons = Vec::new();
@@ -481,7 +483,10 @@ fn object_and_transform_origin_invalid_z_mutations_drop_only_the_declaration() {
         }
 
         {
-            match surgeist_css::validate_style_attribute(&source) {
+            match surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+            {
                 Ok(_) => reasons.push("app-strict unexpectedly accepted the source".to_owned()),
                 Err(failure) if failure.diagnostics() != report.diagnostics() => {
                     reasons.push("app-strict diagnostics differed".to_owned());
@@ -533,7 +538,7 @@ fn generic_position_typed_calculation_preserves_the_exact_depth_boundary() {
 
 #[test]
 fn background_and_mask_position_lists_expose_each_exact_layer() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "background-position: left 10px top, center bottom 25%; ",
         "mask-position: right 5% bottom 2px, calc((1px + 2%) * 3) top",
     ));
@@ -609,7 +614,8 @@ fn background_accepts_three_components_that_mask_rejects() {
         "center bottom 20%",
         "right calc((1px + 2%) * 3) center",
     ] {
-        let background = parse_style_attribute(&format!("background-position: {value}"));
+        let background =
+            CssParser::default().parse_block_contents(format!("background-position: {value}"));
         assert!(
             background.is_clean(),
             "background-position: {value}: {:?}",
@@ -617,7 +623,7 @@ fn background_accepts_three_components_that_mask_rejects() {
         );
 
         let mask_source = format!("mask-position: {value}; color: red");
-        let mask = parse_style_attribute(&mask_source);
+        let mask = CssParser::default().parse_block_contents(&mask_source);
         assert_eq!(mask.syntax().len(), 1, "{mask_source}");
         assert_eq!(mask.diagnostics().len(), 1, "{mask_source}");
         assert_eq!(
@@ -627,7 +633,9 @@ fn background_accepts_three_components_that_mask_rejects() {
         );
 
         {
-            let failure = surgeist_css::validate_style_attribute(&mask_source)
+            let failure = surgeist_css::CssParser::default()
+                .parse_block_contents(&mask_source)
+                .into_validation_result()
                 .expect_err("strict validation rejects mask-only three-component syntax");
             assert_eq!(failure.diagnostics(), mask.diagnostics(), "{mask_source}");
         }
@@ -637,7 +645,7 @@ fn background_accepts_three_components_that_mask_rejects() {
 #[test]
 fn mask_shorthand_rejects_a_three_component_position_and_recovers_at_the_declaration() {
     let source = "mask: url(mask.png) left 10px top / contain no-repeat; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
 
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(
@@ -682,7 +690,9 @@ fn mask_shorthand_rejects_a_three_component_position_and_recovers_at_the_declara
     assert_eq!(encountered.authored(), "left");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered mask shorthand");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -691,7 +701,7 @@ fn mask_shorthand_rejects_a_three_component_position_and_recovers_at_the_declara
 #[test]
 fn mask_shorthand_preserves_valid_image_position_size_and_repeat_components() {
     let source = "mask: url(mask.png) center / contain no-repeat";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
     let [declaration] = report.syntax().as_slice() else {
@@ -742,7 +752,9 @@ fn mask_shorthand_preserves_valid_image_position_size_and_repeat_components() {
     assert!(matches!(position.vertical(), CssVerticalPosition::Center));
 
     {
-        let strict = surgeist_css::validate_style_attribute(source)
+        let strict = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect("strict validation accepts valid mask shorthand");
         assert_eq!(strict, report.syntax().clone());
     }
@@ -763,7 +775,7 @@ fn layered_positions_reject_empty_items_slashes_and_trailing_components() {
         ("mask-position", "left 10px top"),
     ] {
         let source = format!("{property}: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -784,7 +796,7 @@ fn layered_position_failures_drop_each_declaration_and_continue() {
         "mask-position: top 10px, center; ",
         "color: red",
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(report.diagnostics().len(), 2);
     assert_eq!(
@@ -800,7 +812,9 @@ fn layered_position_failures_drop_each_declaration_and_continue() {
     }));
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation reports every layered position failure");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -808,7 +822,7 @@ fn layered_position_failures_drop_each_declaration_and_continue() {
 
 #[test]
 fn layered_positions_retain_order_and_symbolic_calculations() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "background-position: left 10px top, bottom right; ",
         "background-position: left calc((1px + 2%) * 3) top; ",
         "mask-position: left top, 10% 20%; ",
@@ -884,7 +898,8 @@ fn exact_percentage(
 }
 
 fn signed_length(css: &str) -> surgeist_css::CssNumeric<surgeist_css::CssLength> {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+    let components =
+        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
     if css.contains('(') {
         surgeist_css::CssNumeric::<surgeist_css::CssLength>::try_from_calculation(
             surgeist_css::CssCalculation::<surgeist_css::CssLength>::try_from_components(
@@ -904,7 +919,8 @@ fn signed_length(css: &str) -> surgeist_css::CssNumeric<surgeist_css::CssLength>
 fn signed_length_percentage(
     css: &str,
 ) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage> {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+    let components =
+        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
     if css.contains('(') {
         surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_calculation(
             surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(

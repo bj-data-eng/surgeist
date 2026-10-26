@@ -1310,7 +1310,7 @@ impl CssPendingSubstitution {
     /// `ResidualSubstitution`
     /// before grammar checking. Other invalid values retain the same mapped
     /// error as the source's owning checked grammar, including source resource limits.
-    /// Page occurrences use [`crate::parse_page_property_value`] and retain their
+    /// Page occurrences use [`CssDeclaration::try_from_components`] with [`crate::CssPropertyTarget::PageProperty`] and retain their
     /// explicit `em`/`ex`, physical-side and unitless-length restrictions.
     pub fn reenter(
         &self,
@@ -1368,18 +1368,9 @@ impl CssPendingSubstitution {
     }
 }
 
-/// Expands custom declarations and every recognized property intrinsically.
-///
-/// Ordinary shorthands contribute every member, applying intrinsic initial
-/// values to omissions. `border` also resets the five border-image longhands;
-/// CSS-wide keywords propagate to ordinary and reset-only members alike. `all`
-/// remains a symbolic reset. Substitution-dependent known declarations return a
-/// pending handle for strict grammar reentry after substitution.
-/// Custom declarations return one completed symbolic contribution even when their
-/// tokens contain `var()`; their values are not substituted or computed here.
-/// This operation does not choose cascade winners, substitute variables,
-/// resolve writing modes, evaluate lengths or colors, or load images.
-pub fn expand_declaration(source: &CssDeclaration) -> Result<CssExpansion, CssExpansionError> {
+pub(crate) fn expand_declaration(
+    source: &CssDeclaration,
+) -> Result<CssExpansion, CssExpansionError> {
     let known = match source.body() {
         CssDeclarationBody::SvgGlyphOrientationVertical(value) => {
             if value.substitution_dependent().is_some() {
@@ -1799,5 +1790,25 @@ impl CssUniversalResetMetadata {
     #[must_use]
     pub fn excludes(&self, property: CssPropertyNameRef<'_>) -> bool {
         universal_excludes(property)
+    }
+}
+impl CssDeclaration {
+    /// Expands custom declarations and every recognized property intrinsically.
+    ///
+    /// Ordinary shorthands contribute every member, applying intrinsic initial
+    /// values to omissions. `border` also resets the five border-image longhands;
+    /// CSS-wide keywords propagate to ordinary and reset-only members alike. `all`
+    /// remains a symbolic reset. Substitution-dependent known declarations return a
+    /// pending handle for strict grammar reentry after substitution.
+    /// Custom declarations return one completed symbolic contribution even when their
+    /// tokens contain `var()`; their values are not substituted or computed here.
+    /// This operation does not choose cascade winners, substitute variables,
+    /// resolve writing modes, evaluate lengths or colors, or load images.
+    ///
+    /// # Errors
+    ///
+    /// Returns the declaration the intrinsic expansion cannot admit.
+    pub fn expand(&self) -> Result<CssExpansion, CssExpansionError> {
+        expand_declaration(self)
     }
 }

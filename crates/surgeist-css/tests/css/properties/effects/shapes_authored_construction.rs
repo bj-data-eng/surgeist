@@ -7,9 +7,9 @@ use crate::css::support::serialization_limits::assert_limits as budget;
 use surgeist_css::*;
 
 fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
-    let report = parse_property_value_text(
+    let report = CssParser::default().parse_property_value(
         text,
-        CssPropertyNameRef::Known(property),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(property)),
         CssImportance::Important,
     );
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
@@ -121,7 +121,7 @@ fn checked_shape_composition_retains_omission_and_each_explicit_box() {
                 parsed(CssKnownProperty::ShapeOutside, &text),
                 checked(
                     CssKnownProperty::ShapeOutside,
-                    parse_component_values(&text).unwrap(),
+                    CssComponentValues::parse(&CssParser::default(), &text).unwrap(),
                 ),
             ] {
                 assert_eq!(outside(&source), &owner);
@@ -158,7 +158,7 @@ fn image_only_composition_rejects_bare_none_but_keeps_two_none_children() {
         parsed(CssKnownProperty::ShapeOutside, "light-dark(none, none)"),
         checked(
             CssKnownProperty::ShapeOutside,
-            parse_component_values("light-dark(none, none)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "light-dark(none, none)").unwrap(),
         ),
     ] {
         assert_eq!(outside(&source), &owner);
@@ -214,7 +214,7 @@ fn three_terminal_initials_have_independent_typed_payloads_and_programmatic_orig
 #[test]
 fn threshold_wrappers_borrow_exact_scalars_and_all_three_calculation_roots() {
     for text in ["-1e-999", "1e999", "150%", "-25%"] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let original = components.items()[0].clone();
         let source = checked(CssKnownProperty::ShapeImageThreshold, components.clone());
         let CssOpacityValue::Scalar(value) = threshold(&source) else {
@@ -233,7 +233,7 @@ fn threshold_wrappers_borrow_exact_scalars_and_all_three_calculation_roots() {
         );
         assert_eq!(source.value_components(), &components);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("one terminal")
         };
@@ -249,7 +249,7 @@ fn threshold_wrappers_borrow_exact_scalars_and_all_three_calculation_roots() {
         ("calc(25% + 25%)", 1),
         ("calc((1px + 1%) / 1px)", 2),
     ] {
-        let input = parse_component_values(text).unwrap();
+        let input = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let source = checked(CssKnownProperty::ShapeImageThreshold, input.clone());
         match (root, threshold(&source)) {
             (0, CssOpacityValue::NumberCalculation(value)) => {
@@ -274,7 +274,7 @@ fn threshold_wrappers_borrow_exact_scalars_and_all_three_calculation_roots() {
 #[test]
 fn margin_wrappers_keep_exact_checked_literals_and_deferred_negative_math() {
     for text in ["-0px", "-0%", "1e-999px", "25%"] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let source = checked(CssKnownProperty::ShapeMargin, components.clone());
         let value = margin(&source);
         assert_eq!(
@@ -284,7 +284,7 @@ fn margin_wrappers_keep_exact_checked_literals_and_deferred_negative_math() {
         assert_eq!(value.origin(), components.items()[0].origin());
         assert!(value.calculation().is_none());
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("one terminal")
         };
@@ -295,7 +295,7 @@ fn margin_wrappers_keep_exact_checked_literals_and_deferred_negative_math() {
         };
         assert_eq!(actual, value);
     }
-    let input = parse_component_values("calc(1px - 2px)").unwrap();
+    let input = CssComponentValues::parse(&CssParser::default(), "calc(1px - 2px)").unwrap();
     let source = checked(CssKnownProperty::ShapeMargin, input.clone());
     assert!(
         margin(&source)
@@ -312,15 +312,16 @@ fn margin_wrappers_keep_exact_checked_literals_and_deferred_negative_math() {
         "calc(-1px)"
     );
     for text in ["-1e-999px", "-1e-999%"] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let numeric_error = CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             components.items()[0].clone(),
         )
         .unwrap_err();
         assert!(numeric_error.is_out_of_range(), "{numeric_error:?}");
         assert_eq!(numeric_error.origin(), Some(components.items()[0].origin()));
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ShapeMargin),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ShapeMargin)),
             components.clone(),
             CssImportance::Normal,
         )
@@ -364,7 +365,7 @@ fn checked_numeric_construction_retains_programmatic_zero_and_rechecks_bare_nega
         }
     }
     for text in ["-1e-999px", "-1e-999%"] {
-        let input = parse_component_values(text).unwrap();
+        let input = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
             input.clone(),
             Default::default(),
@@ -386,10 +387,10 @@ fn replacement_terminals_borrow_new_typed_children_and_retain_the_replacement_sn
         (CssKnownProperty::ShapeMargin, "calc(1px - 2px)"),
     ] {
         let source = parsed(property, "var(--shape)");
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
-        let replacement = parse_component_values(text).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
             panic!("one replacement terminal")

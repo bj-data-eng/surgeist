@@ -226,15 +226,14 @@ impl CssomBatch {
             let CssomRuleData::FontFeatureValues { .. } = this.staged.rule(id)?.data() else {
                 return Err(CssomError::WrongKind);
             };
-            let (value, diagnostics) = this
-                .staged
-                .context
-                .parser_context()
-                .parse_font_feature_values_family_list_with_limits(
-                    source,
+            let (value, diagnostics) = CssFontFeatureValuesFamilyList::parse(
+                &CssParser::new(
+                    this.staged.context.parser_context(),
                     crate::rule_operations::component_limits(&this.limits),
-                )
-                .into_parts();
+                ),
+                source,
+            )
+            .into_parts();
             crate::parser_resources::check_resource_diagnostics(&diagnostics)?;
             operation_diagnostics = diagnostics;
             let Some(value) = value else {

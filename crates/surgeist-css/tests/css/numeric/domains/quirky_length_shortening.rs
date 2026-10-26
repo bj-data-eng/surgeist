@@ -10,7 +10,7 @@ use surgeist_css::*;
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);
 
 fn cssom(context: CssParserContext, source: &str) -> String {
-    let report = context.parse_style_attribute(source);
+    let report = CssParser::new(context, Default::default()).parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
         .unwrap()

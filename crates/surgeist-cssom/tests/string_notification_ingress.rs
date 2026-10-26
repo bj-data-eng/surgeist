@@ -16,7 +16,7 @@ fn selected_notification_source() -> CssSourceSnapshot {
         .unwrap();
     let ticket = creation
         .create_declarations(
-            parse_declaration_block_contents("").into_parts().0,
+            CssParser::default().parse_block_contents("").into_parts().0,
             false,
             false,
             Some(owner.clone()),

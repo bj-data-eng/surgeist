@@ -8,14 +8,17 @@ fn contrast(color: CssColor) -> CssColor {
 
 fn numeric_color(depth: usize, alpha: bool) -> CssColor {
     let text = format!("{}50%{}", "calc(".repeat(depth), ")".repeat(depth));
-    let raw = parse_component_values(&text).unwrap();
+    let raw = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
     assert_eq!(raw.nesting_depth() as usize, depth);
     let calculation = CssColorComponent::PercentageCalculation(
         CssCalculation::<CssPercentage>::try_from_components(raw, Default::default()).unwrap(),
     );
     let zero = CssColorComponent::Number(
         CssColorNumberLiteral::try_from_component(
-            parse_component_values("0").unwrap().items()[0].clone(),
+            CssComponentValues::parse(&CssParser::default(), "0")
+                .unwrap()
+                .items()[0]
+                .clone(),
         )
         .unwrap(),
     );
@@ -161,7 +164,12 @@ fn metadata_identifies_the_complete_dated_authored_production_and_registered_con
         "background:contrast-color(red)",
         "mask-image:linear-gradient(contrast-color(red), blue)",
     ] {
-        assert!(validate_style_attribute(source).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(source)
+                .into_validation_result()
+                .is_ok()
+        );
     }
     assert_eq!(
         feature_metadata("ext.value.color-mix")

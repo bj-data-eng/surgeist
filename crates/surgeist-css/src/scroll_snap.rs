@@ -325,7 +325,8 @@ mod cumulative_bridge_contract {
 
     #[test]
     fn suppressed_symbolic_math_and_large_literals_need_no_remaining_bytes() {
-        let components = crate::parse_component_values("calc(10px + 1em)").unwrap();
+        let components =
+            crate::component_values::parse_component_values("calc(10px + 1em)").unwrap();
         let math = CssNumeric::<CssLength>::try_from_calculation(
             CssCalculation::<CssLength>::try_from_components(
                 components.clone(),

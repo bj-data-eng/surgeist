@@ -13,7 +13,7 @@ use crate::css::support::failure_classes::numeric_failure;
 use surgeist_css::*;
 
 fn checked(source: &str) -> CssCalculation<CssNumber> {
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let before = components.clone();
     let result =
         CssCalculation::<CssNumber>::try_from_components(components.clone(), Default::default());
@@ -126,9 +126,14 @@ fn grouped_relative_compound_arguments_remain_symbolic_and_preserve_authored_gra
 fn authored_opacity_admits_number_result_sign_with_compound_inputs() {
     for expression in ["sign(1px * 1px)", "sign(1px / 1s)", "sign((1em * 1px))"] {
         let css = format!("opacity:{expression}!important");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-        assert_eq!(validate_style_attribute(&css), Ok(report.syntax().clone()));
+        assert_eq!(
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result(),
+            Ok(report.syntax().clone())
+        );
         let [declaration] = report.syntax().as_slice() else {
             panic!("one opacity")
         };
@@ -142,8 +147,9 @@ fn authored_opacity_admits_number_result_sign_with_compound_inputs() {
         };
         assert_eq!(calculation.result_type(), CssCalculationType::Number);
         let components = declaration.value_components().clone();
-        let constructed = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Opacity),
+        let constructed = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Opacity)),
             components.clone(),
             CssImportance::Important,
         )
@@ -151,7 +157,7 @@ fn authored_opacity_admits_number_result_sign_with_compound_inputs() {
         assert_eq!(constructed.value_components(), &components);
         assert_eq!(constructed.importance(), CssImportance::Important);
         let sheet = format!("a{{{css}}}");
-        let report = parse_sheet(&sheet);
+        let report = CssParser::default().parse_sheet(&sheet);
         assert!(report.is_clean(), "{sheet}: {:?}", report.diagnostics());
     }
 }
@@ -208,7 +214,7 @@ fn bare_calc_abs_and_comparison_compound_results_remain_invalid() {
         "sign(calc(1px * 1px))",
         "sign(abs(1px * 1px))",
     ] {
-        let components = parse_component_values(source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let before = components.clone();
         let error = CssCalculation::<CssNumber>::try_from_components(
             components.clone(),
@@ -218,7 +224,7 @@ fn bare_calc_abs_and_comparison_compound_results_remain_invalid() {
         assert!(error.is_invalid_argument_type(), "{source}");
         assert_eq!(components, before);
         let css = format!("opacity:{source};color:red");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         assert_eq!(report.diagnostics().len(), 1, "{css}");
         assert_eq!(report.syntax().len(), 1);
         assert_eq!(
@@ -238,7 +244,7 @@ fn sign_keeps_one_argument_and_simple_signed_zero_semantics() {
         ("sign(none)", NumericFailure::InvalidArgumentType, 5),
     ] {
         let error = CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             Default::default(),
         )
         .unwrap_err();
@@ -320,7 +326,7 @@ fn arbitrary_arity_functions_accept_31_32_and_33_arguments_with_independent_resu
 #[test]
 fn a_32_argument_calculation_obeys_explicit_aggregate_limits_atomically() {
     let source = format!("min({})", ["1"; 32].join(","));
-    let components = parse_component_values(&source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     let before = components.clone();
     // One function +32 numeric tokens +31 commas =64 components, depth one.
     // Canonical grammar text is 5 +32 +31*2 =99 bytes, independently of
@@ -340,7 +346,11 @@ fn a_32_argument_calculation_obeys_explicit_aggregate_limits_atomically() {
         assert_eq!(components, before);
         assert!(error.origin().is_some());
     }
-    let larger = parse_component_values(&format!("min({})", ["1"; 33].join(","))).unwrap();
+    let larger = CssComponentValues::parse(
+        &CssParser::default(),
+        format!("min({})", ["1"; 33].join(",")),
+    )
+    .unwrap();
     let larger_before = larger.clone();
     assert!(
         CssCalculation::<CssNumber>::try_from_components(larger.clone(), exact)

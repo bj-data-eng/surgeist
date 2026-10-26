@@ -290,7 +290,8 @@ fn full_position_owner_supplies_three_symbolic_families() {
         ),
         ("start end", "start end"),
     ] {
-        let report = parse_style_attribute(&format!("clip-path:circle(at {input})"));
+        let report =
+            CssParser::default().parse_block_contents(format!("clip-path:circle(at {input})"));
         assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
         let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
             .known()
@@ -442,8 +443,7 @@ fn shorthand_relative_position_preserves_order_and_authored_omissions() {
     assert!(value.value().distance().is_none());
     assert!(value.value().rotate().is_none());
     assert!(value.value().anchor().is_none());
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("longhands")
     };
@@ -508,7 +508,7 @@ fn logical_positions_compose_with_the_full_quoted_path_and_six_boxes() {
 fn reject(name: &str, input: &str) {
     let middle = format!("{name}:{input}!important;");
     let css = format!("/*😀*/color:red;{middle}color:blue");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert_eq!(report.syntax().len(), 2, "{css}");
     let [diagnostic] = report.diagnostics() else {
         panic!("one diagnostic for {css}")
@@ -529,21 +529,27 @@ fn reject(name: &str, input: &str) {
         css[..start].encode_utf16().count()
     );
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     for grammar in [false, true] {
-        let components = parse_component_values(input).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), input).unwrap();
         let snapshot = components.clone();
         let result = if grammar {
-            parse_property_value_for_grammar(
-                property(name).grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property(name).grammar()),
                 components.clone(),
                 CssImportance::Important,
             )
         } else {
-            parse_property_value(
-                CssPropertyNameRef::Known(property(name)),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
                 components.clone(),
                 CssImportance::Important,
             )
@@ -551,15 +557,15 @@ fn reject(name: &str, input: &str) {
         assert!(result.is_err(), "checked {name}:{input}");
         assert_eq!(components, snapshot);
         let report = if grammar {
-            parse_property_value_text_for_grammar(
+            CssParser::default().parse_property_value(
                 input,
-                property(name).grammar(),
+                CssPropertyTextTarget::Grammar(property(name).grammar()),
                 CssImportance::Important,
             )
         } else {
-            parse_property_value_text(
+            CssParser::default().parse_property_value(
                 input,
-                CssPropertyNameRef::Known(property(name)),
+                CssPropertyTextTarget::Property(CssPropertyNameRef::Known(property(name))),
                 CssImportance::Important,
             )
         };
@@ -622,11 +628,11 @@ fn pending(name: &str, valid: &str, expected: &[&str], invalid: &str) {
     for authored in ["var(--motion)", "env(motion)"] {
         let source = declaration(name, authored, 0);
         let snapshot = source.clone();
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         for _ in 0..2 {
-            let bad = parse_component_values(invalid).unwrap();
+            let bad = CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
             assert!(
                 handle
                     .reenter(bad)
@@ -636,11 +642,14 @@ fn pending(name: &str, valid: &str, expected: &[&str], invalid: &str) {
             );
             assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
                     .is_residual_substitution()
             );
-            let replacement = parse_component_values(&format!("/*😀*/{valid}")).unwrap();
+            let replacement =
+                CssComponentValues::parse(&CssParser::default(), format!("/*😀*/{valid}")).unwrap();
             let before = replacement.clone();
             let CssContributions::Longhands(items) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -671,7 +680,7 @@ fn pending(name: &str, valid: &str, expected: &[&str], invalid: &str) {
                 ("revert-layer", CssGlobalKeyword::RevertLayer),
             ] {
                 let CssContributions::Longhands(items) = handle
-                    .reenter(parse_component_values(text).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                     .unwrap()
                 else {
                     panic!("global")
@@ -824,9 +833,7 @@ fn immutable_checked_motion_construction_reuses_parsed_symbolic_children() {
 
 #[test]
 fn normalization_preserves_logical_source_order_importance_and_atomic_limits() {
-    let report = parse_sheet(
-        ".a{offset-position:x-start!important;offset: start end none / inline-end;offset-anchor:var(--anchor)!important}",
-    );
+    let report = CssParser::default().parse_sheet(".a{offset-position:x-start!important;offset: start end none / inline-end;offset-anchor:var(--anchor)!important}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssRule::Style(style) = &report.syntax().rules()[0] else {
         panic!("style")
@@ -834,7 +841,7 @@ fn normalization_preserves_logical_source_order_importance_and_atomic_limits() {
     let before = report.clone();
     // One position, five shorthand terminals and one pending anchor member.
     let exact = CssNormalizationLimits::try_new(0, 1, 3, 7).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -884,11 +891,11 @@ fn normalization_preserves_logical_source_order_importance_and_atomic_limits() {
             6,
         ),
     ] {
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+        let error = report.syntax().normalize(limits).unwrap_err();
         assert_eq!(error.exhausted_limit(), Some((resource, limit)));
         assert_eq!(report, before);
     }
-    assert!(normalize_report_with_limits(&report, exact).is_ok());
+    assert!(report.normalize(exact).is_ok());
 }
 
 fn named_offset_origin(position: CssPosition, expected_source: &str) {
@@ -935,10 +942,10 @@ fn logical_axis_offsets_retain_checked_parsed_and_replacement_scalar_origins() {
         named_offset_origin(full_position(position.clone()), expected_source);
     }
     let source = declaration("offset-anchor", "env(anchor)", 0);
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending")
     };
-    let replacement = parse_component_values(input).unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), input).unwrap();
     let CssContributions::Longhands(items) = handle.reenter(replacement.clone()).unwrap() else {
         panic!("anchor")
     };

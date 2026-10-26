@@ -1,8 +1,6 @@
 use std::cell::Cell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use surgeist_css::{
-    CssErrorCode, CssPropertyGrammar, CssRecoveryAction, parse_declaration_block_contents,
-};
+use surgeist_css::{CssErrorCode, CssParser, CssPropertyGrammar, CssRecoveryAction};
 use surgeist_cssom::*;
 
 fn version(identity: &str, revision: u64) -> CssomInputVersion {
@@ -45,7 +43,10 @@ fn create(store: &mut CssomStore, text: &str, owner: bool) -> CssStyleDeclaratio
     let mut edit = batch(store);
     let ticket = edit
         .create_declarations(
-            parse_declaration_block_contents(text).into_parts().0,
+            CssParser::default()
+                .parse_block_contents(text)
+                .into_parts()
+                .0,
             false,
             false,
             owner.then(|| CssomInputVersion {

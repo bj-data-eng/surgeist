@@ -10,7 +10,10 @@ use crate::css::support::authored_property;
 use crate::css::support::authored_property::parsed;
 use crate::css::support::failure_classes::SerializationFailure as K;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{CssKnownProperty as P, CssSerializationLimits as L, *};
+use surgeist_css::{
+    CssComponentValue, CssComponentValues, CssDeclaration, CssKnownProperty as P, CssParser,
+    CssRule, CssSerializationLimits as L, *,
+};
 
 // Specialized rendering identity/output cases; generic property/initial inventory
 // remains in the shared independent common records.
@@ -28,8 +31,7 @@ fn checked(property: P, components: CssComponentValues, grammar: bool) -> CssDec
         .unwrap()
 }
 fn ordinary(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("one completed ordinary longhand")
     };
@@ -103,12 +105,12 @@ fn all_seven_rendering_variants_construct_serialize_parse_and_expand_without_ali
             parsed(P::ImageRendering, &css.to_ascii_uppercase()),
             checked(
                 P::ImageRendering,
-                parse_component_values(css).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), css).unwrap(),
                 false,
             ),
             checked(
                 P::ImageRendering,
-                parse_component_values(css).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), css).unwrap(),
                 true,
             ),
         ] {
@@ -261,8 +263,16 @@ fn parsed_and_checked_terminal_payloads_preserve_raw_scalars_origins_and_propert
     ] {
         for source in [
             parsed(property, input),
-            checked(property, parse_component_values(input).unwrap(), false),
-            checked(property, parse_component_values(input).unwrap(), true),
+            checked(
+                property,
+                CssComponentValues::parse(&CssParser::default(), input).unwrap(),
+                false,
+            ),
+            checked(
+                property,
+                CssComponentValues::parse(&CssParser::default(), input).unwrap(),
+                true,
+            ),
         ] {
             let before = source.clone();
             let values = ordinary(&source);
@@ -311,7 +321,7 @@ fn parsed_and_checked_terminal_payloads_preserve_raw_scalars_origins_and_propert
 }
 fn pending(property: P) -> (CssDeclaration, CssPendingSubstitution) {
     let source = parsed(property, "var(--image)");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending typed Images role")
     };
     (source, handle)
@@ -338,7 +348,7 @@ fn physical_position_reentry_preserves_mixed_scalar_origins_and_original_pending
     let (source, handle) = pending(P::ObjectPosition);
     let before = source.clone();
     let text = "/*😀*/right -1e-2px bottom -2.00%";
-    let components = parse_component_values(text).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let mut items = components.items().to_vec();
     let x_index = items
         .iter()
@@ -400,7 +410,7 @@ fn orientation_reentry_preserves_authored_angle_units_math_and_programmatic_orig
         assert_eq!(source, before);
     }
     let text = "/*😀*/flip calc(15deg + 15deg)";
-    let replacement = parse_component_values(text).unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let values = reentered(&handle, &source, &replacement);
     let CssLonghandValueRef::ImageOrientation(orientation @ CssImageOrientation::Flip(Some(angle))) =
         values.items()[0].ordinary_value().unwrap().view()
@@ -435,7 +445,8 @@ fn all_rendering_and_fit_replacements_preserve_exact_typed_alternatives() {
     let (render_source, render_handle) = pending(P::ImageRendering);
     let before = render_source.clone();
     for (expected, css) in RENDERING {
-        let replacement = parse_component_values(&css.to_ascii_uppercase()).unwrap();
+        let replacement =
+            CssComponentValues::parse(&CssParser::default(), css.to_ascii_uppercase()).unwrap();
         for _ in 0..2 {
             let values = reentered(&render_handle, &render_source, &replacement);
             let CssLonghandValueRef::ImageRendering(actual) =
@@ -456,7 +467,7 @@ fn all_rendering_and_fit_replacements_preserve_exact_typed_alternatives() {
         (CssObjectFit::None, "none"),
         (CssObjectFit::ScaleDown, "scale-down"),
     ] {
-        let replacement = parse_component_values(css).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), css).unwrap();
         let values = reentered(&handle, &source, &replacement);
         let CssLonghandValueRef::ObjectFit(actual) =
             values.items()[0].ordinary_value().unwrap().view()
@@ -469,7 +480,7 @@ fn all_rendering_and_fit_replacements_preserve_exact_typed_alternatives() {
 }
 #[test]
 fn rendering_normalization_retains_seven_typed_occurrences_with_authored_order_and_importance() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         ".image{image-rendering:auto;image-rendering:smooth!important;image-rendering:high-quality;",
         "image-rendering:pixelated;image-rendering:crisp-edges;image-rendering:optimizeSpeed;image-rendering:optimizeQuality}"
     ));
@@ -478,11 +489,10 @@ fn rendering_normalization_retains_seven_typed_occurrences_with_authored_order_a
     let CssRule::Style(style) = &report.syntax().rules()[0] else {
         panic!("image rule")
     };
-    let normalized = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 7, 7).unwrap(),
-    )
-    .unwrap();
+    let normalized = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 7, 7).unwrap())
+        .unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()

@@ -2,7 +2,9 @@
 //! diagnostic contracts. Expected values never come from the runtime or registry.
 
 use serde_json::{Value, json};
-use surgeist_css::{CssSelector, CssStyleSelector, parse_selector_list};
+use surgeist_css::{
+    CssParsedStyleSelectors, CssParser, CssSelector, CssStyleSelector, CssStyleSelectorContext,
+};
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
 use crate::css::support::csstree::reconciliation::{
@@ -63,11 +65,16 @@ fn list_meaning(list: &surgeist_css::CssStyleSelectorList) -> Value {
 
 /// Public selector-list presence, strict validation and typed meaning for one row.
 fn typed_selector_list_reconciles(row: &Value) -> Result<(), String> {
-    let report = parse_selector_list(text(row, "input"), &namespace_context());
+    let report = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        text(row, "input"),
+        &namespace_context(),
+        CssStyleSelectorContext::Ordinary,
+    );
     let expected = &row["expected"];
     let actual = json!({"present": report.syntax().is_some(),
         "validation_accepts": report.clone().into_validation_result().is_ok(),
-        "typed_expectation": report.syntax().as_ref().map(list_meaning)});
+        "typed_expectation": report.syntax().as_ref().map(|parsed| list_meaning(parsed.selectors()))});
     let predicted = json!({"present": expected["semantic_acceptance"],
         "validation_accepts": expected["validation_accepts"],
         "typed_expectation": expected["typed_expectation"]});

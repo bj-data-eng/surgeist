@@ -88,8 +88,11 @@ fn parsed_pair_roles_and_canonical_text_preserve_contextual_graphs_and_sources()
                 .iter()
                 .all(|item| { !matches!(item.origin(), CssValueOrigin::Programmatic) })
         );
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ScrollbarColor),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::ScrollbarColor,
+            )),
             original.clone(),
             CssImportance::Important,
         )
@@ -233,8 +236,8 @@ fn nested_track_colors_share_the_whole_pair_node_budget() {
 
 #[test]
 fn checked_invalid_track_reports_its_original_mixed_source_token() {
-    let thumb = parse_component_values("red").unwrap();
-    let track = parse_component_values("not-a-color").unwrap();
+    let thumb = CssComponentValues::parse(&CssParser::default(), "red").unwrap();
+    let track = CssComponentValues::parse(&CssParser::default(), "not-a-color").unwrap();
     let original_track = track.items()[0].origin().clone();
     let components = CssComponentValues::try_new(
         vec![thumb.items()[0].clone(), track.items()[0].clone()],
@@ -242,8 +245,9 @@ fn checked_invalid_track_reports_its_original_mixed_source_token() {
     )
     .unwrap();
     let snapshot = components.clone();
-    let error = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ScrollbarColor),
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ScrollbarColor)),
         components.clone(),
         CssImportance::Important,
     )
@@ -259,8 +263,9 @@ fn checked_invalid_track_reports_its_original_mixed_source_token() {
         Default::default(),
     )
     .unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ScrollbarColor),
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ScrollbarColor)),
         valid.clone(),
         CssImportance::Important,
     )

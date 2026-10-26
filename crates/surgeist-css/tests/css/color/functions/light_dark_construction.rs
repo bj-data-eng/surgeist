@@ -19,7 +19,7 @@ fn math(depth: usize, leaf: &str) -> CssComponentValues {
     for _ in 0..depth {
         value = format!("calc({value})");
     }
-    let value = parse_component_values(&value).unwrap();
+    let value = CssComponentValues::parse(&CssParser::default(), &value).unwrap();
     assert_eq!(value.nesting_depth() as usize, depth);
     value
 }
@@ -314,7 +314,12 @@ fn light_dark_metadata_identifies_complete_authored_productions_and_the_dated_so
         );
         assert!(metadata.supported_subset().is_none());
         assert!(metadata.unsupported_remainder().is_none());
-        assert!(validate_style_attribute(source).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(source)
+                .into_validation_result()
+                .is_ok()
+        );
     }
     assert!(specification_source("I-COLOR5-20260908").is_some());
     assert_eq!(

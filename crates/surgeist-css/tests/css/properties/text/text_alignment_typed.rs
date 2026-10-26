@@ -6,7 +6,7 @@ use surgeist_css::*;
 
 fn one(name: &str, value: &str) -> CssDeclaration {
     let source = format!("{name}:{value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one {name} declaration")
@@ -45,8 +45,7 @@ fn last(value: &str) -> CssTextAlignLastValue {
 
 fn assigned(value: &str) -> (CssTextAlignAllValue, CssTextAlignLastValue) {
     let source = one("text-align", value);
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("text-align has two terminal targets")
     };
@@ -217,7 +216,7 @@ fn decoded_unicode_clusters_and_source_graphs_share_checked_construction() {
             CssValueOrigin::Parsed(_)
         ));
     }
-    let escaped = parse_component_values("\"\\65\\301 \"").unwrap();
+    let escaped = CssComponentValues::parse(&CssParser::default(), "\"\\65\\301 \"").unwrap();
     let original = escaped.items()[0].clone();
     let value = CssCharacterAlignment::try_from_component(original.clone(), None).unwrap();
     assert_eq!(value.decoded(), "é");
@@ -261,9 +260,9 @@ fn invalid_decoded_clusters_components_and_literal_bad_newlines_are_rejected() {
             .is_some_and(|error| error.is_invalid_string())
     );
     for name in ["text-align", "text-align-all"] {
-        let report = parse_style_attribute(&format!("{name}:\"a\nb\""));
+        let report = CssParser::default().parse_block_contents(format!("{name}:\"a\nb\""));
         assert!(!report.is_clean(), "literal newline in string is invalid");
-        let report = parse_style_attribute(&format!("{name}:\".\\\n\""));
+        let report = CssParser::default().parse_block_contents(format!("{name}:\".\\\n\""));
         assert!(
             report.is_clean(),
             "escaped newline preserves one decoded character"
@@ -387,7 +386,9 @@ fn specified_serialization_is_canonical_and_atomically_bounded() {
     );
 
     let one_long_cluster = format!("e{}", "\u{301}".repeat(4096));
-    let parsed = parse_component_values(&format!("\"{one_long_cluster}\"")).unwrap();
+    let parsed =
+        CssComponentValues::parse(&CssParser::default(), format!("\"{one_long_cluster}\""))
+            .unwrap();
     let value = CssCharacterAlignment::try_from_component(parsed.items()[0].clone(), None).unwrap();
     assert_eq!(value.decoded(), one_long_cluster);
     assert!(
@@ -411,10 +412,10 @@ fn shared_text4_source_matches_complete_text_wrap_authored_grammar() {
         metadata.feature().source().url(),
         Some("https://www.w3.org/TR/2026/WD-css-text-4-20260814/")
     );
-    let report = parse_style_attribute("text-wrap:balance");
+    let report = CssParser::default().parse_block_contents("text-wrap:balance");
     assert!(report.is_clean());
-    let report = parse_style_attribute("text-wrap:auto");
+    let report = CssParser::default().parse_block_contents("text-wrap:auto");
     assert!(report.is_clean());
-    let report = parse_style_attribute("text-wrap:wrap nowrap");
+    let report = CssParser::default().parse_block_contents("text-wrap:wrap nowrap");
     assert!(!report.is_clean());
 }

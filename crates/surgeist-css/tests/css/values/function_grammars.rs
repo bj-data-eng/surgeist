@@ -8,7 +8,7 @@ use crate::css::support::value_assertions::positive_literal;
 use surgeist_css::*;
 
 fn parsed_transform_property(value: &str) -> CssPropertyValue<CssTransform> {
-    let report = parse_style_attribute(&format!("transform: {value}"));
+    let report = CssParser::default().parse_block_contents(format!("transform: {value}"));
     assert!(
         report.is_clean(),
         "expected `{value}` to parse cleanly, got {:?}",
@@ -27,7 +27,7 @@ fn parsed_transform_property(value: &str) -> CssPropertyValue<CssTransform> {
 }
 
 fn assert_transform_rejected(value: &str) {
-    let report = parse_style_attribute(&format!("transform: {value}"));
+    let report = CssParser::default().parse_block_contents(format!("transform: {value}"));
     assert!(report.syntax().is_empty(), "retained invalid `{value}`");
     assert_eq!(
         report.diagnostics().len(),
@@ -38,7 +38,7 @@ fn assert_transform_rejected(value: &str) {
 
 fn assert_easing_rejected(value: &str) {
     let source = format!("transition-timing-function: {value}; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         report.syntax().len(),
         1,
@@ -61,7 +61,7 @@ fn assert_easing_rejected(value: &str) {
 
 fn assert_filter_rejected(value: &str) {
     let source = format!("filter: {value}; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         report.syntax().len(),
         1,
@@ -83,7 +83,7 @@ fn assert_filter_rejected(value: &str) {
 }
 
 fn parsed_filter_property(value: &str) -> CssPropertyValue<CssFilter> {
-    let report = parse_style_attribute(&format!("filter: {value}"));
+    let report = CssParser::default().parse_block_contents(format!("filter: {value}"));
     assert!(
         report.is_clean(),
         "expected `{value}` to parse cleanly, got {:?}",
@@ -102,7 +102,7 @@ fn parsed_filter_property(value: &str) -> CssPropertyValue<CssFilter> {
 
 fn assert_clip_path_rejected(value: &str) {
     let source = format!("clip-path: {value}; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(report.syntax().len(), 1, "retained invalid `{value}`");
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),
@@ -116,7 +116,7 @@ fn assert_clip_path_rejected(value: &str) {
 }
 
 fn parsed_clip_path_property(value: &str) -> CssPropertyValue<CssClipPath> {
-    let report = parse_style_attribute(&format!("clip-path: {value}"));
+    let report = CssParser::default().parse_block_contents(format!("clip-path: {value}"));
     assert!(report.is_clean(), "`{value}`: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
         .known()
@@ -131,7 +131,7 @@ fn parsed_clip_path_property(value: &str) -> CssPropertyValue<CssClipPath> {
 
 #[test]
 fn clip_path_accepts_circle_percentage_radius() {
-    let report = parse_style_attribute("clip-path: circle(25%); color: red");
+    let report = CssParser::default().parse_block_contents("clip-path: circle(25%); color: red");
     assert!(report.is_clean());
     assert_eq!(report.syntax().len(), 2);
     let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
@@ -609,7 +609,7 @@ fn blur_hue_rotate_and_drop_shadow_expose_distinct_typed_payloads() {
 
 #[test]
 fn box_shadow_accepts_component_orders_and_rejects_invalid_components() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "box-shadow: red inset -1px 2px 3px -4px, ",
         "5px 6px blue inset, inset 7px 8px; color: red"
     ));
@@ -644,7 +644,8 @@ fn box_shadow_accepts_component_orders_and_rejects_invalid_components() {
         "inset inset 1px 2px",
         "1px 2px,",
     ] {
-        let report = parse_style_attribute(&format!("box-shadow: {value}; color: red"));
+        let report =
+            CssParser::default().parse_block_contents(format!("box-shadow: {value}; color: red"));
         assert_eq!(report.syntax().len(), 1, "retained `{value}`");
         assert_eq!(report.diagnostics().len(), 1, "{value}");
     }
@@ -655,7 +656,7 @@ fn box_shadow_accepts_component_orders_and_rejects_invalid_components() {
 #[test]
 fn box_shadow_rejects_interleaved_color_between_offsets() {
     let source = "box-shadow: 1px red 2px; color: blue";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     // `1px` opens the contiguous length group, which `red` interrupts.
     assert_first_property_diagnostic(
         report.diagnostics(),
@@ -670,7 +671,11 @@ fn box_shadow_rejects_interleaved_color_between_offsets() {
     );
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
-        validate_style_attribute(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -678,7 +683,7 @@ fn box_shadow_rejects_interleaved_color_between_offsets() {
 #[test]
 fn drop_shadow_rejects_interleaved_color_between_offsets() {
     let source = "filter: drop-shadow(1px red 2px); color: blue";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     // `1px` opens the contiguous length group, which `red` interrupts.
     assert_first_property_diagnostic(
         report.diagnostics(),
@@ -693,7 +698,11 @@ fn drop_shadow_rejects_interleaved_color_between_offsets() {
     );
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
-        validate_style_attribute(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -780,7 +789,7 @@ fn filter_calculations_preserve_the_exact_depth_boundary() {
 
 #[test]
 fn filter_ordinary_global_and_substitution_values_remain_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "filter: blur(1px); backdrop-filter: inherit; filter: var(--filters); ",
         "box-shadow: initial; box-shadow: var(--shadow)"
     ));
@@ -808,7 +817,8 @@ fn filter_ordinary_global_and_substitution_values_remain_distinct() {
 }
 
 fn parsed_easing_property(value: &str) -> CssPropertyValue<CssEasingList> {
-    let report = parse_style_attribute(&format!("transition-timing-function: {value}"));
+    let report =
+        CssParser::default().parse_block_contents(format!("transition-timing-function: {value}"));
     assert!(
         report.is_clean(),
         "expected `{value}` to parse cleanly, got {:?}",
@@ -979,7 +989,7 @@ fn repeated_easing_failures_recover_to_valid_timing_and_color_siblings() {
         "animation-timing-function: steps(1, jump-none); ",
         "transition-timing-function: steps(2, jump-none); color: red"
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     assert_eq!(report.diagnostics().len(), 2);
     assert_eq!(
@@ -1004,7 +1014,9 @@ fn repeated_easing_failures_recover_to_valid_timing_and_color_siblings() {
     );
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects both recovered easing declarations");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -1192,7 +1204,7 @@ fn transform_angles_reject_percentage_calculations_and_recover_siblings() {
     ] {
         let source =
             format!("transform: {value}; transform: rotate(calc(1turn - 90deg)); color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         if report.syntax().len() != 2 || report.diagnostics().len() != 1 {
             wrongly_retained.push(value);
             continue;
@@ -1221,7 +1233,9 @@ fn transform_angles_reject_percentage_calculations_and_recover_siblings() {
         );
 
         {
-            let failure = surgeist_css::validate_style_attribute(&source)
+            let failure = surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects percentage-typed transform angles");
             assert_eq!(failure.diagnostics(), report.diagnostics());
         }
@@ -1419,7 +1433,8 @@ fn transform_calculations_preserve_the_exact_depth_boundary() {
 fn signed_length_percentage(
     css: &str,
 ) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage> {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+    let components =
+        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
     if css.contains('(') {
         surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_calculation(
             surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(
@@ -1439,7 +1454,8 @@ fn signed_length_percentage(
 fn nonnegative_length_percentage(
     css: &str,
 ) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage, surgeist_css::CssNonNegative> {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+    let components =
+        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
     if css.contains('(') {
         surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage, surgeist_css::CssNonNegative>::try_from_calculation(
             surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(

@@ -1,11 +1,11 @@
 //! Clean constructed Supports selectors retain their typed grammar and authored outer origin.
 use surgeist_css::{
-    CssCondition, CssConditionKind, CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem,
-    CssSelector, CssSupportsLeaf, CssValueOrigin, parse_component_values,
+    CssComponentValues, CssCondition, CssConditionKind, CssNamespaceContext, CssParser,
+    CssPseudoClass, CssPseudoSelectorListItem, CssSelector, CssSupportsLeaf, CssValueOrigin,
 };
 
 fn condition(source: &str) -> CssCondition<CssSupportsLeaf> {
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let original = components.items()[0].origin().clone();
     let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
         components,

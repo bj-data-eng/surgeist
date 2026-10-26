@@ -21,17 +21,17 @@ fn grammar() -> CssPropertyGrammar {
 }
 
 fn checked(value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(),
-        parse_component_values(value).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar()),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         CssImportance::Important,
     )
     .unwrap_or_else(|error| panic!("checked font-palette:{value}: {error:?}"))
 }
 
 fn longhands(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("ordinary or global palette contribution")
     };
@@ -46,7 +46,7 @@ fn longhands(source: &CssDeclaration) -> CssLonghandContributions {
 
 fn assert_admitted(value: &str) {
     let parsed = important_property_declaration(CssKnownProperty::FontPalette, value);
-    let supplied = parse_component_values(value).unwrap();
+    let supplied = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     let constructed = checked(value);
     assert!(parsed.known().unwrap().property_value().is_some());
     assert!(constructed.known().unwrap().property_value().is_some());
@@ -66,12 +66,18 @@ fn assert_admitted(value: &str) {
             .ordinary_value()
             .is_some()
     );
-    assert!(validate_style_attribute(&format!("font-palette:{value}")).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(format!("font-palette:{value}"))
+            .into_validation_result()
+            .is_ok()
+    );
 }
 
 #[test]
 fn palette_property_is_retained_between_neighboring_declarations() {
-    let report = parse_style_attribute("color:red;font-palette:normal;color:blue");
+    let report =
+        CssParser::default().parse_block_contents("color:red;font-palette:normal;color:blue");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 3);
     assert_eq!(
@@ -125,7 +131,7 @@ fn palette_names_preserve_decoded_case_and_escape_equivalence() {
 fn parsed_name_value_and_token_origins_retain_exact_authored_ranges() {
     let value = r"--\54 heme";
     let text = format!("FoNt-PaLeTtE:{value}!important");
-    let report = parse_style_attribute(&text);
+    let report = CssParser::default().parse_block_contents(&text);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let source = &report.syntax()[0];
     let name = source.parsed_name().unwrap();
@@ -272,7 +278,7 @@ fn invalid_values_drop_only_the_palette_declaration_and_report_known_grammar_fai
         "env()",
     ] {
         let text = format!("color:red;font-palette:{value};color:blue");
-        let report = parse_style_attribute(&text);
+        let report = CssParser::default().parse_block_contents(&text);
         assert!(!report.is_clean(), "{value}");
         assert_eq!(report.syntax().len(), 2, "{value}");
         assert!(
@@ -289,10 +295,16 @@ fn invalid_values_drop_only_the_palette_declaration_and_report_known_grammar_fai
         if value == "none" {
             assert_eq!(diagnostic.error().position().byte_offset().value(), 23);
         }
-        assert!(validate_style_attribute(&text).is_err());
-        let error = parse_property_value_for_grammar(
-            owning_grammar,
-            parse_component_values(value).unwrap(),
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&text)
+                .into_validation_result()
+                .is_err()
+        );
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(owning_grammar),
+            CssComponentValues::parse(&CssParser::default(), value).unwrap(),
             CssImportance::Normal,
         )
         .unwrap_err();
@@ -306,9 +318,10 @@ fn invalid_values_drop_only_the_palette_declaration_and_report_known_grammar_fai
 
 #[test]
 fn checked_failures_map_to_supplied_tokens_and_reject_declaration_annotations() {
-    let error = parse_property_value_for_grammar(
-        grammar(),
-        parse_component_values("none").unwrap(),
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar()),
+        CssComponentValues::parse(&CssParser::default(), "none").unwrap(),
         CssImportance::Normal,
     )
     .unwrap_err();
@@ -320,10 +333,11 @@ fn checked_failures_map_to_supplied_tokens_and_reject_declaration_annotations() 
     assert_eq!(origin.span().end().byte_offset().value(), 4);
     for value in ["normal!important", "dark;", "normal {}"] {
         assert!(
-            parse_property_value_for_grammar(
-                grammar(),
-                parse_component_values(value).unwrap(),
-                CssImportance::Normal,
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(grammar()),
+                CssComponentValues::parse(&CssParser::default(), value).unwrap(),
+                CssImportance::Normal
             )
             .unwrap_err()
             .code()
@@ -365,10 +379,22 @@ fn whole_pending_values_reenter_strictly_without_changing_source_or_replacement_
         // defers the entire known-property grammar for a valid var() reference.
         "{} var(--palette)",
     ] {
-        for source in [
-            important_property_declaration(CssKnownProperty::FontPalette, symbolic),
-            checked(symbolic),
-        ] {
+        // Syntax 3 (2026 CRD) §5.5.6 step 8: block contents drop a non-custom
+        // declaration that holds a top-level `{}` block and another value, so
+        // only the checked component path admits that spelling.
+        let mut sources = vec![checked(symbolic)];
+        if symbolic.starts_with("{}") {
+            let report = CssParser::default()
+                .parse_block_contents(format!("font-palette:{symbolic}!important"));
+            assert!(report.syntax().is_empty(), "{symbolic}");
+            assert!(!report.is_clean(), "{symbolic}");
+        } else {
+            sources.insert(
+                0,
+                important_property_declaration(CssKnownProperty::FontPalette, symbolic),
+            );
+        }
+        for source in sources {
             let before = source.clone();
             assert!(matches!(
                 source.known().unwrap().declared_value(),
@@ -391,7 +417,7 @@ fn whole_pending_values_reenter_strictly_without_changing_source_or_replacement_
                     .as_css(),
                 symbolic
             );
-            let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(pending) = source.expand().unwrap() else {
                 panic!("whole pending palette")
             };
             assert!(pending.source().same_occurrence(&source));
@@ -399,7 +425,7 @@ fn whole_pending_values_reenter_strictly_without_changing_source_or_replacement_
                 "--Theme",
                 "palette-mix(in oklch longer hue, light 30%, dark, --theme)",
             ] {
-                let replacement = parse_component_values(text).unwrap();
+                let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
                 let CssContributions::Longhands(values) =
                     pending.reenter(replacement.clone()).unwrap()
                 else {
@@ -415,7 +441,7 @@ fn whole_pending_values_reenter_strictly_without_changing_source_or_replacement_
                 assert_eq!(item.source().importance(), CssImportance::Important);
             }
             let CssContributions::Longhands(values) = pending
-                .reenter(parse_component_values("initial").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "initial").unwrap())
                 .unwrap()
             else {
                 panic!("global replacement")
@@ -434,7 +460,7 @@ fn whole_pending_values_reenter_strictly_without_changing_source_or_replacement_
             ] {
                 assert!(
                     pending
-                        .reenter(parse_component_values(invalid).unwrap())
+                        .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                         .unwrap_err()
                         .replacement_error()
                         .is_some()
@@ -447,7 +473,9 @@ fn whole_pending_values_reenter_strictly_without_changing_source_or_replacement_
             ] {
                 assert!(
                     pending
-                        .reenter(parse_component_values(residual).unwrap())
+                        .reenter(
+                            CssComponentValues::parse(&CssParser::default(), residual).unwrap()
+                        )
                         .unwrap_err()
                         .is_residual_substitution()
                 );
@@ -461,9 +489,9 @@ fn whole_pending_values_reenter_strictly_without_changing_source_or_replacement_
 #[test]
 fn normalization_retains_palette_order_occurrence_and_importance() {
     let text = ".a{font-palette:--Theme!important;color:red;font-palette:dark;font-palette:var(--p)!important}";
-    let report = parse_sheet(text);
+    let report = CssParser::default().parse_sheet(text);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values = normalized
         .items()
         .iter()
@@ -519,7 +547,7 @@ fn font_shorthand_neither_sets_nor_resets_palette() {
         "var(--font)",
     ] {
         let text = format!("font-palette:--Theme!important;font:{font};font-palette:dark");
-        let report = parse_style_attribute(&text);
+        let report = CssParser::default().parse_block_contents(&text);
         assert!(report.is_clean(), "{font}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 3);
         let metadata = report.syntax()[1]
@@ -538,7 +566,11 @@ fn font_shorthand_neither_sets_nor_resets_palette() {
                 .chain(font_metadata.reset_only_members())
                 .all(|member| member.known_property().canonical_name() != "font-palette")
         );
-        let normalized = normalize_sheet(parse_sheet(&format!(".a{{{text}}}")).syntax()).unwrap();
+        let normalized = CssParser::default()
+            .parse_sheet(format!(".a{{{text}}}"))
+            .syntax()
+            .normalize(Default::default())
+            .unwrap();
         let declarations = normalized
             .items()
             .iter()
@@ -570,7 +602,7 @@ fn font_shorthand_neither_sets_nor_resets_palette() {
 #[test]
 fn historical_palette_rule_and_font_parsing_remain_controls() {
     let source = "@font-palette-values --Theme{font-family:Demo;base-palette:light;override-colors:0 red} .a{font:italic 16px Demo;color:blue}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::FontPaletteValues(palette), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("palette definition followed by style")
@@ -585,7 +617,7 @@ fn historical_palette_rule_and_font_parsing_remain_controls() {
         "light"
     );
     for font in ["italic 16px Demo", "menu", "initial", "var(--font)"] {
-        let report = parse_style_attribute(&format!("font:{font};color:red"));
+        let report = CssParser::default().parse_block_contents(format!("font:{font};color:red"));
         assert!(report.is_clean(), "{font}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 2);
         assert_eq!(
@@ -600,7 +632,9 @@ fn shared_component_limits_preserve_exact_mix_source_and_fail_at_each_boundary()
     // One function + one identifier, depth one, seventeen source bytes.
     let text = "palette-mix(dark)";
     let exact = CssComponentValueLimits::try_new(1, 2, 17).unwrap();
-    let value = parse_component_values_with_limits(text, exact).unwrap();
+    let value =
+        CssComponentValues::parse(&CssParser::new(CssParserContext::default(), exact), text)
+            .unwrap();
     assert_eq!(
         value.serialize_tokens(Default::default()).unwrap().as_css(),
         text
@@ -620,7 +654,13 @@ fn shared_component_limits_preserve_exact_mix_source_and_fail_at_each_boundary()
         ),
     ] {
         assert_eq!(
-            component_failure(&parse_component_values_with_limits(text, limits).unwrap_err()),
+            component_failure(
+                &CssComponentValues::parse(
+                    &CssParser::new(CssParserContext::default(), limits),
+                    text
+                )
+                .unwrap_err()
+            ),
             kind
         );
     }

@@ -4,8 +4,8 @@
 //! Declared Nth corpus rejection follows token-level An+B grammar and raw input.
 use surgeist_css::{
     CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
-    CssNthPattern, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction, CssSelector,
-    parse_selector,
+    CssNthPattern, CssParser, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction,
+    CssSelector,
 };
 
 /// The 39 upstream `error` cases of `selector/Nth.json`, each outside the
@@ -176,7 +176,7 @@ fn nth_corpus_preserves_token_grammar_and_typed_patterns() {
     for case in cases {
         let id = case["id"].as_str().unwrap();
         let input = case["input"].as_str().unwrap();
-        let report = parse_selector(input, &context);
+        let report = CssSelector::parse(&CssParser::default(), input, &context);
         if rejected.iter().any(|rejected| rejected == id) {
             assert!(report.syntax().is_none(), "{id}: {input}: {report:?}");
             assert!(!report.is_clean(), "{id}: {report:?}");

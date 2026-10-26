@@ -4,12 +4,12 @@
 //! https://drafts.csswg.org/css-conditional-5/#supports-condition-rule
 
 use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssNamespacePrefix, CssRecoveryAction, CssRule, CssSheet,
-    CssValueOrigin, parse_sheet,
+    CssErrorCode, CssNamespaceContext, CssNamespacePrefix, CssParser, CssRecoveryAction, CssRule,
+    CssSheet, CssValueOrigin,
 };
 
 fn clean_rules(source: &str) -> Vec<CssRule> {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     report.syntax().rules().to_vec()
 }
@@ -49,7 +49,7 @@ fn parser_keeps_interleaved_definitions_imports_namespaces_and_real_origins() {
         "@namespace m 'urn:m';",
         "n|item, m|item {}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert!(matches!(
         report.syntax().rules(),
@@ -120,7 +120,7 @@ fn checked_sheet_keeps_named_definitions_transparent_between_imports_and_namespa
 #[test]
 fn named_definition_does_not_reopen_imports_after_a_namespace() {
     let source = "@namespace n 'urn:n';@supports-condition --x{}@import 'late.css';n|item {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
         [
@@ -156,7 +156,7 @@ fn named_definition_does_not_reopen_imports_or_namespaces_after_ordinary_body() 
     for late in ["@import 'late.css';", "@namespace late 'urn:late';"] {
         let prefix = ".body{}@supports-condition --x{}";
         let source = format!("{prefix}{late}.after{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(matches!(
             report.syntax().rules(),
             [

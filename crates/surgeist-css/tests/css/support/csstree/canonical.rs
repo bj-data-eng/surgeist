@@ -26,10 +26,10 @@ use super::{
     corpus_namespace_context, load_neutral_csstree_inventory, resolve_case_registry,
 };
 use surgeist_css::{
-    CssImportance, CssPropertyNameRef, CssStyleSelector, parse_declaration,
-    parse_font_face_descriptor_value, parse_media_query, parse_media_query_list,
-    parse_property_value_text, parse_rule, parse_selector, parse_selector_list, parse_sheet,
-    parse_style_attribute, parse_style_block,
+    CssAuthoredFontFaceDescriptorValue, CssDeclaration, CssImportance, CssMediaQuery,
+    CssMediaQueryList, CssParsedStyleSelectors, CssParser, CssPropertyNameRef,
+    CssPropertyTextTarget, CssRule, CssSelector, CssStyleBlock, CssStyleSelector,
+    CssStyleSelectorContext,
 };
 
 /// Why a compared case may differ from its upstream canonical form.
@@ -308,45 +308,49 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
     };
     let surgeist = match entry_point {
         EntryPoint::Sheet => Some(
-            parse_sheet(input)
+            CssParser::default()
+                .parse_sheet(input)
                 .syntax()
                 .serialize_specified(Default::default())
                 .map_err(|error| format!("sheet: {error:?}"))?,
         ),
-        EntryPoint::Rule => parse_rule(input, &namespaces)
+        EntryPoint::Rule => CssRule::parse(&CssParser::default(), input, &namespaces)
             .syntax()
             .as_ref()
             .map(|rule| rule.serialize_specified(Default::default()))
             .transpose()
             .map_err(|error| format!("rule: {error:?}"))?,
-        EntryPoint::StyleBlock => match parse_style_block(input, &namespaces).syntax() {
-            None => None,
-            Some(block) => {
-                let mut text = String::from("{");
-                text.push_str(
-                    &block
-                        .declarations()
-                        .serialize_specified(Default::default())
-                        .map_err(|error| format!("block declarations: {error:?}"))?,
-                );
-                for rule in block.rules() {
+        EntryPoint::StyleBlock => {
+            match CssStyleBlock::parse(&CssParser::default(), input, &namespaces).syntax() {
+                None => None,
+                Some(block) => {
+                    let mut text = String::from("{");
                     text.push_str(
-                        &rule
+                        &block
+                            .declarations()
                             .serialize_specified(Default::default())
-                            .map_err(|error| format!("block rule: {error:?}"))?,
+                            .map_err(|error| format!("block declarations: {error:?}"))?,
                     );
+                    for rule in block.rules() {
+                        text.push_str(
+                            &rule
+                                .serialize_specified(Default::default())
+                                .map_err(|error| format!("block rule: {error:?}"))?,
+                        );
+                    }
+                    text.push('}');
+                    Some(text)
                 }
-                text.push('}');
-                Some(text)
             }
-        },
+        }
         EntryPoint::StyleAttribute => Some(
-            parse_style_attribute(input)
+            CssParser::default()
+                .parse_block_contents(input)
                 .syntax()
                 .serialize_specified(Default::default())
                 .map_err(|error| format!("declaration list: {error:?}"))?,
         ),
-        EntryPoint::Declaration => parse_declaration(input)
+        EntryPoint::Declaration => CssDeclaration::parse(&CssParser::default(), input)
             .syntax()
             .as_ref()
             .map(|declaration| declaration.serialize_specified(Default::default()))
@@ -360,16 +364,17 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
             // The upstream value is the declaration's value; supply the
             // adapter's property name so both sides describe one declaration.
             upstream = format!("{}:{upstream}", property.canonical_name());
-            parse_property_value_text(
-                input,
-                CssPropertyNameRef::Known(property),
-                CssImportance::Normal,
-            )
-            .syntax()
-            .as_ref()
-            .map(|declaration| declaration.serialize_specified(Default::default()))
-            .transpose()
-            .map_err(|error| format!("property value: {error:?}"))?
+            CssParser::default()
+                .parse_property_value(
+                    input,
+                    CssPropertyTextTarget::Property(CssPropertyNameRef::Known(property)),
+                    CssImportance::Normal,
+                )
+                .syntax()
+                .as_ref()
+                .map(|declaration| declaration.serialize_specified(Default::default()))
+                .transpose()
+                .map_err(|error| format!("property value: {error:?}"))?
         }
         EntryPoint::FontFaceDescriptorValue => {
             let Some(PropertyOrDescriptor::FontFaceDescriptor(kind)) =
@@ -377,24 +382,31 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
             else {
                 return Err("descriptor value entry lacks its descriptor".into());
             };
-            parse_font_face_descriptor_value(input, kind.css_kind())
+            CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), input, kind.css_kind())
                 .syntax()
                 .as_ref()
                 .map(|value| value.serialize_specified(Default::default()))
                 .transpose()
                 .map_err(|error| format!("descriptor value: {error:?}"))?
         }
-        EntryPoint::Selector => parse_selector(input, &namespaces)
+        EntryPoint::Selector => CssSelector::parse(&CssParser::default(), input, &namespaces)
             .syntax()
             .as_ref()
             .map(|selector| selector.serialize_specified(Default::default()))
             .transpose()
             .map_err(|error| format!("selector: {error:?}"))?,
-        EntryPoint::SelectorList => match parse_selector_list(input, &namespaces).syntax() {
+        EntryPoint::SelectorList => match CssParsedStyleSelectors::parse(
+            &CssParser::default(),
+            input,
+            &namespaces,
+            CssStyleSelectorContext::Ordinary,
+        )
+        .syntax()
+        {
             None => None,
             Some(list) => {
-                let mut members = Vec::with_capacity(list.selectors().len());
-                for member in list.selectors() {
+                let mut members = Vec::with_capacity(list.selectors().selectors().len());
+                for member in list.selectors().selectors() {
                     let CssStyleSelector::Selector(selector) = member else {
                         return Err("ordinary selector list retained a relative member".into());
                     };
@@ -408,7 +420,7 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
             }
         },
         EntryPoint::MediaQuery => {
-            let report = parse_media_query(input);
+            let report = CssMediaQuery::parse(&CssParser::default(), input);
             let query = report.syntax();
             // Authored serialization refuses a query recovered to `never`;
             // CSSOM text projects it to `not all` (Media Queries 4 §3.2).
@@ -422,7 +434,7 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
             Some(serialized.as_css().to_owned())
         }
         EntryPoint::MediaQueryList => Some(
-            parse_media_query_list(input)
+            CssMediaQueryList::parse(&CssParser::default(), input)
                 .syntax()
                 .serialize_tokens(Default::default())
                 .map_err(|error| format!("media query list: {error:?}"))?

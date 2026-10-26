@@ -25,7 +25,7 @@ fn number_math(text: &str) -> CssTransformScaleComponent {
     CssTransformScaleComponent::Number(
         CssNumeric::<CssNumber>::try_from_calculation(
             CssCalculation::<CssNumber>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -37,7 +37,7 @@ fn percentage_math(text: &str) -> CssTransformScaleComponent {
     CssTransformScaleComponent::Percentage(
         CssNumeric::<CssPercentage>::try_from_calculation(
             CssCalculation::<CssPercentage>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -48,7 +48,7 @@ fn percentage_math(text: &str) -> CssTransformScaleComponent {
 fn hinted(text: &str) -> CssTransformScaleComponent {
     CssTransformScaleComponent::HintedNumberCalculation(
         CssCalculation::<CssHintedNumber>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -111,7 +111,7 @@ fn new_3d_types_have_closed_domains_and_public_cumulative_providers() {
         );
     }
     let math = CssCalculation::<CssLength>::try_from_components(
-        parse_component_values("calc(1px - 2px)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(1px - 2px)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -292,7 +292,7 @@ fn structural_symbolic_equality_ignores_origins_but_preserves_distinct_authored_
                     vec![
                         CssComponentValue::try_function(
                             "calc",
-                            parse_component_values("1 + 2").unwrap(),
+                            CssComponentValues::parse(&CssParser::default(), "1 + 2").unwrap(),
                         )
                         .unwrap(),
                     ],

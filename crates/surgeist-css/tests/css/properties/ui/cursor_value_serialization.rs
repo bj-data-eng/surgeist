@@ -28,7 +28,7 @@ fn string(value: &str) -> CssContentString {
 
 fn parsed(value: &str) -> (CssDeclaration, CssCursor) {
     let source = format!("/* 🦀 */ cursor:{value} !important; color:blue");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration, neighbor] = report.syntax().as_slice() else {
         panic!("cursor and its neighbor")
@@ -312,9 +312,10 @@ fn standard_alias_emits_canonical_function_without_rewriting_original_components
 fn checked_value_construction_keeps_supplied_numeric_origins_and_no_fabricated_declaration_position()
  {
     let input = "image-set(url(cursor.png) type(\"image/png\") 96.000dpi) -3.500 +4.250, auto";
-    let supplied = parse_component_values(input).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Cursor),
+    let supplied = CssComponentValues::parse(&CssParser::default(), input).unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Cursor)),
         supplied.clone(),
         CssImportance::Important,
     )

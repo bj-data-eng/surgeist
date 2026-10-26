@@ -12,7 +12,7 @@ use std::fmt::Debug;
 use surgeist_css::*;
 
 fn counter(source: &str) -> CssCounterStyleRule {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("one retained counter definition");

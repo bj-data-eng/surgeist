@@ -9,12 +9,12 @@
 
 use surgeist_css::{
     CssCalculationExpressionRef, CssCalculationProductOperator, CssCalculationType,
-    CssCalculationValueRef, CssDeclaration, CssGridAutoFlowAxis, CssGridAutoRepeat,
-    CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridFixedRepeatComponent,
-    CssGridTrackBreadthKind as BreadthKind, CssGridTrackList,
+    CssCalculationValueRef, CssComponentValues, CssDeclaration, CssGridAutoFlowAxis,
+    CssGridAutoRepeat, CssGridAutoRepeatKind, CssGridAutoTrackComponent,
+    CssGridFixedRepeatComponent, CssGridTrackBreadthKind as BreadthKind, CssGridTrackList,
     CssGridTrackRepeatComponent as Member, CssGridTrackRepeatContent, CssGridTrackSize,
-    CssImportance, CssKnownProperty as Property, CssKnownPropertyValueRef, CssPropertyNameRef,
-    parse_component_values, parse_property_value, parse_style_attribute,
+    CssImportance, CssKnownProperty as Property, CssKnownPropertyValueRef, CssParser,
+    CssPropertyNameRef, CssPropertyTarget,
 };
 
 fn columns(declaration: &CssDeclaration) -> &surgeist_css::CssPropertyValue<CssGridTrackList> {
@@ -72,7 +72,7 @@ fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
         "[d] 1fr [e] minmax(auto, 1fr) [f] fit-content(20%) [g]) repeat(2, 5px) [end]",
     );
     let source = format!("grid-template-columns:{authored}!important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one complete Grid declaration");
@@ -171,7 +171,7 @@ fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
 }
 
 fn automatic_calculations_and_names_remain_symbolic() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "grid-template-columns:repeat(auto-fit, [start] calc(1px * 2) [end])",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -220,9 +220,10 @@ fn automatic_calculations_and_names_remain_symbolic() {
 
 fn checked_components_preserve_general_body_values_and_origins() {
     let authored = "RePeAt(AUTO-FIT, [Start] MINMAX(MIN-CONTENT, 2fr) [End])";
-    let components = parse_component_values(authored).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(Property::GridTemplateColumns),
+    let components = CssComponentValues::parse(&CssParser::default(), authored).unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(Property::GridTemplateColumns)),
         components.clone(),
         CssImportance::Important,
     )
@@ -274,7 +275,7 @@ fn checked_components_preserve_general_body_values_and_origins() {
 }
 
 fn shorthand_axes_keep_their_explicit_and_implicit_roles() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "grid-template:repeat(auto-fill, auto) / repeat(auto-fit, 1fr);",
         "grid:auto-flow dense 12px / repeat(auto-fit, fit-content(20%))",
     ));

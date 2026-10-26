@@ -1,11 +1,11 @@
 //! The selected WebKit transform-origin parser rejects a vertical keyword
 //! followed by a length. Values 4 §<position> gives a conflicting example;
 //! this test records the selected browser behavior for the authored grammar.
-use surgeist_css::{CssKnownProperty, CssRecoveryAction, parse_style_attribute};
+use surgeist_css::{CssKnownProperty, CssParser, CssRecoveryAction};
 
 fn accepted(value: &str) {
     let source = format!("transform-origin: {value}; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2, "{source}");
     assert_eq!(
@@ -20,7 +20,7 @@ fn accepted(value: &str) {
 
 fn rejected(value: &str) {
     let source = format!("transform-origin: {value}; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(report.syntax().len(), 1, "{source}");
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),

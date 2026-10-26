@@ -7,12 +7,12 @@
 use crate::css::support::failure_classes::SerializationFailure as ValueError;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
-    CssNamespaceContext, CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef,
-    CssSerializationLimits as Limits, normalize_report, parse_rule, parse_sheet, validate_sheet,
+    CssNamespaceContext, CssNormalizedItem, CssParser, CssRecoveryAction, CssRule,
+    CssRuleContextKindRef, CssSerializationLimits as Limits,
 };
 
 fn canonical(source: &str, expected: &str) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(
         report
@@ -22,7 +22,9 @@ fn canonical(source: &str, expected: &str) {
         expected
     );
     assert_eq!(
-        validate_sheet(expected)
+        CssParser::default()
+            .parse_sheet(expected)
+            .into_validation_result()
             .unwrap()
             .serialize_specified(Default::default())
             .unwrap(),
@@ -33,11 +35,19 @@ fn canonical(source: &str, expected: &str) {
 #[test]
 fn custom_profile_is_retained_before_following_style() {
     let source = "@color-profile --Press { src: url(press.icc); components: Cyan, Magenta, Yellow, Black; } .after { color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().rules().len(), 2);
     assert!(matches!(report.syntax().rules()[1], CssRule::Style(_)));
-    assert_eq!(validate_sheet(source).unwrap().rules().len(), 2);
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap()
+            .rules()
+            .len(),
+        2
+    );
 }
 
 #[test]
@@ -68,7 +78,11 @@ fn empty_and_incomplete_profiles_do_not_manufacture_descriptors() {
 #[test]
 fn isolated_rule_admission_agrees_with_clean_sheet_admission() {
     let source = "@color-profile --One { rendering-intent: PERCEPTUAL; }";
-    let report = parse_rule(source, &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(
         report
@@ -122,23 +136,28 @@ fn environment_functions_defer_the_entire_descriptor_grammar_including_var_token
         ("components", r"e\6ev(channels)"),
     ] {
         let source = format!("@color-profile --x {{ {name}: {value}; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().rules().len(), 1);
         let emitted = report
             .syntax()
             .serialize_specified(Default::default())
             .unwrap();
-        assert!(validate_sheet(&emitted).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_sheet(&emitted)
+                .into_validation_result()
+                .is_ok()
+        );
     }
 }
 
 #[test]
 fn ordinary_nested_groups_retain_profile_contexts_without_style_contributions() {
     let source = "@media all { @supports (color: red) { @layer ink { @color-profile --x {} @color-profile --x {} } } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_report(&report).unwrap();
+    let normalized = report.normalize(Default::default()).unwrap();
     assert_eq!(normalized.syntax().items().len(), 5);
     assert!(
         normalized
@@ -174,9 +193,9 @@ fn ordinary_nested_groups_retain_profile_contexts_without_style_contributions() 
 #[test]
 fn scoped_group_profile_is_retained_with_scope_ancestry() {
     let source = "@scope (.host) { @media all { @color-profile --Scoped {} } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_report(&report).unwrap();
+    let normalized = report.normalize(Default::default()).unwrap();
     let [
         CssNormalizedItem::Rule(scope),
         CssNormalizedItem::Rule(media),
@@ -206,9 +225,14 @@ fn malformed_outer_names_and_missing_blocks_drop_only_the_outer_rule() {
         "@color-profile --x;",
     ] {
         let source = format!("{invalid} .after {{ color: red; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean(), "{source}");
-        assert!(validate_sheet(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .is_err()
+        );
         assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
         assert_eq!(report.diagnostics().len(), 1);
         assert_eq!(
@@ -225,9 +249,14 @@ fn style_ancestry_rejects_profiles_and_preserves_style_declarations() {
         "@media all { @color-profile --x {} }",
     ] {
         let source = format!(".host {{ color: red; {body} }} .after {{ color: blue; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean(), "{source}");
-        assert!(validate_sheet(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .is_err()
+        );
         assert_eq!(report.syntax().rules().len(), 2);
         let CssRule::Style(style) = &report.syntax().rules()[0] else {
             panic!("host style")
@@ -264,9 +293,14 @@ fn descriptor_recovery_retains_valid_siblings_profile_and_following_rule() {
         let source = format!(
             "@color-profile --x {{ src: url(good); {invalid}; components: a, b; }} .after {{ color: red; }}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean(), "{source}");
-        assert!(validate_sheet(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .is_err()
+        );
         assert_eq!(
             report.syntax().rules().len(),
             2,
@@ -283,7 +317,7 @@ fn descriptor_recovery_retains_valid_siblings_profile_and_following_rule() {
                 .unwrap(),
             "@color-profile --x { src: url(\"good\"); components: a, b; }"
         );
-        let normalized = normalize_report(&report).unwrap();
+        let normalized = report.normalize(Default::default()).unwrap();
         assert_eq!(normalized.diagnostics(), report.diagnostics());
     }
 }
@@ -291,9 +325,14 @@ fn descriptor_recovery_retains_valid_siblings_profile_and_following_rule() {
 #[test]
 fn malformed_child_rule_is_recovered_inside_the_profile() {
     let source = "@color-profile --x { src: url(good); @media all {} components: a; } .after { color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(!report.is_clean());
-    assert!(validate_sheet(source).is_err());
+    assert!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .is_err()
+    );
     assert_eq!(report.syntax().rules().len(), 2);
     assert_eq!(
         report.syntax().rules()[0]
@@ -323,7 +362,7 @@ fn profiles_compose_with_style_and_group_siblings_under_atomic_limits() {
         ("@media all {}", "@media all { }"),
         ("@scope (.x) {}", "@scope (.x) { }"),
     ] {
-        let report = parse_sheet(&format!("@color-profile --x {{}} {source}"));
+        let report = CssParser::default().parse_sheet(format!("@color-profile --x {{}} {source}"));
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let before = report.clone();
         let expected = format!("@color-profile --x {{ }}\n{suffix}");
@@ -360,8 +399,9 @@ fn named_supports_definitions_compose_with_style_and_group_siblings() {
 
 #[test]
 fn cumulative_sheet_limits_include_supported_prefix_and_profile_punctuation() {
-    let report =
-        parse_sheet("@supports-condition --f {} @color-profile --日本 { components: red, green; }");
+    let report = CssParser::default().parse_sheet(
+        "@supports-condition --f {} @color-profile --日本 { components: red, green; }",
+    );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let expected = "@supports-condition --f { }\n@color-profile --日本 { components: red, green; }";
     assert_eq!(
@@ -403,7 +443,12 @@ fn cumulative_sheet_limits_include_supported_prefix_and_profile_punctuation() {
 #[test]
 fn shared_color_url_and_palette_substitution_controls_stay_clean() {
     let source = ".x { color: device-cmyk(0 0 0 1); background-image: url(relative.png); } @font-palette-values --p { font-family: Demo; base-palette: var(--p); }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert!(validate_sheet(source).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .is_ok()
+    );
 }

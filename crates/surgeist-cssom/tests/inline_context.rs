@@ -547,7 +547,7 @@ fn context_updates_reject_other_owners_foreign_blocks_and_store_context_blocks()
     let mut edit = batch(&store);
     let ticket = edit
         .create_declarations(
-            parse_declaration_block_contents("").into_parts().0,
+            CssParser::default().parse_block_contents("").into_parts().0,
             false,
             false,
             None,
@@ -738,7 +738,7 @@ fn legacy_declarations_continue_to_follow_the_store_context() {
     let mut edit = batch(&store);
     let ticket = edit
         .create_declarations(
-            parse_declaration_block_contents("").into_parts().0,
+            CssParser::default().parse_block_contents("").into_parts().0,
             false,
             false,
             None,

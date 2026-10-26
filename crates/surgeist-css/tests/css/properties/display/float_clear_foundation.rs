@@ -37,8 +37,7 @@ fn accepted(name: &str, value: &str) {
 }
 
 fn one_value(source: &CssDeclaration) -> CssLonghandValue {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one terminal contribution")
     };
@@ -142,7 +141,7 @@ fn both_are_noninherited_terminals_with_none_initials_and_one_ordinary_contribut
         for keyword in ["left", "right", "inline-start", "inline-end"] {
             for source in [declaration(name, keyword), checked(name, keyword)] {
                 let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                    expand_declaration(&source).unwrap()
+                    source.expand().unwrap()
                 else {
                     panic!("{name}:{keyword} has one ordinary contribution")
                 };
@@ -183,14 +182,14 @@ fn pending_reentry_checks_full_keyword_grammar_and_preserves_original_occurrence
     for name in NAMES {
         for pending in ["var(--side)", "env(--side)"] {
             let source = declaration(name, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("{name} keeps substitution pending")
             };
             assert!(handle.source().same_occurrence(&source));
             for invalid in ["start", "center", "inline-start left"] {
                 assert!(
                     handle
-                        .reenter(parse_component_values(invalid).unwrap())
+                        .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                         .unwrap_err()
                         .replacement_error()
                         .is_some(),
@@ -200,7 +199,7 @@ fn pending_reentry_checks_full_keyword_grammar_and_preserves_original_occurrence
             if name == "float" {
                 assert!(
                     handle
-                        .reenter(parse_component_values("both").unwrap())
+                        .reenter(CssComponentValues::parse(&CssParser::default(), "both").unwrap())
                         .unwrap_err()
                         .replacement_error()
                         .is_some()
@@ -208,11 +207,14 @@ fn pending_reentry_checks_full_keyword_grammar_and_preserves_original_occurrence
             }
             assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
                     .is_residual_substitution()
             );
-            let replacement = parse_component_values("inline-end").unwrap();
+            let replacement =
+                CssComponentValues::parse(&CssParser::default(), "inline-end").unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("{name} reenters to one longhand")
@@ -226,7 +228,7 @@ fn pending_reentry_checks_full_keyword_grammar_and_preserves_original_occurrence
             assert_eq!(item.source().importance(), CssImportance::Important);
             assert_eq!(item.replacement_components(), Some(&replacement));
             let CssContributions::Longhands(globals) = handle
-                .reenter(parse_component_values("inherit").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
                 .unwrap()
             else {
                 panic!("{name} reenters to a global keyword")
@@ -242,14 +244,14 @@ fn pending_reentry_checks_full_keyword_grammar_and_preserves_original_occurrence
 
 #[test]
 fn normalization_preserves_order_and_authored_logical_keywords_after_recovery() {
-    let report =
-        parse_sheet(".a{float:inline-start;clear:left;float:center;clear:INLINE-END;float:right}");
+    let report = CssParser::default()
+        .parse_sheet(".a{float:inline-start;clear:left;float:center;clear:INLINE-END;float:right}");
     let [diagnostic] = report.diagnostics() else {
         panic!("one invalid float diagnostic: {:?}", report.diagnostics())
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()

@@ -4,8 +4,11 @@ use surgeist_css::CssCalculationSumOperator as Op;
 use surgeist_css::*;
 type Calculation = CssCalculation<CssLengthPercentage>;
 fn operand(source: &str) -> Calculation {
-    Calculation::try_from_components(parse_component_values(source).unwrap(), Default::default())
-        .unwrap()
+    Calculation::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+        Default::default(),
+    )
+    .unwrap()
 }
 fn pure(value: Calculation) -> Result<CssNumeric<CssLength>, CssNumericConstructionError> {
     CssNumeric::<CssLength>::try_from_calculation(CssCalculation::<CssLength>::try_from_components(
@@ -328,8 +331,9 @@ fn checked_length_owners_admit_valid_typed_symbolic_subtraction() {
     // directly; preserve the same symbolic subtraction admission at that boundary.
     for name in ["word-spacing", "letter-spacing"] {
         use surgeist_css::*;
-        let declaration = parse_property_value_for_grammar(
-            CssPropertyGrammar::from_name(name).unwrap(),
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssPropertyGrammar::from_name(name).unwrap()),
             sum.components().clone(),
             CssImportance::Normal,
         )

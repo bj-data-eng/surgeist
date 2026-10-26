@@ -5,7 +5,7 @@ use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::normal_declaration;
 use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::serialization_limits::assert_limits as budget;
-use surgeist_css::{CssSerializationLimits as L, *};
+use surgeist_css::{CssComponentValue, CssComponentValues, CssSerializationLimits as L, *};
 
 fn lp(css: &str) -> CssNumeric<CssLengthPercentage> {
     CssNumeric::<CssLengthPercentage>::try_from_component(

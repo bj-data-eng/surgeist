@@ -34,7 +34,7 @@ fn assert_value(value: &CssColor, expected: &str) {
 
 fn assert_text(source: &str, expected: &str) {
     let checked = declaration(source);
-    let report = parse_style_attribute(&format!("color:{source}!important"));
+    let report = CssParser::default().parse_block_contents(format!("color:{source}!important"));
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
     for value in [&checked, &report.syntax()[0]] {
@@ -325,9 +325,15 @@ text_case!(
 #[test]
 fn important_checked_declaration_and_validation_keep_sibling_properties() {
     let source = "color:hsla(0 100 50 / none)!important;opacity:.5";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert_eq!(&validate_style_attribute(source).unwrap(), report.syntax());
+    assert_eq!(
+        &CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .unwrap(),
+        report.syntax()
+    );
     assert_eq!(report.syntax().len(), 2);
     assert_eq!(report.syntax()[0].importance(), CssImportance::Important);
     assert_eq!(
@@ -437,8 +443,9 @@ fn serialized_missing_alpha_reenters_real_property_grammar() {
     ] {
         let value = color(source);
         let text = value.serialize_specified(Default::default()).unwrap();
-        let result = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+        let result = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
             components(&text),
             CssImportance::Normal,
         );

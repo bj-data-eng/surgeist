@@ -17,7 +17,11 @@ fn parsed_page_classifications_retain_their_symbolic_identity_in_each_mode() {
         for mode in [CssParserMode::Standards, CssParserMode::Quirks] {
             let context = CssParserContext::new(mode);
             let source = format!("@page :{pseudo}{{margin-left:2cm!important}}");
-            let report = context.parse_rule(&source, &CssNamespaceContext::default());
+            let report = CssRule::parse(
+                &CssParser::new(context, Default::default()),
+                &source,
+                &CssNamespaceContext::default(),
+            );
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             let Some(CssRule::Page(page)) = report.syntax() else {
                 panic!("one typed page rule")
@@ -38,7 +42,7 @@ fn parsed_page_classifications_retain_their_symbolic_identity_in_each_mode() {
                     .unwrap(),
                 canonical
             );
-            let reparsed = context.parse_sheet(&canonical);
+            let reparsed = CssParser::new(context, Default::default()).parse_sheet(&canonical);
             assert!(reparsed.is_clean());
             let [CssRule::Page(reparsed)] = reparsed.syntax().rules() else {
                 panic!("one reparsed page")
@@ -56,7 +60,7 @@ fn parsed_page_classifications_retain_their_symbolic_identity_in_each_mode() {
 
 #[test]
 fn page_specificity_compares_default_side_and_first_without_mapping_or_importance() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@page{margin-left:1px!important}",
         "@page :left{margin-left:2px}",
         "@page :right{margin-left:3px!important}",
@@ -109,9 +113,9 @@ fn normalization_preserves_typed_page_classification_and_specificity_inside_grou
         "@page{margin-top:4px}",
         "}}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let pages: Vec<_> = normalized
         .items()
         .iter()

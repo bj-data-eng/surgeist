@@ -5,17 +5,16 @@ use crate::css::support::failure_classes::SerializationFailure as Resource;
 use crate::css::support::failure_classes::component_failure;
 use crate::css::support::serialization_limits::LimitFailure;
 use surgeist_css::{
-    CssComponentValueLimits, CssErrorCode, CssGroupPreludeRef, CssNamespaceContext,
-    CssRecoveryAction, CssRule, CssRuleCssomFormat, CssRuleGraphInput, CssRuleSerializationLimits,
-    CssSerializationLimits, CssStyleAncestor, CssSupportsConditionName,
-    CssSupportsTestChild as Child, CssSupportsTestChildRef as Ref, CssSupportsTestItem,
-    CssValueOrigin, parse_component_values, parse_media_query_list, parse_sheet,
-    parse_supports_test_child, parse_supports_test_child_with_limits, parse_supports_test_contents,
-    parse_supports_test_contents_with_limits,
+    CssComponentValueLimits, CssComponentValues, CssErrorCode, CssGroupPreludeRef,
+    CssMediaQueryList, CssNamespaceContext, CssParser, CssParserContext, CssRecoveryAction,
+    CssRule, CssRuleCssomFormat, CssRuleGraphInput, CssRuleSerializationLimits,
+    CssSerializationLimits, CssStyleAncestor, CssSupportsConditionName, CssSupportsTestBody,
+    CssSupportsTestChild as Child, CssSupportsTestChild, CssSupportsTestChildRef as Ref,
+    CssSupportsTestItem, CssValueOrigin,
 };
 
 fn child(source: &str) -> Child {
-    let report = parse_supports_test_child(source);
+    let report = CssSupportsTestChild::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{source:?}: {:?}", report.diagnostics());
     report.into_parts().0.expect("one admitted child")
 }
@@ -41,7 +40,7 @@ fn raw_projection_keeps_order_duplicates_importance_and_genuine_dropped_source()
     let source = String::from(
         "/*🦊*/; Future:red; Future: blue !IMPORTANT; & { ; } @namespace n url(x); @future x;",
     );
-    let report = parse_supports_test_contents(&source);
+    let report = CssSupportsTestBody::parse(&CssParser::default(), &source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let body = report.into_parts().0.unwrap();
     let expected_source = source.clone();
@@ -106,7 +105,7 @@ fn strict_child_admits_recursive_empty_semicolons_and_nonrendering_candidates() 
     }
     // Input without any child component holds no child at all.
     for input in ["", ";;;"] {
-        let empty = parse_supports_test_child(input);
+        let empty = CssSupportsTestChild::parse(&CssParser::default(), input);
         assert!(empty.syntax().is_none(), "{input:?}: {empty:?}");
         let [diagnostic] = empty.diagnostics() else {
             panic!("one empty-input rejection: {input:?}: {empty:?}")
@@ -125,7 +124,7 @@ fn strict_child_admits_recursive_empty_semicolons_and_nonrendering_candidates() 
         "color:red } @future;",
         "&{} junk",
     ] {
-        let report = parse_supports_test_child(input);
+        let report = CssSupportsTestChild::parse(&CssParser::default(), input);
         assert!(report.syntax().is_none(), "{input:?}: {report:?}");
         assert!(!report.is_clean(), "rejection carries diagnostic: {input}");
         assert_strict_rejection(
@@ -138,11 +137,11 @@ fn strict_child_admits_recursive_empty_semicolons_and_nonrendering_candidates() 
 #[test]
 fn raw_empty_and_recovered_empty_are_distinct_from_typed_preparation_failure() {
     for input in ["", ";;;", " /*x*/ "] {
-        let report = parse_supports_test_contents(input);
+        let report = CssSupportsTestBody::parse(&CssParser::default(), input);
         assert!(report.is_clean());
         assert!(report.syntax().as_ref().unwrap().items().is_empty());
     }
-    let recovered = parse_supports_test_contents("bad:url(a b);");
+    let recovered = CssSupportsTestBody::parse(&CssParser::default(), "bad:url(a b);");
     // The bad URL token makes the declaration value invalid.
     assert_diagnostics(
         recovered.diagnostics(),
@@ -176,7 +175,10 @@ fn raw_empty_and_recovered_empty_are_distinct_from_typed_preparation_failure() {
             ComponentFailure::NestingLimit,
         ),
     ] {
-        let report = parse_supports_test_contents_with_limits("& { color:red; }", bound);
+        let report = CssSupportsTestBody::parse(
+            &CssParser::new(CssParserContext::default(), bound),
+            "& { color:red; }",
+        );
         assert!(report.syntax().is_none());
         assert!(
             report.diagnostics().iter().any(|d| d
@@ -185,19 +187,25 @@ fn raw_empty_and_recovered_empty_are_distinct_from_typed_preparation_failure() {
                 .is_some_and(|e| component_failure(e) == kind)),
             "{report:?}"
         );
-        let one = parse_supports_test_child_with_limits("& { color:red; }", bound);
+        let one = CssSupportsTestChild::parse(
+            &CssParser::new(CssParserContext::default(), bound),
+            "& { color:red; }",
+        );
         assert!(one.syntax().is_none());
         assert_eq!(one.diagnostics(), report.diagnostics());
     }
-    assert!(parse_supports_test_contents("& { color:red; }").is_clean());
+    assert!(CssSupportsTestBody::parse(&CssParser::default(), "& { color:red; }").is_clean());
 }
 
 #[test]
 fn raw_resource_budget_charges_discarded_units_and_trailing_input() {
     let input = "bad:url(a b); color:red; } @future { a:b;c:d;e:f; }";
-    let report = parse_supports_test_contents_with_limits(
+    let report = CssSupportsTestBody::parse(
+        &CssParser::new(
+            CssParserContext::default(),
+            CssComponentValueLimits::try_new(256, 10, 1000).unwrap(),
+        ),
         input,
-        CssComponentValueLimits::try_new(256, 10, 1000).unwrap(),
     );
     assert!(
         report.syntax().is_none(),
@@ -209,14 +217,15 @@ fn raw_resource_budget_charges_discarded_units_and_trailing_input() {
             .component_error()
             .is_some_and(|e| e.is_component_limit())
     );
-    let retry = parse_supports_test_contents(input);
+    let retry = CssSupportsTestBody::parse(&CssParser::default(), input);
     assert!(retry.syntax().is_some());
     assert!(!retry.is_clean());
 }
 
 #[test]
 fn composition_coalesces_runs_keeps_occurrences_and_recomputes_descendants() {
-    let report = parse_supports_test_contents("& { bad:url(a b); } outer:url(c d);");
+    let report =
+        CssSupportsTestBody::parse(&CssParser::default(), "& { bad:url(a b); } outer:url(c d);");
     let history = report.diagnostics().to_vec();
     let body = report.syntax().as_ref().unwrap();
     assert_eq!(body.local_recovery_origins().len(), 1);
@@ -258,7 +267,7 @@ fn composition_coalesces_runs_keeps_occurrences_and_recomputes_descendants() {
 
 #[test]
 fn deleting_only_recovered_child_clears_current_union_not_historical_report() {
-    let report = parse_supports_test_contents("& { bad:url(a b); }");
+    let report = CssSupportsTestBody::parse(&CssParser::default(), "& { bad:url(a b); }");
     let body = report.syntax().as_ref().unwrap();
     assert!(body.local_recovery_origins().is_empty());
     assert!(body.recovery_origin().is_some());
@@ -277,7 +286,7 @@ fn deleting_only_recovered_child_clears_current_union_not_historical_report() {
 
 #[test]
 fn retained_component_closure_belongs_to_declaration_and_dropped_candidate_to_body() {
-    let report = parse_supports_test_contents("color:fn(a");
+    let report = CssSupportsTestBody::parse(&CssParser::default(), "color:fn(a");
     let body = report.syntax().as_ref().unwrap();
     assert!(body.local_recovery_origins().is_empty());
     assert!(body.recovery_origin().is_some());
@@ -288,7 +297,7 @@ fn retained_component_closure_belongs_to_declaration_and_dropped_candidate_to_bo
             .recovery_origin()
             .is_none()
     );
-    let statement = parse_supports_test_contents("@future fn(a");
+    let statement = CssSupportsTestBody::parse(&CssParser::default(), "@future fn(a");
     let statement_body = statement.syntax().as_ref().unwrap();
     assert!(statement_body.local_recovery_origins().is_empty());
     assert!(statement_body.recovery_origin().is_some());
@@ -299,7 +308,10 @@ fn retained_component_closure_belongs_to_declaration_and_dropped_candidate_to_bo
             .recovery_origin()
             .is_none()
     );
-    let dropped = parse_supports_test_contents("url(a b) { inside:url(c d); } good:yes;");
+    let dropped = CssSupportsTestBody::parse(
+        &CssParser::default(),
+        "url(a b) { inside:url(c d); } good:yes;",
+    );
     let body = dropped.syntax().as_ref().unwrap();
     assert_eq!(body.local_recovery_origins().len(), 2);
     assert_eq!(body.children().count(), 1);
@@ -312,7 +324,10 @@ fn retained_component_closure_belongs_to_declaration_and_dropped_candidate_to_bo
 
 #[test]
 fn borrowed_composition_shares_one_component_byte_depth_budget_and_retries() {
-    let empty = parse_supports_test_contents("").into_parts().0.unwrap();
+    let empty = CssSupportsTestBody::parse(&CssParser::default(), "")
+        .into_parts()
+        .0
+        .unwrap();
     let a = child("a:one;");
     let b = child("b:two;");
     let refs = [a.as_ref(), b.as_ref()];
@@ -373,7 +388,7 @@ fn borrowed_composition_shares_one_component_byte_depth_budget_and_retries() {
 
 #[test]
 fn current_named_graph_opt_in_keeps_standard_unavailable_and_original_unchanged() {
-    let report = parse_sheet("@supports-condition --feature { old:no; }");
+    let report = CssParser::default().parse_sheet("@supports-condition --feature { old:no; }");
     let CssRule::SupportsCondition(original) = &report.syntax().rules()[0] else {
         panic!()
     };
@@ -414,12 +429,15 @@ fn current_named_graph_opt_in_keeps_standard_unavailable_and_original_unchanged(
 #[test]
 fn graph_zero_exact_and_under_depth_include_opaque_candidates_and_components() {
     let name = CssSupportsConditionName::try_new("--x").unwrap();
-    let empty = parse_supports_test_contents("").into_parts().0.unwrap();
+    let empty = CssSupportsTestBody::parse(&CssParser::default(), "")
+        .into_parts()
+        .0
+        .unwrap();
     assert_eq!(
         graph(CssRuleGraphInput::named_supports(&name, &empty), limits(0)).unwrap(),
         "@supports-condition --x { }"
     );
-    let body = parse_supports_test_contents("& { color:fn(x); }")
+    let body = CssSupportsTestBody::parse(&CssParser::default(), "& { color:fn(x); }")
         .into_parts()
         .0
         .unwrap();
@@ -455,12 +473,17 @@ fn graph_zero_exact_and_under_depth_include_opaque_candidates_and_components() {
 
 #[test]
 fn ordinary_ancestor_and_current_named_payload_share_depth_and_output_budget() {
-    let queries = parse_media_query_list("screen").into_parts().0;
+    let queries = CssMediaQueryList::parse(&CssParser::default(), "screen")
+        .into_parts()
+        .0;
     let name = CssSupportsConditionName::try_from_component(
-        parse_component_values(r"--f\65 ature").unwrap().items()[0].clone(),
+        CssComponentValues::parse(&CssParser::default(), r"--f\65 ature")
+            .unwrap()
+            .items()[0]
+            .clone(),
     )
     .unwrap();
-    let body = parse_supports_test_contents("& { color:fn(x); }")
+    let body = CssSupportsTestBody::parse(&CssParser::default(), "& { color:fn(x); }")
         .into_parts()
         .0
         .unwrap();
@@ -502,7 +525,7 @@ fn ordinary_ancestor_and_current_named_payload_share_depth_and_output_budget() {
 #[test]
 fn whole_named_graph_node_and_projection_work_is_not_reset_per_child() {
     let name = CssSupportsConditionName::try_new("--x").unwrap();
-    let body = parse_supports_test_contents("a:one;b:two;c:three;")
+    let body = CssSupportsTestBody::parse(&CssParser::default(), "a:one;b:two;c:three;")
         .into_parts()
         .0
         .unwrap();

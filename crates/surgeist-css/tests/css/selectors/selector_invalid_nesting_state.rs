@@ -10,10 +10,14 @@ use crate::css::support::serialization_limits::LimitFailure;
 use surgeist_css::*;
 
 fn parsed(source: &str) -> CssSelector {
-    parse_selector(source, &CssNamespaceContext::default())
-        .syntax()
-        .clone()
-        .expect("retained selector")
+    CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    )
+    .syntax()
+    .clone()
+    .expect("retained selector")
 }
 fn logical(selector: &CssSelector) -> &CssPseudoSelectorList {
     let CssSelector::PseudoClass(CssPseudoClass::Is(list) | CssPseudoClass::Where(list)) = selector
@@ -54,7 +58,11 @@ fn unrepresentable(selector: &CssSelector) {
 #[test]
 fn mixed_items_keep_source_order_complete_trivia_and_truthful_recovery() {
     let source = ":is(.A,\t/*L*/:NoPe(inner(&)) /*T*/ ,.B)";
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     let selector = report.syntax().as_ref().unwrap();
     let [
         CssPseudoSelectorListItem::Selector(a),
@@ -227,7 +235,11 @@ fn raw_context_invalid_pseudo_elements_and_nested_has_are_not_admitted_children(
         ":has(:where(:has(&),.A))",
         ":host(:is(.a &))",
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         let selector = report.syntax().as_ref().unwrap();
         assert!(!selector.has_pseudo_elements());
         assert_eq!(
@@ -250,7 +262,11 @@ fn raw_context_invalid_pseudo_elements_and_nested_has_are_not_admitted_children(
     ] {
         assert_selector_input_rejected(
             source,
-            parse_selector(source, &CssNamespaceContext::default()),
+            CssSelector::parse(
+                &CssParser::default(),
+                source,
+                &CssNamespaceContext::default(),
+            ),
         );
     }
 }
@@ -303,7 +319,7 @@ fn namespace_invalidity_remains_bound_to_original_parse_and_reparse_is_explicit(
         Some(CssNamespacePrefix::try_new("p").unwrap()),
         CssNamespaceName::new("urn:p"),
     )]);
-    let reparsed = parse_selector(literal, &context)
+    let reparsed = CssSelector::parse(&CssParser::default(), literal, &context)
         .into_validation_result()
         .unwrap()
         .unwrap();
@@ -349,7 +365,11 @@ fn implicit_eof_terminations_preserve_authored_chunks_and_emit_stable_complete_s
             ":is(:future(&'tail\\\n'))",
         ),
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         let selector = report.syntax().as_ref().unwrap();
         assert_eq!(invalid(&logical(selector).items()[0]).authored(), authored);
         assert_eq!(
@@ -452,7 +472,11 @@ fn deep_unknown_components_are_charged_fully_and_parser_resource_errors_are_not_
             .is_input_node_limit()
     );
     let source = format!(":is(:future({}&{}))", "x(".repeat(255), ")".repeat(255));
-    let report = parse_selector(&source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        &source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.syntax().is_none());
     assert!(
         report
@@ -467,8 +491,8 @@ fn deep_unknown_components_are_charged_fully_and_parser_resource_errors_are_not_
 
 #[test]
 fn retained_unknown_ampersand_marks_real_nested_selector_binding_before_normalization() {
-    let report = parse_sheet(".Parent { :is(:future(&)) { color:red; } }");
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let report = CssParser::default().parse_sheet(".Parent { :is(:future(&)) { color:red; } }");
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -546,7 +570,11 @@ fn url_string_comment_and_escaped_identifier_ampersands_are_not_delimiters() {
         r":future(\&)",
         r":future(\26)",
     ] {
-        let report = parse_selector(&format!(":is({item},.A)"), &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            format!(":is({item},.A)"),
+            &CssNamespaceContext::default(),
+        );
         assert_eq!(
             logical(report.syntax().as_ref().unwrap()).items(),
             [CssPseudoSelectorListItem::Selector(CssSelector::Class(
@@ -577,7 +605,8 @@ fn trivia_unicode_bytes_and_real_rule_retry_are_cumulative() {
             .unwrap_err()
             .is_byte_limit()
     );
-    let report = parse_sheet(":is(:future(/*Ω*/&),.A) {color:red;} .B {color:blue;}");
+    let report =
+        CssParser::default().parse_sheet(":is(:future(/*Ω*/&),.A) {color:red;} .B {color:blue;}");
     let sheet = report.syntax();
     let css = sheet.serialize_specified(Default::default()).unwrap();
     let before = sheet.clone();

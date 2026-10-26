@@ -9,7 +9,10 @@ use descriptor_phases::*;
 use crate::css::support::failure_classes::SerializationFailure as K;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::{CssSerializationLimits as L, *};
+use surgeist_css::{
+    CssComponentValue, CssComponentValues, CssDeclaration, CssParser, CssPropertyTarget, CssRule,
+    CssSerializationLimits as L, *,
+};
 
 fn list(text: &str) -> CssFilterFunctionList {
     let source = declaration(CssKnownProperty::Filter, text);
@@ -46,7 +49,7 @@ fn math(depth: usize, leaf: &str) -> CssComponentValues {
     for _ in 0..depth {
         source = format!("calc({source})");
     }
-    let values = parse_component_values(&source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     assert_eq!(values.nesting_depth() as usize, depth);
     values
 }
@@ -89,7 +92,7 @@ fn modified_url(depth: usize) -> CssUrl {
 #[test]
 fn string_input_retains_decoding_exact_token_and_authored_coordinates() {
     let source = "/*😀*/filter('é\\61 \\a x',blur())";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let original = components.clone();
     let function = components
         .items()
@@ -132,7 +135,7 @@ fn string_input_retains_decoding_exact_token_and_authored_coordinates() {
 #[test]
 fn checked_string_rejects_wrong_recovered_and_nul_inputs_with_real_origins() {
     for spelling in ["name", "url(a)", "42", "blur()"] {
-        let values = parse_component_values(spelling).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), spelling).unwrap();
         let token = values.items()[0].clone();
         let error = CssFilterImageString::try_from_component(token.clone()).unwrap_err();
         assert!(error.is_invalid_token(), "{error:?}");
@@ -141,7 +144,10 @@ fn checked_string_rejects_wrong_recovered_and_nul_inputs_with_real_origins() {
         let semantic: &dyn std::error::Error = &error;
         assert!(semantic.source().is_none());
     }
-    let token = parse_component_values("'unterminated").unwrap().items()[0].clone();
+    let token = CssComponentValues::parse(&CssParser::default(), "'unterminated")
+        .unwrap()
+        .items()[0]
+        .clone();
     let error = CssFilterImageString::try_from_component(token.clone()).unwrap_err();
     assert!(error.is_invalid_token(), "{error:?}");
     let CssValueOrigin::ImplicitClosure { .. } = error.origin() else {
@@ -318,7 +324,7 @@ fn typed_importing_views_content_symbols_shapes_and_counter_styles_retain_filter
     assert_string_filter(image.value());
 
     let text = "@counter-style ImageCase { symbols:a; prefix:filter('é',blur()); }";
-    let report = parse_sheet(text);
+    let report = CssParser::default().parse_sheet(text);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("counter-style rule")
@@ -377,7 +383,7 @@ fn bookmark_label_keeps_filter_image_identity_and_one_cumulative_list_budget() {
             .unwrap(),
         expected
     );
-    let report = parse_style_attribute(expected);
+    let report = CssParser::default().parse_block_contents(expected);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(
         report.syntax()[0]
@@ -387,10 +393,10 @@ fn bookmark_label_keeps_filter_image_identity_and_one_cumulative_list_budget() {
     );
 
     let pending = declaration(CssKnownProperty::BookmarkLabel, "var(--image)");
-    let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+    let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
         panic!("pending label")
     };
-    let replacement = parse_component_values(text).unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let before = replacement.clone();
     assert!(handle.reenter(replacement.clone()).is_ok());
     assert!(handle.source().same_occurrence(&pending));
@@ -420,7 +426,8 @@ fn functions_at(depth: usize) -> Vec<CssFilterFunction> {
     for _ in 0..depth - 1 {
         hinted_source = format!("calc({hinted_source})");
     }
-    let hinted_components = parse_component_values(&hinted_source).unwrap();
+    let hinted_components =
+        CssComponentValues::parse(&CssParser::default(), &hinted_source).unwrap();
     assert_eq!(hinted_components.nesting_depth() as usize, depth);
     let hinted = CssFilterAmount::HintedNumberCalculation(
         CssCalculation::<CssHintedNumber>::try_from_components(
@@ -704,7 +711,7 @@ fn nested_filter_cached_depth_and_both_light_dark_branches_obey_256_and_257() {
 
 #[test]
 fn failed_filter_composition_preserves_mixed_provider_components_and_original_leaves() {
-    let parsed = parse_component_values("/*😀*/1px").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "/*😀*/1px").unwrap();
     let parsed_before = parsed.clone();
     let mut components = parsed.clone();
     for _ in 0..255 {
@@ -745,8 +752,8 @@ fn aggregate_filter_refusal_preserves_actual_original_opener_through_imports_and
         format!("/*😀*/filter({image}, blur())")
     };
     // Raw filter1 + LightDark255 fits256; retained URL adds one and yields257.
-    let invalid = parse_component_values(&text(255)).unwrap();
-    let valid = parse_component_values(&text(254)).unwrap();
+    let invalid = CssComponentValues::parse(&CssParser::default(), text(255)).unwrap();
+    let valid = CssComponentValues::parse(&CssParser::default(), text(254)).unwrap();
     assert_eq!(invalid.nesting_depth(), 256);
     assert_eq!(valid.nesting_depth(), 255);
     let before = invalid.clone();
@@ -764,18 +771,20 @@ fn aggregate_filter_refusal_preserves_actual_original_opener_through_imports_and
     for name in ["background-image", "content", "shape-outside"] {
         let property = CssKnownProperty::from_name(name).unwrap();
         let source = declaration(property, "var(--image)");
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending image")
         };
         for _ in 0..2 {
-            let direct = parse_property_value(
-                CssPropertyNameRef::Known(property),
+            let direct = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 invalid.clone(),
                 CssImportance::Normal,
             )
             .unwrap_err();
-            let grammar = parse_property_value_for_grammar(
-                property.grammar(),
+            let grammar = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 invalid.clone(),
                 CssImportance::Normal,
             )

@@ -4,8 +4,8 @@ use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::NumericFailure as N;
 use crate::css::support::value_assertions::assert_calculation_rejected;
 use surgeist_css::{
-    CssAngle, CssCalculation, CssLength, CssLengthPercentage, CssNumber, CssPercentage,
-    parse_component_values,
+    CssAngle, CssCalculation, CssComponentValues, CssLength, CssLengthPercentage, CssNumber,
+    CssParser, CssPercentage,
 };
 
 #[test]
@@ -34,7 +34,7 @@ fn numeric_functions_enforce_argument_domains_and_arity() {
     ] {
         assert!(
             CssCalculation::<CssNumber>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default()
             )
             .is_ok(),
@@ -80,7 +80,7 @@ fn numeric_functions_enforce_argument_domains_and_arity() {
         };
         assert_calculation_rejected(
             CssCalculation::<CssNumber>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default(),
             ),
             kind,
@@ -99,7 +99,7 @@ fn inverse_trigonometry_returns_angles_and_checks_argument_types() {
     ] {
         assert!(
             CssCalculation::<CssAngle>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default()
             )
             .is_ok(),
@@ -122,7 +122,7 @@ fn inverse_trigonometry_returns_angles_and_checks_argument_types() {
         };
         assert_calculation_rejected(
             CssCalculation::<CssAngle>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default(),
             ),
             Some(kind),
@@ -133,7 +133,7 @@ fn inverse_trigonometry_returns_angles_and_checks_argument_types() {
 #[test]
 fn percentage_resolution_depends_on_the_explicit_root_context() {
     for source in ["min(1px, 2%)", "clamp(none, 2%, 3px)", "hypot(3px, 4%)"] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         assert_calculation_rejected(
             CssCalculation::<CssLength>::try_from_components(values.clone(), Default::default()),
             Some(NumericFailure::RootDomainMismatch),
@@ -147,7 +147,7 @@ fn percentage_resolution_depends_on_the_explicit_root_context() {
     for source in ["min(1%, 2%)", "abs(-2%)", "round(2%, 1%)"] {
         assert!(
             CssCalculation::<CssPercentage>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default()
             )
             .is_ok(),
@@ -157,7 +157,7 @@ fn percentage_resolution_depends_on_the_explicit_root_context() {
     // Percentages can cancel without requiring a layout basis in a pure root.
     assert!(
         CssCalculation::<CssLength>::try_from_components(
-            parse_component_values("calc(10% / 10% * 1px)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(10% / 10% * 1px)").unwrap(),
             Default::default()
         )
         .is_ok()
@@ -174,7 +174,7 @@ fn only_actual_whitespace_satisfies_binary_sum_separators() {
     ] {
         assert_calculation_rejected(
             CssCalculation::<CssNumber>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default(),
             ),
             Some(NumericFailure::MalformedExpression),
@@ -183,7 +183,7 @@ fn only_actual_whitespace_satisfies_binary_sum_separators() {
     for source in ["calc(1\t+\n2)", "calc(1 /*a*/+ /*b*/2)", "calc(-1 + +2)"] {
         assert!(
             CssCalculation::<CssNumber>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default()
             )
             .is_ok(),

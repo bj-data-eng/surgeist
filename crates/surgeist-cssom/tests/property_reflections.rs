@@ -1,5 +1,5 @@
 use std::cell::Cell;
-use surgeist_css::{CssParserContext, CssPropertyGrammar};
+use surgeist_css::{CssParser, CssParserContext, CssPropertyGrammar};
 use surgeist_cssom::*;
 
 fn limits() -> CssomDeclarationRequestLimits {
@@ -77,8 +77,8 @@ fn properties(
     let mut batch = store
         .batch(CssomEditGuard::from_snapshot(&store.snapshot()))
         .unwrap();
-    let declarations = parser
-        .parse_declaration_block_contents(source)
+    let declarations = CssParser::new(parser, Default::default())
+        .parse_block_contents(source)
         .into_parts()
         .0;
     let ticket = batch

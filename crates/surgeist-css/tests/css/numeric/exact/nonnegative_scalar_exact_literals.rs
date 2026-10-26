@@ -17,8 +17,8 @@
 use surgeist_css::{
     CssAnimationIterationCount, CssBorderImageRepeatKeyword, CssBorderImageSliceComponent,
     CssBorderImageWidthComponent, CssDeclaration, CssErrorCode, CssFilter, CssFilterAmount,
-    CssFilterFunction, CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule, parse_sheet, parse_style_attribute,
+    CssFilterFunction, CssKnownProperty, CssKnownPropertyValueRef, CssParser, CssRecoveryAction,
+    CssRecoveryDiagnostic, CssRule,
 };
 
 const AMOUNT_FUNCTIONS: [&str; 7] = [
@@ -128,7 +128,7 @@ fn assert_declarations(
 
 fn assert_case(declaration: &str, expected: CssKnownProperty, admitted: bool) {
     let source = format!("width: 2px; {declaration}; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         report.is_clean(),
         admitted,
@@ -144,7 +144,7 @@ fn assert_case(declaration: &str, expected: CssKnownProperty, admitted: bool) {
     );
 
     let sheet_source = format!(".subject {{ {source} }}");
-    let sheet = parse_sheet(&sheet_source);
+    let sheet = CssParser::default().parse_sheet(&sheet_source);
     assert_eq!(
         sheet.is_clean(),
         admitted,
@@ -382,8 +382,8 @@ fn ordinary_border_image_arity_fill_and_auto_keep_their_typed_aggregate_roles() 
             assert_clean(&format!("{name}: {value}"), property);
         }
     }
-    let report =
-        parse_style_attribute("border-image-slice: fill 10 20%; border-image-width: auto 2");
+    let report = CssParser::default()
+        .parse_block_contents("border-image-slice: fill 10 20%; border-image-width: auto 2");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderImageSlice(slice) = report.syntax()[0]
         .known()
@@ -416,8 +416,8 @@ fn ordinary_border_image_arity_fill_and_auto_keep_their_typed_aggregate_roles() 
 
 #[test]
 fn ordinary_border_image_shorthand_preserves_explicit_members_and_omissions() {
-    let report =
-        parse_style_attribute("border-image: 10 fill; border-image: 10 / auto / 2 round space");
+    let report = CssParser::default()
+        .parse_block_contents("border-image: 10 fill; border-image: 10 / auto / 2 round space");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderImage(first) = report.syntax()[0]
         .known()
@@ -464,7 +464,7 @@ fn omitted_filter_amounts_preserve_all_seven_function_identities_and_order() {
     let functions = AMOUNT_FUNCTIONS.map(|name| format!("{name}()")).join(" ");
     for name in ["filter", "backdrop-filter"] {
         let source = format!("{name}: {functions}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let value = report.syntax()[0]
             .known()
@@ -507,8 +507,8 @@ fn ordinary_animation_fractional_zero_infinite_counts_and_omission_keep_list_ord
         "animation: fade 1s 2.5, other 2s infinite",
         CssKnownProperty::Animation,
     );
-    let report =
-        parse_style_attribute("animation-iteration-count: 2.5, 0, infinite; animation: fade 1s");
+    let report = CssParser::default()
+        .parse_block_contents("animation-iteration-count: 2.5, 0, infinite; animation: fade 1s");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::AnimationIterationCount(counts) = report.syntax()[0]
         .known()

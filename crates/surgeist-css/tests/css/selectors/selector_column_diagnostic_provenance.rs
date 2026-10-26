@@ -4,9 +4,8 @@
 //! Nesting 1 §3.1 requires ignoring the invalid child without losing its parent.
 
 use surgeist_css::{
-    CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssRecoveryAction, CssRule,
-    CssSelector, CssSelectorCombinator, CssSourcePosition, CssTokenKind, parse_selector,
-    parse_sheet,
+    CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssParser, CssRecoveryAction,
+    CssRule, CssSelector, CssSelectorCombinator, CssSourcePosition, CssTokenKind,
 };
 
 fn assert_position(position: CssSourcePosition, source: &str, byte: usize) {
@@ -20,7 +19,7 @@ fn assert_position(position: CssSourcePosition, source: &str, byte: usize) {
 }
 
 fn rejected_column(source: &str) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("invalid nested rule must retain only its parent: {report:?}");
     };
@@ -62,7 +61,11 @@ fn invalid_column_rhs_preserves_utf8_and_utf16_delimiter_coordinates() {
 
 #[test]
 fn single_namespace_separator_after_whitespace_remains_a_descendant() {
-    let report = parse_selector("svg |leaf", &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        "svg |leaf",
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{report:?}");
     let Some(CssSelector::Complex(selector)) = report.syntax() else {
         panic!("two descendant compounds: {report:?}");

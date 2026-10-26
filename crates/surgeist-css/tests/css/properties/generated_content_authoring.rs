@@ -502,15 +502,13 @@ fn parses_counter_change_values_symbolically() {
 
 #[test]
 fn public_api_exposes_generated_content_list_style_and_counter_values() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default().parse_sheet(r#"
             .chapter::before {
                 content: "Chapter " counter(section, upper-roman) counters(item, ".", lower-alpha) open-quote;
                 list-style: url(marker.svg) inside square;
                 counter-reset: section 1 page -1 item;
             }
-        "#,
-    )
+        "#)
     .expect("clean parse report");
 
     let style = style_rule(&sheet.rules()[0]);

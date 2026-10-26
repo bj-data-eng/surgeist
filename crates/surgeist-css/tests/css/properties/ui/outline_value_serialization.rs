@@ -311,10 +311,11 @@ fn explicit_initial_none_with_auto_color_does_not_gain_an_auto_style() {
 #[test]
 fn parsed_shorthand_retains_lexical_components_importance_and_both_numeric_origins() {
     let source = "calc(1px + 2px) solid rgb(calc(2 + 3) 0 0)";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let retained_components = components.clone();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Outline),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Outline)),
         components,
         CssImportance::Important,
     )
@@ -368,7 +369,7 @@ fn parsed_shorthand_retains_lexical_components_importance_and_both_numeric_origi
 #[test]
 fn parsed_auto_fields_keep_the_original_escaped_value_and_neighbors() {
     let source = r"/* 🦀 */ color:red; outline:2px \61 uto!important; width:1px";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [before, declaration, after] = report.syntax().as_slice() else {
         panic!("all three declarations")
@@ -396,5 +397,11 @@ fn parsed_auto_fields_keep_the_original_escaped_value_and_neighbors() {
         declaration.parsed_value().unwrap().source().as_str(),
         source
     );
-    assert_eq!(&validate_style_attribute(source).unwrap(), report.syntax());
+    assert_eq!(
+        &CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .unwrap(),
+        report.syntax()
+    );
 }

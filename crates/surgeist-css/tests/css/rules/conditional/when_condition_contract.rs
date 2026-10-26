@@ -28,7 +28,7 @@ fn exact_media_leaf_preserves_boolean_plain_and_directional_range_shapes() {
         "media(1px < width)",
         "media(1px < width <= 10px)",
     ] {
-        let condition = parse_when_condition(source).unwrap();
+        let condition = CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), source).unwrap();
         let leaf = feature(&condition);
         let CssWhenMediaFeatureKind::Feature(query) = leaf.kind() else {
             panic!("known width feature");
@@ -81,7 +81,7 @@ fn exact_media_leaf_preserves_boolean_plain_and_directional_range_shapes() {
                 .as_css(),
             source
         );
-        let components = parse_component_values(source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let [component] = components.items() else {
             panic!("one function component");
         };
@@ -96,7 +96,7 @@ fn exact_media_leaf_preserves_boolean_plain_and_directional_range_shapes() {
 fn unknown_boolean_features_keep_the_actual_media_enclosure_without_custom_reference() {
     for name in ["screen", "--name", "future-feature"] {
         let source = format!("media({name})");
-        let condition = parse_when_condition(&source).unwrap();
+        let condition = CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), &source).unwrap();
         let leaf = feature(&condition);
         let CssWhenMediaFeatureKind::UnknownFeature(unknown) = leaf.kind() else {
             panic!("unknown boolean feature");
@@ -132,7 +132,7 @@ fn unknown_feature_values_preserve_plain_and_range_syntax_without_opaque_convers
         "media(future-feature > 1px)",
         "media(1px < future-feature <= 10px)",
     ] {
-        let condition = parse_when_condition(source).unwrap();
+        let condition = CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), source).unwrap();
         let leaf = feature(&condition);
         let CssWhenMediaFeatureKind::UnknownFeature(unknown) = leaf.kind() else {
             panic!("unknown name with exact feature grammar");
@@ -183,7 +183,7 @@ fn broader_known_function_inputs_are_opaque_and_reject_on_leaf_only_admission() 
         "supports()",
         "supports((display:grid))",
     ] {
-        let condition = parse_when_condition(source).unwrap();
+        let condition = CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), source).unwrap();
         let CssConditionKind::Leaf(CssWhenLeaf::GeneralEnclosed(opaque)) = condition.kind() else {
             panic!("opaque fallback for {source}");
         };
@@ -196,7 +196,7 @@ fn broader_known_function_inputs_are_opaque_and_reject_on_leaf_only_admission() 
             source
         );
         if source.starts_with("media") {
-            let values = parse_component_values(source).unwrap();
+            let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
             assert!(
                 CssWhenMediaFeature::try_from_component(
                     values.items()[0].clone(),
@@ -215,7 +215,7 @@ fn supports_leaf_retains_one_declaration_and_the_selected_document_mode() {
         ("supports(display:grid)", "display", true),
         ("supports(future-prop:value)", "future-prop", false),
     ] {
-        let condition = parse_when_condition(source).unwrap();
+        let condition = CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), source).unwrap();
         let CssConditionKind::Leaf(CssWhenLeaf::SupportsDeclaration(declaration)) =
             condition.kind()
         else {
@@ -237,10 +237,15 @@ fn supports_leaf_retains_one_declaration_and_the_selected_document_mode() {
         );
     }
     let source = "supports(color:123)";
-    let standard = parse_when_condition(source).unwrap();
-    let quirks = CssParserContext::new(CssParserMode::Quirks)
-        .parse_when_condition(source)
-        .unwrap();
+    let standard = CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), source).unwrap();
+    let quirks = CssCondition::<CssWhenLeaf>::parse(
+        &CssParser::new(
+            CssParserContext::new(CssParserMode::Quirks),
+            Default::default(),
+        ),
+        source,
+    )
+    .unwrap();
     let CssConditionKind::Leaf(CssWhenLeaf::SupportsDeclaration(standard)) = standard.kind() else {
         panic!("standard declaration");
     };
@@ -254,7 +259,7 @@ fn supports_leaf_retains_one_declaration_and_the_selected_document_mode() {
 #[test]
 fn homogeneous_operators_and_redundant_grouping_remain_ordered_and_symbolic() {
     let source = "((media(width) or media(height))) and not(supports(display:grid))";
-    let condition = parse_when_condition(source).unwrap();
+    let condition = CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), source).unwrap();
     let CssConditionKind::And(and) = condition.kind() else {
         panic!("outer And");
     };
@@ -296,7 +301,9 @@ fn homogeneous_operators_and_redundant_grouping_remain_ordered_and_symbolic() {
             .as_css(),
         source
     );
-    let unary = parse_when_condition("not (supports(display:grid))").unwrap();
+    let unary =
+        CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), "not (supports(display:grid))")
+            .unwrap();
     let CssConditionKind::Not(term) = unary.kind() else {
         panic!("one unary Not");
     };
@@ -318,7 +325,7 @@ fn empty_and_failed_group_probes_are_opaque_while_outer_algebra_rejects() {
         "future(;!)",
         "(media(width) and supports(display:grid) or media(height))",
     ] {
-        let condition = parse_when_condition(source).unwrap();
+        let condition = CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), source).unwrap();
         assert!(
             matches!(
                 condition.kind(),
@@ -345,7 +352,7 @@ fn empty_and_failed_group_probes_are_opaque_while_outer_algebra_rejects() {
         "media (width)",
     ] {
         assert!(
-            parse_when_condition(source)
+            CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), source)
                 .as_ref()
                 .is_err_and(|error| error.is_invalid_condition_grammar()),
             "{source}"
@@ -364,7 +371,7 @@ fn lexical_failures_are_terminal_component_errors_with_original_origins() {
             "]",
         ),
     ] {
-        let error = parse_when_condition(source).unwrap_err();
+        let error = CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), source).unwrap_err();
         let Some(component) = error.component_error() else {
             panic!("terminal component cause: {error:?}");
         };
@@ -381,7 +388,7 @@ fn lexical_failures_are_terminal_component_errors_with_original_origins() {
 
 #[test]
 fn checked_recovered_input_rejects_while_parsed_rule_retains_owned_eof_closures() {
-    let values = parse_component_values("media(width").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "media(width").unwrap();
     assert!(
         CssCondition::<CssWhenLeaf>::try_from_components(values.clone(), Default::default())
             .as_ref()
@@ -393,7 +400,7 @@ fn checked_recovered_input_rejects_while_parsed_rule_retains_owned_eof_closures(
             .as_ref()
             .is_err_and(|error| error.is_recovered_input())
     );
-    let report = parse_sheet("@when media(width){.A{color:red");
+    let report = CssParser::default().parse_sheet("@when media(width){.A{color:red");
     let [CssRule::When(rule)] = report.syntax().rules() else {
         panic!("retained when with EOF-recovered body");
     };
@@ -423,7 +430,7 @@ fn checked_recovered_input_rejects_while_parsed_rule_retains_owned_eof_closures(
 #[test]
 fn lexical_spelling_comments_coordinates_and_serialized_origins_survive_clone() {
     let source = "/*🦀*/ MEDIA(width) AnD (supports(display:grid) or future()) ";
-    let condition = parse_when_condition(source).unwrap();
+    let condition = CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), source).unwrap();
     let before = condition.clone();
     assert!(matches!(condition.kind(), CssConditionKind::And(_)));
     let position = condition.position().unwrap();
@@ -464,7 +471,7 @@ fn lexical_spelling_comments_coordinates_and_serialized_origins_survive_clone() 
 
 #[test]
 fn programmatic_enclosure_keeps_parsed_feature_children_without_invented_position() {
-    let children = parse_component_values("width").unwrap();
+    let children = CssComponentValues::parse(&CssParser::default(), "width").unwrap();
     let child = children.items()[0].clone();
     let component = CssComponentValue::try_function("media", children).unwrap();
     let condition = CssCondition::<CssWhenLeaf>::try_from_components(
@@ -499,7 +506,11 @@ fn independent_component_depth_count_and_byte_limits_fail_atomically() {
     let source = "media(width)";
     // One function and its one feature identifier are two actual components.
     let exact = CssComponentValueLimits::try_new(1, 2, source.len()).unwrap();
-    let condition = parse_when_condition_with_limits(source, exact).unwrap();
+    let condition = CssCondition::<CssWhenLeaf>::parse(
+        &CssParser::new(CssParserContext::default(), exact),
+        source,
+    )
+    .unwrap();
     let before = condition.clone();
     for (limits, kind) in [
         (
@@ -516,15 +527,18 @@ fn independent_component_depth_count_and_byte_limits_fail_atomically() {
         ),
     ] {
         assert!(
-            parse_when_condition_with_limits(source, limits)
-                .as_ref()
-                .is_err_and(|error| error
-                    .component_error()
-                    .is_some_and(|error| component_failure(error) == kind))
+            CssCondition::<CssWhenLeaf>::parse(
+                &CssParser::new(CssParserContext::default(), limits),
+                source
+            )
+            .as_ref()
+            .is_err_and(|error| error
+                .component_error()
+                .is_some_and(|error| component_failure(error) == kind))
         );
         assert!(
             CssCondition::<CssWhenLeaf>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 limits
             )
             .as_ref()
@@ -564,7 +578,7 @@ fn supported_and_opaque_condition_depth_256_retain_identity_and_257_is_terminal(
         } else {
             format!("{}media(width){}", "(".repeat(255), ")".repeat(255))
         };
-        let condition = parse_when_condition(&source).unwrap();
+        let condition = CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), &source).unwrap();
         if opaque {
             assert!(matches!(
                 condition.kind(),
@@ -597,7 +611,7 @@ fn supported_and_opaque_condition_depth_256_retain_identity_and_257_is_terminal(
             format!("{}media(width){}", "(".repeat(256), ")".repeat(256))
         };
         assert!(
-            parse_when_condition(&too_deep)
+            CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), &too_deep)
                 .as_ref()
                 .is_err_and(|error| error
                     .component_error()

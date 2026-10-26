@@ -144,7 +144,7 @@ fn all_sixteen_typed_keywords_serialize_canonically_with_atomic_limits() {
         }
         let source = declaration(value.property(), text);
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("ordinary")
         };
@@ -169,25 +169,26 @@ fn checked_values_and_pending_reentry_preserve_typed_payload_and_both_origins() 
     for &(expected, text) in VALUES {
         let property = expected.property();
         let pending_source = declaration(property, "var(--mode)");
-        let CssExpansion::Pending(pending) = expand_declaration(&pending_source).unwrap() else {
+        let CssExpansion::Pending(pending) = pending_source.expand().unwrap() else {
             panic!("pending")
         };
         for components in [
-            parse_component_values(&text.to_ascii_uppercase()).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text.to_ascii_uppercase()).unwrap(),
             CssComponentValues::try_new(
                 vec![CssComponentValue::try_token(text).unwrap()],
                 Default::default(),
             )
             .unwrap(),
         ] {
-            let source = parse_property_value(
-                CssPropertyNameRef::Known(property),
+            let source = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Important,
             )
             .unwrap();
             let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("ordinary")
             };
@@ -223,10 +224,10 @@ fn normalized_writing_modes_preserve_authored_order_and_do_not_apply_bidi_or_ori
             "@media all{".repeat(depth),
             "}".repeat(depth)
         );
-        let report = parse_sheet(&text);
+        let report = CssParser::default().parse_sheet(&text);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         for _ in 0..2 {
-            let sheet = normalize_sheet(report.syntax()).unwrap();
+            let sheet = report.syntax().normalize(Default::default()).unwrap();
             let items: Vec<_> = sheet
                 .items()
                 .iter()
@@ -352,13 +353,18 @@ fn parsed_wrapper_accessors_serialize_case_escapes_and_trivia_without_mutation()
 #[test]
 fn recovered_keyword_neighbor_preserves_four_occurrences_with_exact_budgets() {
     let source = ".a{direction:rtl;unicode-bidi:rtl;writing-mode:sideways-lr;text-orientation:upright;unicode-bidi:isolate!important}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
-    assert!(validate_sheet(source).is_err());
+    assert!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .is_err()
+    );
     for (limits, resource, limit) in [
         (
             CssNormalizationLimits::try_new(0, 0, 4, 4).unwrap(),
@@ -377,17 +383,18 @@ fn recovered_keyword_neighbor_preserves_four_occurrences_with_exact_budgets() {
         ),
     ] {
         assert_eq!(
-            normalize_sheet_with_limits(report.syntax(), limits)
+            report
+                .syntax()
+                .normalize(limits)
                 .unwrap_err()
                 .exhausted_limit(),
             Some((resource, limit))
         );
     }
-    let sheet = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 4, 4).unwrap(),
-    )
-    .unwrap();
+    let sheet = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 4, 4).unwrap())
+        .unwrap();
     let items: Vec<_> = sheet
         .items()
         .iter()

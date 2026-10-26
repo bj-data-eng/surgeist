@@ -35,7 +35,7 @@ fn assert_family_quota(typed: bool, bytes: bool) {
     let mut edit = batch(&store);
     let source = "@font-feature-values A {}";
     let result = if typed {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean());
         edit.create_typed_sheet(report.into_parts().0, inputs())
     } else {

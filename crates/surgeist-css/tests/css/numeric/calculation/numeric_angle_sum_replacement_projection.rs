@@ -85,8 +85,11 @@ fn merged_angle_sum_keeps_genuine_infinity_and_nan_exceptions() {
 
 #[test]
 fn programmatic_angle_sum_keeps_exact_coefficients_and_origin() {
-    let arguments =
-        parse_component_values("(+01e308DEG + +01e308DEG - +01e308DEG) / +01e308DEG").unwrap();
+    let arguments = CssComponentValues::parse(
+        &CssParser::default(),
+        "(+01e308DEG + +01e308DEG - +01e308DEG) / +01e308DEG",
+    )
+    .unwrap();
     let root = CssComponentValue::try_function("CALC", arguments).unwrap();
     let components = CssComponentValues::try_new(vec![root], Default::default()).unwrap();
     let value = CssNumeric::<CssNumber>::try_from_calculation(

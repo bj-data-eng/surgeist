@@ -23,12 +23,15 @@ fn detached_margin_accepts_actual_decoded_names_and_composes_checked_selected_bo
         ("@\\74 op-left{content:'X'}", CssMarginBox::TopLeft),
         ("/**/ @top-left-corner {} /**/", CssMarginBox::TopLeftCorner),
     ] {
-        let report = parse_page_margin_rule(source);
+        let report = CssMarginRule::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {report:?}");
         let rule = report.syntax().as_ref().unwrap();
         assert_eq!(rule.name(), name);
     }
-    let report = parse_page_margin_rule("@top-left {content:'X'; color:red !important}");
+    let report = CssMarginRule::parse(
+        &CssParser::default(),
+        "@top-left {content:'X'; color:red !important}",
+    );
     let rule = report.syntax().as_ref().unwrap();
     let selected = rule
         .declarations()
@@ -45,7 +48,8 @@ fn detached_margin_accepts_actual_decoded_names_and_composes_checked_selected_bo
 
 #[test]
 fn local_invalid_neighbors_descriptors_and_structural_units_recover_under_margin_grammar() {
-    let report = parse_page_margin_rule(
+    let report = CssMarginRule::parse(
+        &CssParser::default(),
         "@top-left { content:'X'; size:A4; display:block; color:bogus; @unknown {} margin-left:2px; --X: RAW; color:blue !important }",
     );
     let rule = report.syntax().as_ref().unwrap();
@@ -80,7 +84,10 @@ fn local_invalid_neighbors_descriptors_and_structural_units_recover_under_margin
 #[test]
 fn recognized_page_descriptor_property_in_margin_names_its_catalog_identity() {
     for spelling in ["size", "SIZE"] {
-        let report = parse_page_margin_rule(&format!("@top-left {{ {spelling}: A4 }}"));
+        let report = CssMarginRule::parse(
+            &CssParser::default(),
+            format!("@top-left {{ {spelling}: A4 }}"),
+        );
         let errors = report
             .diagnostics()
             .iter()
@@ -117,7 +124,7 @@ fn complete_rule_framing_and_empty_prelude_reject_extra_input_without_hierarchy_
         "@top-left{} junk",
         "@top-left{} }",
     ] {
-        let report = parse_page_margin_rule(source);
+        let report = CssMarginRule::parse(&CssParser::default(), source);
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         assert!(!report.is_clean());
         assert!(
@@ -132,7 +139,7 @@ fn complete_rule_framing_and_empty_prelude_reject_extra_input_without_hierarchy_
 
 #[test]
 fn preliminary_syntax_and_typed_page_placement_or_unsupported_name_remain_distinct() {
-    let candidate = classify_rule_syntax("@page {}");
+    let candidate = CssRuleSyntax::classify(&CssParser::default(), "@page {}");
     assert!(candidate.is_clean());
     let placed = candidate
         .syntax()
@@ -146,7 +153,7 @@ fn preliminary_syntax_and_typed_page_placement_or_unsupported_name_remain_distin
             .iter()
             .any(|d| d.error().code() == CssErrorCode::InvalidAtRulePlacement)
     );
-    let unknown = classify_rule_syntax("@unknown {}");
+    let unknown = CssRuleSyntax::classify(&CssParser::default(), "@unknown {}");
     assert!(unknown.is_clean());
     let unsupported = unknown.syntax().as_ref().unwrap().admit_page_margin_rule();
     assert!(unsupported.syntax().is_none());
@@ -157,7 +164,10 @@ fn preliminary_syntax_and_typed_page_placement_or_unsupported_name_remain_distin
             .any(|d| d.error().code() == CssErrorCode::UnknownAtRule)
     );
     let raw = "@top-left {content:'x'}";
-    let candidate = classify_rule_syntax(raw).into_parts().0.unwrap();
+    let candidate = CssRuleSyntax::classify(&CssParser::default(), raw)
+        .into_parts()
+        .0
+        .unwrap();
     assert!(candidate.admit_page_margin_rule().syntax().is_some());
     // Outside-Page destinations stay with the established generic/domain owners.
     assert!(
@@ -179,7 +189,7 @@ fn preliminary_syntax_and_typed_page_placement_or_unsupported_name_remain_distin
             .is_none()
     );
     assert!(
-        parse_page_margin_rule("@page{} @top-left{}")
+        CssMarginRule::parse(&CssParser::default(), "@page{} @top-left{}")
             .syntax()
             .is_none()
     );
@@ -190,7 +200,10 @@ fn original_rule_and_declaration_origins_outlive_the_input_without_coordinate_sh
     let source = "/*😀*/\r\n@\\74 op-left { content:'X'; bogus:bad; color:red } /**/";
     let candidate = {
         let input = source.to_owned();
-        classify_rule_syntax(&input).into_parts().0.unwrap()
+        CssRuleSyntax::classify(&CssParser::default(), &input)
+            .into_parts()
+            .0
+            .unwrap()
     };
     assert_eq!(candidate.origin().source().as_str(), source);
     assert_eq!(candidate.origin().span().start().byte_offset().value(), 10);
@@ -222,7 +235,10 @@ fn empty_detached_child_retains_its_complete_occurrence_after_candidate_drop() {
     let source = " /*😀*/ @top-left{} /**/ ";
     let rule = {
         let input = source.to_owned();
-        parse_page_margin_rule(&input).into_parts().0.unwrap()
+        CssMarginRule::parse(&CssParser::default(), &input)
+            .into_parts()
+            .0
+            .unwrap()
     };
     assert!(rule.declarations().is_empty());
     let origin = rule.detached_origin().unwrap();
@@ -238,7 +254,7 @@ fn empty_detached_child_retains_its_complete_occurrence_after_candidate_drop() {
 fn actual_document_context_and_eof_recovery_are_retained() {
     let context = CssParserContext::new(CssParserMode::Quirks);
     let source = "@top-left { margin:1px; --x:func(1";
-    let report = context.parse_page_margin_rule(source);
+    let report = CssMarginRule::parse(&CssParser::new(context, Default::default()), source);
     let rule = report.syntax().as_ref().unwrap();
     assert_eq!(names(rule), ["margin", "--x"]);
     assert_eq!(
@@ -255,9 +271,15 @@ fn actual_document_context_and_eof_recovery_are_retained() {
     );
     assert_eq!(
         report,
-        context.parse_page_margin_rule_with_limits(source, CssComponentValueLimits::default())
+        CssMarginRule::parse(
+            &CssParser::new(context, CssComponentValueLimits::default()),
+            source
+        )
     );
-    let candidate = classify_rule_syntax(source).into_parts().0.unwrap();
+    let candidate = CssRuleSyntax::classify(&CssParser::default(), source)
+        .into_parts()
+        .0
+        .unwrap();
     assert_eq!(
         report,
         candidate.admit_page_margin_rule_with_context(context)
@@ -269,10 +291,13 @@ fn whole_input_limits_fail_atomically_and_candidate_admission_does_not_reset_cha
     let source = "@top-left{color:red}";
     // At-keyword, block, ident, colon, ident; actual block contributes depth one.
     let adequate = CssComponentValueLimits::try_new(1, 5, source.len()).unwrap();
-    let candidate = classify_rule_syntax_with_limits(source, adequate)
-        .into_parts()
-        .0
-        .unwrap();
+    let candidate = CssRuleSyntax::classify(
+        &CssParser::new(CssParserContext::default(), adequate),
+        source,
+    )
+    .into_parts()
+    .0
+    .unwrap();
     assert_eq!(candidate.component_count(), 5);
     assert!(candidate.admit_page_margin_rule().is_clean());
     for (limits, cause) in [
@@ -289,7 +314,8 @@ fn whole_input_limits_fail_atomically_and_candidate_admission_does_not_reset_cha
             ComponentFailure::ByteLimit,
         ),
     ] {
-        let report = parse_page_margin_rule_with_limits(source, limits);
+        let report =
+            CssMarginRule::parse(&CssParser::new(CssParserContext::default(), limits), source);
         assert!(report.syntax().is_none());
         assert!(
             report.diagnostics().iter().any(|d| d
@@ -298,18 +324,24 @@ fn whole_input_limits_fail_atomically_and_candidate_admission_does_not_reset_cha
                 .is_some_and(|error| component_failure(error) == cause)),
             "{report:?}"
         );
-        let retry = parse_page_margin_rule_with_limits(source, adequate);
+        let retry = CssMarginRule::parse(
+            &CssParser::new(CssParserContext::default(), adequate),
+            source,
+        );
         assert!(retry.is_clean());
         assert_eq!(names(retry.syntax().as_ref().unwrap()), ["color"]);
         assert_eq!(candidate.component_count(), 5);
     }
     let trailing = "@top-left{color:red} /*charged trailing trivia*/";
-    let failed = parse_page_margin_rule_with_limits(trailing, adequate);
+    let failed = CssMarginRule::parse(
+        &CssParser::new(CssParserContext::default(), adequate),
+        trailing,
+    );
     assert!(failed.syntax().is_none());
     assert!(failed.diagnostics().iter().any(|d| {
         d.error()
             .component_error()
             .is_some_and(|error| error.is_byte_limit())
     }));
-    assert!(parse_page_margin_rule(trailing).is_clean());
+    assert!(CssMarginRule::parse(&CssParser::default(), trailing).is_clean());
 }

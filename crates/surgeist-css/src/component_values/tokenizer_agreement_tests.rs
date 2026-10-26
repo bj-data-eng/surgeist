@@ -52,7 +52,6 @@ fn preprocess_text(text: &str) -> String {
 fn limits() -> CssUtf16PropertyValueLimits {
     CssUtf16PropertyValueLimits {
         input: CssUtf16InputLimits::default(),
-        syntax: CssComponentValueLimits::default(),
         max_work: usize::MAX,
         max_live_bytes: usize::MAX,
         max_retained_bytes: usize::MAX,
@@ -67,7 +66,7 @@ fn controlled<T>(operation: impl FnOnce(&Control<'_>) -> T) -> T {
 }
 
 fn direct(text: &str) -> Outcome {
-    parse_component_values(text)
+    crate::component_values::parse_component_values(text)
 }
 
 fn arena(text: &str) -> Outcome {

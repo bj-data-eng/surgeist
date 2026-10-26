@@ -15,9 +15,10 @@ const FUNCTIONS: [&str; 5] = [
 
 fn image_css(function: &str, method: &str, colors: &str) -> String {
     let css = format!("{function}(in {method}, {colors})");
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
-        parse_component_values(&css).unwrap(),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage)),
+        CssComponentValues::parse(&CssParser::default(), &css).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -44,9 +45,12 @@ fn explicit_oklab_with_legacy_colors_survives_image_and_declaration_serializatio
             "hwb(0 0% 0%), hwb(240 0% 0%)",
         ] {
             let css = format!("{function}(in oklab, {colors})");
-            let declaration = parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
-                parse_component_values(&css).unwrap(),
+            let declaration = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                    CssKnownProperty::BackgroundImage,
+                )),
+                CssComponentValues::parse(&CssParser::default(), &css).unwrap(),
                 CssImportance::Important,
             )
             .unwrap();
@@ -71,7 +75,7 @@ fn explicit_oklab_with_legacy_colors_survives_image_and_declaration_serializatio
             );
             let output = declaration.serialize_specified(Default::default()).unwrap();
             assert!(output.contains("in oklab"), "{output}");
-            let report = parse_style_attribute(&output);
+            let report = CssParser::default().parse_block_contents(&output);
             assert!(report.is_clean(), "{:?}", report.diagnostics());
             assert_eq!(
                 report.syntax()[0]
@@ -113,7 +117,8 @@ fn matching_oklab_is_omitted_when_a_stable_nonlegacy_stop_proves_the_default() {
             ] {
                 let specified = image_css(function, "oklab", &colors);
                 assert!(!specified.contains("in oklab"), "{specified}");
-                let report = parse_style_attribute(&format!("background-image:{specified}"));
+                let report = CssParser::default()
+                    .parse_block_contents(format!("background-image:{specified}"));
                 assert!(report.is_clean(), "{:?}", report.diagnostics());
             }
         }
@@ -131,7 +136,8 @@ fn matching_srgb_is_omitted_for_stable_ordinary_legacy_stops() {
         ] {
             let specified = image_css(function, "srgb", colors);
             assert!(!specified.contains("in srgb"), "{specified}");
-            let report = parse_style_attribute(&format!("background-image:{specified}"));
+            let report =
+                CssParser::default().parse_block_contents(format!("background-image:{specified}"));
             assert!(report.is_clean(), "{:?}", report.diagnostics());
         }
     }

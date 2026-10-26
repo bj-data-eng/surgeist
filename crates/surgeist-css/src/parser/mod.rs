@@ -22,19 +22,11 @@ mod contain_intrinsic_size;
 pub(crate) mod counter_style;
 mod declaration_block;
 pub(crate) use declaration_block::parse_snapshot as parse_declaration_block_contents_snapshot;
-mod declaration_list;
 mod domain_declaration_contents;
 pub(crate) mod property_input;
 pub(crate) use declaration_block::parse_with_context as parse_declaration_block_contents_with_context;
-pub use declaration_block::{
-    parse_declaration_block_contents, parse_declaration_block_contents_with_limits,
-};
+pub(crate) use domain_declaration_contents::parse_font_face_declaration_block_contents_with_limits;
 pub(crate) use domain_declaration_contents::parse_page_with_context as parse_page_declaration_block_contents_with_context;
-pub use domain_declaration_contents::{
-    parse_font_face_declaration_block_contents,
-    parse_font_face_declaration_block_contents_with_limits, parse_page_declaration_block_contents,
-    parse_page_declaration_block_contents_with_limits,
-};
 mod descriptor_body;
 mod descriptor_values;
 mod effects;
@@ -43,19 +35,14 @@ mod font_controls;
 pub(crate) mod font_face;
 pub(crate) mod font_feature_values;
 pub(crate) mod font_feature_values_family_list;
-pub use font_feature_values_family_list::{
-    parse_font_feature_values_family_list, parse_font_feature_values_family_list_with_limits,
-};
+pub(crate) use font_feature_values_family_list::parse_with_context as parse_font_feature_values_family_list_with_context;
 mod font_palette;
 pub(crate) mod font_palette_values;
 mod font_settings;
 mod font_variant;
 mod fragments;
 mod style_selector_fragments;
-pub use style_selector_fragments::{
-    CssParsedStyleSelectors, CssStyleSelectorContext, parse_style_selector_list,
-    parse_style_selector_list_with_limits,
-};
+pub use style_selector_fragments::{CssParsedStyleSelectors, CssStyleSelectorContext};
 mod import;
 use import::{CssImportPrelude, parse_import_prelude};
 pub(crate) use import::{construct_import, import_boundaries_match};
@@ -73,7 +60,6 @@ mod replay_growth_tests;
 mod rule_candidate;
 mod rule_list;
 pub(crate) use page_margin_rule::parse_with_context as parse_page_margin_rule_with_context;
-pub use page_margin_rule::{parse_page_margin_rule, parse_page_margin_rule_with_limits};
 use rule_list::{
     AtRulePrelude, GroupSink, RuleListItem, RuleListUnits, RuleParser, ScopedSink, SheetSink,
     recover_rule_list,
@@ -81,28 +67,21 @@ use rule_list::{
 #[cfg(test)]
 mod style_scope_media_separator_tests;
 mod syntax_bridge;
-pub use declaration_list::parse_declaration_list_text;
-pub(crate) use declaration_list::parse_declaration_list_text_with_context;
 pub(crate) use page::{first_page_component, is_page_margin_property, page_declaration_violation};
-pub use rule_candidate::{
-    CssRuleAdmissionContext, CssRuleSyntax, CssRuleSyntaxKind, classify_rule_syntax,
-    classify_rule_syntax_with_limits,
-};
+pub(crate) use rule_candidate::classify_rule_syntax_with_limits;
+pub use rule_candidate::{CssRuleAdmissionContext, CssRuleSyntax, CssRuleSyntaxKind};
 mod gap;
 pub(crate) mod image_1d;
 mod masking;
 mod ui;
-pub use fragments::{
+pub(crate) use fragments::{
     parse_color_profile_block, parse_color_profile_descriptor_value, parse_counter_style_block,
-    parse_counter_style_descriptor_value, parse_cssom_media_query, parse_declaration,
-    parse_font_face_block, parse_font_face_descriptor_value, parse_font_feature_display_value,
-    parse_font_feature_value, parse_font_feature_value_block, parse_font_feature_values_block,
-    parse_font_palette_descriptor_value, parse_font_palette_values_block, parse_group_block,
-    parse_keyframe_declaration_block, parse_keyframes_block, parse_margin_block, parse_media_query,
-    parse_media_query_list, parse_page_block, parse_page_descriptor_value,
-    parse_page_selector_list, parse_property_value_text, parse_property_value_text_for_grammar,
-    parse_relative_selector_list, parse_rule, parse_scope_block, parse_scoped_group_block,
-    parse_selector, parse_selector_list, parse_style_block, parse_supports_test_block,
+    parse_counter_style_descriptor_value, parse_cssom_media_query, parse_font_face_block,
+    parse_font_face_descriptor_value, parse_font_feature_display_value, parse_font_feature_value,
+    parse_font_feature_value_block, parse_font_feature_values_block,
+    parse_font_palette_descriptor_value, parse_font_palette_values_block, parse_media_query,
+    parse_page_descriptor_value, parse_page_selector_list, parse_relative_selector_list,
+    parse_selector, parse_supports_test_block,
 };
 pub(crate) use fragments::{
     parse_declaration_with_context, parse_group_block_with_context,
@@ -128,10 +107,7 @@ mod inset;
 mod item_flow;
 mod keyframe_fragments;
 mod keyframes;
-pub use keyframe_fragments::{
-    CssParsedKeyframeRule, CssParsedKeyframeSelectors, parse_keyframe_rule,
-    parse_keyframe_selector_list,
-};
+pub use keyframe_fragments::{CssParsedKeyframeRule, CssParsedKeyframeSelectors};
 mod layout;
 mod list_styles;
 mod motion;
@@ -254,9 +230,8 @@ use supports::{parse_supports_condition, with_supports_prelude_context};
 use ui::*;
 use will_change::*;
 pub(crate) mod named_supports;
-pub use named_supports::{
-    parse_supports_test_child, parse_supports_test_child_with_limits, parse_supports_test_contents,
-    parse_supports_test_contents_with_limits,
+pub(crate) use named_supports::{
+    parse_supports_test_child_with_limits, parse_supports_test_contents_with_limits,
 };
 use speech::*;
 use text_alignment::*;
@@ -621,41 +596,6 @@ fn parse_all_property<'i, 't>(
     ))
 }
 
-/// Parses a UTF-8 stylesheet into valid authored syntax and recovery diagnostics.
-///
-/// The ordinary parser retains valid top-level rules in source order and reports
-/// each discarded top-level rule with its complete balanced source span. Parsed
-/// `@charset` rules are unrecognized and dropped; top-level CDO/CDC tokens are
-/// ignored without diagnostics. The UTF-8 input is not decoded. The stylesheet
-/// root is structural depth zero; up to 256 shared rule-block/component/function
-/// levels are retained, and the first level
-/// beyond that drops its smallest enclosing recovery unit. Input deeper than 128
-/// levels is parsed on a bounded larger-stack thread; if the platform cannot
-/// start it, the report retains no rules and carries a
-/// [`CssErrorCode::ParserUnavailable`](crate::CssErrorCode::ParserUnavailable)
-/// refusal (limit 128, action `StopAtNestingLimit`), followed only by any tokenizer EOF
-/// or escape diagnostics, rather than recursing on the caller's stack. Recovery does not
-/// apply cascade, substitution, selector matching, contextual resolution, or
-/// resource loading.
-///
-/// ```
-/// use surgeist_css::{CssRecoveryAction, CssRule, parse_sheet};
-///
-/// let report = parse_sheet(
-///     ".before { color: red; } @unknown fn({x;y}); .after { color: blue; }",
-/// );
-/// assert_eq!(report.syntax().rules().len(), 2);
-/// assert!(!report.is_clean());
-/// assert!(matches!(report.syntax().rules()[0], CssRule::Style(_)));
-/// assert!(matches!(
-///     report.diagnostics()[0].action(),
-///     CssRecoveryAction::DropAtRule
-/// ));
-/// ```
-pub fn parse_sheet(source: &str) -> crate::CssParseReport<CssSheet> {
-    parse_sheet_with_context(source, crate::CssParserContext::default())
-}
-
 pub(crate) fn parse_sheet_with_context(
     source: &str,
     parser_context: crate::CssParserContext,
@@ -699,69 +639,6 @@ fn parse_sheet_snapshot_inner(
         )
     });
     recovery::finish_report(source, conditional_chains::sheet(source, report))
-}
-
-/// Parses a UTF-8 style attribute into valid ordinary declarations and recovery diagnostics.
-///
-/// The parser accepts an empty declaration list and an optional final semicolon. Each invalid
-/// declaration candidate is discarded independently, so later valid declarations remain
-/// eligible. A unit that starts with neither an identifier nor an at-keyword, including a stray
-/// `}`, is one malformed declaration discarded through the next root semicolon; so is an
-/// identifier-started unit that is not a valid declaration, such as `a {} color: red`.
-/// Retained declarations use the same property, custom-property, substitution, and
-/// importance grammar as declarations in ordinary style-rule blocks. At-rules, qualified rules,
-/// and other non-declaration input never produce a rule node from this front door.
-/// Input deeper than 128 levels needs a bounded larger-stack thread; if the
-/// platform cannot start it, the report retains no declarations and carries a
-/// [`CssErrorCode::ParserUnavailable`](crate::CssErrorCode::ParserUnavailable)
-/// refusal (limit 128), followed only by any tokenizer EOF or escape
-/// diagnostics, instead of recursing on the caller's stack.
-///
-/// ```
-/// use surgeist_css::{CssPropertyNameRef, CssRecoveryAction, parse_style_attribute};
-///
-/// let report = parse_style_attribute("color: red; @unknown x; width: 2px !important;");
-/// assert_eq!(report.syntax().len(), 2);
-/// assert!(matches!(
-///     report.syntax()[1].property_name(),
-///     CssPropertyNameRef::Known(property) if property.canonical_name() == "width"
-/// ));
-/// assert!(matches!(
-///     report.diagnostics()[0].action(),
-///     CssRecoveryAction::DropDeclaration
-/// ));
-/// ```
-#[must_use]
-pub fn parse_style_attribute(source: &str) -> crate::CssParseReport<CssDeclarationList> {
-    parse_style_attribute_with_context(source, crate::CssParserContext::default())
-}
-
-pub(crate) fn parse_style_attribute_with_context(
-    source: &str,
-    parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<CssDeclarationList> {
-    let profile = bounded_execution::StackProfile::Structural;
-    let refused = || CssDeclarationList::new(Vec::new());
-    let report = bounded_execution::report(profile, source, refused, || {
-        parse_style_attribute_inner(source, parser_context)
-    });
-    recovery::finish_report(source, report)
-}
-
-fn parse_style_attribute_inner(
-    source: &str,
-    parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<CssDeclarationList> {
-    let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default())
-        .with_parser_context(parser_context);
-    let working_source = crate::tokenization::prepare(source);
-    let mut input = ParserInput::new(&working_source);
-    let mut parser = Parser::new(&mut input);
-    let recovered = parse_style_attribute_declarations(source, &mut parser, recovery.clone());
-    let syntax = recovered.syntax;
-    let mut diagnostics = recovered.diagnostics;
-    diagnostics.extend(recovery.take_implicit_closure_diagnostics(source));
-    crate::CssParseReport::new(syntax, diagnostics)
 }
 
 #[derive(Clone, Copy)]
@@ -1417,91 +1294,6 @@ fn parse_keyframes_prelude<'i, 't>(
         ));
     }
     Ok(name)
-}
-
-// CSS Style Attributes §3 parses the value as declaration block contents in
-// which a `}` "is merely an invalid token". A unit that starts with anything
-// other than an identifier or at-keyword is a malformed declaration, whose
-// remnants Syntax 3 (2026 CRD) §5.5.6 consumes through the next root `;`. The
-// value admits declarations only, so an identifier-started unit that is not a
-// valid declaration is likewise one malformed declaration read through its `;`
-// (CSS 2.1 §4.2), never a qualified rule that ends at its `}`.
-fn parse_style_attribute_declarations<'i, 't>(
-    source: &'i str,
-    input: &mut Parser<'i, 't>,
-    recovery: RecoveryState,
-) -> Recovered<CssDeclarationList> {
-    let mut declarations = Vec::new();
-    let mut diagnostics = Vec::new();
-    let mut declaration_parser = StrictDeclarationParser::new(source, recovery.clone());
-    loop {
-        let progress = RecoveryProgress::record(input);
-        let unit_start = declaration_list::skip_empty_declaration_slots(input);
-        if declaration_list::starts_bad_declaration(input) {
-            let end = match recovery.syntax_document(source) {
-                Ok(document) => declaration_list::bad_declaration_end(&document, unit_start),
-                Err(error) => {
-                    diagnostics.push(syntax_bridge::arena_error(source, error));
-                    break;
-                }
-            };
-            diagnostics.extend(declaration_list::drop_bad_declaration(
-                source, input, &recovery, unit_start, end,
-            ));
-            if progress.finish(input, false) == RecoveryLoopOutcome::Terminated {
-                break;
-            }
-            continue;
-        }
-        let Some(item) = RuleBodyParser::new(input, &mut declaration_parser).next() else {
-            break;
-        };
-        let (failed_at_block, failed_block_error) = item
-            .as_ref()
-            .err()
-            .map(|(_, _)| {
-                consume_failed_rule_block(source, input, true, &recovery, "css.declaration")
-            })
-            .unwrap_or((false, None));
-        let retained = item.is_ok();
-        let progress_outcome = progress.finish(input, retained);
-        let unit_end = input.position().byte_index();
-        match item {
-            Ok(declaration) => declarations.push(declaration),
-            Err((error, failed_unit))
-                if is_declaration_recovery_unit(failed_unit) && !failed_at_block =>
-            {
-                if let Some(diagnostic) = block_item_diagnostic(
-                    source,
-                    error,
-                    failed_unit,
-                    unit_end,
-                    crate::CssRecoveryAction::DropDeclaration,
-                ) {
-                    diagnostics.push(diagnostic);
-                }
-            }
-            Err((error, _)) => {
-                let error = failed_block_error.unwrap_or(error);
-                if let Some(diagnostic) = block_item_diagnostic_from_start(
-                    source,
-                    error,
-                    unit_start,
-                    unit_end,
-                    crate::CssRecoveryAction::DropDeclaration,
-                ) {
-                    diagnostics.push(diagnostic);
-                }
-            }
-        }
-        if progress_outcome == RecoveryLoopOutcome::Terminated {
-            break;
-        }
-    }
-    Recovered {
-        syntax: CssDeclarationList::new(declarations),
-        diagnostics,
-    }
 }
 
 pub(super) struct StrictDeclarationParser<'s> {
@@ -2405,6 +2197,32 @@ fn parse_legacy_property_alias_value<'i, 't>(
             ))
         }
     }
+}
+
+/// Syntax 3 (2026 CRD) §5.5.6 step 6 over any representation of a declaration
+/// value: the positions in `items` of the trailing `!` delimiter and the
+/// `important` identifier that follows it, ignoring trivia.
+///
+/// This is the one detection of the annotation for retained node lists, for
+/// component values and, through [`parse_importance_boundary`], for token
+/// streams. Whether an owner admits the annotation, and what a rejected one
+/// reports, stays with that owner.
+/// <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-declaration>
+pub(crate) fn trailing_importance<T>(
+    items: &[T],
+    is_trivia: impl Fn(&T) -> bool,
+    is_bang: impl Fn(&T) -> bool,
+    is_important: impl Fn(&T) -> bool,
+) -> Option<(usize, usize)> {
+    let mut significant = items
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| !is_trivia(item))
+        .map(|(index, _)| index)
+        .rev();
+    let word = significant.next()?;
+    let bang = significant.next()?;
+    (is_bang(&items[bang]) && is_important(&items[word])).then_some((bang, word))
 }
 
 /// The single importance boundary of a declaration value. Syntax 3 (2026 CRD)

@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn discarded_else_suppresses_owned_eof_closures_and_keeps_lexical_comment() {
         let source = "@else { .lost { color: rgb(1 2 3); /*";
-        let report = parse_sheet(source);
+        let report = crate::CssParser::default().parse_sheet(source);
         assert!(report.syntax().rules().is_empty());
         assert_eq!(
             report
@@ -215,7 +215,8 @@ mod tests {
     }
     #[test]
     fn discarded_nested_else_does_not_suppress_ancestor_eof_closure() {
-        let report = parse_sheet("@layer kept { @else { .lost { color: red");
+        let report =
+            crate::CssParser::default().parse_sheet("@layer kept { @else { .lost { color: red");
         assert!(
             matches!(report.syntax().rules(), [CssRule::LayerBlock(rule)] if rule.rules().is_empty())
         );

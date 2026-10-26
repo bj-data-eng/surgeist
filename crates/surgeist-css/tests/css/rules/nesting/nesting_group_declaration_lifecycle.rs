@@ -150,7 +150,7 @@ fn eligible_nested_bodies_retain_two_runs_full_parent_identity_and_child_restora
         let source = format!(
             "/*🦀*/\n.P,.P::before{{color:red;opacity:0.1;{starter}{header}{{{MATRIX_BODY}}}display:block;color:black}}.Outside{{height:4px}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{header}: {:?}", report.diagnostics());
         let before = report.clone();
         let [CssRule::Style(parent), CssRule::Style(_)] = report.syntax().rules() else {
@@ -188,7 +188,7 @@ fn eligible_nested_bodies_retain_two_runs_full_parent_identity_and_child_restora
             assert_eq!(last.declarations().len(), 2);
             assert_child_runs(child.declarations(), child.rules());
         }
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let values = assert_values(
             &source,
             &normalized,
@@ -305,10 +305,10 @@ fn eligible_nested_bodies_retain_two_runs_full_parent_identity_and_child_restora
 fn mixed_groups_scope_anchors_and_local_style_rebinding_survive_complete_specified_output() {
     let source = ".P,.P::before{color:red;@media screen{width:1px;@layer palette{height:2px;@when media(width){opacity:0.2;@scope (& > .Root) to (& .Limit){padding:3px;& .Child{color:blue;@supports (display:grid){height:4px;& .Leaf{opacity:0.4}width:5px}margin:6px}opacity:0.3}width:7px}@else{color:green!important}display:block}height:8px}color:black}.Outside{height:9px}";
     let expected = ".P, .P::before { color: red; @media screen { width: 1px; @layer palette { height: 2px; @when media(width) { opacity: 0.2; @scope (& > .Root) to (& .Limit) { padding: 3px; & .Child { color: blue; @supports (display:grid) { height: 4px; & .Leaf { opacity: 0.4; } width: 5px; } margin: 6px; } opacity: 0.3; } width: 7px; } @else { color: green !important; } display: block; } height: 8px; } color: black; }\n.Outside { height: 9px; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let expected_values = [
         ("color", "red", CssImportance::Normal),
         ("width", "1px", CssImportance::Normal),
@@ -442,11 +442,11 @@ fn mixed_groups_scope_anchors_and_local_style_rebinding_survive_complete_specifi
             .unwrap(),
         expected
     );
-    let reparsed = parse_sheet(expected);
+    let reparsed = CssParser::default().parse_sheet(expected);
     assert!(reparsed.is_clean(), "{:?}", reparsed.diagnostics());
     assert_values(
         expected,
-        &normalize_sheet(reparsed.syntax()).unwrap(),
+        &reparsed.syntax().normalize(Default::default()).unwrap(),
         &expected_values,
     );
     let reused = CssSheet::try_from_rules(report.syntax().rules().to_vec()).unwrap();
@@ -455,7 +455,11 @@ fn mixed_groups_scope_anchors_and_local_style_rebinding_survive_complete_specifi
         reused.serialize_specified(Default::default()).unwrap(),
         expected
     );
-    assert_values(source, &normalize_sheet(&reused).unwrap(), &expected_values);
+    assert_values(
+        source,
+        &reused.normalize(Default::default()).unwrap(),
+        &expected_values,
+    );
     assert_eq!(report, before);
 }
 
@@ -474,8 +478,8 @@ fn rule_list_and_definition_bodies_do_not_become_style_declaration_groups() {
         let source = format!(
             "{starter}{header}{{.Child{{color:blue}}color:red;width:1px;}}.Outside{{height:2px}}"
         );
-        let report = parse_sheet(&source);
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let report = CssParser::default().parse_sheet(&source);
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         assert_values(
             &source,
             &normalized,
@@ -509,10 +513,10 @@ fn rule_list_and_definition_bodies_do_not_become_style_declaration_groups() {
     ] {
         let source =
             format!(".P,.P::before{{color:red;{excluded}width:1px}}.Outside{{height:2px}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_values(
             &source,
-            &normalize_sheet(report.syntax()).unwrap(),
+            &report.syntax().normalize(Default::default()).unwrap(),
             &[
                 ("color", "red", CssImportance::Normal),
                 ("width", "1px", CssImportance::Normal),
@@ -535,7 +539,7 @@ fn rule_list_and_definition_bodies_do_not_become_style_declaration_groups() {
         );
     }
     let source = ".P{color:red;@supports-condition --test{display:grid;}width:1px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("parent style");
@@ -553,7 +557,7 @@ fn rule_list_and_definition_bodies_do_not_become_style_declaration_groups() {
     assert_eq!(run.declarations()[0].property(), "display");
     assert_values(
         source,
-        &normalize_sheet(report.syntax()).unwrap(),
+        &report.syntax().normalize(Default::default()).unwrap(),
         &[
             ("color", "red", CssImportance::Normal),
             ("width", "1px", CssImportance::Normal),
@@ -584,9 +588,9 @@ fn mixed_carrier_boundaries_preserve_runs_and_ancestry_with_child_local_limit_lo
         source.push('}');
         source.push_str(&"}".repeat(depth - 4));
         source.push_str("display:block;color:black}.Outside{height:4px}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let before = report.clone();
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let mut expected = vec![
             ("color", "red", CssImportance::Normal),
             ("width", "1px", CssImportance::Normal),
@@ -688,7 +692,7 @@ fn mixed_carrier_boundaries_preserve_runs_and_ancestry_with_child_local_limit_lo
 #[test]
 fn checked_reuse_requires_actual_style_ancestry_and_run_output_coalesces_only_on_reparse() {
     let source = ".P,.P::before{@media screen{width:1px;height:2px;.Child{color:blue}color:green!important;opacity:0.3}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean());
     let before = report.clone();
     let [CssRule::Style(parent)] = report.syntax().rules() else {
@@ -724,7 +728,7 @@ fn checked_reuse_requires_actual_style_ancestry_and_run_output_coalesces_only_on
     )
     .unwrap();
     let reused = CssSheet::try_from_rules(vec![CssRule::Media(wrapper)]).unwrap();
-    let normalized = normalize_sheet(&reused).unwrap();
+    let normalized = reused.normalize(Default::default()).unwrap();
     let values = assert_values(
         source,
         &normalized,
@@ -755,7 +759,7 @@ fn checked_reuse_requires_actual_style_ancestry_and_run_output_coalesces_only_on
     );
     assert!(reused_parent.parent().unwrap().position().is_none());
     let fragment = CssWhenRule::try_new_in_style(
-        parse_when_condition("media(width)").unwrap(),
+        CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), "media(width)").unwrap(),
         vec![first.clone(), last.clone()],
         &context,
     )
@@ -776,7 +780,7 @@ fn checked_reuse_requires_actual_style_ancestry_and_run_output_coalesces_only_on
     );
     assert_eq!(detached_fragment.path(), &[0, 0]);
     let emitted = format!(".P,.P::before{{{expected}}}");
-    let reparsed = parse_sheet(&emitted);
+    let reparsed = CssParser::default().parse_sheet(&emitted);
     assert!(reparsed.is_clean());
     let [CssRule::Style(parent)] = reparsed.syntax().rules() else {
         panic!("new actual style ancestry");
@@ -788,7 +792,7 @@ fn checked_reuse_requires_actual_style_ancestry_and_run_output_coalesces_only_on
         panic!("adjacent emitted runs coalesce as §6.1 permits");
     };
     assert_eq!(run.declarations().len(), 4);
-    let normalized = normalize_sheet(reparsed.syntax()).unwrap();
+    let normalized = reparsed.syntax().normalize(Default::default()).unwrap();
     let values = assert_values(
         &emitted,
         &normalized,

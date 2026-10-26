@@ -199,7 +199,7 @@ fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
 /// service's complete applicable CSP policy list is explicitly empty. Parsing
 /// and CSSOM creation execute; no snapshot is presented as a commit receipt.
 fn create_style_root(dom: &mut Dom, ordinal: usize) -> DocumentId {
-    use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+    use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
     use surgeist_cssom::{
         CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs, CssomStore,
     };
@@ -267,20 +267,20 @@ fn create_style_root(dom: &mut Dom, ordinal: usize) -> DocumentId {
         )
         .unwrap();
     let parser = CssParserContext::default();
-    let report = parser
-        .parse_sheet_utf16_with_limits(
+    let report = CssParser::new(parser, Default::default())
+        .parse_sheet_utf16(
             create.source().text().clone(),
             CssUtf16InputLimits::default(),
             || Ok::<_, ()>(()),
         )
         .unwrap();
-    let media = parser
-        .parse_media_query_list_utf16_with_limits(
-            Arc::new(Vec::new()),
-            CssUtf16InputLimits::default(),
-            || Ok::<_, ()>(()),
-        )
-        .unwrap();
+    let media = CssMediaQueryList::parse_utf16(
+        &CssParser::new(parser, Default::default()),
+        Arc::new(Vec::new()),
+        CssUtf16InputLimits::default(),
+        || Ok::<_, ()>(()),
+    )
+    .unwrap();
     let mut inputs = CssomSheetInputs::external(version, true);
     inputs.owner = Some("inline".into());
     let mut batch = root

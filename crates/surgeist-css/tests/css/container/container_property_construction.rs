@@ -147,7 +147,7 @@ fn shorthand_semantic_pair_omits_normal_and_expands_in_adopted_member_order() {
         };
         assert_eq!(wrapper.value(), &value);
         let CssExpansion::Contributions(CssContributions::Longhands(expanded)) =
-            expand_declaration(&declaration).unwrap()
+            declaration.expand().unwrap()
         else {
             panic!("expanded")
         };
@@ -243,7 +243,10 @@ fn canonical_escaping_and_byte_limits_are_checked_after_escape_expansion() {
 
 #[test]
 fn parsed_wrappers_keep_authored_text_components_and_origins_when_semantics_canonicalize() {
-    let report = parse_declaration(r"container: P\61 ne/**/Pane / SCROLL-STATE SIZE!important");
+    let report = CssDeclaration::parse(
+        &CssParser::default(),
+        r"container: P\61 ne/**/Pane / SCROLL-STATE SIZE!important",
+    );
     assert!(report.is_clean(), "{report:?}");
     let declaration = report.syntax().as_ref().unwrap();
     let original = declaration.value_components().clone();
@@ -282,7 +285,7 @@ fn parsed_wrappers_keep_authored_text_components_and_origins_when_semantics_cano
 #[test]
 fn parsed_none_and_omitted_type_have_checked_initial_semantics() {
     for css in ["container:none", "container:none / normal"] {
-        let report = parse_declaration(css);
+        let report = CssDeclaration::parse(&CssParser::default(), css);
         assert!(report.is_clean());
         let CssKnownPropertyValueRef::Container(value) = report
             .syntax()
@@ -312,9 +315,9 @@ fn parsed_none_and_omitted_type_have_checked_initial_semantics() {
 
 #[test]
 fn semantic_pending_replacement_keeps_programmatic_origins_and_original_occurrence() {
-    let report = parse_declaration("container:var(--layout)!important");
+    let report = CssDeclaration::parse(&CssParser::default(), "container:var(--layout)!important");
     let source = report.syntax().as_ref().unwrap();
-    let CssExpansion::Pending(pending) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending")
     };
     let semantic = CssContainer::new(names(&["1pane"]), CssContainerType::InlineSizeScrollState);

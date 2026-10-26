@@ -16,8 +16,8 @@ fn inputs(name: &str) -> CssomSheetInputs {
 fn parsed(text: &str) -> CssParseReport<CssSheet> {
     let mut units = Vec::with_capacity(4096);
     units.extend(text.encode_utf16());
-    CssParserContext::default()
-        .parse_sheet_utf16_with_limits(Arc::new(units), CssUtf16InputLimits::default(), || {
+    CssParser::new(CssParserContext::default(), Default::default())
+        .parse_sheet_utf16(Arc::new(units), CssUtf16InputLimits::default(), || {
             Ok::<_, ()>(())
         })
         .unwrap()
@@ -210,7 +210,8 @@ fn hidden_lexical_roots_and_terminators_cannot_bypass_atomic_typed_admission() {
             .map(|s| CssComponentValue::try_token(s).unwrap())
             .collect()
     }
-    let parsed = parse_component_values("/* terminator-only source */;").unwrap();
+    let parsed =
+        CssComponentValues::parse(&CssParser::default(), "/* terminator-only source */;").unwrap();
     let mut components = tokens("x : y");
     components.push(parsed.items().last().unwrap().clone());
     let body = CssSupportsTestBody::try_from_components(
@@ -225,7 +226,9 @@ fn hidden_lexical_roots_and_terminators_cannot_bypass_atomic_typed_admission() {
     )
     .unwrap();
 
-    let parsed = parse_component_values("/* hidden supports sibling */(x:y)").unwrap();
+    let parsed =
+        CssComponentValues::parse(&CssParser::default(), "/* hidden supports sibling */(x:y)")
+            .unwrap();
     let first = CssComponentValue::try_block(
         CssBlockKind::Parenthesis,
         CssComponentValues::try_new(tokens("x : y"), Default::default()).unwrap(),
@@ -250,7 +253,11 @@ fn hidden_lexical_roots_and_terminators_cannot_bypass_atomic_typed_admission() {
     )
     .unwrap();
 
-    let parsed = parse_component_values("/* hidden when sibling */media(height)").unwrap();
+    let parsed = CssComponentValues::parse(
+        &CssParser::default(),
+        "/* hidden when sibling */media(height)",
+    )
+    .unwrap();
     let first = CssComponentValue::try_function(
         "media",
         CssComponentValues::try_new(tokens("width"), Default::default()).unwrap(),

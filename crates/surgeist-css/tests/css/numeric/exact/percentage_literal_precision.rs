@@ -6,7 +6,7 @@ use crate::css::support::value_assertions::exact_percentage;
 use surgeist_css::*;
 
 fn first_object_position_percent(source: &str) -> String {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::ObjectPosition(value) = report.syntax()[0]
         .known()
@@ -32,7 +32,8 @@ fn first_object_position_percent(source: &str) -> String {
 
 #[test]
 fn parsed_gradient_stop_keeps_authored_thirty_percent() {
-    let report = parse_style_attribute("background-image: linear-gradient(red 30%, blue)");
+    let report = CssParser::default()
+        .parse_block_contents("background-image: linear-gradient(red 30%, blue)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BackgroundImage(images) = report.syntax()[0]
         .known()
@@ -69,8 +70,9 @@ fn parsed_generic_position_keeps_authored_thirty_percent_after_trivia() {
 }
 
 fn checked_object_position_percent(components: CssComponentValues) -> String {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ObjectPosition),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ObjectPosition)),
         components,
         CssImportance::Normal,
     )
@@ -97,7 +99,9 @@ fn checked_object_position_percent(components: CssComponentValues) -> String {
 #[test]
 fn checked_parsed_components_keep_authored_thirty_percent() {
     assert_eq!(
-        checked_object_position_percent(parse_component_values("30%").unwrap()),
+        checked_object_position_percent(
+            CssComponentValues::parse(&CssParser::default(), "30%").unwrap()
+        ),
         "30"
     );
 }
@@ -114,7 +118,7 @@ fn checked_programmatic_components_keep_authored_thirty_percent() {
 
 #[test]
 fn grid_track_keeps_authored_thirty_percent() {
-    let report = parse_style_attribute("grid-template-columns: 30%");
+    let report = CssParser::default().parse_block_contents("grid-template-columns: 30%");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
     let CssKnownPropertyValueRef::GridTemplateColumns(grid) = report.syntax()[0]
@@ -143,7 +147,7 @@ fn grid_track_keeps_authored_thirty_percent() {
 
 #[test]
 fn transform_scale_keeps_authored_thirty_percent() {
-    let report = parse_style_attribute("transform: scale3d(1, 30%, 1)");
+    let report = CssParser::default().parse_block_contents("transform: scale3d(1, 30%, 1)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Transform(transform) = report.syntax()[0]
         .known()
@@ -166,7 +170,7 @@ fn transform_scale_keeps_authored_thirty_percent() {
 
 #[test]
 fn filter_amount_keeps_authored_thirty_percent() {
-    let report = parse_style_attribute("filter: grayscale(30%)");
+    let report = CssParser::default().parse_block_contents("filter: grayscale(30%)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Filter(filter) = report.syntax()[0]
         .known()
@@ -186,7 +190,7 @@ fn filter_amount_keeps_authored_thirty_percent() {
 
 #[test]
 fn border_image_slice_keeps_authored_thirty_percent() {
-    let report = parse_style_attribute("border-image-slice: 30%");
+    let report = CssParser::default().parse_block_contents("border-image-slice: 30%");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderImageSlice(slice) = report.syntax()[0]
         .known()
@@ -203,7 +207,7 @@ fn border_image_slice_keeps_authored_thirty_percent() {
 
 #[test]
 fn keyframe_selector_keeps_authored_thirty_percent() {
-    let sheet = parse_sheet("@keyframes fade { 30% { opacity: 1; } }");
+    let sheet = CssParser::default().parse_sheet("@keyframes fade { 30% { opacity: 1; } }");
     assert!(sheet.is_clean(), "{:?}", sheet.diagnostics());
     let CssRule::Keyframes(keyframes) = &sheet.syntax().rules()[0] else {
         panic!("expected keyframes");
@@ -242,7 +246,7 @@ fn invalid_unitless_negative_and_range_controls_recover_at_the_token() {
         "filter: grayscale(-30%); color: red",
         "border-image-slice: -30%; color: red",
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         let error = report.diagnostics()[0].error();
@@ -269,7 +273,7 @@ fn invalid_unitless_negative_and_range_controls_recover_at_the_token() {
     }
 
     let source = "@keyframes fade { 101% { opacity: 1; } 25% { opacity: 0; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     let CssRule::Keyframes(keyframes) = &report.syntax().rules()[0] else {
         panic!("expected retained keyframes");
@@ -284,7 +288,7 @@ fn invalid_unitless_negative_and_range_controls_recover_at_the_token() {
 fn huge_finite_decimal_percentage_is_an_exact_authored_position() {
     let source = "object-position: 1e100%";
     assert_eq!(first_object_position_percent(source), "1e100");
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     let CssKnownPropertyValueRef::ObjectPosition(wrapper) = report.syntax()[0]
         .known()
         .unwrap()

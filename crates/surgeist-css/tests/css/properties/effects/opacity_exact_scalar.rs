@@ -61,8 +61,9 @@ fn assert_constructed(text: &str, percentage: bool) {
         Default::default(),
     )
     .unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Opacity),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Opacity)),
         components.clone(),
         CssImportance::Normal,
     )
@@ -140,11 +141,11 @@ fn opacity_scalar_admission_keeps_grammar_and_symbolic_boundaries() {
         ("NaN", "NaN"),
     ] {
         assert_checked_value_rejected(CssKnownProperty::Opacity, text, Some(token));
-        let report = parse_style_attribute(&format!("opacity:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("opacity:{text}"));
         assert!(!report.is_clean(), "invalid opacity scalar: {text}");
         assert!(report.syntax().is_empty());
     }
-    let report = parse_style_attribute("opacity:inherit;opacity:var(--x)");
+    let report = CssParser::default().parse_block_contents("opacity:inherit;opacity:var(--x)");
     assert!(report.is_clean());
     assert_eq!(report.syntax().len(), 2);
     assert!(matches!(

@@ -5,15 +5,16 @@
 
 use crate::css::support::serialization_limits::assert_limits as budget;
 use surgeist_css::{
-    CssBlockPosition as B, CssHorizontalPosition as H, CssInlinePosition as I,
-    CssRelativeAxisPosition as R, CssSerializationLimits as L, CssVerticalPosition as V, *,
+    CssBlockPosition as B, CssComponentValue, CssComponentValues, CssHorizontalPosition as H,
+    CssInlinePosition as I, CssParser, CssRelativeAxisPosition as R, CssSerializationLimits as L,
+    CssVerticalPosition as V, *,
 };
 
 fn lp(text: &str) -> CssNumeric<CssLengthPercentage> {
     if text.contains('(') {
         CssNumeric::<CssLengthPercentage>::try_from_calculation(
             CssCalculation::<CssLengthPercentage>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -30,7 +31,8 @@ fn cartesian(horizontal: H, vertical: V) -> CssPosition {
     CssPosition::from_cartesian(CssCartesianPosition::try_new(horizontal, vertical).unwrap())
 }
 fn parsed(text: &str) -> CssPosition {
-    let report = parse_style_attribute(&format!("/*😀*/ clip-path:circle(at {text})"));
+    let report =
+        CssParser::default().parse_block_contents(format!("/*😀*/ clip-path:circle(at {text})"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
         .known()
@@ -688,10 +690,16 @@ fn physical_consumers_reject_logical_families_while_full_position_consumers_acce
             format!("mask:url(mask.png) {position}"),
         ] {
             let source = format!("{declaration};color:blue");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(report.syntax().len(), 2, "{source}");
-            assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
+            assert_eq!(
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap(),
+                *report.syntax()
+            );
         }
         // `background-position` stays physical until csswg-drafts#9690 settles its longhands;
         // `transform-origin` keeps its older physical grammar.
@@ -701,7 +709,7 @@ fn physical_consumers_reject_logical_families_while_full_position_consumers_acce
             format!("transform-origin:{position}"),
         ] {
             let source = format!("{declaration};color:blue");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(report.diagnostics().len(), 1, "{source}");
             assert_eq!(report.syntax().len(), 1, "{source}");
             assert_eq!(
@@ -713,7 +721,11 @@ fn physical_consumers_reject_logical_families_while_full_position_consumers_acce
                 CssRecoveryAction::DropDeclaration
             );
             assert_eq!(
-                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
         }
@@ -721,10 +733,16 @@ fn physical_consumers_reject_logical_families_while_full_position_consumers_acce
         // Position, superseding its general Values3 fallback prose.
         for function in ["radial-gradient", "repeating-radial-gradient"] {
             let source = format!("background-image:{function}(at {position},red,blue);color:blue");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(report.syntax().len(), 2, "{source}");
-            assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
+            assert_eq!(
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap(),
+                *report.syntax()
+            );
         }
     }
 }

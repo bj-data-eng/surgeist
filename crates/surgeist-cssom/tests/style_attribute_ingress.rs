@@ -181,13 +181,8 @@ fn empty_and_invalid_inputs_charge_exact_root_storage_before_publication() {
     let packet = packet("element", CssParserMode::Standards);
     for text in ["", "/* nothing */", "mystery:bad"] {
         let original: Arc<Vec<u16>> = Arc::new(text.encode_utf16().collect());
-        let parsed = CssParserContext::default()
-            .parse_declaration_block_contents_utf16_with_limits(
-                original.clone(),
-                Default::default(),
-                Default::default(),
-                || Ok::<_, ()>(()),
-            )
+        let parsed = CssParser::new(CssParserContext::default(), Default::default())
+            .parse_block_contents_utf16(original.clone(), Default::default(), || Ok::<_, ()>(()))
             .unwrap();
         let bytes = parsed.source().source().storage_usage().retained_bytes();
         assert!(bytes > 0);

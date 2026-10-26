@@ -418,8 +418,8 @@ crate::specified_rule_serialization::specified_serialization!(CssCalcSize);
 /// counterparts through nested typed construction.
 ///
 /// ```compile_fail
-/// use surgeist_css::{CssBoxSize, CssCalcSize, parse_component_values};
-/// let values = parse_component_values("calc-size(content, size)").unwrap();
+/// use surgeist_css::{CssBoxSize, CssCalcSize, CssComponentValues, CssParser};
+/// let values = CssComponentValues::parse(&CssParser::default(), "calc-size(content, size)").unwrap();
 /// let generic = CssCalcSize::try_from_component(values.items()[0].clone()).unwrap();
 /// let _box_size = CssBoxSize::CalcSize(generic);
 /// ```
@@ -471,8 +471,10 @@ mod tests {
     use super::*;
     #[test]
     fn maximum_context_reports_first_nested_auto_origin() {
-        let values =
-            crate::parse_component_values("calc-size(calc-size(auto, size), 1px)").unwrap();
+        let values = crate::component_values::parse_component_values(
+            "calc-size(calc-size(auto, size), 1px)",
+        )
+        .unwrap();
         let serialized = values.serialize_tokens(Default::default()).unwrap();
         let value =
             CssCalcSize::try_from_component(values.items()[0].clone(), Default::default()).unwrap();
@@ -542,7 +544,8 @@ mod tests {
 
     #[test]
     fn recovered_eof_is_only_admitted_through_parser_policy() {
-        let values = crate::parse_component_values("calc-size(min-content, size").unwrap();
+        let values =
+            crate::component_values::parse_component_values("calc-size(min-content, size").unwrap();
         let component = values.items()[0].clone();
         assert_eq!(
             CssCalcSize::try_from_component(component.clone(), Default::default())
@@ -604,7 +607,7 @@ mod tests {
 
     #[test]
     fn container_numeric_context_still_rejects_size() {
-        let values = crate::parse_component_values("calc(size + 1px)").unwrap();
+        let values = crate::component_values::parse_component_values("calc(size + 1px)").unwrap();
         assert!(
             crate::numeric::construct_container(
                 values,

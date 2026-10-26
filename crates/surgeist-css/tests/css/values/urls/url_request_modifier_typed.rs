@@ -4,16 +4,16 @@
 //! applying Fetch operations or cryptographic interpretation.
 use crate::css::support::value_assertions::background_image_url as parsed;
 use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssIdent,
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssIdent, CssParser,
     CssRequestUrlModifierRef as Request, CssUrl, CssUrlCrossOrigin as CrossOrigin, CssUrlFunction,
     CssUrlModifier, CssUrlModifierFunction, CssUrlReferrerPolicy as Policy, CssValueOrigin,
-    CssValueTokenRef, parse_component_values,
+    CssValueTokenRef,
 };
 
 fn function(name: &str, text: &str) -> CssUrlModifierFunction {
     CssUrlModifierFunction::try_new(
         CssIdent::try_new(name).unwrap(),
-        parse_component_values(text).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
     )
     .unwrap()
 }
@@ -141,7 +141,7 @@ fn checked_constructor_rejects_all_known_argument_arity_and_category_failures() 
     ] {
         let error = CssUrlModifierFunction::try_new(
             CssIdent::try_new(name).unwrap(),
-            parse_component_values(arguments).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), arguments).unwrap(),
         )
         .unwrap_err();
         assert!(error.is_invalid_function(), "{name}({arguments})");
@@ -150,7 +150,7 @@ fn checked_constructor_rejects_all_known_argument_arity_and_category_failures() 
 
 #[test]
 fn checked_invalid_argument_errors_preserve_original_and_programmatic_origins() {
-    let arguments = parse_component_values("\"hash\" extra").unwrap();
+    let arguments = CssComponentValues::parse(&CssParser::default(), "\"hash\" extra").unwrap();
     let extra_origin = arguments.items()[2].origin().clone();
     let error = CssUrlModifierFunction::try_new(CssIdent::try_new("integrity").unwrap(), arguments)
         .unwrap_err();
@@ -235,7 +235,7 @@ fn request_metadata_qualifies_authored_grammar_and_downstream_execution() {
     assert!(
         CssUrlModifierFunction::try_new(
             CssIdent::try_new("referrerpolicy").unwrap(),
-            parse_component_values("default").unwrap()
+            CssComponentValues::parse(&CssParser::default(), "default").unwrap()
         )
         .unwrap_err()
         .is_invalid_function()

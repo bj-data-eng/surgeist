@@ -119,13 +119,11 @@ fn auto_initials_are_ordinary_longhands_and_only_line_break_inherits() {
 }
 #[test]
 fn normalization_preserves_order_contexts_importance_and_exact_cumulative_terminal_counts() {
-    let report = parse_sheet(
-        "@media screen{.a{wrap-inside:avoid!important;wrap-before:line;wrap-after:flex;line-break:anywhere;wrap-before:var(--before);wrap-after:unset!important;line-break:normal;wrap-inside:auto;color:red}}",
-    );
+    let report = CssParser::default().parse_sheet("@media screen{.a{wrap-inside:avoid!important;wrap-before:line;wrap-after:flex;line-break:anywhere;wrap-before:var(--before);wrap-after:unset!important;line-break:normal;wrap-inside:auto;color:red}}");
     assert!(report.is_clean());
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(1, 2, 9, 9).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -213,7 +211,7 @@ fn normalization_preserves_order_contexts_importance_and_exact_cumulative_termin
         ),
     ] {
         for _ in 0..2 {
-            let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+            let error = report.syntax().normalize(limits).unwrap_err();
             assert_eq!(error.exhausted_limit(), Some((resource, 8)));
             assert_eq!(error.declaration_order(), Some(8));
             assert!(
@@ -225,7 +223,7 @@ fn normalization_preserves_order_contexts_importance_and_exact_cumulative_termin
         }
     }
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 #[test]
 fn canonical_keyword_declarations_have_exact_node_byte_budgets_and_atomic_reusable_failures() {
@@ -259,9 +257,7 @@ fn canonical_keyword_declarations_have_exact_node_byte_budgets_and_atomic_reusab
 #[test]
 fn sheet_siblings_share_exact_final_bytes_and_failed_output_leaves_the_input_reusable() {
     use CssSerializationLimits as Limits;
-    let report = parse_sheet(
-        ".a{wrap-inside:avoid!important}.b{wrap-before:line}.c{wrap-after:flex}.d{line-break:anywhere}",
-    );
+    let report = CssParser::default().parse_sheet(".a{wrap-inside:avoid!important}.b{wrap-before:line}.c{wrap-after:flex}.d{line-break:anywhere}");
     assert!(report.is_clean());
     let sheet = report.syntax();
     let before = sheet.clone();
@@ -302,7 +298,7 @@ fn flow_flex_grid_item_and_color_controls_execute_independently_of_wrap_lookup()
         ("item-flow", "row", "item-flow: row auto normal normal;", 4),
         ("color", "red", "color: red;", 1),
     ] {
-        let report = parse_style_attribute(&format!("{name}:{input}"));
+        let report = CssParser::default().parse_block_contents(format!("{name}:{input}"));
         assert!(report.is_clean());
         for source in report.syntax().iter() {
             assert_eq!(
@@ -310,7 +306,7 @@ fn flow_flex_grid_item_and_color_controls_execute_independently_of_wrap_lookup()
                 expected
             );
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("supported independent control")
             };

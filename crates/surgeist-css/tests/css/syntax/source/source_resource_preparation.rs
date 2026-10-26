@@ -81,7 +81,7 @@ fn independent_failed_rule_and_declaration_components_keep_native_owners_and_par
         let source = format!(
             "{PREFIX}.p{{color:red;{failed}color:green;{declaration}color:blue}}tail{{color:black}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [failed_diagnostic, declaration_diagnostic] = report.diagnostics() else {
             panic!(
                 "two independent native resource units: {:?}",
@@ -134,7 +134,11 @@ fn independent_failed_rule_and_declaration_components_keep_native_owners_and_par
                 .same_snapshot(black.parsed_value().unwrap().source())
         );
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -159,8 +163,8 @@ fn trailing_fragment_input_prunes_provisional_inner_component_resource_diagnosti
     let rule_control = format!("{PREFIX}.p{{{contents}}}");
     let block_control = format!("{PREFIX}{{{contents}}}");
     // Real controls confirm recoverable inner syntax before testing rejection.
-    let rule = parse_rule(&rule_control, &context);
-    let block = parse_style_block(&block_control, &context);
+    let rule = CssRule::parse(&CssParser::default(), &rule_control, &context);
+    let block = CssStyleBlock::parse(&CssParser::default(), &block_control, &context);
     assert!(rule.syntax().is_some());
     assert!(block.syntax().is_some());
     assert_eq!(rule.diagnostics().len(), 1);
@@ -175,10 +179,16 @@ fn trailing_fragment_input_prunes_provisional_inner_component_resource_diagnosti
     );
     for suffix in [" .second{}", " }"] {
         let source = format!("{rule_control}{suffix}");
-        rejects(&parse_rule(&source, &context), &source);
+        rejects(
+            &CssRule::parse(&CssParser::default(), &source, &context),
+            &source,
+        );
     }
     for suffix in [" {}", " }"] {
         let source = format!("{block_control}{suffix}");
-        rejects(&parse_style_block(&source, &context), &source);
+        rejects(
+            &CssStyleBlock::parse(&CssParser::default(), &source, &context),
+            &source,
+        );
     }
 }

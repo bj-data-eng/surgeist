@@ -49,7 +49,7 @@ fn each_misplaced_rule_reports_one_placement_diagnostic_naming_its_context() {
         ),
     ];
     for (source, rule, name, context) in cases {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [diagnostic] = report.diagnostics() else {
             panic!("{source:?}: one placement diagnostic: {report:?}");
         };
@@ -76,7 +76,11 @@ fn each_misplaced_rule_reports_one_placement_diagnostic_naming_its_context() {
             "{source:?}"
         );
         assert_eq!(
-            validate_sheet(source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }

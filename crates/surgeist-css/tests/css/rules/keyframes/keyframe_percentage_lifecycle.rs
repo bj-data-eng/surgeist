@@ -14,7 +14,7 @@ use surgeist_css::*;
 
 fn calculation(source: &str) -> CssCalculation<CssPercentage> {
     CssCalculation::<CssPercentage>::try_from_components(
-        parse_component_values(source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         Default::default(),
     )
     .unwrap()
@@ -127,7 +127,7 @@ fn wrong_numeric_types_and_malformed_functions_fail_checked_percentage_construct
         assert_eq!(
             numeric_failure(
                 &CssCalculation::<CssPercentage>::try_from_components(
-                    parse_component_values(source).unwrap(),
+                    CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                     Default::default()
                 )
                 .unwrap_err()
@@ -141,7 +141,7 @@ fn wrong_numeric_types_and_malformed_functions_fail_checked_percentage_construct
     // type, so the sum has incompatible types.
     assert!(
         CssCalculation::<CssPercentage>::try_from_components(
-            parse_component_values("calc(25% + 1px)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(25% + 1px)").unwrap(),
             Default::default()
         )
         .unwrap_err()
@@ -151,7 +151,7 @@ fn wrong_numeric_types_and_malformed_functions_fail_checked_percentage_construct
 
 #[test]
 fn a_percentage_group_is_rejected_before_keyframe_construction() {
-    let components = parse_component_values("(25%)").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "(25%)").unwrap();
     let before = components.clone();
     let error = CssCalculation::<CssPercentage>::try_from_components(
         components.clone(),
@@ -171,7 +171,7 @@ fn a_percentage_group_is_rejected_before_keyframe_construction() {
 
 #[test]
 fn standalone_checked_percentage_functions_reject_implicit_closures() {
-    let components = parse_component_values("calc(25%").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "calc(25%").unwrap();
     let error =
         CssCalculation::<CssPercentage>::try_from_components(components, Default::default())
             .unwrap_err();
@@ -181,7 +181,7 @@ fn standalone_checked_percentage_functions_reject_implicit_closures() {
 #[test]
 fn checked_constructors_refuse_a_recovered_parsed_percentage_child() {
     let source = "opacity:calc(25%";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(!report.is_clean());
     let CssKnownPropertyValueRef::Opacity(wrapper) = report.syntax()[0]
         .known()
@@ -308,7 +308,10 @@ fn calculated_selector_output_keeps_math_form_and_authored_out_of_range_coeffici
         expected
     );
     assert_eq!(input, before);
-    let reentered = validate_sheet(expected).unwrap();
+    let reentered = CssParser::default()
+        .parse_sheet(expected)
+        .into_validation_result()
+        .unwrap();
     assert_eq!(
         reentered.serialize_specified(Default::default()).unwrap(),
         expected
@@ -334,7 +337,7 @@ fn calculated_selector_output_keeps_math_form_and_authored_out_of_range_coeffici
 fn normalization_preserves_calculated_selectors_duplicates_and_source_positions() {
     let input = sheet("@keyframes k{calc(25%),calc(25%){}calc(25%){}from{}}");
     let original = keyframes(&input);
-    let normalized = normalize_sheet(&input).unwrap();
+    let normalized = input.normalize(Default::default()).unwrap();
     let [CssNormalizedItem::Rule(context)] = normalized.items() else {
         panic!("terminal keyframes rule");
     };

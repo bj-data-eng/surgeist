@@ -389,14 +389,14 @@ mod tests {
 
     #[test]
     fn backing_counts_nested_boxes_and_excludes_source_and_root_header() {
-        let values = parse_component_values("f(a)[1px]/*x*/").unwrap();
+        let values = crate::component_values::parse_component_values("f(a)[1px]/*x*/").unwrap();
         // Five actual component records; f/f(/), a/a, [/], 1/px/1px,
         // and x//*x*/ contribute exactly twenty separately owned text bytes.
         assert_eq!(
             retained_backing_bytes_with(&values, &mut accepted).unwrap(),
             5 * size_of::<CssComponentValue>() + 20
         );
-        let empty = parse_component_values("").unwrap();
+        let empty = crate::component_values::parse_component_values("").unwrap();
         assert_eq!(
             retained_backing_bytes_with(&empty, &mut accepted).unwrap(),
             0
@@ -423,8 +423,8 @@ mod tests {
     #[test]
     fn independently_parsed_origins_compare_without_snapshot_identity() {
         let input = "var(--x, light dark)/*tail*/";
-        let a = parse_component_values(input).unwrap();
-        let b = parse_component_values(input).unwrap();
+        let a = crate::component_values::parse_component_values(input).unwrap();
+        let b = crate::component_values::parse_component_values(input).unwrap();
         assert!(equivalent_in_same_input_with(&a, &b, &mut accepted).unwrap());
         assert!(
             !a.items[0]
@@ -443,11 +443,11 @@ mod tests {
             "f([a])/*x",
             "\"x",
         ] {
-            let a = parse_component_values(input).unwrap();
-            let b = parse_component_values(input).unwrap();
+            let a = crate::component_values::parse_component_values(input).unwrap();
+            let b = crate::component_values::parse_component_values(input).unwrap();
             assert!(equivalent_in_same_input_with(&a, &b, &mut accepted).unwrap());
         }
-        let a = parse_component_values("f([a])").unwrap();
+        let a = crate::component_values::parse_component_values("f([a])").unwrap();
         let mut b = a.clone();
         let ComponentData::Function(function) = &mut b.items[0].data else {
             panic!("function")
@@ -472,8 +472,8 @@ mod tests {
 
     #[test]
     fn cancellation_at_every_observation_preserves_both_graphs() {
-        let a = parse_component_values("f(light dark)/*x*/").unwrap();
-        let b = parse_component_values("f(light dark)/*x*/").unwrap();
+        let a = crate::component_values::parse_component_values("f(light dark)/*x*/").unwrap();
+        let b = crate::component_values::parse_component_values("f(light dark)/*x*/").unwrap();
         let a_before = a.clone();
         let b_before = b.clone();
         let mut observations = 0;

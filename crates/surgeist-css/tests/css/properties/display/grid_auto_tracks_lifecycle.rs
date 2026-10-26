@@ -22,7 +22,7 @@ fn parsed(name: &str, value: &str, importance: CssImportance) -> CssDeclaration 
         ""
     };
     let source = format!("{name}:{value}{important}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one declaration: {source}")
@@ -31,9 +31,10 @@ fn parsed(name: &str, value: &str, importance: CssImportance) -> CssDeclaration 
 }
 
 fn checked(name: &str, value: &str, importance: CssImportance) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar(name)),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         importance,
     )
     .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
@@ -41,7 +42,7 @@ fn checked(name: &str, value: &str, importance: CssImportance) -> CssDeclaration
 
 fn terminal(source: &CssDeclaration, property: CssKnownProperty) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("intrinsic implicit-track expansion")
+        source.expand().expect("intrinsic implicit-track expansion")
     else {
         panic!("one completed implicit-track longhand")
     };
@@ -86,7 +87,7 @@ fn repeat_free_lists_parse_as_nonempty_typed_track_sizes() {
         }
         for invalid in ["repeat(2, 10px)", "[line] 10px", "none", ""] {
             let source = format!("color:red;{name}:{invalid};color:blue");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(report.syntax().len(), 2, "{source}");
             assert_eq!(report.diagnostics().len(), 1, "{source}");
             assert_eq!(
@@ -94,13 +95,18 @@ fn repeat_free_lists_parse_as_nonempty_typed_track_sizes() {
                 CssRecoveryAction::DropDeclaration
             );
             assert_eq!(
-                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
             assert_same_grammar_facts(
-                &parse_property_value_for_grammar(
-                    grammar(name),
-                    parse_component_values(invalid).unwrap(),
+                &CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(grammar(name)),
+                    CssComponentValues::parse(&CssParser::default(), invalid).unwrap(),
                     CssImportance::Normal,
                 )
                 .unwrap_err(),
@@ -140,7 +146,7 @@ fn metadata_uses_noninherited_auto_initial_and_all_includes_both_longhands() {
     };
     let all_source = parsed("all", "initial", CssImportance::Important);
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all_source).unwrap()
+        all_source.expand().unwrap()
     else {
         panic!("symbolic all reset")
     };
@@ -191,21 +197,21 @@ fn css_wide_values_expand_terminally_and_pending_reentry_is_strict() {
             }
         }
         let source = parsed(name, "var(--tracks)", CssImportance::Important);
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("implicit track substitution remains pending")
         };
         assert!(pending.source().same_occurrence(&source));
         assert_eq!(pending.source().importance(), CssImportance::Important);
         assert!(
             pending
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
         for invalid in ["repeat(2, 10px)", "[line] 10px", "none", "auto / 10px"] {
             assert!(
                 pending
-                    .reenter(parse_component_values(invalid).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                     .unwrap_err()
                     .replacement_error()
                     .is_some(),
@@ -213,7 +219,7 @@ fn css_wide_values_expand_terminally_and_pending_reentry_is_strict() {
             );
         }
         for valid in ["auto 10px", "minmax(10px, 1fr)", "inherit"] {
-            let replacement = parse_component_values(valid).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), valid).unwrap();
             for _ in 0..2 {
                 let CssContributions::Longhands(values) =
                     pending.reenter(replacement.clone()).unwrap()
@@ -247,7 +253,7 @@ fn css_wide_values_expand_terminally_and_pending_reentry_is_strict() {
 
 #[test]
 fn normalization_preserves_both_properties_order_and_occurrences() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         ".p{color:red;grid-auto-rows:auto!important;grid-auto-columns:10px;",
         "grid-auto-rows:minmax(10px,1fr);opacity:1}"
     ));
@@ -256,7 +262,7 @@ fn normalization_preserves_both_properties_order_and_occurrences() {
         panic!("one style rule")
     };
     let originals = rule.declarations();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -292,7 +298,7 @@ fn normalization_preserves_both_properties_order_and_occurrences() {
 #[test]
 fn normalization_reports_exact_rule_declaration_and_contribution_limits() {
     for (name, _) in PROPERTIES {
-        let report = parse_sheet(&format!(".p{{{name}:auto}}"));
+        let report = CssParser::default().parse_sheet(format!(".p{{{name}:auto}}"));
         assert!(report.is_clean());
         let original = report.syntax().clone();
         for (limits, resource) in [
@@ -309,16 +315,15 @@ fn normalization_reports_exact_rule_declaration_and_contribution_limits() {
                 CssNormalizationResource::Contributions,
             ),
         ] {
-            let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+            let error = report.syntax().normalize(limits).unwrap_err();
             assert_eq!(error.exhausted_limit(), Some((resource, 0)));
             assert_eq!(report.syntax(), &original);
         }
         assert!(
-            normalize_sheet_with_limits(
-                report.syntax(),
-                CssNormalizationLimits::try_new(1, 1, 1, 1).unwrap()
-            )
-            .is_ok()
+            report
+                .syntax()
+                .normalize(CssNormalizationLimits::try_new(1, 1, 1, 1).unwrap())
+                .is_ok()
         );
     }
 }

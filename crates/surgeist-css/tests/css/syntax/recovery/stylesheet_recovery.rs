@@ -1,4 +1,4 @@
-use surgeist_css::{CssErrorCode, CssRecoveryAction, CssRule, parse_sheet};
+use surgeist_css::{CssErrorCode, CssParser, CssRecoveryAction, CssRule};
 
 fn style_rule_names(report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>) -> Vec<&str> {
     report
@@ -88,14 +88,17 @@ fn assert_charset_drop(source: &str, diagnostic: &surgeist_css::CssRecoveryDiagn
 
 #[test]
 fn stylesheet_recovery_front_door_has_report_signature() {
-    fn require_signature(_: fn(&str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet>) {}
+    fn require_signature(
+        _: fn(&CssParser, &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet>,
+    ) {
+    }
 
-    require_signature(parse_sheet);
+    require_signature(|parser, source| parser.parse_sheet(source));
 }
 
 #[test]
 fn stylesheet_recovery_empty_input_returns_clean_empty_report_and_parts() {
-    let report = parse_sheet("");
+    let report = CssParser::default().parse_sheet("");
 
     assert!(report.is_clean());
     assert!(report.syntax().rules().is_empty());
@@ -108,7 +111,7 @@ fn stylesheet_recovery_empty_input_returns_clean_empty_report_and_parts() {
 #[test]
 fn stylesheet_recovery_top_level_cdo_is_clean_before_and_between_valid_rules() {
     let source = "<!-- .before { color: red; } <!-- .after { color: blue; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(style_rule_names(&report), ["before", "after"]);
     assert!(report.diagnostics().is_empty());
     assert!(report.is_clean());
@@ -117,7 +120,7 @@ fn stylesheet_recovery_top_level_cdo_is_clean_before_and_between_valid_rules() {
 #[test]
 fn stylesheet_recovery_top_level_cdc_is_clean_before_and_between_valid_rules() {
     let source = "--> .before { color: red; } --> .after { color: blue; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(style_rule_names(&report), ["before", "after"]);
     assert!(report.diagnostics().is_empty());
     assert!(report.is_clean());
@@ -127,7 +130,7 @@ fn stylesheet_recovery_top_level_cdc_is_clean_before_and_between_valid_rules() {
 fn stylesheet_recovery_root_semicolon_prefix_consumes_following_qualified_unit() {
     let source = "; .after { color: blue; }";
 
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert!(style_rule_names(&report).is_empty());
     assert_eq!(report.diagnostics().len(), 1);
@@ -139,7 +142,9 @@ fn stylesheet_recovery_root_semicolon_prefix_consumes_following_qualified_unit()
         surgeist_css::CssTokenKind::Semicolon,
     );
     assert_eq!(
-        surgeist_css::validate_sheet(source),
+        surgeist_css::CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
         report.clone().into_validation_result()
     );
 }
@@ -149,7 +154,7 @@ fn stylesheet_recovery_root_semicolon_preserves_only_preceding_rule() {
     let source = ".before { color: red; } ; .after { color: blue; }";
     let stray = source.find("} ;").unwrap() + 2;
 
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert_eq!(style_rule_names(&report), ["before"]);
     assert_eq!(report.diagnostics().len(), 1);
@@ -161,7 +166,9 @@ fn stylesheet_recovery_root_semicolon_preserves_only_preceding_rule() {
         surgeist_css::CssTokenKind::Semicolon,
     );
     assert_eq!(
-        surgeist_css::validate_sheet(source),
+        surgeist_css::CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
         report.clone().into_validation_result()
     );
 }
@@ -170,7 +177,7 @@ fn stylesheet_recovery_root_semicolon_preserves_only_preceding_rule() {
 fn stylesheet_recovery_unmatched_root_closing_brace_prefix_consumes_following_qualified_unit() {
     let source = "} .after { color: blue; }";
 
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert!(style_rule_names(&report).is_empty());
     assert_eq!(report.diagnostics().len(), 1);
@@ -182,7 +189,9 @@ fn stylesheet_recovery_unmatched_root_closing_brace_prefix_consumes_following_qu
         surgeist_css::CssTokenKind::CloseCurlyBracket,
     );
     assert_eq!(
-        surgeist_css::validate_sheet(source),
+        surgeist_css::CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
         report.clone().into_validation_result()
     );
 }
@@ -192,7 +201,7 @@ fn stylesheet_recovery_unmatched_root_closing_brace_preserves_only_preceding_rul
     let source = ".before { color: red; } } .after { color: blue; }";
     let stray = source.find("} }").unwrap() + 2;
 
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert_eq!(style_rule_names(&report), ["before"]);
     assert_eq!(report.diagnostics().len(), 1);
@@ -204,7 +213,9 @@ fn stylesheet_recovery_unmatched_root_closing_brace_preserves_only_preceding_rul
         surgeist_css::CssTokenKind::CloseCurlyBracket,
     );
     assert_eq!(
-        surgeist_css::validate_sheet(source),
+        surgeist_css::CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
         report.clone().into_validation_result()
     );
 }
@@ -213,7 +224,7 @@ fn stylesheet_recovery_unmatched_root_closing_brace_preserves_only_preceding_rul
 fn stylesheet_recovery_root_semicolon_keeps_following_charset_in_qualified_prelude() {
     let source = "; @charset \"UTF-8\"; .after { color: blue; }";
 
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert!(style_rule_names(&report).is_empty());
     assert_eq!(report.diagnostics().len(), 1);
@@ -225,7 +236,9 @@ fn stylesheet_recovery_root_semicolon_keeps_following_charset_in_qualified_prelu
         surgeist_css::CssTokenKind::Semicolon,
     );
     assert_eq!(
-        surgeist_css::validate_sheet(source),
+        surgeist_css::CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
         report.clone().into_validation_result()
     );
 }
@@ -234,7 +247,7 @@ fn stylesheet_recovery_root_semicolon_keeps_following_charset_in_qualified_prelu
 fn stylesheet_recovery_unmatched_root_closing_brace_keeps_following_charset_in_qualified_prelude() {
     let source = "} @charset \"UTF-8\"; .after { color: blue; }";
 
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert!(style_rule_names(&report).is_empty());
     assert_eq!(report.diagnostics().len(), 1);
@@ -246,14 +259,16 @@ fn stylesheet_recovery_unmatched_root_closing_brace_keeps_following_charset_in_q
         surgeist_css::CssTokenKind::CloseCurlyBracket,
     );
     assert_eq!(
-        surgeist_css::validate_sheet(source),
+        surgeist_css::CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
         report.clone().into_validation_result()
     );
 }
 
 #[test]
 fn stylesheet_recovery_trivia_and_legacy_tokens_alone_are_clean() {
-    let report = parse_sheet(" \n/**/ <!-- --> \t");
+    let report = CssParser::default().parse_sheet(" \n/**/ <!-- --> \t");
     assert!(report.diagnostics().is_empty());
     assert!(report.is_clean());
     assert!(report.syntax().rules().is_empty());
@@ -264,7 +279,7 @@ fn stylesheet_recovery_unknown_block_at_rule_keeps_surrounding_rules_and_balance
     let failed = "@mystery one(foo; bar) { nested: {x; y}; }";
     let source = format!(".before {{ color: red; }} {failed} .after {{ color: blue; }}");
 
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
 
     assert_eq!(style_rule_names(&report), ["before", "after"]);
     assert_eq!(report.diagnostics().len(), 1);
@@ -294,7 +309,7 @@ fn stylesheet_recovery_malformed_namespace_rule_is_distinct() {
     let failed = "@namespace svg ident;";
     let source = format!("{failed} .after {{ color: blue; }}");
 
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
 
     assert_eq!(style_rule_names(&report), ["after"]);
     assert_eq!(report.diagnostics().len(), 1);
@@ -324,7 +339,7 @@ fn stylesheet_recovery_malformed_qualified_rule_keeps_surrounding_rules() {
     let failed = "??? { width: 1px; nested: fn({x;y}); }";
     let source = format!(".before {{ color: red; }} {failed} .after {{ color: blue; }}");
 
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
 
     assert_eq!(style_rule_names(&report), ["before", "after"]);
     assert_eq!(report.diagnostics().len(), 1);
@@ -340,7 +355,7 @@ fn stylesheet_recovery_malformed_qualified_rule_keeps_surrounding_rules() {
 #[test]
 fn stylesheet_recovery_leading_charset_is_an_unknown_rule() {
     let source = " /* leading */ @charset \"UTF-8\"; .after { color: blue; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(!report.is_clean());
     assert_eq!(style_rule_names(&report), ["after"]);
     let [diagnostic] = report.diagnostics() else {
@@ -357,7 +372,7 @@ fn stylesheet_recovery_charset_forms_drop_once_and_resume() {
         "@charset \"UTF-8\" { ignored; }",
     ] {
         let source = format!("{failed} .after {{ color: blue; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
 
         assert_eq!(style_rule_names(&report), ["after"], "{failed}");
         assert_eq!(report.diagnostics().len(), 1, "{failed}");
@@ -375,7 +390,7 @@ fn stylesheet_recovery_charset_forms_drop_once_and_resume() {
 fn stylesheet_recovery_all_duplicate_and_nonleading_charset_rules_are_dropped() {
     let source =
         "@charset \"UTF-8\"; .before { color: red; } @charset \"latin1\"; .after { color: blue; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(style_rule_names(&report), ["before", "after"]);
     assert_eq!(report.diagnostics().len(), 2);
     for (diagnostic, failed) in report
@@ -399,7 +414,7 @@ fn stylesheet_recovery_all_duplicate_and_nonleading_charset_rules_are_dropped() 
         assert_eq!(detail.at_rule().unwrap().as_str(), "charset");
     }
     let source = ".before { color: red; } @charset \"UTF-8\"; .after { color: blue; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(style_rule_names(&report), ["before", "after"]);
     let [diagnostic] = report.diagnostics() else {
         panic!("one nonleading unknown charset")
@@ -454,7 +469,7 @@ fn stylesheet_recovery_top_level_failure_classes_have_one_exact_parent_drop() {
             ".before {{ color: red; }} {} .after {{ color: blue; }}",
             case.failed
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(
             style_rule_names(&report),
             ["before", "after"],
@@ -490,7 +505,7 @@ fn stylesheet_recovery_repeated_drops_remain_in_source_order() {
         ".before {{ color: red; }} {first} .middle {{ color: green; }} {second} .after {{ color: blue; }}"
     );
 
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
 
     assert_eq!(style_rule_names(&report), ["before", "middle", "after"]);
     assert_eq!(report.diagnostics().len(), 2);
@@ -519,7 +534,7 @@ fn stylesheet_recovery_repeated_drops_remain_in_source_order() {
 fn stylesheet_recovery_charset_leading_trivia_is_not_a_recovery_unit() {
     for leading in ["", " \n\t", "/**/", " /* comment */ "] {
         let source = format!("{leading}@charset \"Shift_JIS\"; .after {{ color: blue; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
 
         assert!(!report.is_clean(), "{leading:?}");
         let [diagnostic] = report.diagnostics() else {
@@ -537,7 +552,7 @@ fn stylesheet_recovery_charset_leading_trivia_is_not_a_recovery_unit() {
     // U+FEFF in decoded text starts a qualified rule; it is not leading trivia.
     for leading in ["\u{feff}", "\u{feff} /* comment */ "] {
         let source = format!("{leading}@charset \"Shift_JIS\"; .after {{ color: blue; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean(), "{leading:?}");
         assert!(report.syntax().rules().is_empty());
         let [diagnostic] = report.diagnostics() else {
@@ -557,7 +572,7 @@ fn stylesheet_recovery_charset_errors_identify_the_unknown_at_keyword() {
         "@charset \"UTF-8\"",
         "@charset \"UTF-8\" {}",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.syntax().rules().is_empty(), "{source}");
         let [diagnostic] = report.diagnostics() else {
             panic!("one unknown charset: {source}")

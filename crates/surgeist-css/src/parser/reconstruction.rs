@@ -1,7 +1,5 @@
 //! Bounded native replay, ancestor admission, and reconstruction over original source.
 
-#[cfg(test)]
-use super::parse_sheet;
 use super::recovery::{
     self, GroupKind, RecoveryState, StructuralListContext, StructuralParent,
     StructuralPreflightOutcome, StyleContextCaptures, preflight_specialized_eof_limit,
@@ -928,7 +926,7 @@ mod splice_tests {
     #[test]
     fn scoped_splice_orders_empty_styles_by_parser_produced_rule_positions() {
         let source = "@scope{.before-empty{}@layer{}.after-empty{}}";
-        let report = parse_sheet(source);
+        let report = crate::CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let [CssRule::Scope(scope)] = report.syntax().rules() else {
             panic!("expected one scope rule");

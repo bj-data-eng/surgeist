@@ -196,9 +196,14 @@ fn checked_speech_time_composition_uses_the_owned_exact_duration_invariant() {
 
 #[test]
 fn checked_speech_pairs_reject_original_recovered_time_in_either_authored_position() {
-    let report = parse_style_attribute("pause-before:calc(1s");
+    let report = CssParser::default().parse_block_contents("pause-before:calc(1s");
     assert!(!report.is_clean());
-    assert!(validate_style_attribute("pause-before:calc(1s").is_err());
+    assert!(
+        CssParser::default()
+            .parse_block_contents("pause-before:calc(1s")
+            .into_validation_result()
+            .is_err()
+    );
     let recovered = break_value(&report.syntax()[0]);
     let CssSpeechBreak::Time(duration) = recovered else {
         panic!("retained recovered calculation")
@@ -218,7 +223,7 @@ fn checked_speech_pairs_reject_original_recovered_time_in_either_authored_positi
                 .is_recovered_component()
         );
     }
-    let parsed_pair = parse_style_attribute("rest:none calc(1s");
+    let parsed_pair = CssParser::default().parse_block_contents("rest:none calc(1s");
     assert!(!parsed_pair.is_clean());
     assert!(pair(&parsed_pair.syntax()[0]).authored_second().is_some());
 }
@@ -452,7 +457,7 @@ fn speech_expanded_typed_payloads_serialize_in_before_after_order_with_original_
     for name in ["pause", "rest"] {
         let source = parsed(name, "250MS X-STRONG");
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("completed pair")
         };

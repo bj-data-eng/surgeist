@@ -258,7 +258,7 @@ fn parser_split_preserves_relative_members_and_exact_style_and_scope_ancestry() 
         );
         let input = sheet(&source);
         assert!(CssSheet::try_from_rules(input.rules().to_vec()).is_ok());
-        let normalized = normalize_sheet(&input).unwrap();
+        let normalized = input.normalize(Default::default()).unwrap();
         let rule = normalized
             .items()
             .iter()
@@ -384,7 +384,7 @@ fn mixed_ancestry_keeps_implicit_root_order_explicit_style_anchors_and_direct_ru
             .unwrap_err()
             .is_invalid_boundary_anchor()
         );
-        let normalized = normalize_sheet(&input).unwrap();
+        let normalized = input.normalize(Default::default()).unwrap();
         let inner_context = normalized
             .items()
             .iter()

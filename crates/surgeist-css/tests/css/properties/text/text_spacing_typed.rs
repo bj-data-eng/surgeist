@@ -8,7 +8,7 @@ use crate::css::support::named_property::sole_longhand_contribution;
 use surgeist_css::*;
 
 fn component(text: &str) -> CssComponentValue {
-    let components = parse_component_values(text).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [value] = components.items() else {
         panic!("expected one component: {text}")
     };
@@ -19,7 +19,7 @@ fn numeric(text: &str) -> CssNumeric<CssLengthPercentage> {
     if text.starts_with("calc(") {
         CssNumeric::<CssLengthPercentage>::try_from_calculation(
             CssCalculation::<CssLengthPercentage>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -40,7 +40,7 @@ fn adjustment(text: &str) -> CssTextSpacingAdjustment {
 
 fn declared(name: &str, value: &str) -> CssDeclaration {
     let source = format!("{name}: {value} !important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one declaration: {source}")

@@ -19,7 +19,7 @@ const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
 fn page_list(body: &str, front: usize) -> CssDeclarationList {
     match front {
         0 => {
-            let report = parse_sheet(&format!("@page :left{{{body}}}"));
+            let report = CssParser::default().parse_sheet(format!("@page :left{{{body}}}"));
             clean(&report);
             let [CssRule::Page(page)] = report.syntax().rules() else {
                 panic!("one actual Page rule")
@@ -28,8 +28,9 @@ fn page_list(body: &str, front: usize) -> CssDeclarationList {
             page.declarations().properties().clone()
         }
         1 => {
-            let report = parse_rule(
-                &format!("@page :right{{{body}}}"),
+            let report = CssRule::parse(
+                &CssParser::default(),
+                format!("@page :right{{{body}}}"),
                 &CssNamespaceContext::default(),
             );
             clean(&report);
@@ -45,7 +46,11 @@ fn page_list(body: &str, front: usize) -> CssDeclarationList {
             } else {
                 CssParserMode::Quirks
             });
-            let report = context.parse_page_block(&format!("{{{body}}}"));
+            let report = CssBlockFragment::<CssPageBody>::parse(
+                &CssParser::new(context, Default::default()),
+                format!("{{{body}}}"),
+                &CssBlockContext::default(),
+            );
             clean(&report);
             let fragment = report.syntax().as_ref().expect("genuine Page body");
             for declaration in fragment.body().declarations().properties().as_slice() {
@@ -87,7 +92,7 @@ fn globals(name: &str) {
                 format!("{name}: {text} !important;")
             );
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&declaration).unwrap()
+                declaration.expand().unwrap()
             else {
                 panic!("symbolic global contributions")
             };
@@ -131,7 +136,11 @@ fn calculations(name: &str) {
                 value
             );
             let emitted = declaration.serialize_specified(Default::default()).unwrap();
-            clean(&parse_page_block(&format!("{{{emitted}}}")));
+            clean(&CssBlockFragment::<CssPageBody>::parse(
+                &CssParser::default(),
+                format!("{{{emitted}}}"),
+                &CssBlockContext::default(),
+            ));
         }
     }
 }
@@ -189,7 +198,7 @@ fn pending(name: &str) {
                     .as_css(),
                 authored
             );
-            let CssExpansion::Pending(handle) = expand_declaration(&declaration).unwrap() else {
+            let CssExpansion::Pending(handle) = declaration.expand().unwrap() else {
                 panic!("pending whole Page margin")
             };
             assert!(handle.source().same_occurrence(&declaration));
@@ -205,7 +214,8 @@ fn pending(name: &str) {
                     "calc(1px + 2yy)",
                     "calc(0 * 1zz)",
                 ] {
-                    let replacement = parse_component_values(invalid).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
                     let before = replacement.clone();
                     assert!(
                         handle
@@ -225,7 +235,9 @@ fn pending(name: &str) {
                 ] {
                     assert!(
                         handle
-                            .reenter(parse_component_values(residual).unwrap())
+                            .reenter(
+                                CssComponentValues::parse(&CssParser::default(), residual).unwrap()
+                            )
                             .unwrap_err()
                             .is_residual_substitution()
                     );
@@ -242,7 +254,9 @@ fn pending(name: &str) {
                     "5cqmin",
                     "6cqmax",
                 ] {
-                    let replacement = parse_component_values(&format!("/*😀*/{valid}")).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), format!("/*😀*/{valid}"))
+                            .unwrap();
                     let before = replacement.clone();
                     let CssContributions::Longhands(values) =
                         handle.reenter(replacement.clone()).unwrap()
@@ -260,7 +274,7 @@ fn pending(name: &str) {
                 }
                 for (text, keyword) in GLOBALS {
                     let CssContributions::Longhands(values) = handle
-                        .reenter(parse_component_values(text).unwrap())
+                        .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                         .unwrap()
                     else {
                         panic!("global replacement")
@@ -336,11 +350,11 @@ fn container_length(unit: &str) {
                 assert!(length.calculation().is_some());
             }
             let pending = source(name, "var(--container-margin)", front);
-            let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+            let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
                 panic!("pending Page margin")
             };
             for value in [&literal, &calculation] {
-                let replacement = parse_component_values(value).unwrap();
+                let replacement = CssComponentValues::parse(&CssParser::default(), value).unwrap();
                 let before = replacement.clone();
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
@@ -357,7 +371,7 @@ fn container_length(unit: &str) {
             }
             assert!(
                 handle
-                    .reenter(parse_component_values("1em").unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), "1em").unwrap())
                     .is_ok()
             );
         }
@@ -407,17 +421,19 @@ fn page_context_restriction_does_not_escape_into_ordinary_declarations_or_reentr
         "margin-left",
     ] {
         for value in ["1em", "1ex", "calc(1px + 2em)"] {
-            clean(&parse_declaration(&format!("{name}:{value}")));
-            let report = parse_declaration(&format!("{name}:var(--m)"));
+            clean(&CssDeclaration::parse(
+                &CssParser::default(),
+                format!("{name}:{value}"),
+            ));
+            let report = CssDeclaration::parse(&CssParser::default(), format!("{name}:var(--m)"));
             clean(&report);
-            let CssExpansion::Pending(handle) =
-                expand_declaration(report.syntax().as_ref().unwrap()).unwrap()
+            let CssExpansion::Pending(handle) = report.syntax().as_ref().unwrap().expand().unwrap()
             else {
                 panic!("ordinary pending")
             };
             assert!(
                 handle
-                    .reenter(parse_component_values(value).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), value).unwrap())
                     .is_ok()
             );
         }
@@ -427,11 +443,11 @@ fn page_context_restriction_does_not_escape_into_ordinary_declarations_or_reentr
 #[test]
 fn strict_pending_reentry_rejects_recovered_original_closures_with_original_provenance() {
     let declaration = source("margin-left", "var(--m)", 2);
-    let CssExpansion::Pending(handle) = expand_declaration(&declaration).unwrap() else {
+    let CssExpansion::Pending(handle) = declaration.expand().unwrap() else {
         panic!("Page pending")
     };
     for invalid in ["calc(1px + 2%", "1px/*unfinished"] {
-        let replacement = parse_component_values(invalid).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
         let before = replacement.clone();
         let error = handle.reenter(replacement.clone()).unwrap_err();
         let Some(detail) = error.replacement_error() else {
@@ -446,7 +462,7 @@ fn strict_pending_reentry_rejects_recovered_original_closures_with_original_prov
     }
     assert!(
         handle
-            .reenter(parse_component_values("2Q").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "2Q").unwrap())
             .is_ok()
     );
 }
@@ -469,7 +485,7 @@ fn shorthand_one_to_four_values_expand_in_physical_order() {
                 expected
             );
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&declaration).unwrap()
+                declaration.expand().unwrap()
             else {
                 panic!("four physical contributions")
             };
@@ -491,7 +507,7 @@ fn shorthand_one_to_four_values_expand_in_physical_order() {
 #[test]
 fn strict_shorthand_reentry_checks_every_assigned_side_and_whole_arity() {
     let declaration = source("margin", "var(--m)", 0);
-    let CssExpansion::Pending(handle) = expand_declaration(&declaration).unwrap() else {
+    let CssExpansion::Pending(handle) = declaration.expand().unwrap() else {
         panic!("pending shorthand")
     };
     for invalid in [
@@ -504,7 +520,7 @@ fn strict_shorthand_reentry_checks_every_assigned_side_and_whole_arity() {
     ] {
         assert!(
             handle
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some(),
@@ -513,7 +529,7 @@ fn strict_shorthand_reentry_checks_every_assigned_side_and_whole_arity() {
     }
     for valid in ["1Q", "1Q 2ch", "1Q 2ch 3rem", "1Q 2ch 3rem calc(1px + 2%)"] {
         let CssContributions::Longhands(values) = handle
-            .reenter(parse_component_values(valid).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), valid).unwrap())
             .unwrap()
         else {
             panic!("four completed terminals")
@@ -533,7 +549,7 @@ fn page_local_custom_declarations_preserve_case_tokens_duplicates_priority_and_s
                 matches!(list[index].property_name(), CssPropertyNameRef::Custom(value) if value.as_str() == name)
             );
             assert!(matches!(
-                expand_declaration(&list[index]).unwrap(),
+                list[index].expand().unwrap(),
                 CssExpansion::Contributions(CssContributions::Custom(_))
             ));
         }
@@ -551,11 +567,11 @@ fn page_local_custom_declarations_preserve_case_tokens_duplicates_priority_and_s
             ""
         );
         assert!(matches!(
-            expand_declaration(&list[4]).unwrap(),
+            list[4].expand().unwrap(),
             CssExpansion::Pending(_)
         ));
     }
-    let report = parse_sheet(
+    let report = CssParser::default().parse_sheet(
         ":root{--m:9px}@page :left{--m:2Q;margin:var(--m)}@page :right{margin:var(--m,1px)}",
     );
     clean(&report);
@@ -571,7 +587,7 @@ fn page_local_custom_declarations_preserve_case_tokens_duplicates_priority_and_s
     assert_eq!(left.declarations().properties().len(), 2);
     assert_eq!(right.declarations().properties().len(), 1);
     assert!(matches!(
-        expand_declaration(&right.declarations().properties()[0]).unwrap(),
+        right.declarations().properties()[0].expand().unwrap(),
         CssExpansion::Pending(_)
     ));
 }
@@ -579,7 +595,7 @@ fn page_local_custom_declarations_preserve_case_tokens_duplicates_priority_and_s
 #[test]
 fn defined_font_relative_replacement_is_admitted_without_parser_time_fallback_selection() {
     let list = page_list("--m:1em;margin:var(--m,1px)", 2);
-    let CssExpansion::Pending(handle) = expand_declaration(&list[1]).unwrap() else {
+    let CssExpansion::Pending(handle) = list[1].expand().unwrap() else {
         panic!("pending margin")
     };
     // The caller supplies the defined variable's replacement. The Page3 domain
@@ -617,7 +633,7 @@ fn defined_font_relative_replacement_is_admitted_without_parser_time_fallback_se
     );
     assert!(
         handle
-            .reenter(parse_component_values("1px").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "1px").unwrap())
             .is_ok()
     );
 }
@@ -626,7 +642,7 @@ fn defined_font_relative_replacement_is_admitted_without_parser_time_fallback_se
 fn composed_values_preserve_unicode_snapshot_spans_and_occurrence_order() {
     let input =
         "/*é*/\r\n@page :first{--M:2Q;margin-left:calc(1px + 2%)!important;margin-left:var(--M)}";
-    let report = parse_sheet(input);
+    let report = CssParser::default().parse_sheet(input);
     clean(&report);
     let [CssRule::Page(page)] = report.syntax().rules() else {
         panic!("actual Page")
@@ -682,7 +698,11 @@ fn composed_values_preserve_unicode_snapshot_spans_and_occurrence_order() {
 #[test]
 fn recovery_drops_invalid_units_unknown_properties_and_children_in_source_order() {
     let input = "{margin-top:initial;margin-right:1zz;--m:2Q;noise:red;@bad-left{content:'x'}margin-left:var(--m);margin-bottom:calc(1px + 2yy);margin:1Q 2ch 3rem auto}";
-    let report = parse_page_block(input);
+    let report = CssBlockFragment::<CssPageBody>::parse(
+        &CssParser::default(),
+        input,
+        &CssBlockContext::default(),
+    );
     assert!(!report.is_clean());
     assert!(report.clone().into_validation_result().is_err());
     let list = report
@@ -734,7 +754,11 @@ fn malformed_margin_types_and_global_mixtures_recover_only_the_bad_occurrence() 
         "1yy",
         "calc(1zz + 2px)",
     ] {
-        let report = parse_page_block(&format!("{{margin-top:0;margin:{value};margin-left:auto}}"));
+        let report = CssBlockFragment::<CssPageBody>::parse(
+            &CssParser::default(),
+            format!("{{margin-top:0;margin:{value};margin-left:auto}}"),
+            &CssBlockContext::default(),
+        );
         assert_eq!(
             report
                 .syntax()
@@ -758,15 +782,12 @@ fn malformed_margin_types_and_global_mixtures_recover_only_the_bad_occurrence() 
 
 #[test]
 fn page_payload_normalization_retains_pending_custom_and_composed_occurrences() {
-    let report = parse_sheet(
-        "@page :first{--m:2Q;margin:var(--m)!important;margin-top:calc(1px + 2%);margin-left:revert-layer}",
-    );
+    let report = CssParser::default().parse_sheet("@page :first{--m:2Q;margin:var(--m)!important;margin-top:calc(1px + 2%);margin-left:revert-layer}");
     clean(&report);
-    let normalized = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 0, 0).unwrap(),
-    )
-    .unwrap();
+    let normalized = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 0, 0).unwrap())
+        .unwrap();
     let [CssNormalizedItem::Rule(context)] = normalized.items() else {
         panic!("one Page context payload")
     };
@@ -776,28 +797,26 @@ fn page_payload_normalization_retains_pending_custom_and_composed_occurrences() 
     assert_eq!(page_pseudo(page), Some(CssPagePseudo::First));
     assert_eq!(page.declarations().properties().len(), 4);
     assert!(page.declarations().properties()[0].custom().is_some());
-    let CssExpansion::Pending(handle) =
-        expand_declaration(&page.declarations().properties()[1]).unwrap()
+    let CssExpansion::Pending(handle) = page.declarations().properties()[1].expand().unwrap()
     else {
         panic!("pending survived normalization")
     };
     assert!(
         handle
-            .reenter(parse_component_values("1em").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "1em").unwrap())
             .is_ok()
     );
     assert!(
         handle
-            .reenter(parse_component_values("2Q").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "2Q").unwrap())
             .is_ok()
     );
     assert_eq!(
-        normalize_sheet_with_limits(
-            report.syntax(),
-            CssNormalizationLimits::try_new(0, 0, 0, 0).unwrap()
-        )
-        .unwrap_err()
-        .exhausted_limit(),
+        report
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(0, 0, 0, 0).unwrap())
+            .unwrap_err()
+            .exhausted_limit(),
         Some((CssNormalizationResource::Rules, 0))
     );
 }
@@ -849,26 +868,24 @@ fn specified_output_and_checked_list_assembly_share_atomic_cumulative_limits() {
             .unwrap_err()
             .is_byte_limit()
     );
-    let CssExpansion::Pending(handle) = expand_declaration(&checked[1]).unwrap() else {
+    let CssExpansion::Pending(handle) = checked[1].expand().unwrap() else {
         panic!("checked assembly preserves pending context")
     };
     assert!(
         handle
-            .reenter(parse_component_values("1ex").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "1ex").unwrap())
             .is_ok()
     );
     assert!(
         handle
-            .reenter(parse_component_values("2Q").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "2Q").unwrap())
             .is_ok()
     );
 }
 
 #[test]
 fn actual_group_page_values_compose_without_lifting_style_ancestor_placement() {
-    let report = parse_sheet(
-        "@media print{@page :right{--m:2Q;margin:var(--m)}}@scope (.root){@media print{@page{margin-left:calc(1px + 2%)}}}",
-    );
+    let report = CssParser::default().parse_sheet("@media print{@page :right{--m:2Q;margin:var(--m)}}@scope (.root){@media print{@page{margin-left:calc(1px + 2%)}}}");
     clean(&report);
     let [CssRule::Media(media), CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("ordinary group owners")
@@ -887,8 +904,16 @@ fn actual_group_page_values_compose_without_lifting_style_ancestor_placement() {
     let ns = CssNamespaceContext::default();
     let input = "{@page{--m:2Q;margin:var(--m)}.after{color:red}}";
     for report in [
-        parse_scope_block(input, &ns, CssStyleAncestor::Absent),
-        parse_scoped_group_block(input, &ns, CssStyleAncestor::Present),
+        CssBlockFragment::<CssRuleList>::parse(
+            &CssParser::default(),
+            input,
+            &CssBlockContext::scope(&ns, CssStyleAncestor::Absent),
+        ),
+        CssBlockFragment::<CssRuleList>::parse(
+            &CssParser::default(),
+            input,
+            &CssBlockContext::scoped_group(&ns, CssStyleAncestor::Present),
+        ),
     ] {
         // Page 3 §3: @page belongs at top level or in a conditional group.
         ExpectedRejection::new(CssErrorCode::InvalidAtRulePlacement)

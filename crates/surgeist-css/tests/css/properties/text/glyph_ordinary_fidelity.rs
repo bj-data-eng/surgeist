@@ -8,7 +8,7 @@ const NEGATIVE: &[&str] = &["1e-100deg", "-1e-100deg", "90.000001deg", "89.99999
 fn parsed_near_terminal_dimensions_are_rejected_with_neighbor_recovery() {
     for text in NEGATIVE {
         let source = format!("glyph-orientation-vertical:{text};text-orientation:mixed");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(
             !report.is_clean(),
             "{text} must not round into a legacy terminal"
@@ -27,14 +27,19 @@ fn parsed_near_terminal_dimensions_are_rejected_with_neighbor_recovery() {
             panic!("text orientation")
         };
         assert_eq!(value.value(), &CssTextOrientation::Mixed);
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
 }
 
 #[test]
 fn checked_near_terminal_dimensions_are_rejected_for_both_origins() {
     for text in NEGATIVE {
-        let parsed = parse_component_values(text).unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let programmatic = CssComponentValues::try_new(
             vec![CssComponentValue::try_token(text).unwrap()],
             Default::default(),
@@ -46,8 +51,9 @@ fn checked_near_terminal_dimensions_are_rejected_for_both_origins() {
         ));
         for components in [parsed, programmatic] {
             assert!(
-                parse_property_value_for_grammar(
-                    selected_grammar("glyph-orientation-vertical"),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(selected_grammar("glyph-orientation-vertical")),
                     components,
                     CssImportance::Important
                 )
@@ -73,7 +79,8 @@ fn exact_terminals_keep_mapping_spelling_and_origins() {
         ("9e1deg", CssTextOrientation::Sideways),
         (r"90d\65g", CssTextOrientation::Sideways),
     ] {
-        let report = parse_style_attribute(&format!("glyph-orientation-vertical:{text}!important"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("glyph-orientation-vertical:{text}!important"));
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
         let parsed = report.syntax()[0].clone();
         let components = CssComponentValues::try_new(
@@ -81,8 +88,9 @@ fn exact_terminals_keep_mapping_spelling_and_origins() {
             Default::default(),
         )
         .unwrap();
-        let checked = parse_property_value_for_grammar(
-            selected_grammar("glyph-orientation-vertical"),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(selected_grammar("glyph-orientation-vertical")),
             components.clone(),
             CssImportance::Important,
         )
@@ -126,10 +134,11 @@ fn unchanged_deferred_syntax_boundary_is_not_expanded_by_fidelity_fix() {
         "0turn",
         "90grad",
     ] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         assert!(
-            parse_property_value_for_grammar(
-                selected_grammar("glyph-orientation-vertical"),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(selected_grammar("glyph-orientation-vertical")),
                 components,
                 CssImportance::Normal
             )

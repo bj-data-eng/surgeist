@@ -16,7 +16,13 @@ type Kind = SerializationFailure;
 
 fn custom(name: &str, values: CssComponentValues, importance: CssImportance) -> CssDeclaration {
     let name = CssCustomPropertyName::try_new(name).unwrap();
-    parse_property_value(CssPropertyNameRef::Custom(&name), values, importance).unwrap()
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
+        values,
+        importance,
+    )
+    .unwrap()
 }
 
 fn same_parsed_origin(actual: &CssParsedOrigin, original: &CssParsedOrigin) {
@@ -83,7 +89,7 @@ fn unchanged(list: &CssDeclarationList, originals: &[CssDeclaration]) {
 }
 
 fn clean_round_trip(css: &str, count: usize) {
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), count);
     assert_eq!(
@@ -93,7 +99,10 @@ fn clean_round_trip(css: &str, count: usize) {
             .unwrap(),
         css
     );
-    let validated = validate_style_attribute(css).unwrap();
+    let validated = CssParser::default()
+        .parse_block_contents(css)
+        .into_validation_result()
+        .unwrap();
     assert_eq!(validated.len(), count);
     assert_eq!(
         validated.serialize_specified(Default::default()).unwrap(),
@@ -239,12 +248,13 @@ fn assembly_preserves_distinct_snapshots_original_contexts_and_checked_provenanc
             .same_snapshot(second.parsed_name().unwrap().source())
     );
     let quirks = CssParserContext::new(CssParserMode::Quirks);
-    let report = quirks.parse_declaration("width:7");
+    let report = CssDeclaration::parse(&CssParser::new(quirks, Default::default()), "width:7");
     assert!(report.is_clean());
     let width = report.syntax().as_ref().unwrap().clone();
     assert_eq!(width.parser_context(), quirks);
-    let programmatic = parse_property_value_for_grammar(
-        CssPropertyGrammar::from_name("color").unwrap(),
+    let programmatic = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(CssPropertyGrammar::from_name("color").unwrap()),
         CssComponentValues::try_new(
             vec![CssComponentValue::try_ident("transparent").unwrap()],
             Default::default(),
@@ -309,24 +319,25 @@ fn custom_case_empty_values_globals_and_pending_values_keep_their_authored_meani
     let originals = vec![
         custom(
             "--Case",
-            parse_component_values("INITIAL").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "INITIAL").unwrap(),
             CssImportance::Normal,
         ),
         custom(
             "--case",
-            parse_component_values("MiXeD/**/  Tail").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "MiXeD/**/  Tail").unwrap(),
             CssImportance::Important,
         ),
         custom(
             "--Empty",
-            parse_component_values("").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "").unwrap(),
             CssImportance::Normal,
         ),
         checked("width", "INHERIT", CssImportance::Normal),
         checked("width", "VaR(--Case)", CssImportance::Important),
         custom(
             "--Pending",
-            parse_component_values("var(--Case, /*in*/  01.00PX )").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "var(--Case, /*in*/  01.00PX )")
+                .unwrap(),
             CssImportance::Normal,
         ),
     ];
@@ -353,9 +364,18 @@ fn custom_case_empty_values_globals_and_pending_values_keep_their_authored_meani
 
 #[test]
 fn complete_admission_charges_utf8_and_inserted_boundaries_after_edge_trimming() {
-    let a = parse_component_values("A").unwrap().items()[0].clone();
-    let leading = parse_component_values(" \t").unwrap().items()[0].clone();
-    let trailing = parse_component_values("\n").unwrap().items()[0].clone();
+    let a = CssComponentValues::parse(&CssParser::default(), "A")
+        .unwrap()
+        .items()[0]
+        .clone();
+    let leading = CssComponentValues::parse(&CssParser::default(), " \t")
+        .unwrap()
+        .items()[0]
+        .clone();
+    let trailing = CssComponentValues::parse(&CssParser::default(), "\n")
+        .unwrap()
+        .items()[0]
+        .clone();
     let b = CssComponentValue::try_ident("B").unwrap();
     let values =
         CssComponentValues::try_new(vec![leading, a, b, trailing], Default::default()).unwrap();
@@ -401,7 +421,10 @@ fn complete_admission_charges_utf8_and_inserted_boundaries_after_edge_trimming()
         );
         assert_eq!(list.serialize_specified(exact).unwrap(), EXPECTED);
     }
-    let reparsed = validate_style_attribute(EXPECTED).unwrap();
+    let reparsed = CssParser::default()
+        .parse_block_contents(EXPECTED)
+        .into_validation_result()
+        .unwrap();
     let mut identifiers = Vec::new();
     for item in reparsed[0].value_components().items() {
         match item.view() {
@@ -420,12 +443,16 @@ fn complete_admission_charges_utf8_and_inserted_boundaries_after_edge_trimming()
 #[test]
 fn serializing_a_recovered_member_preserves_its_original_implicit_closure() {
     const SOURCE: &str = "--X:var(--Case";
-    let report = parse_style_attribute(SOURCE);
+    let report = CssParser::default().parse_block_contents(SOURCE);
     assert!(!report.is_clean());
     assert_eq!(report.syntax().len(), 1);
     let diagnostics = report.diagnostics().to_vec();
     assert_eq!(
-        validate_style_attribute(SOURCE).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(SOURCE)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         diagnostics.as_slice()
     );
     let originals = vec![
@@ -495,7 +522,8 @@ fn later_real_provider_failure_returns_neither_an_admitted_list_nor_partial_text
         );
     }
     // Parsing admits authored grammar; it does not promise every provider can emit it.
-    let report = parse_style_attribute("color:purple;rotate:calc(.00000001) 1 0 30deg!important");
+    let report = CssParser::default()
+        .parse_block_contents("color:purple;rotate:calc(.00000001) 1 0 30deg!important");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
     let parsed_originals = report.syntax().as_slice().to_vec();

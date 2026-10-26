@@ -519,7 +519,7 @@ mod tests {
 
     #[test]
     fn checked_origins_never_enable_source_reverse_lookup() {
-        let values = crate::parse_component_values("a b").unwrap();
+        let values = crate::component_values::parse_component_values("a b").unwrap();
         let document = normalize(
             SyntaxInput::CheckedComponents(values.items()),
             SyntaxInputLimits::default(),

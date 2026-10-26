@@ -35,7 +35,6 @@ mod tests {
     use crate::{
         CssAngle, CssAngleUnit, CssCalculation, CssNumeric, CssNumericLiteral,
         CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
-        parse_component_values,
     };
 
     fn value() -> CssImageOrientation {
@@ -48,7 +47,7 @@ mod tests {
         CssImageOrientation::Flip(Some(
             CssNumeric::<CssAngle>::try_from_calculation(
                 CssCalculation::<CssAngle>::try_from_components(
-                    parse_component_values("calc(15deg + 15deg)").unwrap(),
+                    crate::component_values::parse_component_values("calc(15deg + 15deg)").unwrap(),
                     Default::default(),
                 )
                 .unwrap(),
@@ -175,7 +174,7 @@ mod tests {
     #[test]
     fn private_emit_suppression_and_failure_preserve_the_original_angle_token() {
         let source = "/* 🦀 */ 3.000e1deg";
-        let components = parse_component_values(source).unwrap();
+        let components = crate::component_values::parse_component_values(source).unwrap();
         let component = components.items().last().unwrap().clone();
         let value = CssImageOrientation::Flip(Some(CssNumeric::<CssAngle>::from_literal(
             CssNumericLiteral::<CssAngle>::try_from_component(component.clone()).unwrap(),

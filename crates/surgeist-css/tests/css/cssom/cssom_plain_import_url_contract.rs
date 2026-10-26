@@ -9,8 +9,8 @@ use crate::css::support::value_assertions::assert_first_diagnostic;
 use crate::css::support::value_assertions::clean_rule as rule;
 use std::error::Error;
 use surgeist_css::{
-    CssImportTarget, CssRule, CssSerializationError, CssSerializationLimits as Limits,
-    CssSerializedOrigin, CssValueOrigin, parse_sheet,
+    CssImportTarget, CssParser, CssRule, CssSerializationError, CssSerializationLimits as Limits,
+    CssSerializedOrigin, CssValueOrigin,
 };
 
 fn exact_location(target: &str, decoded: &str, expected: &str) {
@@ -41,7 +41,7 @@ fn exact_location(target: &str, decoded: &str, expected: &str) {
         expected,
         "{source}"
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {report:?}");
     assert_eq!(
         report.syntax().serialize_cssom(Default::default()).unwrap(),
@@ -163,7 +163,8 @@ fn optional_media_list_follows_the_cssom_url_before_the_semicolon() {
         );
         assert_eq!(value.serialize_cssom(Default::default()).unwrap(), expected);
         assert_eq!(
-            parse_sheet(source)
+            CssParser::default()
+                .parse_sheet(source)
                 .syntax()
                 .serialize_cssom(Default::default())
                 .unwrap(),
@@ -176,7 +177,7 @@ fn optional_media_list_follows_the_cssom_url_before_the_semicolon() {
 #[test]
 fn compact_tokens_keep_original_coordinates_and_modern_clause_structure() {
     let source = "/* prefix */ @IMPORT 'x';";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("import")
     };
@@ -216,7 +217,8 @@ fn compact_tokens_keep_original_coordinates_and_modern_clause_structure() {
         );
         assert_eq!(value.serialize_cssom(Default::default()).unwrap(), expected);
         assert_eq!(
-            parse_sheet(source)
+            CssParser::default()
+                .parse_sheet(source)
                 .syntax()
                 .serialize_cssom(Default::default())
                 .unwrap(),
@@ -286,7 +288,7 @@ fn literal_url_bytes_and_retained_nodes_share_rule_budgets_atomically() {
 
 #[test]
 fn literal_import_sheet_charges_cumulative_nodes_separator_and_url_bytes() {
-    let report = parse_sheet("@import 'a';@import 'b';");
+    let report = CssParser::default().parse_sheet("@import 'a';@import 'b';");
     let before = report.clone();
     let expected = "@import url(\"a\");\n@import url(\"b\");";
     // Sheet aggregate1 + two (rule1 + string target1), including the LF byte.
@@ -314,7 +316,7 @@ fn literal_import_sheet_charges_cumulative_nodes_separator_and_url_bytes() {
 
 #[test]
 fn recovered_media_keeps_provider_failure_origin_and_retry_without_mutation() {
-    let report = parse_sheet("@import 'x' screen,???;");
+    let report = CssParser::default().parse_sheet("@import 'x' screen,???;");
     assert_first_diagnostic(
         report.diagnostics(),
         "@import 'x' screen,???;",

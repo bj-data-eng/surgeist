@@ -1,12 +1,12 @@
 use crate::css::support::rules::page_pseudo;
 use surgeist_css::{
     CssErrorCode, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssMarginValue,
-    CssPagePseudo, CssRecoveryAction, CssRule, CssSupportStatus, feature_metadata, parse_sheet,
+    CssPagePseudo, CssParser, CssRecoveryAction, CssRule, CssSupportStatus, feature_metadata,
 };
 
 #[test]
 fn page_rules_and_pseudos_retain_valid_authored_structure() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@import \"print.css\"; ",
         "@page { margin: 1cm; } ",
         "@page :left { margin-left: -12mm !important; } ",
@@ -61,7 +61,7 @@ fn page_rules_and_pseudos_retain_valid_authored_structure() {
 fn page_margin_composition_keeps_exact_literals_and_math_but_rejects_logical_sides() {
     let source =
         "@page { margin-left:-1e999px; margin-right:1e-999%; margin-top:auto; margin-bottom:0 }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Page(page)] = report.syntax().rules() else {
         panic!("one page rule")
@@ -87,9 +87,7 @@ fn page_margin_composition_keeps_exact_literals_and_math_but_rejects_logical_sid
     assert_eq!(specified.len(), 1003);
     assert!(specified.starts_with("-1") && specified.ends_with("px"));
 
-    let invalid = parse_sheet(
-        "@page { margin-top:1px; margin:logical 1px; margin-right:calc(1px + 2%); margin-bottom:auto }",
-    );
+    let invalid = CssParser::default().parse_sheet("@page { margin-top:1px; margin:logical 1px; margin-right:calc(1px + 2%); margin-bottom:auto }");
     assert_eq!(invalid.diagnostics().len(), 1);
     assert_eq!(invalid.syntax().rules().len(), 1);
     let [CssRule::Page(page)] = invalid.syntax().rules() else {
@@ -121,7 +119,7 @@ fn page_margin_composition_keeps_exact_literals_and_math_but_rejects_logical_sid
 
 #[test]
 fn page_margin_declarations_preserve_css2_physical_literal_semantics() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@page { ",
         "margin: -1px 2% auto 3cm; ",
         "margin-top: -4mm; margin-right: 5in; ",
@@ -158,7 +156,7 @@ fn page_context_composes_shared_values_including_font_relative_lengths() {
         "margin-top: var(--page-margin); margin-bottom: -5px; ",
         "}"
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Page(rule)] = report.syntax().rules() else {
         panic!("expected recovered page rule")
     };
@@ -189,7 +187,7 @@ fn page_context_composes_shared_values_including_font_relative_lengths() {
 
 #[test]
 fn page_context_distinguishes_known_non_margin_unknown_and_invalid_margin_declarations() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@page { ",
         "opacity: .5; mystery: 1; margin-top: bogus; ",
         "margin-left: 1cm !important; margin-right: 2%; ",
@@ -243,7 +241,7 @@ fn page_context_distinguishes_known_non_margin_unknown_and_invalid_margin_declar
 
 #[test]
 fn page_rules_preserve_import_phase_and_distinguish_group_from_style_context() {
-    let invalid_then_import = parse_sheet(
+    let invalid_then_import = CssParser::default().parse_sheet(
         "@page :unknown { margin: 1cm; } @import \"still-early.css\"; @page { margin: 2cm; }",
     );
     assert!(matches!(
@@ -256,7 +254,7 @@ fn page_rules_preserve_import_phase_and_distinguish_group_from_style_context() {
         CssErrorCode::InvalidAtRulePrelude
     );
 
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@import \"valid.css\"; ",
         "@page :first { margin: 1cm; } ",
         "@import \"late.css\"; ",
@@ -305,7 +303,7 @@ fn malformed_page_preludes_and_statement_forms_drop_only_each_rule() {
         "@page :right { margin: 2cm; } ",
         ".after {}"
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
         [CssRule::Style(_), CssRule::Page(_), CssRule::Style(_)]
@@ -323,7 +321,7 @@ fn malformed_page_preludes_and_statement_forms_drop_only_each_rule() {
 
 #[test]
 fn page_body_recovery_rejects_invalid_margin_boxes_nested_rules_and_repeated_failures() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@page { ",
         "margin-top: bogus; ",
         "@bad-left { content: \"title\"; } ",
@@ -373,7 +371,7 @@ fn page_body_recovery_rejects_invalid_margin_boxes_nested_rules_and_repeated_fai
 
 #[test]
 fn page_eof_recovery_retains_valid_authored_structure_and_later_complete_rules() {
-    let unterminated = parse_sheet("@page :first { margin: -1cm");
+    let unterminated = CssParser::default().parse_sheet("@page :first { margin: -1cm");
     assert!(matches!(unterminated.syntax().rules(), [CssRule::Page(_)]));
     assert_eq!(unterminated.diagnostics().len(), 1);
     assert_eq!(
@@ -381,7 +379,7 @@ fn page_eof_recovery_retains_valid_authored_structure_and_later_complete_rules()
         CssErrorCode::UnexpectedEnd
     );
 
-    let malformed = parse_sheet("@page :left :right");
+    let malformed = CssParser::default().parse_sheet("@page :left :right");
     assert!(malformed.syntax().rules().is_empty());
     assert_eq!(malformed.diagnostics().len(), 1);
     assert_eq!(
@@ -419,7 +417,7 @@ fn page_rule_and_selector_named_metadata_match_retained_behavior() {
 #[test]
 fn page_rules_preserve_non_bmp_source_coordinates_for_rules_and_declarations() {
     let source = "/*😀*/\n@page :left { margin-left: -1cm !important; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Page(rule)] = report.syntax().rules() else {
         panic!("expected one page rule")

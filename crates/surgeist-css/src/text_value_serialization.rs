@@ -288,7 +288,7 @@ mod tests {
     fn suppressed_thickness_and_indent_math_still_project_every_numeric_child() {
         let number = CssNumeric::<CssLengthPercentage>::try_from_calculation(
             crate::CssCalculation::<crate::CssLengthPercentage>::try_from_components(
-                crate::parse_component_values("calc(1px + 2px)").unwrap(),
+                crate::component_values::parse_component_values("calc(1px + 2px)").unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -374,7 +374,7 @@ mod tests {
         let math = CssTabSize::Length(
             crate::CssNumeric::<crate::CssLength, crate::CssNonNegative>::try_from_calculation(
                 crate::CssCalculation::<crate::CssLength>::try_from_components(
-                    crate::parse_component_values("calc(1px + 2em)").unwrap(),
+                    crate::component_values::parse_component_values("calc(1px + 2em)").unwrap(),
                     Default::default(),
                 )
                 .unwrap(),

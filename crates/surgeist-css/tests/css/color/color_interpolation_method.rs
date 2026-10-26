@@ -128,15 +128,16 @@ fn rejected_hue_construction_has_a_typed_error_and_display_contract() {
 
 fn admitted(source: &str) -> [CssDeclaration; 2] {
     let style = format!("color:{source}!important");
-    let report = parse_style_attribute(&style);
+    let report = CssParser::default().parse_block_contents(&style);
     assert!(report.is_clean(), "{style}: {:?}", report.diagnostics());
     let [parsed] = report.syntax().as_slice() else {
         panic!("one declaration")
     };
     assert_eq!(parsed.importance(), CssImportance::Important);
-    let components = parse_component_values(source).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         components.clone(),
         CssImportance::Important,
     )
@@ -157,7 +158,7 @@ fn rejected_with_recovery(value: &str, rectangular_hue: Option<(&str, &str)>) {
     // Include a multibyte identifier before the invalid declaration, so spans
     // exercise original byte coordinates rather than detached value offsets.
     let source = format!("--😀:kept;\ncolor:{value};opacity:.5");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [diagnostic] = report.diagnostics() else {
         panic!("one rejection for {value}: {:?}", report.diagnostics())
     };
@@ -203,13 +204,18 @@ fn rejected_with_recovery(value: &str, rectangular_hue: Option<(&str, &str)>) {
         CssKnownProperty::Opacity
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_color_grammar_failure(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
-            parse_component_values(value).unwrap(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+            CssComponentValues::parse(&CssParser::default(), value).unwrap(),
             CssImportance::Normal,
         ),
         value,

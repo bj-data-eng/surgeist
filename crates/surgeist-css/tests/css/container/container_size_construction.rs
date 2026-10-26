@@ -298,7 +298,7 @@ fn tree_counting_is_inspectable_and_remains_symbolic_in_container_context() {
     // Tree-counting functions are scoped to element-backed contexts, so the
     // context-free number grammar does not know the function.
     let error = CssCalculation::<CssNumber>::try_from_components(
-        parse_component_values("sibling-count()").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "sibling-count()").unwrap(),
         Default::default(),
     )
     .unwrap_err();
@@ -320,7 +320,10 @@ fn tree_counting_is_inspectable_and_remains_symbolic_in_container_context() {
 
 #[test]
 fn mixed_origin_pending_components_preserve_token_origins_and_bounded_construction() {
-    let var = parse_component_values("var(--limit,)").unwrap().items()[0].clone();
+    let var = CssComponentValues::parse(&CssParser::default(), "var(--limit,)")
+        .unwrap()
+        .items()[0]
+        .clone();
     let values = CssComponentValues::try_new(
         vec![
             CssComponentValue::try_ident("width").unwrap(),
@@ -359,7 +362,8 @@ fn mixed_origin_pending_components_preserve_token_origins_and_bounded_constructi
 
 #[test]
 fn recovered_numeric_closures_remain_recognized_and_serialize_explicitly() {
-    let components = parse_component_values("(width: calc(1px + 2px").unwrap();
+    let components =
+        CssComponentValues::parse(&CssParser::default(), "(width: calc(1px + 2px").unwrap();
     let condition =
         CssCondition::<CssContainerLeaf>::try_from_components(components, Default::default())
             .unwrap();

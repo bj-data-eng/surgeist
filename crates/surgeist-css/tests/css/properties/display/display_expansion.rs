@@ -6,7 +6,7 @@ use surgeist_css::*;
 #[test]
 fn display_pending_reentry_is_complete_atomic_and_preserves_both_origins() {
     let source = declaration("display:var(--mode)!important");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending display")
     };
     assert!(handle.source().same_occurrence(&source));
@@ -18,14 +18,14 @@ fn display_pending_reentry_is_complete_atomic_and_preserves_both_origins() {
         "inline!important",
     ] {
         let error = handle
-            .reenter(parse_component_values(input).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), input).unwrap())
             .unwrap_err();
         assert!(error.replacement_error().is_some(), "{input}: {error:?}");
         assert!(handle.source().same_occurrence(&source));
     }
     assert!(
         handle
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
@@ -35,7 +35,7 @@ fn display_pending_reentry_is_complete_atomic_and_preserves_both_origins() {
         "grid-lanes",
         "inline-grid-lanes",
     ] {
-        let replacement = parse_component_values(input).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), input).unwrap();
         let direct = declaration(&format!("display:{input}"));
         let CssKnownPropertyValueRef::Display(direct) =
             direct.known().unwrap().property_value().unwrap()
@@ -70,7 +70,7 @@ fn display_pending_reentry_is_complete_atomic_and_preserves_both_origins() {
         }
     }
     let CssContributions::Longhands(items) = handle
-        .reenter(parse_component_values("inherit").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
         .unwrap()
     else {
         panic!("global replacement")
@@ -96,7 +96,7 @@ fn normalized(sheet: &CssNormalizedSheet) -> Vec<&CssNormalizedDeclaration> {
 #[test]
 fn recovered_display_declaration_keeps_order_and_exact_normalization_budgets() {
     let source = ".a { display: inline; display: block grid-lanes; display: flex !important; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
@@ -108,7 +108,11 @@ fn recovered_display_declaration_keeps_order_and_exact_normalization_budgets() {
         Some("grid-lanes"),
     );
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     for (limits, resource, limit) in [
@@ -129,17 +133,18 @@ fn recovered_display_declaration_keeps_order_and_exact_normalization_budgets() {
         ),
     ] {
         assert_eq!(
-            normalize_sheet_with_limits(report.syntax(), limits)
+            report
+                .syntax()
+                .normalize(limits)
                 .unwrap_err()
                 .exhausted_limit(),
             Some((resource, limit))
         );
     }
-    let sheet = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap(),
-    )
-    .unwrap();
+    let sheet = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap())
+        .unwrap();
     let items = normalized(&sheet);
     assert_eq!(items.len(), 2);
     for (index, (text, importance)) in [
@@ -174,13 +179,13 @@ fn recovered_display_declaration_keeps_order_and_exact_normalization_budgets() {
 #[test]
 fn nested_declaration_runs_keep_display_occurrences_and_shared_parent_context() {
     let source = ".a { display:inline; .bad, {display:none} display:flex; .child {display:grid-lanes} display:contents!important }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropQualifiedRule
     );
-    let sheet = normalize_sheet(report.syntax()).unwrap();
+    let sheet = report.syntax().normalize(Default::default()).unwrap();
     let items = normalized(&sheet);
     assert_eq!(items.len(), 4);
     for (index, text) in ["inline", "flex", "grid-lanes", "contents"]
@@ -247,11 +252,11 @@ fn scoped_display_and_color_runs_survive_structural_chunks_without_duplication()
             "@media all{".repeat(depth),
             "}".repeat(depth),
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{depth}: {:?}", report.diagnostics());
         // Repeated traversal must not consume or duplicate the authored graph.
         for _ in 0..2 {
-            let sheet = normalize_sheet(report.syntax()).unwrap();
+            let sheet = report.syntax().normalize(Default::default()).unwrap();
             let items = normalized(&sheet);
             assert_eq!(items.len(), 5);
             let scope = items[0].selector_context().scope_context().unwrap();

@@ -46,7 +46,10 @@ fn six_type_states_preserve_semantics_and_use_grammar_order() {
             expected
         );
         assert_limits(expected, nodes, |limits| value.serialize_specified(limits));
-        let report = parse_declaration(&format!("container-type:{authored}!important"));
+        let report = CssDeclaration::parse(
+            &CssParser::default(),
+            format!("container-type:{authored}!important"),
+        );
         assert!(report.is_clean());
         let declaration = report.syntax().as_ref().unwrap();
         let CssKnownPropertyValueRef::ContainerType(wrapper) =
@@ -84,7 +87,8 @@ fn ordered_names_keep_case_duplicates_unicode_and_identifier_boundaries() {
             expected
         );
         assert_limits(expected, nodes, |limits| value.serialize_specified(limits));
-        let report = parse_declaration(&format!("container-name:{expected}"));
+        let report =
+            CssDeclaration::parse(&CssParser::default(), format!("container-name:{expected}"));
         assert!(report.is_clean());
         let declaration = report.syntax().as_ref().unwrap();
         let CssKnownPropertyValueRef::ContainerName(wrapper) =
@@ -127,7 +131,7 @@ fn shorthand_omits_normal_and_counts_the_retained_type() {
             expected
         );
         assert_limits(expected, nodes, |limits| value.serialize_specified(limits));
-        let report = parse_declaration(&format!("container:{expected}"));
+        let report = CssDeclaration::parse(&CssParser::default(), format!("container:{expected}"));
         assert!(report.is_clean());
         let declaration = report.syntax().as_ref().unwrap();
         let CssKnownPropertyValueRef::Container(wrapper) =
@@ -151,7 +155,10 @@ fn shorthand_omits_normal_and_counts_the_retained_type() {
 #[test]
 fn parsed_reordered_shorthand_keeps_its_authored_occurrence() {
     let authored = r"\31 pane/**// SCROLL-STATE INLINE-SIZE";
-    let report = parse_declaration(&format!("container:{authored}!important"));
+    let report = CssDeclaration::parse(
+        &CssParser::default(),
+        format!("container:{authored}!important"),
+    );
     assert!(report.is_clean());
     let declaration = report.syntax().as_ref().unwrap();
     let CssKnownPropertyValueRef::Container(wrapper) =
@@ -258,7 +265,10 @@ fn explicit_normal_and_programmatic_components_keep_the_same_shorthand_value() {
             4,
         ),
     ] {
-        let report = parse_declaration(&format!("container:{authored}!important"));
+        let report = CssDeclaration::parse(
+            &CssParser::default(),
+            format!("container:{authored}!important"),
+        );
         assert!(report.is_clean());
         let declaration = report.syntax().as_ref().unwrap();
         let CssKnownPropertyValueRef::Container(wrapper) =
@@ -273,8 +283,9 @@ fn explicit_normal_and_programmatic_components_keep_the_same_shorthand_value() {
         });
 
         let components = value.to_components(Default::default()).unwrap();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Container),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Container)),
             components,
             CssImportance::Important,
         )

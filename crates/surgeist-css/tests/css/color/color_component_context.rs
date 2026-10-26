@@ -6,16 +6,17 @@
 use surgeist_color::PredefinedColorSpace;
 use surgeist_css::{
     CssCalculation, CssColorComponent, CssColorConstructionError, CssColorHue,
-    CssColorNumberLiteral, CssColorProfileName, CssColorSyntax, CssComponentValue, CssCondition,
-    CssConditionKind, CssContainerFeatureQuery, CssContainerLeaf, CssContainerRatioRef,
-    CssCustomColor, CssDeviceCmykColor, CssHslColor, CssHwbColor, CssLabColor, CssLchColor,
-    CssMediaRangeRef, CssNumber, CssPredefinedColor, CssRgbColor, parse_component_values,
+    CssColorNumberLiteral, CssColorProfileName, CssColorSyntax, CssComponentValue,
+    CssComponentValues, CssCondition, CssConditionKind, CssContainerFeatureQuery, CssContainerLeaf,
+    CssContainerRatioRef, CssCustomColor, CssDeviceCmykColor, CssHslColor, CssHwbColor,
+    CssLabColor, CssLchColor, CssMediaRangeRef, CssNumber, CssParser, CssPredefinedColor,
+    CssRgbColor,
 };
 
 fn container_number(expression: &str) -> CssCalculation<CssNumber> {
     let source = format!("(aspect-ratio: {expression})");
     let condition = CssCondition::<CssContainerLeaf>::try_from_components(
-        parse_component_values(&source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
         Default::default(),
     )
     .expect("tree-counting remains valid in its selected container context");
@@ -65,7 +66,7 @@ fn rgb_constructor_rejects_container_tree_counting_calculations() {
         let calculation = container_number(expression);
         assert!(
             CssCalculation::<CssNumber>::try_from_components(
-                parse_component_values(expression).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), expression).unwrap(),
                 Default::default()
             )
             .unwrap_err()
@@ -86,7 +87,7 @@ fn rgb_constructor_rejects_container_tree_counting_calculations() {
 fn rgb_constructor_accepts_pure_number_calculations() {
     for expression in ["calc(1 + 2)", "max(1, 2)"] {
         let calculation = CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values(expression).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), expression).unwrap(),
             Default::default(),
         )
         .expect("a pure number calculation is valid outside container context");

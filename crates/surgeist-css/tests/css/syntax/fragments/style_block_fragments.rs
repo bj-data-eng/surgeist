@@ -2,12 +2,16 @@
 use crate::css::support::authored_syntax::assert_diagnostics;
 use surgeist_css::{
     CssDeclaration, CssKnownProperty, CssKnownPropertyValueRef, CssNamespaceContext,
-    CssNamespaceName, CssNamespacePrefix, CssRecoveryAction, CssRule, CssSelector,
-    CssStyleSelector, CssValueOrigin, parse_style_block,
+    CssNamespaceName, CssNamespacePrefix, CssParser, CssRecoveryAction, CssRule, CssSelector,
+    CssStyleBlock, CssStyleSelector, CssValueOrigin,
 };
 
 fn parse(source: &str) -> surgeist_css::CssParseReport<Option<surgeist_css::CssStyleBlock>> {
-    parse_style_block(source, &CssNamespaceContext::default())
+    CssStyleBlock::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    )
 }
 
 fn color(declaration: &CssDeclaration, expected: &str) {
@@ -205,7 +209,11 @@ fn relative_children_retain_namespace_constraints_without_a_fabricated_parent() 
         Some(prefix.clone()),
         CssNamespaceName::new("urn:svg"),
     )]);
-    let report = parse_style_block("{> svg|leaf{color:red} svg|leaf&{color:blue}}", &context);
+    let report = CssStyleBlock::parse(
+        &CssParser::default(),
+        "{> svg|leaf{color:red} svg|leaf&{color:blue}}",
+        &context,
+    );
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Style(relative), CssRule::Style(absolute)] =
         report.syntax().as_ref().unwrap().rules()

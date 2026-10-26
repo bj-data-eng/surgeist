@@ -6,8 +6,8 @@
 
 use crate::css::support::parsed_color;
 use surgeist_css::{
-    CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssColor, CssKnownProperty,
-    CssRecoveryAction, CssSystemColor, parse_style_attribute, validate_style_attribute,
+    CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssColor, CssKnownProperty, CssParser,
+    CssRecoveryAction, CssSystemColor,
 };
 
 const SYSTEM_COLORS: [(&str, CssSystemColor, &str); 19] = [
@@ -190,7 +190,7 @@ fn similar_unknown_keywords_are_recovered_without_losing_the_valid_sibling() {
         "Canvas Text",
     ] {
         let source = format!("color: {invalid}; opacity: 0.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -204,7 +204,11 @@ fn similar_unknown_keywords_are_recovered_without_losing_the_valid_sibling() {
             "{source}",
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics(),
             "{source}"
         );

@@ -8,9 +8,9 @@ use crate::css::support::rules::{invalid_descriptor, rejected_bang};
 use surgeist_css::*;
 
 fn query(source: &str) -> CssParseReport<Option<CssDeclaration>> {
-    parse_property_value_text(
+    CssParser::default().parse_property_value(
         source,
-        CssPropertyNameRef::Known(CssKnownProperty::Font),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Font)),
         CssImportance::Normal,
     )
 }
@@ -201,7 +201,11 @@ fn recovered_query_syntax_remains_available_but_clean_admission_rejects_it() {
 #[test]
 fn source_descriptor_recovery_and_strict_components_have_separate_admission() {
     let source = "url(font.woff2), bad, local(Demo)";
-    let report = parse_font_face_descriptor_value(source, CssFontFaceDescriptorKind::Src);
+    let report = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        source,
+        CssFontFaceDescriptorKind::Src,
+    );
     assert!(report.syntax().is_some());
     let [diagnostic] = report.diagnostics() else {
         panic!("exactly one discarded source member")
@@ -217,7 +221,7 @@ fn source_descriptor_recovery_and_strict_components_have_separate_admission() {
     // <font-src-list> rejects the `bad` member.
     let error = CssAuthoredFontFaceDescriptorValue::try_from_components(
         CssFontFaceDescriptorKind::Src,
-        parse_component_values(source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         Default::default(),
     )
     .unwrap_err();
@@ -232,10 +236,14 @@ fn source_descriptor_recovery_and_strict_components_have_separate_admission() {
         "local(Demo)",
         "url(font.woff2), local(Demo)",
     ] {
-        let value = parse_font_face_descriptor_value(valid, CssFontFaceDescriptorKind::Src)
-            .into_validation_result()
-            .unwrap()
-            .unwrap();
+        let value = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            valid,
+            CssFontFaceDescriptorKind::Src,
+        )
+        .into_validation_result()
+        .unwrap()
+        .unwrap();
         assert!(matches!(
             value,
             CssAuthoredFontFaceDescriptorValue::Ordinary(_)
@@ -252,7 +260,11 @@ fn source_descriptor_recovery_and_strict_components_have_separate_admission() {
         ),
         ("local(Demo);", rejected.clone().at(";")),
     ] {
-        let report = parse_font_face_descriptor_value(invalid, CssFontFaceDescriptorKind::Src);
+        let report = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            invalid,
+            CssFontFaceDescriptorKind::Src,
+        );
         assert!(report.syntax().is_none(), "{invalid}: {report:?}");
         expected.assert_first(&report);
     }

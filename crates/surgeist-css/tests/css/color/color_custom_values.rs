@@ -260,9 +260,14 @@ fn wide_custom_lists_keep_cumulative_token_and_byte_budgets() {
     // Function + profile identifier + one whitespace and number per channel.
     let count = 2 + 2 * width;
     let limits = CssComponentValueLimits::try_new(256, count, source.len()).unwrap();
-    let graph = parse_component_values_with_limits(&source, limits).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    let graph = CssComponentValues::parse(
+        &CssParser::new(CssParserContext::default(), limits),
+        &source,
+    )
+    .unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         graph.clone(),
         CssImportance::Normal,
     )
@@ -281,7 +286,13 @@ fn wide_custom_lists_keep_cumulative_token_and_byte_budgets() {
     ] {
         let limits = CssComponentValueLimits::try_new(256, tokens, bytes).unwrap();
         assert_eq!(
-            component_failure(&parse_component_values_with_limits(&source, limits).unwrap_err()),
+            component_failure(
+                &CssComponentValues::parse(
+                    &CssParser::new(CssParserContext::default(), limits),
+                    &source
+                )
+                .unwrap_err()
+            ),
             expected
         );
         assert_eq!(

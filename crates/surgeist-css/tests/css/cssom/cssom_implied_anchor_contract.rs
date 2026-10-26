@@ -3,9 +3,9 @@
 //! an ampersand, including retained invalid forgiving members. Compact authored
 //! and general-relative output remain distinct.
 use surgeist_css::{
-    CssNamespaceContext, CssRecoveryAction, CssRule, CssRuleGraphInput,
-    CssSpecifiedDeclarationBlock, CssStyleAncestor, CssStyleSelectorContext,
-    parse_relative_selector_list, parse_sheet, parse_style_selector_list,
+    CssNamespaceContext, CssParsedStyleSelectors, CssParser, CssRecoveryAction,
+    CssRelativeSelectorList, CssRule, CssRuleGraphInput, CssSpecifiedDeclarationBlock,
+    CssStyleAncestor, CssStyleSelectorContext,
 };
 
 #[test]
@@ -20,7 +20,7 @@ fn nested_literal_implicit_descendant_and_each_leading_combinator_have_implied_a
         ("|| .child", "& || .child"),
     ] {
         let source = format!("/*😀*/ .parent {{{prelude}{{}}}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{prelude}: {report:?}");
         let before = report.clone();
         let value = &report.syntax().rules()[0];
@@ -37,7 +37,7 @@ fn nested_literal_implicit_descendant_and_each_leading_combinator_have_implied_a
 
 #[test]
 fn parsed_multilevel_children_add_their_own_implied_anchor_only_in_literal_output() {
-    let report = parse_sheet(".outer { .middle { > .inner {} } }");
+    let report = CssParser::default().parse_sheet(".outer { .middle { > .inner {} } }");
     assert!(report.is_clean());
     let before = report.clone();
     assert_eq!(
@@ -57,7 +57,8 @@ fn parsed_multilevel_children_add_their_own_implied_anchor_only_in_literal_outpu
 #[test]
 fn checked_scoped_nested_role_absolutizes_relative_payload_without_mutating_source() {
     let source = " /*😀*/ > .child, + .sibling ";
-    let report = parse_style_selector_list(
+    let report = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
         source,
         &CssNamespaceContext::default(),
         CssStyleSelectorContext::Scoped(CssStyleAncestor::Present),
@@ -93,13 +94,14 @@ fn checked_scoped_nested_role_absolutizes_relative_payload_without_mutating_sour
 
 #[test]
 fn explicit_repeated_and_retained_invalid_anchors_are_controls_without_an_extra_anchor() {
-    let report = parse_sheet(".parent { &.one {} &&.two {} .before & {} }");
+    let report = CssParser::default().parse_sheet(".parent { &.one {} &&.two {} .before & {} }");
     assert!(report.is_clean());
     assert_eq!(
         report.syntax().serialize_cssom(Default::default()).unwrap(),
         ".parent {\n  &.one { }\n  &&.two { }\n  .before & { }\n}"
     );
-    let raw = parse_style_selector_list(
+    let raw = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
         "&:is(.ok,&.bad:unknown())",
         &CssNamespaceContext::default(),
         CssStyleSelectorContext::Nested,
@@ -126,7 +128,8 @@ fn explicit_repeated_and_retained_invalid_anchors_are_controls_without_an_extra_
     );
     // Nesting §3.1 counts the ampersand even when it only occurs in an
     // invalid retained member: that selector is already non-relative.
-    let raw = parse_style_selector_list(
+    let raw = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
         ":is(.ok,&.bad:unknown())",
         &CssNamespaceContext::default(),
         CssStyleSelectorContext::Nested,
@@ -148,7 +151,8 @@ fn explicit_repeated_and_retained_invalid_anchors_are_controls_without_an_extra_
 #[test]
 fn general_relative_output_and_strict_rejection_are_unchanged_controls() {
     let namespaces = CssNamespaceContext::default();
-    let report = parse_relative_selector_list(
+    let report = CssRelativeSelectorList::parse(
+        &CssParser::default(),
         ".implicit, > .child, + .next, ~ .later, || .column",
         &namespaces,
     );
@@ -163,12 +167,18 @@ fn general_relative_output_and_strict_rejection_are_unchanged_controls() {
         ".implicit, > .child, + .next, ~ .later, || .column"
     );
     assert!(
-        parse_style_selector_list("> .child", &namespaces, CssStyleSelectorContext::Ordinary)
-            .syntax()
-            .is_none()
+        CssParsedStyleSelectors::parse(
+            &CssParser::default(),
+            "> .child",
+            &namespaces,
+            CssStyleSelectorContext::Ordinary
+        )
+        .syntax()
+        .is_none()
     );
     assert!(
-        parse_style_selector_list(
+        CssParsedStyleSelectors::parse(
+            &CssParser::default(),
             ":not(.ok,&.bad:unknown())",
             &namespaces,
             CssStyleSelectorContext::Nested
@@ -176,7 +186,7 @@ fn general_relative_output_and_strict_rejection_are_unchanged_controls() {
         .syntax()
         .is_none()
     );
-    let report = parse_sheet(".plain {}");
+    let report = CssParser::default().parse_sheet(".plain {}");
     let [CssRule::Style(_)] = report.syntax().rules() else {
         panic!("ordinary style")
     };

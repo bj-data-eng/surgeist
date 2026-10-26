@@ -345,14 +345,13 @@ impl CssProfileColorCalculation {
 mod tests {
     use crate::numeric::prepare_specified;
     use crate::{
-        CssSerializationLimits as Limits, parse_component_values,
-        specified_serialization::SpecifiedSerializationContext,
+        CssSerializationLimits as Limits, specified_serialization::SpecifiedSerializationContext,
     };
 
     #[test]
     fn suppressed_profile_preparation_retains_identity_for_later_emission() {
         let value = crate::CssProfileColorExpression::try_from_components(
-            parse_component_values("calc(Cyan)").unwrap(),
+            crate::component_values::parse_component_values("calc(Cyan)").unwrap(),
         )
         .unwrap();
         let crate::CssProfileColorExpressionRef::Calculation(value) = value.view() else {

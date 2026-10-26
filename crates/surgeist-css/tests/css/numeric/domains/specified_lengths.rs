@@ -1,12 +1,13 @@
 //! Exact CSS `<length>` and nonnegative `<length-percentage>` contracts.
 
 use surgeist_css::{
-    CssCalculation, CssComponentValue, CssLength, CssLengthPercentage, CssNonNegative, CssNumeric,
-    CssSerializationLimits, CssValueOrigin, parse_component_values,
+    CssCalculation, CssComponentValue, CssComponentValues, CssLength, CssLengthPercentage,
+    CssNonNegative, CssNumeric, CssParser, CssSerializationLimits, CssValueOrigin,
 };
 
 fn component(text: &str) -> CssComponentValue {
-    let values = parse_component_values(text).expect("one valid component value");
+    let values =
+        CssComponentValues::parse(&CssParser::default(), text).expect("one valid component value");
     let [value] = values.items() else {
         panic!("one component in {text}")
     };
@@ -132,7 +133,7 @@ fn extreme_ordinary_magnitudes_keep_exact_digits_and_bounded_serialization() {
 #[test]
 fn checked_calculation_entry_rechecks_bare_roots_and_defers_function_math() {
     let signed_bare = CssCalculation::<CssLength>::try_from_components(
-        parse_component_values("-4px").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "-4px").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -150,7 +151,7 @@ fn checked_calculation_entry_rechecks_bare_roots_and_defers_function_math() {
     );
 
     let forbidden_bare = CssCalculation::<CssLengthPercentage>::try_from_components(
-        parse_component_values("-1e-999px").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "-1e-999px").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -160,7 +161,7 @@ fn checked_calculation_entry_rechecks_bare_roots_and_defers_function_math() {
             .is_out_of_range()
     );
     let allowed_bare = CssCalculation::<CssLengthPercentage>::try_from_components(
-        parse_component_values("1e999%").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "1e999%").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -176,7 +177,7 @@ fn checked_calculation_entry_rechecks_bare_roots_and_defers_function_math() {
     assert!(allowed.calculation().is_none());
 
     let margin_math = CssCalculation::<CssLength>::try_from_components(
-        parse_component_values("calc(-2px)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(-2px)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -197,7 +198,7 @@ fn checked_calculation_entry_rechecks_bare_roots_and_defers_function_math() {
     );
 
     let padding_math = CssCalculation::<CssLengthPercentage>::try_from_components(
-        parse_component_values("calc(2px + 3%)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(2px + 3%)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -219,7 +220,7 @@ fn checked_calculation_entry_rechecks_bare_roots_and_defers_function_math() {
     );
     assert!(
         CssCalculation::<CssLength>::try_from_components(
-            parse_component_values("calc(2px + 3%)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(2px + 3%)").unwrap(),
             Default::default()
         )
         .is_err()

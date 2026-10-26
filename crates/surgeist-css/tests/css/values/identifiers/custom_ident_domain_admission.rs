@@ -113,7 +113,7 @@ fn assert_animation_shorthand_name(authored: &str, decoded: &str) {
 
 fn assert_keyframes_ident(authored: &str, decoded: &str) {
     let source = format!("@keyframes {authored} {{}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::Keyframes(rule)] = report.syntax().rules() else {
         panic!("one retained keyframes rule");
@@ -124,13 +124,13 @@ fn assert_keyframes_ident(authored: &str, decoded: &str) {
         .serialize_specified(Default::default())
         .unwrap();
     assert_eq!(css, format!("@keyframes {decoded} {{ }}"));
-    let reparsed = parse_sheet(&css);
+    let reparsed = CssParser::default().parse_sheet(&css);
     assert!(reparsed.is_clean());
     let [CssRule::Keyframes(reparsed_rule)] = reparsed.syntax().rules() else {
         panic!("one reparsed keyframes rule");
     };
     assert_eq!(reparsed_rule.name(), rule.name());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let [CssNormalizedItem::Rule(context)] = normalized.items() else {
         panic!("one normalized terminal rule");
     };
@@ -144,7 +144,7 @@ fn assert_keyframes_ident(authored: &str, decoded: &str) {
 
 fn assert_rejected_property(property: CssKnownProperty, value: &str, responsible: Option<&str>) {
     let source = format!("{}:{value};color:red", property.canonical_name());
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(!report.is_clean(), "{source}");
     let [diagnostic] = report.diagnostics() else {
         panic!(
@@ -186,7 +186,7 @@ fn assert_rejected_property(property: CssKnownProperty, value: &str, responsible
 
 fn assert_rejected_keyframes_name(authored: &str) {
     let source = format!("@keyframes {authored} {{}} .after {{color:red}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(!report.is_clean(), "{source}");
     let [diagnostic] = report.diagnostics() else {
         panic!("one invalid keyframes prelude: {:?}", report.diagnostics());
@@ -870,7 +870,7 @@ fn keyframes_reject_none_identifier() {
 
 #[test]
 fn keyframes_accept_quoted_none_name() {
-    let report = parse_sheet("@keyframes \"none\" {}");
+    let report = CssParser::default().parse_sheet("@keyframes \"none\" {}");
     assert!(report.is_clean());
     let [CssRule::Keyframes(rule)] = report.syntax().rules() else {
         panic!("keyframes");

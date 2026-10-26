@@ -164,17 +164,25 @@ fn equivalent_bodies<E>(
     }
 }
 
-impl crate::CssParserContext {
+impl crate::CssColorScheme {
     /// Preprocesses the actual shared UTF16 input and checks the complete
     /// `color-scheme` authored property grammar at normal importance.
+    ///
+    /// The parser supplies the grammar context and the component limits that
+    /// charge the lexical input; `limits` is the rest of the operation envelope.
     ///
     /// Every input, lexical, component and grammar owner shares this cumulative
     /// admission. Prospective live observations precede allocation; release is
     /// infallible and follows actual drops. Successful return transfers exactly
     /// `report.retained_storage()` to the caller. Resource refusal returns no
     /// partial report and preserves the original admission error.
-    pub fn parse_color_scheme_utf16_with_limits<E>(
-        self,
+    ///
+    /// # Errors
+    ///
+    /// Returns the exhausted resource, the failed allocation, the capacity
+    /// overflow or the caller's own admission error; no partial report escapes.
+    pub fn parse_utf16<E>(
+        parser: &crate::CssParser,
         original: Arc<Vec<u16>>,
         limits: CssUtf16PropertyValueLimits,
         admit: impl FnMut(CssUtf16ValueAdmission) -> Result<(), E>,
@@ -203,7 +211,13 @@ impl crate::CssParserContext {
             drop(original);
             Err(crate::CssUtf16InputError::interrupted(()))
         } else {
-            parse_operation(self, original, limits, &control)
+            parse_operation(
+                parser.context(),
+                parser.component_limits(),
+                original,
+                limits,
+                &control,
+            )
         };
         let failure = control.failure();
         let outcome = match outcome {
@@ -241,6 +255,7 @@ impl crate::CssParserContext {
 
 fn parse_operation(
     context: crate::CssParserContext,
+    syntax: CssComponentValueLimits,
     original: Arc<Vec<u16>>,
     limits: CssUtf16PropertyValueLimits,
     control: &Control<'_>,
@@ -260,39 +275,39 @@ fn parse_operation(
         },
         |bytes, units| control.reconciled(baseline + bytes, units),
     )?;
-    let result =
-        match crate::component_values::parse_controlled_snapshot(&source, limits.syntax, control) {
-            Err(error) => {
-                if control.failure().is_some() {
-                    return Err(Error::interrupted(()));
-                }
-                control.component_resource(error.kind).map_err(refused)?;
-                Err(crate::CssPropertyValueError::admission(error))
+    let result = match crate::component_values::parse_controlled_snapshot(&source, syntax, control)
+    {
+        Err(error) => {
+            if control.failure().is_some() {
+                return Err(Error::interrupted(()));
             }
-            Ok(components) => {
-                match crate::parser::parse_color_scheme_value_controlled(
-                    &components,
-                    context,
-                    &source,
-                    control,
-                )
-                .map_err(refused)?
-                {
-                    Err(error) => Err(error),
-                    Ok(body) => {
-                        control
-                            .add(crate::CssDeclaration::constructed_allocation_bytes())
-                            .map_err(refused)?;
-                        Ok(crate::CssDeclaration::new_constructed(
-                            context,
-                            body,
-                            crate::CssImportance::Normal,
-                            components,
-                        ))
-                    }
+            control.component_resource(error.kind).map_err(refused)?;
+            Err(crate::CssPropertyValueError::admission(error))
+        }
+        Ok(components) => {
+            match crate::parser::parse_color_scheme_value_controlled(
+                &components,
+                context,
+                &source,
+                control,
+            )
+            .map_err(refused)?
+            {
+                Err(error) => Err(error),
+                Ok(body) => {
+                    control
+                        .add(crate::CssDeclaration::constructed_allocation_bytes())
+                        .map_err(refused)?;
+                    Ok(crate::CssDeclaration::new_constructed(
+                        context,
+                        body,
+                        crate::CssImportance::Normal,
+                        components,
+                    ))
                 }
             }
-        };
+        }
+    };
     control.step().map_err(refused)?;
     let source_bytes = source
         .payload_bytes(true)
@@ -367,11 +382,12 @@ fn body_backing<E>(
     }
 }
 
-/// Independent preparation/syntax policy and the complete operation envelope.
+/// Independent preparation policy and the complete operation envelope. The
+/// component limits that charge the lexical input come from the
+/// [`crate::CssParser`] that drives the operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssUtf16PropertyValueLimits {
     pub input: CssUtf16InputLimits,
-    pub syntax: CssComponentValueLimits,
     pub max_work: usize,
     pub max_live_bytes: usize,
     pub max_retained_bytes: usize,

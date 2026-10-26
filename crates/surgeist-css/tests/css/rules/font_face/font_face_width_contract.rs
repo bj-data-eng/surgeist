@@ -5,7 +5,7 @@ use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn percent(text: &str) -> CssFontWidth {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [component] = values.items() else {
         panic!("one percentage")
     };
@@ -15,7 +15,11 @@ fn percent(text: &str) -> CssFontWidth {
 }
 
 fn raw(text: &str) -> CssFontFaceWidth {
-    let report = parse_font_face_descriptor_value(text, CssFontFaceDescriptorKind::FontWidth);
+    let report = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        text,
+        CssFontFaceDescriptorKind::FontWidth,
+    );
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::FontWidth(
         value,
@@ -28,7 +32,7 @@ fn raw(text: &str) -> CssFontFaceWidth {
 
 fn sheet(name: &str, text: &str) -> (CssFontFaceWidth, CssSourcePosition) {
     let source = format!("@font-face{{font-family:Demo;src:url(face);{name}:{text}}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("font-face rule")
@@ -61,7 +65,7 @@ fn explicit_auto_and_omission_have_distinct_authored_states() {
     for name in ["font-width", "font-stretch", "FONT-WIDTH", "FONT-STRETCH"] {
         assert_eq!(sheet(name, "auto").0, auto);
     }
-    let report = parse_sheet("@font-face{font-family:Demo;src:url(face)}");
+    let report = CssParser::default().parse_sheet("@font-face{font-family:Demo;src:url(face)}");
     assert!(report.is_clean());
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("font-face rule")
@@ -244,7 +248,7 @@ fn percentage_math_endpoints_remain_deferred_in_raw_and_sheet_values() {
 #[test]
 fn aliases_share_ordered_occurrences_and_last_valid_projection() {
     let source = "@font-face{font-stretch:condensed 125%;font-width:auto;FONT-STRETCH:125% 75%;font-width:expanded condensed}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("font-face rule")

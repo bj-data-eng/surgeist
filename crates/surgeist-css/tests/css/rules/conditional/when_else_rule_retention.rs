@@ -9,9 +9,8 @@ use crate::css::support::rules::declaration_text;
 use crate::css::support::rules::normalized_declarations as declarations;
 use crate::css::support::rules::rule_at;
 use surgeist_css::{
-    CssErrorCode, CssNormalizedDeclaration, CssNormalizedSheet, CssRecoveryAction, CssRule,
-    CssRuleContextKindRef, CssSelector, CssSelectorBinding, CssTokenKind, normalize_sheet,
-    parse_sheet, validate_sheet,
+    CssErrorCode, CssNormalizedDeclaration, CssNormalizedSheet, CssParser, CssRecoveryAction,
+    CssRule, CssRuleContextKindRef, CssSelector, CssSelectorBinding, CssTokenKind,
 };
 
 fn assert_declarations<'a>(
@@ -68,9 +67,9 @@ fn valid_when_conditions_retain_their_body_and_following_sibling_without_evaluat
         "supports((display:grid))",
     ] {
         let source = format!("@when {condition}{{.Inside{{color:red}}}}.After{{color:blue}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let original = report.clone();
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let values =
             assert_declarations(&source, &normalized, &[("color", "red"), ("color", "blue")]);
         let group = rule_at(&normalized, &source, "@when");
@@ -94,9 +93,9 @@ fn valid_when_conditions_retain_their_body_and_following_sibling_without_evaluat
 #[test]
 fn whitespace_comment_else_chain_retains_omitted_and_later_conditioned_bodies() {
     let source = "@when media(width) and supports(display:grid){.When{color:red}} /*adjacent*/\n@else{.Omitted{color:blue}}\t@else supports(display:flex){.Later{color:green}}.After{height:2px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let original = report.clone();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values = assert_declarations(
         source,
         &normalized,
@@ -127,9 +126,9 @@ fn whitespace_comment_else_chain_retains_omitted_and_later_conditioned_bodies() 
 #[test]
 fn style_nested_when_else_keep_declaration_runs_and_nearest_style_context() {
     let source = ".Parent,#Alt{color:red;@when media(width){width:1px;.Child{height:2px}opacity:1}@else{color:blue}display:block}.Outside{color:green}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let original = report.clone();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values = assert_declarations(
         source,
         &normalized,
@@ -221,8 +220,8 @@ fn invalid_outer_when_condition_discards_its_whole_body_and_preserves_parent_run
     ] {
         let failed = format!("@when {condition}{{color:green;.Leak{{width:1px}}}}");
         let source = format!(".Parent{{color:red;{failed}color:blue}}.Outside{{height:2px}}");
-        let report = parse_sheet(&source);
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let report = CssParser::default().parse_sheet(&source);
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         assert_declarations(
             &source,
             &normalized,
@@ -268,8 +267,8 @@ fn free_else_after_complete_rule_units_is_discarded_without_body_promotion() {
     ] {
         let failed = "@else{.Leak{height:1px}}";
         let source = format!("{prefix}{failed}.After{{color:blue}}");
-        let report = parse_sheet(&source);
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let report = CssParser::default().parse_sheet(&source);
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         assert_declarations(&source, &normalized, &[("color", "red"), ("color", "blue")]);
         let start = source.find(failed).unwrap();
         let diagnostic = report
@@ -292,8 +291,8 @@ fn root_semicolon_keeps_else_in_one_failed_qualified_unit_without_body_promotion
     let prefix = "@media all{.Before{color:red}}";
     let failed = ";@else{.Leak{height:1px}}";
     let source = format!("{prefix}{failed}.After{{color:blue}}");
-    let report = parse_sheet(&source);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let report = CssParser::default().parse_sheet(&source);
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_declarations(&source, &normalized, &[("color", "red"), ("color", "blue")]);
     let [diagnostic] = report.diagnostics() else {
         panic!("one complete semicolon-prefixed qualified unit")
@@ -322,7 +321,11 @@ fn root_semicolon_keeps_else_in_one_failed_qualified_unit_without_body_promotion
     assert_eq!(encountered.kind(), CssTokenKind::Semicolon);
     assert_eq!(encountered.authored(), ";");
     assert_eq!(
-        validate_sheet(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -330,9 +333,9 @@ fn root_semicolon_keeps_else_in_one_failed_qualified_unit_without_body_promotion
 #[test]
 fn valid_when_recovers_invalid_body_children_locally_and_keeps_following_sibling() {
     let source = "@when supports(display:grid){.Good{color:red;mystery:1;width:1px}.Bad,{.Leak{height:2px}}.Last{color:blue}}.Outside{height:3px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let original = report.clone();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values = assert_declarations(
         source,
         &normalized,

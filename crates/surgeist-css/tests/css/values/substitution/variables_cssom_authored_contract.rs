@@ -9,7 +9,7 @@ use crate::css::support::value_assertions::specified_property_value as read;
 use surgeist_css::*;
 
 fn declarations(source: &str) -> CssDeclarationList {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     report.syntax().clone()
 }

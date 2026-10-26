@@ -10,7 +10,7 @@ use surgeist_css::*;
 
 fn assert_query(source: &str, recognized: bool) {
     let checked = CssCondition::<CssContainerLeaf>::try_from_components(
-        parse_component_values(source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -30,7 +30,7 @@ fn assert_query(source: &str, recognized: bool) {
         source
     );
     let input = format!("@container {source}{{}}");
-    let report = parse_sheet(&input);
+    let report = CssParser::default().parse_sheet(&input);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("retained container rule")

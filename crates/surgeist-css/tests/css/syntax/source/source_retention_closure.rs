@@ -8,7 +8,11 @@ fn programmatic(text: &str) -> Vec<CssComponentValue> {
 
 #[test]
 fn parsed_terminator_is_retained_by_constructed_supports_declaration() {
-    let parsed = parse_component_values("/* backing belongs only to semicolon */;").unwrap();
+    let parsed = CssComponentValues::parse(
+        &CssParser::default(),
+        "/* backing belongs only to semicolon */;",
+    )
+    .unwrap();
     let semicolon = parsed.items().last().unwrap().clone();
     let CssValueOrigin::Parsed(origin) = semicolon.origin() else {
         panic!("parsed semicolon");
@@ -42,7 +46,8 @@ fn parsed_terminator_is_retained_by_constructed_supports_declaration() {
 
 #[test]
 fn selected_supports_subcondition_retains_its_whole_lexical_root() {
-    let parsed = parse_component_values("/* sibling backing */(x:y)").unwrap();
+    let parsed =
+        CssComponentValues::parse(&CssParser::default(), "/* sibling backing */(x:y)").unwrap();
     let mut components = vec![
         CssComponentValue::try_block(
             CssBlockKind::Parenthesis,
@@ -86,16 +91,18 @@ fn completed_specified_entry_retains_independently_parsed_replacement() {
         .unwrap(),
     )
     .unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Width),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
         CssComponentValues::try_new(vec![variable], Default::default()).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
-    let CssExpansion::Pending(pending) = expand_declaration(&declaration).unwrap() else {
+    let CssExpansion::Pending(pending) = declaration.expand().unwrap() else {
         panic!("pending width");
     };
-    let replacement = parse_component_values("/* independent backing */1px").unwrap();
+    let replacement =
+        CssComponentValues::parse(&CssParser::default(), "/* independent backing */1px").unwrap();
     let completed = pending.reenter(replacement).unwrap();
     let block = CssSpecifiedDeclarationBlock::try_from_expansions(
         &[CssExpansion::Contributions(completed)],
@@ -120,7 +127,9 @@ fn completed_specified_entry_retains_independently_parsed_replacement() {
 
 #[test]
 fn selected_when_subcondition_retains_its_whole_lexical_root() {
-    let parsed = parse_component_values("/* hidden sibling */media(height)").unwrap();
+    let parsed =
+        CssComponentValues::parse(&CssParser::default(), "/* hidden sibling */media(height)")
+            .unwrap();
     let first = CssComponentValue::try_function(
         "media",
         CssComponentValues::try_new(programmatic("width"), Default::default()).unwrap(),
@@ -166,19 +175,21 @@ fn universal_and_independent_svg_entries_retain_completed_replacement_contexts()
             .unwrap(),
         )
         .unwrap();
-        let declaration = CssParserContext::default()
-            .with_svg_glyph_orientation_vertical()
-            .parse_property_value(
-                property,
-                CssComponentValues::try_new(vec![variable], Default::default()).unwrap(),
-                CssImportance::Normal,
-            )
-            .unwrap();
-        let CssExpansion::Pending(pending) = expand_declaration(&declaration).unwrap() else {
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::new(
+                CssParserContext::default().with_svg_glyph_orientation_vertical(),
+                Default::default(),
+            ),
+            CssPropertyTarget::Property(property),
+            CssComponentValues::try_new(vec![variable], Default::default()).unwrap(),
+            CssImportance::Normal,
+        )
+        .unwrap();
+        let CssExpansion::Pending(pending) = declaration.expand().unwrap() else {
             panic!("pending");
         };
         let completed = pending
-            .reenter(parse_component_values(replacement).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), replacement).unwrap())
             .unwrap();
         let block = CssSpecifiedDeclarationBlock::try_from_expansions(
             &[CssExpansion::Contributions(completed)],

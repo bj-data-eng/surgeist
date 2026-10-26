@@ -4,11 +4,11 @@
 
 use surgeist_css::{
     CssCondition, CssConditionKind, CssMediaFeatureKind, CssMediaFeatureQuery, CssMediaLeaf,
-    CssMediaQuery, parse_media_query,
+    CssMediaQuery, CssParser,
 };
 
 fn condition(source: &str) -> CssCondition<CssMediaLeaf> {
-    let report = parse_media_query(source);
+    let report = CssMediaQuery::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssMediaQuery::Condition(value) = report.into_validation_result().unwrap() else {
         panic!("condition-only query expected");
@@ -102,7 +102,7 @@ fn main() {
     );
 
     let source = "screen and ((color) or (monochrome))";
-    let report = parse_media_query(source);
+    let report = CssMediaQuery::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssMediaQuery::Typed(typed) = report.syntax() else {
         panic!("typed query");

@@ -2125,11 +2125,11 @@ mod generic_math_comparison_tests {
     use crate::specified_serialization::SpecifiedSerializationContext;
 
     fn margin(source: &str) -> CssLonghandContributions {
-        let report = crate::parse_style_attribute(source);
+        let report = crate::CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("ordinary checked margin contribution")
         };
@@ -2248,11 +2248,11 @@ mod composite_math_comparison_tests {
     use super::*;
 
     fn terminal(source: &str, property: CssKnownProperty) -> CssLonghandContributions {
-        let report = crate::parse_style_attribute(source);
+        let report = crate::CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("completed intrinsic terminal: {source}")
         };
@@ -2550,11 +2550,11 @@ mod flex_basis_math_comparison_tests {
     use super::*;
 
     fn basis(source: &str) -> CssLonghandContributions {
-        let report = crate::parse_style_attribute(source);
+        let report = crate::CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("completed flex basis")
         };
@@ -2812,11 +2812,11 @@ mod mask_position_borrowed_comparison_tests {
     use super::*;
 
     fn positions(source: &str) -> CssLonghandContributions {
-        let report = crate::parse_style_attribute(source);
+        let report = crate::CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("completed mask position")
         };
@@ -2947,11 +2947,11 @@ mod column_alias_and_grid_count_comparison_tests {
 
     fn terminal(property: CssKnownProperty, value: &str) -> CssLonghandContributions {
         let source = format!("{}:{value}", property.canonical_name());
-        let report = crate::parse_style_attribute(&source);
+        let report = crate::CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("completed schema terminal: {source}")
         };
@@ -3309,11 +3309,11 @@ mod coordinate_free_inverse_comparison_tests {
             if shifted { "  " } else { "" },
             property.canonical_name()
         );
-        let report = crate::parse_style_attribute(&source);
+        let report = crate::CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("completed intrinsic terminal: {source}")
         };

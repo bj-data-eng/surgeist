@@ -15,8 +15,7 @@ fn value(source: &CssDeclaration) -> &CssZIndexValue {
 }
 
 fn expanded(source: &CssDeclaration) -> CssZIndexValue {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("longhand")
     };
@@ -54,8 +53,9 @@ fn initial_and_ordinary_longhand_payloads_expose_exact_z_index_values() {
     for text in ["AUTO", "+0002147483648", "-2147483649", "calc(1.5)"] {
         let source = important_declaration("z-index", text);
         assert_eq!(&expanded(&source), value(&source));
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ZIndex),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ZIndex)),
             source.value_components().clone(),
             CssImportance::Important,
         )
@@ -181,11 +181,11 @@ fn each_z_index_branch_obeys_atomic_input_projection_and_byte_limits() {
 #[test]
 fn reentered_z_index_longhand_retains_parsed_and_programmatic_integer_origins() {
     let source = important_declaration("z-index", "var(--level)");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending")
     };
     for replacement in [
-        parse_component_values("+0002147483648").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "+0002147483648").unwrap(),
         CssComponentValues::try_new(
             vec![CssComponentValue::try_number("+0002147483648").unwrap()],
             Default::default(),
@@ -238,7 +238,7 @@ fn reentered_z_index_longhand_retains_parsed_and_programmatic_integer_origins() 
         }
         assert_eq!(item.replacement_components(), Some(&before));
     }
-    let replacement = parse_component_values("calc(1.5)").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "calc(1.5)").unwrap();
     let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap() else {
         panic!("longhand")
     };

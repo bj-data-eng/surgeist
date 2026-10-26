@@ -7,7 +7,7 @@ use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn scalar(text: &str) -> CssNumeric<CssPercentage, CssNonNegative> {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [component] = values.items() else {
         panic!("one percentage: {text}")
     };
@@ -31,14 +31,15 @@ fn ordinary_percentage_spelling(value: &CssFontWidth) -> &str {
 
 fn width(name: &str, value: &str, checked: bool) -> CssFontWidth {
     let declaration = if checked {
-        parse_property_value_for_grammar(
-            CssPropertyGrammar::from_name(name).unwrap(),
-            parse_component_values(value).unwrap(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssPropertyGrammar::from_name(name).unwrap()),
+            CssComponentValues::parse(&CssParser::default(), value).unwrap(),
             CssImportance::Normal,
         )
         .unwrap()
     } else {
-        let report = parse_style_attribute(&format!("{name}:{value}"));
+        let report = CssParser::default().parse_block_contents(format!("{name}:{value}"));
         assert!(
             report.is_clean(),
             "{name}:{value}: {:?}",
@@ -132,7 +133,7 @@ fn percentage_constructor_preserves_exact_literals_and_rejects_invalid_roots() {
         ("-1%", NumericFailure::OutOfRange),
         ("-1e-999%", NumericFailure::OutOfRange),
     ] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let [component] = values.items() else {
             panic!("one invalid scalar")
         };
@@ -161,7 +162,7 @@ fn percentage_constructor_preserves_exact_literals_and_rejects_invalid_roots() {
 fn bare_percentage_calculation_roots_reenter_exact_range_admission() {
     for text in ["-1%", "-1e-999%"] {
         let typed = CssCalculation::<CssPercentage>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .expect("negative percentage is in the percentage calculation domain");
@@ -174,7 +175,7 @@ fn bare_percentage_calculation_roots_reenter_exact_range_admission() {
     }
     let positive = CssNumeric::<CssPercentage, CssNonNegative>::try_from_calculation(
         CssCalculation::<CssPercentage>::try_from_components(
-            parse_component_values("125%").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "125%").unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -195,7 +196,8 @@ fn bare_percentage_calculation_roots_reenter_exact_range_admission() {
 
 #[test]
 fn parsed_percentages_keep_source_origin_and_symbolic_math_unresolved() {
-    let report = parse_style_attribute("FoNt-StReTcH:62.500000000000000000001%");
+    let report =
+        CssParser::default().parse_block_contents("FoNt-StReTcH:62.500000000000000000001%");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::FontWidth(wrapper) = report.syntax()[0]
         .known()
@@ -225,7 +227,7 @@ fn parsed_percentages_keep_source_origin_and_symbolic_math_unresolved() {
     ));
     for text in ["calc(25% + 50%)", "calc(25% - 50%)"] {
         let calculation = CssCalculation::<CssPercentage>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap();

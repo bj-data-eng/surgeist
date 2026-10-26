@@ -14,9 +14,9 @@
 use std::ops::Range;
 
 use surgeist_css::{
-    CssDeclaration, CssError, CssErrorCode, CssImportance, CssKnownPropertyValueRef,
+    CssDeclaration, CssError, CssErrorCode, CssImportance, CssKnownPropertyValueRef, CssParser,
     CssPropertyNameRef, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSourcePosition,
-    CssTokenKind, parse_sheet, parse_style_attribute,
+    CssTokenKind,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -170,12 +170,14 @@ fn check_case(case: &Case) {
     let mut retained = Vec::new();
     match case.entry {
         Entry::Sheet => {
-            let report = parse_sheet(input);
+            let report = CssParser::default().parse_sheet(input);
             let mut declarations = Vec::new();
             for rule in report.syntax().rules() {
                 observe_rule(rule, &mut retained, &mut declarations);
             }
-            let strict = surgeist_css::validate_sheet(input);
+            let strict = surgeist_css::CssParser::default()
+                .parse_sheet(input)
+                .into_validation_result();
             let validation = report.clone().into_validation_result();
             if report.is_clean() {
                 assert_eq!(strict, Ok(report.syntax().clone()), "{label}: strict sheet");
@@ -207,13 +209,15 @@ fn check_case(case: &Case) {
             );
         }
         Entry::Style => {
-            let report = parse_style_attribute(input);
+            let report = CssParser::default().parse_block_contents(input);
             let mut declarations = Vec::new();
             for declaration in report.syntax().iter() {
                 retained.push(Retained::Accept(observe_declaration(declaration)));
                 declarations.push(declaration);
             }
-            let strict = surgeist_css::validate_style_attribute(input);
+            let strict = surgeist_css::CssParser::default()
+                .parse_block_contents(input)
+                .into_validation_result();
             let validation = report.clone().into_validation_result();
             if report.is_clean() {
                 assert_eq!(strict, Ok(report.syntax().clone()), "{label}: strict style");
@@ -751,43 +755,31 @@ fn top_level_semicolons_and_closers_open_qualified_rule_preludes() {
 // (CSS 2.1 §4.2) whose remnants run to the next top-level semicolon (Syntax 3
 // (2026-10-01) §5.5.6), and a style attribute admits no at-rules or nested
 // rules. Declarations between the dropped units are retained.
-// https://www.w3.org/TR/2013/REC-css-style-attr-20131107/#syntax
-// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-the-remnants-of-a-bad-declaration
+// Syntax 3 (2026 CRD) §5.5.5 ("consume a block's contents"), the one
+// declaration-list front (#1353 decision 1): an at-rule is consumed whole, a
+// root `}` ends the contents, and any other unit that is not a declaration is
+// reconsumed as a qualified rule with `;` as its stop token (§5.5.3), so a
+// block ends that unit and the declarations after it are kept.
+// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
+// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule
 #[test]
-fn style_attribute_non_declaration_units_drop_through_the_next_semicolon() {
-    use CssErrorCode::{UnexpectedEnd, UnexpectedToken, UnknownAtRule};
-    use CssRecoveryAction::DropDeclaration;
-    const BASIS: &str = "Style Attributes §3; CSS 2.1 §4.2; Syntax 3 §5.5.6";
+fn style_attribute_non_declaration_units_drop_through_their_stop_token() {
+    use CssErrorCode::{UnexpectedEnd, UnexpectedToken};
+    use CssRecoveryAction::{DropAtRule, DropDeclaration, DropQualifiedRule};
+    const BASIS: &str = "Syntax 3 (2026 CRD) §5.5.5, §5.5.3";
     check_cases([
         case(
             BASIS,
             Entry::Style,
             "@unknown screen { color: red; } } color: red; ) width: 2px; ] height: 3px;",
         )
-        .rejects([
-            reject(UnknownAtRule, DropDeclaration, 0, 0..31, name("unknown")),
-            reject(
-                UnexpectedToken,
-                DropDeclaration,
-                32,
-                32..44,
-                token(CssTokenKind::CloseCurlyBracket, "}"),
-            ),
-            reject(
-                UnexpectedToken,
-                DropDeclaration,
-                46,
-                46..58,
-                token(CssTokenKind::CloseParenthesis, ")"),
-            ),
-            reject(
-                UnexpectedToken,
-                DropDeclaration,
-                60,
-                60..73,
-                token(CssTokenKind::CloseSquareBracket, "]"),
-            ),
-        ]),
+        .rejects([reject(
+            UnexpectedToken,
+            DropAtRule,
+            0,
+            0..31,
+            token(CssTokenKind::AtKeyword, "@unknown"),
+        )]),
         case(
             BASIS,
             Entry::Style,
@@ -795,16 +787,23 @@ fn style_attribute_non_declaration_units_drop_through_the_next_semicolon() {
         )
         .retains([
             accept("color", "red", 18..22),
+            accept("opacity", "1", 56..58),
             accept("height", "2px", 75..79),
             accept("--kept", "yes", 91..95),
         ])
         .rejects([
-            reject(UnknownAtRule, DropDeclaration, 0, 0..11, name("unknown")),
             reject(
                 UnexpectedToken,
-                DropDeclaration,
+                DropAtRule,
+                0,
+                0..11,
+                token(CssTokenKind::AtKeyword, "@unknown"),
+            ),
+            reject(
+                UnexpectedToken,
+                DropQualifiedRule,
                 24,
-                24..58,
+                24..47,
                 token(CssTokenKind::Delim, "."),
             ),
             reject(UnexpectedEnd, DropDeclaration, 66, 60..67, Subject::End),
@@ -812,7 +811,7 @@ fn style_attribute_non_declaration_units_drop_through_the_next_semicolon() {
                 UnexpectedToken,
                 DropDeclaration,
                 81,
-                81..82,
+                81..83,
                 token(CssTokenKind::Comma, ","),
             ),
         ])
@@ -1080,7 +1079,7 @@ fn auto_timing_name(observed: &Observed<'_>) {
         canonical
     );
     assert!(declaration.same_occurrence(&declaration.clone()));
-    let reparsed = parse_style_attribute(&canonical);
+    let reparsed = CssParser::default().parse_block_contents(&canonical);
     assert!(reparsed.is_clean());
     assert_eq!(reparsed.syntax()[0].body(), declaration.body());
     assert_eq!(
@@ -1525,7 +1524,7 @@ fn removed_masonry_and_flow_tolerance_properties_are_unknown() {
 #[test]
 fn removed_track_declarations_preserve_adjacent_current_alignment_and_custom_semantics() {
     let input = "color: red; align-tracks: center; align-content: first baseline !important; justify-tracks: var(--old); --align-tracks: center";
-    let report = parse_style_attribute(input);
+    let report = CssParser::default().parse_block_contents(input);
     assert!(!report.is_clean());
     assert_eq!(report.diagnostics().len(), 2);
     for (diagnostic, name) in report

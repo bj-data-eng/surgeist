@@ -9,12 +9,12 @@ use crate::css::support::{graph_cssom, graph_specified};
 use std::error::Error;
 use surgeist_css::{
     CssGroupPreludeRef as Prelude, CssImportRule, CssImportRuleView as ImportView,
-    CssMediaQueryList, CssRule, CssRuleGraphInput as Input, CssSerializationError,
-    CssSerializationLimits as Limits, CssValueOrigin, parse_media_query_list, parse_sheet,
+    CssMediaQueryList, CssParser, CssRule, CssRuleGraphInput as Input, CssSerializationError,
+    CssSerializationLimits as Limits, CssValueOrigin,
 };
 
 fn import(source: &str) -> CssImportRule {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {report:?}");
     let [CssRule::Import(rule)] = report.syntax().rules() else {
         panic!("one checked import");
@@ -23,7 +23,7 @@ fn import(source: &str) -> CssImportRule {
 }
 
 fn media(source: &str) -> CssMediaQueryList {
-    let report = parse_media_query_list(source);
+    let report = CssMediaQueryList::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{source}: {report:?}");
     report.syntax().clone()
 }
@@ -154,7 +154,7 @@ fn modern_clause_and_extended_target_output_uses_the_cssom_url_first() {
     }
     let original = import("@import 'x';");
     let children = [Input::import(&original, &current)];
-    let condition_rule = parse_sheet("@supports (display: grid) {}");
+    let condition_rule = CssParser::default().parse_sheet("@supports (display: grid) {}");
     let [CssRule::Supports(supports)] = condition_rule.syntax().rules() else {
         panic!("supports");
     };
@@ -168,7 +168,7 @@ fn modern_clause_and_extended_target_output_uses_the_cssom_url_first() {
 #[test]
 fn supplied_recovered_media_keeps_current_origin_and_its_cssom_projection() {
     let original = import("@import 'x' print;");
-    let report = parse_media_query_list("screen,???");
+    let report = CssMediaQueryList::parse(&CssParser::default(), "screen,???");
     assert!(!report.is_clean());
     let current = report.syntax();
     let before = report.clone();

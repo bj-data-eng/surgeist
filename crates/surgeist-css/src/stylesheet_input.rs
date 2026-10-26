@@ -4,7 +4,7 @@ use std::{fmt, sync::Arc};
 
 use encoding_rs::{CoderResult, Encoding, UTF_8, UTF_16BE, UTF_16LE};
 
-use crate::{CssParseReport, CssSheet, CssSourceSnapshot};
+use crate::CssSourceSnapshot;
 
 /// A validated canonical encoding from the complete Encoding Standard registry.
 /// Labels are ASCII case-insensitive and trim ASCII whitespace. Recognized
@@ -209,60 +209,53 @@ impl CssStylesheetLocation {
     }
 }
 
-/// Optional host context for a Unicode stylesheet parse.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct CssStylesheetParseOptions {
-    /// Symbolic stylesheet location; absent means null.
-    pub location: Option<CssStylesheetLocation>,
-}
-
-/// Decodes bytes according to CSS Syntax's fallback and BOM precedence.
-/// Decoding retains CR, FF, CRLF and NUL for the existing tokenizer to filter.
-/// An inferred ASCII charset prefix remains in the decoded text.
-pub fn decode_stylesheet_bytes(
-    bytes: &[u8],
-    hints: CssStylesheetDecodeHints<'_>,
-) -> Result<CssDecodedStylesheetInput, CssInputDecodeError> {
-    decode_stylesheet_bytes_with_limits(bytes, hints, CssStylesheetDecodeLimits::default())
-}
-
-/// Decodes a complete byte input with atomic independent byte limits.
-pub fn decode_stylesheet_bytes_with_limits(
-    bytes: &[u8],
-    hints: CssStylesheetDecodeHints<'_>,
-    limits: CssStylesheetDecodeLimits,
-) -> Result<CssDecodedStylesheetInput, CssInputDecodeError> {
-    if bytes.len() > limits.original_bytes {
-        return Err(CssInputDecodeError::from(
-            InputDecodeKind::OriginalByteLimit,
-        ));
+impl CssDecodedStylesheetInput {
+    /// Decodes a complete byte input according to CSS Syntax's fallback and BOM precedence.
+    ///
+    /// Decoding retains CR, FF, CRLF and NUL for the existing tokenizer to filter.
+    /// An inferred ASCII charset prefix remains in the decoded text. The limits are
+    /// atomic and independent: an input over either refuses the whole decode.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exhausted byte limit, the failed allocation or the capacity overflow.
+    pub fn decode(
+        bytes: &[u8],
+        hints: CssStylesheetDecodeHints<'_>,
+        limits: CssStylesheetDecodeLimits,
+    ) -> Result<Self, CssInputDecodeError> {
+        if bytes.len() > limits.original_bytes {
+            return Err(CssInputDecodeError::from(
+                InputDecodeKind::OriginalByteLimit,
+            ));
+        }
+        check_capacity(bytes.len())?;
+        let mut original = Vec::new();
+        original
+            .try_reserve_exact(bytes.len())
+            .map_err(|_| CssInputDecodeError::from(InputDecodeKind::AllocationFailure))?;
+        original.extend_from_slice(bytes);
+        let (fallback, fallback_selection) = fallback_encoding(bytes, hints);
+        let (text, encoding, had_replacements) =
+            decode_bounded(bytes, fallback, limits.decoded_utf8_bytes, 4096)?;
+        let selection = if bytes.starts_with(&[0xEF, 0xBB, 0xBF])
+            || bytes.starts_with(&[0xFF, 0xFE])
+            || bytes.starts_with(&[0xFE, 0xFF])
+        {
+            CssEncodingSelection::ByteOrderMark
+        } else {
+            fallback_selection
+        };
+        let source = CssSourceSnapshot::try_from_owned(text)
+            .map_err(|_| CssInputDecodeError::from(InputDecodeKind::AllocationFailure))?;
+        Ok(CssDecodedStylesheetInput(Arc::new(DecodedStylesheetData {
+            bytes: original,
+            source,
+            encoding,
+            selection,
+            had_replacements,
+        })))
     }
-    check_capacity(bytes.len())?;
-    let mut original = Vec::new();
-    original
-        .try_reserve_exact(bytes.len())
-        .map_err(|_| CssInputDecodeError::from(InputDecodeKind::AllocationFailure))?;
-    original.extend_from_slice(bytes);
-    let (fallback, fallback_selection) = fallback_encoding(bytes, hints);
-    let (text, encoding, had_replacements) =
-        decode_bounded(bytes, fallback, limits.decoded_utf8_bytes, 4096)?;
-    let selection = if bytes.starts_with(&[0xEF, 0xBB, 0xBF])
-        || bytes.starts_with(&[0xFF, 0xFE])
-        || bytes.starts_with(&[0xFE, 0xFF])
-    {
-        CssEncodingSelection::ByteOrderMark
-    } else {
-        fallback_selection
-    };
-    let source = CssSourceSnapshot::try_from_owned(text)
-        .map_err(|_| CssInputDecodeError::from(InputDecodeKind::AllocationFailure))?;
-    Ok(CssDecodedStylesheetInput(Arc::new(DecodedStylesheetData {
-        bytes: original,
-        source,
-        encoding,
-        selection,
-        had_replacements,
-    })))
 }
 
 fn fallback_encoding(
@@ -356,36 +349,6 @@ fn decode_bounded(
                 .ok_or(CssInputDecodeError::from(InputDecodeKind::CapacityOverflow))?;
         }
     }
-}
-
-/// Parses against the decode input's exact snapshot and attaches a symbolic
-/// host location. Decoder replacement is not itself a CSS parsing diagnostic.
-pub fn parse_decoded_stylesheet(
-    input: &CssDecodedStylesheetInput,
-    location: Option<CssStylesheetLocation>,
-) -> CssParseReport<CssSheet> {
-    with_location(
-        crate::parser::parse_sheet_snapshot(input.source(), crate::CssParserContext::default()),
-        location,
-    )
-}
-
-/// Parses Unicode using the existing sheet grammar and a supplied host location.
-/// Unlike byte decoding, this operation does not sniff or remove Unicode BOMs.
-pub fn parse_sheet_with_options(
-    source: &str,
-    options: CssStylesheetParseOptions,
-) -> CssParseReport<CssSheet> {
-    with_location(crate::parse_sheet(source), options.location)
-}
-
-fn with_location(
-    report: CssParseReport<CssSheet>,
-    location: Option<CssStylesheetLocation>,
-) -> CssParseReport<CssSheet> {
-    let (mut sheet, diagnostics) = report.into_parts();
-    sheet.set_location(location);
-    CssParseReport::new(sheet, diagnostics)
 }
 
 #[cfg(test)]

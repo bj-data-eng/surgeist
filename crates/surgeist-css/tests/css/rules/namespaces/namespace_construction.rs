@@ -2,8 +2,7 @@
 //! literal strings. Authored coordinates exist only for parsed declarations.
 
 use surgeist_css::{
-    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssNamespaceRule, CssRule,
-    parse_sheet,
+    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssNamespaceRule, CssParser, CssRule,
 };
 
 #[test]
@@ -75,7 +74,7 @@ fn parsed_and_constructed_declarations_agree_semantically_without_fabricating_co
             "urn:digit",
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{source}: {report:?}");
         let [CssRule::Namespace(parsed)] = report.syntax().rules() else {
             panic!("one retained namespace declaration: {report:?}");

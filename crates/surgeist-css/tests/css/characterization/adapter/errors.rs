@@ -41,7 +41,8 @@ fn with<E: StdError + 'static>(error: &E, extra: impl IntoIterator<Item = String
 }
 
 fn values(source: &str) -> CssComponentValues {
-    parse_component_values(source).expect("characterization component values")
+    CssComponentValues::parse(&CssParser::default(), source)
+        .expect("characterization component values")
 }
 
 fn token(source: &str) -> CssComponentValue {
@@ -49,7 +50,7 @@ fn token(source: &str) -> CssComponentValue {
 }
 
 fn sheet(source: &str) -> CssSheet {
-    parse_sheet(source).syntax().clone()
+    CssParser::default().parse_sheet(source).syntax().clone()
 }
 
 fn zero() -> CssSerializationLimits {
@@ -149,9 +150,9 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
         }
         "empty-language-range-list" => failed(CssLanguageRangeList::try_new(vec![])),
         "expansion" => {
-            let report = parse_style_attribute("margin: var(--x)");
+            let report = CssParser::default().parse_block_contents("margin: var(--x)");
             let declaration = &report.syntax().as_slice()[0];
-            let CssExpansion::Pending(handle) = expand_declaration(declaration).unwrap() else {
+            let CssExpansion::Pending(handle) = declaration.expand().unwrap() else {
                 panic!("pending substitution")
             };
             failed(handle.reenter(values("red")))
@@ -233,13 +234,13 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
             };
             failed(rule.serialize_tokens(Default::default()))
         }
-        "input-decode" => failed(decode_stylesheet_bytes_with_limits(
+        "input-decode" => failed(CssDecodedStylesheetInput::decode(
             b".a { color: red }",
             CssStylesheetDecodeHints::default(),
             CssStylesheetDecodeLimits::new(1, 1),
         )),
         "keyframe-rule-view" => {
-            let report = parse_keyframe_rule("from { opacity: 0 }");
+            let report = CssParsedKeyframeRule::parse(&CssParser::default(), "from { opacity: 0 }");
             let rule = report.syntax().as_ref().expect("keyframe rule");
             let block = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
                 rule.block().declarations(),
@@ -252,7 +253,7 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
         }
         "keyframe-selector-comparison" => {
             let list = |source: &str| {
-                parse_keyframe_selector_list(source)
+                CssParsedKeyframeSelectors::parse(&CssParser::default(), source)
                     .syntax()
                     .as_ref()
                     .unwrap()
@@ -273,11 +274,11 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
             Default::default(),
         )),
         "media-cssom-serialization" => {
-            let report = parse_media_query("screen and (min-width: 1px)");
+            let report = CssMediaQuery::parse(&CssParser::default(), "screen and (min-width: 1px)");
             failed(report.syntax().serialize_cssom(zero()))
         }
         "media-serialization" => {
-            let report = parse_media_query("screen and");
+            let report = CssMediaQuery::parse(&CssParser::default(), "screen and");
             failed(report.syntax().serialize_tokens(Default::default()))
         }
         "motion-construction" => failed(CssOffsetRotate::try_new(None, None)),
@@ -285,8 +286,7 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
             failed(CssSupportsConditionName::try_from_component(token("1px")))
         }
         "normalization" => {
-            let error = match normalize_sheet_with_limits(
-                &sheet(".a { color: red } .b { color: blue }"),
+            let error = match sheet(".a { color: red } .b { color: blue }").normalize(
                 CssNormalizationLimits::try_new(1, 1, 1, 1).expect("normalization limits"),
             ) {
                 Ok(_) => return vec!["unexpected-ok".to_owned()],
@@ -302,7 +302,7 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
         }
         "numeric-construction" => failed(CssNumeric::<CssLength>::try_from_component(token("red"))),
         "page-block" => {
-            let report = parse_declaration_block_contents("display: block");
+            let report = CssParser::default().parse_block_contents("display: block");
             let error = match CssMarginDeclarationBlock::try_new(
                 report.syntax().as_slice().to_vec(),
                 Default::default(),
@@ -313,12 +313,13 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
             with(&error, [format!("ordinal={}", index(error.ordinal()))])
         }
         "page-projection" => {
-            let report = parse_page_declaration_block_contents("size: a4; size: a5; margin: 1px");
+            let report =
+                CssParser::default().parse_page_block_contents("size: a4; size: a5; margin: 1px");
             let block = report.syntax().as_ref().expect("page declarations");
             failed(block.try_specified(zero()))
         }
         "parse-diagnostic" => {
-            let report = parse_style_attribute("width: red");
+            let report = CssParser::default().parse_block_contents("width: red");
             chain(report.diagnostics()[0].error())
         }
         "path-data-construction" => {
@@ -356,27 +357,27 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
                 None => vec!["unreached=every grammar has metadata".to_owned()],
             }
         }
-        "property-value-parse" => failed(parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
+        "property-value-parse" => failed(CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
             values("red"),
             CssImportance::Normal,
         )),
         "property-value-syntax" => {
             let limits = CssUtf16PropertyValueLimits {
                 input: CssUtf16InputLimits::default(),
-                syntax: CssComponentValueLimits::default(),
                 max_work: 4_000_000,
                 max_live_bytes: 16 * 1024 * 1024,
                 max_retained_bytes: 16 * 1024 * 1024,
             };
-            let report = CssParserContext::default()
-                .parse_color_scheme_utf16_with_limits(
-                    Arc::new("light inherit".encode_utf16().collect()),
-                    limits,
-                    |_| Ok::<(), Stop>(()),
-                    |_| {},
-                )
-                .expect("prepared colour scheme");
+            let report = CssColorScheme::parse_utf16(
+                &CssParser::default(),
+                Arc::new("light inherit".encode_utf16().collect()),
+                limits,
+                |_| Ok::<(), Stop>(()),
+                |_| {},
+            )
+            .expect("prepared colour scheme");
             match report.result() {
                 Ok(_) => vec!["unexpected-ok".to_owned()],
                 Err(error) => chain(error),
@@ -392,20 +393,19 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
         "retained-payload" => {
             let limits = CssUtf16PropertyValueLimits {
                 input: CssUtf16InputLimits::default(),
-                syntax: CssComponentValueLimits::default(),
                 max_work: 4_000_000,
                 max_live_bytes: 16 * 1024 * 1024,
                 max_retained_bytes: 16 * 1024 * 1024,
             };
             let parse = || {
-                CssParserContext::default()
-                    .parse_color_scheme_utf16_with_limits(
-                        Arc::new("light dark".encode_utf16().collect()),
-                        limits,
-                        |_| Ok::<(), Stop>(()),
-                        |_| {},
-                    )
-                    .expect("prepared colour scheme")
+                CssColorScheme::parse_utf16(
+                    &CssParser::default(),
+                    Arc::new("light dark".encode_utf16().collect()),
+                    limits,
+                    |_| Ok::<(), Stop>(()),
+                    |_| {},
+                )
+                .expect("prepared colour scheme")
             };
             let error = match parse().equivalent_with(&parse(), || Err::<(), Stop>(Stop)) {
                 Ok(_) => return vec!["unexpected-ok".to_owned()],
@@ -449,18 +449,19 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
             )
         }
         "specified-value-serialization" => {
-            let report = parse_style_attribute("color: red");
+            let report = CssParser::default().parse_block_contents("color: red");
             failed(report.syntax().as_slice()[0].serialize_specified(zero()))
         }
-        "supports-construction" => failed(parse_css_supports_condition("display: grid (")),
-        "utf16-input-interrupted" => {
-            failed(CssParserContext::default().parse_sheet_utf16_with_limits(
-                Arc::new(".a { color: red }".encode_utf16().collect()),
-                CssUtf16InputLimits::default(),
-                || Err(Stop),
-            ))
-        }
-        "utf16-input-limit" => failed(CssParserContext::default().parse_sheet_utf16_with_limits(
+        "supports-construction" => failed(CssCondition::<CssSupportsLeaf>::parse_condition_text(
+            &CssParser::default(),
+            "display: grid (",
+        )),
+        "utf16-input-interrupted" => failed(CssParser::default().parse_sheet_utf16(
+            Arc::new(".a { color: red }".encode_utf16().collect()),
+            CssUtf16InputLimits::default(),
+            || Err(Stop),
+        )),
+        "utf16-input-limit" => failed(CssParser::default().parse_sheet_utf16(
             Arc::new(".a { color: red }".encode_utf16().collect()),
             CssUtf16InputLimits {
                 max_input_units: 1,
@@ -468,8 +469,15 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
             },
             || Ok::<(), Stop>(()),
         )),
-        "validation-failure" => failed(validate_style_attribute("width: red")),
-        "when-construction" => failed(parse_when_condition(")")),
+        "validation-failure" => failed(
+            CssParser::default()
+                .parse_block_contents("width: red")
+                .into_validation_result(),
+        ),
+        "when-construction" => failed(CssCondition::<CssWhenLeaf>::parse(
+            &CssParser::default(),
+            ")",
+        )),
         other => {
             observation.shape = "unknown".to_owned();
             panic!("unknown error case `{other}`")

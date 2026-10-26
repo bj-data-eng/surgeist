@@ -95,7 +95,7 @@ fn checked(property: CssKnownProperty, value: &str, by_grammar: bool) -> CssDecl
 
 fn reject_rows_style(property: CssKnownProperty) {
     let source = format!("{}:10px;color:red", name(property));
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [retained] = report.syntax().as_slice() else {
         panic!("only the valid color sibling survives");
     };
@@ -123,12 +123,18 @@ fn reject_rows_validator(property: CssKnownProperty) {
 }
 
 fn reject_rows_checked(property: CssKnownProperty, by_grammar: bool) {
-    let components = parse_component_values("10px").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "10px").unwrap();
     let result = if by_grammar {
-        parse_property_value_for_grammar(property.grammar(), components, CssImportance::Important)
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(property.grammar()),
+            components,
+            CssImportance::Important,
+        )
     } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components,
             CssImportance::Important,
         )
@@ -379,16 +385,18 @@ fn malformed_duplicate_prefixes_and_slashes_are_rejected_wholly() {
             CssKnownProperty::Color
         );
         for by_grammar in [false, true] {
-            let components = parse_component_values(input).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), input).unwrap();
             let result = if by_grammar {
-                parse_property_value_for_grammar(
-                    CssKnownProperty::Grid.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(CssKnownProperty::Grid.grammar()),
                     components,
                     CssImportance::Important,
                 )
             } else {
-                parse_property_value(
-                    CssPropertyNameRef::Known(CssKnownProperty::Grid),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Grid)),
                     components,
                     CssImportance::Important,
                 )
@@ -401,7 +409,7 @@ fn malformed_duplicate_prefixes_and_slashes_are_rejected_wholly() {
 #[test]
 fn valid_row_flow_preserves_authored_case_importance_order_and_utf8_operand_origins() {
     let source = "/*😀*/color:red;GRID:AUTO-FLOW dense 20px / 10px!important;width:1px";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [before, declaration, after] = report.syntax().as_slice() else {
         panic!("three original occurrences");

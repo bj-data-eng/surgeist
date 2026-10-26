@@ -14,7 +14,7 @@ fn length(number: &str, unit: &str) -> CssLineWidth {
 }
 
 fn parsed_width(text: &str) -> CssLineWidth {
-    let report = parse_style_attribute(&format!("border-top-width:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("border-top-width:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderTopWidth(value) = report.syntax()[0]
         .known()
@@ -28,7 +28,7 @@ fn parsed_width(text: &str) -> CssLineWidth {
 }
 
 fn red() -> CssColor {
-    let report = parse_style_attribute("border-top-color:red");
+    let report = CssParser::default().parse_block_contents("border-top-color:red");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::BorderTopColor(value) = report.syntax()[0]
         .known()
@@ -269,7 +269,7 @@ fn border_triple_retains_omissions_and_exact_shared_budget() {
             kind
         );
     }
-    let reordered = parse_style_attribute("border:red solid thin");
+    let reordered = CssParser::default().parse_block_contents("border:red solid thin");
     assert!(reordered.is_clean());
     let CssKnownPropertyValueRef::Border(wrapper) = reordered.syntax()[0]
         .known()
@@ -289,7 +289,8 @@ fn border_triple_retains_omissions_and_exact_shared_budget() {
 
 #[test]
 fn pure_length_calculation_projects_without_a_percentage_basis_or_tree_reinterpretation() {
-    let report = parse_style_attribute("border-top-width:calc(10% / 10% * 1px)");
+    let report =
+        CssParser::default().parse_block_contents("border-top-width:calc(10% / 10% * 1px)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderTopWidth(wrapper) = report.syntax()[0]
         .known()
@@ -330,7 +331,7 @@ fn physical_widths_retain_extreme_literals() {
         "1e-100px",
         "16777216.00000000001px",
     ] {
-        let report = parse_style_attribute(&format!("border-top-width:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("border-top-width:{text}"));
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
         let CssKnownPropertyValueRef::BorderTopWidth(width) = report.syntax()[0]
             .known()
@@ -342,7 +343,7 @@ fn physical_widths_retain_extreme_literals() {
         };
         assert_eq!(width.value(), &parsed_width(text));
     }
-    let logical = parse_style_attribute("border-width:logical thin medium");
+    let logical = CssParser::default().parse_block_contents("border-width:logical thin medium");
     assert!(logical.is_clean());
     let CssKnownPropertyValueRef::BorderWidth(value) = logical.syntax()[0]
         .known()

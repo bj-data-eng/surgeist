@@ -8,7 +8,7 @@ fn compose(writer: &mut SpecifiedRuleWriter) -> Result<(), CssSerializationError
     writer.append("start ")?;
     CssColor::transparent().append_specified(&mut writer.context, &mut writer.css)?;
     writer.append(" ")?;
-    let report = parse_style_attribute("opacity:.25");
+    let report = crate::CssParser::default().parse_block_contents("opacity:.25");
     let CssKnownPropertyValueRef::Opacity(value) = report.syntax()[0]
         .known()
         .unwrap()
@@ -39,7 +39,7 @@ fn exact_shared_nodes_and_bytes_charge_final_text_once() {
     }
 }
 fn emit(writer: &mut SpecifiedRuleWriter, source: &str) -> Result<(), CssSerializationError> {
-    let report = parse_style_attribute(source);
+    let report = crate::CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     match report.syntax()[0]
         .known()
@@ -172,7 +172,11 @@ fn emit_font_range(
     source: &str,
     kind: CssFontFaceDescriptorKind,
 ) -> Result<(), CssSerializationError> {
-    let report = parse_font_face_descriptor_value(source, kind);
+    let report = crate::CssAuthoredFontFaceDescriptorValue::parse(
+        &crate::CssParser::default(),
+        source,
+        kind,
+    );
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(value)) = report.syntax() else {
         panic!("ordinary font range")

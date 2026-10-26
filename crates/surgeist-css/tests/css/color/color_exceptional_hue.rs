@@ -15,7 +15,7 @@ use crate::css::support::parsed_color as parsed;
 use surgeist_css::*;
 
 fn literal(text: &str) -> CssColorComponent {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let token = values.items()[0].clone();
     if text.ends_with('%') {
         CssColorComponent::Percentage(CssColorPercentageLiteral::try_from_component(token).unwrap())
@@ -25,7 +25,7 @@ fn literal(text: &str) -> CssColorComponent {
 }
 
 fn calculated_hue(text: &str, angle: bool) -> CssColorHue {
-    let components = parse_component_values(text).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     if angle {
         CssColorHue::AngleCalculation(
             CssCalculation::<CssAngle>::try_from_components(components, Default::default())

@@ -56,8 +56,7 @@ fn template(source: &CssDeclaration) -> &CssGridTemplate {
 }
 
 fn complete(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("complete terminals");
     };
@@ -152,7 +151,7 @@ fn fixed_content() -> CssGridFixedRepeatContent {
 }
 fn integer_calculation(text: &str) -> CssCalculation<CssInteger> {
     CssCalculation::<CssInteger>::try_from_components(
-        parse_component_values(text).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         Default::default(),
     )
     .unwrap()
@@ -356,7 +355,7 @@ fn counted_repeat_counts_normalize_bare_roots_without_evaluating_functions() {
     ] {
         assert_numeric_rejected(
             CssCalculation::<CssInteger>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default(),
             ),
             kind,
@@ -796,10 +795,14 @@ fn every_grid_alternative_projects_source_defined_axes_and_implicit_defaults() {
 #[test]
 fn recovered_numeric_children_remain_recovered_through_projection_and_typed_composition() {
     let css = r#".a{grid:"a" "b" calc(2px"#;
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(!report.is_clean());
     assert_eq!(
-        validate_sheet(css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     let CssRule::Style(rule) = &report.syntax().rules()[0] else {
@@ -842,20 +845,21 @@ fn recovered_numeric_children_remain_recovered_through_projection_and_typed_comp
         source.serialize_specified(Default::default()).unwrap(),
         r#"grid: "a" "b" calc(2px);"#
     );
-    assert_checked_closure_rejected(parse_property_value_for_grammar(
-        P::Grid.grammar(),
+    assert_checked_closure_rejected(CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(P::Grid.grammar()),
         source.value_components().clone(),
         CssImportance::Normal,
     ));
     let before = report.clone();
-    let normalized = normalize_report(&report).unwrap();
+    let normalized = report.normalize(Default::default()).unwrap();
     assert!(!normalized.is_clean());
     assert_eq!(normalized.diagnostics(), report.diagnostics());
     assert_eq!(report, before);
 
     // Reusing a parser-admitted Integer child is typed composition. It retains
     // recovery; it cannot turn that child's original components into clean CSS.
-    let count_report = parse_style_attribute("column-count:calc(2");
+    let count_report = CssParser::default().parse_block_contents("column-count:calc(2");
     assert!(!count_report.is_clean());
     let count_source = &count_report.syntax()[0];
     let CssKnownPropertyValueRef::ColumnCount(value) =
@@ -902,12 +906,13 @@ fn pending_retries_keep_new_borrowed_payloads_and_original_replacement_identity(
         P::Grid,
     ] {
         for source in fronts(property, "var(--grid)") {
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("pending");
             };
             for _ in 0..2 {
                 for invalid in ["junk", "initial/*", "var(--residual)"] {
-                    let components = parse_component_values(invalid).unwrap();
+                    let components =
+                        CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
                     let before = components.clone();
                     let error = handle.reenter(components.clone()).unwrap_err();
                     if invalid.starts_with("var") {
@@ -924,7 +929,7 @@ fn pending_retries_keep_new_borrowed_payloads_and_original_replacement_identity(
             } else {
                 r#""a" calc(2px) / 1px"#
             };
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let before = replacement.clone();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -1068,7 +1073,7 @@ fn new_branch_provider_limits_are_exact_atomic_and_cumulative_at_declaration_bou
 #[test]
 fn area_and_subgrid_siblings_share_sheet_byte_budget_and_normalization_terminals() {
     let css = r#".a{grid:"a"!important;grid-template:subgrid [] / none;grid-template-columns:none;grid:var(--g)}.b{grid:"b" / 1px}"#;
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean());
     let before = report.clone();
     let expected = ".a { grid: \"a\" !important; grid-template: subgrid [] / none; grid-template-columns: none; grid: var(--g); }\n.b { grid: \"b\" / 1px; }";
@@ -1087,7 +1092,7 @@ fn area_and_subgrid_siblings_share_sheet_byte_budget_and_normalization_terminals
     }
     // 6+3+1+one whole pending+6 = 17 terminal work units, five declarations.
     let limits = CssNormalizationLimits::try_new(1, 2, 5, 17).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), limits).unwrap();
+    let normalized = report.syntax().normalize(limits).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -1128,11 +1133,10 @@ fn area_and_subgrid_siblings_share_sheet_byte_budget_and_normalization_terminals
         }
     }
     for _ in 0..2 {
-        let error = normalize_sheet_with_limits(
-            report.syntax(),
-            CssNormalizationLimits::try_new(1, 2, 5, 16).unwrap(),
-        )
-        .unwrap_err();
+        let error = report
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(1, 2, 5, 16).unwrap())
+            .unwrap_err();
         assert_eq!(
             error.exhausted_limit(),
             Some((CssNormalizationResource::Contributions, 16))
@@ -1146,7 +1150,7 @@ fn area_and_subgrid_siblings_share_sheet_byte_budget_and_normalization_terminals
         );
     }
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), limits).is_ok());
+    assert!(report.syntax().normalize(limits).is_ok());
     assert_eq!(
         report.syntax().serialize_specified(exact).unwrap(),
         expected

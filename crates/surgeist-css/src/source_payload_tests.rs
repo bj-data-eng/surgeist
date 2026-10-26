@@ -1,8 +1,8 @@
 use super::*;
-use crate::{CssParserContext, CssRetainedPayloadError, CssSourceRetention, CssUtf16InputLimits};
+use crate::{CssRetainedPayloadError, CssSourceRetention, CssUtf16InputLimits};
 fn source(original: Arc<Vec<u16>>) -> CssSourceSnapshot {
-    CssParserContext::default()
-        .parse_sheet_utf16_with_limits(original, CssUtf16InputLimits::default(), || Ok::<_, ()>(()))
+    crate::CssParser::default()
+        .parse_sheet_utf16(original, CssUtf16InputLimits::default(), || Ok::<_, ()>(()))
         .unwrap()
         .syntax()
         .parse_source()

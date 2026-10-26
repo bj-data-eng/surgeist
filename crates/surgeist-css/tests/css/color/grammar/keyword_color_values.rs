@@ -8,8 +8,8 @@
 
 use crate::css::support::parsed_color;
 use surgeist_css::{
-    CssColor, CssHexColor, CssKnownProperty, CssNamedColor, CssRecoveryAction, CssSystemColor,
-    parse_style_attribute, validate_style_attribute,
+    CssColor, CssHexColor, CssKnownProperty, CssNamedColor, CssParser, CssRecoveryAction,
+    CssSystemColor,
 };
 
 const NAMED_COLORS: [(&str, [u8; 3]); 148] = [
@@ -287,7 +287,7 @@ fn unknown_keyword_recovery_keeps_valid_siblings_without_a_numeric_keyword_value
     ] {
         assert!(CssNamedColor::try_new(invalid).is_none(), "{invalid}");
         let source = format!("color: {invalid}; opacity: 0.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -299,7 +299,11 @@ fn unknown_keyword_recovery_keeps_valid_siblings_without_a_numeric_keyword_value
             CssKnownProperty::Opacity
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics(),
             "{source}"
         );

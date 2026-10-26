@@ -172,9 +172,9 @@ impl CssKeyframeSelectorList {
     /// Both complete sequences normalize before equality is decided.
     ///
     /// ```
-    /// use surgeist_css::parse_keyframe_selector_list;
-    /// let left = parse_keyframe_selector_list("from, calc(5% + 5%)");
-    /// let right = parse_keyframe_selector_list("0%, calc( 10% )");
+    /// use surgeist_css::{CssParsedKeyframeSelectors, CssParser};
+    /// let left = CssParsedKeyframeSelectors::parse(&CssParser::default(), "from, calc(5% + 5%)");
+    /// let right = CssParsedKeyframeSelectors::parse(&CssParser::default(), "0%, calc( 10% )");
     /// assert!(left.syntax().as_ref().unwrap().selectors()
     ///     .matches_normalized(right.syntax().as_ref().unwrap().selectors(), Default::default())
     ///     .unwrap());

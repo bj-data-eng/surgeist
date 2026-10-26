@@ -476,7 +476,6 @@ mod tests {
     fn limits() -> CssUtf16PropertyValueLimits {
         CssUtf16PropertyValueLimits {
             input: CssUtf16InputLimits::default(),
-            syntax: CssComponentValueLimits::default(),
             max_work: 1_000_000,
             max_live_bytes: 16_000_000,
             max_retained_bytes: 16_000_000,
@@ -498,7 +497,7 @@ mod tests {
             "round(up, 2.5, 1)",
             "sin(30deg)",
         ] {
-            let values = crate::parse_component_values(source).unwrap();
+            let values = crate::component_values::parse_component_values(source).unwrap();
             let component = &values.items()[0];
             let original = component.origin().clone();
             let admit = |_| Ok(());
@@ -554,7 +553,7 @@ mod tests {
                 CssNumericConstructionErrorKind::RecoveredComponent,
             ),
         ] {
-            let values = crate::parse_component_values(source).unwrap();
+            let values = crate::component_values::parse_component_values(source).unwrap();
             let component = &values.items()[0];
             let admit = |_| Ok(());
             let release = |_| {};
@@ -575,7 +574,9 @@ mod tests {
 
     #[test]
     fn every_reached_math_admission_can_refuse_without_retaining_scratch_or_changing_input() {
-        let values = crate::parse_component_values("calc(2.5 + max(1, min(3, 4)) / 2)").unwrap();
+        let values =
+            crate::component_values::parse_component_values("calc(2.5 + max(1, min(3, 4)) / 2)")
+                .unwrap();
         let component = &values.items()[0];
         let before = values.clone();
         let count = Cell::new(0);

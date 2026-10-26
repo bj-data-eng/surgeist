@@ -40,7 +40,7 @@ pub(crate) fn check_resource_diagnostics(
 mod tests {
     use super::*;
     use surgeist_css::{
-        CssComponentValueError, CssComponentValueLimits, CssErrorCode, CssParserContext,
+        CssComponentValueError, CssComponentValueLimits, CssErrorCode, CssParser, CssParserContext,
     };
 
     #[test]
@@ -70,7 +70,7 @@ mod tests {
             ),
         ];
         for (source, limits, expected) in cases {
-            let report = context.parse_declaration_block_contents_with_limits(source, limits);
+            let report = CssParser::new(context, limits).parse_block_contents(source);
             let diagnostic = report
                 .diagnostics()
                 .iter()
@@ -79,9 +79,8 @@ mod tests {
                 .clone();
             resources.push(diagnostic);
         }
-        let ordinary = context.parse_declaration_block_contents(
-            "unknown-property:value; width:bogus; color:url(a b);",
-        );
+        let ordinary = CssParser::new(context, Default::default())
+            .parse_block_contents("unknown-property:value; width:bogus; color:url(a b);");
         assert!(!ordinary.diagnostics().is_empty());
         check_resource_diagnostics(ordinary.diagnostics()).unwrap();
         check_resource_diagnostics(&[]).unwrap();
@@ -106,7 +105,8 @@ mod tests {
             "@media all {".repeat(300),
             "}".repeat(300),
         );
-        let report = CssParserContext::default().parse_sheet(&source);
+        let report =
+            CssParser::new(CssParserContext::default(), Default::default()).parse_sheet(&source);
         let diagnostic = report
             .diagnostics()
             .iter()

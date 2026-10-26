@@ -7,7 +7,6 @@ use crate::{
     CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName,
     CssNamespacePrefix, CssParseReport, CssRecoveryAction, CssRule, CssSelector, CssSheet,
     CssSourcePosition, CssSourceSnapshot, CssStyleRule, CssStyleSelector, CssTokenKind, ErrorKind,
-    parse_rule, parse_sheet, parse_style_block, validate_sheet,
 };
 
 const BATCH_BOUNDARIES: [usize; 3] = [31, 32, 33];
@@ -164,7 +163,7 @@ fn public_layer_boundaries(scoped: bool) {
     for depth in BATCH_BOUNDARIES {
         for terminated in [true, false] {
             let (source, start, end) = layer_source(depth, scoped, terminated);
-            let report = parse_sheet(&source);
+            let report = crate::CssParser::default().parse_sheet(&source);
             assert_layer_chain(report.syntax(), depth, scoped, Some(start), &source);
             if terminated {
                 assert!(
@@ -172,11 +171,21 @@ fn public_layer_boundaries(scoped: bool) {
                     "depth {depth}: {:?}",
                     report.diagnostics()
                 );
-                assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+                assert_eq!(
+                    crate::CssParser::default()
+                        .parse_sheet(&source)
+                        .into_validation_result()
+                        .unwrap(),
+                    *report.syntax()
+                );
             } else {
                 retained_eof(&report, &source, start, end);
                 assert_eq!(
-                    validate_sheet(&source).unwrap_err().diagnostics(),
+                    crate::CssParser::default()
+                        .parse_sheet(&source)
+                        .into_validation_result()
+                        .unwrap_err()
+                        .diagnostics(),
                     report.diagnostics()
                 );
                 assert_eq!(
@@ -209,7 +218,7 @@ fn nested_html_prefixes_keep_one_failed_unit_and_semicolons_are_discarded_at_bat
         ("-->", CssTokenKind::Cdc),
         (";/**/", CssTokenKind::Semicolon),
     ] {
-        let root = parse_sheet(&format!(
+        let root = crate::CssParser::default().parse_sheet(format!(
             "{prefix}@supports (color:red){{.hidden{{color:red}}}}"
         ));
         if kind != CssTokenKind::Semicolon {
@@ -217,7 +226,7 @@ fn nested_html_prefixes_keep_one_failed_unit_and_semicolons_are_discarded_at_bat
             assert!(matches!(root.syntax().rules(), [CssRule::Supports(_)]));
         } else {
             assert!(root.syntax().rules().is_empty());
-            let style = parse_sheet(".host{;color:red;;}");
+            let style = crate::CssParser::default().parse_sheet(".host{;color:red;;}");
             assert!(style.is_clean(), "style separators are a distinct grammar");
             let [CssRule::Style(host)] = style.syntax().rules() else {
                 panic!("host")
@@ -231,7 +240,7 @@ fn nested_html_prefixes_keep_one_failed_unit_and_semicolons_are_discarded_at_bat
                 "@media all{".repeat(depth),
                 "}".repeat(depth)
             );
-            let report = parse_sheet(&source);
+            let report = crate::CssParser::default().parse_sheet(&source);
             if kind == CssTokenKind::Semicolon {
                 // Syntax 3 (2026 CRD) consume a block's contents discards the
                 // nested `;`, so Supports is its own unit at every boundary.
@@ -248,7 +257,13 @@ fn nested_html_prefixes_keep_one_failed_unit_and_semicolons_are_discarded_at_bat
                 original_style(kept, &source, source.find(".kept{").unwrap(), "blue");
                 root_after(report.syntax(), &source);
                 assert!(report.is_clean(), "depth {depth}: {report:?}");
-                assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+                assert_eq!(
+                    crate::CssParser::default()
+                        .parse_sheet(&source)
+                        .into_validation_result()
+                        .unwrap(),
+                    *report.syntax()
+                );
                 continue;
             }
             let [CssRule::Style(kept)] = media_children(report.syntax(), depth) else {
@@ -272,7 +287,11 @@ fn nested_html_prefixes_keep_one_failed_unit_and_semicolons_are_discarded_at_bat
             assert_eq!(encountered.kind(), kind);
             assert_eq!(encountered.authored(), prefix);
             assert_eq!(
-                validate_sheet(&source).unwrap_err().diagnostics(),
+                crate::CssParser::default()
+                    .parse_sheet(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
         }
@@ -285,14 +304,18 @@ fn root_only_statements_stay_misplaced_after_batch_replay() {
         ("@import 'theme.css';", "import"),
         ("@namespace p 'urn:p';", "namespace"),
     ] {
-        assert!(parse_sheet(&format!("{statement}{AFTER}")).is_clean());
+        assert!(
+            crate::CssParser::default()
+                .parse_sheet(format!("{statement}{AFTER}"))
+                .is_clean()
+        );
         for depth in BATCH_BOUNDARIES {
             let source = format!(
                 "{PREFIX}{}{statement}.kept{{color:blue}}{}{AFTER}",
                 "@media all{".repeat(depth),
                 "}".repeat(depth)
             );
-            let report = parse_sheet(&source);
+            let report = crate::CssParser::default().parse_sheet(&source);
             let [CssRule::Style(kept)] = media_children(report.syntax(), depth) else {
                 panic!("later child")
             };
@@ -318,7 +341,11 @@ fn root_only_statements_stay_misplaced_after_batch_replay() {
                 "the stylesheet top level"
             );
             assert_eq!(
-                validate_sheet(&source).unwrap_err().diagnostics(),
+                crate::CssParser::default()
+                    .parse_sheet(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
         }
@@ -377,7 +404,7 @@ fn exact_one_rule_preserves_supplied_namespace_and_rejects_trailing_unit_at_batc
             "@media all{".repeat(groups),
             "}".repeat(groups)
         );
-        let report = parse_rule(&source, &context);
+        let report = crate::CssRule::parse(&crate::CssParser::default(), &source, &context);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -391,7 +418,10 @@ fn exact_one_rule_preserves_supplied_namespace_and_rejects_trailing_unit_at_batc
         );
         for suffix in [".second{}", " junk"] {
             let trailing = format!("{source}{suffix}");
-            atomic_rejection(&parse_rule(&trailing, &context), &trailing);
+            atomic_rejection(
+                &crate::CssRule::parse(&crate::CssParser::default(), &trailing, &context),
+                &trailing,
+            );
         }
         assert_eq!(
             context.named_namespace(&prefix).unwrap().as_str(),
@@ -415,7 +445,7 @@ fn real_brace_style_block_preserves_supplied_namespace_and_rejects_trailing_inpu
             "@media all{".repeat(groups),
             "}".repeat(groups)
         );
-        let report = parse_style_block(&source, &context);
+        let report = crate::CssStyleBlock::parse(&crate::CssParser::default(), &source, &context);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -433,7 +463,10 @@ fn real_brace_style_block_preserves_supplied_namespace_and_rejects_trailing_inpu
         );
         for suffix in ["{}", " junk"] {
             let trailing = format!("{source}{suffix}");
-            atomic_rejection(&parse_style_block(&trailing, &context), &trailing);
+            atomic_rejection(
+                &crate::CssStyleBlock::parse(&crate::CssParser::default(), &trailing, &context),
+                &trailing,
+            );
         }
         assert_eq!(
             context.named_namespace(&prefix).unwrap().as_str(),
@@ -457,7 +490,11 @@ fn real_brace_style_block_keeps_statement_eof_at_the_actual_inner_parent_bound()
             let end = source.len();
             source.push_str(&"}".repeat(groups + 1));
             source.push_str(" /*edge*/");
-            let report = parse_style_block(&source, &CssNamespaceContext::default());
+            let report = crate::CssStyleBlock::parse(
+                &crate::CssParser::default(),
+                &source,
+                &CssNamespaceContext::default(),
+            );
             let block = report.syntax().as_ref().unwrap();
             assert!(block.declarations().is_empty());
             let mut rules = block.rules();

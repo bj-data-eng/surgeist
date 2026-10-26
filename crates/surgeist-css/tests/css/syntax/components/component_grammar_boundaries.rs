@@ -10,19 +10,18 @@ use crate::css::support::authored_syntax::{
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
-    CssBlockKind, CssComponentValueRef, CssConditionKind, CssCustomPropertyName, CssErrorCode,
-    CssGeneralEnclosed, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssMediaLeaf,
-    CssMediaQuery, CssMediaType, CssNamespaceContext, CssPropertyNameRef, CssRecoveryAction,
-    CssRule, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef, parse_component_values,
-    parse_css_supports_declaration, parse_media_query, parse_media_query_list,
-    parse_property_value, parse_property_value_text, parse_property_value_text_for_grammar,
-    parse_rule,
+    CssBlockKind, CssComponentValueRef, CssComponentValues, CssConditionKind,
+    CssCustomPropertyName, CssDeclaration, CssErrorCode, CssGeneralEnclosed, CssImportance,
+    CssKnownProperty, CssKnownPropertyValueRef, CssMediaLeaf, CssMediaQuery, CssMediaQueryList,
+    CssMediaType, CssNamespaceContext, CssParser, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget, CssRecoveryAction, CssRule, CssSerializedOrigin, CssSupportsDeclaration,
+    CssValueOrigin, CssValueTokenRef,
 };
 
 fn width(source: &str) -> surgeist_css::CssParseReport<Option<surgeist_css::CssDeclaration>> {
-    parse_property_value_text(
+    CssParser::default().parse_property_value(
         source,
-        CssPropertyNameRef::Known(CssKnownProperty::Width),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
         CssImportance::Normal,
     )
 }
@@ -67,7 +66,11 @@ fn whole_width_production_matches_complete_input_and_rejects_a_valid_prefix_with
     let source = " \t12px /**/ ";
     for report in [
         width(source),
-        parse_property_value_text_for_grammar(source, property.grammar(), CssImportance::Normal),
+        CssParser::default().parse_property_value(
+            source,
+            CssPropertyTextTarget::Grammar(property.grammar()),
+            CssImportance::Normal,
+        ),
     ] {
         assert!(report.is_clean(), "{report:?}");
         let declaration = report.syntax().as_ref().unwrap();
@@ -98,9 +101,9 @@ fn whole_width_production_matches_complete_input_and_rejects_a_valid_prefix_with
     ] {
         for report in [
             width(source),
-            parse_property_value_text_for_grammar(
+            CssParser::default().parse_property_value(
                 source,
-                property.grammar(),
+                CssPropertyTextTarget::Grammar(property.grammar()),
                 CssImportance::Normal,
             ),
         ] {
@@ -113,9 +116,10 @@ fn whole_width_production_matches_complete_input_and_rejects_a_valid_prefix_with
             assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
         }
         // A supplied checked value still needs the whole width grammar.
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(property),
-            parse_component_values(source).unwrap(),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             CssImportance::Normal,
         )
         .unwrap_err();
@@ -134,12 +138,12 @@ fn media_whitespace_only_has_no_results_but_empty_comma_segments_have_individual
     // Syntax 3 (2026-10-01) §5.4.10 appends a member only while input remains,
     // so a final comma followed by no token adds no member.
     for source in ["", " \t\r\n", " /**/ "] {
-        let report = parse_media_query_list(source);
+        let report = CssMediaQueryList::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source:?}: {report:?}");
         assert!(report.syntax().queries().is_empty());
     }
     let source = ",screen,,print,";
-    let report = parse_media_query_list(source);
+    let report = CssMediaQueryList::parse(&CssParser::default(), source);
     let [
         CssMediaQuery::Never(first),
         CssMediaQuery::Typed(screen),
@@ -172,7 +176,7 @@ fn media_whitespace_only_has_no_results_but_empty_comma_segments_have_individual
             .all(|d| d.error().code() == CssErrorCode::InvalidMediaQuery)
     );
     assert!(report.clone().into_validation_result().is_err());
-    let comma = parse_media_query_list(",");
+    let comma = CssMediaQueryList::parse(&CssParser::default(), ",");
     assert!(matches!(
         comma.syntax().queries(),
         [CssMediaQuery::Never(_)]
@@ -184,7 +188,7 @@ fn media_whitespace_only_has_no_results_but_empty_comma_segments_have_individual
 fn media_nested_commas_stay_in_one_member_and_a_failed_middle_member_preserves_the_last() {
     let enclosure = "future([a,b] {c,d} nested(e,f))";
     let source = format!("{enclosure},screen and,print");
-    let report = parse_media_query_list(&source);
+    let report = CssMediaQueryList::parse(&CssParser::default(), &source);
     let [
         first,
         CssMediaQuery::Never(failed),
@@ -227,7 +231,7 @@ fn media_nested_commas_stay_in_one_member_and_a_failed_middle_member_preserves_t
 #[test]
 fn escaped_ident_values_do_not_acquire_function_or_at_keyword_kind() {
     for (source, ident) in [(r"future\(", "future("), (r"\@future", "@future")] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let [component] = values.items() else {
             panic!("one escaped identifier token")
         };
@@ -238,7 +242,7 @@ fn escaped_ident_values_do_not_acquire_function_or_at_keyword_kind() {
         assert!(error.is_wrong_outer_component());
         assert_eq!(error.origin(), component.origin());
     }
-    let at = parse_component_values("@future").unwrap();
+    let at = CssComponentValues::parse(&CssParser::default(), "@future").unwrap();
     assert!(matches!(
         at.items()[0].view(),
         CssComponentValueRef::Token(CssValueTokenRef::AtKeyword("future"))
@@ -248,7 +252,7 @@ fn escaped_ident_values_do_not_acquire_function_or_at_keyword_kind() {
     let error = CssGeneralEnclosed::try_from_component(at.items()[0].clone()).unwrap_err();
     assert!(error.is_wrong_outer_component());
     assert_eq!(error.origin(), at.items()[0].origin());
-    let function = parse_component_values("future()").unwrap();
+    let function = CssComponentValues::parse(&CssParser::default(), "future()").unwrap();
     assert!(
         matches!(function.items()[0].view(), CssComponentValueRef::Function(value) if value.name() == "future")
     );
@@ -259,10 +263,18 @@ fn escaped_ident_values_do_not_acquire_function_or_at_keyword_kind() {
         Some("future()")
     );
 
-    let escaped = parse_rule(r"\@media all {}", &CssNamespaceContext::default());
+    let escaped = CssRule::parse(
+        &CssParser::default(),
+        r"\@media all {}",
+        &CssNamespaceContext::default(),
+    );
     assert!(escaped.is_clean(), "{escaped:?}");
     assert!(matches!(escaped.syntax(), Some(CssRule::Style(_))));
-    let actual = parse_rule("@media all {}", &CssNamespaceContext::default());
+    let actual = CssRule::parse(
+        &CssParser::default(),
+        "@media all {}",
+        &CssNamespaceContext::default(),
+    );
     assert!(actual.is_clean(), "{actual:?}");
     assert!(matches!(actual.syntax(), Some(CssRule::Media(_))));
 }
@@ -309,9 +321,9 @@ fn actual_literal_grammars_match_decoded_ascii_case_variants_but_require_their_t
         "TrAnSlAtEx(12px)",
         r"\74 ranslateX(12px)",
     ] {
-        let report = parse_property_value_text(
+        let report = CssParser::default().parse_property_value(
             source,
-            CssPropertyNameRef::Known(CssKnownProperty::Transform),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Transform)),
             CssImportance::Normal,
         );
         assert!(report.is_clean(), "{source}: {report:?}");
@@ -329,19 +341,25 @@ fn actual_literal_grammars_match_decoded_ascii_case_variants_but_require_their_t
     }
     let ident = r"translateX\(";
     assert!(matches!(
-        parse_component_values(ident).unwrap().items()[0].view(),
+        CssComponentValues::parse(&CssParser::default(), ident)
+            .unwrap()
+            .items()[0]
+            .view(),
         CssComponentValueRef::Token(CssValueTokenRef::Ident("translateX("))
     ));
     assert!(
-        parse_property_value_text(
-            ident,
-            CssPropertyNameRef::Known(CssKnownProperty::Transform),
-            CssImportance::Normal
-        )
-        .syntax()
-        .is_none()
+        CssParser::default()
+            .parse_property_value(
+                ident,
+                CssPropertyTextTarget::Property(CssPropertyNameRef::Known(
+                    CssKnownProperty::Transform
+                )),
+                CssImportance::Normal
+            )
+            .syntax()
+            .is_none()
     );
-    let media = parse_media_query("ScReEn");
+    let media = CssMediaQuery::parse(&CssParser::default(), "ScReEn");
     assert!(media.is_clean());
     assert!(
         matches!(media.syntax(), CssMediaQuery::Typed(query) if query.media_type() == CssMediaType::Screen)
@@ -352,9 +370,9 @@ fn actual_literal_grammars_match_decoded_ascii_case_variants_but_require_their_t
 fn root_semicolon_and_bang_are_allowed_by_any_value_but_excluded_from_declaration_value_contexts() {
     let custom = CssCustomPropertyName::try_new("--tokens").unwrap();
     for source in ["a;", "a!", "a;!"] {
-        let report = parse_property_value_text(
+        let report = CssParser::default().parse_property_value(
             source,
-            CssPropertyNameRef::Custom(&custom),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Custom(&custom)),
             CssImportance::Normal,
         );
         assert!(
@@ -366,12 +384,12 @@ fn root_semicolon_and_bang_are_allowed_by_any_value_but_excluded_from_declaratio
             CssRecoveryAction::RejectInput
         );
         assert!(
-            parse_css_supports_declaration("--tokens", source)
+            CssSupportsDeclaration::parse(&CssParser::default(), "--tokens", source)
                 .as_ref()
                 .is_err_and(|error| error.is_invalid_declaration_grammar()),
             "two-argument method grammar: {source}"
         );
-        let query = parse_media_query(&format!("future({source})"));
+        let query = CssMediaQuery::parse(&CssParser::default(), format!("future({source})"));
         assert!(
             query.is_clean(),
             "any-value admits contents-root punctuation: {source}: {query:?}"
@@ -381,12 +399,12 @@ fn root_semicolon_and_bang_are_allowed_by_any_value_but_excluded_from_declaratio
             Some(format!("future({source})").as_str())
         );
     }
-    let any = parse_media_query("future(a;!)");
+    let any = CssMediaQuery::parse(&CssParser::default(), "future(a;!)");
     root_punctuation(opaque(any.syntax()).component());
     for source in ["f(a;!)", "[a;!]", "{a;!}", "(a;!)"] {
-        let report = parse_property_value_text(
+        let report = CssParser::default().parse_property_value(
             source,
-            CssPropertyNameRef::Custom(&custom),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Custom(&custom)),
             CssImportance::Normal,
         );
         assert!(
@@ -399,7 +417,8 @@ fn root_semicolon_and_bang_are_allowed_by_any_value_but_excluded_from_declaratio
             panic!("one complete grouped component")
         };
         root_punctuation(component);
-        let supports = parse_css_supports_declaration("--tokens", source).unwrap();
+        let supports =
+            CssSupportsDeclaration::parse(&CssParser::default(), "--tokens", source).unwrap();
         assert_eq!(supports.importance(), CssImportance::Normal);
         assert!(supports.known().is_none());
     }
@@ -423,9 +442,9 @@ fn nullable_defining_grammars_do_not_make_nonnullable_known_property_values_matc
             source.len(),
             "{source:?}"
         );
-        let report = parse_property_value_text(
+        let report = CssParser::default().parse_property_value(
             source,
-            CssPropertyNameRef::Custom(&custom),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Custom(&custom)),
             CssImportance::Normal,
         );
         assert!(
@@ -435,7 +454,7 @@ fn nullable_defining_grammars_do_not_make_nonnullable_known_property_values_matc
         assert!(report.syntax().as_ref().unwrap().custom().is_some());
     }
     for source in ["future()", "()", "future( \t)"] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(
             report.is_clean(),
             "MQ selects any-value?: {source:?}: {report:?}"
@@ -452,7 +471,7 @@ fn recursive_lexical_faults_reject_checked_values_and_only_the_owning_media_memb
         ("f(])", "]", ComponentFailure::UnmatchedClosingDelimiter),
         ("f([)])", ")", ComponentFailure::UnmatchedClosingDelimiter),
     ] {
-        let error = parse_component_values(payload).unwrap_err();
+        let error = CssComponentValues::parse(&CssParser::default(), payload).unwrap_err();
         assert_eq!(component_failure(&error), kind, "{payload}");
         let CssValueOrigin::Parsed(origin) = error.origin() else {
             panic!("original checked lexical failure")
@@ -463,9 +482,9 @@ fn recursive_lexical_faults_reject_checked_values_and_only_the_owning_media_memb
             payload.find(responsible).unwrap()
         );
         let custom = CssCustomPropertyName::try_new("--bad").unwrap();
-        let property = parse_property_value_text(
+        let property = CssParser::default().parse_property_value(
             payload,
-            CssPropertyNameRef::Custom(&custom),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Custom(&custom)),
             CssImportance::Normal,
         );
         assert!(
@@ -481,7 +500,7 @@ fn recursive_lexical_faults_reject_checked_values_and_only_the_owning_media_memb
             "{payload}"
         );
         let source = format!("future({payload}),print");
-        let report = parse_media_query_list(&source);
+        let report = CssMediaQueryList::parse(&CssParser::default(), &source);
         let [CssMediaQuery::Never(_), CssMediaQuery::Typed(print)] = report.syntax().queries()
         else {
             panic!("failed enclosure and independent print: {source}: {report:?}")
@@ -512,7 +531,7 @@ fn recursive_lexical_faults_reject_checked_values_and_only_the_owning_media_memb
         );
     }
     for source in [")", "]", "}"] {
-        let error = parse_component_values(source).unwrap_err();
+        let error = CssComponentValues::parse(&CssParser::default(), source).unwrap_err();
         assert!(error.is_unmatched_closing_delimiter(), "{error:?}");
         let CssValueOrigin::Parsed(origin) = error.origin() else {
             panic!("actual root closer")
@@ -525,9 +544,9 @@ fn recursive_lexical_faults_reject_checked_values_and_only_the_owning_media_memb
 #[test]
 fn missing_function_end_can_match_property_grammar_while_retaining_eof_fault_and_closure_origin() {
     for (source, implicit) in [("translateX(12px)", false), ("translateX(12px", true)] {
-        let report = parse_property_value_text(
+        let report = CssParser::default().parse_property_value(
             source,
-            CssPropertyNameRef::Known(CssKnownProperty::Transform),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Transform)),
             CssImportance::Normal,
         );
         let declaration = report.syntax().as_ref().unwrap();
@@ -590,7 +609,7 @@ fn checked_groups_retain_all_opening_kinds_and_matching_explicit_closers_without
         ("{a;!}", CssBlockKind::CurlyBracket),
         ("(a;!)", CssBlockKind::Parenthesis),
     ] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let [component] = values.items() else {
             panic!("one checked complete block")
         };

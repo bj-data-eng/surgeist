@@ -6,10 +6,10 @@ use crate::css::support::rules::invalid_descriptor;
 use crate::css::support::rules::ordinary_font_face_descriptor;
 use surgeist_css::{
     CssAbsoluteFontWeight as Absolute, CssAuthoredFontFaceDescriptorValue as Authored,
-    CssComponentValue, CssComponentValues, CssFontFaceDescriptorKind as Kind,
-    CssFontFaceDescriptorValue as Ordinary, CssFontFaceWeight, CssFontWeightRange, CssNumber,
-    CssNumeric, CssRecoveryAction, CssRule, CssSerializationLimits, CssSerializedOrigin,
-    CssValueOrigin, parse_component_values, parse_font_face_descriptor_value, parse_sheet,
+    CssAuthoredFontFaceDescriptorValue, CssComponentValue, CssComponentValues,
+    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Ordinary, CssFontFaceWeight,
+    CssFontWeightRange, CssNumber, CssNumeric, CssParser, CssRecoveryAction, CssRule,
+    CssSerializationLimits, CssSerializedOrigin, CssValueOrigin,
 };
 
 fn ordinary(text: &str) -> CssFontFaceWeight {
@@ -133,11 +133,15 @@ fn fractional_math_and_invalid_descriptor_values_keep_neighbors() {
         "1001",
         "10%",
     ] {
-        let raw = parse_font_face_descriptor_value(invalid, Kind::FontWeight);
+        let raw = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            invalid,
+            Kind::FontWeight,
+        );
         assert!(raw.syntax().is_none(), "{invalid}");
         let source =
             format!("@font-face{{font-weight:normal;font-weight:{invalid};font-display:swap}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(report.diagnostics().len(), 1, "{invalid}");
         assert_eq!(
             report.diagnostics()[0].action(),
@@ -161,7 +165,7 @@ fn fractional_math_and_invalid_descriptor_values_keep_neighbors() {
 #[test]
 fn duplicate_and_pending_weight_occurrences_select_last_admitted_value() {
     let source = "@font-face{font-weight:700 300;font-weight:env(weight);font-weight:bad;font-weight:bold 300}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("font face")
@@ -192,7 +196,8 @@ fn duplicate_and_pending_weight_occurrences_select_last_admitted_value() {
     };
     assert_eq!(end.serialize_specified(Default::default()).unwrap(), "300");
 
-    let report = parse_sheet("@font-face{font-weight:700;font-weight:env(weight);font-weight:bad}");
+    let report = CssParser::default()
+        .parse_sheet("@font-face{font-weight:700;font-weight:env(weight);font-weight:bad}");
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("font face")
     };
@@ -209,14 +214,17 @@ fn duplicate_and_pending_weight_occurrences_select_last_admitted_value() {
 fn pending_env_reentry_returns_exact_ordinary_weight_without_reordering() {
     let checked = Authored::try_from_components(
         Kind::FontWeight,
-        parse_component_values("env(weight, 700)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "env(weight, 700)").unwrap(),
         Default::default(),
     )
     .unwrap();
     let Authored::Pending(pending) = checked else {
         panic!("pending descriptor")
     };
-    let mut components = parse_component_values("700 ").unwrap().items().to_vec();
+    let mut components = CssComponentValues::parse(&CssParser::default(), "700 ")
+        .unwrap()
+        .items()
+        .to_vec();
     components.push(CssComponentValue::try_number("300.25").unwrap());
     let replacement = CssComponentValues::try_new(components, Default::default()).unwrap();
     let value = pending
@@ -323,7 +331,7 @@ fn checked_descriptor_rejects_programmatic_invalid_and_adjacent_number_tokens() 
     assert!(error.diagnostic().is_some());
     let checked = Authored::try_from_components(
         Kind::FontWeight,
-        parse_component_values("env(weight)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "env(weight)").unwrap(),
         Default::default(),
     )
     .unwrap();

@@ -6,7 +6,7 @@ use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
 fn candidate(source: &str) -> CssRuleSyntax {
-    classify_rule_syntax(source)
+    CssRuleSyntax::classify(&CssParser::default(), source)
         .into_parts()
         .0
         .expect("one generic rule")
@@ -40,7 +40,7 @@ fn preliminary_rule_classification_retains_semantically_rejected_at_rules() {
         ("@import;", "import"),
         ("@\\69mport;", "import"),
     ] {
-        let report = classify_rule_syntax(source);
+        let report = CssRuleSyntax::classify(&CssParser::default(), source);
         assert!(report.is_clean(), "{report:?}");
         let syntax = report.syntax().as_ref().unwrap();
         assert_eq!(syntax.kind(), CssRuleSyntaxKind::AtRule);
@@ -82,7 +82,7 @@ fn complete_input_rejects_empty_bodyless_custom_property_shaped_and_trailing_can
         ".a {};",
         "--foo:hover {width:1px}",
     ] {
-        let report = classify_rule_syntax(source);
+        let report = CssRuleSyntax::classify(&CssParser::default(), source);
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         assert!(
             report
@@ -102,7 +102,7 @@ enum InsertionFailure {
     Semantic,
 }
 fn sheet_stage(source: &str, constructed: bool, index_valid: bool) -> Result<(), InsertionFailure> {
-    let syntax = classify_rule_syntax(source)
+    let syntax = CssRuleSyntax::classify(&CssParser::default(), source)
         .into_parts()
         .0
         .ok_or(InsertionFailure::Syntax)?;
@@ -130,7 +130,7 @@ fn group_stage(source: &str, index_valid: bool) -> Result<(), InsertionFailure> 
     if !index_valid {
         return Err(InsertionFailure::Index);
     }
-    let syntax = classify_rule_syntax(source)
+    let syntax = CssRuleSyntax::classify(&CssParser::default(), source)
         .into_parts()
         .0
         .ok_or(InsertionFailure::Syntax)?;
@@ -208,7 +208,7 @@ fn admission_retains_recovered_children_and_the_original_snapshot_after_report_d
 #[test]
 fn preliminary_eof_recovery_survives_semantic_admission_without_double_publication() {
     let source = ".a {width:1px";
-    let report = classify_rule_syntax(source);
+    let report = CssRuleSyntax::classify(&CssParser::default(), source);
     assert!(!report.is_clean());
     let syntax = report.syntax().as_ref().unwrap();
     assert_eq!(syntax.diagnostics(), report.diagnostics());
@@ -334,25 +334,21 @@ fn nested_group_and_scoped_ancestry_use_their_own_grammar() {
 }
 
 #[test]
-fn raw_contents_stops_at_root_closer_and_preserves_the_historical_list_contract() {
+fn raw_contents_stops_at_root_closer() {
     let source = "} opacity:0.5; width:2px";
-    let report = parse_declaration_block_contents(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.syntax().is_empty());
     assert!(report.is_clean());
-    assert_eq!(
-        names(parse_declaration_list_text(source).syntax()),
-        ["width"]
-    );
-    let report = parse_declaration_block_contents("width:2px} opacity:.5");
+    let report = CssParser::default().parse_block_contents("width:2px} opacity:.5");
     assert_eq!(names(report.syntax()), ["width"]);
     assert!(report.is_clean(), "{report:?}");
-    assert!(parse_declaration_block_contents("}/**").is_clean());
+    assert!(CssParser::default().parse_block_contents("}/**").is_clean());
 }
 
 #[test]
 fn raw_contents_projects_ordered_declarations_around_nested_rules_and_at_rules() {
     let source = "width:1px; .a {opacity:0;} opacity:.5; @unknown {width:9px;} width:2px; --Case:a!important";
-    let report = parse_declaration_block_contents(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(
         names(report.syntax()),
         ["width", "opacity", "width", "--Case"]
@@ -371,7 +367,7 @@ fn raw_contents_projects_ordered_declarations_around_nested_rules_and_at_rules()
 #[test]
 fn raw_contents_empty_recovered_empty_and_custom_property_failure_have_separate_reports() {
     for source in ["", " /**/ \t", ";; ;", "}", "/*comment*/}"] {
-        let report = parse_declaration_block_contents(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.syntax().is_empty());
         assert!(report.is_clean(), "{source}: {report:?}");
     }
@@ -382,13 +378,13 @@ fn raw_contents_empty_recovered_empty_and_custom_property_failure_have_separate_
         "width:nonsense;",
         "--x:var() {opacity:0;} color:red;",
     ] {
-        let report = parse_declaration_block_contents(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.syntax().is_empty(), "{source}: {report:?}");
         assert!(!report.is_clean());
     }
-    let report = parse_declaration_block_contents("--x:var() {opacity:0;}; color:red;");
+    let report = CssParser::default().parse_block_contents("--x:var() {opacity:0;}; color:red;");
     assert_eq!(names(report.syntax()), ["color"]);
-    let report = parse_declaration_block_contents("width:1px/*");
+    let report = CssParser::default().parse_block_contents("width:1px/*");
     assert_eq!(names(report.syntax()), ["width"]);
     assert!(
         report
@@ -402,7 +398,8 @@ fn raw_contents_empty_recovered_empty_and_custom_property_failure_have_separate_
 fn whole_input_resource_limits_are_cumulative_and_admission_reuses_the_charged_occurrence() {
     let source = "a{width:1px}";
     let limits = CssComponentValueLimits::try_new(1, 5, source.len()).unwrap();
-    let report = classify_rule_syntax_with_limits(source, limits);
+    let report =
+        CssRuleSyntax::classify(&CssParser::new(CssParserContext::default(), limits), source);
     let syntax = report.syntax().as_ref().unwrap();
     assert_eq!(syntax.component_count(), 5);
     assert_eq!(syntax.limits(), limits);
@@ -414,43 +411,54 @@ fn whole_input_resource_limits_are_cumulative_and_admission_reuses_the_charged_o
             )
             .is_clean()
     );
-    let denied = classify_rule_syntax_with_limits(
+    let denied = CssRuleSyntax::classify(
+        &CssParser::new(
+            CssParserContext::default(),
+            CssComponentValueLimits::try_new(1, 5, 100).unwrap(),
+        ),
         "a{width:1px;opacity:.5}",
-        CssComponentValueLimits::try_new(1, 5, 100).unwrap(),
     );
     assert!(denied.syntax().is_none());
     resource(denied.diagnostics(), ComponentFailure::ComponentLimit);
-    let denied = classify_rule_syntax_with_limits(
+    let denied = CssRuleSyntax::classify(
+        &CssParser::new(
+            CssParserContext::default(),
+            CssComponentValueLimits::try_new(1, 100, source.len() - 1).unwrap(),
+        ),
         source,
-        CssComponentValueLimits::try_new(1, 100, source.len() - 1).unwrap(),
     );
     assert!(denied.syntax().is_none());
     resource(denied.diagnostics(), ComponentFailure::ByteLimit);
     assert!(
-        classify_rule_syntax_with_limits(source, limits)
+        CssRuleSyntax::classify(&CssParser::new(CssParserContext::default(), limits), source)
             .syntax()
             .is_some()
     );
     let raw = "width:1px;opacity:.5";
-    let denied = parse_declaration_block_contents_with_limits(
-        raw,
+    let denied = CssParser::new(
+        CssParserContext::default(),
         CssComponentValueLimits::try_new(0, 6, 100).unwrap(),
-    );
+    )
+    .parse_block_contents(raw);
     assert!(denied.syntax().is_empty());
     resource(denied.diagnostics(), ComponentFailure::ComponentLimit);
-    let accepted = parse_declaration_block_contents_with_limits(
-        raw,
+    let accepted = CssParser::new(
+        CssParserContext::default(),
         CssComponentValueLimits::try_new(0, 7, raw.len()).unwrap(),
-    );
+    )
+    .parse_block_contents(raw);
     assert_eq!(names(accepted.syntax()), ["width", "opacity"]);
     assert!(accepted.is_clean());
 }
 
 #[test]
 fn depth_resource_rejection_and_bounded_nested_replay_have_distinct_outcomes() {
-    let denied = classify_rule_syntax_with_limits(
+    let denied = CssRuleSyntax::classify(
+        &CssParser::new(
+            CssParserContext::default(),
+            CssComponentValueLimits::try_new(1, 100, 100).unwrap(),
+        ),
         "a{width:calc(1px)}",
-        CssComponentValueLimits::try_new(1, 100, 100).unwrap(),
     );
     assert!(denied.syntax().is_none());
     resource(denied.diagnostics(), ComponentFailure::NestingLimit);
@@ -488,7 +496,7 @@ fn depth_resource_rejection_and_bounded_nested_replay_have_distinct_outcomes() {
 #[test]
 fn document_mode_reaches_raw_and_detached_declarations_without_namespace_mutation() {
     let quirks = CssParserContext::new(CssParserMode::Quirks);
-    let raw = quirks.parse_declaration_block_contents("width:2");
+    let raw = CssParser::new(quirks, Default::default()).parse_block_contents("width:2");
     assert_eq!(names(raw.syntax()), ["width"]);
     assert_eq!(raw.syntax()[0].parser_context(), quirks);
     let syntax = candidate("& .a {width:2}");
@@ -581,7 +589,7 @@ fn scoped_destination_keeps_scope_anchors_and_group_placement_permission_explici
 
 #[test]
 fn malformed_custom_property_name_without_colon_uses_the_nested_rule_boundary() {
-    let report = parse_declaration_block_contents("--x .a{}width:2px; opacity:.5");
+    let report = CssParser::default().parse_block_contents("--x .a{}width:2px; opacity:.5");
     assert_eq!(names(report.syntax()), ["width", "opacity"]);
     assert!(!report.is_clean());
 }
@@ -612,7 +620,7 @@ fn recovered_string_and_url_token_endings_keep_preliminary_and_declaration_eof_d
         ("--x:'unterminated", "--x"),
         ("background-image:url(unterminated", "background-image"),
     ] {
-        let report = parse_declaration_block_contents(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert_eq!(names(report.syntax()), [name]);
         assert!(
             report
@@ -627,7 +635,7 @@ fn recovered_string_and_url_token_endings_keep_preliminary_and_declaration_eof_d
 #[test]
 fn downstream_nested_fallback_distinguishes_nonempty_declarations_from_empty_recovery() {
     fn has_nested_payload(source: &str) -> bool {
-        if classify_rule_syntax(source)
+        if CssRuleSyntax::classify(&CssParser::default(), source)
             .into_parts()
             .0
             .is_some_and(|rule| {
@@ -641,7 +649,10 @@ fn downstream_nested_fallback_distinguishes_nonempty_declarations_from_empty_rec
         {
             return true;
         }
-        !parse_declaration_block_contents(source).syntax().is_empty()
+        !CssParser::default()
+            .parse_block_contents(source)
+            .syntax()
+            .is_empty()
     }
     assert!(has_nested_payload("> .a {width:1px}"));
     assert!(has_nested_payload("width:1px;opacity:.5"));
@@ -653,7 +664,7 @@ fn downstream_nested_fallback_distinguishes_nonempty_declarations_from_empty_rec
 #[test]
 fn declaration_projection_retains_the_neighbor_after_an_unterminated_run_of_rule_slots() {
     let source = format!("{}width:2px", ".a{}div{}".repeat(512));
-    let report = parse_declaration_block_contents(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(names(report.syntax()), ["width"]);
     assert_eq!(report.diagnostics().len(), 1024);
     assert_eq!(
@@ -673,7 +684,7 @@ fn selected_block_declaration_rejects_mixed_top_level_curly_values_before_substi
         "width:{}var(--x);opacity:.5",
         "width:{var(--x)}{};opacity:.5",
     ] {
-        let report = parse_declaration_block_contents(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert_eq!(names(report.syntax()), ["opacity"], "{source}: {report:?}");
         assert!(!report.is_clean(), "{source}");
         assert_eq!(
@@ -686,7 +697,7 @@ fn selected_block_declaration_rejects_mixed_top_level_curly_values_before_substi
 #[test]
 fn selected_block_declaration_mixed_curly_fallback_stops_at_the_first_rule_body() {
     let source = "width:var(--x){}opacity:.5";
-    let report = parse_declaration_block_contents(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(names(report.syntax()), ["opacity"]);
     assert_eq!(report.diagnostics().len(), 1);
     let diagnostic = &report.diagnostics()[0];
@@ -705,7 +716,11 @@ fn selected_block_declaration_mixed_curly_fallback_stops_at_the_first_rule_body(
         "opacity"
     );
     assert_eq!(
-        names(parse_declaration_block_contents("width:var(--x){}opacity:.5}width:1px").syntax()),
+        names(
+            CssParser::default()
+                .parse_block_contents("width:var(--x){}opacity:.5}width:1px")
+                .syntax()
+        ),
         ["opacity"]
     );
 }
@@ -718,7 +733,7 @@ fn selected_block_declaration_preserves_custom_and_single_curly_or_nested_curly_
         "--x:{}{};opacity:.5",
         "\\2d \\2d x:var(--x){};opacity:.5",
     ] {
-        let report = parse_declaration_block_contents(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert_eq!(names(report.syntax()), ["--x", "opacity"], "{source}");
         assert!(report.is_clean(), "{source}: {report:?}");
     }
@@ -727,22 +742,28 @@ fn selected_block_declaration_preserves_custom_and_single_curly_or_nested_curly_
         "width: /**/ {var(--x)} /*trivia*/ !important;opacity:.5",
         "width:var(--x, {});opacity:.5",
     ] {
-        let report = parse_declaration_block_contents(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert_eq!(names(report.syntax()), ["width", "opacity"], "{source}");
         assert!(report.is_clean(), "{source}: {report:?}");
     }
-    let report = parse_declaration_block_contents("--x:var(--x){} !important;opacity:.5");
+    let report = CssParser::default().parse_block_contents("--x:var(--x){} !important;opacity:.5");
     assert_eq!(names(report.syntax()), ["--x", "opacity"]);
     assert_eq!(report.syntax()[0].importance(), CssImportance::Important);
     assert!(report.is_clean());
 }
 
 #[test]
-fn selected_block_declaration_constraint_leaves_the_historical_raw_list_contract_intact() {
-    let report = parse_declaration_list_text("width:var(--x){};opacity:.5");
-    assert_eq!(names(report.syntax()), ["width", "opacity"]);
-    assert!(report.is_clean());
-    let report = parse_declaration_list_text("width:var(--x){}opacity:.5");
-    assert_eq!(names(report.syntax()), ["width"]);
-    assert!(report.is_clean());
+fn selected_block_declaration_constraint_applies_to_every_declaration_list() {
+    // Syntax 3 (2026 CRD) §5.5.6 step 8: a top-level `{}` block beside other
+    // value tokens makes the declaration return nothing, so it is reconsumed as
+    // a qualified rule that ends at its block. This front is also the style
+    // attribute and raw-list front.
+    for source in ["width:var(--x){};opacity:.5", "width:var(--x){}opacity:.5"] {
+        let report = CssParser::default().parse_block_contents(source);
+        assert_eq!(names(report.syntax()), ["opacity"], "{source}");
+        let [diagnostic] = report.diagnostics() else {
+            panic!("{source}: one dropped rule: {report:?}")
+        };
+        assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
+    }
 }

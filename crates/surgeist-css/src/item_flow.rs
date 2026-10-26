@@ -252,7 +252,7 @@ mod tests {
     use crate::CssSerializationLimits as Limits;
     use crate::{
         CssCalculation, CssLengthPercentage, CssNumeric,
-        CssSpecifiedValueSerializationErrorKind as Kind, parse_component_values,
+        CssSpecifiedValueSerializationErrorKind as Kind,
     };
 
     fn composed_budget(
@@ -365,7 +365,7 @@ mod tests {
         let tolerance = CssFlowTolerance::length_percentage(
             CssNumeric::<CssLengthPercentage>::try_from_calculation(
                 CssCalculation::<CssLengthPercentage>::try_from_components(
-                    parse_component_values("calc(1px + 2em)").unwrap(),
+                    crate::component_values::parse_component_values("calc(1px + 2em)").unwrap(),
                     Default::default(),
                 )
                 .unwrap(),

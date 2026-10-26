@@ -32,7 +32,7 @@ fn grammar(name: &str) -> CssPropertyGrammar {
 
 fn declaration(name: &str, value: &str) -> CssDeclaration {
     let source = format!("{name}: {value} !important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one declaration: {source}")
@@ -41,17 +41,19 @@ fn declaration(name: &str, value: &str) -> CssDeclaration {
 }
 
 fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar(name)),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         CssImportance::Important,
     )
     .unwrap_or_else(|error| panic!("checked {name}: {value}: {error:?}"))
 }
 
 fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("grid placement has intrinsic expansion")
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source
+        .expand()
+        .expect("grid placement has intrinsic expansion")
     else {
         panic!("completed grid placement longhands")
     };
@@ -212,7 +214,7 @@ fn placement_rejects_zero_noninteger_and_duplicate_components_without_losing_nei
             "2 main 3",
         ] {
             let source = format!("color: red; {name}: {value}; color: blue");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(report.syntax().len(), 2, "{source}");
             assert_eq!(report.diagnostics().len(), 1, "{source}");
             assert_eq!(
@@ -220,14 +222,19 @@ fn placement_rejects_zero_noninteger_and_duplicate_components_without_losing_nei
                 CssRecoveryAction::DropDeclaration
             );
             assert_eq!(
-                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics(),
                 "{source}"
             );
             assert_same_grammar_facts(
-                &parse_property_value_for_grammar(
-                    grammar(name),
-                    parse_component_values(value).unwrap(),
+                &CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(grammar(name)),
+                    CssComponentValues::parse(&CssParser::default(), value).unwrap(),
                     CssImportance::Normal,
                 )
                 .unwrap_err(),
@@ -255,7 +262,7 @@ fn default_and_reserved_keywords_cannot_serve_as_grid_line_names() {
             "unset 2",
         ] {
             let source = format!("{name}: {value}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             let [diagnostic] = report.diagnostics() else {
                 panic!("one dropped declaration: {source}")
             };
@@ -265,9 +272,10 @@ fn default_and_reserved_keywords_cannot_serve_as_grid_line_names() {
                 "{source}"
             );
             assert_same_grammar_facts(
-                &parse_property_value_for_grammar(
-                    grammar(name),
-                    parse_component_values(value).unwrap(),
+                &CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(grammar(name)),
+                    CssComponentValues::parse(&CssParser::default(), value).unwrap(),
                     CssImportance::Normal,
                 )
                 .unwrap_err(),
@@ -283,7 +291,11 @@ fn default_and_reserved_keywords_cannot_serve_as_grid_line_names() {
             "revert",
             "revert-layer",
         ] {
-            assert!(parse_style_attribute(&format!("{name}: {value}")).is_clean());
+            assert!(
+                CssParser::default()
+                    .parse_block_contents(format!("{name}: {value}"))
+                    .is_clean()
+            );
         }
     }
 }
@@ -346,7 +358,7 @@ fn placement_shorthands_reject_extra_or_empty_slash_members() {
     ] {
         for &value in values {
             let source = format!("{name}: {value}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             let [diagnostic] = report.diagnostics() else {
                 panic!("one dropped declaration: {source}")
             };
@@ -356,9 +368,10 @@ fn placement_shorthands_reject_extra_or_empty_slash_members() {
                 "{source}"
             );
             assert_same_grammar_facts(
-                &parse_property_value_for_grammar(
-                    grammar(name),
-                    parse_component_values(value).unwrap(),
+                &CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(grammar(name)),
+                    CssComponentValues::parse(&CssParser::default(), value).unwrap(),
                     CssImportance::Normal,
                 )
                 .unwrap_err(),
@@ -523,24 +536,24 @@ fn globals_and_pending_reentry_keep_placement_members_and_source() {
         }
 
         let source = declaration(name, "var(--placement)");
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("{name} remains pending")
         };
         assert!(pending.source().same_occurrence(&source));
         assert!(
             pending
-                .reenter(parse_component_values("0").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "0").unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some()
         );
         assert!(
             pending
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
-        let replacement = parse_component_values("hero").unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), "hero").unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("completed placement replacement")
@@ -556,11 +569,11 @@ fn globals_and_pending_reentry_keep_placement_members_and_source() {
 
 #[test]
 fn area_expansion_counts_four_members_before_normalization_allocates() {
-    let report = parse_sheet(".p { grid-area: hero; }");
+    let report = CssParser::default().parse_sheet(".p { grid-area: hero; }");
     assert!(report.is_clean());
     let original = report.syntax().clone();
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 3).unwrap();
-    let error = match normalize_sheet_with_limits(report.syntax(), limits) {
+    let error = match report.syntax().normalize(limits) {
         Ok(_) => panic!("four area contributions exceed a limit of three"),
         Err(error) => error,
     };
@@ -571,10 +584,9 @@ fn area_expansion_counts_four_members_before_normalization_allocates() {
         "failure preserves the parsed source"
     );
     assert!(
-        normalize_sheet_with_limits(
-            report.syntax(),
-            CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 4).unwrap(),
-        )
-        .is_ok()
+        report
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 4).unwrap())
+            .is_ok()
     );
 }

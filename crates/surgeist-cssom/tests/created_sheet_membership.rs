@@ -1,5 +1,5 @@
 //! CSSOM §6.2 caller-selected order with exact batch-local creation ownership.
-use surgeist_css::{parse_media_query_list, parse_sheet};
+use surgeist_css::{CssMediaQueryList, CssParser};
 use surgeist_cssom::*;
 
 fn store(limits: CssomLimits) -> CssomStore {
@@ -29,8 +29,8 @@ fn existing(owner: &mut CssomStore, name: &str) -> CssomSheetId {
 }
 fn create(edit: &mut CssomBatch, name: &str, source: &str, media: &str) -> CssomSheetConstruction {
     edit.create_parsed_sheet_with_media_reports(
-        parse_sheet(source),
-        parse_media_query_list(media),
+        CssParser::default().parse_sheet(source),
+        CssMediaQueryList::parse(&CssParser::default(), media),
         inputs(name),
     )
     .unwrap()

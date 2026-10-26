@@ -8,7 +8,7 @@ use surgeist_css::*;
 
 #[test]
 fn direct_color_wrappers_keep_system_named_global_and_substitution_branches_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "color: ActiveBorder; ",
         "background-color: red; ",
         "outline-color: inherit; ",
@@ -51,7 +51,7 @@ fn direct_color_wrappers_keep_system_named_global_and_substitution_branches_dist
 
 #[test]
 fn core_font_wrappers_keep_current_global_and_substitution_branches_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "font-size: 16px; line-height: normal; ",
         "font-family: Arial, serif; font: italic 16px/normal Arial; ",
         "font-feature-settings: \"kern\"; ",
@@ -106,7 +106,7 @@ fn core_font_wrappers_keep_current_global_and_substitution_branches_distinct() {
 
 #[test]
 fn font_variant_wrappers_keep_current_global_and_substitution_branches_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "font-variant: small-caps; font-variant: all-small-caps; ",
         "font-variant-caps: petite-caps; font-variant-east-asian: ruby; ",
         "font-variant-ligatures: none; font-variant-numeric: ordinal; ",
@@ -189,7 +189,7 @@ fn font_variant_wrappers_keep_current_global_and_substitution_branches_distinct(
 
 #[test]
 fn direct_color_wrappers_expose_perceptual_and_predefined_channels() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "color: lab(calc(40% + 10%) 20 30); ",
         "background-color: color(xyz none calc(2 + 1) -3 / 120%)",
     ));
@@ -251,7 +251,7 @@ fn direct_color_wrappers_expose_perceptual_and_predefined_channels() {
 
 #[test]
 fn direct_color_wrappers_preserve_typed_relative_channels() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "color: rgb(from red r g b); ",
         "background-color: color(from red xyz x y z / alpha)",
     ));
@@ -326,7 +326,7 @@ fn property_schema_dispatch_exposes_property_specific_authored_wrappers() {
         };
         let (name, authored) = (case.name, dispatch.ordinary);
         let source = format!("{}: {}", name, authored);
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let declaration = report.syntax()[0].known().expect("known declaration");
         let value = declaration
@@ -366,9 +366,11 @@ fn explicit_property_dispatch_cases_preserve_ordinary_and_important_behavior() {
             name.to_ascii_uppercase(),
             important_value
         );
-        let important_sheet = parse_sheet(&important_source).unwrap_or_else(|error| {
-            panic!("`{name}: {important_value} !important` must parse: {error}")
-        });
+        let important_sheet = CssParser::default()
+            .parse_sheet(&important_source)
+            .unwrap_or_else(|error| {
+                panic!("`{name}: {important_value} !important` must parse: {error}")
+            });
         let [CssRule::Style(important_rule)] = important_sheet.rules() else {
             panic!("`{name}` importance path should produce one style rule");
         };
@@ -389,7 +391,9 @@ fn explicit_property_dispatch_cases_preserve_ordinary_and_important_behavior() {
                     .and_then(|known| known.global()),
                 Some(surgeist_css::CssGlobalKeyword::Inherit),
             );
-            let error = parse_sheet(&source).expect_err("`all` ordinary value must be rejected");
+            let error = CssParser::default()
+                .parse_sheet(&source)
+                .expect_err("`all` ordinary value must be rejected");
             assert_eq!(error.code(), CssErrorCode::InvalidPropertyValue);
             let detail = &error;
             assert_eq!(
@@ -402,12 +406,14 @@ fn explicit_property_dispatch_cases_preserve_ordinary_and_important_behavior() {
             continue;
         }
 
-        let sheet = parse_sheet(&source).unwrap_or_else(|error| {
-            panic!(
-                "`{name}: {}` should parse through generated dispatch: {error}",
-                dispatch.ordinary
-            )
-        });
+        let sheet = CssParser::default()
+            .parse_sheet(&source)
+            .unwrap_or_else(|error| {
+                panic!(
+                    "`{name}: {}` should parse through generated dispatch: {error}",
+                    dispatch.ordinary
+                )
+            });
         let [CssRule::Style(rule)] = sheet.rules() else {
             panic!("`{name}` should produce one style rule");
         };
@@ -438,7 +444,7 @@ fn explicit_property_dispatch_cases_preserve_ordinary_and_important_behavior() {
 
 #[test]
 fn layered_position_wrappers_keep_current_global_and_substitution_branches_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "background-position: left 10px top, center; ",
         "mask-position: right bottom; ",
         "background-position: inherit; ",
@@ -482,7 +488,7 @@ fn layered_position_wrappers_keep_current_global_and_substitution_branches_disti
 
 #[test]
 fn object_and_transform_origin_wrappers_keep_ordinary_global_and_substitution_branches_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "object-position: left 10px bottom 20%; ",
         "transform-origin: left top 5px; ",
         "object-position: inherit; ",
@@ -556,7 +562,7 @@ fn object_and_transform_origin_wrappers_keep_ordinary_global_and_substitution_br
 #[test]
 fn timing_wrappers_expose_exact_property_specific_accessors() {
     use surgeist_css::{CssAnimationIterationCount, CssTimeUnit, CssTransitionProperty};
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "transition-duration: calc(1s + 2s); transition-delay: -1s; ",
         "animation-duration: calc(3ms * 2); animation-delay: -4ms; ",
         "animation-iteration-count: calc(1 + 2); ",
@@ -715,7 +721,7 @@ fn typed_length_calculations_are_accepted_by_the_exact_current_consumer_set() {
         ("transform", "translate(calc((1px + 2%) * 3))"),
     ] {
         let source = format!("{property}: {value}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(
@@ -726,7 +732,7 @@ fn typed_length_calculations_are_accepted_by_the_exact_current_consumer_set() {
     }
 
     let source = "clip-path: polygon(, calc((1px + 2%) * 3) 0px, 1px 1px)";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(
         !report.is_clean(),
         "later function grammar changed: {source}"
@@ -736,7 +742,7 @@ fn typed_length_calculations_are_accepted_by_the_exact_current_consumer_set() {
 
 #[test]
 fn transform_wrapper_keeps_value_global_and_substitution_branches_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "transform: translate(calc((1px + 2%) * 3), 4px) rotate(0); ",
         "transform: none; transform: inherit; transform: var(--transform)",
     ));
@@ -788,7 +794,7 @@ fn transform_wrapper_keeps_value_global_and_substitution_branches_distinct() {
 
 #[test]
 fn timing_function_wrappers_keep_typed_global_and_substitution_branches_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "transition-timing-function: cubic-bezier(0.1, -2, 0.9, 3); ",
         "animation-timing-function: steps(2, jump-none); ",
         "transition-timing-function: inherit; ",
@@ -838,7 +844,7 @@ fn timing_function_wrappers_keep_typed_global_and_substitution_branches_distinct
 
 #[test]
 fn shadow_and_filter_wrappers_expose_ordered_typed_values() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "box-shadow: inset 1px 2px red; ",
         "filter: blur(4px) opacity(50%); ",
         "backdrop-filter: brightness()"
@@ -961,7 +967,7 @@ fn assert_srgb_mix_with_lab_and_blue(color: &CssColor) {
 
 #[test]
 fn every_aggregate_color_consumer_retains_typed_color_mix() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "border: 1px solid color-mix(in srgb, lab(calc(50% + 10%) 20 30), blue); ",
         "border-top: solid color-mix(in srgb, lab(calc(50% + 10%) 20 30), blue); ",
         "border-right: solid color-mix(in srgb, lab(calc(50% + 10%) 20 30), blue); ",
@@ -1121,7 +1127,7 @@ fn every_aggregate_color_consumer_retains_typed_color_mix() {
 
 #[test]
 fn clip_path_wrapper_separates_authored_global_and_substitution_values() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "clip-path: inset(1px round 2px); ",
         "clip-path: circle(50% at center); ",
         "clip-path: inherit; ",
@@ -1181,7 +1187,7 @@ fn deferred_basic_shape_math_drops_only_the_invalid_declaration() {
     ] {
         let invalid = format!("clip-path: {shape};");
         let source = format!("{invalid} color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
 
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(
@@ -1225,7 +1231,9 @@ fn deferred_basic_shape_math_drops_only_the_invalid_declaration() {
         );
 
         {
-            let failure = surgeist_css::validate_style_attribute(&source)
+            let failure = surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("recovered basic-shape math must fail strict validation");
             assert_eq!(failure.diagnostics(), report.diagnostics(), "{source}");
         }

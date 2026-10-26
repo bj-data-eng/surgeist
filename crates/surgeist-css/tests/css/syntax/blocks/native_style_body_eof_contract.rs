@@ -131,7 +131,7 @@ fn native_style_media_ends_at_parent_bound_and_keeps_original_sibling() {
             37,
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [parent, sibling] = report.syntax().rules() else {
             panic!("parent and later sibling")
         };
@@ -165,7 +165,7 @@ fn native_style_media_ends_at_parent_bound_and_keeps_original_sibling() {
         strict(source, &report);
     }
     let source = ".x{color:red;@media screen}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [parent] = report.syntax().rules() else {
         panic!("retained parent")
     };
@@ -189,7 +189,7 @@ fn native_style_media_ends_at_parent_bound_and_keeps_original_sibling() {
 #[test]
 fn native_style_media_at_whole_source_eof_keeps_parent_and_separate_closure_fault() {
     let source = ".x{color:red;@media screen";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [parent] = report.syntax().rules() else {
         panic!("retained implicitly closed parent")
     };
@@ -215,7 +215,7 @@ fn native_style_media_at_whole_source_eof_keeps_parent_and_separate_closure_faul
 #[test]
 fn scoped_style_ancestor_media_uses_scope_bound_and_preserves_both_declaration_owners() {
     let source = ".x{color:red;@scope{width:1px;@media screen}}.after{height:1px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.syntax().rules().len(), 2);
     let scope = scoped_parent(&report, source);
     assert!(scope.root().is_none() && scope.limit().is_none());
@@ -240,7 +240,7 @@ fn scoped_style_ancestor_media_uses_scope_bound_and_preserves_both_declaration_o
 #[test]
 fn scoped_style_ancestor_whole_eof_retains_scope_and_parent_closure_faults() {
     let source = ".x{color:red;@scope{width:1px;@media screen";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.syntax().rules().len(), 1);
     scoped_parent(&report, source);
     let [dropped, scope_closure, style_closure] = report.diagnostics() else {
@@ -274,7 +274,7 @@ fn actual_media_semicolon_has_missing_body_contract_and_local_following_runs() {
             true,
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [parent] = report.syntax().rules() else {
             panic!("retained parent")
         };
@@ -367,7 +367,7 @@ fn legal_layer_statement_eof_is_retained_at_native_style_and_scoped_bounds() {
             true,
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert_eq!(report.syntax().rules().len(), 2);
         let parent = style(&report.syntax().rules()[0], "x");
         assert_declaration(
@@ -435,9 +435,15 @@ fn legal_layer_statement_eof_is_retained_at_native_style_and_scoped_bounds() {
         ".x{color:red;@layer theme;}",
         ".x{color:red;@scope{width:1px;@layer theme;}}",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{report:?}");
-        assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
+        assert_eq!(
+            CssParser::default()
+                .parse_sheet(source)
+                .into_validation_result()
+                .unwrap(),
+            *report.syntax()
+        );
     }
 }
 
@@ -452,7 +458,7 @@ fn invalid_layer_prelude_precedes_missing_body_in_both_native_contexts() {
             37,
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert_eq!(report.syntax().rules().len(), 2);
         let parent = style(&report.syntax().rules()[0], "x");
         assert_declaration(
@@ -502,7 +508,7 @@ fn invalid_layer_prelude_precedes_missing_body_in_both_native_contexts() {
 #[test]
 fn contextual_when_body_keeps_owned_missing_token_category_at_native_eof() {
     let source = ".x{color:red;@when media(width)}.after{height:1px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [parent, sibling] = report.syntax().rules() else {
         panic!("retained sibling styles")
     };
@@ -544,7 +550,7 @@ fn isolated_real_style_block_preserves_native_bound_and_original_source_origin()
         ("{color:red;@media screen}", 24, false),
         ("{color:red;@media screen", 24, true),
     ] {
-        let report = parse_style_block(source, &context);
+        let report = CssStyleBlock::parse(&CssParser::default(), source, &context);
         let block = report
             .syntax()
             .as_ref()
@@ -585,7 +591,7 @@ fn isolated_real_style_block_preserves_native_bound_and_original_source_origin()
 #[test]
 fn complete_media_blocks_are_clean_in_both_native_owning_contexts() {
     let ordinary = ".x{color:red;@media screen{width:1px}}";
-    let report = parse_sheet(ordinary);
+    let report = CssParser::default().parse_sheet(ordinary);
     assert!(report.is_clean(), "{report:?}");
     let [parent] = report.syntax().rules() else {
         panic!("one parent style")
@@ -615,10 +621,16 @@ fn complete_media_blocks_are_clean_in_both_native_owning_contexts() {
         33,
         36,
     );
-    assert_eq!(validate_sheet(ordinary).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(ordinary)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
 
     let scoped = ".x{color:red;@scope{width:1px;@media screen{height:2px}}}";
-    let report = parse_sheet(scoped);
+    let report = CssParser::default().parse_sheet(scoped);
     assert!(report.is_clean(), "{report:?}");
     let [parent] = report.syntax().rules() else {
         panic!("one scoped parent style")
@@ -660,13 +672,19 @@ fn complete_media_blocks_are_clean_in_both_native_owning_contexts() {
         51,
         54,
     );
-    assert_eq!(validate_sheet(scoped).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(scoped)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
 }
 
 #[test]
 fn explicit_scope_root_with_style_ancestor_retains_direct_color_and_sheet_siblings() {
     let source = ".before{width:1px}.x{@scope (.s){color:red;@media screen}}.after{height:1px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [before, parent, after] = report.syntax().rules() else {
         panic!("original preceding and following styles")
     };

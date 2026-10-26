@@ -30,7 +30,8 @@ fn assert_value(value: &CssColor, expected: &str) {
 }
 fn assert_text(source: &str, expected: &str) {
     let checked = declaration(source);
-    let report = parse_style_attribute(&format!("color:{source}!important;opacity:.5"));
+    let report =
+        CssParser::default().parse_block_contents(format!("color:{source}!important;opacity:.5"));
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
     assert_eq!(
@@ -946,8 +947,9 @@ fn programmatic_hwb_numeric_graph_keeps_its_origin() {
 }
 
 fn composition_text(property: CssKnownProperty, source: &str) -> String {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(property),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
         components(source),
         CssImportance::Important,
     )
@@ -975,8 +977,9 @@ fn composition_text(property: CssKnownProperty, source: &str) -> String {
         _ => panic!("selected composition front door"),
     };
     assert_eq!(declaration, before);
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
         components(&text),
         CssImportance::Important,
     )

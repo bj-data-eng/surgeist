@@ -178,7 +178,8 @@ fn identical_literal_aggregates_ignore_source_location_changes() {
         "rotate(0.1deg)",
         CssImportance::Important,
     );
-    let second_report = parse_style_attribute("/*😀*/ transform:rotate(0.1deg)!important");
+    let second_report =
+        CssParser::default().parse_block_contents("/*😀*/ transform:rotate(0.1deg)!important");
     assert!(second_report.is_clean());
     assert_eq!(transform(&first), transform(&second_report.syntax()[0]));
     let first = validated_declaration(
@@ -186,7 +187,8 @@ fn identical_literal_aggregates_ignore_source_location_changes() {
         "0.1deg flip",
         CssImportance::Important,
     );
-    let second_report = parse_style_attribute("/*😀*/ image-orientation:0.1deg flip!important");
+    let second_report =
+        CssParser::default().parse_block_contents("/*😀*/ image-orientation:0.1deg flip!important");
     assert!(second_report.is_clean());
     assert_eq!(orientation(&first), orientation(&second_report.syntax()[0]));
 }
@@ -233,7 +235,7 @@ fn reject(property: CssKnownProperty, value: &str) {
     let prefix = "/*😀*/ ";
     let unit = format!("{}:{value};", property.canonical_name());
     let source = format!("{prefix}{unit}color:blue");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [sibling] = report.syntax().as_slice() else {
         panic!("only color survives {source}: {:?}", report.diagnostics())
     };
@@ -257,14 +259,19 @@ fn reject(property: CssKnownProperty, value: &str) {
         source[..end].encode_utf16().count()
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     // Images 3: a gradient's `1%` is read as a color stop, so the grammar
     // detail may be a color-syntax error rather than a property-value one.
-    let error = parse_property_value(
-        CssPropertyNameRef::Known(property),
-        parse_component_values(value).unwrap(),
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         CssImportance::Normal,
     )
     .unwrap_err();
@@ -371,7 +378,7 @@ fn gradient_omits_only_exact_positive_default_directions_and_keeps_neighbors() {
 #[test]
 fn escaped_case_varied_angle_unit_and_precise_coefficient_keep_original_token_origin() {
     let source = "/*😀*/ filter:hue-rotate(+1.23000000000000000001D\\45 G)!important";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let component = &report.syntax()[0].value_components().items()[0];
     let CssComponentValueRef::Function(function) = component.view() else {
@@ -406,7 +413,7 @@ fn escaped_case_varied_angle_unit_and_precise_coefficient_keep_original_token_or
 
 fn located(property: CssKnownProperty, value: &str) -> (CssDeclaration, CssDeclaration) {
     let first = validated_declaration(property, value, CssImportance::Important);
-    let report = parse_style_attribute(&format!(
+    let report = CssParser::default().parse_block_contents(format!(
         "/*😀*/ {}:{value}!important",
         property.canonical_name()
     ));
@@ -458,12 +465,12 @@ fn image_orientation_calculation_aggregate_equality_ignores_original_source_coor
 #[test]
 fn raw_angle_math_and_color_compare_original_provenance() {
     let first = CssCalculation::<CssAngle>::try_from_components(
-        parse_component_values("calc(25deg + 5deg)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(25deg + 5deg)").unwrap(),
         Default::default(),
     )
     .unwrap();
     let second = CssCalculation::<CssAngle>::try_from_components(
-        parse_component_values("  calc(25deg + 5deg)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "  calc(25deg + 5deg)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -519,7 +526,7 @@ fn ordinary_recovered_angle_math_is_retained_but_checked_construction_is_strict(
         (CssKnownProperty::ImageOrientation, "calc(25deg + 5deg"),
     ] {
         let source = format!("{}:{incomplete}", property.canonical_name());
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(
             report.syntax().len(),
             1,
@@ -527,16 +534,22 @@ fn ordinary_recovered_angle_math_is_retained_but_checked_construction_is_strict(
             report.diagnostics()
         );
         assert!(!report.is_clean());
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
         assert!(
             report
                 .diagnostics()
                 .iter()
                 .any(|d| d.action() == CssRecoveryAction::RetainWithImplicitClosure)
         );
-        let replacement = parse_component_values(incomplete).unwrap();
-        let Err(_) = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let replacement = CssComponentValues::parse(&CssParser::default(), incomplete).unwrap();
+        let Err(_) = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             replacement.clone(),
             CssImportance::Normal,
         ) else {
@@ -549,12 +562,15 @@ fn ordinary_recovered_angle_math_is_retained_but_checked_construction_is_strict(
 fn pending_angle_reentry_retains_exact_literals_importance_and_replacement_sources() {
     for property in [CssKnownProperty::Filter, CssKnownProperty::BackdropFilter] {
         let source = validated_declaration(property, "var(--angle)", CssImportance::Important);
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending filter")
         };
         assert!(
             pending
-                .reenter(parse_component_values("hue-rotate(var(--again))").unwrap())
+                .reenter(
+                    CssComponentValues::parse(&CssParser::default(), "hue-rotate(var(--again))")
+                        .unwrap()
+                )
                 .unwrap_err()
                 .is_residual_substitution()
         );
@@ -563,12 +579,18 @@ fn pending_angle_reentry_retains_exact_literals_importance_and_replacement_sourc
             "hue-rotate(calc(0))",
             "hue-rotate(1px)",
         ] {
-            let Err(error) = pending.reenter(parse_component_values(invalid).unwrap()) else {
+            let Err(error) =
+                pending.reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
+            else {
                 panic!("invalid replacement: {invalid}")
             };
             assert!(error.replacement_error().is_some());
         }
-        let replacement = parse_component_values("hue-rotate(0.10000000000000000001deg)").unwrap();
+        let replacement = CssComponentValues::parse(
+            &CssParser::default(),
+            "hue-rotate(0.10000000000000000001deg)",
+        )
+        .unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -598,14 +620,14 @@ fn pending_angle_reentry_retains_exact_literals_importance_and_replacement_sourc
 #[test]
 fn normalization_retains_exact_angle_literals_in_surviving_source_order() {
     let source = ".a{filter:hue-rotate(0.10000000000000000001deg)!important;image-orientation:0;backdrop-filter:hue-rotate(1e-40turn);filter:var(--angle)}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(
         report.diagnostics().len(),
         1,
         "strict image orientation zero: {:?}",
         report.diagnostics()
     );
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let items: Vec<_> = normalized
         .items()
         .iter()
@@ -766,10 +788,12 @@ fn suppressed_exact_gradient_default_consumes_its_scalar_budget_without_output_b
 fn pending_filter_reentry_rejects_recovered_angle_math_roots() {
     for property in [CssKnownProperty::Filter, CssKnownProperty::BackdropFilter] {
         let source = validated_declaration(property, "var(--angle)", CssImportance::Important);
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending filter")
         };
-        let replacement = parse_component_values("hue-rotate(calc(25deg + 5deg").unwrap();
+        let replacement =
+            CssComponentValues::parse(&CssParser::default(), "hue-rotate(calc(25deg + 5deg")
+                .unwrap();
         let Err(error) = pending.reenter(replacement) else {
             panic!("recovered angle math must not reenter")
         };
@@ -780,10 +804,15 @@ fn pending_filter_reentry_rejects_recovered_angle_math_roots() {
 #[test]
 fn ordinary_gradient_outer_recovery_retains_its_complete_angle_calculation() {
     let css = "background-image:linear-gradient(calc(25deg + 5deg), red, blue";
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert_eq!(report.syntax().len(), 1);
     assert!(!report.is_clean());
-    assert!(validate_style_attribute(css).is_err());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(css)
+            .into_validation_result()
+            .is_err()
+    );
     assert!(
         report
             .diagnostics()
@@ -807,7 +836,7 @@ mod checked_construction {
     use surgeist_css::*;
 
     fn component(text: &str) -> CssComponentValue {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let mut components = values.items().iter().filter(|value| {
             !matches!(
                 value.view(),
@@ -945,7 +974,7 @@ mod checked_construction {
         );
         for text in ["calc(180deg)", "calc(90deg + 90deg)", "min(180deg, 200deg)"] {
             let calculation = CssCalculation::<CssAngle>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default(),
             )
             .unwrap();
@@ -959,7 +988,7 @@ mod checked_construction {
     #[test]
     fn transfer_rejects_recovered_math_at_the_original_implicit_closure() {
         let source = "/*😀*/filter:hue-rotate(calc(25deg + 5deg";
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert_eq!(report.syntax().len(), 1);
         assert!(!report.is_clean());
         let CssKnownPropertyValueRef::Filter(filter) = report.syntax()[0]

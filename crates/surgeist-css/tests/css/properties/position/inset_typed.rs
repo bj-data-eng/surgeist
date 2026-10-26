@@ -1,7 +1,7 @@
 use surgeist_css::*;
 
 fn component(text: &str) -> CssComponentValue {
-    let components = parse_component_values(text).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [value] = components.items() else {
         panic!("one component")
     };
@@ -15,7 +15,7 @@ fn inset(text: &str) -> CssInsetValue {
     let numeric = if text.starts_with("calc(") {
         CssNumeric::<CssLengthPercentage>::try_from_calculation(
             CssCalculation::<CssLengthPercentage>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -28,7 +28,7 @@ fn inset(text: &str) -> CssInsetValue {
 }
 
 fn wrapper(name: &str, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("{name}:{text}"));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     report.syntax()[0].clone()
 }
@@ -276,8 +276,8 @@ fn physical_insets_preserve_all_checked_magnitudes() {
 
 #[test]
 fn physical_wrappers_compare_authored_math_without_diagnostic_origins() {
-    let first = parse_style_attribute("top:calc(1px + 2%);");
-    let second = parse_style_attribute("color:red; top:calc(1px + 2%);");
+    let first = CssParser::default().parse_block_contents("top:calc(1px + 2%);");
+    let second = CssParser::default().parse_block_contents("color:red; top:calc(1px + 2%);");
     assert!(first.is_clean() && second.is_clean());
     let CssKnownPropertyValueRef::Top(left) =
         first.syntax()[0].known().unwrap().property_value().unwrap()
@@ -312,7 +312,7 @@ fn physical_wrappers_compare_authored_math_without_diagnostic_origins() {
     assert_ne!(left, spelling);
 
     let first = wrapper("inset", "auto calc(1px + 2%)");
-    let second = parse_style_attribute("color:red; inset:auto calc(1px + 2%);");
+    let second = CssParser::default().parse_block_contents("color:red; inset:auto calc(1px + 2%);");
     assert!(second.is_clean());
     let CssKnownPropertyValueRef::Inset(left) = first.known().unwrap().property_value().unwrap()
     else {

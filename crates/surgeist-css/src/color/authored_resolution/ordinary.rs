@@ -97,10 +97,7 @@ fn maximum(limits: CssAuthoredColorOrdinaryLimits, bank: CssColorBank) -> usize 
         CssColorBank::Evaluation => limits.evaluation_records,
     }
 }
-/// Resolve borrowed checked values without serialization, source reconstruction,
-/// or an additional controller. Required and actual retained capacities are
-/// checked separately for each of the three banks and the real path allocation.
-pub fn resolve_authored_color<'authored, 'facts>(
+pub(crate) fn resolve_authored_color<'authored, 'facts>(
     root: &'authored CssColor,
     facts: &'facts CssColorFacts<'facts>,
     expected: CssColorFactIdentity,
@@ -231,4 +228,22 @@ pub fn resolve_authored_color<'authored, 'facts>(
         facts,
         outcome,
     })
+}
+impl CssColor {
+    /// Resolve borrowed checked values without serialization, source reconstruction,
+    /// or an additional controller. Required and actual retained capacities are
+    /// checked separately for each of the three banks and the real path allocation.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exhausted ordinary resource, the refused allocation or the
+    /// semantic color failure; a standard color failure is a successful result.
+    pub fn resolve<'authored, 'facts>(
+        &'authored self,
+        facts: &'facts CssColorFacts<'facts>,
+        expected: CssColorFactIdentity,
+        limits: CssAuthoredColorOrdinaryLimits,
+    ) -> Result<CssAuthoredColorResult<'authored, 'facts>, CssColorResolveError> {
+        resolve_authored_color(self, facts, expected, limits)
+    }
 }

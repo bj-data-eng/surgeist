@@ -320,8 +320,8 @@ fn negative_math_remains_authored_while_negative_ordinary_values_fail_admission(
         (CssKnownProperty::BorderImageWidth, "-1"),
         (CssKnownProperty::Filter, "contrast(-1)"),
     ] {
-        let report =
-            parse_style_attribute(&format!("{}:{text};height:1px", property.canonical_name()));
+        let report = CssParser::default()
+            .parse_block_contents(format!("{}:{text};height:1px", property.canonical_name()));
         assert_eq!(report.syntax().len(), 1);
         assert_eq!(report.diagnostics().len(), 1);
         assert_eq!(
@@ -344,24 +344,26 @@ fn shorthand_and_backdrop_reentry_retains_checked_contextual_payloads_and_occurr
             format!("contrast({SOURCE})"),
         ),
     ] {
-        let source = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let source = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components("var(--numeric)"),
             CssImportance::Important,
         )
         .unwrap();
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending consumer")
         };
         let replacement = components(&text);
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             replacement.clone(),
             CssImportance::Important,
         )
         .unwrap();
         let CssExpansion::Contributions(CssContributions::Longhands(expected)) =
-            expand_declaration(&checked).unwrap()
+            checked.expand().unwrap()
         else {
             panic!("checked contributions")
         };

@@ -1,13 +1,12 @@
 use crate::css::support::{graph_cssom, graph_specified};
 use surgeist_css::{
-    CssKnownProperty, CssPropertyNameRef, CssSpecifiedDeclarationBlock, parse_declaration_list_text,
+    CssDeclaration, CssKnownProperty, CssParsedStyleSelectors, CssParser, CssPropertyNameRef,
+    CssPropertyTarget, CssSpecifiedDeclarationBlock, CssStyleSelectorContext,
 };
 
 #[test]
 fn complete_margin_getter_crosses_logical_interference_without_reordering_css_text() {
-    let report = parse_declaration_list_text(
-        "margin-top:1px; margin-inline-start:7px; margin-right:2px; margin-bottom:3px; margin-left:4px",
-    );
+    let report = CssParser::default().parse_block_contents("margin-top:1px; margin-inline-start:7px; margin-right:2px; margin-bottom:3px; margin-left:4px");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let block =
         CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
@@ -28,7 +27,7 @@ fn complete_margin_getter_crosses_logical_interference_without_reordering_css_te
 }
 
 fn block(source: &str) -> CssSpecifiedDeclarationBlock {
-    let report = parse_declaration_list_text(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
         .unwrap()
@@ -140,7 +139,7 @@ fn selected_pending_members_retain_origin_and_reject_duplicates_atomically() {
             .len(),
         1
     );
-    let report = parse_declaration_list_text("inset:var(--i)");
+    let report = CssParser::default().parse_block_contents("inset:var(--i)");
     assert!(
         CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
             .unwrap_err()
@@ -174,10 +173,8 @@ fn mapping_order_relation_uses_canonical_terminals_and_excludes_unrelated_groups
 
 #[test]
 fn empty_live_nested_declarations_are_retained_and_filtered_from_style_and_media_text() {
-    use surgeist_css::{CssGroupPreludeRef, CssRule, CssRuleGraphInput, parse_sheet};
-    let report = parse_sheet(
-        ".host { color:red; & > .child { opacity:0.5 } margin:1px } @media screen { .other { color:blue } }",
-    );
+    use surgeist_css::{CssGroupPreludeRef, CssRule, CssRuleGraphInput};
+    let report = CssParser::default().parse_sheet(".host { color:red; & > .child { opacity:0.5 } margin:1px } @media screen { .other { color:blue } }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(style), CssRule::Media(media)] = report.syntax().rules() else {
         panic!("rules");
@@ -248,7 +245,6 @@ fn empty_live_nested_declarations_are_retained_and_filtered_from_style_and_media
 fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources() {
     use surgeist_css::{
         CssGroupPreludeRef, CssRule, CssRuleGraphInput, CssSerializationLimits as Limits,
-        parse_sheet,
     };
 
     let input = block("margin-left:1px; padding-left:2px");
@@ -283,7 +279,7 @@ fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources(
         exact.serialize_cssom(Default::default()).unwrap(),
         "margin-left: 1px; padding-left: 2px;"
     );
-    let report = parse_sheet("@media screen { .a {} }");
+    let report = CssParser::default().parse_sheet("@media screen { .a {} }");
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("media");
     };
@@ -433,15 +429,14 @@ fn selected_keyframe_domain_rejects_priority_and_animation_terminals() {
 fn selected_completed_replacements_and_programmatic_sources_keep_their_own_payloads() {
     use surgeist_css::{
         CssComponentValue, CssComponentValues, CssDeclarationList, CssExpansion, CssImportance,
-        expand_declaration, parse_component_values, parse_property_value,
     };
-    let original = parse_declaration_list_text("padding-inline:var(--p)");
-    let CssExpansion::Pending(pending) = expand_declaration(&original.syntax()[0]).unwrap() else {
+    let original = CssParser::default().parse_block_contents("padding-inline:var(--p)");
+    let CssExpansion::Pending(pending) = original.syntax()[0].expand().unwrap() else {
         panic!("pending");
     };
     let expansion = CssExpansion::Contributions(
         pending
-            .reenter(parse_component_values("9px 10px").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "9px 10px").unwrap())
             .unwrap(),
     );
     let projected =
@@ -461,8 +456,9 @@ fn selected_completed_replacements_and_programmatic_sources_keep_their_own_paylo
             .source()
             .same_occurrence(&original.syntax()[0])
     );
-    let supplied = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    let supplied = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         CssComponentValues::try_new(
             vec![CssComponentValue::try_ident("red").unwrap()],
             Default::default(),
@@ -504,10 +500,9 @@ fn selected_completed_replacements_and_programmatic_sources_keep_their_own_paylo
 fn edited_group_views_reuse_preludes_and_retain_typed_literal_unavailability() {
     use surgeist_css::{
         CssGroupPreludeRef as Prelude, CssRule, CssRuleCssomFormat, CssRuleGraphInput as View,
-        parse_sheet,
     };
-    let report =
-        parse_sheet("@supports (display:grid) {} @container (width>1px) {} @layer theme {}");
+    let report = CssParser::default()
+        .parse_sheet("@supports (display:grid) {} @container (width>1px) {} @layer theme {}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [
         CssRule::Supports(supports),
@@ -552,10 +547,15 @@ fn edited_group_views_reuse_preludes_and_retain_typed_literal_unavailability() {
 
 #[test]
 fn edited_style_accepts_detached_checked_selector_list_without_rebuilding_a_rule() {
-    use surgeist_css::{CssNamespaceContext, CssRuleGraphInput, parse_selector_list};
-    let report = parse_selector_list("*.edited, #next::before", &CssNamespaceContext::default());
+    use surgeist_css::{CssNamespaceContext, CssRuleGraphInput};
+    let report = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        "*.edited, #next::before",
+        &CssNamespaceContext::default(),
+        CssStyleSelectorContext::Ordinary,
+    );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let selectors = report.syntax().as_ref().unwrap();
+    let selectors = report.syntax().as_ref().unwrap().selectors();
     let original = block("margin:1px 2px 3px 4px");
     let edited = CssSpecifiedDeclarationBlock::try_from_entries(
         &original.entries()[1..],
@@ -572,8 +572,8 @@ fn edited_style_accepts_detached_checked_selector_list_without_rebuilding_a_rule
 
 #[test]
 fn selected_page_supported_property_terminals_keep_page_sources_and_survivors() {
-    use surgeist_css::{CssRule, parse_sheet};
-    let report = parse_sheet("@page { margin:1px 2px 3px 4px; --note:paper }");
+    use surgeist_css::CssRule;
+    let report = CssParser::default().parse_sheet("@page { margin:1px 2px 3px 4px; --note:paper }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Page(page)] = report.syntax().rules() else {
         panic!("Page");
@@ -610,9 +610,9 @@ fn selected_page_supported_property_terminals_keep_page_sources_and_survivors() 
 
 #[test]
 fn edited_scoped_styles_borrow_scope_context_and_preserve_scoped_descendant_origins() {
-    use surgeist_css::{CssRule, CssRuleGraphInput as View, parse_sheet};
-    let report =
-        parse_sheet("@scope (.host) { & .child { color:red; & > .nested { opacity:0.5 } } }");
+    use surgeist_css::{CssRule, CssRuleGraphInput as View};
+    let report = CssParser::default()
+        .parse_sheet("@scope (.host) { & .child { color:red; & > .nested { opacity:0.5 } } }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("scope");

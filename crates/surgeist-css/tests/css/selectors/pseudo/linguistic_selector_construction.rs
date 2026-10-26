@@ -2,8 +2,8 @@
 use crate::css::support::color_and_selector_fixtures::assert_strict_validation_rejects;
 use surgeist_css::{
     CssDirectionality, CssEmptyLanguageRangeList, CssLanguageRange, CssLanguageRangeKind,
-    CssLanguageRangeList, CssNamespaceContext, CssPseudoClass, CssSelector, CssValueOrigin,
-    parse_selector,
+    CssLanguageRangeList, CssNamespaceContext, CssParser, CssPseudoClass, CssSelector,
+    CssValueOrigin,
 };
 
 #[test]
@@ -25,7 +25,11 @@ fn decoded_identifiers_escape_without_restricting_direction_or_language_matching
         assert!(matches!(direction.origin(), CssValueOrigin::Programmatic));
         assert!(matches!(language.origin(), CssValueOrigin::Programmatic));
         for source in [format!(":dir({css})"), format!(":lang({css})")] {
-            let parsed = parse_selector(&source, &CssNamespaceContext::default());
+            let parsed = CssSelector::parse(
+                &CssParser::default(),
+                &source,
+                &CssNamespaceContext::default(),
+            );
             assert!(parsed.is_clean(), "{source}: {parsed:?}");
             match parsed.syntax() {
                 Some(CssSelector::PseudoClass(CssPseudoClass::Dir(value))) => {
@@ -57,7 +61,11 @@ fn strings_preserve_empty_space_and_punctuation_with_canonical_quotes() {
         assert_eq!(range.to_css_string(), css);
         assert!(matches!(range.origin(), CssValueOrigin::Programmatic));
         let source = format!(":lang({css})");
-        let parsed = parse_selector(&source, &CssNamespaceContext::default());
+        let parsed = CssSelector::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         assert!(parsed.is_clean(), "{source}: {parsed:?}");
         let Some(CssSelector::PseudoClass(CssPseudoClass::Lang(list))) = parsed.syntax() else {
             panic!("language list")
@@ -105,7 +113,11 @@ fn lists_are_nonempty_and_preserve_order_duplicates_and_token_forms() {
 #[test]
 fn parsed_tokens_keep_original_spans_and_canonicalize_only_when_requested() {
     let source = r#"/*😀*/:lang( \65 n , '\65 n', EN )"#;
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{report:?}");
     let Some(CssSelector::PseudoClass(CssPseudoClass::Lang(list))) = report.syntax() else {
         panic!("language list")
@@ -133,7 +145,11 @@ fn parsed_tokens_keep_original_spans_and_canonicalize_only_when_requested() {
     }
     assert_ne!(list.ranges()[0], CssLanguageRange::try_ident("en").unwrap());
     let direction_source = r":dir(\4c TR)";
-    let report = parse_selector(direction_source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        direction_source,
+        &CssNamespaceContext::default(),
+    );
     let Some(CssSelector::PseudoClass(CssPseudoClass::Dir(direction))) = report.syntax() else {
         panic!("direction token")
     };
@@ -165,7 +181,11 @@ fn decoded_controls_serialize_and_reparse_as_single_tokens() {
         ] {
             assert_eq!(range.to_css_string(), expected);
             let source = format!(":lang({expected})");
-            let report = parse_selector(&source, &CssNamespaceContext::default());
+            let report = CssSelector::parse(
+                &CssParser::default(),
+                &source,
+                &CssNamespaceContext::default(),
+            );
             assert!(report.is_clean(), "{source}: {report:?}");
             let Some(CssSelector::PseudoClass(CssPseudoClass::Lang(list))) = report.syntax() else {
                 panic!("language argument")
@@ -184,7 +204,11 @@ fn source_nul_is_tokenizer_replacement_while_construction_rejects_nul() {
         ":lang(\0)",
         r":dir(\0 )",
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.is_clean(), "{source:?}: {report:?}");
         let (value, origin) = match report.syntax() {
             Some(CssSelector::PseudoClass(CssPseudoClass::Lang(list))) => {
@@ -213,7 +237,11 @@ fn retained_linguistic_arguments_keep_the_original_eof_closure_contract() {
         (":lang(\"en", "en", 2),
         ("/*😀*/\r\n:lang(\"en", "en", 2),
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         let value = match report.syntax() {
             Some(CssSelector::PseudoClass(CssPseudoClass::Dir(direction))) => direction.as_str(),
             Some(CssSelector::PseudoClass(CssPseudoClass::Lang(list))) => list.ranges()[0].as_str(),
@@ -245,7 +273,11 @@ fn retained_linguistic_arguments_keep_the_original_eof_closure_contract() {
 #[test]
 fn actual_bad_strings_reject_instead_of_claiming_implicit_retention() {
     for source in [":lang(\"en\n)", ":lang('en\r\n)"] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.syntax().is_none(), "{source:?}: {report:?}");
         assert!(!report.is_clean());
         let [diagnostic] = report.diagnostics() else {

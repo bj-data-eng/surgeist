@@ -194,7 +194,7 @@ fn transform_origin_checks_planar_grammar_and_keeps_optional_pure_length_z() {
     );
     assert!(
         CssCalculation::<CssLength>::try_from_components(
-            parse_component_values("calc(2px + 3%)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(2px + 3%)").unwrap(),
             Default::default()
         )
         .is_err()
@@ -264,7 +264,8 @@ fn exact_percentage(
 }
 
 fn signed_length(css: &str) -> surgeist_css::CssNumeric<surgeist_css::CssLength> {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+    let components =
+        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
     if css.contains('(') {
         surgeist_css::CssNumeric::<surgeist_css::CssLength>::try_from_calculation(
             surgeist_css::CssCalculation::<surgeist_css::CssLength>::try_from_components(
@@ -284,7 +285,8 @@ fn signed_length(css: &str) -> surgeist_css::CssNumeric<surgeist_css::CssLength>
 fn signed_length_percentage(
     css: &str,
 ) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage> {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+    let components =
+        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
     if css.contains('(') {
         surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_calculation(
             surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(

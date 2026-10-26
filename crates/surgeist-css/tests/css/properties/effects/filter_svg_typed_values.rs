@@ -8,8 +8,7 @@ use crate::css::support::retained_checked_declaration as declaration;
 use surgeist_css::*;
 
 fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("terminal contribution")
     };
@@ -299,11 +298,9 @@ fn flood_math_payloads_retain_checked_roots_and_unresolved_percentage_hint() {
 
 #[test]
 fn normalization_and_pending_retry_expose_property_coupled_typed_payloads() {
-    let report = parse_sheet(
-        ".x{flood-color:red;flood-opacity:-25%;lighting-color:currentcolor;color-interpolation-filters:auto}",
-    );
+    let report = CssParser::default().parse_sheet(".x{flood-color:red;flood-opacity:-25%;lighting-color:currentcolor;color-interpolation-filters:auto}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let mut order = 0;
     for item in normalized.items() {
         let CssNormalizedItem::Declaration(declaration) = item else {
@@ -353,15 +350,15 @@ fn normalization_and_pending_retry_expose_property_coupled_typed_payloads() {
     assert_eq!(order, 4);
 
     let source = declaration(CssKnownProperty::FloodOpacity, "var(--alpha)");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending alpha")
     };
     assert_reentry_rejected(
-        handle.reenter(parse_component_values("red").unwrap()),
+        handle.reenter(CssComponentValues::parse(&CssParser::default(), "red").unwrap()),
         CssKnownProperty::FloodOpacity,
         Some("red"),
     );
-    let replacement = parse_component_values("-25%").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "-25%").unwrap();
     let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap() else {
         panic!("alpha terminal")
     };

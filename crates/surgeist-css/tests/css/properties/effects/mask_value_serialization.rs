@@ -195,7 +195,7 @@ fn constructors_preserve_order_and_omitted_image_position_size_repeat() {
 #[test]
 fn symbolic_math_keeps_source_graph_and_non_bmp_origin_after_failure_and_retry() {
     let source = "/*😀*/mask:calc(10px + 1em) top / contain";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Mask(wrapper) = report.syntax()[0]
         .known()

@@ -5,8 +5,8 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssComponentValues, CssIdent, CssImageValue,
-    CssKnownPropertyValueRef, CssSerializationLimits, CssUrl, CssUrlFunction, CssUrlModifier,
-    CssUrlModifierFunction, CssValueTokenRef, parse_component_values, parse_style_attribute,
+    CssKnownPropertyValueRef, CssParser, CssSerializationLimits, CssUrl, CssUrlFunction,
+    CssUrlModifier, CssUrlModifierFunction, CssValueTokenRef,
 };
 
 fn limits(nodes: usize, bytes: usize) -> CssSerializationLimits {
@@ -14,7 +14,7 @@ fn limits(nodes: usize, bytes: usize) -> CssSerializationLimits {
 }
 
 fn parsed_background_url(source: &str) -> (CssUrl, bool) {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     let [declaration] = report.syntax().as_slice() else {
         panic!("one retained declaration: {source}")
     };
@@ -77,7 +77,10 @@ fn parsed_function_and_modifier_names_keep_decoded_case_and_order() {
         "asset.svg",
         vec![
             CssUrlModifier::Ident(CssIdent::try_new("CORS").unwrap()),
-            function_modifier("integrity", parse_component_values("\"sha256\"").unwrap()),
+            function_modifier(
+                "integrity",
+                CssComponentValues::parse(&CssParser::default(), "\"sha256\"").unwrap(),
+            ),
             CssUrlModifier::Ident(CssIdent::try_new("a b").unwrap()),
         ],
     );
@@ -182,7 +185,7 @@ fn comments_and_whitespace_in_opaque_arguments_remain_meaningful() {
         "x",
         vec![function_modifier(
             "m",
-            parse_component_values(" a/**/b ").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), " a/**/b ").unwrap(),
         )],
     );
     assert_eq!(
@@ -199,7 +202,10 @@ fn one_url_charges_aggregate_target_modifiers_and_nested_argument_nodes() {
         "x",
         vec![
             CssUrlModifier::Ident(CssIdent::try_new("cors").unwrap()),
-            function_modifier("m", parse_component_values("a b").unwrap()),
+            function_modifier(
+                "m",
+                CssComponentValues::parse(&CssParser::default(), "a b").unwrap(),
+            ),
         ],
     );
     let expected = "url(\"x\" cors m(a b))";

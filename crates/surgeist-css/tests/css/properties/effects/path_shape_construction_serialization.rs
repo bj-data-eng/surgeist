@@ -39,7 +39,7 @@ fn decoded_grammar_errors_locate_the_first_failure_or_incomplete_end() {
 #[test]
 fn decoded_identity_ignores_token_provenance_but_preserves_svg_spelling() {
     let source = "'M\\30  0'";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let component = components.items()[0].clone();
     let parsed = CssPathData::try_from_component(component.clone()).unwrap();
     assert_eq!(parsed.as_str(), "M0 0");
@@ -73,7 +73,7 @@ fn component_construction_rejects_non_string_and_recovered_string_with_original_
         assert_eq!(error.decoded_byte_offset(), None);
     }
     for source in ["'M0 0", "'M0 0\\"] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let error = CssPathData::try_from_component(values.items()[0].clone()).unwrap_err();
         assert!(error.is_recovered_input(), "{error:?}");
         assert_eq!(error.decoded_byte_offset(), None);
@@ -89,7 +89,10 @@ fn component_construction_rejects_non_string_and_recovered_string_with_original_
 #[test]
 fn escaped_component_error_offsets_remain_decoded_and_do_not_shift_source_spans() {
     let source = "'M\\30  0L1e+'";
-    let component = parse_component_values(source).unwrap().items()[0].clone();
+    let component = CssComponentValues::parse(&CssParser::default(), source)
+        .unwrap()
+        .items()[0]
+        .clone();
     let origin = component.origin().clone();
     let error = CssPathData::try_from_component(component).unwrap_err();
     assert!(error.is_invalid_path_data(), "{error:?}");
@@ -100,7 +103,10 @@ fn escaped_component_error_offsets_remain_decoded_and_do_not_shift_source_spans(
     };
     assert_eq!(parsed.span().start().byte_offset().value(), 0);
     assert_eq!(parsed.span().end().byte_offset().value(), source.len());
-    let empty = parse_component_values("''").unwrap().items()[0].clone();
+    let empty = CssComponentValues::parse(&CssParser::default(), "''")
+        .unwrap()
+        .items()[0]
+        .clone();
     let origin = empty.origin().clone();
     let error = CssPathData::try_from_component(empty).unwrap_err();
     assert!(error.is_empty_path(), "{error:?}");
@@ -110,7 +116,7 @@ fn escaped_component_error_offsets_remain_decoded_and_do_not_shift_source_spans(
 
 #[test]
 fn path_composition_and_css_escaping_obey_one_atomic_cumulative_budget() {
-    let component = parse_component_values("' M0\\9 0\\d L1\\a 2 '")
+    let component = CssComponentValues::parse(&CssParser::default(), "' M0\\9 0\\d L1\\a 2 '")
         .unwrap()
         .items()[0]
         .clone();

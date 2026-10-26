@@ -6,12 +6,12 @@ use surgeist_css::{
     CssFontVariantNumeric, CssFontVariantNumericFigure, CssFontVariantNumericFraction,
     CssFontVariantNumericSpacing, CssFontVariantPosition, CssFontVariantValue,
     CssGenericFontFamily, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
-    CssLineHeight, CssSystemFont, parse_style_attribute,
+    CssLineHeight, CssParser, CssSystemFont,
 };
 
 #[test]
 fn font_variant_longhands_and_shorthand_enforce_keyword_groups() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "font-variant-caps: all-small-caps; ",
         "font-variant-east-asian: ruby jis04 full-width; ",
         "font-variant-ligatures: no-contextual common-ligatures; ",
@@ -177,7 +177,8 @@ fn font_variant_keywords_unordered_groups_and_authored_values_are_exact() {
         "unicase",
         "titling-caps",
     ] {
-        let report = parse_style_attribute(&format!("font-variant-caps: {keyword}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("font-variant-caps: {keyword}"));
         assert!(report.is_clean(), "{keyword}: {:?}", report.diagnostics());
     }
 
@@ -218,11 +219,12 @@ fn font_variant_keywords_unordered_groups_and_authored_values_are_exact() {
         "proportional-width",
         "ruby",
     ] {
-        let report = parse_style_attribute(&format!("font-variant: {keyword}"));
+        let report = CssParser::default().parse_block_contents(format!("font-variant: {keyword}"));
         assert!(report.is_clean(), "{keyword}: {:?}", report.diagnostics());
     }
     for keyword in ["normal", "sub", "super"] {
-        let report = parse_style_attribute(&format!("font-variant-position: {keyword}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("font-variant-position: {keyword}"));
         assert!(report.is_clean(), "{keyword}: {:?}", report.diagnostics());
     }
     for keyword in [
@@ -237,7 +239,8 @@ fn font_variant_keywords_unordered_groups_and_authored_values_are_exact() {
         "contextual",
         "no-contextual",
     ] {
-        let report = parse_style_attribute(&format!("font-variant-ligatures: {keyword}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("font-variant-ligatures: {keyword}"));
         assert!(report.is_clean(), "{keyword}: {:?}", report.diagnostics());
     }
     for keyword in [
@@ -251,7 +254,8 @@ fn font_variant_keywords_unordered_groups_and_authored_values_are_exact() {
         "ordinal",
         "slashed-zero",
     ] {
-        let report = parse_style_attribute(&format!("font-variant-numeric: {keyword}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("font-variant-numeric: {keyword}"));
         assert!(report.is_clean(), "{keyword}: {:?}", report.diagnostics());
     }
     for keyword in [
@@ -266,19 +270,20 @@ fn font_variant_keywords_unordered_groups_and_authored_values_are_exact() {
         "proportional-width",
         "ruby",
     ] {
-        let report = parse_style_attribute(&format!("font-variant-east-asian: {keyword}"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("font-variant-east-asian: {keyword}"));
         assert!(report.is_clean(), "{keyword}: {:?}", report.diagnostics());
     }
 
-    let unordered = parse_style_attribute(concat!(
+    let unordered = CssParser::default().parse_block_contents(concat!(
         "font-variant-ligatures: contextual historical-ligatures common-ligatures discretionary-ligatures; ",
         "font-variant-numeric: ordinal stacked-fractions proportional-nums slashed-zero lining-nums; ",
         "font-variant-east-asian: ruby proportional-width traditional",
     ));
     assert!(unordered.is_clean(), "{:?}", unordered.diagnostics());
 
-    let compatibility =
-        parse_style_attribute("font-variant: normal; font-variant: small-caps; font-variant: none");
+    let compatibility = CssParser::default()
+        .parse_block_contents("font-variant: normal; font-variant: small-caps; font-variant: none");
     assert!(
         compatibility.is_clean(),
         "{:?}",
@@ -320,7 +325,7 @@ fn font_variant_keywords_unordered_groups_and_authored_values_are_exact() {
 
 #[test]
 fn font_variant_globals_substitution_duplicates_and_conflicts_are_exact() {
-    let symbolic = parse_style_attribute(concat!(
+    let symbolic = CssParser::default().parse_block_contents(concat!(
         "font-variant-caps: inherit; ",
         "font-variant-east-asian: var(--east); ",
         "font-variant-ligatures: unset; ",
@@ -387,7 +392,7 @@ fn font_variant_globals_substitution_duplicates_and_conflicts_are_exact() {
         "font-variant: small-caps, ordinal",
     ] {
         let source = format!("{invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -402,7 +407,9 @@ fn font_variant_globals_substitution_duplicates_and_conflicts_are_exact() {
         );
 
         assert_eq!(
-            surgeist_css::validate_style_attribute(&source)
+            surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict parsing rejects the recovered declaration")
                 .diagnostics(),
             report.diagnostics(),
@@ -413,7 +420,7 @@ fn font_variant_globals_substitution_duplicates_and_conflicts_are_exact() {
 
 #[test]
 fn kerning_size_adjust_and_synthesis_follow_fonts3() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "font-kerning: normal; ",
         "font-size-adjust: 0.5; ",
         "font-synthesis: style weight; ",
@@ -494,7 +501,7 @@ fn kerning_size_adjust_and_synthesis_follow_fonts3() {
 
 #[test]
 fn font_control_branches_globals_substitution_and_mutations_are_exact() {
-    let branches = parse_style_attribute(concat!(
+    let branches = CssParser::default().parse_block_contents(concat!(
         "font-kerning: auto; font-kerning: normal; font-kerning: none; ",
         "font-size-adjust: none; font-size-adjust: 0; ",
         "font-synthesis: none; font-synthesis: weight; font-synthesis: style; ",
@@ -530,7 +537,7 @@ fn font_control_branches_globals_substitution_and_mutations_are_exact() {
         "font-synthesis: weight, style",
     ] {
         let source = format!("{invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -545,7 +552,9 @@ fn font_control_branches_globals_substitution_and_mutations_are_exact() {
         );
 
         assert_eq!(
-            surgeist_css::validate_style_attribute(&source)
+            surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict parsing rejects the recovered declaration")
                 .diagnostics(),
             report.diagnostics(),
@@ -556,7 +565,7 @@ fn font_control_branches_globals_substitution_and_mutations_are_exact() {
 
 #[test]
 fn font_size_family_line_height_and_shorthand_follow_fonts3() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "font-size: medium; ",
         "line-height: 1.25; ",
         "font-family: \"inherit\", Avenir Next, serif; ",
@@ -658,7 +667,7 @@ fn font_keywords_generics_globals_and_signed_boundaries_are_exact() {
         "font-family: serif, sans-serif, cursive, fantasy, monospace; ",
         "font-family: inherit; font-family: \"inherit\"",
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 15);
     for (index, expected) in [
@@ -713,7 +722,7 @@ fn font_keywords_generics_globals_and_signed_boundaries_are_exact() {
         CssKnownDeclaredValueRef::Global(_)
     ));
 
-    let globals = parse_style_attribute(concat!(
+    let globals = CssParser::default().parse_block_contents(concat!(
         "font-size: initial; line-height: unset; ",
         "font-family: revert; font: inherit",
     ));
@@ -741,7 +750,7 @@ fn font_keywords_generics_globals_and_signed_boundaries_are_exact() {
         "font-family: My serif",
     ] {
         let source = format!("{invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -762,7 +771,7 @@ fn system_fonts_are_whole_values_and_explicit_components_are_unique() {
         ("small-caption", CssSystemFont::SmallCaption),
         ("status-bar", CssSystemFont::StatusBar),
     ] {
-        let report = parse_style_attribute(&format!("font: {keyword}"));
+        let report = CssParser::default().parse_block_contents(format!("font: {keyword}"));
         assert!(report.is_clean(), "{keyword}: {:?}", report.diagnostics());
         let CssKnownPropertyValueRef::Font(value) = report.syntax()[0]
             .known()
@@ -775,7 +784,8 @@ fn system_fonts_are_whole_values_and_explicit_components_are_unique() {
         assert_eq!(value.value(), &CssFontValue::System(expected));
     }
 
-    let legacy = parse_style_attribute("font: italic small-caps 700 condensed 16px/normal Arial");
+    let legacy = CssParser::default()
+        .parse_block_contents("font: italic small-caps 700 condensed 16px/normal Arial");
     assert!(legacy.is_clean(), "{:?}", legacy.diagnostics());
     let CssKnownPropertyValueRef::Font(legacy) = legacy.syntax()[0]
         .known()
@@ -807,7 +817,7 @@ fn system_fonts_are_whole_values_and_explicit_components_are_unique() {
         "font: 16px serif/1.2",
     ] {
         let source = format!("{invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
     }
@@ -815,7 +825,7 @@ fn system_fonts_are_whole_values_and_explicit_components_are_unique() {
 
 #[test]
 fn font_shorthand_retains_ambiguous_normal_before_explicit_style() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "font: normal italic 16px serif; ",
         "font: normal normal italic 16px serif; ",
         "font: normal normal normal italic 16px serif; ",
@@ -855,7 +865,7 @@ fn font_shorthand_retains_ambiguous_normal_before_explicit_style() {
 
 #[test]
 fn opentype_tags_and_indices_enforce_ascii_and_nonnegative_domains() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "font-feature-settings: \"éabc\"; font-feature-settings: \"kern\" -1; color: red",
     );
 
@@ -869,7 +879,7 @@ fn opentype_tags_and_indices_enforce_ascii_and_nonnegative_domains() {
 
 #[test]
 fn font_feature_settings_preserve_authored_values() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         r#"font-feature-settings: "kern", "\6c iga" on, "zero" off, "ss01" 0, "cv01" 12"#,
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -928,7 +938,7 @@ fn opentype_tag_length_unicode_and_index_boundaries_recover() {
         r#"font-feature-settings: "kern" -1"#,
     ] {
         let source = format!("{invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(

@@ -12,7 +12,7 @@ use crate::{
     DomSourceProgress, DomSourceRequest, DomStyleAction, DomStyleCssomOwnerBinding,
     DomStyleCssomRoot, DomStyleInlineCspObservation, Namespace, NodeId,
 };
-use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
 use surgeist_cssom::{
     CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs, CssomStore,
 };
@@ -310,14 +310,23 @@ fn populate(dom: &mut Dom, times: &mut Times, cancel: &AtomicBool) -> SourceIds 
         let sheet_limits = CssUtf16InputLimits::default();
         let sheet_poll = || Ok::<_, ()>(());
         let report = timed(&mut times.css_parsing, || {
-            context.parse_sheet_utf16_with_limits(sheet_text, sheet_limits, sheet_poll)
+            CssParser::new(context, Default::default()).parse_sheet_utf16(
+                sheet_text,
+                sheet_limits,
+                sheet_poll,
+            )
         })
         .unwrap();
         let media_text = Arc::new(Vec::new());
         let media_limits = CssUtf16InputLimits::default();
         let media_poll = || Ok::<_, ()>(());
         let media = timed(&mut times.css_parsing, || {
-            context.parse_media_query_list_utf16_with_limits(media_text, media_limits, media_poll)
+            CssMediaQueryList::parse_utf16(
+                &CssParser::new(context, Default::default()),
+                media_text,
+                media_limits,
+                media_poll,
+            )
         })
         .unwrap();
         let mut inputs = CssomSheetInputs::external(version, true);

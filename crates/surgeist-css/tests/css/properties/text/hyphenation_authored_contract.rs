@@ -304,7 +304,7 @@ fn pending(name: &str) {
     for input in pending_inputs(name) {
         for source in fronts(name, input) {
             let before = source.clone();
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("one pending occurrence")
             };
             assert!(handle.source().same_occurrence(&source));
@@ -325,7 +325,9 @@ fn pending(name: &str) {
                 for _ in 0..2 {
                     assert!(
                         handle
-                            .reenter(parse_component_values(text).unwrap())
+                            .reenter(
+                                CssComponentValues::parse(&CssParser::default(), text).unwrap()
+                            )
                             .unwrap_err()
                             .is_residual_substitution()
                     );
@@ -336,7 +338,7 @@ fn pending(name: &str) {
                 "auto!important",
                 "auto;color:red",
             ]) {
-                let replacement = parse_component_values(text).unwrap();
+                let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
                 let snapshot = replacement.clone();
                 for _ in 0..2 {
                     let error = handle.reenter(replacement.clone()).unwrap_err();
@@ -348,7 +350,7 @@ fn pending(name: &str) {
                 assert_eq!(replacement, snapshot);
             }
             for &(text, canonical) in positives(name) {
-                let replacement = parse_component_values(text).unwrap();
+                let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
                 let snapshot = replacement.clone();
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
@@ -398,7 +400,7 @@ fn pending(name: &str) {
                 assert_eq!(replacement, snapshot);
             }
             for (text, keyword) in GLOBALS {
-                let replacement = parse_component_values(text).unwrap();
+                let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
                 else {
@@ -481,7 +483,7 @@ fn closure_inputs(name: &str) -> Vec<String> {
 }
 fn closure(name: &str) {
     for text in closure_inputs(name) {
-        let components = parse_component_values(&text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
         let before = components.clone();
         let origin = implicit_origin(&components);
         for grammar in [false, true] {
@@ -707,11 +709,11 @@ fn recovered_replacements_keep_original_eof_and_residual_priority_then_allow_ret
     for name in FAMILY {
         let source = checked(name, "var(--hyphen)", false);
         let before = source.clone();
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         for text in closure_inputs(name) {
-            let components = parse_component_values(&text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
             let origin = implicit_origin(&components);
             for _ in 0..2 {
                 let error = handle.reenter(components.clone()).unwrap_err();
@@ -725,7 +727,7 @@ fn recovered_replacements_keep_original_eof_and_residual_priority_then_allow_ret
                 }
             }
         }
-        let replacement = parse_component_values(initial(name)).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), initial(name)).unwrap();
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
             panic!("successful retry")
@@ -758,9 +760,14 @@ fn browser_recovery_retains_diagnostics_and_one_normalized_original_occurrence()
         }
         for text in texts {
             let css = format!(".a{{{name}:{text}");
-            let report = parse_sheet(&css);
+            let report = CssParser::default().parse_sheet(&css);
             assert!(!report.is_clean());
-            assert!(validate_sheet(&css).is_err());
+            assert!(
+                CssParser::default()
+                    .parse_sheet(&css)
+                    .into_validation_result()
+                    .is_err()
+            );
             assert!(
                 report
                     .diagnostics()
@@ -769,7 +776,7 @@ fn browser_recovery_retains_diagnostics_and_one_normalized_original_occurrence()
             );
             let before = report.clone();
             let exact = CssNormalizationLimits::try_new(0, 1, 1, 1).unwrap();
-            let normalized = normalize_report_with_limits(&report, exact).unwrap();
+            let normalized = report.normalize(exact).unwrap();
             assert_eq!(normalized.diagnostics(), report.diagnostics());
             let declarations: Vec<_> = normalized
                 .syntax()
@@ -796,11 +803,9 @@ fn browser_recovery_retains_diagnostics_and_one_normalized_original_occurrence()
                 }
                 _ => panic!("one retained terminal or pending handle"),
             }
-            let error = normalize_report_with_limits(
-                &report,
-                CssNormalizationLimits::try_new(0, 1, 1, 0).unwrap(),
-            )
-            .unwrap_err();
+            let error = report
+                .normalize(CssNormalizationLimits::try_new(0, 1, 1, 0).unwrap())
+                .unwrap_err();
             assert_eq!(
                 error.exhausted_limit(),
                 Some((CssNormalizationResource::Contributions, 0))
@@ -808,18 +813,18 @@ fn browser_recovery_retains_diagnostics_and_one_normalized_original_occurrence()
             assert_eq!(error.declaration_order(), Some(0));
             assert!(error.declaration().unwrap().same_occurrence(item.source()));
             assert_eq!(report, before);
-            assert!(normalize_report_with_limits(&report, exact).is_ok());
+            assert!(report.normalize(exact).is_ok());
         }
     }
 }
 #[test]
 fn normalization_preserves_all_six_order_importance_context_pending_and_exact_limits() {
     let css = "@media screen{.a{hyphens:auto!important;hyphenate-character:\"😀\";hyphenate-limit-zone:-25%;hyphenate-limit-chars:8 2;hyphenate-limit-lines:var(--lines);hyphenate-limit-last:page;hyphens:unset!important;color:red}}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean());
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(1, 2, 8, 8).unwrap();
-    let normalized = normalize_report_with_limits(&report, exact).unwrap();
+    let normalized = report.normalize(exact).unwrap();
     assert_eq!(normalized.diagnostics(), report.diagnostics());
     let declarations: Vec<_> = normalized
         .syntax()
@@ -904,7 +909,7 @@ fn normalization_preserves_all_six_order_importance_context_pending_and_exact_li
         ),
     ] {
         for _ in 0..2 {
-            let error = normalize_report_with_limits(&report, limits).unwrap_err();
+            let error = report.normalize(limits).unwrap_err();
             assert_eq!(error.exhausted_limit(), Some((resource, 7)));
             assert_eq!(error.declaration_order(), Some(7));
             assert!(
@@ -916,7 +921,7 @@ fn normalization_preserves_all_six_order_importance_context_pending_and_exact_li
         }
     }
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 #[test]
 fn canonical_declarations_have_exact_leaf_math_and_byte_limits_with_atomic_retry() {
@@ -988,7 +993,8 @@ fn canonical_declarations_have_exact_leaf_math_and_byte_limits_with_atomic_retry
 fn sibling_sheet_output_shares_exact_work_and_utf8_bytes_without_partial_results() {
     use crate::css::support::failure_classes::SerializationFailure as K;
     use CssSerializationLimits as L;
-    let report = parse_sheet(".a{hyphens:manual!important}.b{hyphenate-limit-chars:8 auto 3}");
+    let report = CssParser::default()
+        .parse_sheet(".a{hyphens:manual!important}.b{hyphenate-limit-chars:8 auto 3}");
     assert!(report.is_clean());
     let sheet = report.syntax();
     let before = sheet.clone();
@@ -1022,13 +1028,11 @@ fn color_and_overflow_wrap_controls_exercise_the_same_public_lifecycle() {
     accepted("color", "red", "red");
     accepted("overflow-wrap", "anywhere", "anywhere");
     let css = ".a{color:red;overflow-wrap:anywhere}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean());
-    let normalized = normalize_report_with_limits(
-        &report,
-        CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap(),
-    )
-    .unwrap();
+    let normalized = report
+        .normalize(CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap())
+        .unwrap();
     assert_eq!(normalized.diagnostics(), report.diagnostics());
     assert_eq!(
         normalized
@@ -1069,7 +1073,7 @@ fn exact_integer_and_signed_length_owners_are_controls_for_hyphenation_admission
         );
     }
     let calculation = CssCalculation::<CssInteger>::try_from_components(
-        parse_component_values("calc(3 / 2)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(3 / 2)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -1092,7 +1096,7 @@ fn exact_integer_and_signed_length_owners_are_controls_for_hyphenation_admission
 #[test]
 fn closure_origin_and_color_provider_prices_are_independent_controls() {
     for text in ["manual/*", "\"😀", "calc(3 / 2"] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let origin = implicit_origin(&components);
         let CssValueOrigin::ImplicitClosure { opening, at } = origin else {
             panic!("original EOF")

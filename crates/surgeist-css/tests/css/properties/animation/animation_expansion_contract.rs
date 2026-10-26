@@ -37,7 +37,7 @@ const ORDINARY: [&str; 8] = [
 
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("available intrinsic contributions")
+        source.expand().expect("available intrinsic contributions")
     else {
         panic!("completed terminal contributions")
     };
@@ -124,7 +124,7 @@ fn supported_color_control_preserves_ordinary_initial_and_source() {
 fn universal_reset_control_includes_all_eight_animation_targets() {
     let source = parsed("all:revert-layer!important");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&source).unwrap()
+        source.expand().unwrap()
     else {
         panic!("symbolic all")
     };
@@ -299,11 +299,11 @@ fn all_nine_pending_grammars_reenter_repeatedly_with_original_source_and_replace
             "/*😀*/{}:var(--animation)!important",
             property.canonical_name()
         ));
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("whole-value pending")
         };
         assert!(handle.source().same_occurrence(&source));
-        let replacement = parse_component_values(css).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), css).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -356,10 +356,11 @@ fn all_nine_pending_grammars_reenter_repeatedly_with_original_source_and_replace
 #[test]
 fn shorthand_pending_handle_survives_grammar_recovery_and_residual_failures() {
     let source = checked(P::Animation, "var(--animation)");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending shorthand")
     };
-    let replacement = parse_component_values("fade 1s, slide ease-in").unwrap();
+    let replacement =
+        CssComponentValues::parse(&CssParser::default(), "fade 1s, slide ease-in").unwrap();
     for invalid in [
         "",
         "fade -1s",
@@ -370,9 +371,10 @@ fn shorthand_pending_handle_survives_grammar_recovery_and_residual_failures() {
         "fade calc(1s",
         "fade 1s calc(-250ms",
     ] {
-        let components = parse_component_values(invalid).unwrap();
-        let expected = parse_property_value_for_grammar(
-            P::Animation.grammar(),
+        let components = CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
+        let expected = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(P::Animation.grammar()),
             components.clone(),
             CssImportance::Normal,
         )
@@ -396,7 +398,7 @@ fn shorthand_pending_handle_survives_grammar_recovery_and_residual_failures() {
     ] {
         assert!(
             handle
-                .reenter(parse_component_values(residual).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), residual).unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
@@ -407,7 +409,7 @@ fn shorthand_pending_handle_survives_grammar_recovery_and_residual_failures() {
         assert_eq!(names(&values), MEMBERS);
     }
     let CssContributions::Longhands(values) = handle
-        .reenter(parse_component_values("unset").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "unset").unwrap())
         .unwrap()
     else {
         panic!("global replacement")
@@ -436,7 +438,7 @@ fn recovered_duration_and_delay_project_without_forging_checked_closure() {
             "animation-delay:0s, calc(-250ms",
         ),
     ] {
-        let report = parse_style_attribute(css);
+        let report = CssParser::default().parse_block_contents(css);
         assert!(!report.is_clean());
         let [source] = report.syntax().as_slice() else {
             panic!("retained recovered shorthand")
@@ -453,7 +455,7 @@ fn recovered_duration_and_delay_project_without_forging_checked_closure() {
         for item in values.items() {
             assert_ordinary(item, source);
         }
-        let expected_report = parse_style_attribute(expected_css);
+        let expected_report = CssParser::default().parse_block_contents(expected_css);
         assert!(!expected_report.is_clean());
         let [expected_source] = expected_report.syntax().as_slice() else {
             panic!("retained recovered explicit longhand")
@@ -469,13 +471,13 @@ fn recovered_duration_and_delay_project_without_forging_checked_closure() {
 #[test]
 fn ordered_normalization_preserves_groups_and_fixed_eight_member_budget() {
     let css = ".a{color:red;animation:fade 1s,slide ease-in!important;animation-delay:-250ms}.b{animation:var(--animation);all:unset;--animation:fade 1s}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean());
     let before = report.clone();
     // Four other completed/pending/custom/reset occurrences plus Color: five;
     // the two-item shorthand contributes exactly eight members, totaling thirteen.
     let exact = CssNormalizationLimits::try_new(0, 2, 6, 13).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -534,11 +536,10 @@ fn ordered_normalization_preserves_groups_and_fixed_eight_member_budget() {
         declarations[5].expansion(),
         CssExpansion::Contributions(CssContributions::Custom(_))
     ));
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 2, 6, 12).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 2, 6, 12).unwrap())
+        .unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 12))
@@ -551,7 +552,7 @@ fn ordered_normalization_preserves_groups_and_fixed_eight_member_budget() {
             .same_occurrence(declarations[5].source())
     );
     assert_eq!(report.diagnostics(), before.diagnostics());
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 
 #[test]
@@ -560,10 +561,10 @@ fn sparse_and_recovered_shorthands_normalize_at_eight_and_fail_atomically_at_sev
         ".a{animation:fade 1s,slide ease-in!important}",
         ".a{animation:fade 1s,slide calc(2s",
     ] {
-        let report = parse_sheet(css);
+        let report = CssParser::default().parse_sheet(css);
         let before = report.clone();
         let exact = CssNormalizationLimits::try_new(0, 1, 1, 8).unwrap();
-        let normalized = normalize_report_with_limits(&report, exact).unwrap();
+        let normalized = report.normalize(exact).unwrap();
         assert_eq!(normalized.is_clean(), report.is_clean());
         assert_eq!(normalized.diagnostics(), report.diagnostics());
         let declaration = normalized
@@ -584,11 +585,9 @@ fn sparse_and_recovered_shorthands_normalize_at_eight_and_fail_atomically_at_sev
         for item in values.items() {
             assert_ordinary(item, declaration.source());
         }
-        let error = normalize_report_with_limits(
-            &report,
-            CssNormalizationLimits::try_new(0, 1, 1, 7).unwrap(),
-        )
-        .unwrap_err();
+        let error = report
+            .normalize(CssNormalizationLimits::try_new(0, 1, 1, 7).unwrap())
+            .unwrap_err();
         assert_eq!(
             error.exhausted_limit(),
             Some((CssNormalizationResource::Contributions, 7))
@@ -601,6 +600,6 @@ fn sparse_and_recovered_shorthands_normalize_at_eight_and_fail_atomically_at_sev
                 .same_occurrence(declaration.source())
         );
         assert_eq!(report.diagnostics(), before.diagnostics());
-        assert!(normalize_report_with_limits(&report, exact).is_ok());
+        assert!(report.normalize(exact).is_ok());
     }
 }

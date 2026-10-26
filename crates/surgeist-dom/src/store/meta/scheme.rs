@@ -2,8 +2,8 @@
 use super::*;
 use std::cell::Cell;
 use surgeist_css::{
-    CssParserContext, CssParserMode, CssRetainedPayloadError, CssUtf16InputError,
-    CssUtf16ValueAdmission,
+    CssColorScheme, CssParser, CssParserContext, CssParserMode, CssRetainedPayloadError,
+    CssUtf16InputError, CssUtf16ValueAdmission,
 };
 
 pub(super) struct Candidate {
@@ -48,57 +48,57 @@ pub(super) fn parse(
         surgeist_html::HtmlDocumentMode::Quirks => CssParserMode::Quirks,
         _ => CssParserMode::Standards,
     });
-    let report = context
-        .parse_color_scheme_utf16_with_limits(
-            content.shared_code_units().clone(),
-            limits,
-            |event| {
-                draft.meta_step(cancel)?;
-                if let CssUtf16ValueAdmission::Live(next) = event {
-                    let old = live.get();
-                    let next = source::storage::Payload {
-                        bytes: next.bytes(),
-                        units: next.utf16_units(),
-                    };
-                    let delta = source::storage::Payload {
-                        bytes: next
-                            .bytes
-                            .checked_sub(old.bytes)
-                            .ok_or(DomError::Meta(Failure::CssProcessingProtocol))?,
-                        units: next
-                            .units
-                            .checked_sub(old.units)
-                            .ok_or(DomError::Meta(Failure::CssProcessingProtocol))?,
-                    };
-                    if let Some(formation) = &formation {
-                        formation.retain_payload(delta, cancel)?;
-                    }
-                    live.set(next);
-                }
-                Ok(())
-            },
-            |remaining| {
+    let report = CssColorScheme::parse_utf16(
+        &CssParser::new(context, Default::default()),
+        content.shared_code_units().clone(),
+        limits,
+        |event| {
+            draft.meta_step(cancel)?;
+            if let CssUtf16ValueAdmission::Live(next) = event {
                 let old = live.get();
-                let remaining = source::storage::Payload {
-                    bytes: remaining.bytes(),
-                    units: remaining.utf16_units(),
+                let next = source::storage::Payload {
+                    bytes: next.bytes(),
+                    units: next.utf16_units(),
+                };
+                let delta = source::storage::Payload {
+                    bytes: next
+                        .bytes
+                        .checked_sub(old.bytes)
+                        .ok_or(DomError::Meta(Failure::CssProcessingProtocol))?,
+                    units: next
+                        .units
+                        .checked_sub(old.units)
+                        .ok_or(DomError::Meta(Failure::CssProcessingProtocol))?,
                 };
                 if let Some(formation) = &formation {
-                    formation.release_payload(source::storage::Payload {
-                        bytes: old
-                            .bytes
-                            .checked_sub(remaining.bytes)
-                            .expect("CSS releases actual live bytes"),
-                        units: old
-                            .units
-                            .checked_sub(remaining.units)
-                            .expect("CSS releases actual live units"),
-                    });
+                    formation.retain_payload(delta, cancel)?;
                 }
-                live.set(remaining);
-            },
-        )
-        .map_err(input_error)?;
+                live.set(next);
+            }
+            Ok(())
+        },
+        |remaining| {
+            let old = live.get();
+            let remaining = source::storage::Payload {
+                bytes: remaining.bytes(),
+                units: remaining.utf16_units(),
+            };
+            if let Some(formation) = &formation {
+                formation.release_payload(source::storage::Payload {
+                    bytes: old
+                        .bytes
+                        .checked_sub(remaining.bytes)
+                        .expect("CSS releases actual live bytes"),
+                    units: old
+                        .units
+                        .checked_sub(remaining.units)
+                        .expect("CSS releases actual live units"),
+                });
+            }
+            live.set(remaining);
+        },
+    )
+    .map_err(input_error)?;
     let usage = report.retained_storage();
     debug_assert_eq!(live.get().bytes, usage.bytes());
     debug_assert_eq!(live.get().units, usage.utf16_units());

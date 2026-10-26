@@ -1,5 +1,7 @@
-//! Explicit authored document mode and glyph definition, independent of namespace bindings.
+//! Explicit authored document mode and glyph definition, independent of namespace bindings,
+//! and the configured parser that owns every source-text front.
 use crate::*;
+use std::sync::Arc;
 
 /// The document mode that selects contextual authored CSS grammar.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -11,11 +13,12 @@ pub enum CssParserMode {
     Quirks,
 }
 
-/// Immutable authored grammar context. Ordinary free parsing functions use Standards
+/// Immutable authored grammar context. The default context uses Standards
 /// and the finite Writing Modes glyph alias. Named SVG selection is independent of mode.
 ///
 /// This context does not resolve colors, evaluate queries, bind DOM objects, or
 /// supply selector namespaces. Declarations retain it for strict pending reentry.
+/// [`CssParser`] pairs it with component limits for the source-text fronts.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct CssParserContext {
     mode: CssParserMode,
@@ -28,26 +31,6 @@ enum GlyphDefinition {
     Svg,
 }
 impl CssParserContext {
-    /// Parses a complete raw feature-value literal-family prelude in this context.
-    #[must_use]
-    pub fn parse_font_feature_values_family_list(
-        self,
-        source: &str,
-    ) -> CssParseReport<Option<CssFontFeatureValuesFamilyList>> {
-        self.parse_font_feature_values_family_list_with_limits(
-            source,
-            CssComponentValueLimits::default(),
-        )
-    }
-    /// Preserves this context and uses one complete-input component budget.
-    #[must_use]
-    pub fn parse_font_feature_values_family_list_with_limits(
-        self,
-        source: &str,
-        limits: CssComponentValueLimits,
-    ) -> CssParseReport<Option<CssFontFeatureValuesFamilyList>> {
-        crate::parser::font_feature_values_family_list::parse_with_context(source, limits, self)
-    }
     /// Selects one closed authored document mode.
     #[must_use]
     pub const fn new(mode: CssParserMode) -> Self {
@@ -73,413 +56,341 @@ impl CssParserContext {
         self.glyph == GlyphDefinition::Svg
             && name.eq_ignore_ascii_case("glyph-orientation-vertical")
     }
-    const fn standards(mut self) -> Self {
+    pub(crate) const fn standards(mut self) -> Self {
         self.mode = CssParserMode::Standards;
         self
-    }
-    /// Parses a fixed SVG presentation attribute value with Normal importance.
-    /// This retains document mode but uses attribute admission, independently of lookup selection.
-    #[must_use]
-    pub fn parse_svg_glyph_orientation_vertical_attribute_value(
-        self,
-        source: &str,
-    ) -> CssParseReport<Option<CssDeclaration>> {
-        crate::parser::parse_svg_glyph_attribute_value(source, self)
-    }
-    /// Checks a fixed SVG presentation attribute's components; markup binding is downstream.
-    pub fn parse_svg_glyph_orientation_vertical_attribute_components(
-        self,
-        values: CssComponentValues,
-    ) -> Result<CssDeclaration, CssPropertyValueError> {
-        let body = crate::property_value::checked_svg_glyph_value_body(
-            crate::svg_glyph::SvgGlyphAdmission::attribute(self),
-            &values,
-            self,
-        )?;
-        Ok(CssDeclaration::new_constructed(
-            self,
-            body,
-            CssImportance::Normal,
-            values,
-        ))
-    }
-    /// Parses CSS.supports() condition text with Standards admission and this definition choice.
-    pub fn parse_css_supports_condition(
-        self,
-        source: &str,
-    ) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
-        css_supports_condition(source, self.standards())
-    }
-    /// Parses the literal property/value overload with Standards admission and this definition
-    /// choice.
-    pub fn parse_css_supports_declaration(
-        self,
-        property: &str,
-        value: &str,
-    ) -> Result<CssSupportsDeclaration, CssSupportsConstructionError> {
-        css_supports_declaration(property, value, self.standards())
     }
     /// Returns the immutable selected mode.
     #[must_use]
     pub const fn mode(self) -> CssParserMode {
         self.mode
     }
-    /// Parses a stylesheet with this document mode.
-    #[must_use]
-    pub fn parse_sheet(self, source: &str) -> CssParseReport<CssSheet> {
-        crate::parser::parse_sheet_with_context(source, self)
-    }
-    /// Parses a declaration list with browser recovery under this mode.
-    #[must_use]
-    pub fn parse_style_attribute(self, source: &str) -> CssParseReport<CssDeclarationList> {
-        crate::parser::parse_style_attribute_with_context(source, self)
-    }
-    /// Parses raw declaration-list text with CSS Syntax unit recovery under this mode.
-    #[must_use]
-    pub fn parse_declaration_list_text(self, source: &str) -> CssParseReport<CssDeclarationList> {
-        crate::parser::parse_declaration_list_text_with_context(source, self)
-    }
-    /// Parses raw current block contents with this declaration grammar context.
-    #[must_use]
-    pub fn parse_declaration_block_contents(
-        self,
-        source: &str,
-    ) -> CssParseReport<CssDeclarationList> {
-        self.parse_declaration_block_contents_with_limits(
-            source,
-            CssComponentValueLimits::default(),
-        )
-    }
-    /// Parses raw block contents with cumulative original-input limits.
-    #[must_use]
-    pub fn parse_declaration_block_contents_with_limits(
-        self,
-        source: &str,
-        limits: CssComponentValueLimits,
-    ) -> CssParseReport<CssDeclarationList> {
-        crate::parser::parse_declaration_block_contents_with_context(source, limits, self)
-    }
-    /// Parses raw Page declaration contents with this document-mode context.
-    /// Resource failure is `None`; recovered empty contents are `Some(empty)`.
-    #[must_use]
-    pub fn parse_page_declaration_block_contents(
-        self,
-        source: &str,
-    ) -> CssParseReport<Option<crate::CssPageDeclarationBlock>> {
-        self.parse_page_declaration_block_contents_with_limits(
-            source,
-            CssComponentValueLimits::default(),
-        )
-    }
-    /// Parses raw Page contents with cumulative original-input limits.
-    #[must_use]
-    pub fn parse_page_declaration_block_contents_with_limits(
-        self,
-        source: &str,
-        limits: CssComponentValueLimits,
-    ) -> CssParseReport<Option<crate::CssPageDeclarationBlock>> {
-        crate::parser::parse_page_declaration_block_contents_with_context(source, limits, self)
-    }
-    /// Parses one complete detached margin child in an actual Page destination.
-    #[must_use]
-    pub fn parse_page_margin_rule(
-        self,
-        source: &str,
-    ) -> CssParseReport<Option<crate::CssMarginRule>> {
-        self.parse_page_margin_rule_with_limits(source, CssComponentValueLimits::default())
-    }
-    /// Uses cumulative original-input limits and this document-mode context.
-    #[must_use]
-    pub fn parse_page_margin_rule_with_limits(
-        self,
-        source: &str,
-        limits: CssComponentValueLimits,
-    ) -> CssParseReport<Option<crate::CssMarginRule>> {
-        crate::parser::parse_page_margin_rule_with_context(source, limits, self)
-    }
-    /// Parses one complete declaration occurrence.
-    #[must_use]
-    pub fn parse_declaration(self, source: &str) -> CssParseReport<Option<CssDeclaration>> {
-        crate::parser::parse_declaration_with_context(source, self)
-    }
-    /// Parses one rule using separately supplied namespace bindings.
-    #[must_use]
-    pub fn parse_rule(
-        self,
-        source: &str,
-        namespaces: &CssNamespaceContext,
-    ) -> CssParseReport<Option<CssRule>> {
-        crate::parser::parse_rule_with_context(source, namespaces, self)
-    }
-    /// Parses a real-brace style block using separate namespace bindings.
-    #[must_use]
-    pub fn parse_style_block(
-        self,
-        source: &str,
-        namespaces: &CssNamespaceContext,
-    ) -> CssParseReport<Option<CssStyleBlock>> {
-        crate::parser::parse_style_block_with_context(source, namespaces, self)
-    }
-    /// Parses a genuine keyframes body with this context on its declarations.
-    ///
-    /// Invalid children recover independently; no animation name is invented.
-    /// Source boundaries and clean validation match [`parse_keyframes_block`].
-    #[must_use]
-    pub fn parse_keyframes_block(
-        self,
-        source: &str,
-    ) -> CssParseReport<Option<CssBlockFragment<Vec<CssKeyframeBlock>>>> {
-        crate::parser::parse_keyframes_block_with_context(source, self)
-    }
-    /// Parses genuine keyframe declarations with this document grammar context.
-    ///
-    /// Local declaration recovery and fatal structural errors match
-    /// [`parse_keyframe_declaration_block`]. Retained occurrences preserve `self`.
-    #[must_use]
-    pub fn parse_keyframe_declaration_block(
-        self,
-        source: &str,
-    ) -> CssParseReport<Option<CssBlockFragment<CssKeyframeDeclarationList>>> {
-        crate::parser::parse_keyframe_declaration_block_with_context(source, self)
-    }
-    /// Parses a genuine Page body with this context and the selected Page domain.
-    ///
-    /// Descriptor/property admission and ordered margin children follow
-    /// [`parse_page_block`]; document mode does not bypass domain checks.
-    #[must_use]
-    pub fn parse_page_block(
-        self,
-        source: &str,
-    ) -> CssParseReport<Option<CssBlockFragment<crate::CssPageBody>>> {
-        crate::parser::parse_page_block_with_context(source, self)
-    }
-    /// Parses one genuine margin declaration block using this property context.
-    #[must_use]
-    pub fn parse_margin_block(
-        self,
-        source: &str,
-    ) -> CssParseReport<Option<CssBlockFragment<CssMarginDeclarationBlock>>> {
-        crate::parser::parse_margin_block_with_context(source, self)
-    }
-    /// Parses an ordinary inner rule block with this declaration grammar context.
-    ///
-    /// Namespace bindings remain separate; boundaries and recovery match
-    /// [`parse_group_block`]. No enclosing style ancestry is supplied.
-    #[must_use]
-    pub fn parse_group_block(
-        self,
-        source: &str,
-        namespaces: &CssNamespaceContext,
-    ) -> CssParseReport<Option<CssBlockFragment<CssRuleList>>> {
-        crate::parser::parse_group_block_with_context(source, namespaces, self)
-    }
-    /// Parses a scope body with this context and explicit actual style ancestry.
-    ///
-    /// Direct declarations and children retain `self`; source and placement
-    /// rules match [`parse_scope_block`]. No scope prelude is invented.
-    #[must_use]
-    pub fn parse_scope_block(
-        self,
-        source: &str,
-        namespaces: &CssNamespaceContext,
-        ancestry: CssStyleAncestor,
-    ) -> CssParseReport<Option<CssBlockFragment<CssRuleList>>> {
-        crate::parser::parse_scope_block_with_context(source, namespaces, ancestry, self)
-    }
-    /// Parses an ordinary group inside a scope with this declaration context.
-    ///
-    /// Explicit ancestry, namespace binding and Page placement follow
-    /// [`parse_scoped_group_block`]. Actual declarations retain `self`.
-    #[must_use]
-    pub fn parse_scoped_group_block(
-        self,
-        source: &str,
-        namespaces: &CssNamespaceContext,
-        ancestry: CssStyleAncestor,
-    ) -> CssParseReport<Option<CssBlockFragment<CssRuleList>>> {
-        crate::parser::parse_scoped_group_block_with_context(source, namespaces, ancestry, self)
-    }
-    /// Checks owned components with the selected property-name grammar.
-    pub fn parse_property_value(
-        self,
-        property: CssPropertyNameRef<'_>,
-        values: CssComponentValues,
-        importance: CssImportance,
-    ) -> Result<CssDeclaration, CssPropertyValueError> {
-        crate::property_value::parse_property_value_with_context(property, values, importance, self)
-    }
-    /// Checks detached Page components with this document mode and definition choice.
-    /// Page admission and strict pending reentry follow [`parse_page_property_value`].
-    pub fn parse_page_property_value(
-        self,
-        property: CssPropertyNameRef<'_>,
-        values: CssComponentValues,
-        importance: CssImportance,
-    ) -> Result<CssDeclaration, CssPropertyValueError> {
-        crate::property_value::parse_page_property_value_with_context(
-            property, values, importance, self,
-        )
-    }
-    /// Checks owned components with an explicit authored grammar.
-    pub fn parse_property_value_for_grammar(
-        self,
-        grammar: CssPropertyGrammar,
-        values: CssComponentValues,
-        importance: CssImportance,
-    ) -> Result<CssDeclaration, CssPropertyValueError> {
-        crate::property_value::parse_property_value_for_grammar_with_context(
-            grammar, values, importance, self,
-        )
-    }
-    /// Parses raw value text with a supplied semantic property name.
-    #[must_use]
-    pub fn parse_property_value_text(
-        self,
-        source: &str,
-        property: CssPropertyNameRef<'_>,
-        importance: CssImportance,
-    ) -> CssParseReport<Option<CssDeclaration>> {
-        crate::parser::parse_property_value_text_with_context(source, property, importance, self)
-    }
-    /// Parses raw value text with an explicit authored grammar.
-    #[must_use]
-    pub fn parse_property_value_text_for_grammar(
-        self,
-        source: &str,
-        grammar: CssPropertyGrammar,
-        importance: CssImportance,
-    ) -> CssParseReport<Option<CssDeclaration>> {
-        crate::parser::parse_property_value_text_for_grammar_with_context(
-            source, grammar, importance, self,
-        )
-    }
-    /// Checks @supports-rule condition syntax under this document's mode.
-    /// Unsupported declarations remain authored tests with no known typed view.
-    pub fn parse_supports_condition(
-        self,
-        source: &str,
-        namespaces: &CssNamespaceContext,
-    ) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
-        self.parse_supports_condition_with_limits(
-            source,
-            namespaces,
-            CssComponentValueLimits::default(),
-        )
-    }
-    /// Checks a rule condition with cumulative component resource limits.
-    pub fn parse_supports_condition_with_limits(
-        self,
-        source: &str,
-        namespaces: &CssNamespaceContext,
-        limits: CssComponentValueLimits,
-    ) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
-        let values = parse_component_values_with_limits(source, limits)?;
-        CssCondition::<CssSupportsLeaf>::try_from_components_in_context(
-            values, namespaces, limits, self,
-        )
-    }
 }
 
-/// Parses the condition-text overload of CSS.supports() with mandatory standards grammar.
-/// This returns authored syntax and admission metadata, not an evaluated boolean.
-/// A complete condition is tried first, then implicit parentheses on grammar mismatch.
-/// Introduced punctuation is programmatic; child origins retain the supplied source.
-pub fn parse_css_supports_condition(
-    source: &str,
-) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
-    css_supports_condition(source, CssParserContext::default())
-}
-fn css_supports_condition(
-    source: &str,
+/// Parser configuration for every source-text front: the grammar context and the
+/// component limits that charge the input.
+///
+/// A parser is a small `Copy` value. Fronts are methods of the parser or `parse`
+/// constructors of the value they produce, and each takes the parser first. A
+/// front charges the component limits only where its grammar has an input
+/// allowance; its documentation says which. The context selects the document
+/// mode and the SVG glyph definition for the declarations a front admits.
+///
+/// ```
+/// use surgeist_css::{CssParser, CssRecoveryAction};
+///
+/// let report = CssParser::default()
+///     .parse_sheet(".a { color: red } @unknown x; .b {}");
+/// assert_eq!(report.syntax().rules().len(), 2);
+/// assert_eq!(report.diagnostics()[0].action(), CssRecoveryAction::DropAtRule);
+/// ```
+///
+/// The fields are private, so a parser is only built through [`CssParser::new`]
+/// or [`Default`]:
+///
+/// ```compile_fail,E0451
+/// use surgeist_css::{CssComponentValueLimits, CssParser, CssParserContext};
+///
+/// let _ = CssParser {
+///     context: CssParserContext::default(),
+///     limits: CssComponentValueLimits::default(),
+/// };
+/// ```
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct CssParser {
     context: CssParserContext,
-) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
-    let values = parse_component_values(source)?;
-    let namespaces = CssNamespaceContext::default();
-    match CssCondition::<CssSupportsLeaf>::try_from_components_in_context(
-        values.clone(),
-        &namespaces,
-        CssComponentValueLimits::default(),
-        context,
-    ) {
-        Ok(condition) => Ok(condition),
-        Err(error)
-            if error.is_invalid_condition_grammar() || error.is_invalid_declaration_grammar() =>
-        {
-            let block = CssComponentValue::try_block(CssBlockKind::Parenthesis, values)?;
-            CssCondition::<CssSupportsLeaf>::try_from_components_in_context(
-                CssComponentValues::try_new(vec![block], Default::default())?,
-                &namespaces,
-                CssComponentValueLimits::default(),
-                context,
+    limits: CssComponentValueLimits,
+}
+
+impl CssParser {
+    /// Pairs a grammar context with the component limits that charge source input.
+    #[must_use]
+    pub const fn new(context: CssParserContext, limits: CssComponentValueLimits) -> Self {
+        Self { context, limits }
+    }
+
+    /// Returns the grammar context the fronts admit declarations under.
+    #[must_use]
+    pub const fn context(&self) -> CssParserContext {
+        self.context
+    }
+
+    /// Returns the component limits that charge the fronts which have an input allowance.
+    #[must_use]
+    pub const fn component_limits(&self) -> CssComponentValueLimits {
+        self.limits
+    }
+
+    /// Parses a UTF-8 stylesheet into valid authored syntax and recovery diagnostics.
+    ///
+    /// The ordinary parser retains valid top-level rules in source order and reports
+    /// each discarded top-level rule with its complete balanced source span. Parsed
+    /// `@charset` rules are unrecognized and dropped; top-level CDO/CDC tokens are
+    /// ignored without diagnostics. The UTF-8 input is not decoded. The stylesheet
+    /// root is structural depth zero; up to 256 shared rule-block/component/function
+    /// levels are retained, and the first level beyond that drops its smallest
+    /// enclosing recovery unit. Input deeper than 128 levels is parsed on a bounded
+    /// larger-stack thread; if the platform cannot start it, the report retains no
+    /// rules and carries a
+    /// [`CssErrorCode::ParserUnavailable`](crate::CssErrorCode::ParserUnavailable)
+    /// refusal (limit 128, action `StopAtNestingLimit`), followed only by any
+    /// tokenizer EOF or escape diagnostics, rather than recursing on the caller's
+    /// stack. Recovery does not apply cascade, substitution, selector matching,
+    /// contextual resolution, or resource loading. The parser supplies the document
+    /// mode; a sheet charges no component limits.
+    ///
+    /// ```
+    /// use surgeist_css::{CssParser, CssRecoveryAction, CssRule};
+    ///
+    /// let report = CssParser::default().parse_sheet(
+    ///     ".before { color: red; } @unknown fn({x;y}); .after { color: blue; }",
+    /// );
+    /// assert_eq!(report.syntax().rules().len(), 2);
+    /// assert!(!report.is_clean());
+    /// assert!(matches!(report.syntax().rules()[0], CssRule::Style(_)));
+    /// assert!(matches!(
+    ///     report.diagnostics()[0].action(),
+    ///     CssRecoveryAction::DropAtRule
+    /// ));
+    /// ```
+    #[must_use]
+    pub fn parse_sheet(&self, source: impl AsRef<str>) -> CssParseReport<CssSheet> {
+        crate::parser::parse_sheet_with_context(source.as_ref(), self.context)
+    }
+
+    /// Parses the exact snapshot of a decoded stylesheet input.
+    ///
+    /// Decoder replacement is not itself a CSS diagnostic. The sheet has no
+    /// location until [`CssParseReport::with_location`] attaches one; a location
+    /// never affects parsing.
+    #[must_use]
+    pub fn parse_sheet_bytes(&self, input: &CssDecodedStylesheetInput) -> CssParseReport<CssSheet> {
+        crate::parser::parse_sheet_snapshot(input.source(), self.context)
+    }
+
+    /// Preprocesses shared original UTF16, then parses an ordinary stylesheet.
+    ///
+    /// Polls during preparation and immediately before/after grammar execution;
+    /// the grammar has no fine-grained interruption checkpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns the preparation refusal or the caller's interruption, with no
+    /// partial report.
+    pub fn parse_sheet_utf16<E>(
+        &self,
+        original: Arc<Vec<u16>>,
+        limits: CssUtf16InputLimits,
+        poll: impl FnMut() -> Result<(), E>,
+    ) -> Result<CssParseReport<CssSheet>, CssUtf16InputError<E>> {
+        crate::utf16_input::parse_utf16(original, limits, poll, |source| {
+            crate::parser::parse_sheet_snapshot(source, self.context)
+        })
+    }
+
+    /// Parses block contents: a style attribute, CSSOM `cssText` or a raw declaration list.
+    ///
+    /// This is CSS Syntax 3 (2026 CRD) §5.5.5 "consume a block's contents" over
+    /// unwrapped text; no braces are required or invented. A root `}` ends the
+    /// contents, so `color: red } width: 1px` retains only `color`. A unit that
+    /// is not a declaration is consumed as a nested rule and dropped from this
+    /// declaration-only projection, so `a {} color: red` retains `color`.
+    /// Root semicolons, trivia and EOF are empty slots. Declaration admission
+    /// uses the ordinary property grammar, including custom-property recovery
+    /// through the root semicolon. Ordered occurrences, duplicates, importance
+    /// and original name/value source identities remain authored data; CSSOM
+    /// winner selection is a separate operation.
+    ///
+    /// The component limits charge every original component once, including
+    /// descendants, trivia and source after the root stop token. A failed
+    /// allowance returns an empty projection and its typed resource diagnostic;
+    /// no partially admitted declarations escape.
+    ///
+    /// Input nested deeper than 63 levels runs on the bounded larger-stack parser
+    /// thread. If the platform cannot start it, the report is empty and carries one
+    /// [`CssErrorCode::ParserUnavailable`](crate::CssErrorCode::ParserUnavailable)
+    /// refusal (limit 63, action `StopAtNestingLimit`) over the whole source rather
+    /// than recursing on the caller's stack. This is the fragment threshold, below
+    /// the 128 levels a stylesheet parses directly.
+    ///
+    /// ```
+    /// use surgeist_css::{CssImportance, CssParser};
+    ///
+    /// let report = CssParser::default().parse_block_contents("color: red; width: 2px !important");
+    /// assert!(report.is_clean());
+    /// assert_eq!(report.syntax()[1].importance(), CssImportance::Important);
+    /// ```
+    #[must_use]
+    pub fn parse_block_contents(
+        &self,
+        source: impl AsRef<str>,
+    ) -> CssParseReport<CssDeclarationList> {
+        crate::parser::parse_declaration_block_contents_with_context(
+            source.as_ref(),
+            self.limits,
+            self.context,
+        )
+    }
+
+    /// Preprocesses original UTF16 and parses block contents over the exact source.
+    ///
+    /// Uses the grammar, recovery and 63-level parser-thread refusal of
+    /// [`Self::parse_block_contents`]. The
+    /// component limits still admit the complete normalized input, including
+    /// text after a root `}`. `input_limits` bounds preparation and its source
+    /// backing. Polling occurs during preparation and immediately before/after
+    /// grammar execution. General grammar execution is opaque between those
+    /// observations: its component, depth and byte admission is separate from
+    /// preparation work, and no per-action grammar work/live-storage accounting
+    /// is promised. Preparation refusal or interruption returns no partial
+    /// source or report.
+    ///
+    /// # Errors
+    ///
+    /// Returns the preparation refusal or the caller's interruption.
+    pub fn parse_block_contents_utf16<E>(
+        &self,
+        original: Arc<Vec<u16>>,
+        input_limits: CssUtf16InputLimits,
+        poll: impl FnMut() -> Result<(), E>,
+    ) -> Result<CssDeclarationBlockParseReport, CssUtf16InputError<E>> {
+        crate::utf16_input::parse_utf16(original, input_limits, poll, |source| {
+            let report = crate::parser::parse_declaration_block_contents_snapshot(
+                source,
+                self.limits,
+                self.context,
+            );
+            CssDeclarationBlockParseReport::new(
+                CssParseSource::new(source.clone(), self.context),
+                report,
             )
-        }
-        Err(error) => Err(error),
+        })
     }
-}
 
-/// Parses the property/value overload of CSS.supports() with mandatory standards grammar.
-/// Each supplied argument retains its own source snapshot; no combined source is invented.
-/// The property is a literal identifier without CSS whitespace or escape processing.
-/// Root importance annotations are rejected, while unsupported ordinary values retain
-/// an authored declaration test without a known typed view. This does not evaluate support.
-pub fn parse_css_supports_declaration(
-    property: &str,
-    value: &str,
-) -> Result<CssSupportsDeclaration, CssSupportsConstructionError> {
-    css_supports_declaration(property, value, CssParserContext::default())
-}
-fn css_supports_declaration(
-    property: &str,
-    value: &str,
-    context: CssParserContext,
-) -> Result<CssSupportsDeclaration, CssSupportsConstructionError> {
-    let property_values = parse_component_values(property)?;
-    if let Some(origin) = property_values.first_implicit_origin() {
-        return Err(CssSupportsConstructionError::from(
-            crate::supports::SupportsConstructionKind::RecoveredInput {
-                origin: origin.clone(),
-            },
-        ));
-    }
-    if !matches!(property_values.items(), [component]
-        if matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) if name == property))
-    {
-        return Err(CssSupportsConstructionError::from(
-            crate::supports::SupportsConstructionKind::InvalidDeclarationGrammar {
-                origin: property_values
-                    .items()
-                    .first()
-                    .map_or(CssValueOrigin::Programmatic, |component| {
-                        component.origin().clone()
-                    }),
-            },
-        ));
-    }
-    let value = parse_component_values(value)?;
-    if let Some(origin) = value.first_implicit_origin() {
-        return Err(CssSupportsConstructionError::from(
-            crate::supports::SupportsConstructionKind::RecoveredInput {
-                origin: origin.clone(),
-            },
-        ));
-    }
-    if let Some(component) = value.items().iter().find(|component| {
-        matches!(
-            component.view(),
-            CssComponentValueRef::Token(CssValueTokenRef::Delim('!'))
+    /// Parses raw Page declaration contents without creating margin child rules.
+    ///
+    /// The exact unbraced input uses block-contents recovery. Page descriptors,
+    /// applicable properties and case-sensitive custom declarations retain their
+    /// distinct typed occurrences, duplicate order and original origins.
+    /// At-rules (including margin rules) and qualified rules are dropped as
+    /// complete units; valid declaration neighbors survive. A root `}` stops
+    /// consumption.
+    ///
+    /// `Some(empty)` is successful empty or wholly invalid recovered contents.
+    /// `None` with a typed resource diagnostic is failed preparation, never
+    /// successful clearing. A CSSOM consumer must reject that failure before
+    /// publishing edits. The component limits charge original descendants and
+    /// trivia, including input after the root stop token; no retained prefix
+    /// escapes a failure.
+    #[must_use]
+    pub fn parse_page_block_contents(
+        &self,
+        source: impl AsRef<str>,
+    ) -> CssParseReport<Option<CssPageDeclarationBlock>> {
+        crate::parser::parse_page_declaration_block_contents_with_context(
+            source.as_ref(),
+            self.limits,
+            self.context,
         )
-    }) {
-        return Err(CssSupportsConstructionError::from(
-            crate::supports::SupportsConstructionKind::InvalidDeclarationGrammar {
-                origin: component.origin().clone(),
-            },
-        ));
     }
-    let mut items = property_values.items().to_vec();
-    items.push(CssComponentValue::try_token(":")?);
-    items.extend_from_slice(value.items());
-    CssSupportsDeclaration::try_from_components_in_context(
-        CssComponentValues::try_new(items, Default::default())?,
-        context,
-    )
+
+    /// Parses raw `@font-face` descriptor contents over the exact unbraced input.
+    ///
+    /// Existing font-face value, priority and validity rules admit descriptors
+    /// in authored order, including duplicates and recovered source-list
+    /// members. Invalid descriptors recover locally. Nested structural units are
+    /// dropped and a root `}` stops consumption; no containing rule or brace is
+    /// invented. `@font-face` grammar is independent of the document mode.
+    ///
+    /// `Some(empty)` is successful recovered empty contents; `None` retains a
+    /// typed resource failure and must not be used to clear a CSSOM block. The
+    /// component limits charge source after the root `}`; any input or grammar
+    /// resource failure returns `None` with its typed cause.
+    ///
+    /// ```
+    /// use surgeist_css::{CssFontFaceDescriptorKind, CssParser};
+    ///
+    /// let report = CssParser::default().parse_font_face_block_contents(
+    ///     "font-family: Example; bad: value; src: local(Example)",
+    /// );
+    /// let descriptors = report.syntax().as_ref().unwrap();
+    /// assert_eq!(descriptors.occurrences().len(), 2);
+    /// assert!(descriptors.effective(CssFontFaceDescriptorKind::Src).is_some());
+    /// assert!(!report.is_clean());
+    /// ```
+    #[must_use]
+    pub fn parse_font_face_block_contents(
+        &self,
+        source: impl AsRef<str>,
+    ) -> CssParseReport<Option<CssFontFaceDescriptors>> {
+        crate::parser::parse_font_face_declaration_block_contents_with_limits(
+            source.as_ref(),
+            self.limits,
+        )
+    }
+
+    /// Parses a complete raw value with a supplied property name or grammar.
+    ///
+    /// The source is the value alone: no name, colon, annotation or declaration
+    /// delimiter. `importance` is the separate argument. Surrounding whitespace
+    /// and comments are accepted; empty custom values and nested custom-property
+    /// punctuation are accepted. The declaration has no parsed name or name
+    /// position; its parsed value and components share the original source
+    /// snapshot. Values remain authored and symbolic. A [`CssPropertyTarget::Grammar`]
+    /// retains the selected canonical or legacy grammar for ordinary, CSS-wide
+    /// and symbolic values.
+    ///
+    /// Invalid grammar returns `None` with `RejectInput`; resource exhaustion
+    /// uses `StopAtNestingLimit`. Implicit EOF closures are reported only on
+    /// retention.
+    ///
+    /// A page or margin value has no source-text front: it is checked from owned
+    /// components through [`CssDeclaration::try_from_components`], so
+    /// [`CssPropertyTextTarget`] cannot name one.
+    ///
+    /// ```
+    /// use surgeist_css::{CssImportance, CssKnownProperty, CssParser, CssPropertyNameRef, CssPropertyTextTarget};
+    ///
+    /// let target = CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width));
+    /// let report = CssParser::default().parse_property_value("calc(100% - 12px)", target, CssImportance::Normal);
+    /// let declaration = report.into_validation_result().unwrap().expect("declaration");
+    /// assert_eq!(declaration.known().unwrap().property(), CssKnownProperty::Width);
+    /// ```
+    ///
+    /// A page or margin target has no source-text front, so this front cannot be
+    /// asked for one:
+    ///
+    /// ```compile_fail,E0308
+    /// use surgeist_css::{CssImportance, CssKnownProperty, CssParser, CssPropertyNameRef, CssPropertyTarget};
+    ///
+    /// let target = CssPropertyTarget::PageProperty(CssPropertyNameRef::Known(CssKnownProperty::Margin));
+    /// let _ = CssParser::default().parse_property_value("1cm", target, CssImportance::Normal);
+    /// ```
+    #[must_use]
+    pub fn parse_property_value(
+        &self,
+        source: impl AsRef<str>,
+        target: CssPropertyTextTarget<'_>,
+        importance: CssImportance,
+    ) -> CssParseReport<Option<CssDeclaration>> {
+        let source = source.as_ref();
+        match target {
+            CssPropertyTextTarget::Property(property) => {
+                crate::parser::parse_property_value_text_with_context(
+                    source,
+                    property,
+                    importance,
+                    self.context,
+                )
+            }
+            CssPropertyTextTarget::Grammar(grammar) => {
+                crate::parser::parse_property_value_text_for_grammar_with_context(
+                    source,
+                    grammar,
+                    importance,
+                    self.context,
+                )
+            }
+        }
+    }
 }

@@ -533,7 +533,7 @@ pub(crate) fn parse(
             maximum: limits.max_input_bytes,
         });
     }
-    let report = context.parse_sheet(source);
+    let report = CssParser::new(context, Default::default()).parse_sheet(source);
     check_resource_diagnostics(report.diagnostics())?;
     Ok(report.into_parts())
 }

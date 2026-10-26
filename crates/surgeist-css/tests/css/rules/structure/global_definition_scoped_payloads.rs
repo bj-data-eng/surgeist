@@ -50,7 +50,7 @@ fn assert_leaves(rules: &[CssRule]) {
 #[test]
 fn scoped_variants_reuse_owned_payloads_and_preserve_detached_values() {
     let source = format!("@scope(.host){{{DEFINITIONS}}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("scope")
@@ -119,9 +119,9 @@ fn bounded_scoped_chunks_keep_definition_positions_order_and_parentage() {
         }
         source.push_str("tail{}");
         source.push_str(&"}".repeat(65));
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{group}: {:?}", report.diagnostics());
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let definitions = normalized_definitions(&normalized);
         assert_eq!(definitions.len(), 9);
         let expected_offsets: Vec<_> = source
@@ -168,7 +168,7 @@ fn bounded_scoped_chunks_preserve_style_ancestor_rejection_and_neighboring_style
         "@media all{".repeat(64),
         "}".repeat(64)
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert_eq!(report.diagnostics().len(), 3, "{:?}", report.diagnostics());
     for diagnostic in report.diagnostics() {
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
@@ -177,7 +177,7 @@ fn bounded_scoped_chunks_preserve_style_ancestor_rejection_and_neighboring_style
             CssErrorCode::InvalidAtRulePlacement
         );
     }
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert!(normalized_definitions(&normalized).is_empty());
     for marker in ["before{}", "after{}"] {
         let offset = source.find(marker).unwrap();
@@ -190,7 +190,7 @@ fn definitions_do_not_modify_namespace_resolution_of_scoped_selectors() {
     let source = format!(
         "@namespace svg 'urn:svg';@scope(svg|root){{svg|before{{}}{DEFINITIONS}bad|lost{{}}svg|after{{}}}}"
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let [diagnostic] = report.diagnostics() else {
         panic!("one undeclared prefix: {report:?}")
     };
@@ -218,7 +218,7 @@ fn definitions_do_not_modify_namespace_resolution_of_scoped_selectors() {
         );
         assert_eq!(name.local_name(), Some(local_name));
     }
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_eq!(normalized_definitions(&normalized).len(), 3);
 }
 
@@ -230,7 +230,7 @@ fn scoped_definitions_retain_payload_under_eof_closure() {
         "@keyframes audit{from{opacity:0}",
     ] {
         let source = format!("@scope(.host){{{definition}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report
                 .diagnostics()
@@ -239,7 +239,7 @@ fn scoped_definitions_retain_payload_under_eof_closure() {
             "{report:?}"
         );
         assert!(!report.diagnostics().is_empty());
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let leaves = normalized_definitions(&normalized);
         assert_eq!(leaves.len(), 1);
         assert_eq!(
@@ -257,15 +257,15 @@ fn scoped_definition_depth_ceiling_drops_only_the_excess_definition() {
         "{prefix}@counter-style Tick{{symbols:x}}{}",
         "}".repeat(255)
     );
-    let report = parse_sheet(&allowed);
+    let report = CssParser::default().parse_sheet(&allowed);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_eq!(normalized_definitions(&normalized).len(), 1);
     let exceeded = format!(
         "{prefix}@scope{{@counter-style Tick{{symbols:x}}}}{}tail{{}}",
         "}".repeat(255)
     );
-    let report = parse_sheet(&exceeded);
+    let report = CssParser::default().parse_sheet(&exceeded);
     let [diagnostic] = report.diagnostics() else {
         panic!("one depth failure: {:?}", report.diagnostics())
     };
@@ -275,6 +275,6 @@ fn scoped_definition_depth_ceiling_drops_only_the_excess_definition() {
         report.syntax().rules().last(),
         Some(CssRule::Style(_))
     ));
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert!(normalized_definitions(&normalized).is_empty());
 }

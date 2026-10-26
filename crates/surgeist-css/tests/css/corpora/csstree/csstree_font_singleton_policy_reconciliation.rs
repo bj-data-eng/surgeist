@@ -6,8 +6,8 @@ use descriptor_phases::*;
 
 use serde_json::{Value, json};
 use surgeist_css::{
-    CssErrorCode, CssFontFeatureValuesItem, CssNamespaceContext, CssRule, CssSourcePosition,
-    CssSourceSpan, parse_rule,
+    CssErrorCode, CssFontFeatureValuesItem, CssNamespaceContext, CssParser, CssRule,
+    CssSourcePosition, CssSourceSpan,
 };
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
@@ -33,7 +33,11 @@ fn span(value: CssSourceSpan) -> Value {
 /// of each diagnostic is reconciled once, through `expected_raw_diagnostics`.
 fn typed_definitions_reconcile(row: &Value) -> Result<(), String> {
     let input = text(row, "input");
-    let report = parse_rule(input, &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        input,
+        &CssNamespaceContext::default(),
+    );
     assert_eq!(report.syntax().is_some(), row["present"].as_bool().unwrap());
     assert_eq!(report.is_clean(), row["clean"].as_bool().unwrap());
     assert_eq!(

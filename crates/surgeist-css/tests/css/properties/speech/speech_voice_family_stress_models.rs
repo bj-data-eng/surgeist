@@ -8,7 +8,7 @@ use crate::css::support::value_assertions::positive_literal;
 use surgeist_css::*;
 
 fn parsed(text: &str) -> CssVoiceFamily {
-    let report = parse_style_attribute(&format!("voice-family:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("voice-family:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::VoiceFamily(value) = report.syntax()[0]
         .known()
@@ -206,7 +206,7 @@ fn checked_generic_variant_rejects_nonpositive_bare_calculation_literals_and_ret
     .unwrap();
     assert!(matches!(literal.variant(), Some(value) if value.literal().is_some()));
     let calculation = CssCalculation::<CssInteger>::try_from_components(
-        parse_component_values("calc(1 + 1)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(1 + 1)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -220,7 +220,11 @@ fn checked_generic_variant_rejects_nonpositive_bare_calculation_literals_and_ret
     let value = family(vec![CssVoiceFamilyEntry::Generic(generic)]);
     // Specified math projection is owned by the shared integer engine.
     let serialized = value.serialize_specified(Default::default()).unwrap();
-    assert!(parse_style_attribute(&format!("voice-family:{serialized}")).is_clean());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(format!("voice-family:{serialized}"))
+            .is_clean()
+    );
     assert!(
         matches!(parsed("male min(2, 3)"), CssVoiceFamily::Voices(list) if matches!(list.entries()[0], CssVoiceFamilyEntry::Generic(_)))
     );
@@ -316,7 +320,7 @@ fn voice_stress_models_serialize_all_five_symbolic_modes() {
                 .unwrap_err()
                 .is_byte_limit()
         );
-        let report = parse_style_attribute(&format!("voice-stress:{css}"));
+        let report = CssParser::default().parse_block_contents(format!("voice-stress:{css}"));
         let CssKnownPropertyValueRef::VoiceStress(wrapper) = report.syntax()[0]
             .known()
             .unwrap()
@@ -331,9 +335,14 @@ fn voice_stress_models_serialize_all_five_symbolic_modes() {
 
 #[test]
 fn checked_generic_construction_rejects_original_recovered_variant_calculations() {
-    let report = parse_style_attribute("voice-family:male calc(1");
+    let report = CssParser::default().parse_block_contents("voice-family:male calc(1");
     assert!(!report.is_clean());
-    assert!(validate_style_attribute("voice-family:male calc(1").is_err());
+    assert!(
+        CssParser::default()
+            .parse_block_contents("voice-family:male calc(1")
+            .into_validation_result()
+            .is_err()
+    );
     let CssKnownPropertyValueRef::VoiceFamily(wrapper) = report.syntax()[0]
         .known()
         .unwrap()

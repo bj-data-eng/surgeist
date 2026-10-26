@@ -14,7 +14,11 @@ fn declaration(source: &str) -> CssDeclaration {
 }
 
 fn exact(source: &str, specified: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{source}: {report:?}");
     let value = report
         .syntax()
@@ -26,7 +30,12 @@ fn exact(source: &str, specified: &str) -> CssSelector {
         specified
     );
     assert_eq!(
-        parse_selector(specified, &CssNamespaceContext::default()).syntax(),
+        CssSelector::parse(
+            &CssParser::default(),
+            specified,
+            &CssNamespaceContext::default()
+        )
+        .syntax(),
         &Some(value.clone())
     );
     assert!(report.into_validation_result().is_ok());
@@ -58,7 +67,7 @@ fn ordinary_names_are_supported_and_property_auto_is_invalid() {
         "10%",
     ] {
         let source = format!("view-transition-name:{invalid};color:red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(!report.is_clean());
         assert!(
             report
@@ -94,12 +103,12 @@ fn substitution_values_keep_the_occurrence_and_strict_reentry() {
     for text in ["var(--tag)", "env(tag)", "attr(data-tag)"] {
         let source = declaration(&format!("view-transition-name:{text}!important"));
         assert!(source.known().unwrap().substitution_dependent().is_some());
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending authored name")
         };
         // VT1 §3.1: view-transition-name is none | <custom-ident> without auto.
         let error = pending
-            .reenter(parse_component_values("auto").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "auto").unwrap())
             .unwrap_err();
         let Some(replacement) = error.replacement_error() else {
             panic!("{text}: invalid replacement: {error:?}")
@@ -108,7 +117,7 @@ fn substitution_values_keep_the_occurrence_and_strict_reentry() {
             .named("view-transition-name")
             .at("auto")
             .assert_checked(replacement);
-        let replacement = parse_component_values("Card").unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), "Card").unwrap();
         let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("one ordinary longhand")
@@ -158,7 +167,11 @@ fn only_child_permission_is_scoped_and_propagates_to_logical_suffixes() {
             ":where(:only-child)",
         ] {
             let text = format!("::view-transition-{name}(Card){suffix}");
-            let report = parse_selector(&text, &CssNamespaceContext::default());
+            let report = CssSelector::parse(
+                &CssParser::default(),
+                &text,
+                &CssNamespaceContext::default(),
+            );
             assert!(report.is_clean(), "{text}: {report:?}");
             assert!(report.syntax().is_some());
         }
@@ -169,7 +182,11 @@ fn only_child_permission_is_scoped_and_propagates_to_logical_suffixes() {
         "::view-transition-old(Card):current",
         "::view-transition-old(Card):first-child",
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         ExpectedRejection::new(CssErrorCode::InvalidSelector).assert_first(&report);
     }
@@ -230,7 +247,11 @@ fn malformed_function_forms_and_lexical_controls_stay_rejected() {
         // The combinator after the pseudo-element is responsible.
         ("::before > .child", invalid.clone().at(">")),
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         expected.assert_first(&report);
     }

@@ -40,9 +40,12 @@ impl<'a> From<Option<&'a str>> for Responsible<'a> {
 /// admits as the same declaration list.
 #[track_caller]
 pub fn validated_sole_declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert_eq!(
-        validate_style_attribute(css).as_ref(),
+        CssParser::default()
+            .parse_block_contents(css)
+            .into_validation_result()
+            .as_ref(),
         Ok(report.syntax()),
         "{css}: validation admits the clean report"
     );
@@ -138,14 +141,20 @@ pub fn assert_checked_matches_diagnostic(
         property,
         "rejecting property"
     );
-    let components = parse_component_values(value).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     for result in [
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components.clone(),
             CssImportance::Normal,
         ),
-        parse_property_value_for_grammar(property.grammar(), components, CssImportance::Normal),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(property.grammar()),
+            components,
+            CssImportance::Normal,
+        ),
     ] {
         let error = result.expect_err(value);
         assert_same_grammar_facts(
@@ -378,12 +387,13 @@ pub fn assert_checked_value_rejected<'a>(
     token: impl Into<Responsible<'a>>,
 ) {
     let token = token.into();
-    let components = parse_component_values(value).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     let before = components.clone();
     for importance in [CssImportance::Normal, CssImportance::Important] {
         assert_checked_rejected(
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 importance,
             ),
@@ -391,7 +401,12 @@ pub fn assert_checked_value_rejected<'a>(
             token,
         );
         assert_checked_rejected(
-            parse_property_value_for_grammar(property.grammar(), components.clone(), importance),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
+                components.clone(),
+                importance,
+            ),
             property,
             token,
         );
@@ -411,7 +426,7 @@ pub fn assert_style_attribute_rejected<'a>(
     property: CssKnownProperty,
     token: impl Into<Responsible<'a>>,
 ) -> CssParseReport<CssDeclarationList> {
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     let [diagnostic] = report.diagnostics() else {
         panic!(
             "{css}: expected one diagnostic, got {:?}",
@@ -432,7 +447,11 @@ pub fn assert_style_attribute_rejected<'a>(
     );
     assert_invalid_value(diagnostic.error(), property, token);
     assert_eq!(
-        validate_style_attribute(css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics(),
         "{css}: validation reports the parse diagnostics"
     );
@@ -576,9 +595,10 @@ pub fn assert_declaration_rejected<'a>(name: &str, value: &str, token: impl Into
         "{source}: neighbor identities"
     );
     assert_checked_rejected(
-        parse_property_value_for_grammar(
-            grammar,
-            parse_component_values(value).unwrap(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(grammar),
+            CssComponentValues::parse(&CssParser::default(), value).unwrap(),
             CssImportance::Normal,
         ),
         property,

@@ -103,7 +103,7 @@ fn exact_count_and_columns_emit_all_effective_values_under_one_budget() {
 
 #[test]
 fn parsed_and_programmatic_exact_counts_agree_without_origin_equality() {
-    let report = parse_style_attribute("column-count:2147483648");
+    let report = CssParser::default().parse_block_contents("column-count:2147483648");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::ColumnCount(parsed) = report.syntax()[0]
         .known()
@@ -152,7 +152,7 @@ fn box_size_and_integer_math_remain_symbolic_at_the_column_boundary() {
         "2.5% auto"
     );
     let expression = CssCalculation::<CssInteger>::try_from_components(
-        parse_component_values("calc(1 + 2)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(1 + 2)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -166,7 +166,7 @@ fn box_size_and_integer_math_remain_symbolic_at_the_column_boundary() {
         columns.serialize_specified(Default::default()).unwrap(),
         "auto calc(3)"
     );
-    let report = parse_style_attribute("columns:calc(1 + 2)");
+    let report = CssParser::default().parse_block_contents("columns:calc(1 + 2)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Columns(parsed) = report.syntax()[0]
         .known()
@@ -184,7 +184,7 @@ fn two_symbolic_children_share_projection_and_output_limits() {
     let width = CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(
         CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
             CssCalculation::<CssLengthPercentage>::try_from_components(
-                parse_component_values("calc(1px + 2%)").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "calc(1px + 2%)").unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -194,7 +194,7 @@ fn two_symbolic_children_share_projection_and_output_limits() {
     let count = CssColumnCount::Count(
         CssNumeric::<CssInteger, CssPositive>::try_from_calculation(
             CssCalculation::<CssInteger>::try_from_components(
-                parse_component_values("calc(1 + 2)").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "calc(1 + 2)").unwrap(),
                 Default::default(),
             )
             .unwrap(),

@@ -1923,10 +1923,10 @@ fn scalar_text(scalar: &Scalar, root: bool, value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CssCalculation, CssNumber, CssPercentage, parse_component_values};
+    use crate::{CssCalculation, CssNumber, CssPercentage};
 
     fn projected(source: &str) -> String {
-        let components = parse_component_values(source).unwrap();
+        let components = crate::component_values::parse_component_values(source).unwrap();
         if let Ok(value) =
             CssCalculation::<CssNumber>::try_from_components(components.clone(), Default::default())
         {
@@ -2012,7 +2012,7 @@ mod tests {
     #[test]
     fn limits_fail_atomically_and_do_not_change_the_authored_tree() {
         let value = CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values("calc(1 / 2)").unwrap(),
+            crate::component_values::parse_component_values("calc(1 / 2)").unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -2039,7 +2039,7 @@ mod tests {
     #[test]
     fn shared_context_charges_sequential_numeric_children_cumulatively() {
         let value = CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values("calc(1 / 2)").unwrap(),
+            crate::component_values::parse_component_values("calc(1 / 2)").unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -2070,7 +2070,7 @@ mod tests {
     #[test]
     fn shared_context_emits_into_one_bounded_output_and_reports_dependence() {
         let value = CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values("calc(1 / 2)").unwrap(),
+            crate::component_values::parse_component_values("calc(1 / 2)").unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -2084,7 +2084,7 @@ mod tests {
         assert_eq!(outcome.scalar_value, Some(0.5));
 
         let contextual = CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values("calc(1em / 1px)").unwrap(),
+            crate::component_values::parse_component_values("calc(1em / 1px)").unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -2100,7 +2100,7 @@ mod tests {
     #[test]
     fn bounded_capture_defers_only_final_output_charging() {
         let value = CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values("calc(1 / 2)").unwrap(),
+            crate::component_values::parse_component_values("calc(1 / 2)").unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -2205,7 +2205,7 @@ mod tests {
     fn flat_and_deep_borrowed_graphs_have_bounded_projection_and_atomic_failure() {
         let source = format!("calc({})", vec!["1"; 4096].join(" + "));
         let value = CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values(&source).unwrap(),
+            crate::component_values::parse_component_values(&source).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -2273,10 +2273,10 @@ mod tests {
 #[cfg(test)]
 mod comparison_capture_tests {
     use super::*;
-    use crate::{CssCalculation, CssLength, CssNumber, parse_component_values};
+    use crate::{CssCalculation, CssLength, CssNumber};
 
     fn expression(source: &str) -> Box<CssCalculationExpression> {
-        let components = parse_component_values(source).unwrap();
+        let components = crate::component_values::parse_component_values(source).unwrap();
         if let Ok(value) =
             CssCalculation::<CssNumber>::try_from_components(components.clone(), Default::default())
         {
@@ -2607,11 +2607,11 @@ mod comparison_capture_tests {
 #[cfg(test)]
 mod scaled_capture_tests {
     use super::*;
-    use crate::{CssCalculation, CssNumber, CssPercentage, parse_component_values};
+    use crate::{CssCalculation, CssNumber, CssPercentage};
 
     fn number(source: &str) -> CssCalculation<CssNumber> {
         CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values(source).unwrap(),
+            crate::component_values::parse_component_values(source).unwrap(),
             Default::default(),
         )
         .unwrap()
@@ -2620,7 +2620,7 @@ mod scaled_capture_tests {
     #[test]
     fn scaled_percentage_rounds_text_without_rounding_the_scalar() {
         let value = CssCalculation::<CssPercentage>::try_from_components(
-            parse_component_values("calc(.78125%)").unwrap(),
+            crate::component_values::parse_component_values("calc(.78125%)").unwrap(),
             Default::default(),
         )
         .unwrap();

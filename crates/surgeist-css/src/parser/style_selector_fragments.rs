@@ -49,53 +49,8 @@ impl CssParsedStyleSelectors {
     }
 }
 
-/// Parses a complete raw style-selector list in its actual destination context.
-///
-/// Ordinary lists reject leading combinators. Nested and scoped lists retain
-/// explicit relative relationships and implicit anchors symbolically, using the
-/// same grammar as authored rules. Namespace bindings are supplied explicitly.
-/// One invalid outer member or trailing nontrivia rejects the complete input as
-/// `None`; forgiving inner recovery and EOF closures retain ordered diagnostics.
-/// Retention, rather than report cleanliness, is the selectorText admission test.
-/// Resource failures also return `None` but keep their typed diagnostic cause
-/// and resource action, so a consumer can distinguish them from syntax no-ops.
-///
-/// ```
-/// use surgeist_css::{CssNamespaceContext,
-///     CssSelectorCombinator, CssStyleSelector, CssStyleSelectorContext,
-///     parse_style_selector_list};
-/// let report = parse_style_selector_list(
-///     "> .child", &CssNamespaceContext::default(), CssStyleSelectorContext::Nested);
-/// let parsed = report.syntax().as_ref().unwrap();
-/// let CssStyleSelector::Relative(child) = &parsed.selectors().selectors()[0] else {
-///     panic!("explicit relative relationship");
-/// };
-/// assert_eq!(child.combinator(), CssSelectorCombinator::Child);
-/// assert_eq!(parsed.origin().source().as_str(), "> .child");
-/// ```
 #[must_use]
-pub fn parse_style_selector_list(
-    source: &str,
-    namespaces: &CssNamespaceContext,
-    context: CssStyleSelectorContext,
-) -> crate::CssParseReport<Option<CssParsedStyleSelectors>> {
-    parse_style_selector_list_with_limits(
-        source,
-        namespaces,
-        context,
-        crate::CssComponentValueLimits::default(),
-    )
-}
-
-/// Parses with cumulative component limits over the complete original input.
-///
-/// Bytes include trivia and trailing input; components include every function,
-/// descendant and trivia node. The owning syntax preflight charges this input
-/// once, before the existing selector grammar probes. No member gets a fresh
-/// allowance. Failure publishes no payload; an unchanged larger-budget retry is
-/// independent and preserves the caller's input. Formatting has its own limits.
-#[must_use]
-pub fn parse_style_selector_list_with_limits(
+pub(crate) fn parse_style_selector_list_with_limits(
     source: &str,
     namespaces: &CssNamespaceContext,
     context: CssStyleSelectorContext,
@@ -149,4 +104,52 @@ pub fn parse_style_selector_list_with_limits(
         });
         crate::CssParseReport::new(syntax, diagnostics)
     })
+}
+impl CssParsedStyleSelectors {
+    /// Parses a complete raw style-selector list in its actual destination context.
+    ///
+    /// Ordinary lists reject leading combinators. Nested and scoped lists retain
+    /// explicit relative relationships and implicit anchors symbolically, using the
+    /// same grammar as authored rules. Namespace bindings are supplied explicitly.
+    /// One invalid outer member or trailing nontrivia rejects the complete input as
+    /// `None`; forgiving inner recovery and EOF closures retain ordered diagnostics.
+    /// Retention, rather than report cleanliness, is the selectorText admission test.
+    /// Resource failures also return `None` but keep their typed diagnostic cause
+    /// and resource action, so a consumer can distinguish them from syntax no-ops.
+    ///
+    /// The parser's component limits are charged cumulatively over the complete
+    /// original input. Bytes include trivia and trailing input; components include
+    /// every function, descendant and trivia node. The owning syntax preflight
+    /// charges this input once, before the existing selector grammar probes, and no
+    /// member gets a fresh allowance. A failed allowance publishes no payload (the
+    /// report carries the component arena's refusal over the whole source, also for
+    /// nesting past 256 levels), and an unchanged larger-budget retry is independent
+    /// and preserves the caller's input. Formatting has its own limits.
+    ///
+    /// ```
+    /// use surgeist_css::{CssNamespaceContext, CssSelectorCombinator, CssStyleSelector, CssStyleSelectorContext, CssParsedStyleSelectors, CssParser};
+    /// let report = CssParsedStyleSelectors::parse(&CssParser::default(), "> .child", &CssNamespaceContext::default(), CssStyleSelectorContext::Nested);
+    /// let parsed = report.syntax().as_ref().unwrap();
+    /// let CssStyleSelector::Relative(child) = &parsed.selectors().selectors()[0] else {
+    ///     panic!("explicit relative relationship");
+    /// };
+    /// assert_eq!(child.combinator(), CssSelectorCombinator::Child);
+    /// assert_eq!(parsed.origin().source().as_str(), "> .child");
+    /// ```
+    ///
+    /// A complete top-level list that is not nested is `CssStyleSelectorContext::Ordinary`.
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+        namespaces: &CssNamespaceContext,
+        context: CssStyleSelectorContext,
+    ) -> crate::CssParseReport<Option<CssParsedStyleSelectors>> {
+        parse_style_selector_list_with_limits(
+            source.as_ref(),
+            namespaces,
+            context,
+            parser.component_limits(),
+        )
+    }
 }

@@ -4,12 +4,12 @@
 //! CSS Nesting 1 §3 and §5 retain nested rules and declaration runs in their parent:
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/
 
-use surgeist_css::{CssRule, parse_sheet};
+use surgeist_css::{CssParser, CssRule};
 
 #[test]
 fn selector_list_retains_one_authored_rule() {
     let source = ".card, #featured { color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(
         report.syntax().rules().len(),
@@ -25,7 +25,7 @@ fn selector_list_retains_one_authored_rule() {
 #[test]
 fn nested_rule_and_surrounding_declarations_stay_in_the_authored_parent() {
     let source = ".card { color: red; & .title { color: blue; } color: green; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(
         report.syntax().rules().len(),
@@ -41,7 +41,7 @@ fn nested_rule_and_surrounding_declarations_stay_in_the_authored_parent() {
 #[test]
 fn nested_conditional_remains_in_its_authored_parent() {
     let source = ".card { color: red; @media screen { color: blue; } color: green; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(
         report.syntax().rules().len(),
@@ -54,7 +54,7 @@ fn nested_conditional_remains_in_its_authored_parent() {
 #[test]
 fn nested_selector_context_preserves_the_entire_parent_list_without_multiplication() {
     let source = ".card, #featured { &:hover, &.selected { .title, .subtitle { color: red; } } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("expected one authored parent");
@@ -99,7 +99,7 @@ fn nested_selector_context_preserves_the_entire_parent_list_without_multiplicati
 #[test]
 fn declaration_runs_preserve_parent_pseudo_elements_order_importance_and_provenance() {
     let source = "a, a::before { color: red; & .title { color: blue; } color: green !important; @media screen { color: black; } color: white; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("expected authored parent");
@@ -145,7 +145,7 @@ fn declaration_runs_preserve_parent_pseudo_elements_order_importance_and_provena
 #[test]
 fn invalid_nested_rules_do_not_hide_valid_declarations_or_later_children() {
     let source = ".card { color: red; .bad, { color: blue; } color: green; .child { opacity: 1; } color: black; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("expected retained authored parent");

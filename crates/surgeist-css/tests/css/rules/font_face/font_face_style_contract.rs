@@ -5,11 +5,11 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::invalid_descriptor;
 use crate::css::support::rules::ordinary_font_face_descriptor;
 use surgeist_css::{
-    CssAngle, CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValue,
-    CssComponentValues, CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Ordinary,
-    CssFontFaceObliqueRange, CssFontFaceStyle, CssFontStyleKeyword, CssNumeric,
-    CssObliqueAngleRange, CssRecoveryAction, CssRule, CssSerializationLimits, CssSerializedOrigin,
-    CssValueOrigin, parse_component_values, parse_font_face_descriptor_value, parse_sheet,
+    CssAngle, CssAuthoredFontFaceDescriptorValue as Authored, CssAuthoredFontFaceDescriptorValue,
+    CssComponentValue, CssComponentValues, CssFontFaceDescriptorKind as Kind,
+    CssFontFaceDescriptorValue as Ordinary, CssFontFaceObliqueRange, CssFontFaceStyle,
+    CssFontStyleKeyword, CssNumeric, CssObliqueAngleRange, CssParser, CssRecoveryAction, CssRule,
+    CssSerializationLimits, CssSerializedOrigin, CssValueOrigin,
 };
 
 fn angle(text: &str) -> CssNumeric<CssAngle, CssObliqueAngleRange> {
@@ -137,11 +137,15 @@ fn invalid_arity_domains_and_bounds_recover_one_descriptor_and_keep_neighbors() 
         "oblique 1.5707963267948968rad",
         "oblique calc(10px)",
     ] {
-        let raw = parse_font_face_descriptor_value(invalid, Kind::FontStyle);
+        let raw = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            invalid,
+            Kind::FontStyle,
+        );
         assert!(raw.syntax().is_none(), "{invalid}");
         let source =
             format!("@font-face{{font-style:normal;font-style:{invalid};font-display:swap}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(report.diagnostics().len(), 1, "{invalid}");
         assert_eq!(
             report.diagnostics()[0].action(),
@@ -160,7 +164,7 @@ fn invalid_arity_domains_and_bounds_recover_one_descriptor_and_keep_neighbors() 
             )))
         ));
     }
-    let empty = parse_sheet("@font-face{}");
+    let empty = CssParser::default().parse_sheet("@font-face{}");
     assert!(empty.is_clean());
     assert!(matches!(empty.syntax().rules(), [CssRule::FontFace(_)]));
 }
@@ -168,7 +172,7 @@ fn invalid_arity_domains_and_bounds_recover_one_descriptor_and_keep_neighbors() 
 #[test]
 fn duplicate_pending_and_mixed_origin_reentry_select_last_admitted_style() {
     let source = "@font-face{font-style:oblique 10deg;font-style:env(style);font-style:bad;font-style:italic}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("font face")
@@ -183,14 +187,14 @@ fn duplicate_pending_and_mixed_origin_reentry_select_last_admitted_style() {
 
     let checked = Authored::try_from_components(
         Kind::FontStyle,
-        parse_component_values("env(style, oblique)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "env(style, oblique)").unwrap(),
         Default::default(),
     )
     .unwrap();
     let Authored::Pending(pending) = checked else {
         panic!("pending descriptor")
     };
-    let mut components = parse_component_values("oblique 10deg ")
+    let mut components = CssComponentValues::parse(&CssParser::default(), "oblique 10deg ")
         .unwrap()
         .items()
         .to_vec();
@@ -240,7 +244,7 @@ fn duplicate_pending_and_mixed_origin_reentry_select_last_admitted_style() {
         assert!(
             pending
                 .reparse_after_substitution(
-                    parse_component_values(text).unwrap(),
+                    CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                     Default::default()
                 )
                 .unwrap_err()
@@ -251,7 +255,7 @@ fn duplicate_pending_and_mixed_origin_reentry_select_last_admitted_style() {
     // Fonts 4 §4.2: an oblique angle lies in [-90deg, 90deg].
     let error = pending
         .reparse_after_substitution(
-            parse_component_values("oblique 91deg").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "oblique 91deg").unwrap(),
             Default::default(),
         )
         .unwrap_err();

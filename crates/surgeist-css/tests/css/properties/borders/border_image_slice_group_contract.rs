@@ -21,15 +21,14 @@ const PROPERTIES: [CssKnownProperty; 2] = [
 
 fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
     let css = format!("{}: {text} !important;", property.canonical_name());
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
     report.syntax()[0].clone()
 }
 
 fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("completed longhands")
     };
@@ -116,13 +115,14 @@ fn pending_reentry_rejects_split_groups_atomically_and_remains_reusable() {
             parsed(property, "var(--slice)"),
             checked(property, "var(--slice)").unwrap(),
         ] {
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("pending substitution")
             };
             let before = source.serialize_specified(Default::default()).unwrap();
             for _ in 0..2 {
                 for (text, _) in split_groups() {
-                    let replacement = parse_component_values(text).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), text).unwrap();
                     let error = handle
                         .reenter(replacement)
                         .expect_err("pending split group rejection");
@@ -133,7 +133,8 @@ fn pending_reentry_rejects_split_groups_atomically_and_remains_reusable() {
                     assert_eq!(property_value_facts(actual), property_value_facts(&direct));
                     assert_eq!(actual.origin(), direct.origin());
                 }
-                let replacement = parse_component_values("fill 1 2 3 4").unwrap();
+                let replacement =
+                    CssComponentValues::parse(&CssParser::default(), "fill 1 2 3 4").unwrap();
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
                 else {
@@ -169,7 +170,10 @@ fn pending_reentry_rejects_split_groups_atomically_and_remains_reusable() {
                     before
                 );
                 let error = handle
-                    .reenter(parse_component_values("var(--remaining)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--remaining)")
+                            .unwrap(),
+                    )
                     .unwrap_err();
                 assert!(error.is_residual_substitution());
             }
@@ -182,7 +186,7 @@ fn recovery_drops_only_the_split_group_and_preserves_siblings_and_coordinates() 
     for property in PROPERTIES {
         let declaration = format!("{}: 1 fill 2;", property.canonical_name());
         let css = format!("--😀: kept; {declaration} color: red;");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         let [diagnostic] = report.diagnostics() else {
             panic!("one split-group diagnostic: {:?}", report.diagnostics())
         };
@@ -209,7 +213,11 @@ fn recovery_drops_only_the_split_group_and_preserves_siblings_and_coordinates() 
             css[..offset].encode_utf16().count()
         );
         assert_eq!(
-            validate_style_attribute(&css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -248,7 +256,7 @@ fn fill_before_or_after_complete_groups_preserves_edges_and_round_trips() {
                         assert!(matches!(origin, CssValueOrigin::Parsed(_)));
                     }
                     let css = source.serialize_specified(Default::default()).unwrap();
-                    let reparsed = parse_style_attribute(&css);
+                    let reparsed = CssParser::default().parse_block_contents(&css);
                     assert!(reparsed.is_clean(), "{css}: {:?}", reparsed.diagnostics());
                     assert_eq!(
                         slice(&contributions(&reparsed.syntax()[0]))
@@ -321,7 +329,8 @@ fn masking_slice_keeps_its_separate_trailing_fill_grammar() {
         for text in ["1", "1 2%", "1 2 3 4 fill"] {
             assert!(checked(property, text).is_ok(), "mask control: {text}");
             assert!(
-                parse_style_attribute(&format!("{}: {text};", property.canonical_name()))
+                CssParser::default()
+                    .parse_block_contents(format!("{}: {text};", property.canonical_name()))
                     .is_clean()
             );
         }
@@ -344,13 +353,14 @@ fn masking_slice_keeps_its_separate_trailing_fill_grammar() {
 #[test]
 fn mixed_origin_checked_slice_groups_retain_nonnegative_scalar_ownership() {
     for property in PROPERTIES {
-        let parsed = parse_component_values("fill 1 2% 3 4%").unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), "fill 1 2% 3 4%").unwrap();
         let mut items = parsed.items().to_vec();
         let index = items.iter().position(|item| matches!(item.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation() == "3")).unwrap();
         items[index] = CssComponentValue::try_number("+3").unwrap();
         let components = CssComponentValues::try_new(items, Default::default()).unwrap();
-        let source = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let source = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components,
             CssImportance::Important,
         )

@@ -68,17 +68,17 @@
   ],
   "desired_adapter": {
     "entry_point": "style_attribute",
-    "public_entry": "parse_style_attribute",
-    "validator": "validate_style_attribute",
+    "public_entry": "CssParser::parse_block_contents",
+    "validator": "CssParser::parse_block_contents(..).into_validation_result",
     "prefix": "",
     "suffix": "",
     "extractor": "declaration_list",
     "coordinates": "original raw UTF-8 bytes"
   },
   "source_contracts": [
-    "src/parser/mod.rs:448-501 public style-attribute contract and invocation",
-    "src/parser/mod.rs:3695 parse_style_attribute_declarations; StrictDeclarationParser; parse_declaration_core",
-    "src/parser/mod.rs:1467 recovery_unit_start; block_item_diagnostic_from_start; consume_failed_rule_block",
+    "src/parser_context.rs CssParser::parse_block_contents public declaration-list contract and invocation",
+    "src/parser/declaration_block.rs parse_contents (Syntax 3 2026 CRD \u00a75.5.5); OrdinaryReceiver; parse_declaration_core",
+    "src/parser/declaration_block.rs reconsume_as_rule, dropped_end; recovery_unit_start; block_item_diagnostic_from_start",
     "src/error.rs:1257 basic_error; resolve_source; property_name_error; unsupported_at_rule_feature",
     "src/report.rs CssParseReport ordering, is_clean, validation",
     "locked cssparser0.37.0 rules_and_declarations.rs RuleBodyParser::next, parse_at_rule, parse_qualified_rule",
@@ -90,7 +90,7 @@
     "clean": 6,
     "strict_rejected": 10,
     "recovered": 3,
-    "raw_diagnostics": 17,
+    "raw_diagnostics": 18,
     "unsettled": 0
   },
   "rows": [
@@ -1060,7 +1060,12 @@
         "diagnostics": [
           {
             "code": "unexpected_token",
-            "action": "drop_declaration",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unexpected_token",
+            "action": "drop_at_rule",
             "payload_relation": "intersects"
           }
         ]
@@ -1068,18 +1073,27 @@
       "expected_raw_diagnostics": [
         {
           "code": "unexpected_token",
-          "action": "drop_declaration",
+          "action": "drop_qualified_rule",
           "payload_relation": "intersects",
           "byte_offset": 14,
           "span_start": 14,
-          "span_end": 70,
+          "span_end": 39,
+          "multiplicity": 1
+        },
+        {
+          "code": "unexpected_token",
+          "action": "drop_at_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 40,
+          "span_start": 40,
+          "span_end": 69,
           "multiplicity": 1
         }
       ],
-      "diagnostic_count": 1,
+      "diagnostic_count": 2,
       "rationale": [
-        "A raw style attribute/declaration list contains declarations, not nested style or conditional rules. Retain only the leading color:blue. The `&`-led unit is a malformed declaration whose remnants run to EOF: the nested blocks and the following @nest rule are inside it, and neither enclosed green nor red is imported into the outer list.",
-        "Malformed declaration starts (#1372): CSS Style Attributes REC 2013-11-07 \u00a73 parses the value as declaration block contents in which a `}` is merely an invalid token, and CSS 2.1 \u00a74.2 reads a malformed declaration until its end while observing matching pairs. Syntax 3 (2026 CRD) \u00a75.5.6: a declaration whose first token is not an <ident-token> consumes the remnants of a bad declaration (not nested), whole blocks included, through the next root `;` or EOF. The unit starts at the responsible first token and excludes that `;`; it is one UnexpectedToken DropDeclaration."
+        "A raw declaration list contains declarations, not nested style or conditional rules. Retain only the leading color:blue. The `&:hover { .. }` rule is a dropped qualified rule and the `@nest :not(&) { .. }` rule is a dropped at-rule; neither enclosed green nor red is imported into the outer list.",
+        "Specification basis: CSS Syntax 3 CRD 2026-10-01 \u00a75.5.5 \"consume a block's contents\" (#1353 decision 1, the one declaration-list front): an at-rule is consumed whole and dropped; any other unit that is not a declaration is reconsumed as a qualified rule with `;` as its stop token (\u00a75.5.3 \"consume a qualified rule\"; \u00a75.5.6 \"consume a declaration\" returns nothing for a unit that is not a declaration), so a rule that reaches its `{}` block is one dropped qualified rule, and the declarations after it are read again. A raw declaration list holds no rules, so each is reported UnexpectedToken (or UnknownProperty for the identifier-led `div:hover`) with the rule's own action."
       ],
       "uncertainties": [],
       "source_predicted_retention_matches_normative": true
@@ -1126,12 +1140,12 @@
         "diagnostics": [
           {
             "code": "unexpected_token",
-            "action": "drop_declaration",
+            "action": "drop_qualified_rule",
             "payload_relation": "intersects"
           },
           {
             "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "drop_qualified_rule",
             "payload_relation": "intersects"
           }
         ]
@@ -1139,7 +1153,7 @@
       "expected_raw_diagnostics": [
         {
           "code": "unexpected_token",
-          "action": "drop_declaration",
+          "action": "drop_qualified_rule",
           "payload_relation": "intersects",
           "byte_offset": 0,
           "span_start": 0,
@@ -1148,7 +1162,7 @@
         },
         {
           "code": "unknown_property",
-          "action": "drop_declaration",
+          "action": "drop_qualified_rule",
           "payload_relation": "intersects",
           "byte_offset": 26,
           "span_start": 26,
@@ -1158,8 +1172,8 @@
       ],
       "diagnostic_count": 2,
       "rationale": [
-        "A raw style attribute/declaration list contains declarations, not nested style rules. The `.`-led unit is a malformed declaration whose remnants, its block included, end before the first root `;`. Identifier-led div:hover first fails ordinary property resolution, and RuleBodyParser preserves that UnknownProperty when qualified fallback also fails; consume_failed_rule_block consumes its whole balanced curly body.",
-        "Malformed declaration starts (#1372): CSS Style Attributes REC 2013-11-07 \u00a73 parses the value as declaration block contents in which a `}` is merely an invalid token, and CSS 2.1 \u00a74.2 reads a malformed declaration until its end while observing matching pairs. Syntax 3 (2026 CRD) \u00a75.5.6: a declaration whose first token is not an <ident-token> consumes the remnants of a bad declaration (not nested), whole blocks included, through the next root `;` or EOF. The unit starts at the responsible first token and excludes that `;`; it is one UnexpectedToken DropDeclaration."
+        "A raw declaration list contains declarations, not nested style rules. The `.bar & { .. }` rule is a dropped qualified rule that ends at its block, and the identifier-led `div:hover { .. }` rule fails ordinary property resolution (UnknownProperty) and is dropped as a qualified rule as well.",
+        "Specification basis: CSS Syntax 3 CRD 2026-10-01 \u00a75.5.5 \"consume a block's contents\" (#1353 decision 1, the one declaration-list front): an at-rule is consumed whole and dropped; any other unit that is not a declaration is reconsumed as a qualified rule with `;` as its stop token (\u00a75.5.3 \"consume a qualified rule\"; \u00a75.5.6 \"consume a declaration\" returns nothing for a unit that is not a declaration), so a rule that reaches its `{}` block is one dropped qualified rule, and the declarations after it are read again. A raw declaration list holds no rules, so each is reported UnexpectedToken (or UnknownProperty for the identifier-led `div:hover`) with the rule's own action."
       ],
       "uncertainties": [],
       "source_predicted_retention_matches_normative": true
@@ -1217,16 +1231,16 @@
         },
         "diagnostics": [
           {
-            "code": "unknown_at_rule",
-            "action": "drop_declaration",
+            "code": "unexpected_token",
+            "action": "drop_at_rule",
             "payload_relation": "intersects"
           }
         ]
       },
       "expected_raw_diagnostics": [
         {
-          "code": "unknown_at_rule",
-          "action": "drop_declaration",
+          "code": "unexpected_token",
+          "action": "drop_at_rule",
           "payload_relation": "intersects",
           "byte_offset": 14,
           "span_start": 14,
@@ -1236,8 +1250,8 @@
       ],
       "diagnostic_count": 1,
       "rationale": [
-        "A raw style attribute/declaration list contains declarations, not nested style or conditional rules. Retain only the leading color:blue if present. Discard all nested blocks as non-declaration units; do not import enclosed green/red into the outer list. @nest is not required nesting syntax, and valid @media stylesheet grammar does not make an at-rule a declaration.",
-        "Static diagnostic trace: StrictDeclarationParser default QualifiedRuleParser rejects a non-identifier prelude with QualifiedRuleInvalid; default AtRuleParser rejects at-rules with AtRuleInvalid, mapped to UnknownAtRule for media/nest. Identifier-led div:hover first fails ordinary property resolution, and RuleBodyParser deliberately preserves that UnknownProperty when qualified fallback also fails. consume_failed_rule_block consumes each whole balanced curly body; spans exclude surrounding whitespace/semicolons unless the semicolon is part of the failed declaration unit."
+        "A raw declaration list contains declarations, not nested conditional rules. Retain only the leading color:blue; the nested @media is one dropped at-rule whose whole block is consumed with it.",
+        "Specification basis: CSS Syntax 3 CRD 2026-10-01 \u00a75.5.5 \"consume a block's contents\" (#1353 decision 1, the one declaration-list front): an at-rule is consumed whole and dropped; any other unit that is not a declaration is reconsumed as a qualified rule with `;` as its stop token (\u00a75.5.3 \"consume a qualified rule\"; \u00a75.5.6 \"consume a declaration\" returns nothing for a unit that is not a declaration), so a rule that reaches its `{}` block is one dropped qualified rule, and the declarations after it are read again. A raw declaration list holds no rules, so each is reported UnexpectedToken (or UnknownProperty for the identifier-led `div:hover`) with the rule's own action."
       ],
       "uncertainties": [],
       "source_predicted_retention_matches_normative": true

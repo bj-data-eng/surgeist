@@ -1,13 +1,13 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::{assert_component_rejected, assert_numeric_rejected};
 use surgeist_css::{
-    CssCalculation, CssComponentValue, CssContainIntrinsicSizeFallback,
-    CssContainIntrinsicSizeValue, CssLength, CssNonNegative, CssNumeric, CssSerializationLimits,
-    CssSidePair, CssValueOrigin, parse_component_values,
+    CssCalculation, CssComponentValue, CssComponentValues, CssContainIntrinsicSizeFallback,
+    CssContainIntrinsicSizeValue, CssLength, CssNonNegative, CssNumeric, CssParser,
+    CssSerializationLimits, CssSidePair, CssValueOrigin,
 };
 
 fn component(text: &str) -> CssComponentValue {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [component] = values.items() else {
         panic!("one component: {text}")
     };
@@ -18,7 +18,7 @@ fn length(text: &str) -> CssNumeric<CssLength, CssNonNegative> {
     if text.starts_with("calc(") {
         CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
             CssCalculation::<CssLength>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -94,7 +94,7 @@ fn checked_nonnegative_length_preserves_exact_literal_domain() {
 #[test]
 fn bare_calculation_roots_reenter_ordinary_admission_but_negative_math_stays_deferred() {
     let bare = CssCalculation::<CssLength>::try_from_components(
-        parse_component_values("2px").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "2px").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -106,7 +106,7 @@ fn bare_calculation_roots_reenter_ordinary_admission_but_negative_math_stays_def
         "2px"
     );
     let negative = CssCalculation::<CssLength>::try_from_components(
-        parse_component_values("-1px").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "-1px").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -160,7 +160,10 @@ fn fallback_and_auto_are_explicit_checked_structure() {
 fn semantic_and_raw_equality_ignore_numeric_origins() {
     let first = length("2px");
     let later = CssNumeric::<CssLength, CssNonNegative>::try_from_component(
-        parse_component_values("  2px").unwrap().items()[1].clone(),
+        CssComponentValues::parse(&CssParser::default(), "  2px")
+            .unwrap()
+            .items()[1]
+            .clone(),
     )
     .unwrap();
     assert_ne!(first.origin(), later.origin());

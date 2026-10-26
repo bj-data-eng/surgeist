@@ -33,8 +33,11 @@ fn is_depth_limit(error: &CssRuleSerializationError) -> bool {
 
 #[test]
 fn nested_groups_are_bounded_by_the_same_depth_in_both_outputs() {
-    let queries: &'static CssMediaQueryList =
-        Box::leak(Box::new(parse_media_query_list("screen").into_parts().0));
+    let queries: &'static CssMediaQueryList = Box::leak(Box::new(
+        CssMediaQueryList::parse(&CssParser::default(), "screen")
+            .into_parts()
+            .0,
+    ));
     let leaf: &'static [Input<'static>] =
         Box::leak(Box::new([Input::group(Prelude::Media(queries), &[])]));
     let middle: &'static [Input<'static>] =
@@ -58,11 +61,11 @@ fn nested_groups_are_bounded_by_the_same_depth_in_both_outputs() {
 
 #[test]
 fn nested_style_rules_are_bounded_by_depth() {
-    let report = parse_sheet("a {}");
+    let report = CssParser::default().parse_sheet("a {}");
     let CssRule::Style(style) = &report.syntax().rules()[0] else {
         panic!("style rule");
     };
-    let none = parse_declaration_list_text("");
+    let none = CssParser::default().parse_block_contents("");
     let block =
         CssSpecifiedDeclarationBlock::try_from_declarations(none.syntax(), Default::default())
             .unwrap();
@@ -80,7 +83,7 @@ fn nested_style_rules_are_bounded_by_depth() {
 
 #[test]
 fn a_borrowed_parsed_rule_is_bounded_by_depth() {
-    let report = parse_sheet("@media a { @media b { @media c {} } }");
+    let report = CssParser::default().parse_sheet("@media a { @media b { @media c {} } }");
     let root = Input::from_rule(&report.syntax().rules()[0]);
     for max_depth in 0..=3 {
         let result = specified(root, max_depth);

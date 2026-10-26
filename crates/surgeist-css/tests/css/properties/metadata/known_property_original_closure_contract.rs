@@ -135,16 +135,18 @@ fn reject_fronts(
             for (front, result) in [
                 (
                     "known name",
-                    parse_property_value(
-                        CssPropertyNameRef::Known(property),
+                    CssDeclaration::try_from_components(
+                        &CssParser::default(),
+                        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                         values.clone(),
                         importance,
                     ),
                 ),
                 (
                     "canonical grammar",
-                    parse_property_value_for_grammar(
-                        property.grammar(),
+                    CssDeclaration::try_from_components(
+                        &CssParser::default(),
+                        CssPropertyTarget::Grammar(property.grammar()),
                         values.clone(),
                         importance,
                     ),
@@ -228,7 +230,7 @@ fn every_independent_record_rejects_original_global_comment_closure_at_both_fron
     for case in fixtures() {
         for (keyword, _) in GLOBALS {
             let source = format!("/*😀*/{keyword}/*unfinished");
-            let values = parse_component_values(&source).unwrap();
+            let values = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
             let witness = comment_witness(&values, &source);
             reject_fronts(case.property, &values, &witness, &source, &mut failures);
         }
@@ -242,13 +244,13 @@ fn every_independent_record_rejects_pending_original_function_and_comment_closur
     for case in fixtures() {
         for pending in OPEN_PENDING {
             let source = format!("/*😀*/{pending}");
-            let values = parse_component_values(&source).unwrap();
+            let values = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
             let witness = function_witness(&values, &source);
             reject_fronts(case.property, &values, &witness, &source, &mut failures);
         }
         for pending in PENDING {
             let source = format!("/*😀*/{pending}/*unfinished");
-            let values = parse_component_values(&source).unwrap();
+            let values = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
             let witness = comment_witness(&values, &source);
             reject_fronts(case.property, &values, &witness, &source, &mut failures);
         }
@@ -260,7 +262,9 @@ fn every_independent_record_rejects_pending_original_function_and_comment_closur
 fn every_record_matched_closed_globals_and_programmatic_globals_preserve_identity() {
     for case in fixtures() {
         for (keyword, expected) in GLOBALS {
-            let parsed = parse_component_values(&format!("/*😀*/{keyword}/**/")).unwrap();
+            let parsed =
+                CssComponentValues::parse(&CssParser::default(), format!("/*😀*/{keyword}/**/"))
+                    .unwrap();
             let programmatic = CssComponentValues::try_new(
                 vec![CssComponentValue::try_ident(keyword).unwrap()],
                 Default::default(),
@@ -275,14 +279,16 @@ fn every_record_matched_closed_globals_and_programmatic_globals_preserve_identit
             for values in [parsed, programmatic] {
                 for importance in IMPORTANCE {
                     for declaration in [
-                        parse_property_value(
-                            CssPropertyNameRef::Known(case.property),
+                        CssDeclaration::try_from_components(
+                            &CssParser::default(),
+                            CssPropertyTarget::Property(CssPropertyNameRef::Known(case.property)),
                             values.clone(),
                             importance,
                         )
                         .unwrap(),
-                        parse_property_value_for_grammar(
-                            case.property.grammar(),
+                        CssDeclaration::try_from_components(
+                            &CssParser::default(),
+                            CssPropertyTarget::Grammar(case.property.grammar()),
                             values.clone(),
                             importance,
                         )
@@ -323,19 +329,24 @@ fn every_record_matched_closed_pending_and_programmatic_pending_preserve_origina
         .unwrap();
         for values in PENDING
             .into_iter()
-            .map(|input| parse_component_values(&format!("/*😀*/{input}/**/")).unwrap())
+            .map(|input| {
+                CssComponentValues::parse(&CssParser::default(), format!("/*😀*/{input}/**/"))
+                    .unwrap()
+            })
             .chain(std::iter::once(programmatic))
         {
             for importance in IMPORTANCE {
                 for declaration in [
-                    parse_property_value(
-                        CssPropertyNameRef::Known(case.property),
+                    CssDeclaration::try_from_components(
+                        &CssParser::default(),
+                        CssPropertyTarget::Property(CssPropertyNameRef::Known(case.property)),
                         values.clone(),
                         importance,
                     )
                     .unwrap(),
-                    parse_property_value_for_grammar(
-                        case.property.grammar(),
+                    CssDeclaration::try_from_components(
+                        &CssParser::default(),
+                        CssPropertyTarget::Grammar(case.property.grammar()),
                         values.clone(),
                         importance,
                     )
@@ -370,14 +381,15 @@ fn available_record_reentry_rejects_original_closure_is_residual_first_and_retri
             continue;
         }
         for importance in IMPORTANCE {
-            let source = parse_property_value(
-                CssPropertyNameRef::Known(case.property),
-                parse_component_values("var(--known)").unwrap(),
+            let source = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(case.property)),
+                CssComponentValues::parse(&CssParser::default(), "var(--known)").unwrap(),
                 importance,
             )
             .unwrap();
             let before_source = source.clone();
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!(
                     "{} independent available fixture needs pending handle",
                     case.name
@@ -385,7 +397,7 @@ fn available_record_reentry_rejects_original_closure_is_residual_first_and_retri
             };
             for (keyword, _) in GLOBALS {
                 let input = format!("/*😀*/{keyword}/*unfinished");
-                let replacement = parse_component_values(&input).unwrap();
+                let replacement = CssComponentValues::parse(&CssParser::default(), &input).unwrap();
                 let before = replacement.clone();
                 let witness = comment_witness(&replacement, &input);
                 for repeat in 0..2 {
@@ -399,7 +411,8 @@ fn available_record_reentry_rejects_original_closure_is_residual_first_and_retri
                     assert!(handle.source().same_occurrence(&source));
                 }
             }
-            let replacement = parse_component_values("/*😀*/future(value").unwrap();
+            let replacement =
+                CssComponentValues::parse(&CssParser::default(), "/*😀*/future(value").unwrap();
             let witness = function_witness(&replacement, "/*😀*/future(value");
             let actual = handle.reenter(replacement.clone());
             if !matches!(actual, Err(ref error) if error.replacement_error().is_some_and(|detail| expected_error(detail, &witness)))
@@ -412,7 +425,8 @@ fn available_record_reentry_rejects_original_closure_is_residual_first_and_retri
                 "attr(data-again",
                 "[future(var(--again",
             ] {
-                let replacement = parse_component_values(residual).unwrap();
+                let replacement =
+                    CssComponentValues::parse(&CssParser::default(), residual).unwrap();
                 let before = replacement.clone();
                 assert!(
                     handle
@@ -426,7 +440,11 @@ fn available_record_reentry_rejects_original_closure_is_residual_first_and_retri
                 assert_eq!(source, before_source);
             }
             for (keyword, expected) in GLOBALS {
-                let replacement = parse_component_values(&format!("/*😀*/{keyword}/**/")).unwrap();
+                let replacement = CssComponentValues::parse(
+                    &CssParser::default(),
+                    format!("/*😀*/{keyword}/**/"),
+                )
+                .unwrap();
                 for _ in 0..2 {
                     assert_global_retry(
                         handle.reenter(replacement.clone()).unwrap(),
@@ -448,10 +466,14 @@ fn every_record_browser_recovery_keeps_unclean_known_global_and_valid_preceding_
     for case in fixtures() {
         for (keyword, expected) in GLOBALS {
             let input = format!("color:red;{}:{keyword}/*unfinished", case.name);
-            let report = parse_style_attribute(&input);
+            let report = CssParser::default().parse_block_contents(&input);
             assert!(!report.is_clean(), "{input}");
             assert_eq!(
-                validate_style_attribute(&input).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&input)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
             let [sibling, recovered] = report.syntax().as_slice() else {
@@ -464,7 +486,7 @@ fn every_record_browser_recovery_keeps_unclean_known_global_and_valid_preceding_
             assert!(matches!(witness, CssValueOrigin::ImplicitClosure { .. }));
             let clean = format!("color:red;{}:{keyword}/**/", case.name);
             assert!(
-                parse_style_attribute(&clean).is_clean(),
+                CssParser::default().parse_block_contents(&clean).is_clean(),
                 "matched complete browser control {clean}"
             );
         }
@@ -481,17 +503,19 @@ fn existing_record_ordinary_samples_remain_callable_and_typed_without_new_proper
         let Some(authored) = case.ordinary_stimulus() else {
             continue;
         };
-        let values = parse_component_values(authored).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), authored).unwrap();
         for importance in IMPORTANCE {
             for declaration in [
-                parse_property_value(
-                    CssPropertyNameRef::Known(case.property),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(case.property)),
                     values.clone(),
                     importance,
                 )
                 .unwrap(),
-                parse_property_value_for_grammar(
-                    case.property.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(case.property.grammar()),
                     values.clone(),
                     importance,
                 )
@@ -522,20 +546,29 @@ fn independently_recorded_name_equivalent_aliases_share_strict_grammar_without_c
                 case.property.grammar(),
                 "independent equivalent alias {alias}"
             );
-            let values = parse_component_values("inherit/*unfinished").unwrap();
+            let values =
+                CssComponentValues::parse(&CssParser::default(), "inherit/*unfinished").unwrap();
             let witness = comment_witness(&values, "inherit/*unfinished");
-            let actual =
-                parse_property_value_for_grammar(grammar, values.clone(), CssImportance::Important);
+            let actual = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(grammar),
+                values.clone(),
+                CssImportance::Important,
+            );
             if !matches!(actual, Err(ref error) if expected_error(error, &witness)) {
                 failures.push(format!(
                     "{}/{alias}: expected original EOF; actual {actual:?}",
                     case.name
                 ));
             }
-            let closed = parse_component_values("inherit/**/").unwrap();
-            let declaration =
-                parse_property_value_for_grammar(grammar, closed.clone(), CssImportance::Important)
-                    .unwrap();
+            let closed = CssComponentValues::parse(&CssParser::default(), "inherit/**/").unwrap();
+            let declaration = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(grammar),
+                closed.clone(),
+                CssImportance::Important,
+            )
+            .unwrap();
             assert_constructed(
                 &declaration,
                 case.property,
@@ -547,10 +580,15 @@ fn independently_recorded_name_equivalent_aliases_share_strict_grammar_without_c
                 declaration.known().unwrap().global(),
                 Some(CssGlobalKeyword::Inherit)
             );
-            let pending_values = parse_component_values("var(--known").unwrap();
+            let pending_values =
+                CssComponentValues::parse(&CssParser::default(), "var(--known").unwrap();
             let pending_witness = function_witness(&pending_values, "var(--known");
-            let actual =
-                parse_property_value_for_grammar(grammar, pending_values, CssImportance::Important);
+            let actual = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(grammar),
+                pending_values,
+                CssImportance::Important,
+            );
             if !matches!(actual, Err(ref error) if expected_error(error, &pending_witness)) {
                 failures.push(format!(
                     "{}/{alias}/pending: expected original EOF; actual {actual:?}",
@@ -558,13 +596,14 @@ fn independently_recorded_name_equivalent_aliases_share_strict_grammar_without_c
                 ));
             }
             if !matches!(case.metadata, MetadataExpectation::Unavailable) {
-                let source = parse_property_value_for_grammar(
-                    grammar,
-                    parse_component_values("var(--known)").unwrap(),
+                let source = CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(grammar),
+                    CssComponentValues::parse(&CssParser::default(), "var(--known)").unwrap(),
                     CssImportance::Important,
                 )
                 .unwrap();
-                let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+                let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                     panic!("available alias pending")
                 };
                 let actual = handle.reenter(values.clone());
@@ -577,7 +616,10 @@ fn independently_recorded_name_equivalent_aliases_share_strict_grammar_without_c
                 }
                 assert!(
                     handle
-                        .reenter(parse_component_values("var(--again").unwrap())
+                        .reenter(
+                            CssComponentValues::parse(&CssParser::default(), "var(--again")
+                                .unwrap()
+                        )
                         .unwrap_err()
                         .is_residual_substitution()
                 );
@@ -606,9 +648,15 @@ fn legacy(
     let grammar = CssPropertyGrammar::from_name(grammar_name).unwrap();
     assert_eq!(grammar.target_property(), case.property);
     assert_ne!(grammar, case.property.grammar());
-    let values = parse_component_values(&format!("{ordinary}/**/")).unwrap();
-    let built = parse_property_value_for_grammar(grammar, values.clone(), CssImportance::Important)
-        .unwrap();
+    let values =
+        CssComponentValues::parse(&CssParser::default(), format!("{ordinary}/**/")).unwrap();
+    let built = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar),
+        values.clone(),
+        CssImportance::Important,
+    )
+    .unwrap();
     assert_constructed(
         &built,
         case.property,
@@ -616,10 +664,14 @@ fn legacy(
         &values,
         CssImportance::Important,
     );
-    let pending_values = parse_component_values("var(--known)").unwrap();
-    let source =
-        parse_property_value_for_grammar(grammar, pending_values.clone(), CssImportance::Important)
-            .unwrap();
+    let pending_values = CssComponentValues::parse(&CssParser::default(), "var(--known)").unwrap();
+    let source = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar),
+        pending_values.clone(),
+        CssImportance::Important,
+    )
+    .unwrap();
     assert_constructed(
         &source,
         case.property,
@@ -627,25 +679,29 @@ fn legacy(
         &pending_values,
         CssImportance::Important,
     );
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("legacy pending")
     };
     for input in ["inherit/*unfinished", "var(--known"] {
-        let values = parse_component_values(input).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), input).unwrap();
         let witness = if input.contains("/*unfinished") {
             comment_witness(&values, input)
         } else {
             function_witness(&values, input)
         };
-        let actual =
-            parse_property_value_for_grammar(grammar, values.clone(), CssImportance::Important);
+        let actual = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(grammar),
+            values.clone(),
+            CssImportance::Important,
+        );
         if !matches!(actual, Err(ref error) if expected_error(error, &witness)) {
             failures.push(format!(
                 "{grammar_name}/{input}/checked: expected original EOF; actual {actual:?}"
             ));
         }
     }
-    let values = parse_component_values("inherit/*unfinished").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "inherit/*unfinished").unwrap();
     let witness = comment_witness(&values, "inherit/*unfinished");
     let actual = handle.reenter(values.clone());
     if !matches!(actual, Err(ref error) if error.replacement_error().is_some_and(|detail| expected_error(detail, &witness)))
@@ -656,12 +712,12 @@ fn legacy(
     }
     assert!(
         handle
-            .reenter(parse_component_values("var(--again").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
     for _ in 0..2 {
-        let replacement = parse_component_values("inherit/**/").unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), "inherit/**/").unwrap();
         assert_global_retry(
             handle.reenter(replacement.clone()).unwrap(),
             &source,
@@ -705,7 +761,7 @@ fn existing_glyph_and_page_legacy_owners_keep_distinct_grammar_and_strict_origin
 
 #[test]
 fn mixed_programmatic_known_keyword_and_parsed_comment_keep_actual_original_snapshot() {
-    let comment = parse_component_values("/*unfinished").unwrap();
+    let comment = CssComponentValues::parse(&CssParser::default(), "/*unfinished").unwrap();
     let witness = comment_witness(&comment, "/*unfinished");
     let mut items = vec![CssComponentValue::try_ident("inherit").unwrap()];
     items.extend(comment.items().iter().cloned());
@@ -724,13 +780,14 @@ fn mixed_programmatic_known_keyword_and_parsed_comment_keep_actual_original_snap
             &mut failures,
         );
         if !matches!(case.metadata, MetadataExpectation::Unavailable) {
-            let source = parse_property_value(
-                CssPropertyNameRef::Known(case.property),
-                parse_component_values("var(--known)").unwrap(),
+            let source = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(case.property)),
+                CssComponentValues::parse(&CssParser::default(), "var(--known)").unwrap(),
                 CssImportance::Important,
             )
             .unwrap();
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("available mixed-input pending")
             };
             let actual = handle.reenter(values.clone());
@@ -759,7 +816,7 @@ fn mixed_programmatic_known_keyword_and_parsed_comment_keep_actual_original_snap
 
 #[test]
 fn programmatic_wrapper_preserves_recovered_child_original_eof_in_every_known_front() {
-    let child = parse_component_values("future(value").unwrap();
+    let child = CssComponentValues::parse(&CssParser::default(), "future(value").unwrap();
     let witness = function_witness(&child, "future(value");
     let outer = CssComponentValue::try_function("outer", child.clone()).unwrap();
     let values = CssComponentValues::try_new(vec![outer], Default::default()).unwrap();
@@ -789,11 +846,12 @@ fn custom_name_recovery_contract_stays_separate_and_symbolic_with_empty_and_clos
         "future(value",
         "inherit/*unfinished",
     ] {
-        let values = parse_component_values(input).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), input).unwrap();
         let before = values.clone();
         for importance in IMPORTANCE {
-            let source = parse_property_value(
-                CssPropertyNameRef::Custom(&name),
+            let source = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
                 values.clone(),
                 importance,
             )
@@ -806,7 +864,7 @@ fn custom_name_recovery_contract_stays_separate_and_symbolic_with_empty_and_clos
             assert!(source.parsed_name().is_none());
             assert!(source.parsed_value().is_none());
             let CssExpansion::Contributions(CssContributions::Custom(value)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("custom symbolic contribution")
             };
@@ -815,7 +873,7 @@ fn custom_name_recovery_contract_stays_separate_and_symbolic_with_empty_and_clos
         }
     }
     for input in ["future(value", "inherit/*unfinished"] {
-        let browser = parse_style_attribute(&format!("--Theme:{input}"));
+        let browser = CssParser::default().parse_block_contents(format!("--Theme:{input}"));
         assert!(!browser.is_clean());
         assert_eq!(browser.syntax().len(), 1);
     }
@@ -827,7 +885,7 @@ fn repaired_component_output_keeps_byte_failures_atomic_and_original_closure_ori
     // no byte-limit parameter; do not claim this injects a competing checked error.
     // Keep time-before-serialization and other-known-after-serialization in source;
     // capacity/serialization errors remain owned by the existing component writer.
-    let values = parse_component_values("future(1px").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "future(1px").unwrap();
     let before = values.clone();
     let witness = function_witness(&values, "future(1px");
     let expected = "future(1px)";
@@ -874,7 +932,7 @@ fn repaired_component_output_keeps_byte_failures_atomic_and_original_closure_ori
         );
         assert_eq!(values, before);
     }
-    let complete = parse_component_values(expected).unwrap();
+    let complete = CssComponentValues::parse(&CssParser::default(), expected).unwrap();
     assert_eq!(
         complete
             .serialize_tokens(crate::css::support::byte_limits(11))

@@ -1,6 +1,6 @@
 //! General UTF16 CSS input, CSS Syntax preprocessing and provenance.
 use crate::tokenization::bounded::{InputCursor, InputKind, Request};
-use crate::{CssParseReport, CssParserContext, CssSheet, CssSourceSnapshot};
+use crate::{CssParserContext, CssSourceSnapshot};
 use std::sync::Arc;
 
 /// Owner-issued complete CSS parse input and its actual parser context.
@@ -242,40 +242,6 @@ pub(crate) fn check<E>(
         Err(CssUtf16InputError::limit(resource))
     } else {
         Ok(())
-    }
-}
-
-impl CssParserContext {
-    /// Parses actual UTF8 media input in this complete parser context.
-    pub fn parse_media_query_list(self, source: &str) -> CssParseReport<crate::CssMediaQueryList> {
-        crate::parser::parse_media_query_list_snapshot(&CssSourceSnapshot::new(source), self)
-    }
-
-    /// Preprocesses shared original UTF16, then parses an ordinary stylesheet.
-    /// Polls during preparation and immediately before/after grammar execution;
-    /// the grammar has no fine-grained interruption checkpoint.
-    pub fn parse_sheet_utf16_with_limits<E>(
-        self,
-        original: Arc<Vec<u16>>,
-        limits: CssUtf16InputLimits,
-        poll: impl FnMut() -> Result<(), E>,
-    ) -> Result<CssParseReport<CssSheet>, CssUtf16InputError<E>> {
-        parse_utf16(original, limits, poll, |source| {
-            crate::parser::parse_sheet_snapshot(source, self)
-        })
-    }
-
-    /// Parses actual UTF16 media input through CSS preprocessing and the ordinary
-    /// media-query-list grammar, retaining the complete original input.
-    pub fn parse_media_query_list_utf16_with_limits<E>(
-        self,
-        original: Arc<Vec<u16>>,
-        limits: CssUtf16InputLimits,
-        poll: impl FnMut() -> Result<(), E>,
-    ) -> Result<CssParseReport<crate::CssMediaQueryList>, CssUtf16InputError<E>> {
-        parse_utf16(original, limits, poll, |source| {
-            crate::parser::parse_media_query_list_snapshot(source, self)
-        })
     }
 }
 

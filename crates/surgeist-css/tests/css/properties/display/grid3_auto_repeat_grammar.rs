@@ -16,9 +16,9 @@
 use crate::css::support::property_admission::Responsible::{self, At};
 use crate::css::support::property_admission::{assert_checked_rejected, assert_invalid_value};
 use surgeist_css::{
-    CssDeclaration, CssErrorCode, CssImportance, CssKnownProperty as Property,
-    CssKnownPropertyValueRef, CssPropertyNameRef, CssRecoveryAction, CssTokenKind,
-    parse_component_values, parse_property_value, parse_style_attribute, validate_style_attribute,
+    CssComponentValues, CssDeclaration, CssErrorCode, CssImportance, CssKnownProperty as Property,
+    CssKnownPropertyValueRef, CssParser, CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction,
+    CssTokenKind,
 };
 
 const TEMPLATE_AXES: [Property; 2] = [Property::GridTemplateRows, Property::GridTemplateColumns];
@@ -192,7 +192,7 @@ fn a_flexible_minimum_inside_auto_repeat_reports_its_source_token() {
             "{}:repeat(auto-fit, minmax(1fr, 10px)); color:red",
             property.canonical_name()
         );
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid minimum: {source}: {report:?}");
         };
@@ -225,7 +225,7 @@ fn assert_accepted(property: Property, authored: &str) {
 
 fn assert_accepted_with_spelling(property: Property, spelling: &str, authored: &str) {
     let source = format!("color:red;{spelling}:  {authored} !IMPORTANT;width:3px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(
         properties(report.syntax().as_slice()),
@@ -246,14 +246,22 @@ fn assert_accepted_with_spelling(property: Property, spelling: &str, authored: &
         name.span().end().byte_offset().value(),
         "color:red;".len() + spelling.len()
     );
-    assert!(validate_style_attribute(&source).is_ok(), "{source}");
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_ok(),
+        "{source}"
+    );
     assert_checked(property, authored);
 }
 
 fn assert_checked(property: Property, authored: &str) {
-    let components = parse_component_values(authored).expect("balanced authored components");
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(property),
+    let components = CssComponentValues::parse(&CssParser::default(), authored)
+        .expect("balanced authored components");
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
         components.clone(),
         CssImportance::Important,
     )
@@ -290,7 +298,7 @@ fn assert_rejected<'a>(property: Property, authored: &str, token: impl Into<Resp
     let token = token.into();
     let dropped = format!("{}:{authored};", property.canonical_name());
     let source = format!("color:red;{dropped}width:3px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         properties(report.syntax().as_slice()),
         [Property::Color, Property::Width],
@@ -313,13 +321,18 @@ fn assert_rejected<'a>(property: Property, authored: &str, token: impl Into<Resp
         start + dropped.len()
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_checked_rejected(
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
-            parse_component_values(authored).unwrap(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+            CssComponentValues::parse(&CssParser::default(), authored).unwrap(),
             CssImportance::Normal,
         ),
         property,

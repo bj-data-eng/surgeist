@@ -64,9 +64,15 @@ fn assert_parsed(kind: Kind, authored: &[&str], expected: &[&str]) {
         kind.as_str(),
         authored.join(" "),
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert!(validate_sheet(&source).is_ok(), "strict validation agrees");
+    assert!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .is_ok(),
+        "strict validation agrees"
+    );
     let [CssRule::FontFeatureValues(rule)] = report.syntax().rules() else {
         panic!("one feature-values rule")
     };
@@ -97,7 +103,7 @@ fn assert_parsed(kind: Kind, authored: &[&str], expected: &[&str]) {
             *spelling,
         );
     }
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let [CssNormalizedItem::Rule(context)] = normalized.items() else {
         panic!("one normalized rule")
     };
@@ -184,9 +190,14 @@ fn exact_large_authored_indexes_survive_parsing_and_checked_block_admission() {
 #[test]
 fn invalid_definitions_recover_locally_without_discarding_newly_admitted_siblings() {
     let source = "/*😀*/ @font-feature-values Demo { @character-variant { One: +0001; bad: 1 2 3; Wide: +000100 2; } @styleset { Wide: 21 100; bad: -1; Zero: -000; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(!report.is_clean());
-    assert!(validate_sheet(source).is_err());
+    assert!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .is_err()
+    );
     assert_eq!(report.diagnostics().len(), 2, "{:?}", report.diagnostics());
     assert!(
         report
@@ -299,7 +310,7 @@ fn rejected_integer_syntax_and_index_counts_remain_intrinsic_errors() {
                 "1"
             }
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         // Fonts 4 §6.9.1: <integer [0,∞]>{1,2} for character-variant and
         // <integer [0,∞]>+ for styleset; calc() is the selected policy. The
         // first violating index token, or the end of the value, is

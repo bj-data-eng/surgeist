@@ -1,8 +1,7 @@
 use crate::css::support::math_depth::MathDepthBoundary;
 use surgeist_css::{
     CssErrorCode, CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridGeneralTrackComponent,
-    CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction, CssTokenKind,
-    parse_style_attribute,
+    CssKnownProperty, CssKnownPropertyValueRef, CssParser, CssRecoveryAction, CssTokenKind,
 };
 
 #[test]
@@ -12,7 +11,7 @@ fn grid_repeat_models_reject_invalid_cross_products() {
         "grid-template-columns: repeat(auto-fit, minmax(1fr, 10px))",
     ] {
         let source = format!("{invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
 
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(
@@ -36,7 +35,7 @@ fn grid_repeat_models_reject_invalid_cross_products() {
 
 #[test]
 fn grid_repeat_models_accept_each_structural_language() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "grid-template-columns: [a] repeat(2, minmax(10px, 1fr) [b]) 1fr; ",
         "grid-template-rows: 20px repeat(auto-fill, minmax(auto, 10px)) repeat(2, 5px); ",
         "grid-auto-rows: minmax(10px, auto) fit-content(20%); ",
@@ -154,7 +153,7 @@ fn grid_repeat_models_reject_each_invalid_structural_cross_product() {
         ("grid-auto-columns", "repeat(auto-fill, 10px)"),
     ] {
         let source = format!("{property}: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -179,7 +178,7 @@ fn flexible_minmax_minimums_are_rejected_at_the_first_responsible_token() {
         ("grid-auto-columns", "minmax(1fr, 10px)"),
     ] {
         let source = format!("{property}: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
 
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(
@@ -246,7 +245,9 @@ fn flexible_minmax_minimums_are_rejected_at_the_first_responsible_token() {
         );
 
         {
-            let failure = surgeist_css::validate_style_attribute(&source)
+            let failure = surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects a flexible minmax minimum");
             assert_eq!(failure.diagnostics(), report.diagnostics(), "{source}");
         }
@@ -255,7 +256,7 @@ fn flexible_minmax_minimums_are_rejected_at_the_first_responsible_token() {
 
 #[test]
 fn grid_repeat_typed_calculation_stays_symbolic() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "grid-template-columns: repeat(auto-fit, calc((10px + 5%) * 2)); color: red",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -284,7 +285,7 @@ fn grid_repeat_failures_report_the_first_responsible_token_and_recover_progressi
         "grid-auto-rows: repeat(2, 10px); ",
         "color: red",
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(report.diagnostics().len(), 2);
     for (diagnostic, responsible) in report.diagnostics().iter().zip(["1fr", "repeat("]) {

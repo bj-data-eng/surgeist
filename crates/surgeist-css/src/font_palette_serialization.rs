@@ -200,9 +200,12 @@ mod composition_tests {
     use crate::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
 
     fn palette(source: &str) -> CssFontPalette {
-        let declaration = crate::parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::FontPalette),
-            crate::parse_component_values(source).unwrap(),
+        let declaration = crate::CssDeclaration::try_from_components(
+            &crate::CssParser::default(),
+            crate::CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::FontPalette,
+            )),
+            crate::component_values::parse_component_values(source).unwrap(),
             crate::CssImportance::Normal,
         )
         .unwrap_or_else(|error| panic!("{source}: {error:?}"));

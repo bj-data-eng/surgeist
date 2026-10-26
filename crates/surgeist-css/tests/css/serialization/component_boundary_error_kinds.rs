@@ -13,7 +13,8 @@ use surgeist_css::*;
 fn named_supports_body_reports_an_unserializable_trailing_reverse_solidus() {
     // The tokenizer reports the bare reverse solidus as a parse error, so the
     // single-child entry declines; the inert body still retains the child.
-    let (body, _) = parse_supports_test_contents("future: a \\\n;").into_parts();
+    let (body, _) =
+        CssSupportsTestBody::parse(&CssParser::default(), "future: a \\\n;").into_parts();
     let body = body.expect("inert body");
     assert_eq!(body.children().count(), 1);
     assert!(

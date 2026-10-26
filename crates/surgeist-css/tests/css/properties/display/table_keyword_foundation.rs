@@ -190,7 +190,7 @@ fn declaration(property: Property, value: &str, importance: CssImportance) -> Cs
         ""
     };
     let source = format!("{}:{value}{suffix}", property.canonical_name());
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one parsed declaration: {source}")
@@ -230,7 +230,7 @@ fn assert_authored_keyword(source: &CssDeclaration, expected: TableKeyword, auth
 
 fn one_longhand(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("selected table longhand expands")
+        source.expand().expect("selected table longhand expands")
     else {
         panic!("one completed longhand contribution")
     };
@@ -306,8 +306,9 @@ fn table_keywords_from_parsed_and_checked_construction_contribute_once() {
             components.items()[0].origin(),
             CssValueOrigin::Programmatic
         ));
-        let constructed = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let constructed = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components.clone(),
             CssImportance::Important,
         )
@@ -361,7 +362,7 @@ fn table_keywords_keep_globals_symbolic_and_reenter_pending_values_strictly() {
         ] {
             let source = declaration(property, text, CssImportance::Important);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).expect("CSS-wide table value")
+                source.expand().expect("CSS-wide table value")
             else {
                 panic!("global table longhand")
             };
@@ -375,11 +376,12 @@ fn table_keywords_keep_globals_symbolic_and_reenter_pending_values_strictly() {
         }
 
         let source = declaration(property, "var(--table-keyword)", CssImportance::Important);
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("table property substitution remains pending")
         };
         assert!(handle.source().same_occurrence(&source));
-        let invalid = parse_component_values(&format!("{valid} {valid}")).unwrap();
+        let invalid =
+            CssComponentValues::parse(&CssParser::default(), format!("{valid} {valid}")).unwrap();
         assert!(
             handle
                 .reenter(invalid)
@@ -389,11 +391,11 @@ fn table_keywords_keep_globals_symbolic_and_reenter_pending_values_strictly() {
         );
         assert!(
             handle
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
-        let replacement = parse_component_values(valid).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), valid).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = handle
                 .reenter(replacement.clone())
@@ -419,7 +421,7 @@ fn table_keywords_keep_globals_symbolic_and_reenter_pending_values_strictly() {
 
 #[test]
 fn table_keyword_normalization_keeps_source_order_after_declaration_recovery() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         ".a{border-collapse:collapse;caption-side:top;",
         "caption-side:top bottom;empty-cells:hide;table-layout:fixed!important}"
     ));
@@ -427,7 +429,10 @@ fn table_keyword_normalization_keeps_source_order_after_declaration_recovery() {
         panic!("one invalid compound caption-side declaration")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let normalized = normalize_sheet(report.syntax()).expect("four supported table terminals");
+    let normalized = report
+        .syntax()
+        .normalize(Default::default())
+        .expect("four supported table terminals");
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -484,7 +489,7 @@ fn table_keyword_invalid_values_and_unselected_caption_extension_recover_atomica
             "color:red;{}:{invalid};color:blue",
             property.canonical_name()
         );
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid table declaration: {source}")
         };
@@ -499,7 +504,11 @@ fn table_keyword_invalid_values_and_unselected_caption_extension_recover_atomica
             Property::Color
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics(),
             "{source}"
         );

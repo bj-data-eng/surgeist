@@ -2685,7 +2685,7 @@ mod grid_track_math_tests {
 
     fn selected(source: &str) -> Result<GridTrackMath> {
         construct_grid_track_math(
-            crate::parse_component_values(source).unwrap(),
+            crate::component_values::parse_component_values(source).unwrap(),
             CssComponentValueLimits::default(),
             AdmissionPolicy::Strict,
         )
@@ -2781,7 +2781,7 @@ mod grid_track_math_tests {
             );
         }
 
-        let values = crate::parse_component_values("calc(1fr)").unwrap();
+        let values = crate::component_values::parse_component_values("calc(1fr)").unwrap();
         let error = construct_grid_track_math(
             values,
             CssComponentValueLimits::try_new(256, 1, 100).unwrap(),
@@ -3235,7 +3235,7 @@ mod color_component_calculation_tests {
     };
 
     fn components(source: &str) -> CssComponentValues {
-        crate::parse_component_values(source).unwrap()
+        crate::component_values::parse_component_values(source).unwrap()
     }
 
     fn assert_capture(
@@ -3436,7 +3436,7 @@ mod origin_color_calculation_tests {
     };
 
     fn components(source: &str) -> CssComponentValues {
-        crate::parse_component_values(source).unwrap()
+        crate::component_values::parse_component_values(source).unwrap()
     }
 
     fn assert_capture(calculation: ColorCalculationRef<'_>, expected: &str) {
@@ -3667,7 +3667,7 @@ mod retained_color_calculation_tests {
             ),
         ] {
             let value = CssCalculation::<CssPercentage>::try_from_components(
-                crate::parse_component_values(source).unwrap(),
+                crate::component_values::parse_component_values(source).unwrap(),
                 Default::default(),
             )
             .unwrap();
@@ -3696,7 +3696,7 @@ mod retained_color_calculation_tests {
     #[test]
     fn retained_scaled_alpha_uses_shared_work_and_remaining_scratch() {
         let value = CssCalculation::<CssPercentage>::try_from_components(
-            crate::parse_component_values("calc(.78125%)").unwrap(),
+            crate::component_values::parse_component_values("calc(.78125%)").unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -3749,7 +3749,7 @@ mod structural_comparison_tests {
 
     fn checked(source: &str) -> CssCalculation<CssLengthPercentage> {
         CssCalculation::<CssLengthPercentage>::try_from_components(
-            crate::parse_component_values(source).unwrap(),
+            crate::component_values::parse_component_values(source).unwrap(),
             Default::default(),
         )
         .unwrap()
@@ -3834,7 +3834,7 @@ mod media_helpers_tests {
             "calc(1dppx)",
             "calc(1fr)",
         ] {
-            let values = crate::parse_component_values(source).unwrap();
+            let values = crate::component_values::parse_component_values(source).unwrap();
             let serialized = values.serialize_tokens(Default::default()).unwrap();
             let context = NumericInputContext::components(&values, &serialized);
             let expression = context
@@ -3856,7 +3856,7 @@ mod media_helpers_tests {
                 CssNumericConstructionErrorKind::InvalidArgumentType,
             ),
         ] {
-            let values = crate::parse_component_values(source).unwrap();
+            let values = crate::component_values::parse_component_values(source).unwrap();
             let error = construct(
                 values,
                 CalculationRoot::NamedDimensionOrNumber,
@@ -3869,7 +3869,7 @@ mod media_helpers_tests {
 
     #[test]
     fn numeric_resource_errors_retain_the_concrete_component_cause() {
-        let values = crate::parse_component_values("calc(1+ 2)").unwrap();
+        let values = crate::component_values::parse_component_values("calc(1+ 2)").unwrap();
         // Limits precede grammar admission, including malformed mathematics.
         for (limits, kind) in [
             (
@@ -3896,7 +3896,7 @@ mod media_helpers_tests {
                 Some(error.component_error().unwrap().origin())
             );
         }
-        let compact = crate::parse_component_values("calc(1*2)").unwrap();
+        let compact = crate::component_values::parse_component_values("calc(1*2)").unwrap();
         let error = construct(
             compact,
             CalculationRoot::Number,
@@ -3933,7 +3933,7 @@ mod container_context_tests {
                 "sibling-index()",
             ),
         ] {
-            let components = crate::parse_component_values(source).unwrap();
+            let components = crate::component_values::parse_component_values(source).unwrap();
             let expression = construct_container(
                 components.clone(),
                 CalculationRoot::Number,
@@ -3965,7 +3965,7 @@ mod container_context_tests {
             );
             // The owning container context is required again when round-tripping.
             let roundtrip = construct_container(
-                crate::parse_component_values(canonical).unwrap(),
+                crate::component_values::parse_component_values(canonical).unwrap(),
                 CalculationRoot::Number,
                 CssComponentValueLimits::default(),
             )
@@ -3992,7 +3992,7 @@ mod container_context_tests {
             "calc(sibling-count() * 1px)",
             "max(1px, calc(2em / sibling-index()))",
         ] {
-            let components = crate::parse_component_values(source).unwrap();
+            let components = crate::component_values::parse_component_values(source).unwrap();
             let expression = construct_container(
                 components.clone(),
                 CalculationRoot::Length,
@@ -4031,7 +4031,7 @@ mod container_context_tests {
             ),
         ] {
             let result = construct_container(
-                crate::parse_component_values(source).unwrap(),
+                crate::component_values::parse_component_values(source).unwrap(),
                 CalculationRoot::Length,
                 CssComponentValueLimits::default(),
             );
@@ -4041,7 +4041,7 @@ mod container_context_tests {
 
     #[test]
     fn contextual_numeric_construction_preserves_closure_policy_and_limits() {
-        let values = crate::parse_component_values("sibling-count(").unwrap();
+        let values = crate::component_values::parse_component_values("sibling-count(").unwrap();
         assert_eq!(
             construct_with_context(
                 values.clone(),
@@ -4085,7 +4085,7 @@ mod container_context_tests {
             ),
         ] {
             let error = construct_container(
-                crate::parse_component_values("sibling-count()").unwrap(),
+                crate::component_values::parse_component_values("sibling-count()").unwrap(),
                 CalculationRoot::Number,
                 limits,
             )

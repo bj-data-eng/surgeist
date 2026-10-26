@@ -32,15 +32,21 @@ fn families(declaration: &CssDeclaration) -> &CssFontFamilyList {
 }
 
 fn parity(source: &str) -> CssParseReport<CssDeclarationList> {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     if report.is_clean() {
         assert_eq!(
-            validate_style_attribute(source),
+            CssParser::default()
+                .parse_block_contents(source)
+                .into_validation_result(),
             Ok(report.syntax().clone())
         );
     } else {
         assert_eq!(
-            validate_style_attribute(source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics(),
         );
     }
@@ -109,9 +115,10 @@ fn twenty_family_repetitions_keep_order_and_use_one_atomic_output_budget() {
         91,
     );
 
-    let components = parse_component_values(TWENTY).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::FontFamily),
+    let components = CssComponentValues::parse(&CssParser::default(), TWENTY).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::FontFamily)),
         components.clone(),
         CssImportance::Important,
     )
@@ -178,10 +185,12 @@ fn twenty_family_repetitions_keep_order_and_use_one_atomic_output_budget() {
 }
 
 #[test]
-fn a_resource_denied_tail_discards_the_whole_twenty_member_declaration_locally() {
+fn a_resource_denied_tail_refuses_the_whole_contents_with_both_siblings() {
     // Resource admission precedes semantic family admission. The final f() is
     // not a family; its depth257 is a native structural denial, not a synthetic
-    // twenty-one-item grammar cap. There are no unmatched/implicit delimiters.
+    // twenty-one-item grammar cap. Block contents charges every component once
+    // against the component limits (Syntax 3 (2026 CRD) §5.5.5), so the denial
+    // refuses the whole input, the source-valid color and width included.
     let source = format!(
         "color:red;font-family:{TWENTY},{}x{};width:2px;",
         "f(".repeat(257),
@@ -192,32 +201,18 @@ fn a_resource_denied_tail_discards_the_whole_twenty_member_declaration_locally()
     // nested bytes and its semicolon:102+772+1 =875. The later width is10 bytes.
     assert_eq!(source.len(), 885);
     let report = parity(&source);
-    let [color, width] = report.syntax().as_slice() else {
-        panic!("no partial family list survives; both source-valid siblings do");
-    };
-    assert_eq!(color.known().unwrap().property(), CssKnownProperty::Color);
-    assert_eq!(width.known().unwrap().property(), CssKnownProperty::Width);
-    assert_eq!(width.position().unwrap().byte_offset().value(), 875);
-    assert_eq!(
-        width.serialize_specified(Default::default()).unwrap(),
-        "width: 2px;"
-    );
+    assert!(report.syntax().is_empty());
+    crate::css::support::parse_report::assert_contents_refused(&report, &source, "tail");
     let [diagnostic] = report.diagnostics() else {
-        panic!("one closed, locally resource-denied declaration");
+        panic!("one resource refusal");
     };
-    assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
     assert_eq!(diagnostic.error().position().byte_offset().value(), 614);
-    assert_eq!(diagnostic.span().start().byte_offset().value(), 10);
-    assert_eq!(diagnostic.span().end().byte_offset().value(), 875);
-    let detail = diagnostic.error();
-    assert_eq!(
-        detail.code(),
-        CssErrorCode::NestingLimit,
-        "the structural owner reports its resource fault"
+    assert!(
+        diagnostic
+            .error()
+            .component_error()
+            .is_some_and(surgeist_css::CssComponentValueError::is_nesting_limit)
     );
-    assert_eq!(detail.nesting_limit().unwrap(), 256);
-    assert_eq!(detail.production().unwrap().as_str(), "css.declaration");
 }
 
 #[test]
@@ -264,9 +259,11 @@ fn string_escapes_and_continuations_keep_decoded_family_identity_in_imported_fon
             family,
             &format!("font-family: {canonical}, serif !important;"),
         );
-        let supplied = parse_component_values(&format!("{authored},serif")).unwrap();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::FontFamily),
+        let supplied =
+            CssComponentValues::parse(&CssParser::default(), format!("{authored},serif")).unwrap();
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::FontFamily)),
             supplied.clone(),
             CssImportance::Important,
         )
@@ -284,7 +281,10 @@ fn string_escapes_and_continuations_keep_decoded_family_identity_in_imported_fon
 fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_retry() {
     const AUTHORED: &str = r"+2\50 X";
     const EXPECTED: &str = "width: 2px !important;";
-    let parsed = parse_component_values(AUTHORED).unwrap().items()[0].clone();
+    let parsed = CssComponentValues::parse(&CssParser::default(), AUTHORED)
+        .unwrap()
+        .items()[0]
+        .clone();
     original(parsed.origin(), AUTHORED, 0, 7);
     for component in [
         parsed,
@@ -301,8 +301,9 @@ fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_re
         assert_eq!(exact.origin(), component.origin());
         let components =
             CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
-        let declaration = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
             components.clone(),
             CssImportance::Important,
         )
@@ -337,8 +338,9 @@ fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_re
         )
         .unwrap();
         property_rejection(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Width),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
                 residual.clone(),
                 CssImportance::Normal,
             ),
@@ -357,8 +359,9 @@ fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_re
             .is_out_of_range()
     );
     property_rejection(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
             CssComponentValues::try_new(vec![negative], Default::default()).unwrap(),
             CssImportance::Normal,
         ),
@@ -398,9 +401,10 @@ fn a_greedy_imported_position_stops_before_the_whole_angle_function_and_rejects_
             panic!("ray and later sibling");
         };
         assert_eq!(width.known().unwrap().property(), CssKnownProperty::Width);
-        let supplied = parse_component_values(authored).unwrap();
-        let checked = parse_property_value_for_grammar(
-            CssKnownProperty::OffsetPath.grammar(),
+        let supplied = CssComponentValues::parse(&CssParser::default(), authored).unwrap();
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssKnownProperty::OffsetPath.grammar()),
             supplied.clone(),
             CssImportance::Important,
         )
@@ -493,10 +497,11 @@ fn a_greedy_imported_position_stops_before_the_whole_angle_function_and_rejects_
             diagnostic.span().end().byte_offset().value(),
             23 + invalid.len()
         );
-        let supplied = parse_component_values(invalid).unwrap();
+        let supplied = CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
         property_rejection(
-            parse_property_value_for_grammar(
-                CssKnownProperty::OffsetPath.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(CssKnownProperty::OffsetPath.grammar()),
                 supplied,
                 CssImportance::Important,
             ),

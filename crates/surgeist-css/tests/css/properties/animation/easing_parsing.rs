@@ -1,6 +1,4 @@
-use surgeist_css::{
-    CssErrorCode, CssKnownProperty, CssRecoveryAction, CssTokenKind, parse_style_attribute,
-};
+use surgeist_css::{CssErrorCode, CssKnownProperty, CssParser, CssRecoveryAction, CssTokenKind};
 
 struct InvalidEasingCase {
     source: &'static str,
@@ -12,7 +10,7 @@ struct InvalidEasingCase {
 }
 
 fn assert_invalid_easing_is_dropped(case: &InvalidEasingCase) {
-    let report = parse_style_attribute(case.source);
+    let report = CssParser::default().parse_block_contents(case.source);
     let [declaration] = report.syntax().as_slice() else {
         panic!(
             "{}: invalid easing must be dropped while the valid sibling is retained; syntax={:?}",
@@ -96,7 +94,9 @@ fn assert_invalid_easing_is_dropped(case: &InvalidEasingCase) {
     );
 
     {
-        let failure = surgeist_css::validate_style_attribute(case.source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(case.source)
+            .into_validation_result()
             .expect_err("strict validation must reject the recovered easing declaration");
         assert_eq!(
             failure.diagnostics(),

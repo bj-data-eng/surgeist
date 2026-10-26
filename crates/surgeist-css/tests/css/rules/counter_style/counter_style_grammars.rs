@@ -5,13 +5,13 @@ use descriptor_phases::*;
 use surgeist_css::{
     CssCounterStyleDescriptorRef, CssCounterStyleName, CssCounterStyleRange,
     CssCounterStyleRangeBound, CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
-    CssCounterSymbolIdent, CssErrorCode, CssRecoveryAction, CssRule, CssSupportStatus,
-    feature_metadata, parse_sheet,
+    CssCounterSymbolIdent, CssErrorCode, CssParser, CssRecoveryAction, CssRule, CssSupportStatus,
+    feature_metadata,
 };
 
 #[test]
 fn counter_style_rules_retain_valid_core_definitions() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         ".before { color: red; } ",
         "@counter-style cycle { system: cyclic; symbols: ● ○; prefix: 👍; suffix: \" \"; } ",
         "@counter-style digits { system: numeric; symbols: \"0\" \"1\"; } ",
@@ -102,7 +102,7 @@ fn counter_style_rules_retain_valid_core_definitions() {
 
 #[test]
 fn counter_style_descriptors_enforce_domains_order_and_recovery() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@counter-style base { system: cyclic; symbols: b; } ",
         "@counter-style additive { system: additive; negative: \"-\" \"(\"; ",
         "range: infinite -1, 1 infinite; pad: 2 \"0\"; fallback: base; ",
@@ -141,7 +141,7 @@ fn counter_style_descriptor_models_preserve_authored_duplicates_and_effective_la
         "additive-symbols: 10 X, 1 I; additive-symbols: C 100, X 10, I 1, N 0; ",
         "speak-as: words; speak-as: base; }",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::CounterStyle(_), CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("expected base and rich counter styles")
@@ -232,7 +232,7 @@ fn invalid_counter_style_descriptor_values_drop_only_the_descriptor_and_keep_eff
         "speak-as: inherit; speak-as: numbers; mystery: x; } ",
         ".after {}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
         [
@@ -300,7 +300,7 @@ fn grammar_valid_undefined_counter_styles_retain_their_authored_rules() {
         "@counter-style kept { system: additive; additive-symbols: 1 I; } ",
         ".after {}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
         [
@@ -336,7 +336,7 @@ fn counter_style_system_model_retains_fixed_and_extends_forms() {
     );
     assert!(CssCounterSymbolIdent::try_new("default").is_none());
 
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@counter-style fixedish { system: fixed -2; symbols: \"a\" \"b\"; } ",
         "@counter-style child { system: extends fixedish; }",
     ));
@@ -370,7 +370,7 @@ fn counter_style_descriptor_recovery_keeps_valid_occurrences_and_siblings() {
         "@counter-style missing { system: additive; } ",
         ".after { color: blue; }",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
         [
@@ -417,7 +417,7 @@ fn counter_style_rules_preserve_body_phase_nested_definitions_and_exact_position
         "@media screen { @counter-style nested { symbols: n; } .inside {} } ",
         ".after {}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
         [
@@ -461,7 +461,7 @@ fn counter_style_rules_preserve_body_phase_nested_definitions_and_exact_position
 #[test]
 fn counter_style_block_recovery_handles_reserved_names_eof_and_depth_boundaries() {
     for name in ["none", "default", "inherit"] {
-        let reserved = parse_sheet(&format!(
+        let reserved = CssParser::default().parse_sheet(format!(
             "@counter-style {name} {{ symbols: x; }} .after {{}}"
         ));
         assert!(matches!(reserved.syntax().rules(), [CssRule::Style(_)]));
@@ -471,13 +471,13 @@ fn counter_style_block_recovery_handles_reserved_names_eof_and_depth_boundaries(
         );
     }
 
-    let statement = parse_sheet("@counter-style valid; .after {}");
+    let statement = CssParser::default().parse_sheet("@counter-style valid; .after {}");
     assert!(matches!(statement.syntax().rules(), [CssRule::Style(_)]));
     assert_eq!(
         statement.diagnostics()[0].error().code(),
         CssErrorCode::InvalidAtRuleBody
     );
-    let missing_block = parse_sheet("@counter-style valid");
+    let missing_block = CssParser::default().parse_sheet("@counter-style valid");
     assert!(missing_block.syntax().rules().is_empty());
     assert_eq!(
         missing_block.diagnostics()[0].error().code(),
@@ -485,7 +485,7 @@ fn counter_style_block_recovery_handles_reserved_names_eof_and_depth_boundaries(
     );
 
     let eof_source = "@counter-style eof { system: symbolic; symbols: 🚀";
-    let eof = parse_sheet(eof_source);
+    let eof = CssParser::default().parse_sheet(eof_source);
     assert!(matches!(eof.syntax().rules(), [CssRule::CounterStyle(_)]));
     assert_eq!(
         eof.diagnostics()
@@ -503,7 +503,7 @@ fn counter_style_block_recovery_handles_reserved_names_eof_and_depth_boundaries(
             "f(".repeat(depth),
             ")".repeat(depth),
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(matches!(
             report.syntax().rules().last(),
             Some(CssRule::Style(_))
@@ -548,7 +548,7 @@ fn counter_style_rule_recovery_preserves_siblings_and_boundaries() {
         "@mystery-tail { } ",
         ".tail { color: black; }",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert!(matches!(
         report.syntax().rules(),
@@ -695,7 +695,7 @@ fn counter_style_rule_recovery_preserves_siblings_and_boundaries() {
             "f(".repeat(depth),
             ")".repeat(depth),
         );
-        let counter_report = parse_sheet(&counter_source);
+        let counter_report = CssParser::default().parse_sheet(&counter_source);
         assert!(matches!(
             counter_report.syntax().rules(),
             [CssRule::CounterStyle(_), CssRule::Style(_)]
@@ -723,7 +723,7 @@ fn counter_style_rule_recovery_preserves_siblings_and_boundaries() {
             "f(".repeat(depth),
             ")".repeat(depth),
         );
-        let page_report = parse_sheet(&page_source);
+        let page_report = CssParser::default().parse_sheet(&page_source);
         assert!(matches!(
             page_report.syntax().rules(),
             [CssRule::Page(_), CssRule::Style(_)]
@@ -748,7 +748,9 @@ fn counter_style_rule_recovery_preserves_siblings_and_boundaries() {
     }
 
     {
-        let failure = surgeist_css::validate_sheet(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
             .expect_err("strict validation rejects every recovered C11 rule context");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -759,8 +761,8 @@ fn later_counter_style_rule_metadata_matches_retained_public_behavior() {
     let metadata = feature_metadata("later.rule.counter-style").expect("counter-style metadata");
     assert_eq!(metadata.status(), CssSupportStatus::Complete);
     assert_eq!(metadata.recognized_unsupported_code(), None);
-    let report =
-        parse_sheet("@counter-style thumbs { system: cyclic; symbols: 👍; suffix: \" \"; }");
+    let report = CssParser::default()
+        .parse_sheet("@counter-style thumbs { system: cyclic; symbols: 👍; suffix: \" \"; }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert!(matches!(
         report.syntax().rules(),

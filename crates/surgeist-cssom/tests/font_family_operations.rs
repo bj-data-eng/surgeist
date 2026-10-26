@@ -198,7 +198,7 @@ fn complete_family_resource_failure_aborts_earlier_edits_while_typed_ingress_kee
             .has(&store, "earlier")
             .unwrap()
     );
-    let value = parse_font_feature_values_family_list("/*actual*/ B")
+    let value = CssFontFeatureValuesFamilyList::parse(&CssParser::default(), "/*actual*/ B")
         .into_parts()
         .0
         .unwrap();
@@ -219,10 +219,13 @@ fn complete_family_resource_failure_aborts_earlier_edits_while_typed_ingress_kee
     let input = view.family_input().unwrap();
     assert_eq!(input.value().origin(), &CssValueOrigin::Programmatic);
     assert!(input.value().family_origin(0).is_none());
-    let oversized = parse_font_feature_values_family_list(&format!("{}D", " ".repeat(40)))
-        .into_parts()
-        .0
-        .unwrap();
+    let oversized = CssFontFeatureValuesFamilyList::parse(
+        &CssParser::default(),
+        format!("{}D", " ".repeat(40)),
+    )
+    .into_parts()
+    .0
+    .unwrap();
     let mut edit = batch(&store);
     assert!(matches!(
         edit.set_font_feature_families(&rule, oversized),

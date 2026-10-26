@@ -237,15 +237,13 @@ fn intrinsic_metadata_is_one_inherited_ordinary_initial_terminal() {
 }
 #[test]
 fn normalization_counts_terminals_and_occurrences_cumulatively_preserving_order_contexts() {
-    let report = parse_sheet(
-        "@media screen{.a{text-transform:uppercase!important;text-transform:full-size-kana full-width;text-transform:var(--transform);text-transform:unset!important;color:red}}",
-    );
+    let report = CssParser::default().parse_sheet("@media screen{.a{text-transform:uppercase!important;text-transform:full-size-kana full-width;text-transform:var(--transform);text-transform:unset!important;color:red}}");
     assert!(report.is_clean());
     let before = report.clone();
     // Four TextTransform occurrences each contribute one terminal/handle, plus
     // the supported color control: five occurrences and five contributions.
     let exact = CssNormalizationLimits::try_new(1, 2, 5, 5).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -318,7 +316,7 @@ fn normalization_counts_terminals_and_occurrences_cumulatively_preserving_order_
         ),
     ] {
         for _ in 0..2 {
-            let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+            let error = report.syntax().normalize(limits).unwrap_err();
             assert_eq!(error.exhausted_limit(), Some((resource, 4)));
             assert_eq!(error.declaration_order(), Some(4));
             assert!(
@@ -330,7 +328,7 @@ fn normalization_counts_terminals_and_occurrences_cumulatively_preserving_order_
         }
     }
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 fn assert_primitive_limits(value: &CssTextTransform, expected: &str, nodes: usize) {
     LimitLadder::new(expected, nodes, nodes)
@@ -404,9 +402,7 @@ fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_at
 #[test]
 fn whole_sheet_siblings_share_exact_utf8_bytes_and_failed_attempts_leave_reusable_input() {
     use CssSerializationLimits as Limits;
-    let report = parse_sheet(
-        ".a{text-transform:full-size-kana uppercase full-width!important}.b{text-transform:math-auto}",
-    );
+    let report = CssParser::default().parse_sheet(".a{text-transform:full-size-kana uppercase full-width!important}.b{text-transform:math-auto}");
     assert!(report.is_clean());
     let sheet = report.syntax();
     let before = sheet.clone();
@@ -430,7 +426,8 @@ fn whole_sheet_siblings_share_exact_utf8_bytes_and_failed_attempts_leave_reusabl
 }
 #[test]
 fn selected_numeric_flow_and_color_controls_remain_independent_of_new_transform_metadata() {
-    let report = parse_style_attribute("flow-tolerance:calc(-2px - 3%);color:red");
+    let report =
+        CssParser::default().parse_block_contents("flow-tolerance:calc(-2px - 3%);color:red");
     assert!(report.is_clean());
     assert_eq!(
         report.syntax()[0]
@@ -440,7 +437,7 @@ fn selected_numeric_flow_and_color_controls_remain_independent_of_new_transform_
     );
     for source in report.syntax().iter() {
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("supported control")
         };

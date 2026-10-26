@@ -81,8 +81,8 @@ fn recognized_invalid_preludes_report_exact_production_token_and_whole_unit() {
             let prefix = if name == "else" { "@media all{}" } else { "" };
             let failed = format!("@{name} {prelude}{{.Lost{{color:red}}}}");
             let source = format!("{prefix}{failed}.After{{color:blue}}");
-            let report = parse_sheet(&source);
-            let normalized = normalize_sheet(report.syntax()).unwrap();
+            let report = CssParser::default().parse_sheet(&source);
+            let normalized = report.syntax().normalize(Default::default()).unwrap();
             assert_original_declarations(&source, &normalized, &[("color", "blue")]);
             let [diagnostic] = report.diagnostics() else {
                 panic!("one invalid prelude unit: {:?}", report.diagnostics());
@@ -132,7 +132,7 @@ fn recognized_invalid_preludes_report_exact_production_token_and_whole_unit() {
 #[test]
 fn decoded_at_keyword_and_non_bmp_prefix_keep_original_utf16_diagnostic_coordinates() {
     let source = ".Before{} /*🦀*/ @\\77 hen media(width) and{.Lost{color:red}}.After{color:blue}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [diagnostic] = report.diagnostics() else {
         panic!("one invalid when prelude");
     };
@@ -156,7 +156,7 @@ fn decoded_at_keyword_and_non_bmp_prefix_keep_original_utf16_diagnostic_coordina
     );
     assert_original_declarations(
         source,
-        &normalize_sheet(report.syntax()).unwrap(),
+        &report.syntax().normalize(Default::default()).unwrap(),
         &[("color", "blue")],
     );
 }
@@ -164,7 +164,7 @@ fn decoded_at_keyword_and_non_bmp_prefix_keep_original_utf16_diagnostic_coordina
 #[test]
 fn free_else_placement_is_distinct_from_intrinsic_grammar_and_isolated_rule_rejection() {
     let source = "@else{.Lost{mystery:1}}.After{color:blue}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [diagnostic] = report.diagnostics() else {
         panic!("one outer placement diagnostic; descendant errors discarded");
     };
@@ -188,10 +188,14 @@ fn free_else_placement_is_distinct_from_intrinsic_grammar_and_isolated_rule_reje
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
     assert_original_declarations(
         source,
-        &normalize_sheet(report.syntax()).unwrap(),
+        &report.syntax().normalize(Default::default()).unwrap(),
         &[("color", "blue")],
     );
-    let isolated = parse_rule("@else{}", &CssNamespaceContext::default());
+    let isolated = CssRule::parse(
+        &CssParser::default(),
+        "@else{}",
+        &CssNamespaceContext::default(),
+    );
     assert!(isolated.syntax().is_none());
     assert_eq!(
         isolated.diagnostics()[0].action(),
@@ -201,7 +205,7 @@ fn free_else_placement_is_distinct_from_intrinsic_grammar_and_isolated_rule_reje
         isolated.diagnostics()[0].error().code(),
         CssErrorCode::InvalidAtRulePlacement
     );
-    let invalid = parse_sheet("@else media(width) and{.Lost{color:red}}");
+    let invalid = CssParser::default().parse_sheet("@else media(width) and{.Lost{color:red}}");
     assert_eq!(
         invalid.diagnostics()[0].error().code(),
         CssErrorCode::InvalidAtRulePrelude
@@ -210,7 +214,7 @@ fn free_else_placement_is_distinct_from_intrinsic_grammar_and_isolated_rule_reje
 
 #[test]
 fn missing_when_block_and_terminal_components_keep_owned_failure_categories() {
-    let statement = parse_sheet("@when media(width);.After{color:blue}");
+    let statement = CssParser::default().parse_sheet("@when media(width);.After{color:blue}");
     let [diagnostic] = statement.diagnostics() else {
         panic!("one missing block");
     };
@@ -225,10 +229,10 @@ fn missing_when_block_and_terminal_components_keep_owned_failure_categories() {
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
     for prelude in ["future(\"bad\n)", "future(url(a b))", "future(])"] {
         let source = format!("@when {prelude}{{.Lost{{color:red}}}}.After{{color:blue}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_original_declarations(
             &source,
-            &normalize_sheet(report.syntax()).unwrap(),
+            &report.syntax().normalize(Default::default()).unwrap(),
             &[("color", "blue")],
         );
         assert_eq!(
@@ -245,7 +249,7 @@ fn missing_when_block_and_terminal_components_keep_owned_failure_categories() {
 #[test]
 fn rejected_eof_else_discards_child_closures_but_keeps_ancestor_and_global_comment() {
     let source = "@media all{.A{}@else{.Lost{mystery:1}/*";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("retained media ancestor");
     };
@@ -282,7 +286,7 @@ fn rejected_eof_else_discards_child_closures_but_keeps_ancestor_and_global_comme
 #[test]
 fn rejected_else_does_not_suppress_independent_global_escape_recovery() {
     let source = "@media all{.A{}@else{.Lost{color:\\\n}}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("media parent");
     };
@@ -326,11 +330,11 @@ fn conditional_starters_continue_else_but_nonconditional_or_child_starters_do_no
         let source = format!(
             "{starter}/**/@else{{.Take{{color:red}}}}@else supports(display:grid){{.Later{{color:blue}}}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_original_declarations(
             &source,
-            &normalize_sheet(report.syntax()).unwrap(),
+            &report.syntax().normalize(Default::default()).unwrap(),
             &[("color", "red"), ("color", "blue")],
         );
         assert!(
@@ -348,10 +352,10 @@ fn conditional_starters_continue_else_but_nonconditional_or_child_starters_do_no
         "@when media(width){}@else media(width) and{}",
     ] {
         let source = format!("{prefix}@else{{.Lost{{color:red}}}}.After{{color:blue}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_original_declarations(
             &source,
-            &normalize_sheet(report.syntax()).unwrap(),
+            &report.syntax().normalize(Default::default()).unwrap(),
             &[("color", "blue")],
         );
         assert!(report.diagnostics().iter().any(|diagnostic| diagnostic.error().code() == CssErrorCode::InvalidAtRulePlacement));
@@ -373,9 +377,9 @@ fn original_separators_and_condition_origins_survive_every_structural_boundary()
                 "@media all{".repeat(depth - 2),
                 "}".repeat(depth - 2)
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             let original = report.clone();
-            let normalized = normalize_sheet(report.syntax()).unwrap();
+            let normalized = report.syntax().normalize(Default::default()).unwrap();
             let valid_gap = gap.is_empty() || gap.starts_with("/*");
             let expected = if valid_gap {
                 vec![("color", "red"), ("color", "blue"), ("height", "2px")]
@@ -462,8 +466,8 @@ fn level_257_children_recover_locally_while_over_limit_group_rejects_as_resource
         "@media all{".repeat(255),
         "}".repeat(255)
     );
-    let report = parse_sheet(&source);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let report = CssParser::default().parse_sheet(&source);
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_original_declarations(&source, &normalized, &[("height", "2px")]);
     assert!(matches!(
         rule_at(&normalized, &source, "@when").kind(),
@@ -492,10 +496,10 @@ fn level_257_children_recover_locally_while_over_limit_group_rejects_as_resource
         "@media all{".repeat(256),
         "}".repeat(256)
     );
-    let report = parse_sheet(&over);
+    let report = CssParser::default().parse_sheet(&over);
     assert_original_declarations(
         &over,
-        &normalize_sheet(report.syntax()).unwrap(),
+        &report.syntax().normalize(Default::default()).unwrap(),
         &[("height", "2px")],
     );
     assert!(
@@ -517,13 +521,13 @@ fn scoped_conditional_groups_preserve_scope_relative_styles_across_replay() {
             "@scope{".repeat(depth - 2),
             "}".repeat(depth - 2)
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
             report.diagnostics()
         );
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         assert_original_declarations(&source, &normalized, &[("color", "red"), ("color", "blue")]);
         let values = declarations(&normalized);
         assert!(values[0].selector_context().parent().is_none());
@@ -558,9 +562,9 @@ fn scoped_conditional_groups_preserve_scope_relative_styles_across_replay() {
 #[test]
 fn scoped_style_descendants_regain_nearest_style_binding_and_group_direct_runs() {
     let source = "@scope (.S){.P{color:red;@when media(width){> &.Child{height:1px}width:2px}@else{opacity:1}}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_original_declarations(
         source,
         &normalized,
@@ -612,17 +616,21 @@ fn scoped_style_descendants_regain_nearest_style_binding_and_group_direct_runs()
 #[test]
 fn checked_new_composition_reuses_source_mixed_members_and_rejects_free_else_atomically() {
     let source = "@when media(width){}@else supports(display:grid){.B{color:red}}";
-    let parsed = parse_sheet(source);
+    let parsed = CssParser::default().parse_sheet(source);
     assert!(parsed.is_clean());
     let [CssRule::When(_), CssRule::Else(otherwise)] = parsed.syntax().rules() else {
         panic!("admitted source chain");
     };
-    let starter = parse_sheet("@media all{}").syntax().rules()[0].clone();
+    let starter = CssParser::default()
+        .parse_sheet("@media all{}")
+        .syntax()
+        .rules()[0]
+        .clone();
     let before = otherwise.clone();
     let assembled =
         CssSheet::try_from_rules(vec![starter.clone(), CssRule::Else(otherwise.clone())]).unwrap();
     assert!(assembled.location().is_none());
-    let normalized = normalize_sheet(&assembled).unwrap();
+    let normalized = assembled.normalize(Default::default()).unwrap();
     let values = declarations(&normalized);
     assert_eq!(declaration_text(values[0].source()), ("color", "red"));
     assert_eq!(
@@ -636,7 +644,11 @@ fn checked_new_composition_reuses_source_mixed_members_and_rejects_free_else_ato
     assert!(alone.is_invalid_placement(), "{alone:?}");
     assert_eq!(alone.path(), &[0]);
     assert_eq!(alone.position(), otherwise.position());
-    let style = parse_sheet(".Intervening{}").syntax().rules()[0].clone();
+    let style = CssParser::default()
+        .parse_sheet(".Intervening{}")
+        .syntax()
+        .rules()[0]
+        .clone();
     let broken = CssSheet::try_from_rules(vec![starter, style, CssRule::Else(otherwise.clone())])
         .unwrap_err();
     assert!(broken.is_invalid_placement(), "{broken:?}");
@@ -654,7 +666,8 @@ fn checked_new_composition_reuses_source_mixed_members_and_rejects_free_else_ato
 #[test]
 fn required_optional_and_scoped_checked_carriers_preserve_conditions_without_positions() {
     let context = CssNamespaceContext::default();
-    let condition = parse_when_condition("media(width)").unwrap();
+    let condition =
+        CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), "media(width)").unwrap();
     let when = CssWhenRule::try_new(condition.clone(), Vec::new(), &context).unwrap();
     assert_eq!(when.condition(), &condition);
     assert!(when.position().is_none());
@@ -693,14 +706,15 @@ fn required_optional_and_scoped_checked_carriers_preserve_conditions_without_pos
 #[test]
 fn style_fragment_constructor_claim_is_rechecked_by_actual_enclosing_assembly() {
     let context = CssNamespaceContext::default();
-    let report = parse_style_block("{.Before{}width:1px}", &context);
+    let report = CssStyleBlock::parse(&CssParser::default(), "{.Before{}width:1px}", &context);
     assert!(report.is_clean());
     let block = report.syntax().as_ref().unwrap();
     let [CssRule::Style(_), run @ CssRule::NestedDeclarations(_)] = block.rules() else {
         panic!("original parsed declaration run");
     };
     let run = run.clone();
-    let condition = parse_when_condition("media(width)").unwrap();
+    let condition =
+        CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), "media(width)").unwrap();
     assert!(
         CssWhenRule::try_new(condition.clone(), vec![run.clone()], &context)
             .unwrap_err()
@@ -721,7 +735,7 @@ fn style_fragment_constructor_claim_is_rechecked_by_actual_enclosing_assembly() 
 fn lexical_condition_and_compact_group_bytes_preserve_omission_and_grouping() {
     let source = "@when   MEDIA(width)/**/AnD (supports(display:grid) or future())   {.A{color:red}}@else{}@else supports(display:flex){.B{color:blue}}";
     let expected = "@when MEDIA(width)/**/AnD (supports(display:grid) or future()) { .A { color: red; } }\n@else { }\n@else supports(display:flex) { .B { color: blue; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     assert_eq!(
@@ -731,7 +745,7 @@ fn lexical_condition_and_compact_group_bytes_preserve_omission_and_grouping() {
             .unwrap(),
         expected
     );
-    let reparsed = parse_sheet(expected);
+    let reparsed = CssParser::default().parse_sheet(expected);
     assert!(reparsed.is_clean());
     let [
         CssRule::When(when),
@@ -749,7 +763,7 @@ fn lexical_condition_and_compact_group_bytes_preserve_omission_and_grouping() {
     ));
     assert_original_declarations(
         expected,
-        &normalize_sheet(reparsed.syntax()).unwrap(),
+        &reparsed.syntax().normalize(Default::default()).unwrap(),
         &[("color", "red"), ("color", "blue")],
     );
     assert_eq!(report, before);
@@ -759,7 +773,7 @@ fn lexical_condition_and_compact_group_bytes_preserve_omission_and_grouping() {
 fn complete_specified_graph_shares_declared_provider_work_and_fails_atomically() {
     let context = CssNamespaceContext::default();
     let when = CssWhenRule::try_new(
-        parse_when_condition("media(width)").unwrap(),
+        CssCondition::<CssWhenLeaf>::parse(&CssParser::default(), "media(width)").unwrap(),
         Vec::new(),
         &context,
     )
@@ -815,7 +829,7 @@ fn literal_when_else_cssom_is_source_undefined_at_real_ordinary_paths() {
             CssRuleCssomKind::Else,
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let before = report.clone();
         let error = report
@@ -844,7 +858,7 @@ fn scoped_literal_cssom_reports_the_unavailable_scope_format_before_descendants(
             vec![0, 1],
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let before = report.clone();
         let error = report
@@ -868,7 +882,7 @@ fn rejected_outer_else_does_not_advance_retained_stylesheet_prelude_phase() {
     // Existing parser ordering follows successfully retained rules. Ignoring a
     // free Else must preserve initial import/namespace admission and bindings.
     let source = "@else{}@import 'early.css';@namespace p 'urn:p';p|a{}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let before = report.clone();
     let [
         CssRule::Import(import),
@@ -929,7 +943,7 @@ fn valid_when_else_preludes_require_a_body_at_original_eof_or_statement_boundary
             let prefix = if name == "else" { "@media all{}" } else { "" };
             let failed = format!("@{name}{prelude}{boundary}");
             let source = format!("{prefix}{failed}");
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert_eq!(report.syntax().rules().len(), usize::from(name == "else"));
             let [diagnostic] = report.diagnostics() else {
                 panic!("only the missing outer body: {:?}", report.diagnostics());
@@ -977,10 +991,10 @@ fn intrinsic_prelude_and_terminal_url_failures_precede_missing_block_retagging()
         ] {
             let failed = format!("@{name} {prelude};");
             let source = format!("{prefix}{failed}.After{{color:blue}}");
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert_original_declarations(
                 &source,
-                &normalize_sheet(report.syntax()).unwrap(),
+                &report.syntax().normalize(Default::default()).unwrap(),
                 &[("color", "blue")],
             );
             let [diagnostic] = report.diagnostics() else {
@@ -1037,7 +1051,7 @@ fn discarded_incomplete_prelude_does_not_claim_a_retained_component_closure() {
     for name in ["when", "else"] {
         let prefix = if name == "else" { "@media all{}" } else { "" };
         let source = format!("{prefix}@{name} media(width");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(report.syntax().rules().len(), usize::from(name == "else"));
         let [diagnostic] = report.diagnostics() else {
             panic!(
@@ -1125,7 +1139,7 @@ fn decoded_authored_case_survives_when_else_prelude_diagnostics() {
             ("@scope{", ".After{color:blue}}"),
         ] {
             let source = format!("{prefix}{failed}{suffix}");
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             let [diagnostic] = report.diagnostics() else {
                 panic!("one authored prelude loss: {:?}", report.diagnostics());
             };
@@ -1137,11 +1151,15 @@ fn decoded_authored_case_survives_when_else_prelude_diagnostics() {
             );
             assert_original_declarations(
                 &source,
-                &normalize_sheet(report.syntax()).unwrap(),
+                &report.syntax().normalize(Default::default()).unwrap(),
                 &[("color", "blue")],
             );
         }
-        let isolated = parse_rule(&failed, &CssNamespaceContext::default());
+        let isolated = CssRule::parse(
+            &CssParser::default(),
+            &failed,
+            &CssNamespaceContext::default(),
+        );
         assert!(isolated.syntax().is_none());
         let [diagnostic] = isolated.diagnostics() else {
             panic!("one isolated authored prelude rejection");
@@ -1155,13 +1173,13 @@ fn decoded_authored_case_survives_when_else_prelude_diagnostics() {
                 ""
             };
             let source = format!("{prefix}{starter}@{authored} media(width){{}}{suffix}");
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(
                 report.is_clean(),
                 "case-independent admission: {:?}",
                 report.diagnostics()
             );
-            let normalized = normalize_sheet(report.syntax()).unwrap();
+            let normalized = report.syntax().normalize(Default::default()).unwrap();
             let context = rule_at(&normalized, &source, &format!("@{authored}"));
             if decoded == "ELSE" {
                 assert!(matches!(
@@ -1211,18 +1229,22 @@ fn decoded_authored_case_survives_free_else_placement_diagnostics() {
             ("@scope{", ".After{color:blue}}"),
         ] {
             let source = format!("{prefix}{failed}{suffix}");
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             let [diagnostic] = report.diagnostics() else {
                 panic!("one free authored Else loss: {:?}", report.diagnostics());
             };
             check(diagnostic, prefix.len(), CssRecoveryAction::DropAtRule);
             assert_original_declarations(
                 &source,
-                &normalize_sheet(report.syntax()).unwrap(),
+                &report.syntax().normalize(Default::default()).unwrap(),
                 &[("color", "blue")],
             );
         }
-        let isolated = parse_rule(&failed, &CssNamespaceContext::default());
+        let isolated = CssRule::parse(
+            &CssParser::default(),
+            &failed,
+            &CssNamespaceContext::default(),
+        );
         assert!(isolated.syntax().is_none());
         let [diagnostic] = isolated.diagnostics() else {
             panic!("one isolated free authored Else rejection");

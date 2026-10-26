@@ -54,7 +54,7 @@ fn scoped_pages_reuse_payload_without_element_declaration_contributions() {
         let source = format!(
             "@scope(.host){{@media print{{@page {prelude}{{margin:-1px 2% auto 3cm!important}}}}}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let [CssRule::Scope(scope)] = report.syntax().rules() else {
             panic!("scope")
@@ -72,7 +72,7 @@ fn scoped_pages_reuse_payload_without_element_declaration_contributions() {
         );
         assert_margin(page);
         let detached = page.clone();
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         assert!(
             !normalized
                 .items()
@@ -99,7 +99,7 @@ fn scoped_pages_reuse_payload_without_element_declaration_contributions() {
 #[test]
 fn scoped_page_prelude_errors_keep_neighbors_and_valid_page() {
     let source = "@scope{@media all{before{}@page :left;@page :unknown{margin:1px}@page :right{margin-right:2%}after{}}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 2);
     assert!(
         report
@@ -142,7 +142,7 @@ fn scoped_page_prelude_errors_keep_neighbors_and_valid_page() {
 #[test]
 fn scoped_page_retains_payload_and_original_positions_at_eof() {
     let source = "@scope(.host){@media print{@page :first{margin:-1px 2% auto 3cm!important";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 3);
     assert!(
         report
@@ -173,14 +173,14 @@ fn scoped_page_retains_payload_and_original_positions_at_eof() {
             .value(),
         source.find("margin:").unwrap()
     );
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_eq!(page_rules(&normalized), vec![page]);
 }
 
 #[test]
 fn page_leaf_does_not_change_namespace_resolution_of_scoped_neighbors() {
     let source = "@namespace svg 'urn:svg';@scope(svg|root){@media all{svg|before{}@page{margin:1px}bad|lost{}svg|after{}}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [diagnostic] = report.diagnostics() else {
         panic!("one undeclared prefix")
     };
@@ -217,7 +217,7 @@ fn page_leaf_does_not_change_namespace_resolution_of_scoped_neighbors() {
         assert_eq!(name.local_name(), Some(local_name));
     }
     assert_eq!(
-        page_rules(&normalize_sheet(report.syntax()).unwrap()).len(),
+        page_rules(&report.syntax().normalize(Default::default()).unwrap()).len(),
         1
     );
 }
@@ -233,9 +233,9 @@ fn scoped_page_depth_ceiling_preserves_detached_leaf_and_later_sibling() {
                 "{prefix}@page:left{{margin:-1px 2% auto 3cm!important}}{}",
                 "}".repeat(255)
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(report.is_clean(), "{:?}", report.diagnostics());
-            let normalized = normalize_sheet(report.syntax()).unwrap();
+            let normalized = report.syntax().normalize(Default::default()).unwrap();
             let pages = page_rules(&normalized);
             assert_eq!(pages.len(), 1);
             let detached = pages[0].clone();
@@ -250,7 +250,7 @@ fn scoped_page_depth_ceiling_preserves_detached_leaf_and_later_sibling() {
                 "{prefix}@media all{{@page{{margin:1px}}}}{}tail{{}}",
                 "}".repeat(255)
             );
-            let report = parse_sheet(&exceeded);
+            let report = CssParser::default().parse_sheet(&exceeded);
             let [diagnostic] = report.diagnostics() else {
                 panic!("one excess page block")
             };
@@ -260,7 +260,7 @@ fn scoped_page_depth_ceiling_preserves_detached_leaf_and_later_sibling() {
                 report.syntax().rules().last(),
                 Some(CssRule::Style(_))
             ));
-            assert!(page_rules(&normalize_sheet(report.syntax()).unwrap()).is_empty());
+            assert!(page_rules(&report.syntax().normalize(Default::default()).unwrap()).is_empty());
         })
         .unwrap()
         .join()
@@ -279,7 +279,7 @@ fn excess_scoped_page_preserves_statement_in_its_same_parent() {
                 "@media all{".repeat(255),
                 "}".repeat(255)
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             let [diagnostic] = report.diagnostics() else {
                 panic!(
                     "one excess Page resource diagnostic: {:?}",
@@ -319,7 +319,9 @@ fn excess_scoped_page_preserves_statement_in_its_same_parent() {
                 source.find("@layer").unwrap()
             );
             assert_eq!(
-                validate_sheet(&source),
+                CssParser::default()
+                    .parse_sheet(&source)
+                    .into_validation_result(),
                 report.clone().into_validation_result()
             );
         })

@@ -36,7 +36,7 @@ fn resource(diagnostics: &[CssRecoveryDiagnostic], kind: ComponentFailure) {
 #[test]
 fn page_recovers_mixed_domains_and_preserves_duplicate_occurrences_before_selection() {
     let source = "size:A4; margin:1px; --Theme: RAW; size:bogus; color:red; size:A3 !important; --theme: lower";
-    let report = parse_page_declaration_block_contents(source);
+    let report = CssParser::default().parse_page_block_contents(source);
     let block = report.syntax().as_ref().unwrap();
     assert!(!report.is_clean());
     assert_eq!(
@@ -64,9 +64,7 @@ fn page_recovers_mixed_domains_and_preserves_duplicate_occurrences_before_select
 
 #[test]
 fn page_drops_nested_rules_as_units_without_creating_margin_children() {
-    let report = parse_page_declaration_block_contents(
-        "marks:crop; @top-left { content:'child'; size:A3; } margin:2px; .x { color:red; @x{} } bleed:1pt; @unknown; color:blue",
-    );
+    let report = CssParser::default().parse_page_block_contents("marks:crop; @top-left { content:'child'; size:A3; } margin:2px; .x { color:red; @x{} } bleed:1pt; @unknown; color:blue");
     let block = report.syntax().as_ref().unwrap();
     assert_eq!(page_names(block), ["marks", "margin", "bleed", "color"]);
     assert_eq!(
@@ -96,7 +94,7 @@ fn page_drops_nested_rules_as_units_without_creating_margin_children() {
 #[test]
 fn page_uses_domain_applicability_and_selected_syntax_fallback() {
     let source = "margin-top:-1px; margin-left:7; display:block; size:var(--x){}margin-bottom:3px; --x:{ a:b }; marks:cross";
-    let report = parse_page_declaration_block_contents(source);
+    let report = CssParser::default().parse_page_block_contents(source);
     let block = report.syntax().as_ref().unwrap();
     assert_eq!(
         page_names(block),
@@ -109,7 +107,7 @@ fn page_uses_domain_applicability_and_selected_syntax_fallback() {
 fn font_face_recovers_invalid_neighbors_priority_and_duplicate_order() {
     use CssFontFaceDescriptorKind as K;
     let source = "font-family:Example; font-display:swap; bad:value; font-weight:0; src:local(Example); font-display:optional; font-style:italic !important; --x:raw; font-weight:400";
-    let report = parse_font_face_declaration_block_contents(source);
+    let report = CssParser::default().parse_font_face_block_contents(source);
     let block = report.syntax().as_ref().unwrap();
     assert_eq!(
         face_kinds(block),
@@ -140,7 +138,7 @@ fn font_face_recovers_invalid_neighbors_priority_and_duplicate_order() {
 fn font_face_raw_and_braced_structural_recovery_drop_only_the_child() {
     use CssFontFaceDescriptorKind as K;
     let raw = "font-family:Example; @unknown {src:local(Bad)} src:local(Good); .x {font-display:swap} font-display:optional";
-    let report = parse_font_face_declaration_block_contents(raw);
+    let report = CssParser::default().parse_font_face_block_contents(raw);
     assert_eq!(
         face_kinds(report.syntax().as_ref().unwrap()),
         [K::FontFamily, K::Src, K::FontDisplay]
@@ -164,8 +162,11 @@ fn font_face_raw_and_braced_structural_recovery_drop_only_the_child() {
     );
     // Syntax 3 (2026-10-01) §5.5.5 consumes every block as block contents;
     // the at-rule is invalid in the `<declaration-list>` and dropped alone.
-    let braced =
-        parse_font_face_block("{font-family:Example; @unknown {src:local(Bad)} src:local(Good)}");
+    let braced = CssBlockFragment::<CssFontFaceDescriptors>::parse(
+        &CssParser::default(),
+        "{font-family:Example; @unknown {src:local(Bad)} src:local(Good)}",
+        &CssBlockContext::default(),
+    );
     assert_eq!(
         face_kinds(braced.syntax().as_ref().unwrap().body()),
         [K::FontFamily, K::Src]
@@ -183,7 +184,7 @@ fn font_face_raw_and_braced_structural_recovery_drop_only_the_child() {
 #[test]
 fn src_member_recovery_and_mixed_curly_fallback_use_current_owners() {
     use CssFontFaceDescriptorKind as K;
-    let report = parse_font_face_declaration_block_contents(
+    let report = CssParser::default().parse_font_face_block_contents(
         "src:local(A), bogus(), local(B); font-weight:env(weight){}font-display:swap",
     );
     let block = report.syntax().as_ref().unwrap();
@@ -204,12 +205,11 @@ fn src_member_recovery_and_mixed_curly_fallback_use_current_owners() {
 
 #[test]
 fn root_closer_stops_both_domains_without_diagnostics_from_later_input() {
-    let page = parse_page_declaration_block_contents("size:A4} size:A3; \"unterminated");
+    let page = CssParser::default().parse_page_block_contents("size:A4} size:A3; \"unterminated");
     assert!(page.is_clean(), "{page:?}");
     assert_eq!(page_names(page.syntax().as_ref().unwrap()), ["size"]);
-    let face = parse_font_face_declaration_block_contents(
-        "font-display:swap} font-display:optional; \"unterminated",
-    );
+    let face = CssParser::default()
+        .parse_font_face_block_contents("font-display:swap} font-display:optional; \"unterminated");
     assert!(face.is_clean(), "{face:?}");
     assert_eq!(
         face_kinds(face.syntax().as_ref().unwrap()),
@@ -222,7 +222,7 @@ fn genuine_unbraced_origins_outlive_input_and_keep_unicode_coordinates() {
     let raw = "/*😀*/\r\nsize:A4; margin:1px; bogus:bad";
     let report = {
         let input = raw.to_owned();
-        parse_page_declaration_block_contents(&input)
+        CssParser::default().parse_page_block_contents(&input)
     };
     let block = report.syntax().as_ref().unwrap();
     let CssPageDeclaration::Descriptor(descriptor) = &block.occurrences()[0] else {
@@ -263,7 +263,7 @@ fn genuine_unbraced_origins_outlive_input_and_keep_unicode_coordinates() {
     let raw = "/*😀*/\r\nfont-weight:env(weight); bogus:value";
     let report = {
         let input = raw.to_owned();
-        parse_font_face_declaration_block_contents(&input)
+        CssParser::default().parse_font_face_block_contents(&input)
     };
     let descriptor = report
         .syntax()
@@ -299,7 +299,8 @@ fn genuine_unbraced_origins_outlive_input_and_keep_unicode_coordinates() {
 fn empty_recovered_contents_are_successful_and_resource_failures_are_not_clearing() {
     for source in ["", " ; /**/ ;", "bogus:value", "@unknown {}", "}"] {
         assert!(
-            parse_page_declaration_block_contents(source)
+            CssParser::default()
+                .parse_page_block_contents(source)
                 .syntax()
                 .as_ref()
                 .unwrap()
@@ -308,7 +309,8 @@ fn empty_recovered_contents_are_successful_and_resource_failures_are_not_clearin
             "{source}"
         );
         assert_eq!(
-            parse_font_face_declaration_block_contents(source)
+            CssParser::default()
+                .parse_font_face_block_contents(source)
                 .syntax()
                 .as_ref()
                 .unwrap()
@@ -340,12 +342,16 @@ fn empty_recovered_contents_are_successful_and_resource_failures_are_not_clearin
             CssComponentValueLimits::try_new(32, 100, 8).unwrap(),
         ),
     ] {
-        let failed = parse_page_declaration_block_contents_with_limits(source, limits);
+        let failed =
+            CssParser::new(CssParserContext::default(), limits).parse_page_block_contents(source);
         assert!(failed.syntax().is_none(), "{failed:?}");
         resource(failed.diagnostics(), kind);
-        let retry = parse_page_declaration_block_contents(source);
+        let retry = CssParser::default().parse_page_block_contents(source);
         assert!(retry.syntax().is_some());
-        assert_eq!(retry, parse_page_declaration_block_contents(source));
+        assert_eq!(
+            retry,
+            CssParser::default().parse_page_block_contents(source)
+        );
     }
     for (source, kind, limits) in [
         (
@@ -369,12 +375,16 @@ fn empty_recovered_contents_are_successful_and_resource_failures_are_not_clearin
             CssComponentValueLimits::try_new(32, 100, 17).unwrap(),
         ),
     ] {
-        let failed = parse_font_face_declaration_block_contents_with_limits(source, limits);
+        let failed = CssParser::new(CssParserContext::default(), limits)
+            .parse_font_face_block_contents(source);
         assert!(failed.syntax().is_none(), "{failed:?}");
         resource(failed.diagnostics(), kind);
-        let retry = parse_font_face_declaration_block_contents(source);
+        let retry = CssParser::default().parse_font_face_block_contents(source);
         assert!(retry.syntax().is_some());
-        assert_eq!(retry, parse_font_face_declaration_block_contents(source));
+        assert_eq!(
+            retry,
+            CssParser::default().parse_font_face_block_contents(source)
+        );
     }
 }
 
@@ -383,23 +393,26 @@ fn exact_component_allowances_admit_the_full_block_and_one_less_rejects_atomical
     let source = "size:A4; margin:2px";
     // Ident, colon, ident, semicolon, whitespace, ident, colon, dimension.
     let adequate = CssComponentValueLimits::try_new(0, 8, source.len()).unwrap();
-    let report = parse_page_declaration_block_contents_with_limits(source, adequate);
+    let report =
+        CssParser::new(CssParserContext::default(), adequate).parse_page_block_contents(source);
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(
         page_names(report.syntax().as_ref().unwrap()),
         ["size", "margin"]
     );
-    let failed = parse_page_declaration_block_contents_with_limits(
-        source,
+    let failed = CssParser::new(
+        CssParserContext::default(),
         CssComponentValueLimits::try_new(0, 7, source.len()).unwrap(),
-    );
+    )
+    .parse_page_block_contents(source);
     assert!(failed.syntax().is_none());
     resource(failed.diagnostics(), ComponentFailure::ComponentLimit);
 
     let source = "font-display:swap; src:local(A)";
     // The second descriptor's function and its child both consume allowance.
     let adequate = CssComponentValueLimits::try_new(1, 9, source.len()).unwrap();
-    let report = parse_font_face_declaration_block_contents_with_limits(source, adequate);
+    let report = CssParser::new(CssParserContext::default(), adequate)
+        .parse_font_face_block_contents(source);
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(
         face_kinds(report.syntax().as_ref().unwrap()),
@@ -408,10 +421,11 @@ fn exact_component_allowances_admit_the_full_block_and_one_less_rejects_atomical
             CssFontFaceDescriptorKind::Src
         ]
     );
-    let failed = parse_font_face_declaration_block_contents_with_limits(
-        source,
+    let failed = CssParser::new(
+        CssParserContext::default(),
         CssComponentValueLimits::try_new(1, 8, source.len()).unwrap(),
-    );
+    )
+    .parse_font_face_block_contents(source);
     assert!(failed.syntax().is_none());
     resource(failed.diagnostics(), ComponentFailure::ComponentLimit);
 }
@@ -420,7 +434,7 @@ fn exact_component_allowances_admit_the_full_block_and_one_less_rejects_atomical
 fn page_context_and_original_eof_component_recovery_are_retained() {
     let quirks = CssParserContext::new(CssParserMode::Quirks);
     let source = "margin:1px; size:A4; --x:func(1";
-    let report = quirks.parse_page_declaration_block_contents(source);
+    let report = CssParser::new(quirks, Default::default()).parse_page_block_contents(source);
     let block = report.syntax().as_ref().unwrap();
     assert_eq!(page_names(block), ["margin", "size", "--x"]);
     assert_eq!(block.properties()[0].parser_context(), quirks);
@@ -432,13 +446,11 @@ fn page_context_and_original_eof_component_recovery_are_retained() {
     );
     assert_eq!(
         report,
-        quirks.parse_page_declaration_block_contents_with_limits(
-            source,
-            CssComponentValueLimits::default()
-        )
+        CssParser::new(quirks, CssComponentValueLimits::default())
+            .parse_page_block_contents(source)
     );
     let face_source = "font-display:swap; src:local(Example";
-    let face = parse_font_face_declaration_block_contents(face_source);
+    let face = CssParser::default().parse_font_face_block_contents(face_source);
     assert_eq!(
         face_kinds(face.syntax().as_ref().unwrap()),
         [

@@ -1,12 +1,12 @@
 //! Authored range orientation, exact operands and provenance are public contracts.
 use surgeist_css::{
     CssCalculationExpressionRef, CssConditionKind, CssMediaFeatureQuery, CssMediaGridRef,
-    CssMediaLeaf, CssMediaQuery, CssMediaRangeRef, CssMediaResolutionRef, CssQueryComparison,
-    CssValueOrigin, parse_media_query, parse_media_query_list,
+    CssMediaLeaf, CssMediaQuery, CssMediaQueryList, CssMediaRangeRef, CssMediaResolutionRef,
+    CssParser, CssQueryComparison, CssValueOrigin,
 };
 
 fn feature(source: &str) -> CssMediaFeatureQuery {
-    let report = parse_media_query(source);
+    let report = CssMediaQuery::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssMediaQuery::Condition(condition) = report.syntax() else {
         panic!("expected condition");
@@ -216,7 +216,7 @@ fn infinite_resolution_can_precede_the_feature_name() {
 #[test]
 fn numeric_origins_use_the_complete_unicode_query_list_source() {
     let source = "/* 😀 */ print,\n(width: -1e999px)";
-    let report = parse_media_query_list(source);
+    let report = CssMediaQueryList::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssMediaQuery::Condition(condition) = &report.syntax().queries()[1] else {
         panic!("expected second query condition");
@@ -264,7 +264,10 @@ fn discrete_feature_domains_accept_each_selected_keyword() {
             assert_eq!(result.as_str(), name);
         }
         // No discrete feature acquires a range domain through prefix spelling.
-        let report = parse_media_query(&format!("(min-{name}: {})", keywords[0]));
+        let report = CssMediaQuery::parse(
+            &CssParser::default(),
+            format!("(min-{name}: {})", keywords[0]),
+        );
         let CssMediaQuery::Condition(condition) = report.syntax() else {
             panic!("expected retained unknown condition");
         };

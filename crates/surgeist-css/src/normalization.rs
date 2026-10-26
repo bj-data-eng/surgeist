@@ -7,7 +7,7 @@ use crate::syntax::*;
 use crate::{
     CssColorProfileRule, CssCondition, CssCustomMediaRule, CssExpansion, CssExpansionError,
     CssFontFeatureValuesRule, CssFontPaletteValuesRule, CssParseReport, CssRecoveryDiagnostic,
-    CssSourcePosition, CssSupportsConditionRule, CssWhenLeaf, expand_declaration,
+    CssSourcePosition, CssSupportsConditionRule, CssWhenLeaf,
 };
 
 /// Traversal and output budgets for one atomic stylesheet normalization.
@@ -644,58 +644,62 @@ impl CssNormalizedReport {
     }
 }
 
-/// Normalizes retained authored syntax atomically with default resource budgets.
-///
-/// Only emitted style declarations require intrinsic expansion. Unsupported
-/// known declarations return a typed error, even when their authored grammar is
-/// supported. Custom values, `all`, pending substitution, conditional headers,
-/// and terminal payloads stay symbolic. The source sheet remains unchanged.
-/// Keep the original parse report when its diagnostics matter, or use
-/// [`normalize_report`]. Whole-sheet checked Rust construction is separate.
-pub fn normalize_sheet(sheet: &CssSheet) -> Result<CssNormalizedSheet, CssNormalizationError> {
-    normalize_sheet_with_limits(sheet, CssNormalizationLimits::default())
+impl CssSheet {
+    /// Normalizes retained authored syntax atomically under explicit traversal and output budgets.
+    ///
+    /// Only emitted style declarations require intrinsic expansion. Unsupported
+    /// known declarations return a typed error, even when their authored grammar
+    /// is supported. Custom values, `all`, pending substitution, conditional
+    /// headers, and terminal payloads stay symbolic. The source sheet remains
+    /// unchanged and no partial result is published. Keep the original parse
+    /// report when its diagnostics matter, or normalize the report with
+    /// [`CssParseReport::normalize`]. Whole-sheet checked Rust construction is
+    /// separate.
+    ///
+    /// Rule/declaration admission and contribution-member counts are checked
+    /// before allocating the corresponding header, expansion, or output item.
+    /// Rule depth is checked before rule count; declaration count precedes
+    /// expansion capability and member-budget checks. Terminal payload bytes have
+    /// no separate budget.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exhausted budget or the declaration the expansion cannot admit.
+    pub fn normalize(
+        &self,
+        limits: CssNormalizationLimits,
+    ) -> Result<CssNormalizedSheet, CssNormalizationError> {
+        let mut builder = Normalizer {
+            limits,
+            items: Vec::new(),
+            rules: 0,
+            declarations: 0,
+            contributions: 0,
+        };
+        builder.rules(self.rules())?;
+        Ok(CssNormalizedSheet {
+            items: builder.items,
+        })
+    }
 }
 
-/// Normalizes under explicit traversal/output budgets, publishing no partial result.
-///
-/// Rule/declaration admission and contribution-member counts are checked before
-/// allocating the corresponding header, expansion, or output item. Rule depth
-/// is checked before rule count; declaration count precedes expansion capability
-/// and member-budget checks. Terminal payload bytes have no separate budget.
-pub fn normalize_sheet_with_limits(
-    sheet: &CssSheet,
-    limits: CssNormalizationLimits,
-) -> Result<CssNormalizedSheet, CssNormalizationError> {
-    let mut builder = Normalizer {
-        limits,
-        items: Vec::new(),
-        rules: 0,
-        declarations: 0,
-        contributions: 0,
-    };
-    builder.rules(sheet.rules())?;
-    Ok(CssNormalizedSheet {
-        items: builder.items,
-    })
-}
-
-/// Normalizes a parse report while preserving all recovery diagnostics unchanged.
-pub fn normalize_report(
-    report: &CssParseReport<CssSheet>,
-) -> Result<CssNormalizedReport, CssNormalizationError> {
-    normalize_report_with_limits(report, CssNormalizationLimits::default())
-}
-
-/// Preserves parser diagnostics while normalizing with explicit resource budgets.
-pub fn normalize_report_with_limits(
-    report: &CssParseReport<CssSheet>,
-    limits: CssNormalizationLimits,
-) -> Result<CssNormalizedReport, CssNormalizationError> {
-    let syntax = normalize_sheet_with_limits(report.syntax(), limits)?;
-    Ok(CssNormalizedReport {
-        syntax,
-        diagnostics: report.diagnostics().to_vec(),
-    })
+impl CssParseReport<CssSheet> {
+    /// Normalizes the retained sheet under explicit budgets while preserving all
+    /// recovery diagnostics unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns the failure of [`CssSheet::normalize`].
+    pub fn normalize(
+        &self,
+        limits: CssNormalizationLimits,
+    ) -> Result<CssNormalizedReport, CssNormalizationError> {
+        let syntax = self.syntax().normalize(limits)?;
+        Ok(CssNormalizedReport {
+            syntax,
+            diagnostics: self.diagnostics().to_vec(),
+        })
+    }
 }
 
 #[derive(Clone, Copy, Default)]
@@ -855,7 +859,7 @@ impl Normalizer {
                     limit: self.limits.max_contributions,
                 }));
             }
-            let expansion = expand_declaration(source)
+            let expansion = crate::expansion::expand_declaration(source)
                 .map_err(|error| fail(CssNormalizationErrorKind::UnsupportedDeclaration(error)))?;
             self.items
                 .push(CssNormalizedItem::Declaration(CssNormalizedDeclaration {
@@ -1170,10 +1174,7 @@ fn selector_has_anchor(selector: &CssSelector, kind: AnchorKind) -> bool {
 #[cfg(test)]
 mod import_construction_tests {
     use super::*;
-    use crate::{
-        CssComponentValue, CssComponentValues, CssNamespaceContext, CssValueOrigin,
-        parse_component_values,
-    };
+    use crate::{CssComponentValue, CssComponentValues, CssNamespaceContext, CssValueOrigin};
 
     #[test]
     fn constructed_namespace_normalization_preserves_absent_authored_coordinates() {
@@ -1183,7 +1184,7 @@ mod import_construction_tests {
         );
         let mut sheet = CssSheet::new();
         sheet.push_rule(CssRule::Namespace(declaration.clone()));
-        let normalized = normalize_sheet(&sheet).unwrap();
+        let normalized = sheet.normalize(Default::default()).unwrap();
         drop(sheet);
         let [CssNormalizedItem::Rule(context)] = normalized.items() else {
             panic!("constructed namespace retained as one normalization occurrence")
@@ -1199,7 +1200,7 @@ mod import_construction_tests {
 
     #[test]
     fn programmatic_and_parsed_import_origins_survive_normalization() {
-        let parsed_keyword = parse_component_values("/*😀*/@import")
+        let parsed_keyword = crate::component_values::parse_component_values("/*😀*/@import")
             .unwrap()
             .items()
             .last()
@@ -1230,7 +1231,7 @@ mod import_construction_tests {
                 .unwrap(),
             ));
         }
-        let normalized = normalize_sheet(&sheet).unwrap();
+        let normalized = sheet.normalize(Default::default()).unwrap();
         drop(sheet);
         let [
             CssNormalizedItem::Rule(first),

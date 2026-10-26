@@ -14,8 +14,8 @@
 use crate::css::support::rules::page_pseudo;
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssErrorCode, CssImportance, CssKnownProperty,
-    CssKnownPropertyValueRef, CssMarginValue, CssPagePseudo, CssRecoveryAction, CssRule,
-    CssSelector, CssValueTokenRef, parse_sheet, validate_sheet,
+    CssKnownPropertyValueRef, CssMarginValue, CssPagePseudo, CssParser, CssRecoveryAction, CssRule,
+    CssSelector, CssValueTokenRef,
 };
 
 fn assert_tag(rule: &CssRule, expected: &str) {
@@ -30,7 +30,7 @@ fn assert_tag(rule: &CssRule, expected: &str) {
 
 #[test]
 fn empty_page_rule_is_valid_inside_media_rule_list() {
-    let report = parse_sheet("@media all{@page{}}");
+    let report = CssParser::default().parse_sheet("@media all{@page{}}");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("one media rule")
@@ -44,7 +44,8 @@ fn empty_page_rule_is_valid_inside_media_rule_list() {
 
 #[test]
 fn nested_page_retains_selector_typed_margin_and_importance() {
-    let report = parse_sheet("@media all{a{}@page :left{margin: 1px !important}b{}}");
+    let report =
+        CssParser::default().parse_sheet("@media all{a{}@page :left{margin: 1px !important}b{}}");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("one media rule")
@@ -81,7 +82,8 @@ fn nested_page_retains_selector_typed_margin_and_importance() {
 
 #[test]
 fn original_nested_page_recovers_its_declaration_without_dropping_page() {
-    let report = parse_sheet("@media test {\n    @page {\n        p: v;\n    }\n}");
+    let report =
+        CssParser::default().parse_sheet("@media test {\n    @page {\n        p: v;\n    }\n}");
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("media")
     };
@@ -112,7 +114,7 @@ fn assert_block_contents(
     expected_tags: &[&str],
     dropped: &[(&str, CssRecoveryAction)],
 ) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [group] = report.syntax().rules() else {
         panic!("one group: {source}: {report:?}")
     };
@@ -211,7 +213,7 @@ fn declarations_in_a_top_level_media_rule_list_are_dropped_before_a_rule() {
     );
     // CSSTree tolerant "correct fallback on error in at-rule block/0".
     let source = "@media (max-width:1000px){top:0;left:0;width:100%;}*{color:red}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [media, CssRule::Style(after)] = report.syntax().rules() else {
         panic!("media and following style: {report:?}")
     };
@@ -253,7 +255,7 @@ fn custom_property_shaped_rule_consumes_the_remnants_of_a_bad_declaration() {
         &[("--x:y{}lost{}", CssRecoveryAction::DropQualifiedRule)],
     );
     // At the stylesheet top level the same prelude only consumes its block.
-    let report = parse_sheet("--x:y{}.kept{}");
+    let report = CssParser::default().parse_sheet("--x:y{}.kept{}");
     let [CssRule::Style(kept)] = report.syntax().rules() else {
         panic!("top-level custom-property-shaped rule drops only its block: {report:?}")
     };
@@ -271,7 +273,7 @@ fn top_level_custom_property_shaped_rule_is_dropped_even_as_a_valid_selector() {
     // returns nothing.
     for dropped in ["--foo:hover{color:red}", "--foo :hover{color:red}"] {
         let source = format!("{dropped}.kept{{color:blue}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Style(kept)] = report.syntax().rules() else {
             panic!("{source}: {report:?}")
         };
@@ -286,16 +288,21 @@ fn top_level_custom_property_shaped_rule_is_dropped_even_as_a_valid_selector() {
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
         assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
         assert_eq!(diagnostic.span().end().byte_offset().value(), dropped.len());
-        assert!(validate_sheet(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
     // An ordinary ident prelude remains a style rule.
-    let report = parse_sheet("foo:hover{color:red}");
+    let report = CssParser::default().parse_sheet("foo:hover{color:red}");
     assert!(report.is_clean(), "{report:?}");
     assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
 }
 #[test]
 fn style_body_semicolons_remain_valid_declaration_separators() {
-    let report = parse_sheet("a{;;margin:1px;;;}");
+    let report = CssParser::default().parse_sheet("a{;;margin:1px;;;}");
     assert!(report.is_clean(), "{report:?}");
     let [rule] = report.syntax().rules() else {
         panic!("one style")
@@ -316,7 +323,7 @@ fn style_body_semicolons_remain_valid_declaration_separators() {
 #[test]
 fn original_page_between_style_children_preserves_all_rule_and_recovery_order() {
     let source = "x {\n    p:v;\n}\n\n@media test {\n    a {\n        p:v;\n    }\n\n    /* comment */\n\n    @page {\n        p: v;\n    }\n\n    b {\n        p:v;\n    }\n}\n\ny {\n    p:v;\n}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [x, CssRule::Media(media), y] = report.syntax().rules() else {
         panic!("outer style/media/style: {report:?}")
     };
@@ -345,7 +352,8 @@ fn original_page_between_style_children_preserves_all_rule_and_recovery_order() 
 
 #[test]
 fn page_is_retained_through_nested_media_and_supports_rule_lists() {
-    let report = parse_sheet("@media print{@supports (display:block){@page :right{}}}");
+    let report =
+        CssParser::default().parse_sheet("@media print{@supports (display:block){@page :right{}}}");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("one media: {report:?}")
@@ -364,7 +372,7 @@ fn page_is_retained_through_nested_media_and_supports_rule_lists() {
 #[test]
 fn invalid_page_prelude_and_import_drop_only_their_rules_inside_media() {
     let source = "@media print{a{}@page :unknown{}b{}@import 'late.css';c{}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("one media: {report:?}")
     };
@@ -394,7 +402,7 @@ fn invalid_page_prelude_and_import_drop_only_their_rules_inside_media() {
 #[test]
 fn nested_page_and_declaration_preserve_authored_unicode_coordinates() {
     let source = "/*😀*/\n@media print{/*😀*/@page :left{/*😀*/margin:1px;}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("one media: {report:?}")
@@ -425,7 +433,7 @@ fn nested_page_and_declaration_preserve_authored_unicode_coordinates() {
 fn discarded_semicolon_keeps_comments_unicode_and_balanced_block_siblings() {
     let source = "/*😀*/\n@media all{a{};/*😀*/b{--x:'}';}c{}}";
     assert_block_contents(source, &["a", "b", "c"], &[]);
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("one media: {report:?}")
     };
@@ -465,7 +473,7 @@ fn semicolon_in_supports_block_contents_keeps_every_sibling() {
 
 #[test]
 fn style_nested_conditional_body_keeps_semicolon_declaration_separators() {
-    let report = parse_sheet("a{@media all{;;margin:1px;;;}}");
+    let report = CssParser::default().parse_sheet("a{@media all{;;margin:1px;;;}}");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Style(style)] = report.syntax().rules() else {
         panic!("one style: {report:?}")
@@ -515,7 +523,7 @@ fn nested_block_contents_do_not_discard_top_level_only_html_comment_tokens() {
 #[test]
 fn nested_charset_is_recovered_without_losing_style_siblings() {
     let source = "@media all{a{}@charset \"utf-8\";b{}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("one media: {report:?}")
     };
@@ -545,7 +553,7 @@ fn layer_and_container_block_contents_retain_pages_and_discard_semicolons() {
     // ancestor, after consume a block's contents has discarded the `;`.
     for prefix in ["@layer print", "@container (width > 1px)"] {
         let source = format!("{prefix}{{a{{}}@page :first{{}};b{{}}c{{}}}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{report:?}");
         let [group] = report.syntax().rules() else {
             panic!("one group: {report:?}")

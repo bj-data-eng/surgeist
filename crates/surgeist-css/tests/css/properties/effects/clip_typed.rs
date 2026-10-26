@@ -235,7 +235,7 @@ fn initial_and_authored_expansion_have_typed_auto_and_rectangle_values() {
 
     let authored = parsed("clip:rect(auto -1px 2em 0)!important");
     let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(&authored).unwrap()
+        authored.expand().unwrap()
     else {
         panic!("clip longhand contribution")
     };
@@ -368,7 +368,8 @@ fn exact_dimension(
     matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }
 fn signed_length(css: &str) -> surgeist_css::CssNumeric<surgeist_css::CssLength> {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+    let components =
+        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
     if css.contains('(') {
         surgeist_css::CssNumeric::<surgeist_css::CssLength>::try_from_calculation(
             surgeist_css::CssCalculation::<surgeist_css::CssLength>::try_from_components(

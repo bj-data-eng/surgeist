@@ -229,7 +229,7 @@ fn stored_predicate_prepays_payload_observations_without_spending_traversal_step
 
 #[test]
 fn recursive_css_uses_the_same_tariff_and_stops_at_each_refused_action() {
-    let report = parse_sheet(".a { --token: calc(1 + var(--other)); }");
+    let report = crate::CssParser::default().parse_sheet(".a { --token: calc(1 + var(--other)); }");
     let mut standalone = CssSourceRetention::new(4096, 1000, 20);
     standalone.visit(report.syntax()).unwrap();
     let expected_steps = standalone.steps();

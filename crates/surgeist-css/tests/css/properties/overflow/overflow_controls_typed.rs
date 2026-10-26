@@ -12,7 +12,8 @@ fn length(number: &str, unit: &str) -> CssNumeric<CssLength, CssNonNegative> {
 }
 
 fn parsed_clip_margin(value: &str) -> CssOverflowClipMargin {
-    let report = parse_style_attribute(&format!("overflow-clip-margin: {value}"));
+    let report =
+        CssParser::default().parse_block_contents(format!("overflow-clip-margin: {value}"));
     assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::OverflowClipMargin(value) = report.syntax()[0]
         .known()
@@ -210,7 +211,7 @@ fn parsed_keyword_controls_expose_exact_typed_values_and_authored_spelling() {
         ("scroll-behavior", "AUTO", CssScrollBehavior::Auto),
         ("scroll-behavior", "smooth", CssScrollBehavior::Smooth),
     ] {
-        let report = parse_style_attribute(&format!("{name}: {input}"));
+        let report = CssParser::default().parse_block_contents(format!("{name}: {input}"));
         assert!(report.is_clean());
         let CssKnownPropertyValueRef::ScrollBehavior(value) = report.syntax()[0]
             .known()
@@ -228,7 +229,8 @@ fn parsed_keyword_controls_expose_exact_typed_values_and_authored_spelling() {
         ("stable", CssScrollbarGutter::Stable),
         ("both-edges STABLE", CssScrollbarGutter::StableBothEdges),
     ] {
-        let report = parse_style_attribute(&format!("scrollbar-gutter: {input}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("scrollbar-gutter: {input}"));
         assert!(report.is_clean());
         let CssKnownPropertyValueRef::ScrollbarGutter(value) = report.syntax()[0]
             .known()
@@ -245,7 +247,7 @@ fn parsed_keyword_controls_expose_exact_typed_values_and_authored_spelling() {
         ("CLIP", CssTextOverflow::Clip),
         ("ellipsis", CssTextOverflow::Ellipsis),
     ] {
-        let report = parse_style_attribute(&format!("text-overflow: {input}"));
+        let report = CssParser::default().parse_block_contents(format!("text-overflow: {input}"));
         assert!(report.is_clean());
         let CssKnownPropertyValueRef::TextOverflow(value) = report.syntax()[0]
             .known()

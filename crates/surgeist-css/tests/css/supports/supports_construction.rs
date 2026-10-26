@@ -8,10 +8,10 @@ use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
     CssBlockKind, CssCalculationExpressionRef, CssComponentValue, CssComponentValueLimits,
-    CssComponentValueRef, CssCondition, CssConditionKind, CssGlobalKeyword, CssImportance,
-    CssKnownPropertyValueRef, CssNamespaceConstraint, CssNamespaceContext, CssOpacityValue,
-    CssRule, CssSelector, CssSerializedOrigin, CssSupportsDeclaration, CssSupportsLeaf,
-    CssValueOrigin, CssValueTokenRef, parse_component_values, parse_sheet,
+    CssComponentValueRef, CssComponentValues, CssCondition, CssConditionKind, CssGlobalKeyword,
+    CssImportance, CssKnownPropertyValueRef, CssNamespaceConstraint, CssNamespaceContext,
+    CssOpacityValue, CssParser, CssRule, CssSelector, CssSerializedOrigin, CssSupportsDeclaration,
+    CssSupportsLeaf, CssValueOrigin, CssValueTokenRef,
 };
 
 #[test]
@@ -91,13 +91,13 @@ fn programmatic_width_keeps_exact_spelling_and_has_no_source_coordinates() {
 
 #[test]
 fn mixed_source_declaration_preserves_each_original_snapshot_inside_a_new_wrapper() {
-    let property = parse_component_values("/* 😀 */\nwidth")
+    let property = CssComponentValues::parse(&CssParser::default(), "/* 😀 */\nwidth")
         .unwrap()
         .items()
         .last()
         .unwrap()
         .clone();
-    let numeric = parse_component_values("/* λ */\r\n+001.5PX")
+    let numeric = CssComponentValues::parse(&CssParser::default(), "/* λ */\r\n+001.5PX")
         .unwrap()
         .items()
         .last()
@@ -142,7 +142,7 @@ fn construction_from_parsed_components_does_not_claim_an_authored_declaration_sl
             .as_css(),
         source
     );
-    let sheet = parse_sheet(&format!("/*😀*/\n@supports ({source}) {{}}"));
+    let sheet = CssParser::default().parse_sheet(format!("/*😀*/\n@supports ({source}) {{}}"));
     assert!(sheet.is_clean(), "{sheet:?}");
     let CssRule::Supports(rule) = &sheet.syntax().rules()[0] else {
         panic!("supports")
@@ -164,8 +164,14 @@ fn construction_from_parsed_components_does_not_claim_an_authored_declaration_sl
 
 #[test]
 fn identical_numeric_spellings_from_distinct_snapshots_keep_distinct_leaf_identity() {
-    let left = parse_component_values("1").unwrap().items()[0].clone();
-    let right = parse_component_values("1").unwrap().items()[0].clone();
+    let left = CssComponentValues::parse(&CssParser::default(), "1")
+        .unwrap()
+        .items()[0]
+        .clone();
+    let right = CssComponentValues::parse(&CssParser::default(), "1")
+        .unwrap()
+        .items()[0]
+        .clone();
     let left_origin = left.origin().clone();
     let right_origin = right.origin().clone();
     let (CssValueOrigin::Parsed(a), CssValueOrigin::Parsed(b)) = (&left_origin, &right_origin)
@@ -277,7 +283,7 @@ fn terminal_importance_is_excluded_from_the_value_but_preserved_in_serialization
     ] {
         assert!(
             CssSupportsDeclaration::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default()
             )
             .as_ref()
@@ -297,7 +303,7 @@ fn malformed_root_operators_are_rejected_while_general_enclosed_remains_opaque()
     ] {
         assert!(
             CssCondition::<CssSupportsLeaf>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 &CssNamespaceContext::default(),
                 Default::default(),
             )
@@ -338,12 +344,13 @@ fn malformed_root_operators_are_rejected_while_general_enclosed_remains_opaque()
 
 #[test]
 fn supplied_namespace_context_selects_the_typed_selector_without_resolving_its_constraint() {
-    let sheet = parse_sheet("@namespace svg 'urn:svg'; @namespace 'urn:default';");
+    let sheet =
+        CssParser::default().parse_sheet("@namespace svg 'urn:svg'; @namespace 'urn:default';");
     assert!(sheet.is_clean());
     let context = CssNamespaceContext::from_sheet(sheet.syntax());
     for (source, named) in [("selector(svg|a)", true), ("selector(a)", false)] {
         let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             &context,
             Default::default(),
         )
@@ -429,7 +436,7 @@ fn grouping_and_cloned_interior_children_serialize_independently_of_unrelated_si
 
 #[test]
 fn recovery_and_explicit_resource_limits_report_the_original_component_origin() {
-    let recovered = parse_component_values("Future(").unwrap();
+    let recovered = CssComponentValues::parse(&CssParser::default(), "Future(").unwrap();
     let original_origin = recovered.items()[0].origin().clone();
     let error = CssCondition::<CssSupportsLeaf>::try_from_components(
         recovered,
@@ -451,13 +458,13 @@ fn recovery_and_explicit_resource_limits_report_the_original_component_origin() 
     assert_eq!(at.span().start().byte_offset().value(), "Future(".len());
     assert!(
         CssSupportsDeclaration::try_from_components(
-            parse_component_values("width:calc(1px").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "width:calc(1px").unwrap(),
             Default::default()
         )
         .as_ref()
         .is_err_and(|error| error.is_recovered_input())
     );
-    let components = parse_component_values("future()").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "future()").unwrap();
     let expected_origin = components.items()[0].origin().clone();
     let CssComponentValueRef::Function(function) = components.items()[0].view() else {
         panic!("function")
@@ -512,7 +519,7 @@ fn recovery_and_explicit_resource_limits_report_the_original_component_origin() 
 
 #[test]
 fn grammar_error_after_programmatic_tokens_identifies_the_original_parsed_offender() {
-    let offender = parse_component_values("/*😀*/\nextra")
+    let offender = CssComponentValues::parse(&CssParser::default(), "/*😀*/\nextra")
         .unwrap()
         .items()
         .last()
@@ -535,7 +542,9 @@ fn grammar_error_after_programmatic_tokens_identifies_the_original_parsed_offend
 
 #[test]
 fn nested_math_preserves_function_and_literal_origins_from_the_original_value_tree() {
-    let parsed = parse_component_values("/*😀*/\ncalc(calc(1e99999 / 2))").unwrap();
+    let parsed =
+        CssComponentValues::parse(&CssParser::default(), "/*😀*/\ncalc(calc(1e99999 / 2))")
+            .unwrap();
     let outer = parsed.items().last().unwrap().clone();
     let CssComponentValueRef::Function(function) = outer.view() else {
         panic!("outer calc")
@@ -621,7 +630,7 @@ fn parsed_eof_recovery_keeps_the_known_numeric_view_that_checked_construction_re
     // Import's bare supports declaration is retained without a rule block;
     // a blockless @supports rule would be rejected independently of recovery.
     let source = "/*😀*/@import 'x' supports(width:calc(1px";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(!report.is_clean());
     assert!(
         report.diagnostics().iter().any(|diagnostic| {
@@ -701,7 +710,7 @@ fn authored_legacy_property_alias_keeps_its_own_grammar_in_parsed_and_constructe
     for value in ["0deg", "inherit", "var(--orientation)"] {
         let source = format!("glyph-orientation-vertical:{value}");
         let constructed = checked_supports_declaration(&source);
-        let report = parse_sheet(&format!("@supports ({source}) {{}}"));
+        let report = CssParser::default().parse_sheet(format!("@supports ({source}) {{}}"));
         assert!(report.is_clean(), "{report:?}");
         let CssRule::Supports(rule) = &report.syntax().rules()[0] else {
             panic!("supports")

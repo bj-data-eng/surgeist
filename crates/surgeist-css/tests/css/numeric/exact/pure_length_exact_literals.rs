@@ -12,11 +12,11 @@
 //! These publication identities are pinned in `specs/catalog.json`. The public
 //! exact-length contract is also exercised independently by `specified_lengths`.
 
-use surgeist_css::{CssKnownPropertyValueRef, CssRecoveryAction, parse_style_attribute};
+use surgeist_css::{CssKnownPropertyValueRef, CssParser, CssRecoveryAction};
 
 fn specified_spacing(authored: &str) -> String {
     let source = format!("border-spacing:{authored}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one retained border-spacing declaration: {source}");
@@ -34,7 +34,7 @@ fn specified_spacing(authored: &str) -> String {
 
 fn assert_spacing_rejected(authored: &str) {
     let source = format!("border-spacing:{authored}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     crate::css::support::value_assertions::assert_first_property_rejection(
         report.diagnostics(),
         surgeist_css::CssKnownProperty::BorderSpacing,
@@ -103,7 +103,7 @@ fn pure_length_math_keeps_its_deferred_range_and_percentage_cancellation() {
     // authored calculation remains valid even though its result is negative.
     assert_eq!(specified_spacing("calc(1px - 2px)"), "calc(-1px)");
     // Percentages may appear in pure-length math when their dimensions cancel.
-    let report = parse_style_attribute("border-spacing:calc(10% / 10% * 1px)");
+    let report = CssParser::default().parse_block_contents("border-spacing:calc(10% / 10% * 1px)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
     assert_spacing_rejected("calc(1px + 10%)");

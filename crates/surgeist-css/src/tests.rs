@@ -35,7 +35,7 @@ fn keyframes_rule(rule: &CssRule) -> &CssKeyframesRule {
 /// The sole declaration of a clean `.test { name: value; }` sheet.
 fn parse_single_declaration(property_name: &str, authored_value: &str) -> CssDeclaration {
     let input = format!(".test {{ {property_name}: {authored_value}; }}");
-    let sheet = parse_sheet(&input).unwrap();
+    let sheet = crate::CssParser::default().parse_sheet(&input).unwrap();
     let [rule] = sheet.rules() else {
         panic!("{input} should parse exactly one rule");
     };
@@ -49,7 +49,7 @@ fn parse_single_declaration(property_name: &str, authored_value: &str) -> CssDec
 fn container_rule_accessors_expose_authored_structure() {
     let name = CssContainerName::try_new("sidebar").unwrap();
     let prelude = CssContainerPrelude::try_from_components(
-        crate::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
+        crate::component_values::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -123,7 +123,9 @@ fn keyframes_rule_accessors_expose_authored_structure() {
         CssKeyframesIdent::try_new(CssCustomIdent::try_new("fade").unwrap()).unwrap(),
     );
     let selector = CssKeyframeSelectorList::try_new(vec![CssKeyframeSelector::From]).unwrap();
-    let keyframes = parse_sheet("@keyframes fade { from { opacity: 0; } }").unwrap();
+    let keyframes = crate::CssParser::default()
+        .parse_sheet("@keyframes fade { from { opacity: 0; } }")
+        .unwrap();
     let declaration = keyframes_rule(&keyframes.rules()[0]).blocks()[0].declarations()[0].clone();
     let block = CssKeyframeBlock::new(
         selector,
@@ -326,7 +328,7 @@ fn group_rules_inside_a_scope_body_are_ordinary_rules() {
     ));
     let children = vec![child.clone()];
     let query = CssMediaQueryList::new(vec![
-        crate::parse_media_query("screen")
+        crate::CssMediaQuery::parse(&crate::CssParser::default(), "screen")
             .into_validation_result()
             .unwrap(),
     ]);
@@ -336,7 +338,7 @@ fn group_rules_inside_a_scope_body_are_ordinary_rules() {
     assert_eq!(media.position(), Some(location));
 
     let prelude = CssContainerPrelude::try_from_components(
-        crate::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
+        crate::component_values::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -575,7 +577,11 @@ mod selector_list_admission_defenses {
     use super::*;
 
     fn parsed(source: &str) -> CssSelector {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = crate::CssSelector::parse(
+            &crate::CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.is_clean(), "{source:?}: {report:?}");
         report.into_validation_result().unwrap().unwrap()
     }

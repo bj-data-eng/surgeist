@@ -507,7 +507,7 @@ fn mix_weights_equal(
 mod tests {
     use super::*;
     fn color(source: &str) -> CssColor {
-        let report = crate::parse_style_attribute(&format!("color:{source}"));
+        let report = crate::CssParser::default().parse_block_contents(format!("color:{source}"));
         assert!(report.is_clean(), "{source}: {report:?}");
         let crate::CssKnownPropertyValueRef::Color(value) = report.syntax()[0]
             .known()

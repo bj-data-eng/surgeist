@@ -5,15 +5,15 @@
 
 use crate::css::support::rules::{invalid_descriptor, rejected_bang};
 use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValueLimits, CssErrorCode,
-    CssFontFaceDescriptor, CssFontFaceDescriptorKind, CssFontFaceDescriptors, CssNormalizedItem,
+    CssAuthoredFontFaceDescriptorValue as Authored, CssAuthoredFontFaceDescriptorValue,
+    CssComponentValueLimits, CssComponentValues, CssErrorCode, CssFontFaceDescriptor,
+    CssFontFaceDescriptorKind, CssFontFaceDescriptors, CssNormalizedItem, CssParser,
     CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSerializedOrigin, CssValueOrigin,
-    normalize_report, parse_component_values, parse_font_face_descriptor_value, parse_sheet,
 };
 
 fn kind_from_sheet(name: &str, value: &str) -> CssFontFaceDescriptorKind {
     let source = format!("/*😀*/\r\n@font-face{{{name}:{value};font-display:swap}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{name}: {value}: {report:?}");
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("one retained font-face rule")
@@ -35,7 +35,7 @@ fn ordinary_grammar(name: &str, valid: &[&str], invalid: &[&str]) {
     let kind = kind_from_sheet(name, valid[0]);
     for value in valid {
         assert_eq!(kind_from_sheet(name, value), kind);
-        let raw = parse_font_face_descriptor_value(value, kind);
+        let raw = CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), value, kind);
         assert!(raw.is_clean(), "{name}: {value}: {raw:?}");
         let Some(Authored::Ordinary(ordinary)) = raw.syntax() else {
             panic!("{name}: {value} must have an ordinary typed value")
@@ -43,7 +43,7 @@ fn ordinary_grammar(name: &str, valid: &[&str], invalid: &[&str]) {
         assert_eq!(ordinary.kind(), kind);
         let checked = Authored::try_from_components(
             kind,
-            parse_component_values(value).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), value).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -55,7 +55,7 @@ fn ordinary_grammar(name: &str, valid: &[&str], invalid: &[&str]) {
         assert_eq!(descriptors.effective(kind).unwrap().value().kind(), kind);
     }
     for value in invalid {
-        let raw = parse_font_face_descriptor_value(value, kind);
+        let raw = CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), value, kind);
         assert!(raw.syntax().is_none(), "{name}: {value}: {raw:?}");
         assert!(
             raw.diagnostics()
@@ -64,7 +64,7 @@ fn ordinary_grammar(name: &str, valid: &[&str], invalid: &[&str]) {
         );
         let error = Authored::try_from_components(
             kind,
-            parse_component_values(value).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), value).unwrap(),
             Default::default(),
         )
         .unwrap_err();
@@ -86,7 +86,7 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
         "/*😀*/\r\n@font-face{{font-family:Demo;{name}:{first};{name}:{last};\
          {name}:{invalid};{name}:env(selection, fallback);font-display:swap}}"
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let [diagnostic] = report.diagnostics() else {
         panic!("one invalid descriptor must recover locally: {report:?}")
     };
@@ -138,10 +138,13 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
     );
 
     let ordinary = pending
-        .reparse_after_substitution(parse_component_values(last).unwrap(), Default::default())
+        .reparse_after_substitution(
+            CssComponentValues::parse(&CssParser::default(), last).unwrap(),
+            Default::default(),
+        )
         .unwrap();
     assert_eq!(ordinary.kind(), kind);
-    let invalid_components = parse_component_values(invalid).unwrap();
+    let invalid_components = CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
     let error = pending
         .reparse_after_substitution(invalid_components, Default::default())
         .unwrap_err();
@@ -154,7 +157,7 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
         assert!(
             pending
                 .reparse_after_substitution(
-                    parse_component_values(residual).unwrap(),
+                    CssComponentValues::parse(&CssParser::default(), residual).unwrap(),
                     Default::default()
                 )
                 .unwrap_err()
@@ -165,10 +168,10 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
         "env(selection)",
         "env(selection) arbitrary trailing grammar",
     ] {
-        let raw = parse_font_face_descriptor_value(text, kind);
+        let raw = CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), text, kind);
         assert!(raw.is_clean(), "{name}: {text}: {raw:?}");
         assert!(matches!(raw.syntax(), Some(Authored::Pending(_))));
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let checked =
             Authored::try_from_components(kind, components.clone(), Default::default()).unwrap();
         let Authored::Pending(value) = checked else {
@@ -184,12 +187,12 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
         ("env(selection);", rejected.clone().at(";")),
         ("env()", rejected.clone()),
     ] {
-        let raw = parse_font_face_descriptor_value(text, kind);
+        let raw = CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), text, kind);
         assert!(raw.syntax().is_none(), "{name}: {text}: {raw:?}");
         expected.assert_first(&raw);
         let error = Authored::try_from_components(
             kind,
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap_err();
@@ -198,7 +201,7 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
         };
         expected.assert_kind(detail);
     }
-    let components = parse_component_values("env(selection)").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "env(selection)").unwrap();
     let original = components.clone();
     let error = Authored::try_from_components(
         kind,
@@ -214,7 +217,7 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
     );
     assert_eq!(components, original);
 
-    let normalized = normalize_report(&report).unwrap();
+    let normalized = report.normalize(Default::default()).unwrap();
     assert_eq!(normalized.diagnostics(), report.diagnostics());
     let [CssNormalizedItem::Rule(rule)] = normalized.syntax().items() else {
         panic!("normalization retains the enclosing font-face rule")
@@ -224,9 +227,8 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
     };
     assert_eq!(normalized_face.descriptors(), face.descriptors());
 
-    let reverse = parse_sheet(&format!(
-        "@font-face{{{name}:env(selection);{name}:{last}}}"
-    ));
+    let reverse = CssParser::default()
+        .parse_sheet(format!("@font-face{{{name}:env(selection);{name}:{last}}}"));
     assert!(reverse.is_clean(), "{reverse:?}");
     let [CssRule::FontFace(reverse_face)] = reverse.syntax().rules() else {
         panic!("reverse occurrence rule")
@@ -358,7 +360,7 @@ fn width_descriptor_retains_calculations_pending_values_and_local_recovery() {
 fn unknown_descriptor_recovers_locally_and_does_not_discard_historical_siblings() {
     let source =
         "@font-face{font-family:Demo;unknown-face-field:normal;src:local(Demo);font-display:swap}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),

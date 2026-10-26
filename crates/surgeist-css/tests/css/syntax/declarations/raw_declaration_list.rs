@@ -1,14 +1,47 @@
-//! Independent raw-list oracles: CSS Syntax 3 CRD20211224 §§5.3.8,
-//! 5.4.2 and 5.4.5, followed by the ordinary property consumer contract.
-//! The selected 2026-10-01 edition removes "parse a list of declarations";
-//! reconciling this historical front is deferred (docs/reference.md#css-syntax-3-edition-differences).
-//! This wholly new front has functional tests alongside implementation;
-//! no executable preimplementation RED is claimed.
+//! Independent raw-list oracles: CSS Syntax 3 (2026 CRD) §5.5.5 "consume a
+//! block's contents", §5.5.3 "consume a qualified rule" and §5.5.6 "consume a
+//! declaration", followed by the ordinary property consumer contract
+//! (#1353 decision 1, #1396). The 2021 "parse a list of declarations" is
+//! removed; a raw list is block contents.
+//! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents>
+//!
+//! A unit that is not a declaration is reparsed as a qualified rule with `;`
+//! as the stop token: it ends at its `{}` block, or before a root `;`, `}` or
+//! EOF. A root `}` ends the contents. An at-rule ends after its block or its
+//! `;`.
 use crate::css::support::authored_syntax::property_names as names;
 use surgeist_css::*;
 
+/// A unit dropped without reaching a `{}` block is a dropped declaration.
 fn dropped(source: &str, expected_names: &[&str], unit: &str, responsible: usize) {
-    let report = parse_declaration_list_text(source);
+    dropped_by(
+        source,
+        expected_names,
+        unit,
+        responsible,
+        CssRecoveryAction::DropDeclaration,
+    );
+}
+
+/// A unit that ended at its `{}` block is a dropped qualified rule.
+fn dropped_rule(source: &str, expected_names: &[&str], unit: &str, responsible: usize) {
+    dropped_by(
+        source,
+        expected_names,
+        unit,
+        responsible,
+        CssRecoveryAction::DropQualifiedRule,
+    );
+}
+
+fn dropped_by(
+    source: &str,
+    expected_names: &[&str],
+    unit: &str,
+    responsible: usize,
+    action: CssRecoveryAction,
+) {
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(
         names(report.syntax()),
         expected_names,
@@ -18,19 +51,28 @@ fn dropped(source: &str, expected_names: &[&str], unit: &str, responsible: usize
         panic!("one invalid unit: {report:?}")
     };
     let start = source.find(unit).unwrap();
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
+    assert_eq!(diagnostic.action(), action);
     assert_eq!(
         diagnostic.error().position().byte_offset().value(),
         start + responsible
     );
     assert_eq!(diagnostic.span().start().byte_offset().value(), start);
+    // A dropped declaration's span includes the `;` that terminates it, as in
+    // every declaration list; a rule that ended at its block has no such stop,
+    // and an at-rule consumes its own `;`.
+    let stop = usize::from(
+        action == CssRecoveryAction::DropDeclaration
+            && source[start + unit.len()..].starts_with(';'),
+    );
     assert_eq!(
         diagnostic.span().end().byte_offset().value(),
-        start + unit.len()
+        start + unit.len() + stop
     );
     assert!(!report.is_clean());
     assert_eq!(
-        validate_declaration_list_text(source)
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .unwrap_err()
             .diagnostics(),
         report.diagnostics()
@@ -40,42 +82,54 @@ fn dropped(source: &str, expected_names: &[&str], unit: &str, responsible: usize
 #[test]
 fn empty_slots_and_optional_final_semicolon_are_clean() {
     for source in ["", " \t/**/\r\n", "; ;/**/;", "width: 2px", "width: 2px;"] {
-        let report = parse_declaration_list_text(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source:?}: {report:?}");
         assert_eq!(report.syntax().is_empty(), !source.contains("width"));
         assert_eq!(
-            &validate_declaration_list_text(source).unwrap(),
+            &CssParser::default()
+                .parse_block_contents(source)
+                .into_validation_result()
+                .unwrap(),
             report.syntax()
         );
     }
 }
 
 #[test]
-fn stray_root_closer_consumes_the_following_declaration_in_its_unit() {
-    for closer in ["}", "]", ")"] {
+fn a_root_close_brace_ends_the_contents_and_discards_the_rest() {
+    for (source, expected) in [
+        ("} color: red; width: 2px;", &[][..]),
+        ("height: 1px; } color: red; width: 2px;", &["height"][..]),
+        ("color: red } width: 1px", &["color"][..]),
+    ] {
+        let report = CssParser::default().parse_block_contents(source);
+        assert_eq!(names(report.syntax()), expected, "{source:?}: {report:?}");
+        assert!(report.is_clean(), "{source:?}: {report:?}");
+    }
+}
+
+#[test]
+fn a_stray_close_bracket_or_parenthesis_starts_a_dropped_unit() {
+    for closer in ["]", ")"] {
         let unit = format!("{closer} color: red");
         let source = format!("{unit}; width: 2px;");
         dropped(&source, &["width"], &unit, 0);
-        let raw = parse_declaration_list_text(&source);
+        let raw = CssParser::default().parse_block_contents(&source);
         assert_eq!(
             raw.diagnostics()[0].error().code(),
             CssErrorCode::UnexpectedToken
         );
-        // A style attribute's stray closer starts the same malformed
-        // declaration (Style Attributes §3; Syntax 3 (2026 CRD) §5.5.6).
-        let attribute = parse_style_attribute(&source);
-        assert_eq!(names(attribute.syntax()), ["width"]);
-        assert_eq!(attribute.diagnostics(), raw.diagnostics());
     }
 }
 
 #[test]
 fn invalid_started_units_consume_nested_semicolons_comments_and_strings() {
+    // The prelude `] --X:` is followed by a `{}` block, which ends the rule.
+    let source = "] --X: {a:b;c:d}; width: 2px;";
+    dropped_rule(source, &["width"], "] --X: {a:b;c:d}", 0);
     for unit in [
-        "] --X: {a:b;c:d}",
         ") --X: fn([a;b], {c:d;e:f})",
         ", --X: \";})]\" /* ;})] */ data",
-        ".bad { color: red; } color: blue",
         "<!-- color: red",
         "--> color: red",
     ] {
@@ -85,51 +139,75 @@ fn invalid_started_units_consume_nested_semicolons_comments_and_strings() {
 }
 
 #[test]
-fn ident_started_invalid_units_do_not_admit_nested_rules_or_inner_declarations() {
+fn a_qualified_rule_ends_at_its_block_and_the_following_declaration_is_kept() {
+    // §5.5.3: the rule ends at its `{}` block; what follows is a fresh item.
+    dropped_rule(
+        "a { color: red; } height: 3px; width: 2px;",
+        &["height", "width"],
+        "a { color: red; }",
+        2,
+    );
+    dropped_rule(
+        ".bad { color: red; } color: blue; width: 2px;",
+        &["color", "width"],
+        ".bad { color: red; }",
+        0,
+    );
+    // The inner declaration of a dropped rule is never admitted.
+    let report = CssParser::default().parse_block_contents("a { height: 3px; } width: 2px;");
+    assert_eq!(names(report.syntax()), ["width"]);
+}
+
+#[test]
+fn an_ident_without_a_colon_is_a_rule_that_the_stop_semicolon_ends() {
     dropped(
         "broken color: red; width: 2px;",
         &["width"],
         "broken color: red",
         7,
     );
-    dropped(
-        "a { color: red; } height: 3px; width: 2px;",
-        &["width"],
-        "a { color: red; } height: 3px",
-        2,
-    );
 }
 
 #[test]
 fn generic_at_rules_end_after_their_block_or_semicolon() {
     for unit in [
-        "@unknown x",
         "@media fn([a;b]) { color: red; .x { height: 3px; } }",
         "@font-face { font-family: Test; src: url(test); }",
         "@unknown \";{}\" /* ;{} */ { --X: {a:b;c:d}; }",
     ] {
         let source = format!("{unit}; width: 2px;");
-        dropped(&source, &["width"], unit, 0);
+        dropped_by(&source, &["width"], unit, 0, CssRecoveryAction::DropAtRule);
         assert_eq!(
-            parse_declaration_list_text(&source).diagnostics()[0]
+            CssParser::default()
+                .parse_block_contents(&source)
+                .diagnostics()[0]
                 .error()
                 .code(),
             CssErrorCode::UnexpectedToken
         );
     }
-    dropped(
+    dropped_by(
         "@unknown { color: red; } width: 2px;",
         &["width"],
         "@unknown { color: red; }",
         0,
+        CssRecoveryAction::DropAtRule,
     );
-    dropped("@unknown x; width: 2px;", &["width"], "@unknown x", 0);
+    // §5.5.2: an at-rule without a block ends by consuming its `;`, so the
+    // dropped unit includes that semicolon.
+    dropped_by(
+        "@unknown x; width: 2px;",
+        &["width"],
+        "@unknown x;",
+        0,
+        CssRecoveryAction::DropAtRule,
+    );
 }
 
 #[test]
 fn duplicate_known_and_case_sensitive_custom_occurrences_remain_in_order() {
     let source = "WIDTH: 2px !IMPORTANT; width: 3px; --Case: A/**/ B; --case: C; --Case: var(--x) !/**/important; color: inherit";
-    let report = parse_declaration_list_text(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(
         names(report.syntax()),
@@ -187,7 +265,7 @@ fn duplicate_known_and_case_sensitive_custom_occurrences_remain_in_order() {
 fn valid_custom_components_keep_nested_and_lexical_semicolons_inside_one_value() {
     let value = "{a:b;c:d} fn([e;f]) \";})]\" /* ;})] */ tail";
     let source = format!("--X: {value}; width: var(--size, 2px) !important; --empty:;");
-    let report = parse_declaration_list_text(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(names(report.syntax()), ["--X", "width", "--empty"]);
     assert_eq!(
@@ -237,12 +315,14 @@ fn ordinary_grammar_drops_invalid_values_annotations_and_residual_tokens() {
             CssErrorCode::InvalidDeclarationAnnotation,
             6,
         ),
-        ("--x: a}", CssErrorCode::UnexpectedToken, 6),
         ("broken", CssErrorCode::UnexpectedEnd, 6),
     ] {
         let source = format!("{unit}; height: 2px!important;");
+        // A failed custom property is consumed whole (§5.5.3 note); any other
+        // failed declaration is reconsumed as a rule that ends at the stop
+        // token without reaching a block. Both drop a declaration.
         dropped(&source, &["height"], unit, responsible);
-        let report = parse_declaration_list_text(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(
             report.diagnostics()[0].error().code(),
             code,
@@ -253,33 +333,67 @@ fn ordinary_grammar_drops_invalid_values_annotations_and_residual_tokens() {
 }
 
 #[test]
+fn a_custom_property_value_ends_at_a_nested_close_brace_which_ends_the_contents() {
+    // §5.5.6 step 5: the component values of a nested declaration end at `}`.
+    let report = CssParser::default().parse_block_contents("--x: a}; height: 2px!important;");
+    assert_eq!(names(report.syntax()), ["--x"]);
+    assert!(report.is_clean(), "{report:?}");
+}
+
+#[test]
 fn mixed_failures_report_one_ordered_diagnostic_per_whole_unit() {
-    let source = "width: red; } color: red; @x {} height: 2px; mystery: 1; --ok: yes";
-    let report = parse_declaration_list_text(source);
+    let source = "width: red; @x {} height: 2px; mystery: 1; .y {} --ok: yes; } color: red";
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(names(report.syntax()), ["height", "--ok"]);
     let units = [
-        ("width: red", CssErrorCode::InvalidPropertyValue, 7),
-        ("} color: red", CssErrorCode::UnexpectedToken, 0),
-        ("@x {}", CssErrorCode::UnexpectedToken, 0),
-        ("mystery: 1", CssErrorCode::UnknownProperty, 0),
+        (
+            "width: red",
+            CssErrorCode::InvalidPropertyValue,
+            7,
+            CssRecoveryAction::DropDeclaration,
+        ),
+        (
+            "@x {}",
+            CssErrorCode::UnexpectedToken,
+            0,
+            CssRecoveryAction::DropAtRule,
+        ),
+        (
+            "mystery: 1",
+            CssErrorCode::UnknownProperty,
+            0,
+            CssRecoveryAction::DropDeclaration,
+        ),
+        (
+            ".y {}",
+            CssErrorCode::UnexpectedToken,
+            0,
+            CssRecoveryAction::DropQualifiedRule,
+        ),
     ];
     assert_eq!(report.diagnostics().len(), units.len());
-    for (diagnostic, (unit, code, responsible)) in report.diagnostics().iter().zip(units) {
+    for (diagnostic, (unit, code, responsible, action)) in report.diagnostics().iter().zip(units) {
         let start = source.find(unit).unwrap();
         assert_eq!(diagnostic.error().code(), code);
-        assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
+        assert_eq!(diagnostic.action(), action);
         assert_eq!(
             diagnostic.error().position().byte_offset().value(),
             start + responsible
         );
         assert_eq!(diagnostic.span().start().byte_offset().value(), start);
+        let stop = usize::from(
+            action == CssRecoveryAction::DropDeclaration
+                && source[start + unit.len()..].starts_with(';'),
+        );
         assert_eq!(
             diagnostic.span().end().byte_offset().value(),
-            start + unit.len()
+            start + unit.len() + stop
         );
     }
     assert_eq!(
-        validate_declaration_list_text(source)
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .unwrap_err()
             .diagnostics(),
         report.diagnostics()
@@ -288,22 +402,23 @@ fn mixed_failures_report_one_ordered_diagnostic_per_whole_unit() {
 
 #[test]
 fn invalid_eof_units_are_nonclean_empty_lists_with_actual_source_end() {
-    for unit in [
-        "} color: red",
-        "] --X: fn([a;b",
-        ".x {color:red}",
-        "@unknown { color: red",
-        "@unknown x",
-    ] {
-        dropped(unit, &[], unit, 0);
+    dropped("] --X: fn([a;b", &[], "] --X: fn([a;b", 0);
+    dropped_rule(".x {color:red}", &[], ".x {color:red}", 0);
+    for unit in ["@unknown { color: red", "@unknown x"] {
+        dropped_by(unit, &[], unit, 0, CssRecoveryAction::DropAtRule);
     }
     dropped("broken", &[], "broken", 6);
+    let report = CssParser::default().parse_block_contents("} color: red");
+    assert!(
+        report.syntax().is_empty() && report.is_clean(),
+        "{report:?}"
+    );
 }
 
 #[test]
 fn exact_unicode_multiline_spans_and_retained_origins_use_unwrapped_input() {
     let source = "/*😀*/\r\n] --é: {a:b;c:d};\nwidth: 2px;\n--é:blue";
-    let report = parse_declaration_list_text(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(names(report.syntax()), ["width", "--é"]);
     let [diagnostic] = report.diagnostics() else {
         panic!("one invalid unit")
@@ -351,7 +466,7 @@ fn exact_unicode_multiline_spans_and_retained_origins_use_unwrapped_input() {
 #[test]
 fn retained_eof_components_report_original_implicit_closures() {
     let source = "width: 2px; --X: fn([x";
-    let report = parse_declaration_list_text(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(names(report.syntax()), ["width", "--X"]);
     assert_eq!(report.diagnostics().len(), 2);
     for diagnostic in report.diagnostics() {
@@ -371,7 +486,9 @@ fn retained_eof_components_report_original_implicit_closures() {
         source
     );
     assert_eq!(
-        validate_declaration_list_text(source)
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .unwrap_err()
             .diagnostics(),
         report.diagnostics()
@@ -381,7 +498,7 @@ fn retained_eof_components_report_original_implicit_closures() {
 #[test]
 fn tokenizer_recovery_remains_independent_of_discarded_units() {
     let source = "width: 2px; ] /*open";
-    let report = parse_declaration_list_text(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(names(report.syntax()), ["width"]);
     let [unit, comment] = report.diagnostics() else {
         panic!("unit plus lexical recovery")
@@ -401,7 +518,9 @@ fn tokenizer_recovery_remains_independent_of_discarded_units() {
         source.len()
     );
     assert_eq!(
-        validate_declaration_list_text(source)
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .unwrap_err()
             .diagnostics(),
         report.diagnostics()
@@ -409,52 +528,52 @@ fn tokenizer_recovery_remains_independent_of_discarded_units() {
 }
 
 #[test]
-fn resource_recovery_keeps_its_own_action_and_allows_later_siblings() {
+fn nesting_beyond_the_ceiling_refuses_the_whole_contents_with_one_typed_diagnostic() {
+    // The 256-level ceiling is an implementation limit, not Syntax 3. Block
+    // contents charges every original component once against the component
+    // limits, so a refusal covers the whole input and nothing is retained.
     for depth in [255_usize, 256] {
         let source = format!(
             "--deep: {}x{}; width: 2px",
             "f(".repeat(depth),
             ")".repeat(depth)
         );
-        let report = parse_declaration_list_text(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "depth {depth}: {report:?}");
         assert_eq!(names(report.syntax()), ["--deep", "width"]);
     }
-    for prefix in ["--deep: ", "] --deep: ", "@x "] {
-        let unit = format!("{prefix}{}x{}", "f(".repeat(257), ")".repeat(257));
-        let source = format!("{unit}; width: 2px");
-        let report = parse_declaration_list_text(&source);
-        assert_eq!(names(report.syntax()), ["width"]);
+    for source in [
+        format!(
+            "--deep: {}x{}; width: 2px",
+            "f(".repeat(257),
+            ")".repeat(257)
+        ),
+        format!(
+            "] --deep: {}x{}; width: 2px",
+            "f(".repeat(257),
+            ")".repeat(257)
+        ),
+        format!("@x {}x{}; width: 2px", "f(".repeat(257), ")".repeat(257)),
+        format!("--deep: {}x", "f(".repeat(257)),
+    ] {
+        let report = CssParser::default().parse_block_contents(&source);
+        assert!(report.syntax().is_empty(), "{report:?}");
         let [diagnostic] = report.diagnostics() else {
-            panic!("one resource diagnostic")
+            panic!("one resource diagnostic: {report:?}")
         };
-        assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-        assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-        assert_eq!(
-            diagnostic.error().position().byte_offset().value(),
-            prefix.len() + 512
-        );
+        assert!(diagnostic.error().is_resource_refusal(), "{diagnostic:?}");
         assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
-        assert_eq!(diagnostic.span().end().byte_offset().value(), unit.len());
+        assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
     }
-    let source = format!("--deep: {}x", "f(".repeat(257));
-    let report = parse_declaration_list_text(&source);
-    assert!(report.syntax().is_empty());
-    let [diagnostic] = report.diagnostics() else {
-        panic!("resource action owns rejected EOF unit")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-    assert_eq!(diagnostic.error().position().byte_offset().value(), 520);
-    assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
 }
 
 #[test]
 fn contextual_quirks_and_svg_admission_use_the_owning_grammar() {
     let source = "color: ABC; width: 2px";
-    let standard = CssParserContext::default().parse_declaration_list_text(source);
+    let standard = CssParser::default().parse_block_contents(source);
     assert_eq!(names(standard.syntax()), ["width"]);
     let quirks = CssParserContext::new(CssParserMode::Quirks);
-    let report = quirks.parse_declaration_list_text(source);
+    let report = CssParser::new(quirks, Default::default()).parse_block_contents(source);
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(names(report.syntax()), ["color", "width"]);
     assert_eq!(report.syntax()[0].parser_context(), quirks);
@@ -465,7 +584,8 @@ fn contextual_quirks_and_svg_admission_use_the_owning_grammar() {
         "color: rgb(170, 187, 204);"
     );
     let svg = quirks.with_svg_glyph_orientation_vertical();
-    let report = svg.parse_declaration_list_text("glyph-orientation-vertical: 90; width: 2px");
+    let report = CssParser::new(svg, Default::default())
+        .parse_block_contents("glyph-orientation-vertical: 90; width: 2px");
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(report.syntax().len(), 2);
     assert_eq!(
@@ -482,7 +602,8 @@ fn contextual_quirks_and_svg_admission_use_the_owning_grammar() {
     // Writing Modes 3 §5.1.3 admits exact 90 as the legacy Sideways mapping.
     // Explicit SVG selection retains its independent terminal instead.
     let default = CssParserContext::default();
-    let report = parse_declaration_list_text("glyph-orientation-vertical: 90; width: 2px");
+    let report =
+        CssParser::default().parse_block_contents("glyph-orientation-vertical: 90; width: 2px");
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(report.syntax().len(), 2);
     assert_eq!(report.syntax()[0].parser_context(), default);

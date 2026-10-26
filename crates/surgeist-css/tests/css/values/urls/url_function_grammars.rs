@@ -7,8 +7,7 @@ use surgeist_css::{
     CssClipPath, CssContentValue, CssContentValueItem, CssCursor, CssCursorImageSource,
     CssCursorKeyword, CssFilter, CssFilterFunction, CssFontFaceSource, CssFontFormatHint,
     CssFontTechHint, CssImageValue, CssImportTarget, CssImportance, CssKnownProperty,
-    CssKnownPropertyValueRef, CssRecoveryAction, CssRule, CssUrlModifier, parse_sheet,
-    parse_style_attribute, validate_sheet, validate_style_attribute,
+    CssKnownPropertyValueRef, CssParser, CssRecoveryAction, CssRule, CssUrlModifier,
 };
 
 fn assert_url_payload(value: CssKnownPropertyValueRef<'_>, expected: &str) {
@@ -87,9 +86,15 @@ fn quoted_src_is_an_ordinary_url_in_each_direct_consumer() {
                 format!("{function}(\"asset.svg\")")
             };
             let source = format!("{name}: {value}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-            assert!(validate_style_attribute(&source).is_ok(), "{source}");
+            assert!(
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .is_ok(),
+                "{source}"
+            );
             let [declaration] = report.syntax().as_slice() else {
                 panic!("one retained declaration: {source}")
             };
@@ -107,7 +112,8 @@ fn quoted_src_is_an_ordinary_url_in_each_direct_consumer() {
 
 #[test]
 fn quoted_url_controls_remain_clean_in_ordinary_import_and_font_paths() {
-    let ordinary = parse_style_attribute("background-image: url(\"asset.svg\")");
+    let ordinary =
+        CssParser::default().parse_block_contents("background-image: url(\"asset.svg\")");
     assert!(ordinary.is_clean());
     let [declaration] = ordinary.syntax().as_slice() else {
         panic!("one background image")
@@ -117,7 +123,7 @@ fn quoted_url_controls_remain_clean_in_ordinary_import_and_font_paths() {
         "asset.svg",
     );
 
-    let rules = parse_sheet(concat!(
+    let rules = CssParser::default().parse_sheet(concat!(
         "@import url(\"theme.css\") layer(theme) screen; ",
         "@font-face { font-family: Demo; src: url(\"font.woff2\") format(\"woff2\"); }"
     ));
@@ -146,7 +152,7 @@ fn quoted_src_accepts_ordered_modifiers_and_keeps_important_neighbors() {
         "color: red; background-image: src(\"icon.svg\" cors integrity(\"sha256\")) ",
         "!important; width: 2px"
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 3);
     assert_eq!(
@@ -180,9 +186,15 @@ fn quoted_src_accepts_ordered_modifiers_and_keeps_important_neighbors() {
 fn shared_url_shorthands_admit_quoted_src_images() {
     for name in ["background", "mask", "border-image", "list-style"] {
         let source = format!("{name}: src(\"asset.svg\")");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-        assert!(validate_style_attribute(&source).is_ok(), "{source}");
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_ok(),
+            "{source}"
+        );
         let [declaration] = report.syntax().as_slice() else {
             panic!("one retained shorthand: {source}")
         };
@@ -204,9 +216,15 @@ fn import_accepts_src_and_quoted_url_modifiers_without_losing_clauses() {
         "@import url(\"base.css\" integrity(\"sha256\")); ",
         ".after { color: red; }"
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     let [
         CssRule::Import(first),
         CssRule::Import(second),
@@ -231,9 +249,14 @@ fn font_face_accepts_src_url_sources_with_ordered_hints() {
         "url(\"second.woff2\" integrity(\"sha256\")) tech(variations); } ",
         ".after { color: red; }"
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert!(validate_sheet(source).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .is_ok()
+    );
     let [CssRule::FontFace(face), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("retained font face and next style")
     };
@@ -258,14 +281,16 @@ fn font_face_accepts_src_url_sources_with_ordered_hints() {
 
 #[test]
 fn namespace_keeps_literal_uri_grammar_without_src_function() {
-    let accepted = parse_sheet("@namespace svg url(\"urn:svg\"); .after { color: red; }");
+    let accepted =
+        CssParser::default().parse_sheet("@namespace svg url(\"urn:svg\"); .after { color: red; }");
     assert!(accepted.is_clean(), "{:?}", accepted.diagnostics());
     let [CssRule::Namespace(namespace), CssRule::Style(_)] = accepted.syntax().rules() else {
         panic!("URL namespace and sibling")
     };
     assert_eq!(namespace.name().as_str(), "urn:svg");
 
-    let rejected = parse_sheet("@namespace svg src(\"urn:svg\"); .after { color: red; }");
+    let rejected =
+        CssParser::default().parse_sheet("@namespace svg src(\"urn:svg\"); .after { color: red; }");
     assert_first_diagnostic(
         rejected.diagnostics(),
         "@namespace svg src(\"urn:svg\"); .after { color: red; }",
@@ -274,7 +299,9 @@ fn namespace_keeps_literal_uri_grammar_without_src_function() {
     );
     assert!(matches!(rejected.syntax().rules(), [CssRule::Style(_)]));
     assert_eq!(
-        validate_sheet("@namespace svg src(\"urn:svg\"); .after { color: red; }")
+        CssParser::default()
+            .parse_sheet("@namespace svg src(\"urn:svg\"); .after { color: red; }")
+            .into_validation_result()
             .unwrap_err()
             .diagnostics(),
         rejected.diagnostics()
@@ -291,7 +318,7 @@ fn malformed_src_and_unquoted_url_functions_recover_atomically() {
         "url(var(--x))",
     ] {
         let source = format!("color: red; background-image: {invalid}; width: 2px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -307,7 +334,11 @@ fn malformed_src_and_unquoted_url_functions_recover_atomically() {
             CssKnownProperty::Width
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics(),
             "{source}"
         );
@@ -316,7 +347,8 @@ fn malformed_src_and_unquoted_url_functions_recover_atomically() {
 
 #[test]
 fn src_with_var_remains_a_pending_known_property_value() {
-    let report = parse_style_attribute("background-image: src(var(--asset)) !important");
+    let report =
+        CssParser::default().parse_block_contents("background-image: src(var(--asset)) !important");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one pending declaration")

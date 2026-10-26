@@ -2,8 +2,8 @@
 use super::*;
 use surgeist_color::Color;
 use surgeist_css::{
-    CssColorSchemeKeyword, CssColorSchemeParseReport, CssComponentValueLimits,
-    CssKnownPropertyValueRef, CssUtf16InputLimits, CssUtf16PropertyValueLimits, CssValueOrigin,
+    CssColorSchemeKeyword, CssColorSchemeParseReport, CssKnownPropertyValueRef,
+    CssUtf16InputLimits, CssUtf16PropertyValueLimits, CssValueOrigin,
 };
 use surgeist_html_parser::HtmlParseMetadataStep;
 
@@ -384,7 +384,6 @@ fn installed_selections_survive_report_release_and_native_reselection_keeps_old_
             .unwrap()
             .with_meta_color_scheme_limits(CssUtf16PropertyValueLimits {
                 input: CssUtf16InputLimits::default(),
-                syntax: CssComponentValueLimits::default(),
                 max_work: 1_000_000,
                 max_live_bytes: 2 * 1024 * 1024,
                 max_retained_bytes: 2 * 1024 * 1024,

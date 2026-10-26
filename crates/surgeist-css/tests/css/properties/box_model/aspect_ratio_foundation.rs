@@ -10,18 +10,17 @@ use crate::css::support::property_admission::{
     assert_numeric_rejected,
 };
 use surgeist_css::{
-    CssAspectRatioValue, CssCalculation, CssComponentValue, CssContributionValueRef,
-    CssContributions, CssExpansion, CssGlobalKeyword, CssImportance, CssInitialValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef, CssNonNegative,
-    CssNormalizedItem, CssNumber, CssNumeric, CssPropertyKindRef, CssPropertyNameRef,
-    CssRecoveryAction, CssSerializationLimits, CssSpecifiedRatio, CssValueOrigin,
-    expand_declaration, normalize_sheet, parse_component_values, parse_property_value, parse_sheet,
-    parse_style_attribute,
+    CssAspectRatioValue, CssCalculation, CssComponentValue, CssComponentValues,
+    CssContributionValueRef, CssContributions, CssDeclaration, CssExpansion, CssGlobalKeyword,
+    CssImportance, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssNonNegative, CssNormalizedItem, CssNumber, CssNumeric, CssParser,
+    CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction,
+    CssSerializationLimits, CssSpecifiedRatio, CssValueOrigin,
 };
 
 fn parsed(value: &str) -> surgeist_css::CssDeclaration {
     let source = format!("aspect-ratio:{value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1, "{value}");
     let declaration = report.syntax()[0].clone();
@@ -35,9 +34,10 @@ fn parsed(value: &str) -> surgeist_css::CssDeclaration {
 }
 
 fn checked(value: &str) -> surgeist_css::CssDeclaration {
-    let components = parse_component_values(value).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::AspectRatio),
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::AspectRatio)),
         components,
         CssImportance::Normal,
     )
@@ -115,7 +115,7 @@ fn preferred_ratio_accepts_auto_optional_pair_and_both_keyword_orders() {
         assert_authored_ratio(&parsed(value), value);
         assert_authored_ratio(&checked(value), value);
     }
-    let sheet = parse_sheet(".x{aspect-ratio:auto 16/9}");
+    let sheet = CssParser::default().parse_sheet(".x{aspect-ratio:auto 16/9}");
     assert!(sheet.is_clean(), "{:?}", sheet.diagnostics());
 }
 
@@ -193,7 +193,7 @@ fn malformed_ratio_drops_only_its_declaration() {
         ("calc(1px) / 2", Some("calc(")),
     ] {
         let source = format!("color:red;aspect-ratio:{value};width:1px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.diagnostics().len(), 1, "{value}: {report:?}");
         assert_eq!(
             report.diagnostics()[0].action(),
@@ -215,9 +215,10 @@ fn malformed_ratio_drops_only_its_declaration() {
             [CssKnownProperty::Color, CssKnownProperty::Width],
             "{value}"
         );
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::AspectRatio),
-            parse_component_values(value).unwrap(),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::AspectRatio)),
+            CssComponentValues::parse(&CssParser::default(), value).unwrap(),
             CssImportance::Normal,
         );
         assert_checked_rejected(checked, CssKnownProperty::AspectRatio, token);
@@ -269,7 +270,10 @@ fn checked_operands_cannot_hide_invalid_literals_in_typed_calculations() {
         ("2px", NumericFailure::RootDomainMismatch),
         ("auto", NumericFailure::RootDomainMismatch),
     ] {
-        let component = parse_component_values(text).unwrap().items()[0].clone();
+        let component = CssComponentValues::parse(&CssParser::default(), text)
+            .unwrap()
+            .items()[0]
+            .clone();
         assert_component_rejected(
             CssNumeric::<CssNumber, CssNonNegative>::try_from_component,
             component,
@@ -284,7 +288,7 @@ fn checked_operands_cannot_hide_invalid_literals_in_typed_calculations() {
     assert!(exact.literal().map(|literal| literal.component()).is_some());
     assert!(exact.calculation().is_none());
     let bare_negative = CssCalculation::<CssNumber>::try_from_components(
-        parse_component_values("-1e-999").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "-1e-999").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -293,7 +297,7 @@ fn checked_operands_cannot_hide_invalid_literals_in_typed_calculations() {
         NumericFailure::OutOfRange,
     );
     let math = CssCalculation::<CssNumber>::try_from_components(
-        parse_component_values("calc(-1)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(-1)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -399,18 +403,17 @@ fn aspect_ratio_is_a_noninherited_terminal_with_auto_initial() {
         panic!("auto initial")
     };
     let source = parsed("16/9");
-    let CssExpansion::Contributions(_) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Contributions(_) = source.expand().unwrap() else {
         panic!("aspect-ratio terminal contribution")
     };
 }
 
 #[test]
 fn ratio_expansion_retains_typed_payload_importance_and_source_occurrence() {
-    let report = parse_style_attribute("aspect-ratio:auto 16/9!important");
+    let report = CssParser::default().parse_block_contents("aspect-ratio:auto 16/9!important");
     assert!(report.is_clean());
     let source = &report.syntax()[0];
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("terminal contribution")
     };
@@ -437,10 +440,11 @@ fn ratio_expansion_retains_typed_payload_importance_and_source_occurrence() {
         ("revert", CssGlobalKeyword::Revert),
         ("revert-layer", CssGlobalKeyword::RevertLayer),
     ] {
-        let global = parse_style_attribute(&format!("aspect-ratio:{keyword}!important"));
+        let global =
+            CssParser::default().parse_block_contents(format!("aspect-ratio:{keyword}!important"));
         assert!(global.is_clean());
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-            expand_declaration(&global.syntax()[0]).unwrap()
+            global.syntax()[0].expand().unwrap()
         else {
             panic!("global longhand")
         };
@@ -454,25 +458,26 @@ fn ratio_expansion_retains_typed_payload_importance_and_source_occurrence() {
 
 #[test]
 fn pending_ratio_reentry_checks_full_grammar_and_retains_source() {
-    let report = parse_style_attribute("aspect-ratio:var(--preferred)!important");
+    let report =
+        CssParser::default().parse_block_contents("aspect-ratio:var(--preferred)!important");
     assert!(report.is_clean());
     let source = &report.syntax()[0];
-    let CssExpansion::Pending(handle) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending ratio")
     };
     for text in ["-1e-999/2", "16/9/2", "auto auto", "16/"] {
         let error = handle
-            .reenter(parse_component_values(text).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
             .unwrap_err();
         assert!(error.replacement_error().is_some(), "{text}");
     }
     assert!(
         handle
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
-    let replacement = parse_component_values("16/9 auto").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "16/9 auto").unwrap();
     let CssContributions::Longhands(items) = handle.reenter(replacement.clone()).unwrap() else {
         panic!("reentered ratio")
     };
@@ -492,7 +497,7 @@ fn pending_ratio_reentry_checks_full_grammar_and_retains_source() {
         "16 / 9"
     );
     let CssContributions::Longhands(globals) = handle
-        .reenter(parse_component_values("inherit").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
         .unwrap()
     else {
         panic!("global reentry")
@@ -505,9 +510,10 @@ fn pending_ratio_reentry_checks_full_grammar_and_retains_source() {
 
 #[test]
 fn normalization_orders_surviving_ratio_occurrences_after_recovery() {
-    let report = parse_sheet(".a{aspect-ratio:16/9;aspect-ratio:-1;aspect-ratio:auto!important}");
+    let report = CssParser::default()
+        .parse_sheet(".a{aspect-ratio:16/9;aspect-ratio:-1;aspect-ratio:auto!important}");
     assert_eq!(report.diagnostics().len(), 1);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()

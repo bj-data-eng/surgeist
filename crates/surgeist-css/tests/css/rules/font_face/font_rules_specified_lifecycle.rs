@@ -10,7 +10,7 @@ use surgeist_css::{
     CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value,
     CssFontFeatureValueKind as BlockKind, CssFontFeatureValuesItem as Item,
     CssFontFeatureValuesRule, CssNormalizedItem, CssRule, CssRuleContextKindRef,
-    CssSerializationLimits as Limits, normalize_sheet,
+    CssSerializationLimits as Limits,
 };
 
 fn features(rule: &CssRule) -> &CssFontFeatureValuesRule {
@@ -257,7 +257,7 @@ fn authored_duplicates_provenance_and_normalized_payloads_are_retained() {
     assert!(feature.items().iter().all(|item| matches!(item,
         Item::Block(block) if block.position().is_some()
             && block.definitions().iter().all(|definition| definition.position().is_some()))));
-    let normalized = normalize_sheet(&input).unwrap();
+    let normalized = input.normalize(Default::default()).unwrap();
     let contexts = normalized
         .items()
         .iter()

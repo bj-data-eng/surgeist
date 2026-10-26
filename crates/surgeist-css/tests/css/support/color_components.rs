@@ -6,7 +6,7 @@ use surgeist_css::*;
 /// declaration survives, and strict validation rejects the attribute.
 pub fn assert_recovered(value: &str) {
     let source = format!("color: {value}; opacity: 0.5");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         report.syntax().len(),
         1,
@@ -24,7 +24,13 @@ pub fn assert_recovered(value: &str) {
         CssKnownProperty::Opacity,
         "{source}"
     );
-    assert!(validate_style_attribute(&source).is_err(), "{source}");
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_err(),
+        "{source}"
+    );
 }
 
 /// A parsed component keeps the expected authored spelling and its parsed
@@ -87,7 +93,7 @@ pub fn component(text: &str) -> CssColorComponent {
     if text.eq_ignore_ascii_case("none") {
         CssColorComponent::None
     } else if text.starts_with("calc(") {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         if text.contains('%') {
             CssColorComponent::PercentageCalculation(
                 CssCalculation::<CssPercentage>::try_from_components(values, Default::default())
@@ -110,7 +116,7 @@ pub fn component(text: &str) -> CssColorComponent {
 
 /// The single component value of `text`.
 pub fn token(text: &str) -> CssComponentValue {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     assert_eq!(values.items().len(), 1, "{text}");
     values.items()[0].clone()
 }

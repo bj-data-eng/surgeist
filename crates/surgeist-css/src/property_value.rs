@@ -267,32 +267,6 @@ fn recovered_component_error(value: &CssComponentValues) -> Option<CssPropertyVa
     ))
 }
 
-/// Checks one property's owned components and constructs an authored declaration occurrence.
-///
-/// The property identity selects the same grammar as stylesheet declarations. Whole-value
-/// CSS-wide keywords and valid substitution-dependent values remain symbolic. Custom names
-/// preserve case and allow empty values. Known grammars reject implicit closures in the original
-/// components, including CSS-wide and substitution-dependent values. Top-level annotations
-/// and declaration delimiters are rejected: importance comes only from the separate argument.
-///
-/// Supplied token origins remain intact. The returned declaration has no parsed property-name
-/// position or single parsed declaration-value span; inspect its components for their origins.
-/// Admission reads the supplied tokens directly and obeys the immutable component tree's
-/// previously validated structural and serialization constraints. This function
-/// does not substitute variables, expand shorthands, resolve values, or apply cascade.
-pub fn parse_property_value(
-    property: CssPropertyNameRef<'_>,
-    value: CssComponentValues,
-    importance: CssImportance,
-) -> Result<CssDeclaration, CssPropertyValueError> {
-    parse_property_value_with_context(
-        property,
-        value,
-        importance,
-        crate::CssParserContext::default(),
-    )
-}
-
 pub(crate) fn parse_property_value_with_context(
     property: CssPropertyNameRef<'_>,
     value: CssComponentValues,
@@ -306,48 +280,6 @@ pub(crate) fn parse_property_value_with_context(
         importance,
         value,
     ))
-}
-
-/// Checks detached components as one authored Page declaration.
-///
-/// Admits represented Page/margin-applicable shared properties and custom values.
-/// CSS-wide, calculation, length-percentage and substitution grammar remains
-/// symbolic, including font-relative operands. Page physical margins exclude the
-/// crate's logical-margin extension and nonzero unitless values. Custom tokens are
-/// retained without margin restrictions or variable lookup.
-///
-/// The occurrence retains Page semantic context independently of document mode,
-/// so strict pending reentry cannot silently use ordinary element grammar.
-/// Component origins and supplied importance are preserved; no name/source span,
-/// page selector, cascade environment or enclosing rule is fabricated.
-///
-/// ```
-/// use surgeist_css::{
-///     CssExpansion, CssImportance, CssKnownProperty, CssPropertyNameRef,
-///     expand_declaration, parse_component_values, parse_page_property_value,
-/// };
-/// let margin = parse_page_property_value(
-///     CssPropertyNameRef::Known(CssKnownProperty::Margin),
-///     parse_component_values("var(--m, 1px)").unwrap(),
-///     CssImportance::Normal,
-/// ).unwrap();
-/// let CssExpansion::Pending(pending) = expand_declaration(&margin).unwrap() else {
-///     panic!("pending authored Page margin");
-/// };
-/// assert!(pending.reenter(parse_component_values("1em").unwrap()).is_ok());
-/// assert!(pending.reenter(parse_component_values("calc(1Q + 2%)").unwrap()).is_ok());
-/// ```
-pub fn parse_page_property_value(
-    property: CssPropertyNameRef<'_>,
-    value: CssComponentValues,
-    importance: CssImportance,
-) -> Result<CssDeclaration, CssPropertyValueError> {
-    parse_page_property_value_with_context(
-        property,
-        value,
-        importance,
-        crate::CssParserContext::default(),
-    )
 }
 
 pub(crate) fn parse_page_property_value_with_context(
@@ -431,24 +363,6 @@ pub(crate) fn checked_svg_glyph_value_body(
     crate::parser::parse_svg_glyph_value_body(admission, value, context)
 }
 
-/// Checks components using an explicit canonical or legacy authored grammar.
-///
-/// This shares direct token admission, limits, and original-origin mapping
-/// with [`parse_property_value`]. The constructed occurrence has programmatic
-/// declaration provenance; supplied component origins remain intact.
-pub fn parse_property_value_for_grammar(
-    grammar: crate::CssPropertyGrammar,
-    value: CssComponentValues,
-    importance: CssImportance,
-) -> Result<CssDeclaration, CssPropertyValueError> {
-    parse_property_value_for_grammar_with_context(
-        grammar,
-        value,
-        importance,
-        crate::CssParserContext::default(),
-    )
-}
-
 pub(crate) fn parse_property_value_for_grammar_with_context(
     grammar: crate::CssPropertyGrammar,
     value: CssComponentValues,
@@ -474,14 +388,115 @@ pub(crate) fn checked_grammar_value_body(
     }
     crate::parser::parse_property_value_body_for_grammar(grammar, value, parser_context)
 }
+/// Which grammar a declaration value is checked against.
+///
+/// Chosen by the calling code, never by CSS input.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssPropertyTarget<'a> {
+    /// The ordinary style-rule grammar of a named property.
+    Property(CssPropertyNameRef<'a>),
+    /// An explicit grammar handle, including legacy shorthand grammars.
+    Grammar(crate::CssPropertyGrammar),
+    /// A property in `@page` context.
+    PageProperty(CssPropertyNameRef<'a>),
+    /// A property in a margin-box context.
+    MarginProperty(CssPropertyNameRef<'a>),
+}
 
-/// Constructs one checked margin-context property value with genuine supplied component origins.
-/// Page-only descriptors are parsed by `parse_page_descriptor_value`; ordinary property grammar
-/// and applicability share the Page producer boundary without fabricated rule/name coordinates.
-pub fn parse_margin_property_value(
-    property: CssPropertyNameRef<'_>,
-    value: CssComponentValues,
-    importance: CssImportance,
-) -> Result<CssDeclaration, CssPropertyValueError> {
-    parse_page_property_value(property, value, importance)
+/// Which grammar the source-text front [`CssParser::parse_property_value`](crate::CssParser::parse_property_value)
+/// checks a value against.
+///
+/// A page or margin value is checked only from owned components, through
+/// [`CssDeclaration::try_from_components`] and [`CssPropertyTarget`], so this type
+/// admits just the targets the text front can serve. Chosen by the calling code,
+/// never by CSS input.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssPropertyTextTarget<'a> {
+    /// The ordinary style-rule grammar of a named property.
+    Property(CssPropertyNameRef<'a>),
+    /// An explicit grammar handle, including legacy shorthand grammars.
+    Grammar(crate::CssPropertyGrammar),
+}
+
+impl CssDeclaration {
+    /// Checks owned components against a target grammar and constructs an authored
+    /// declaration occurrence.
+    ///
+    /// A [`CssPropertyTarget::Property`] selects the same grammar as stylesheet
+    /// declarations; a [`CssPropertyTarget::Grammar`] an explicit canonical or
+    /// legacy grammar, with the same direct token admission, limits and
+    /// original-origin mapping. Whole-value CSS-wide keywords and valid
+    /// substitution-dependent values remain symbolic. Custom names preserve case
+    /// and allow empty values. Known grammars reject implicit closures in the
+    /// original components, including CSS-wide and substitution-dependent values.
+    /// Top-level annotations and declaration delimiters are rejected: importance
+    /// comes only from the separate argument.
+    ///
+    /// A [`CssPropertyTarget::PageProperty`] or [`CssPropertyTarget::MarginProperty`]
+    /// checks the components as one authored Page declaration. It admits
+    /// represented Page/margin-applicable shared properties and custom values.
+    /// CSS-wide, calculation, length-percentage and substitution grammar remains
+    /// symbolic, including font-relative operands. Page physical margins exclude
+    /// the crate's logical-margin extension and nonzero unitless values. Custom
+    /// tokens are retained without margin restrictions or variable lookup. The
+    /// occurrence retains Page semantic context independently of document mode,
+    /// so strict pending reentry cannot silently use ordinary element grammar. A
+    /// margin-box target shares the Page producer boundary. Page-only descriptors
+    /// are parsed by [`CssPageDescriptorValue::parse`](crate::CssPageDescriptorValue::parse).
+    ///
+    /// Supplied token origins remain intact. The returned declaration has no
+    /// parsed property-name position or single parsed declaration-value span;
+    /// inspect its components for their origins. Admission reads the supplied
+    /// tokens directly and obeys the immutable component tree's previously
+    /// validated structural and serialization constraints. This operation does
+    /// not substitute variables, expand shorthands, resolve values, or apply
+    /// cascade. The parser supplies the document mode.
+    ///
+    /// ```
+    /// use surgeist_css::{
+    ///     CssComponentValues, CssDeclaration, CssExpansion, CssImportance, CssKnownProperty,
+    ///     CssParser, CssPropertyNameRef, CssPropertyTarget,
+    /// };
+    /// let parser = CssParser::default();
+    /// let margin = CssDeclaration::try_from_components(
+    ///     &parser,
+    ///     CssPropertyTarget::PageProperty(CssPropertyNameRef::Known(CssKnownProperty::Margin)),
+    ///     CssComponentValues::parse(&parser, "var(--m, 1px)").unwrap(),
+    ///     CssImportance::Normal,
+    /// ).unwrap();
+    /// let CssExpansion::Pending(pending) = margin.expand().unwrap() else {
+    ///     panic!("pending authored Page margin");
+    /// };
+    /// assert!(pending.reenter(CssComponentValues::parse(&parser, "1em").unwrap()).is_ok());
+    /// assert!(pending
+    ///     .reenter(CssComponentValues::parse(&parser, "calc(1Q + 2%)").unwrap())
+    ///     .is_ok());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the component or grammar failure located at the responsible
+    /// original token.
+    pub fn try_from_components(
+        parser: &crate::CssParser,
+        target: CssPropertyTarget<'_>,
+        values: CssComponentValues,
+        importance: CssImportance,
+    ) -> Result<CssDeclaration, CssPropertyValueError> {
+        let context = parser.context();
+        match target {
+            CssPropertyTarget::Property(property) => {
+                parse_property_value_with_context(property, values, importance, context)
+            }
+            CssPropertyTarget::Grammar(grammar) => {
+                parse_property_value_for_grammar_with_context(grammar, values, importance, context)
+            }
+            CssPropertyTarget::PageProperty(property)
+            | CssPropertyTarget::MarginProperty(property) => {
+                parse_page_property_value_with_context(property, values, importance, context)
+            }
+        }
+    }
 }

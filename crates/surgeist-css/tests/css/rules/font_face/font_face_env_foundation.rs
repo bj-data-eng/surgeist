@@ -2,12 +2,12 @@
 //! A syntactically valid `env()` defers the entire known descriptor grammar.
 
 use surgeist_css::{
-    CssFontFaceDescriptorKind as Kind, CssRecoveryAction, CssRule,
-    parse_font_face_descriptor_value, parse_sheet, validate_sheet,
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind as Kind, CssParser,
+    CssRecoveryAction, CssRule,
 };
 
 fn one_font_face(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet> {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(
         matches!(report.syntax().rules(), [CssRule::FontFace(_)]),
         "font-face rule retained: {source}: {report:?}"
@@ -27,11 +27,13 @@ fn ordinary_descriptors_parse_and_plain_var_does_not_defer_them() {
         (Kind::UnicodeRange, "U+20"),
         (Kind::FontFeatureSettings, "normal"),
     ] {
-        let report = parse_font_face_descriptor_value(ordinary, kind);
+        let report =
+            CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), ordinary, kind);
         assert!(report.is_clean(), "{}: {report:?}", kind.as_str());
         assert!(report.syntax().is_some());
 
-        let variable = parse_font_face_descriptor_value("var(--value)", kind);
+        let variable =
+            CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), "var(--value)", kind);
         assert!(
             variable.syntax().is_none(),
             "{}: {variable:?}",
@@ -68,7 +70,8 @@ fn valid_whole_env_values_are_clean_for_every_known_descriptor_and_both_width_na
         (Kind::UnicodeRange, "unicode-range"),
         (Kind::FontFeatureSettings, "font-feature-settings"),
     ] {
-        let raw = parse_font_face_descriptor_value("env(value)", kind);
+        let raw =
+            CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), "env(value)", kind);
         assert!(raw.is_clean(), "raw {name}: {raw:?}");
         assert!(raw.syntax().is_some(), "raw {name}");
         assert!(raw.into_validation_result().is_ok(), "raw {name}");
@@ -76,7 +79,13 @@ fn valid_whole_env_values_are_clean_for_every_known_descriptor_and_both_width_na
         let source = format!("@font-face{{{name}:env(value)}}");
         let sheet = one_font_face(&source);
         assert!(sheet.is_clean(), "sheet {name}: {sheet:?}");
-        assert!(validate_sheet(&source).is_ok(), "sheet {name}");
+        assert!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .is_ok(),
+            "sheet {name}"
+        );
     }
 }
 
@@ -93,7 +102,7 @@ fn one_valid_env_defers_otherwise_invalid_ordinary_tokens_without_src_recovery()
         ),
         (Kind::FontWidth, "font-stretch", "125% env(width, 75%)"),
     ] {
-        let raw = parse_font_face_descriptor_value(value, kind);
+        let raw = CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), value, kind);
         assert!(raw.is_clean(), "raw {name}:{value}: {raw:?}");
         assert!(raw.syntax().is_some());
         assert!(!raw.diagnostics().iter().any(|diagnostic| {
@@ -103,7 +112,12 @@ fn one_valid_env_defers_otherwise_invalid_ordinary_tokens_without_src_recovery()
         let source = format!("@font-face{{{name}:{value}}}");
         let sheet = one_font_face(&source);
         assert!(sheet.is_clean(), "sheet {name}:{value}: {sheet:?}");
-        assert!(validate_sheet(&source).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .is_ok()
+        );
         assert!(!sheet.diagnostics().iter().any(|diagnostic| {
             diagnostic.action() == CssRecoveryAction::DropFontSourceListItem
         }));
@@ -116,7 +130,11 @@ fn nested_valid_fallback_qualifies_for_deferral() {
         "env(width, env(fallback, 75%))",
         "calc(env(width, 75%) + 25%)",
     ] {
-        let raw = parse_font_face_descriptor_value(value, Kind::FontWidth);
+        let raw = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            value,
+            Kind::FontWidth,
+        );
         assert!(raw.is_clean(), "{value}: {raw:?}");
         assert!(raw.syntax().is_some());
     }
@@ -125,7 +143,11 @@ fn nested_valid_fallback_qualifies_for_deferral() {
 #[test]
 fn malformed_env_and_mixed_valid_invalid_env_family_do_not_qualify() {
     for value in ["env()", "env(123)", "env(valid) env()"] {
-        let raw = parse_font_face_descriptor_value(value, Kind::FontWidth);
+        let raw = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            value,
+            Kind::FontWidth,
+        );
         assert!(raw.syntax().is_none(), "{value}: {raw:?}");
         assert!(!raw.is_clean());
         let source = format!("@font-face{{font-width:{value}}}");
@@ -143,7 +165,11 @@ fn malformed_env_and_mixed_valid_invalid_env_family_do_not_qualify() {
 #[test]
 fn importance_and_raw_root_boundaries_are_not_rescued_by_env() {
     for value in ["env(width)!important", "env(width);"] {
-        let raw = parse_font_face_descriptor_value(value, Kind::FontWidth);
+        let raw = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            value,
+            Kind::FontWidth,
+        );
         assert!(raw.syntax().is_none(), "{value}: {raw:?}");
         assert!(
             raw.diagnostics()
@@ -152,7 +178,11 @@ fn importance_and_raw_root_boundaries_are_not_rescued_by_env() {
         );
     }
     // Matched blocks are declaration-value data under whole env deferral.
-    let raw = parse_font_face_descriptor_value("env(width){}", Kind::FontWidth);
+    let raw = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        "env(width){}",
+        Kind::FontWidth,
+    );
     assert!(raw.is_clean(), "{raw:?}");
     let Some(surgeist_css::CssAuthoredFontFaceDescriptorValue::Pending(pending)) = raw.syntax()
     else {
@@ -179,7 +209,11 @@ fn importance_and_raw_root_boundaries_are_not_rescued_by_env() {
 
 #[test]
 fn eof_implicit_env_closure_is_retained_with_diagnostics_and_not_clean_validation() {
-    let raw = parse_font_face_descriptor_value("env(width", Kind::FontWidth);
+    let raw = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        "env(width",
+        Kind::FontWidth,
+    );
     assert!(raw.syntax().is_some(), "raw: {raw:?}");
     assert!(!raw.is_clean());
     assert!(
@@ -197,5 +231,10 @@ fn eof_implicit_env_closure_is_retained_with_diagnostics_and_not_clean_validatio
             diagnostic.action() == CssRecoveryAction::RetainWithImplicitClosure
         })
     );
-    assert!(validate_sheet(source).is_err());
+    assert!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .is_err()
+    );
 }

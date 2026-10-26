@@ -6,7 +6,7 @@ use adapters::{
     EntryPoint, Extractor, FontFaceDescriptorKind, OptionsProfile, PropertyOrDescriptor,
     TopLevelRuleKind, UnsupportedPolicy, UnsupportedReason,
 };
-use surgeist_css::{CssNamespaceContext, CssRule, parse_rule, parse_sheet};
+use surgeist_css::{CssNamespaceContext, CssParser, CssRule};
 
 // Registry metadata and the closed extractor discriminator are corpus contracts.
 #[test]
@@ -39,8 +39,8 @@ fn full_at_rule_adapters_preserve_raw_input_and_single_rule_presence() {
 #[test]
 fn at_rule_extraction_reports_style_wrong_family_and_entry_point_misuse() {
     let context = CssNamespaceContext::default();
-    let style = parse_rule("a{}", &context);
-    let media = parse_rule("@media{}", &context);
+    let style = CssRule::parse(&CssParser::default(), "a{}", &context);
+    let media = CssRule::parse(&CssParser::default(), "@media{}", &context);
     for extractor in [
         Extractor::AtRule,
         Extractor::TopLevelRuleKind(TopLevelRuleKind::Style),
@@ -70,14 +70,15 @@ fn at_rule_extraction_reports_style_wrong_family_and_entry_point_misuse() {
     );
     assert!(
         Extractor::AtRule
-            .extract_sheet(parse_sheet("@media{}").syntax())
+            .extract_sheet(CssParser::default().parse_sheet("@media{}").syntax())
             .is_err()
     );
 }
 
 #[test]
 fn at_rule_extraction_retains_authored_font_feature_values() {
-    let report = parse_rule(
+    let report = CssRule::parse(
+        &CssParser::default(),
         "@font-feature-values Demo { @swash { Fancy: 2; } }",
         &CssNamespaceContext::default(),
     );
@@ -88,7 +89,8 @@ fn at_rule_extraction_retains_authored_font_feature_values() {
 #[test]
 fn at_rule_extraction_retains_authored_custom_media() {
     // MQ5 #custom-mq defines an authored at-rule independently of evaluation.
-    let report = parse_rule(
+    let report = CssRule::parse(
+        &CssParser::default(),
         "@custom-media --theme (color);",
         &CssNamespaceContext::default(),
     );
@@ -111,7 +113,7 @@ fn style_block_adapter_preserves_raw_input_and_names_block_presence() {
     }
     assert!(
         Extractor::StyleBlock
-            .extract_sheet(parse_sheet("a{}").syntax())
+            .extract_sheet(CssParser::default().parse_sheet("a{}").syntax())
             .is_err()
     );
 }
@@ -441,7 +443,7 @@ fn csstree_group_rules_retain_empty_and_nonempty_blocks() {
                 "{id}: independently frozen child count"
             );
 
-            let report = parse_sheet(input);
+            let report = CssParser::default().parse_sheet(input);
             assert!(report.is_clean(), "{id}: {:?}", report.diagnostics());
             let [rule] = report.syntax().rules() else {
                 panic!("{id}: expected exactly one retained outer rule");
@@ -470,7 +472,11 @@ fn csstree_group_registry_counts_retained_outer_rules() {
             fixture.path
         );
         for &(label, input, _) in fixture.cases {
-            let report = parse_rule(input, &CssNamespaceContext::default());
+            let report = CssRule::parse(
+                &CssParser::default(),
+                input,
+                &CssNamespaceContext::default(),
+            );
             assert_eq!(
                 entry.extractor().extract_at_rule(report.syntax()),
                 Ok(1),

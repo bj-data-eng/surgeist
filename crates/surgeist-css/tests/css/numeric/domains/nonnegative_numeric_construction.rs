@@ -27,7 +27,7 @@ fn percentage(text: &str) -> CssNumeric<CssPercentage, CssNonNegative> {
 fn number_math(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
     CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
         CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -37,7 +37,7 @@ fn number_math(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
 fn percentage_math(text: &str) -> CssNumeric<CssPercentage, CssNonNegative> {
     CssNumeric::<CssPercentage, CssNonNegative>::try_from_calculation(
         CssCalculation::<CssPercentage>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -150,7 +150,7 @@ fn bare_nonnegative_roots_recheck_range_and_actual_math_remains_symbolic() {
         assert_eq!(percentage_text(&percentage_math(&format!("{text}%"))), text);
     }
     let number_root = CssCalculation::<CssNumber>::try_from_components(
-        parse_component_values("-1e-999").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "-1e-999").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -160,7 +160,7 @@ fn bare_nonnegative_roots_recheck_range_and_actual_math_remains_symbolic() {
             .is_out_of_range()
     );
     let percentage_root = CssCalculation::<CssPercentage>::try_from_components(
-        parse_component_values("-1e-999%").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "-1e-999%").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -320,7 +320,7 @@ fn filter_and_backdrop_parsers_preserve_all_amount_roles_and_exact_payloads() {
             .map(|name| format!("{name}({amount})"))
             .join(" ");
             let source = format!("{property}: {value}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{:?}", report.diagnostics());
             let value = match report.syntax()[0]
                 .known()
@@ -645,14 +645,15 @@ fn border_shorthand_construction_preserves_coupling_omission_and_exact_structure
 
 #[test]
 fn border_expansion_initials_use_exact_programmatic_zero_hundred_percent_and_one() {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Border),
-        parse_component_values("solid").unwrap(),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Border)),
+        CssComponentValues::parse(&CssParser::default(), "solid").unwrap(),
         CssImportance::Important,
     )
     .unwrap();
     let CssExpansion::Contributions(CssContributions::Longhands(contributions)) =
-        expand_declaration(&declaration).unwrap()
+        declaration.expand().unwrap()
     else {
         panic!("border-image contributions")
     };
@@ -791,9 +792,7 @@ fn iteration_aggregate_equality_ignores_numeric_origins_and_spelling_and_preserv
 
 #[test]
 fn iteration_longhand_and_shorthand_keep_shared_exact_counts_and_authored_omission() {
-    let report = parse_style_attribute(
-        "animation-iteration-count: .5, infinite, 1e999, calc(-1); animation: fade 1s .5; animation: fade 1s",
-    );
+    let report = CssParser::default().parse_block_contents("animation-iteration-count: .5, infinite, 1e999, calc(-1); animation: fade 1s .5; animation: fade 1s");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 3);
     let CssKnownPropertyValueRef::AnimationIterationCount(counts) = report.syntax()[0]
@@ -926,7 +925,7 @@ fn assert_origin(origin: &CssValueOrigin, source: &str, start: usize, length: us
 #[test]
 fn border_and_iteration_payloads_keep_exact_source_coordinates_and_kinds() {
     let source = "border-image-slice: +01.25 2.50%; border-image-width: 3e2; border-image-outset: -0; animation-iteration-count: .5, calc(-1)";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean());
     assert_eq!(report.syntax().len(), 4);
     let CssKnownPropertyValueRef::BorderImageSlice(slice) = report.syntax()[0]

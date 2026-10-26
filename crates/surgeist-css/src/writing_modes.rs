@@ -207,7 +207,8 @@ mod combine_cumulative_bridge_contract {
     #[test]
     fn suppressed_symbolic_calculation_preserves_parsed_origin_without_byte_work() {
         let text = "digits calc(1px / 1em)";
-        let report = crate::parse_style_attribute(&format!("/*😀*/text-combine-upright:{text}"));
+        let report = crate::CssParser::default()
+            .parse_block_contents(format!("/*😀*/text-combine-upright:{text}"));
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let crate::CssKnownPropertyValueRef::TextCombineUpright(wrapper) = report.syntax()[0]
             .known()

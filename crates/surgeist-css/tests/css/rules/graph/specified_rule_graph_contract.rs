@@ -6,8 +6,8 @@ use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::rules::assert_exact_specified_sheet as exact;
 use crate::css::support::rules::clean_sheet as sheet;
 use surgeist_css::{
-    CssErrorCode, CssMediaRule, CssNamespaceContext, CssRecoveryAction, CssRule,
-    CssSerializationLimits as Limits, CssSheet, parse_sheet,
+    CssErrorCode, CssMediaRule, CssNamespaceContext, CssParser, CssRecoveryAction, CssRule,
+    CssSerializationLimits as Limits, CssSheet,
 };
 
 #[test]
@@ -37,7 +37,7 @@ fn groups_compose_typed_providers_without_losing_sibling_order() {
 #[test]
 fn recovered_media_members_emit_not_all_in_place_and_keep_report_origins() {
     let source = "/* 😀 */\r\n@media SCREEN,???,PRINT,&test,speech{.child{opacity:.5}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let before = report.clone();
     assert_eq!(report.diagnostics().len(), 2);
     assert!(
@@ -99,7 +99,8 @@ fn valid_symbolic_media_conditions_keep_grouping_case_and_member_order() {
 
 #[test]
 fn invalid_declaration_recovery_drops_only_the_invalid_occurrence() {
-    let report = parse_sheet(".x{opacity:.25;opacity:bad;opacity:.5!important}");
+    let report =
+        CssParser::default().parse_sheet(".x{opacity:.25;opacity:bad;opacity:.5!important}");
     let before = report.clone();
     // Color 4 §3.2: opacity takes <opacity-value>; `bad` matches nothing.
     let [diagnostic] = report.diagnostics() else {
@@ -152,7 +153,7 @@ fn logical_utf8_output_serializes_retained_rules_after_unknown_charset_recovery(
         ),
         ("@charset \"UTF-8\";", ""),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one unknown charset")
         };
@@ -338,7 +339,7 @@ fn condition_providers_keep_authored_grouping_and_comment_boundaries() {
 
 #[test]
 fn recovered_media_projection_cost_preserves_its_typed_provider_origin() {
-    let report = parse_sheet("@media screen,???,print{}");
+    let report = CssParser::default().parse_sheet("@media screen,???,print{}");
     let before = report.clone();
     let [CssRule::Media(rule)] = report.syntax().rules() else {
         panic!("media")

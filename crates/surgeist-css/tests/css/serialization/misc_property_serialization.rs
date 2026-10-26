@@ -10,7 +10,7 @@ type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;
 
 fn parsed_caret(source: &str) -> CssCaretColor {
-    let report = parse_style_attribute(&format!("caret-color:{source}"));
+    let report = CssParser::default().parse_block_contents(format!("caret-color:{source}"));
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::CaretColor(value) = report.syntax()[0]
         .known()
@@ -142,7 +142,7 @@ fn containment_checked_construction_and_parsed_order_remain_intact() {
         ])
         .is_none()
     );
-    let report = parse_style_attribute("contain:paint size layout!important");
+    let report = CssParser::default().parse_block_contents("contain:paint size layout!important");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::Contain(value) = report.syntax()[0]
         .known()
@@ -211,7 +211,8 @@ fn blend_lists_preserve_order_duplicates_and_comma_byte_cost() {
         value.serialize_specified(limits)
     });
     assert_eq!(value, before);
-    let report = parse_style_attribute("background-blend-mode:SCREEN,normal,SCREEN");
+    let report =
+        CssParser::default().parse_block_contents("background-blend-mode:SCREEN,normal,SCREEN");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::BackgroundBlendMode(parsed) = report.syntax()[0]
         .known()

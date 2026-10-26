@@ -2,10 +2,10 @@
 use crate::css::support::authored_syntax::assert_span_bytes as span;
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssComponentValues, CssCustomPropertyName,
-    CssDeclarationList, CssErrorCode, CssFontFaceDescriptorKind, CssImportance, CssKnownProperty,
-    CssMediaQuery, CssMediaType, CssParseReport, CssPropertyNameRef, CssRecoveryAction, CssRule,
-    CssSelector, CssSheet, CssStyleRule, CssValueTokenRef, parse_declaration, parse_property_value,
-    parse_sheet, parse_style_attribute, validate_sheet,
+    CssDeclaration, CssDeclarationList, CssErrorCode, CssFontFaceDescriptorKind, CssImportance,
+    CssKnownProperty, CssMediaQuery, CssMediaType, CssParseReport, CssParser, CssPropertyNameRef,
+    CssPropertyTarget, CssRecoveryAction, CssRule, CssSelector, CssSheet, CssStyleRule,
+    CssValueTokenRef,
 };
 
 fn style<'a>(rule: &'a CssRule, class: &str) -> &'a CssStyleRule {
@@ -31,7 +31,10 @@ fn properties(declarations: &CssDeclarationList) -> Vec<&str> {
 fn strict_failure(source: &str, report: &CssParseReport<CssSheet>) {
     assert!(!report.is_clean());
     assert!(!report.diagnostics().is_empty());
-    let failure = validate_sheet(source).unwrap_err();
+    let failure = CssParser::default()
+        .parse_sheet(source)
+        .into_validation_result()
+        .unwrap_err();
     assert_eq!(failure.diagnostics(), report.diagnostics());
     assert_eq!(failure.first(), &report.diagnostics()[0]);
     assert_eq!(failure.into_diagnostics(), report.diagnostics());
@@ -48,7 +51,7 @@ fn required_media_block_at_eof_reports_actual_missing_input_without_an_authored_
         (".before{}@media screen", 9, 22, 0, 22, 1),
         ("/*😀*/\r\n.before{}@media screen", 19, 32, 1, 22, 1),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert_eq!(report.syntax().rules().len(), siblings);
         if siblings == 1 {
             assert!(
@@ -77,7 +80,7 @@ fn required_media_block_at_eof_reports_actual_missing_input_without_an_authored_
 #[test]
 fn authored_semicolon_ends_media_statement_and_reports_missing_body_at_the_bounded_end() {
     let source = "@media screen;.after{}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [after] = report.syntax().rules() else {
         panic!("later valid sibling survives missing-body rejection")
     };
@@ -107,7 +110,7 @@ fn authored_semicolon_ends_media_statement_and_reports_missing_body_at_the_bound
 #[test]
 fn defined_layer_statement_and_complete_media_block_are_clean_distinct_productions() {
     let source = "@layer theme;@media screen{}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::LayerStatement(layer), CssRule::Media(media)] = report.syntax().rules() else {
         panic!("statement and block have their defined result types")
@@ -118,7 +121,12 @@ fn defined_layer_statement_and_complete_media_block_are_clean_distinct_productio
         panic!("typed screen grammar")
     };
     assert_eq!(query.media_type(), CssMediaType::Screen);
-    assert_eq!(validate_sheet(source), Ok(report.syntax().clone()));
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
+        Ok(report.syntax().clone())
+    );
     assert_eq!(
         report.clone().into_validation_result(),
         Ok(report.syntax().clone())
@@ -129,7 +137,7 @@ fn defined_layer_statement_and_complete_media_block_are_clean_distinct_productio
 fn an_implicitly_closed_valid_style_tree_is_retained_while_clean_validation_reports_the_eof_fault()
 {
     let source = ".x{color:red";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [rule] = report.syntax().rules() else {
         panic!("retained implicitly closed style")
     };
@@ -154,7 +162,7 @@ fn an_implicitly_closed_valid_style_tree_is_retained_while_clean_validation_repo
     assert_eq!(diagnostic.error().position().byte_offset().value(), 12);
     span(diagnostic.span(), 12..12);
     strict_failure(source, &report);
-    let complete = parse_sheet(".x{color:red}");
+    let complete = CssParser::default().parse_sheet(".x{color:red}");
     assert!(complete.is_clean());
     assert_eq!(
         complete
@@ -176,7 +184,7 @@ fn an_implicitly_closed_valid_style_tree_is_retained_while_clean_validation_repo
 fn invalid_selector_list_discards_the_entire_style_and_unknown_at_rule_without_losing_valid_siblings()
  {
     let source = ".before{width:1px}.bad,>{color:red}@unknown x;.after{height:2px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [before, after] = report.syntax().rules() else {
         panic!("only before and after styles survive")
     };
@@ -211,7 +219,7 @@ fn invalid_selector_list_discards_the_entire_style_and_unknown_at_rule_without_l
 fn style_property_names_are_ascii_insensitive_custom_names_keep_case_and_invalid_declarations_are_local()
  {
     let source = ".x{CoLoR:red;--Tone:A;--tone:B;mystery:1;width:nope;HEIGHT:2px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [rule] = report.syntax().rules() else {
         panic!("parent remains valid")
     };
@@ -258,7 +266,7 @@ fn style_property_names_are_ascii_insensitive_custom_names_keep_case_and_invalid
 #[test]
 fn identical_declaration_token_shapes_use_property_or_descriptor_grammar_from_the_owning_rule() {
     let source = ".p{font-display:swap;font-weight:400}@font-face{font-display:swap;font-weight:400;color:red}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [property, CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("style and font descriptor owner survive")
     };
@@ -303,7 +311,7 @@ fn retained_comments_are_grammar_trivia_but_do_not_merge_two_identifier_tokens()
         ".x{color:red;height:2px}",
         ".x/**/{/**/color/**/:/**/red/**/;/**/height/**/:/**/2px/**/}",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{report:?}");
         let [rule] = report.syntax().rules() else {
             panic!("one style")
@@ -319,7 +327,7 @@ fn retained_comments_are_grammar_trivia_but_do_not_merge_two_identifier_tokens()
         );
     }
     let source = ".x{co/**/lor:red;height:2px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [rule] = report.syntax().rules() else {
         panic!("invalid declaration cannot drop parent")
     };
@@ -335,7 +343,7 @@ fn retained_comments_are_grammar_trivia_but_do_not_merge_two_identifier_tokens()
 fn specified_sheet_serialization_reparses_to_the_same_selector_and_authored_declaration_structure()
 {
     let source = ".x{--Case:A/**/B;--case:f([x,y]{z;!});height:2px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let expected = ".x { --Case: A/**/B; --case: f([x,y]{z;!}); height: 2px; }";
@@ -348,7 +356,7 @@ fn specified_sheet_serialization_reparses_to_the_same_selector_and_authored_decl
         report, before,
         "serialization does not mutate retained source or diagnostics"
     );
-    let reparsed = parse_sheet(&emitted);
+    let reparsed = CssParser::default().parse_sheet(&emitted);
     assert!(reparsed.is_clean(), "{reparsed:?}");
     let [original] = report.syntax().rules() else {
         panic!("original style")
@@ -401,8 +409,9 @@ fn constructed_adjacent_identifiers_reparse_as_two_idents_without_requiring_the_
         Default::default(),
     )
     .unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Custom(&name),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
         components,
         CssImportance::Normal,
     )
@@ -411,7 +420,7 @@ fn constructed_adjacent_identifiers_reparse_as_two_idents_without_requiring_the_
     let emitted = declaration.serialize_specified(Default::default()).unwrap();
     assert_eq!(declaration, original);
     // The singular front rejects the serializer's root list separator.
-    let singular = parse_declaration(&emitted);
+    let singular = CssDeclaration::parse(&CssParser::default(), &emitted);
     assert!(singular.syntax().is_none());
     let [diagnostic] = singular.diagnostics() else {
         panic!("the terminated declaration is not a singular source fragment")
@@ -419,7 +428,7 @@ fn constructed_adjacent_identifiers_reparse_as_two_idents_without_requiring_the_
     assert_eq!(diagnostic.action(), CssRecoveryAction::RejectInput);
 
     // Consume the unchanged serialized declaration with its documented list front.
-    let reparsed = parse_style_attribute(&emitted);
+    let reparsed = CssParser::default().parse_block_contents(&emitted);
     assert!(reparsed.is_clean(), "{reparsed:?}");
     let [reparsed] = reparsed.syntax().as_slice() else {
         panic!("exactly one retained serialized declaration")

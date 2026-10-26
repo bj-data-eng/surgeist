@@ -17,15 +17,16 @@ fn common_authored_property_records_match_typed_source_and_checked_admission() {
         if case.wrapper.is_none() {
             continue;
         }
-        let source = parse_property_value_text(
+        let source = CssParser::default().parse_property_value(
             authored,
-            CssPropertyNameRef::Known(case.property),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(case.property)),
             CssImportance::Normal,
         );
         assert!(source.is_clean(), "{}: {source:?}", case.name);
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(case.property),
-            parse_component_values(authored).unwrap(),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(case.property)),
+            CssComponentValues::parse(&CssParser::default(), authored).unwrap(),
             CssImportance::Normal,
         )
         .unwrap_or_else(|error| panic!("{}: {error:?}", case.name));
@@ -34,18 +35,20 @@ fn common_authored_property_records_match_typed_source_and_checked_admission() {
             case.assert_wrapper(known, known.property_value().unwrap(), authored);
         }
         if let Some(CatalogExpectation::Grammar { boundary, .. }) = &case.catalog {
-            let source = parse_property_value_text(
+            let source = CssParser::default().parse_property_value(
                 boundary.authored,
-                CssPropertyNameRef::Known(case.property),
+                CssPropertyTextTarget::Property(CssPropertyNameRef::Known(case.property)),
                 CssImportance::Normal,
             );
-            let checked = parse_component_values(boundary.authored).map(|values| {
-                parse_property_value(
-                    CssPropertyNameRef::Known(case.property),
-                    values,
-                    CssImportance::Normal,
-                )
-            });
+            let checked =
+                CssComponentValues::parse(&CssParser::default(), boundary.authored).map(|values| {
+                    CssDeclaration::try_from_components(
+                        &CssParser::default(),
+                        CssPropertyTarget::Property(CssPropertyNameRef::Known(case.property)),
+                        values,
+                        CssImportance::Normal,
+                    )
+                });
             match boundary.outcome {
                 BoundaryOutcome::Rejected => {
                     assert!(source.syntax().is_none(), "{}: {source:?}", case.name);
@@ -68,10 +71,11 @@ fn common_authored_property_records_match_typed_source_and_checked_admission() {
 #[test]
 fn checked_math_preserves_whitespace_and_exact_decimal_spelling() {
     let source = "calc(1.0000000000000000001px + 2%)";
-    let values = parse_component_values(source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let original = values.clone();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Width),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
         values,
         CssImportance::Normal,
     )
@@ -87,24 +91,28 @@ fn checked_math_preserves_whitespace_and_exact_decimal_spelling() {
             if number.representation() == "1.0000000000000000001" && unit == "px"
     ));
     for source in ["calc(1px+ 2%)", "calc(1px +2%)"] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Width),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
                 values,
-                CssImportance::Normal,
+                CssImportance::Normal
             )
             .is_err(),
             "math operators require actual authored whitespace: {source}"
         );
         assert!(
-            parse_property_value_text(
-                source,
-                CssPropertyNameRef::Known(CssKnownProperty::Width),
-                CssImportance::Normal,
-            )
-            .syntax()
-            .is_none()
+            CssParser::default()
+                .parse_property_value(
+                    source,
+                    CssPropertyTextTarget::Property(CssPropertyNameRef::Known(
+                        CssKnownProperty::Width
+                    )),
+                    CssImportance::Normal
+                )
+                .syntax()
+                .is_none()
         );
     }
 }
@@ -112,13 +120,13 @@ fn checked_math_preserves_whitespace_and_exact_decimal_spelling() {
 #[test]
 fn checked_context_retains_property_quirks_and_page_restrictions() {
     let context = CssParserContext::new(CssParserMode::Quirks);
-    let width = context
-        .parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
-            parse_component_values("7").unwrap(),
-            CssImportance::Normal,
-        )
-        .expect("the named width owner grants quirky unitless lengths");
+    let width = CssDeclaration::try_from_components(
+        &CssParser::new(context, Default::default()),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
+        CssComponentValues::parse(&CssParser::default(), "7").unwrap(),
+        CssImportance::Normal,
+    )
+    .expect("the named width owner grants quirky unitless lengths");
     let CssKnownPropertyValueRef::Width(value) = width.known().unwrap().property_value().unwrap()
     else {
         panic!("typed width");
@@ -132,27 +140,29 @@ fn checked_context_retains_property_quirks_and_page_restrictions() {
     );
     assert_eq!(width.parser_context(), context);
     assert!(
-        context
-            .parse_page_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::MarginTop),
-                parse_component_values("7").unwrap(),
-                CssImportance::Normal,
-            )
-            .is_err(),
+        CssDeclaration::try_from_components(
+            &CssParser::new(context, Default::default()),
+            CssPropertyTarget::PageProperty(CssPropertyNameRef::Known(CssKnownProperty::MarginTop)),
+            CssComponentValues::parse(&CssParser::default(), "7").unwrap(),
+            CssImportance::Normal
+        )
+        .is_err(),
         "Page margins do not acquire nonzero unitless element grammar"
     );
-    let recovered = parse_component_values("future(").unwrap();
+    let recovered = CssComponentValues::parse(&CssParser::default(), "future(").unwrap();
     assert!(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
             recovered.clone(),
-            CssImportance::Normal,
+            CssImportance::Normal
         )
         .is_err()
     );
     let custom = CssCustomPropertyName::try_new("--tokens").unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Custom(&custom),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Custom(&custom)),
         recovered.clone(),
         CssImportance::Normal,
     )
@@ -167,15 +177,16 @@ fn rejected_checked_values_keep_the_responsible_token_summary() {
         (CssKnownProperty::Width, "not-a-width"),
         (CssKnownProperty::Color, "not-a-color"),
     ] {
-        let source = parse_property_value_text(
+        let source = CssParser::default().parse_property_value(
             text,
-            CssPropertyNameRef::Known(property),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(property)),
             CssImportance::Normal,
         );
         assert!(source.syntax().is_none());
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(property),
-            parse_component_values(text).unwrap(),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             CssImportance::Normal,
         )
         .expect_err("the identifier is outside the selected value grammar");
@@ -206,20 +217,25 @@ fn checked_error_summaries_keep_programmatic_and_escaped_mixed_origins() {
             "not-a-width",
         ),
         (
-            parse_component_values(r"\6e ot-a-width").unwrap().items()[0].clone(),
+            CssComponentValues::parse(&CssParser::default(), r"\6e ot-a-width")
+                .unwrap()
+                .items()[0]
+                .clone(),
             r"\6e ot-a-width",
         ),
     ] {
         let origin = component.origin().clone();
-        let unrelated = parse_component_values("/*different snapshot*/").unwrap();
+        let unrelated =
+            CssComponentValues::parse(&CssParser::default(), "/*different snapshot*/").unwrap();
         let values = CssComponentValues::try_new(
             vec![unrelated.items()[0].clone(), component],
             Default::default(),
         )
         .unwrap();
         drop(unrelated);
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
             values,
             CssImportance::Normal,
         )
@@ -247,8 +263,9 @@ fn checked_error_summaries_keep_programmatic_and_escaped_mixed_origins() {
 #[test]
 fn trivia_does_not_replace_the_responsible_token_in_checked_errors() {
     let spelling = "123456789012345678901234567890";
-    let comment = parse_component_values("/*different snapshot*/").unwrap();
-    let number = parse_component_values(spelling).unwrap();
+    let comment =
+        CssComponentValues::parse(&CssParser::default(), "/*different snapshot*/").unwrap();
+    let number = CssComponentValues::parse(&CssParser::default(), spelling).unwrap();
     let expected = number.items()[0].origin().clone();
     let values = CssComponentValues::try_new(
         vec![comment.items()[0].clone(), number.items()[0].clone()],
@@ -257,8 +274,9 @@ fn trivia_does_not_replace_the_responsible_token_in_checked_errors() {
     .unwrap();
     drop(comment);
     drop(number);
-    let error = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Display),
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Display)),
         values,
         CssImportance::Normal,
     )
@@ -281,9 +299,9 @@ fn raw_root_delimiters_keep_precedence_over_unadmitted_bad_url_tokens() {
         ("1px!url(a b)", "!", 3, CssTokenKind::Delim),
         ("url(a b);", ";", 8, CssTokenKind::Semicolon),
     ] {
-        let report = parse_property_value_text(
+        let report = CssParser::default().parse_property_value(
             source,
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
             CssImportance::Normal,
         );
         assert!(report.syntax().is_none());
@@ -308,7 +326,7 @@ fn raw_root_delimiters_keep_precedence_over_unadmitted_bad_url_tokens() {
 #[test]
 fn source_bad_url_keeps_property_error_context_and_later_independent_declaration() {
     let source = "width:1px url(a b);color:red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     let [declaration] = &report.syntax()[..] else {
         panic!("only the following color declaration survives: {report:?}");
     };
@@ -333,7 +351,7 @@ fn source_bad_url_keeps_property_error_context_and_later_independent_declaration
 
 #[test]
 fn source_name_and_keyframe_policy_rejections_precede_payload_grammar() {
-    let report = parse_style_attribute("unknown:url(a b);color:red");
+    let report = CssParser::default().parse_block_contents("unknown:url(a b);color:red");
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),
@@ -344,7 +362,11 @@ fn source_name_and_keyframe_policy_rejections_precede_payload_grammar() {
     };
     assert_eq!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
     assert_eq!(diagnostic.error().position().byte_offset().value(), 0);
-    let report = parse_keyframe_declaration_block("{animation-name:url(a b);color:red}");
+    let report = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+        &CssParser::default(),
+        "{animation-name:url(a b);color:red}",
+        &CssBlockContext::default(),
+    );
     let block = report.syntax().as_ref().expect("retained keyframe body");
     assert_eq!(block.body().len(), 1);
     assert_eq!(
@@ -376,8 +398,8 @@ fn source_name_and_keyframe_policy_rejections_precede_payload_grammar() {
 fn separately_owned_tokens_keep_their_lexical_boundaries_and_original_snapshots() {
     for (first, second) in [("1", "px"), ("au", "to")] {
         let (values, first_origin) = {
-            let first = parse_component_values(first).unwrap();
-            let second = parse_component_values(second).unwrap();
+            let first = CssComponentValues::parse(&CssParser::default(), first).unwrap();
+            let second = CssComponentValues::parse(&CssParser::default(), second).unwrap();
             let first_origin = first.items()[0].origin().clone();
             (
                 CssComponentValues::try_new(
@@ -388,8 +410,9 @@ fn separately_owned_tokens_keep_their_lexical_boundaries_and_original_snapshots(
                 first_origin,
             )
         };
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
             values,
             CssImportance::Normal,
         )
@@ -401,8 +424,8 @@ fn separately_owned_tokens_keep_their_lexical_boundaries_and_original_snapshots(
         assert_eq!(error.origin(), CssSerializedOrigin::Token(first_origin));
     }
     let values = {
-        let left = parse_component_values("1px").unwrap();
-        let right = parse_component_values("2px").unwrap();
+        let left = CssComponentValues::parse(&CssParser::default(), "1px").unwrap();
+        let right = CssComponentValues::parse(&CssParser::default(), "2px").unwrap();
         CssComponentValues::try_new(
             vec![left.items()[0].clone(), right.items()[0].clone()],
             Default::default(),
@@ -410,8 +433,9 @@ fn separately_owned_tokens_keep_their_lexical_boundaries_and_original_snapshots(
         .unwrap()
     };
     let before = values.clone();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Margin),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Margin)),
         values,
         CssImportance::Important,
     )

@@ -34,7 +34,7 @@ fn assert_text(source: &str, expected: &str) {
     let checked = declaration(source);
     assert_eq!(checked.value_components(), &components(source));
     let text = format!("color:{source}!important");
-    let report = parse_style_attribute(&text);
+    let report = CssParser::default().parse_block_contents(&text);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
     for value in [&checked, &report.syntax()[0]] {
@@ -1117,9 +1117,15 @@ fn mixed_origin_calculated_weight_retains_the_actual_leaf_source() {
 fn clean_validation_and_important_declarations_preserve_alpha_weight_and_siblings() {
     let source =
         "color:color-mix(color(--P 0 / calc(1 / 128)) calc(.0078125%), blue)!important;opacity:.5";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert_eq!(&validate_style_attribute(source).unwrap(), report.syntax());
+    assert_eq!(
+        &CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .unwrap(),
+        report.syntax()
+    );
     assert_eq!(report.syntax().len(), 2);
     let before = report.syntax().clone();
     assert_eq!(report.syntax()[0].importance(), CssImportance::Important);
@@ -1139,17 +1145,23 @@ fn clean_validation_and_important_declarations_preserve_alpha_weight_and_sibling
 fn invalid_alpha_and_weight_dimensions_recover_without_losing_siblings() {
     for invalid in ["color(--P 0 / calc(1em))", "color-mix(red calc(1), blue)"] {
         let source = format!("color:{invalid};opacity:.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.diagnostics().len(), 1, "{invalid}");
         assert_eq!(report.syntax().len(), 1, "{invalid}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
             CssKnownProperty::Opacity
         );
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
         assert_color_grammar_failure(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Color),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
                 components(invalid),
                 CssImportance::Normal,
             ),
@@ -1169,10 +1181,7 @@ fn alpha_and_weight_substitutions_remain_pending_contributions() {
         let known = value.known().unwrap();
         assert!(known.property_value().is_none());
         assert_eq!(known.substitution_dependent().unwrap().as_css(), source);
-        assert!(matches!(
-            expand_declaration(&value).unwrap(),
-            CssExpansion::Pending(_)
-        ));
+        assert!(matches!(value.expand().unwrap(), CssExpansion::Pending(_)));
         assert_eq!(value, before);
     }
     let error = CssCalculation::<CssPercentage>::try_from_components(

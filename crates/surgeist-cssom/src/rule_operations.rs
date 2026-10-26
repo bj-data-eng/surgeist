@@ -175,7 +175,10 @@ pub(crate) fn component_limits(limits: &CssomLimits) -> CssComponentValueLimits 
     .expect("depth bounded by CSS provider maximum")
 }
 fn preflight_components(source: &str, limits: &CssomLimits) -> Result<(), CssomError> {
-    match parse_component_values_with_limits(source, component_limits(limits)) {
+    match CssComponentValues::parse(
+        &CssParser::new(CssParserContext::default(), component_limits(limits)),
+        source,
+    ) {
         Ok(_) => Ok(()),
         Err(error) if error.is_resource_limit() => Err(CssomError::Component(error)),
         // Feature grammar owns syntax rejection and inner declaration recovery;
@@ -257,9 +260,11 @@ impl CssomBatch {
         self.apply(|this| {
             let sheet = this.staged.editable_sheet_rules(id)?;
             let constructed = sheet.inputs.constructed;
-            let (candidate, diagnostics) =
-                classify_rule_syntax_with_limits(source, component_limits(&this.limits))
-                    .into_parts();
+            let (candidate, diagnostics) = CssRuleSyntax::classify(
+                &CssParser::new(CssParserContext::default(), component_limits(&this.limits)),
+                source,
+            )
+            .into_parts();
             check_resource_diagnostics(&diagnostics)?;
             let candidate = candidate.ok_or_else(syntax)?;
             if constructed
@@ -301,9 +306,11 @@ impl CssomBatch {
             if index > this.staged.lists[list].len() {
                 return Err(CssomError::Source(CssomException::IndexSize));
             }
-            let (candidate, diagnostics) =
-                classify_rule_syntax_with_limits(source, component_limits(&this.limits))
-                    .into_parts();
+            let (candidate, diagnostics) = CssRuleSyntax::classify(
+                &CssParser::new(CssParserContext::default(), component_limits(&this.limits)),
+                source,
+            )
+            .into_parts();
             check_resource_diagnostics(&diagnostics)?;
             this.insert_prepared_rule(
                 RuleDestination::Group(id.clone()),
@@ -405,12 +412,10 @@ impl CssomBatch {
         let authored = match admitted {
             Some(rule) => rule,
             None if nested => {
-                let (declarations, diagnostics) = parser
-                    .parse_declaration_block_contents_with_limits(
-                        source,
-                        component_limits(&self.limits),
-                    )
-                    .into_parts();
+                let (declarations, diagnostics) =
+                    CssParser::new(parser, component_limits(&self.limits))
+                        .parse_block_contents(source)
+                        .into_parts();
                 check_resource_diagnostics(&diagnostics)?;
                 if declarations.is_empty() {
                     return Err(syntax());
@@ -619,11 +624,11 @@ impl CssomBatch {
             }
             let namespaces = this.staged.rule_namespaces(id)?;
             let context = this.staged.selector_context(id)?;
-            let (parsed, diagnostics) = parse_style_selector_list_with_limits(
+            let (parsed, diagnostics) = CssParsedStyleSelectors::parse(
+                &CssParser::new(CssParserContext::default(), component_limits(&this.limits)),
                 source,
                 &namespaces,
                 context,
-                component_limits(&this.limits),
             )
             .into_parts();
             check_resource_diagnostics(&diagnostics)?;
@@ -667,7 +672,8 @@ impl CssomBatch {
             }
             // The component owner preflights the whole raw input under product quotas.
             preflight_components(source, &this.limits)?;
-            let (parsed, diagnostics) = parse_page_selector_list(source).into_parts();
+            let (parsed, diagnostics) =
+                CssPageSelectorList::parse(&CssParser::default(), source).into_parts();
             check_resource_diagnostics(&diagnostics)?;
             let Some(parsed) = parsed else {
                 return Ok((false, diagnostics));
@@ -699,7 +705,8 @@ impl CssomBatch {
                 return Err(CssomError::WrongKind);
             }
             preflight_components(source, &this.limits)?;
-            let (parsed, diagnostics) = parse_keyframe_selector_list(source).into_parts();
+            let (parsed, diagnostics) =
+                CssParsedKeyframeSelectors::parse(&CssParser::default(), source).into_parts();
             check_resource_diagnostics(&diagnostics)?;
             let parsed = parsed.ok_or_else(syntax)?;
             let inputs = this.staged.context.clone();
@@ -810,12 +817,11 @@ impl CssomBatch {
             };
             let list = children.clone();
             preflight_components(source, &this.limits)?;
-            let (parsed, diagnostics) = this
-                .staged
-                .context
-                .parser_context()
-                .parse_keyframe_rule(source)
-                .into_parts();
+            let (parsed, diagnostics) = CssParsedKeyframeRule::parse(
+                &CssParser::new(this.staged.context.parser_context(), Default::default()),
+                source,
+            )
+            .into_parts();
             check_resource_diagnostics(&diagnostics)?;
             let Some(parsed) = parsed else {
                 return Ok((None, diagnostics));
@@ -1130,7 +1136,8 @@ impl State {
             _ => return Err(CssomError::WrongKind),
         };
         preflight_components(source, limits)?;
-        let (query, diagnostics) = parse_keyframe_selector_list(source).into_parts();
+        let (query, diagnostics) =
+            CssParsedKeyframeSelectors::parse(&CssParser::default(), source).into_parts();
         check_resource_diagnostics(&diagnostics)?;
         let Some(query) = query else {
             return Ok(None);

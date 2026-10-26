@@ -204,7 +204,7 @@ fn exact_cardinality_commas_exhaustion_and_same_kind_are_required() {
             "light-dark(light-dark(red, url(a.svg)), blue)",
         ] {
             let source = format!("{property}:{invalid};opacity:.5");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(report.syntax().len(), 1, "{source}");
             assert_eq!(
                 report.syntax()[0].known().unwrap().property(),
@@ -223,7 +223,12 @@ fn exact_cardinality_commas_exhaustion_and_same_kind_are_required() {
                 "{source}"
             );
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-            assert!(validate_style_attribute(&source).is_err());
+            assert!(
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .is_err()
+            );
         }
     }
 }
@@ -240,7 +245,7 @@ fn property_contexts_reject_the_other_form_and_invalid_color_arguments() {
         "color:contrast-color(red, blue)",
         "color:device-cmyk(0 0 1)",
     ] {
-        let report = parse_style_attribute(&format!("{source};opacity:.5"));
+        let report = CssParser::default().parse_block_contents(format!("{source};opacity:.5"));
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -265,7 +270,12 @@ fn selected_color_consumers_admit_light_dark_without_selecting_a_branch() {
         let value = declaration(&source);
         assert!(value.known().unwrap().property_value().is_some());
         assert_eq!(value.importance(), CssImportance::Important);
-        assert!(validate_style_attribute(&source).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_ok()
+        );
     }
     for source in [
         "border:1px solid light-dark(red, blue)",
@@ -307,7 +317,13 @@ fn selected_image_consumers_admit_light_dark_image_and_none_branches() {
             value.known().unwrap().property_value().is_some(),
             "{source}"
         );
-        assert!(validate_style_attribute(source).is_ok(), "{source}");
+        assert!(
+            CssParser::default()
+                .parse_block_contents(source)
+                .into_validation_result()
+                .is_ok(),
+            "{source}"
+        );
     }
 }
 
@@ -377,7 +393,8 @@ fn background_keeps_final_color_duplicate_and_layer_recovery_contracts() {
         "light-dark(red, url(a.svg))",
         "light-dark(none, none) / cover",
     ] {
-        let report = parse_style_attribute(&format!("background:{invalid};color:green"));
+        let report =
+            CssParser::default().parse_block_contents(format!("background:{invalid};color:green"));
         assert_eq!(report.syntax().len(), 1, "{invalid}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -453,8 +470,9 @@ fn parsed_and_programmatic_components_keep_origin_importance_and_raw_identity() 
         Default::default(),
     )
     .unwrap();
-    let programmatic = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    let programmatic = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         graph.clone(),
         CssImportance::Important,
     )
@@ -495,7 +513,7 @@ fn pending_reentry_preserves_color_image_and_background_replacement_provenance()
         ),
     ] {
         let source = declaration(&format!("{property}:var(--choice)!important"));
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending {property}")
         };
         for invalid in [
@@ -505,7 +523,7 @@ fn pending_reentry_preserves_color_image_and_background_replacement_provenance()
         ] {
             assert!(
                 pending
-                    .reenter(parse_component_values(invalid).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                     .unwrap_err()
                     .replacement_error()
                     .is_some(),
@@ -514,11 +532,11 @@ fn pending_reentry_preserves_color_image_and_background_replacement_provenance()
         }
         assert!(
             pending
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
-        let replacement = parse_component_values(replacement).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), replacement).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -537,11 +555,9 @@ fn pending_reentry_preserves_color_image_and_background_replacement_provenance()
 
 #[test]
 fn normalization_retains_color_and_image_order_values_and_sources() {
-    let report = parse_sheet(
-        ".a{color:light-dark(red, blue)!important;background-image:light-dark(none, url(a.svg));mask-image:light-dark(none, none)}",
-    );
+    let report = CssParser::default().parse_sheet(".a{color:light-dark(red, blue)!important;background-image:light-dark(none, url(a.svg));mask-image:light-dark(none, none)}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -704,9 +720,11 @@ fn nested_color_and_image_grammar_obeys_the_shared_256_level_ceiling() {
         for _ in 0..256 {
             text = format!("light-dark({text}, {leaf})");
         }
-        let components = parse_component_values(&text).expect("exact shared component ceiling");
-        let source = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let components = CssComponentValues::parse(&CssParser::default(), &text)
+            .expect("exact shared component ceiling");
+        let source = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components,
             CssImportance::Normal,
         )
@@ -726,16 +744,13 @@ fn nested_color_and_image_grammar_obeys_the_shared_256_level_ceiling() {
             }
             _ => panic!("selected deep value"),
         }
-        let report = parse_style_attribute(&format!(
-            "{}:light-dark({text}, {leaf})",
-            property.canonical_name()
-        ));
-        assert!(!report.is_clean());
-        assert!(
-            report
-                .diagnostics()
-                .iter()
-                .any(|v| v.error().code() == CssErrorCode::NestingLimit)
+        let source = format!("{}:light-dark({text}, {leaf})", property.canonical_name());
+        let report = CssParser::default().parse_block_contents(&source);
+        assert!(report.syntax().is_empty());
+        crate::css::support::parse_report::assert_contents_refused(
+            &report,
+            &source,
+            "light-dark depth 257",
         );
     }
 }
@@ -749,7 +764,8 @@ fn full_image_subtree_nesting_errors_survive_ambiguous_consumer_retries() {
     for _ in 0..256 {
         text = format!("light-dark({text}, none)");
     }
-    let components = parse_component_values(&text).expect("raw graph fits its ceiling");
+    let components = CssComponentValues::parse(&CssParser::default(), &text)
+        .expect("raw graph fits its ceiling");
     assert_eq!(components.nesting_depth(), 256);
     assert_eq!(
         components
@@ -779,8 +795,9 @@ fn full_image_subtree_nesting_errors_survive_ambiguous_consumer_retries() {
         CssKnownProperty::ListStyle,
         CssKnownProperty::BorderImage,
     ] {
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components.clone(),
             CssImportance::Normal,
         )
@@ -793,7 +810,7 @@ fn full_image_subtree_nesting_errors_survive_ambiguous_consumer_retries() {
             property.canonical_name()
         );
         let source = declaration(&format!("{}:var(--image)", property.canonical_name()));
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending image consumer")
         };
         let error = pending.reenter(components.clone()).unwrap_err();

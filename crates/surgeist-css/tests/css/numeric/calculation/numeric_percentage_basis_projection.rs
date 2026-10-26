@@ -3,13 +3,13 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification
 
 use surgeist_css::{
-    CssCalculation, CssLengthPercentage, CssNonNegative, CssNumeric, CssNumericDimension,
-    parse_component_values,
+    CssCalculation, CssComponentValues, CssLengthPercentage, CssNonNegative, CssNumeric,
+    CssNumericDimension, CssParser,
 };
 
 fn specified(source: &str) -> String {
     let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
-        parse_component_values(source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -52,7 +52,7 @@ fn comparisons_preserve_the_unknown_percentage_basis() {
 #[test]
 fn same_unit_length_sum_can_collapse_before_scalar_multiplication() {
     let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
-        parse_component_values("calc((1px + 2px) * 3)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc((1px + 2px) * 3)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -68,7 +68,7 @@ fn same_unit_length_sum_can_collapse_before_scalar_multiplication() {
 #[test]
 fn compatible_absolute_units_can_collapse_before_scalar_multiplication() {
     let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
-        parse_component_values("calc((1in + 2px) * 3)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc((1in + 2px) * 3)").unwrap(),
         Default::default(),
     )
     .unwrap();

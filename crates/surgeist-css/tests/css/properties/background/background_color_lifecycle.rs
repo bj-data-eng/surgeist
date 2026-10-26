@@ -19,7 +19,7 @@ fn color(source: &CssDeclaration) -> &CssColor {
 
 fn completed(source: &CssDeclaration) -> CssLonghandContribution {
     let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).expect("background-color must expand")
+        source.expand().expect("background-color must expand")
     else {
         panic!("completed terminal")
     };
@@ -79,25 +79,25 @@ fn ordinary_colors_expand_once_retaining_checked_source_and_importance() {
 #[test]
 fn pending_color_reentry_is_strict_reusable_and_retains_replacement_origins() {
     let source = declaration("background-color:var(--paint)!important");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("substitution-dependent color is pending")
     };
     assert!(pending.source().same_occurrence(&source));
     for invalid in ["", "red blue", "10px", "rgb(1 2)"] {
         let error = pending
-            .reenter(parse_component_values(invalid).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
             .unwrap_err();
         assert!(error.replacement_error().is_some());
     }
     for residual in ["var(--again)", "env(paint)", "attr(paint)"] {
         assert!(
             pending
-                .reenter(parse_component_values(residual).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), residual).unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
     }
-    let parsed = parse_component_values("red").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "red").unwrap();
     let programmatic = CssComponentValues::try_new(
         vec![CssComponentValue::try_ident("currentcolor").unwrap()],
         Default::default(),
@@ -128,7 +128,7 @@ fn pending_color_reentry_is_strict_reusable_and_retains_replacement_origins() {
             );
         }
     }
-    let global = parse_component_values("unset").unwrap();
+    let global = CssComponentValues::parse(&CssParser::default(), "unset").unwrap();
     let CssContributions::Longhands(items) = pending.reenter(global.clone()).unwrap() else {
         panic!("symbolic global replacement")
     };
@@ -149,9 +149,9 @@ fn pending_color_reentry_is_strict_reusable_and_retains_replacement_origins() {
 #[test]
 fn normalization_keeps_ordered_occurrences_and_counts_one_unit_each() {
     let css = ".a{background-color:red!important; background-color:currentcolor}.b{background-color:var(--paint)}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -197,7 +197,7 @@ fn normalization_keeps_ordered_occurrences_and_counts_one_unit_each() {
     };
     assert!(handle.source().same_occurrence(pending.source()));
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 2))
@@ -244,7 +244,7 @@ fn invalid_colors_drop_only_the_declaration_with_structured_diagnostics() {
         ("rgb(1 2)", CssErrorCode::InvalidColorSyntax),
     ] {
         let css = format!("background-color:{invalid};background-image:none");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid color diagnostic")
         };
@@ -269,7 +269,11 @@ fn invalid_colors_drop_only_the_declaration_with_structured_diagnostics() {
             CssKnownProperty::BackgroundImage
         );
         assert_eq!(
-            validate_style_attribute(&css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }

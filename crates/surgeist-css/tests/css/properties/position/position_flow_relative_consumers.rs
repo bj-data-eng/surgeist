@@ -7,7 +7,7 @@ use crate::css::support::sole_declaration;
 use surgeist_css::*;
 
 fn clean(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     report.syntax()[0].clone()
 }
@@ -111,7 +111,7 @@ fn background_position_and_transform_origin_stay_physical() {
         "transform-origin: x-start top",
         "transform-origin: start end",
     ] {
-        let report = parse_style_attribute(rejected);
+        let report = CssParser::default().parse_block_contents(rejected);
         assert!(!report.is_clean(), "{rejected}");
         assert!(report.syntax().is_empty(), "{rejected}");
     }

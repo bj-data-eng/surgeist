@@ -5172,7 +5172,7 @@ pub(in crate::store) mod accounting_tests {
     }
     #[test]
     fn multiple_style_mandatory_tail_cannot_publish_without_closing_revision_headroom() {
-        use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+        use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
         use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(
@@ -5253,20 +5253,20 @@ pub(in crate::store) mod accounting_tests {
             )
             .unwrap();
         let context = CssParserContext::default();
-        let body = context
-            .parse_sheet_utf16_with_limits(
+        let body = CssParser::new(context, Default::default())
+            .parse_sheet_utf16(
                 create.source().text().clone(),
                 CssUtf16InputLimits::default(),
                 || Ok::<_, ()>(()),
             )
             .unwrap();
-        let media = context
-            .parse_media_query_list_utf16_with_limits(
-                formation::allocated_arc(Vec::new()),
-                CssUtf16InputLimits::default(),
-                || Ok::<_, ()>(()),
-            )
-            .unwrap();
+        let media = CssMediaQueryList::parse_utf16(
+            &CssParser::new(context, Default::default()),
+            formation::allocated_arc(Vec::new()),
+            CssUtf16InputLimits::default(),
+            || Ok::<_, ()>(()),
+        )
+        .unwrap();
         let mut inputs = CssomSheetInputs::external(version, true);
         inputs.owner = Some("first-style".into());
         let mut edit = root
@@ -5307,7 +5307,7 @@ pub(in crate::store) mod accounting_tests {
         create: &DomStyleRequest,
         cancel: &AtomicBool,
     ) -> DomStyleCssomRoot {
-        use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+        use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
         use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
         let root = DomStyleCssomRoot::new(
             create.cssom_root().unwrap(),
@@ -5331,20 +5331,20 @@ pub(in crate::store) mod accounting_tests {
             )
             .unwrap();
         let context = CssParserContext::default();
-        let body = context
-            .parse_sheet_utf16_with_limits(
+        let body = CssParser::new(context, Default::default())
+            .parse_sheet_utf16(
                 create.source().text().clone(),
                 CssUtf16InputLimits::default(),
                 || Ok::<_, ()>(()),
             )
             .unwrap();
-        let media = context
-            .parse_media_query_list_utf16_with_limits(
-                formation::allocated_arc(Vec::new()),
-                CssUtf16InputLimits::default(),
-                || Ok::<_, ()>(()),
-            )
-            .unwrap();
+        let media = CssMediaQueryList::parse_utf16(
+            &CssParser::new(context, Default::default()),
+            formation::allocated_arc(Vec::new()),
+            CssUtf16InputLimits::default(),
+            || Ok::<_, ()>(()),
+        )
+        .unwrap();
         let mut inputs = CssomSheetInputs::external(version, true);
         inputs.owner = Some("first-style".into());
         let mut edit = root

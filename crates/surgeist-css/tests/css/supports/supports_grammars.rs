@@ -1,11 +1,12 @@
 use surgeist_css::{
     CssConditionKind, CssErrorCode, CssImportance, CssKnownProperty, CssNamespaceConstraint,
-    CssPropertyNameRef, CssRecoveryAction, CssRule, CssSelector, CssSupportsLeaf, parse_sheet,
+    CssParser, CssPropertyNameRef, CssRecoveryAction, CssRule, CssSelector, CssSupportsLeaf,
 };
 
 #[test]
 fn supports_conditions_and_group_rules_follow_conditional3() {
-    let report = parse_sheet("@supports (display: grid) { .x { color: red; } }");
+    let report =
+        CssParser::default().parse_sheet("@supports (display: grid) { .x { color: red; } }");
 
     assert!(report.is_clean(), "diagnostics: {:?}", report.diagnostics());
     assert_eq!(report.syntax().rules().len(), 1);
@@ -40,7 +41,7 @@ fn supports_declaration_tests_preserve_authored_false_syntax_without_diagnostics
         "@supports (display:) {}",
         "@supports ( display: grid ) {}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
     let declarations = report
@@ -83,7 +84,7 @@ fn supports_declaration_tests_preserve_authored_false_syntax_without_diagnostics
 
 #[test]
 fn supports_boolean_operators_require_grouping_when_they_mix() {
-    let valid = parse_sheet(concat!(
+    let valid = CssParser::default().parse_sheet(concat!(
         "@supports not (display: grid) {}",
         "@supports (display: grid) and (color: red) {}",
         "@supports ((display: grid) or (color: red)) and (width: 1px) {}",
@@ -111,7 +112,7 @@ fn supports_boolean_operators_require_grouping_when_they_mix() {
             if matches!(group.kind(), CssConditionKind::Or(or) if or.conditions().len() == 2)
     ));
 
-    let malformed = parse_sheet(concat!(
+    let malformed = CssParser::default().parse_sheet(concat!(
         ".before { color: red; }",
         "@supports (display: grid) and (color: red) or (width: 1px) {}",
         ".after { color: blue; }",
@@ -132,7 +133,7 @@ fn supports_boolean_operators_require_grouping_when_they_mix() {
 
 #[test]
 fn supports_general_enclosed_and_selector_fallback_preserve_exact_units() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@supports future( a, nested([x]) ) {}",
         "@supports (future stuff(\")\") [x]) {}",
         "@supports selector(.card > .item:hover) {}",
@@ -179,7 +180,7 @@ fn supports_general_enclosed_and_selector_fallback_preserve_exact_units() {
 
 #[test]
 fn supports_selector_uses_active_names_and_falls_back_for_balanced_remainders() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@namespace svg \"urn:svg\";",
         "@supports selector(svg|a) {}",
         "@supports selector(undeclared|a) {}",
@@ -222,7 +223,7 @@ fn supports_selector_uses_active_names_and_falls_back_for_balanced_remainders() 
 
 #[test]
 fn supports_rules_work_in_conditional_nested_style_and_scoped_contexts() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@media screen { @supports (display: grid) { .media { color: red; } } }",
         ".host { @supports (display: grid) { color: blue; & .child { width: 1px; } } }",
         "@scope (.root) { @supports selector(.item) { .item { height: 2px; } } }",
@@ -277,7 +278,7 @@ fn supports_rules_work_in_conditional_nested_style_and_scoped_contexts() {
 
 #[test]
 fn invalid_supports_children_do_not_drop_the_valid_parent_or_later_sibling() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@supports (display: grid) {",
         "@import 'invalid-here.css';",
         "@supports (color: red) { .kept { color: red; } }",
@@ -306,7 +307,7 @@ fn supports_non_bmp_positions_and_repeated_failures_remain_ordered() {
         "@supports (f:g) or (h:i) and (j:k) {}",
         "@supports (color: red) {}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(
         matches!(
             report.syntax().rules(),

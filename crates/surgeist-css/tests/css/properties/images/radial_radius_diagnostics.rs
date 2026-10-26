@@ -2,8 +2,7 @@
 //! The public diagnostic contract uses original UTF-8 offsets and UTF-16 columns.
 
 use surgeist_css::{
-    CssErrorCode, CssKnownProperty, CssRecoveryAction, CssRule, CssTokenKind, parse_sheet,
-    parse_style_attribute, validate_style_attribute,
+    CssErrorCode, CssKnownProperty, CssParser, CssRecoveryAction, CssRule, CssTokenKind,
 };
 
 fn assert_failure(source: &str, diagnostic: &surgeist_css::CssRecoveryDiagnostic) {
@@ -58,7 +57,7 @@ fn malformed_second_ellipse_radius_identifies_its_function_and_preserves_color()
         let source = format!(
             "background-image:{gradient}(ellipse 1px calc(2px + bad), red, blue);color:red"
         );
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one rejection");
         };
@@ -69,7 +68,11 @@ fn malformed_second_ellipse_radius_identifies_its_function_and_preserves_color()
             CssKnownProperty::Color
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -78,7 +81,7 @@ fn malformed_second_ellipse_radius_identifies_its_function_and_preserves_color()
 #[test]
 fn malformed_second_radius_uses_original_unicode_coordinates_in_a_stylesheet() {
     let source = ".subject {\n--😀: kept; background-image:radial-gradient(ellipse 1px calc(2px + bad), red, blue);color:red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [diagnostic] = report.diagnostics() else {
         panic!("one rejection");
     };
@@ -96,7 +99,7 @@ fn malformed_second_radius_uses_original_unicode_coordinates_in_a_stylesheet() {
 #[test]
 fn malformed_circle_radius_already_identifies_its_function() {
     let source = "background-image:radial-gradient(circle calc(2px + bad), red, blue);color:red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     let [diagnostic] = report.diagnostics() else {
         panic!("one rejection");
     };

@@ -1,6 +1,6 @@
 use surgeist_css::{
-    CssBlendMode, CssBoxEdgeKeyword, CssErrorCode, CssKnownProperty, CssPropertyNameRef,
-    CssRecoveryAction, CssRule, parse_sheet, parse_style_attribute,
+    CssBlendMode, CssBoxEdgeKeyword, CssErrorCode, CssKnownProperty, CssParser, CssPropertyNameRef,
+    CssRecoveryAction, CssRule,
 };
 
 #[derive(Clone, Copy)]
@@ -180,7 +180,7 @@ fn text_four_percentage_word_spacing_keeps_original_neighbors() {
     // CSS Text 4 §8.1 admits a signed <length-percentage>; this captured
     // input is valid, while `1fr` remains the recovery control above.
     let source = "--😀: kept; word-spacing: 10%; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(
         property_names(report.syntax()),
@@ -199,7 +199,12 @@ fn text_four_percentage_word_spacing_keeps_original_neighbors() {
             .as_css(),
         " 10%"
     );
-    assert!(surgeist_css::validate_style_attribute(source).is_ok());
+    assert!(
+        surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .is_ok()
+    );
 }
 
 fn assert_one_invalid_declaration(
@@ -209,7 +214,7 @@ fn assert_one_invalid_declaration(
     responsible: usize,
     expected_property: CssKnownProperty,
 ) {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(
         property_names(report.syntax()),
         ["--😀", "color"],
@@ -263,7 +268,9 @@ fn assert_one_invalid_declaration(
     );
 
     assert_eq!(
-        surgeist_css::validate_style_attribute(source)
+        surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered residual syntax")
             .diagnostics(),
         report.diagnostics(),
@@ -316,7 +323,7 @@ fn residual_property_recovery_preserves_siblings_and_boundaries() {
         "background-blend-mode: normal multiply; ",
         "color: red",
     );
-    let repeated_report = parse_style_attribute(repeated);
+    let repeated_report = CssParser::default().parse_block_contents(repeated);
     assert_eq!(property_names(repeated_report.syntax()), ["color"]);
     assert_eq!(repeated_report.diagnostics().len(), 3);
     for (diagnostic, property) in repeated_report.diagnostics().iter().zip([
@@ -340,7 +347,7 @@ fn residual_property_recovery_preserves_siblings_and_boundaries() {
         "& .child { contain: size size; width: 1px; } word-spacing: 2px; } ",
         ".after { height: 3px; }",
     );
-    let nested_report = parse_sheet(nested);
+    let nested_report = CssParser::default().parse_sheet(nested);
     assert_eq!(nested_report.diagnostics().len(), 2);
     assert!(nested_report.diagnostics().iter().all(|diagnostic| {
         diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
@@ -358,7 +365,7 @@ fn residual_property_recovery_preserves_siblings_and_boundaries() {
     assert_eq!(property_names(sibling.declarations()), ["height"]);
 
     let eof_source = "quotes: \"open\"";
-    let eof_report = parse_style_attribute(eof_source);
+    let eof_report = CssParser::default().parse_block_contents(eof_source);
     let [eof] = eof_report.diagnostics() else {
         panic!("odd quotes value at EOF must recover exactly once");
     };
@@ -376,7 +383,7 @@ fn residual_property_recovery_preserves_siblings_and_boundaries() {
             ")".repeat(depth - 1),
         );
         let source = format!("contain: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -393,21 +400,17 @@ fn residual_property_recovery_preserves_siblings_and_boundaries() {
     );
     let invalid = format!("contain: {value};");
     let source = format!("{invalid} color: red");
-    let report = parse_style_attribute(&source);
-    assert_eq!(property_names(report.syntax()), ["color"]);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("depth 257 must produce exactly one bounded diagnostic");
-    };
-    assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit,);
-    assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
-    assert_eq!(diagnostic.span().end().byte_offset().value(), invalid.len());
+    let report = CssParser::default().parse_block_contents(&source);
+    // Block contents charges the component limits for the whole input, so the
+    // valid sibling is refused with the over-deep declaration.
+    assert!(report.syntax().is_empty());
+    crate::css::support::parse_report::assert_contents_refused(&report, &source, "depth 257");
 
     for depth in [255_usize, 256, 257] {
         let invalid_value = format!("{}x{}", "f(".repeat(depth), ")".repeat(depth));
         let invalid = format!("contain:{invalid_value};");
         let nested_source = format!("@page{{{invalid}margin-left:1cm;}}.after{{height:1px;}}");
-        let nested_report = parse_sheet(&nested_source);
+        let nested_report = CssParser::default().parse_sheet(&nested_source);
         assert!(matches!(
             nested_report.syntax().rules(),
             [CssRule::Page(_), CssRule::Style(_)]
@@ -464,7 +467,9 @@ fn residual_property_recovery_preserves_siblings_and_boundaries() {
         }
 
         assert_eq!(
-            surgeist_css::validate_sheet(&nested_source)
+            surgeist_css::CssParser::default()
+                .parse_sheet(&nested_source)
+                .into_validation_result()
                 .expect_err("strict validation rejects nested residual recovery")
                 .diagnostics(),
             nested_report.diagnostics(),

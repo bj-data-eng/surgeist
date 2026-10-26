@@ -6,16 +6,15 @@
 
 use surgeist_css::{
     CssAbsoluteFontWeight, CssAngle, CssAspectRatioValue, CssAuthoredFontFeatureSettings,
-    CssAuthoredFontFeatureValue, CssCalculation, CssComponentValueRef, CssFlex, CssFontStyle,
-    CssFontWeight, CssFontWeightRange, CssFontWidth, CssInteger, CssKnownPropertyValueRef,
-    CssLength, CssLengthPercentage, CssLineHeight, CssNonNegative, CssNumber, CssNumeric,
-    CssNumericConstructionError, CssObliqueAngleRange, CssPercentage, CssPositive,
-    CssSpecifiedRatio, CssStripeThickness, CssValueOrigin, parse_component_values,
-    parse_style_attribute,
+    CssAuthoredFontFeatureValue, CssCalculation, CssComponentValueRef, CssComponentValues, CssFlex,
+    CssFontStyle, CssFontWeight, CssFontWeightRange, CssFontWidth, CssInteger,
+    CssKnownPropertyValueRef, CssLength, CssLengthPercentage, CssLineHeight, CssNonNegative,
+    CssNumber, CssNumeric, CssNumericConstructionError, CssObliqueAngleRange, CssParser,
+    CssPercentage, CssPositive, CssSpecifiedRatio, CssStripeThickness, CssValueOrigin,
 };
 
 fn property(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList> {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1, "{source}");
     // Syntax 3 §5.4.9: the implicit closure at EOF is a parse error.
     crate::css::support::value_assertions::assert_first_code(
@@ -123,7 +122,7 @@ fn number_constructors_reject_recovered_math_and_accept_closed_math() {
     );
     let closed = || {
         CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values("calc(1 + 2)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(1 + 2)").unwrap(),
             Default::default(),
         )
         .unwrap()
@@ -155,7 +154,7 @@ fn percentage_constructors_reject_recovered_math_and_accept_closed_math() {
     );
     let closed = || {
         CssCalculation::<CssPercentage>::try_from_components(
-            parse_component_values("calc(50% + 10%)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(50% + 10%)").unwrap(),
             Default::default(),
         )
         .unwrap()
@@ -187,7 +186,7 @@ fn length_constructors_reject_recovered_math_and_accept_closed_math() {
     );
     let closed = || {
         CssCalculation::<CssLength>::try_from_components(
-            parse_component_values("calc(1px + 2px)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(1px + 2px)").unwrap(),
             Default::default(),
         )
         .unwrap()
@@ -219,7 +218,7 @@ fn length_percentage_constructors_reject_recovered_math_and_accept_closed_math()
     );
     let closed = || {
         CssCalculation::<CssLengthPercentage>::try_from_components(
-            parse_component_values("calc(1px + 2%)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(1px + 2%)").unwrap(),
             Default::default(),
         )
         .unwrap()
@@ -244,7 +243,11 @@ fn closed<C>(
         surgeist_css::CssComponentValueLimits,
     ) -> Result<C, CssNumericConstructionError>,
 ) -> C {
-    construct(parse_component_values(text).unwrap(), Default::default()).unwrap()
+    construct(
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+        Default::default(),
+    )
+    .unwrap()
 }
 
 // The five ranged domains of #1390 share the #1374 checked/recovering split.
@@ -390,7 +393,7 @@ fn flex_constructors_reject_recovered_math_and_accept_closed_math() {
     );
     let closed = || {
         CssCalculation::<CssFlex>::try_from_components(
-            parse_component_values("calc(2fr + 3fr)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(2fr + 3fr)").unwrap(),
             Default::default(),
         )
         .unwrap()

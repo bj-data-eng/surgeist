@@ -4,7 +4,7 @@ use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn declaration(input: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("display:{input}!important"));
+    let report = CssParser::default().parse_block_contents(format!("display:{input}!important"));
     assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
     report.syntax()[0].clone()
@@ -129,8 +129,9 @@ fn every_constructed_specified_value_has_independent_canonical_text_and_payload(
             tokens.push(CssComponentValue::try_token(word).unwrap());
         }
         let components = CssComponentValues::try_new(tokens, Default::default()).unwrap();
-        let constructed = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Display),
+        let constructed = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Display)),
             components.clone(),
             CssImportance::Normal,
         )
@@ -150,7 +151,7 @@ fn every_constructed_specified_value_has_independent_canonical_text_and_payload(
             (&constructed, CssImportance::Normal),
         ] {
             let CssExpansion::Contributions(CssContributions::Longhands(contributions)) =
-                expand_declaration(source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("one ordinary longhand")
             };

@@ -20,7 +20,7 @@ type Kind = SerializationFailure;
 fn length_percentage(source: &str) -> CssNumeric<CssLengthPercentage> {
     CssNumeric::<CssLengthPercentage>::try_from_calculation(
         CssCalculation::<CssLengthPercentage>::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -106,7 +106,7 @@ fn flex_fraction_basis_keeps_magnitude_functions_symbolic() {
     ] {
         let value = CssNumeric::<CssFlex, CssNonNegative>::try_from_calculation(
             CssCalculation::<CssFlex>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default(),
             )
             .unwrap(),

@@ -35,7 +35,7 @@ fn assert_classes(list: Option<&CssScopeSelectorList>, names: Option<&[&str]>) {
 }
 
 fn assert_last_scope_bound_count(input: &CssSheet, source: &str, is_root: bool, count: usize) {
-    let normalized = normalize_sheet(input).unwrap();
+    let normalized = input.normalize(Default::default()).unwrap();
     let target = source.rfind("@scope").unwrap();
     let bounds: Vec<_> = normalized
         .items()
@@ -87,7 +87,11 @@ fn parsed_scope_preserves_all_boundary_omissions_and_selector_order() {
         assert_classes(input.limit(), limits);
         assert!(input.rules().rules().is_empty());
         assert_eq!(input.position().unwrap().byte_offset().value(), 0);
-        let fragment = parse_rule(source, &CssNamespaceContext::default());
+        let fragment = CssRule::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(
             fragment.is_clean(),
             "{source}: {:?}",
@@ -148,7 +152,7 @@ fn scope_relative_limits_are_admitted_in_ordinary_style_and_scope_contexts() {
             format!(".parent{{@scope(.root)to ({bound}){{}}}}"),
             format!("@scope(.outer){{@scope(.root)to ({bound}){{}}}}"),
         ] {
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(report.syntax().rules().len(), 1);
             assert_last_scope_bound_count(report.syntax(), &source, false, 2);
@@ -163,13 +167,13 @@ fn scope_relative_roots_require_style_or_scope_ancestry() {
             format!(".parent{{@scope({combinator} .root){{}}}}"),
             format!("@scope(.outer){{@scope({combinator} .root){{}}}}"),
         ] {
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(report.syntax().rules().len(), 1);
             assert_last_scope_bound_count(report.syntax(), &source, true, 1);
         }
         let source = format!("@scope({combinator} .root){{}}.after{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean(), "{source}");
         assert!(
             report
@@ -206,7 +210,7 @@ fn malformed_and_pseudo_element_boundaries_drop_scope_without_losing_neighbors()
             format!(".parent{{@scope{prelude}{{.lost{{}}}}.after{{}}}}"),
             format!("@scope(.outer){{@scope{prelude}{{.lost{{}}}}.after{{}}}}"),
         ] {
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(!report.is_clean(), "{source}");
             assert!(
                 report
@@ -216,7 +220,7 @@ fn malformed_and_pseudo_element_boundaries_drop_scope_without_losing_neighbors()
                 "{source}: {:?}",
                 report.diagnostics()
             );
-            let normalized = normalize_report(&report).unwrap();
+            let normalized = report.normalize(Default::default()).unwrap();
             let styles: Vec<_> = normalized
                 .syntax()
                 .items()
@@ -286,7 +290,7 @@ fn contextual_relative_boundaries_reject_pseudo_elements() {
                 format!(".parent{{@scope{prelude}{{}}}}"),
                 format!("@scope(.outer){{@scope{prelude}{{}}}}"),
             ] {
-                let report = parse_sheet(&source);
+                let report = CssParser::default().parse_sheet(&source);
                 assert!(!report.is_clean(), "{source}");
                 assert!(
                     report
@@ -304,7 +308,7 @@ fn contextual_relative_boundaries_reject_pseudo_elements() {
 #[test]
 fn ordinary_scope_rejects_declarations_while_style_nested_scope_retains_runs() {
     let source = "@scope{.child{}opacity:.5;}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(!report.is_clean());
     let [CssRule::Scope(outer)] = report.syntax().rules() else {
         panic!("scope")

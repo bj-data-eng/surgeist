@@ -80,7 +80,7 @@ fn media_group_sample(payload: usize, grouped: bool) -> Stats {
     } else {
         enclosed.clone()
     };
-    let input = parse_component_values(&source).unwrap();
+    let input = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     let expected = if grouped {
         &children(&input.items()[0]).items()[0]
     } else {
@@ -127,7 +127,7 @@ fn media_value_sample(payload: usize, inside: bool) -> Stats {
     } else {
         format!("Future({comment})")
     };
-    let input = parse_component_values(&source).unwrap();
+    let input = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     let expected_origin = input.items()[0].origin().clone();
     let expected_function = if inside {
         children(&input.items()[0]).items().last().unwrap()
@@ -210,7 +210,7 @@ fn rejected_sample(payload: usize, property: CssKnownProperty, inside: bool) -> 
     } else {
         format!("calc({first} + 1s){comment} {companion}")
     };
-    let input = parse_component_values(&source).unwrap();
+    let input = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     let rate = property == CssKnownProperty::VoiceRate;
     let expected = if rate {
         input.items()[0].origin()
@@ -219,8 +219,9 @@ fn rejected_sample(payload: usize, property: CssKnownProperty, inside: bool) -> 
     }
     .clone();
     let (result, stats) = measured(|| {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             black_box(input),
             CssImportance::Important,
         )
@@ -270,11 +271,12 @@ fn conflicting_speech_sample(payload: usize, property: CssKnownProperty, inside:
     } else {
         format!("high {comment}calc(1Hz) absolute")
     };
-    let input = parse_component_values(&source).unwrap();
+    let input = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     let expected = input.items().last().unwrap().origin().clone();
     let (result, stats) = measured(|| {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             black_box(input),
             CssImportance::Normal,
         )
@@ -304,15 +306,16 @@ const SVG: CssParserContext =
 
 fn svg_sample(payload: usize, svg: bool) -> Stats {
     let source = format!("calc(90deg/*{}*/)", "x".repeat(payload));
-    let input = parse_component_values(&source).unwrap();
+    let input = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     let expected_origin = input.items()[0].origin().clone();
     let (result, stats) = measured(|| {
-        SVG.parse_property_value(
-            if svg {
+        CssDeclaration::try_from_components(
+            &CssParser::new(SVG, Default::default()),
+            CssPropertyTarget::Property(if svg {
                 CssPropertyNameRef::SvgGlyphOrientationVertical
             } else {
                 CssPropertyNameRef::Known(CssKnownProperty::Rotate)
-            },
+            }),
             black_box(input),
             CssImportance::Normal,
         )
@@ -372,7 +375,7 @@ fn svg_sample(payload: usize, svg: bool) -> Stats {
 fn retained_mixed_svg_outputs_survive_input_and_sibling_drop() {
     let (first, second, original) = {
         let source = String::from("/*😀*/90deg");
-        let parsed = parse_component_values(&source).unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
         let leaf = parsed.items().last().unwrap().clone();
         let original = leaf.origin().clone();
         let input = CssComponentValues::try_new(
@@ -386,20 +389,20 @@ fn retained_mixed_svg_outputs_survive_input_and_sibling_drop() {
             Default::default(),
         )
         .unwrap();
-        let first = SVG
-            .parse_property_value(
-                CssPropertyNameRef::SvgGlyphOrientationVertical,
-                input.clone(),
-                CssImportance::Normal,
-            )
-            .unwrap();
-        let second = SVG
-            .parse_property_value(
-                CssPropertyNameRef::SvgGlyphOrientationVertical,
-                input,
-                CssImportance::Normal,
-            )
-            .unwrap();
+        let first = CssDeclaration::try_from_components(
+            &CssParser::new(SVG, Default::default()),
+            CssPropertyTarget::Property(CssPropertyNameRef::SvgGlyphOrientationVertical),
+            input.clone(),
+            CssImportance::Normal,
+        )
+        .unwrap();
+        let second = CssDeclaration::try_from_components(
+            &CssParser::new(SVG, Default::default()),
+            CssPropertyTarget::Property(CssPropertyNameRef::SvgGlyphOrientationVertical),
+            input,
+            CssImportance::Normal,
+        )
+        .unwrap();
         (first, second, original)
     };
     drop(first);
@@ -435,7 +438,7 @@ fn retained_mixed_svg_outputs_survive_input_and_sibling_drop() {
 fn retained_mixed_media_outputs_survive_input_and_sibling_drop() {
     let (first, second, original) = {
         let source = String::from("/*😀*/1e2");
-        let parsed = parse_component_values(&source).unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
         let leaf = parsed.items().last().unwrap().clone();
         let original = leaf.origin().clone();
         let function = CssComponentValue::try_function(

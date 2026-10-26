@@ -362,14 +362,11 @@ impl CssCondition<CssSupportsLeaf> {
 impl CssSupportsDeclaration {
     pub(crate) fn try_from_components_in_context(
         values: CssComponentValues,
+        limits: CssComponentValueLimits,
         context: CssParserContext,
     ) -> Result<Self, CssSupportsConstructionError> {
         construct(values, |values| {
-            crate::parser::construct_supports_declaration_with_context(
-                values,
-                CssComponentValueLimits::default(),
-                context,
-            )
+            crate::parser::construct_supports_declaration_with_context(values, limits, context)
         })
     }
     /// Accepts a bare declaration, excluding its surrounding parentheses.
@@ -395,4 +392,150 @@ impl CssSupportsDeclaration {
         out.push_components(self.components())?;
         out.finish()
     }
+}
+impl CssCondition<CssSupportsLeaf> {
+    /// Checks `@supports` rule condition syntax under the parser's document mode.
+    ///
+    /// Unsupported declarations remain authored tests with no known typed view.
+    /// The parser supplies the component limits.
+    ///
+    /// # Errors
+    ///
+    /// Returns the typed construction failure of the first test the grammar rejects.
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+        namespaces: &CssNamespaceContext,
+    ) -> Result<Self, CssSupportsConstructionError> {
+        let limits = parser.component_limits();
+        let values =
+            crate::component_values::parse_component_values_with_limits(source.as_ref(), limits)?;
+        Self::try_from_components_in_context(values, namespaces, limits, parser.context())
+    }
+
+    /// Parses the condition-text overload of CSS.supports() with mandatory standards grammar.
+    /// This returns authored syntax and admission metadata, not an evaluated boolean.
+    /// A complete condition is tried first, then implicit parentheses on grammar mismatch.
+    /// Introduced punctuation is programmatic; child origins retain the supplied source.
+    ///
+    /// The parser supplies the component limits; the document mode is always Standards.
+    ///
+    /// # Errors
+    ///
+    /// Returns the typed construction failure of the first test the grammar rejects.
+    pub fn parse_condition_text(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> Result<Self, CssSupportsConstructionError> {
+        css_supports_condition(source.as_ref(), parser)
+    }
+}
+impl CssSupportsDeclaration {
+    /// Parses the property/value overload of CSS.supports() with mandatory standards grammar.
+    /// Each supplied argument retains its own source snapshot; no combined source is invented.
+    /// The property is a literal identifier without CSS whitespace or escape processing.
+    /// Root importance annotations are rejected, while unsupported ordinary values retain
+    /// an authored declaration test without a known typed view. This does not evaluate support.
+    ///
+    /// The parser supplies the component limits; the document mode is always Standards.
+    ///
+    /// # Errors
+    ///
+    /// Returns the typed construction failure of the property or value argument.
+    pub fn parse(
+        parser: &crate::CssParser,
+        property: impl AsRef<str>,
+        value: impl AsRef<str>,
+    ) -> Result<Self, CssSupportsConstructionError> {
+        css_supports_declaration(property.as_ref(), value.as_ref(), parser)
+    }
+}
+fn css_supports_condition(
+    source: &str,
+    parser: &crate::CssParser,
+) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
+    let limits = parser.component_limits();
+    let context = parser.context().standards();
+    let values = crate::component_values::parse_component_values_with_limits(source, limits)?;
+    let namespaces = CssNamespaceContext::default();
+    match CssCondition::<CssSupportsLeaf>::try_from_components_in_context(
+        values.clone(),
+        &namespaces,
+        limits,
+        context,
+    ) {
+        Ok(condition) => Ok(condition),
+        Err(error)
+            if error.is_invalid_condition_grammar() || error.is_invalid_declaration_grammar() =>
+        {
+            let block = CssComponentValue::try_block(CssBlockKind::Parenthesis, values)?;
+            CssCondition::<CssSupportsLeaf>::try_from_components_in_context(
+                CssComponentValues::try_new(vec![block], limits)?,
+                &namespaces,
+                limits,
+                context,
+            )
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn css_supports_declaration(
+    property: &str,
+    value: &str,
+    parser: &crate::CssParser,
+) -> Result<CssSupportsDeclaration, CssSupportsConstructionError> {
+    let limits = parser.component_limits();
+    let context = parser.context().standards();
+    let property_values =
+        crate::component_values::parse_component_values_with_limits(property, limits)?;
+    if let Some(origin) = property_values.first_implicit_origin() {
+        return Err(CssSupportsConstructionError::from(
+            SupportsConstructionKind::RecoveredInput {
+                origin: origin.clone(),
+            },
+        ));
+    }
+    if !matches!(property_values.items(), [component]
+        if matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) if name == property))
+    {
+        return Err(CssSupportsConstructionError::from(
+            SupportsConstructionKind::InvalidDeclarationGrammar {
+                origin: property_values
+                    .items()
+                    .first()
+                    .map_or(CssValueOrigin::Programmatic, |component| {
+                        component.origin().clone()
+                    }),
+            },
+        ));
+    }
+    let value = crate::component_values::parse_component_values_with_limits(value, limits)?;
+    if let Some(origin) = value.first_implicit_origin() {
+        return Err(CssSupportsConstructionError::from(
+            SupportsConstructionKind::RecoveredInput {
+                origin: origin.clone(),
+            },
+        ));
+    }
+    if let Some(component) = value.items().iter().find(|component| {
+        matches!(
+            component.view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Delim('!'))
+        )
+    }) {
+        return Err(CssSupportsConstructionError::from(
+            SupportsConstructionKind::InvalidDeclarationGrammar {
+                origin: component.origin().clone(),
+            },
+        ));
+    }
+    let mut items = property_values.items().to_vec();
+    items.push(CssComponentValue::try_token(":")?);
+    items.extend_from_slice(value.items());
+    CssSupportsDeclaration::try_from_components_in_context(
+        CssComponentValues::try_new(items, limits)?,
+        limits,
+        context,
+    )
 }

@@ -4,18 +4,22 @@
 //! and numeric range clamping to computed/used values, preserving specified math.
 
 use surgeist_css::{
-    CssComponentValueLimits, CssCounterStyleDescriptorKind as Kind,
-    CssCounterStyleDescriptorValue as Value, CssCounterStyleDescriptorValueRef as View,
-    CssCounterStyleRule, CssErrorCode, CssRecoveryAction, CssRule,
-    CssSerializationLimits as SerializationLimits, parse_component_values,
-    parse_counter_style_descriptor_value, parse_sheet, validate_sheet,
+    CssComponentValueLimits, CssComponentValues, CssCounterStyleDescriptorKind as Kind,
+    CssCounterStyleDescriptorValue as Value, CssCounterStyleDescriptorValue,
+    CssCounterStyleDescriptorValueRef as View, CssCounterStyleRule, CssErrorCode, CssParser,
+    CssRecoveryAction, CssRule, CssSerializationLimits as SerializationLimits,
 };
 
 fn rule(body: &str) -> CssCounterStyleRule {
     let source = format!("@counter-style Math {{ {body} }}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert!(validate_sheet(&source).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .is_ok()
+    );
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("one counter-style rule must be retained");
     };
@@ -31,7 +35,7 @@ fn assert_descriptor(body: &str, kind: Kind, expected: &str) {
         expected
     );
     let canonical = value.serialize_specified(Default::default()).unwrap();
-    let reparsed = parse_sheet(&canonical);
+    let reparsed = CssParser::default().parse_sheet(&canonical);
     assert!(
         reparsed.is_clean(),
         "{canonical}: {:?}",
@@ -150,7 +154,7 @@ fn ordinary_negative_lengths_reversed_ranges_and_nondescending_weights_drop_whol
             "@counter-style Math {{ {}: {input}; suffix: '.'; }} .after {{}}",
             kind.as_str()
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!(
                 "one whole-descriptor diagnostic for {source}: {:?}",
@@ -211,7 +215,7 @@ fn malformed_and_wrong_domain_math_drop_only_the_descriptor_and_preserve_last_va
             kind.as_str(),
             kind.as_str()
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!(
                 "only the invalid member should recover for {source}: {:?}",
@@ -248,8 +252,8 @@ fn detached_checked_and_pending_reentry_admit_math_without_replacing_original_co
         (Kind::Pad, "calc(+0001 + 1) '0'"),
         (Kind::AdditiveSymbols, "calc(+0001 + 1) X, 1 I"),
     ] {
-        let supplied = parse_component_values(input).unwrap();
-        let detached = parse_counter_style_descriptor_value(input, kind);
+        let supplied = CssComponentValues::parse(&CssParser::default(), input).unwrap();
+        let detached = CssCounterStyleDescriptorValue::parse(&CssParser::default(), input, kind);
         assert!(
             detached.is_clean(),
             "{kind:?}: {:?}",
@@ -269,7 +273,7 @@ fn detached_checked_and_pending_reentry_admit_math_without_replacing_original_co
         assert!(!matches!(checked.view(), View::Pending(_)));
         let pending = Value::try_from_components(
             kind,
-            parse_component_values("env(choice)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "env(choice)").unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -288,13 +292,16 @@ fn detached_checked_and_pending_reentry_admit_math_without_replacing_original_co
 fn strict_checked_math_rejects_recovered_closures_and_residual_substitution() {
     let pending = Value::try_from_components(
         Kind::System,
-        parse_component_values("env(choice)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "env(choice)").unwrap(),
         Default::default(),
     )
     .unwrap();
     for input in ["fixed calc(1 + 1", "fixed calc(env(choice) + 1)"] {
         let error = pending
-            .reparse_after_substitution(parse_component_values(input).unwrap(), Default::default())
+            .reparse_after_substitution(
+                CssComponentValues::parse(&CssParser::default(), input).unwrap(),
+                Default::default(),
+            )
             .unwrap_err();
         if input.ends_with(')') {
             assert!(error.is_residual_substitution(), "{input}: {error:?}");
@@ -307,7 +314,7 @@ fn strict_checked_math_rejects_recovered_closures_and_residual_substitution() {
     // whole (Values 4 §10.9).
     let error = pending
         .reparse_after_substitution(
-            parse_component_values("fixed calc(1px)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "fixed calc(1px)").unwrap(),
             Default::default(),
         )
         .unwrap_err();
@@ -320,7 +327,7 @@ fn strict_checked_math_rejects_recovered_closures_and_residual_substitution() {
     assert!(
         Value::try_from_components(
             Kind::System,
-            parse_component_values("fixed calc(1 + 1").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "fixed calc(1 + 1").unwrap(),
             Default::default(),
         )
         .unwrap_err()
@@ -348,7 +355,7 @@ fn math_projection_byte_failures_are_atomic_and_checked_graph_limits_are_cumulat
             .is_byte_limit()
     );
     assert_eq!(value, retained);
-    let input = parse_component_values("fixed calc(1 + 1)").unwrap();
+    let input = CssComponentValues::parse(&CssParser::default(), "fixed calc(1 + 1)").unwrap();
     assert!(
         Value::try_from_components(
             Kind::System,
@@ -361,7 +368,7 @@ fn math_projection_byte_failures_are_atomic_and_checked_graph_limits_are_cumulat
     );
     let pending = Value::try_from_components(
         Kind::System,
-        parse_component_values("env(choice)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "env(choice)").unwrap(),
         Default::default(),
     )
     .unwrap();

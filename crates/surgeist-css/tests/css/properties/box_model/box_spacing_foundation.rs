@@ -51,8 +51,7 @@ fn accepted(name: &str, value: &str) {
 }
 
 fn one_value(source: &CssDeclaration) -> CssLonghandValue {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one terminal contribution")
     };
@@ -69,8 +68,13 @@ fn programmatic_zero(name: &str) -> CssLonghandValue {
         Default::default(),
     )
     .unwrap();
-    let source =
-        parse_property_value_for_grammar(grammar(name), components, CssImportance::Normal).unwrap();
+    let source = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar(name)),
+        components,
+        CssImportance::Normal,
+    )
+    .unwrap();
     one_value(&source)
 }
 
@@ -244,7 +248,7 @@ fn logical_axis_pairs_expand_start_then_end_without_physical_mapping() {
             for (value, start, end) in [("1px", "1px", "1px"), ("1px 2%", "1px", "2%")] {
                 let source = declaration(&name, value);
                 let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                    expand_declaration(&source).unwrap()
+                    source.expand().unwrap()
                 else {
                     panic!("{name} expands to two logical longhands")
                 };
@@ -270,7 +274,7 @@ fn logical_axis_pairs_expand_start_then_end_without_physical_mapping() {
 fn css_wide_values_and_pending_reentry_participate_at_every_property() {
     let all_source = declaration("all", "initial");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all_source).unwrap()
+        all_source.expand().unwrap()
     else {
         panic!("all has a symbolic universal reset")
     };
@@ -302,10 +306,10 @@ fn css_wide_values_and_pending_reentry_participate_at_every_property() {
                 let source = declaration(&name, text);
                 checked(&name, text);
                 if four_side {
-                    assert_four_expansion(expand_declaration(&source));
+                    assert_four_expansion(source.expand());
                 } else {
                     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                        expand_declaration(&source).unwrap()
+                        source.expand().unwrap()
                     else {
                         panic!("{name} has symbolic global contributions")
                     };
@@ -318,24 +322,26 @@ fn css_wide_values_and_pending_reentry_participate_at_every_property() {
             }
             rejected(&name, "initial 1px", Some("1px"));
             let source = declaration(&name, "var(--space)");
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("{name} retains pending substitution")
             };
             assert!(handle.source().same_occurrence(&source));
             assert!(
                 handle
-                    .reenter(parse_component_values("1fr").unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), "1fr").unwrap())
                     .unwrap_err()
                     .replacement_error()
                     .is_some()
             );
             assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
                     .is_residual_substitution()
             );
-            let replacement = parse_component_values("1px").unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), "1px").unwrap();
             if four_side {
                 assert_four_contributions(handle.reenter(replacement));
             } else {
@@ -366,25 +372,23 @@ fn four_side_shorthands_parse_cleanly_but_expand_selected_sides() {
         for value in ["1px", "1px 2px 3px 4px", "logical 1px 2px 3px 4px"] {
             let source = declaration(family, value);
             checked(family, value);
-            assert_four_expansion(expand_declaration(&source));
+            assert_four_expansion(source.expand());
         }
-        let report = parse_sheet(&format!(
+        let report = CssParser::default().parse_sheet(format!(
             ".a{{color:red;{family}:logical 1px 2px;color:blue}}"
         ));
         assert!(report.is_clean());
         let before = report.syntax().clone();
-        assert!(normalize_sheet(report.syntax()).is_ok());
+        assert!(report.syntax().normalize(Default::default()).is_ok());
         assert_eq!(report.syntax(), &before);
     }
 }
 
 #[test]
 fn normalization_preserves_authored_logical_pairs_and_pending_four_side_values() {
-    let report = parse_sheet(
-        ".a{margin-top:1px;margin-block:2px 3px;padding-inline:4px;margin-inline-end:auto;padding-left:5%}",
-    );
+    let report = CssParser::default().parse_sheet(".a{margin-top:1px;margin-block:2px 3px;padding-inline:4px;margin-inline-end:auto;padding-left:5%}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let authored = normalized
         .items()
         .iter()
@@ -408,9 +412,9 @@ fn normalization_preserves_authored_logical_pairs_and_pending_four_side_values()
     );
 
     for family in FAMILIES {
-        let report = parse_sheet(&format!(".a{{{family}:var(--space)}}"));
+        let report = CssParser::default().parse_sheet(format!(".a{{{family}:var(--space)}}"));
         assert!(report.is_clean());
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         assert!(normalized.items().iter().any(|item| matches!(item,
             CssNormalizedItem::Declaration(value) if matches!(value.expansion(), CssExpansion::Pending(_))
         )));

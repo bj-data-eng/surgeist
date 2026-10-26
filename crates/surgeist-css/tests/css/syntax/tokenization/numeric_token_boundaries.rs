@@ -14,8 +14,7 @@ use std::ops::Range;
 
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumber, CssNumeric,
-    CssNumericTokenKind, CssNumericTokenRef, CssValueOrigin, CssValueTokenRef,
-    parse_component_values,
+    CssNumericTokenKind, CssNumericTokenRef, CssParser, CssValueOrigin, CssValueTokenRef,
 };
 
 use CssNumericTokenKind::{Integer, Number};
@@ -87,7 +86,8 @@ fn assert_sequence(source: &str, expected: &[(Expected<'_>, Range<usize>)]) {
         } else {
             source.to_owned()
         };
-        let values = parse_component_values(&input).expect("valid token sequence");
+        let values =
+            CssComponentValues::parse(&CssParser::default(), &input).expect("valid token sequence");
         assert_eq!(
             values.items().len(),
             expected.len() + if with_sentinel { 2 } else { 0 },
@@ -299,7 +299,7 @@ fn validated_numeric_conversion_uses_sign_fraction_and_signed_decimal_exponent()
         ("1.0", Number, false, "1"),
         ("1e0", Number, false, "1"),
     ] {
-        let parsed = parse_component_values(source).unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let [original] = parsed.items() else {
             panic!("one complete numeric token")
         };
@@ -372,7 +372,7 @@ fn dimension_construction_validates_number_text_before_an_exponent_like_unit() {
             .unwrap()
             .serialize_tokens(Default::default())
             .unwrap();
-        let reparsed = parse_component_values(css.as_css()).unwrap();
+        let reparsed = CssComponentValues::parse(&CssParser::default(), css.as_css()).unwrap();
         let [component] = reparsed.items() else {
             panic!("one dimension, not numeric exponent")
         };

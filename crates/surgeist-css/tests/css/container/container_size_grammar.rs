@@ -8,18 +8,18 @@
 //! https://www.w3.org/TR/2024/WD-css-values-5-20241111/#tree-counting
 use surgeist_css::{
     CssComponentValue, CssComponentValues, CssCondition, CssConditionKind, CssContainerLeaf,
-    CssGeneralEnclosed, CssRule, CssValueOrigin, parse_component_values, parse_sheet,
+    CssGeneralEnclosed, CssParser, CssRule, CssValueOrigin,
 };
 
 fn assert_classification(query: &str, recognized: bool) {
     let source = format!("@container {query} {{}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{query}: {:?}", report.diagnostics());
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("retained container for {query}")
     };
     let parsed = rule.prelude().entries()[0].query().unwrap();
-    let components = parse_component_values(query).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), query).unwrap();
     let checked = CssCondition::<CssContainerLeaf>::try_from_components(
         components.clone(),
         Default::default(),

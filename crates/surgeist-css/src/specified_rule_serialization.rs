@@ -516,7 +516,8 @@ mod value_error_tests {
 
     #[test]
     fn nested_recovered_media_failure_keeps_the_media_origin_and_sheet_rule_index() {
-        let report = crate::parse_sheet("@namespace n 'u';@scope{@media screen,???,print{}}");
+        let report = crate::CssParser::default()
+            .parse_sheet("@namespace n 'u';@scope{@media screen,???,print{}}");
         let before = report.clone();
         let [CssRule::Namespace(_), CssRule::Scope(scope)] = report.syntax().rules() else {
             panic!("namespace and scope");
@@ -550,8 +551,8 @@ mod inverse_source_scope_contract {
 
     #[test]
     fn nested_shape_sources_and_error_suppression_restore_the_enclosing_writer() {
-        let report =
-            crate::parse_style_attribute("offset:inset(1px round 2px);margin-block:1px 2px");
+        let report = crate::CssParser::default()
+            .parse_block_contents("offset:inset(1px round 2px);margin-block:1px 2px");
         assert!(report.is_clean(), "{report:?}");
         let Value::Offset(offset) = report.syntax()[0]
             .known()
@@ -640,7 +641,7 @@ mod inverse_source_scope_contract {
                 Property::ScrollPaddingBlockStart,
             ),
         ] {
-            let report = crate::parse_style_attribute(source);
+            let report = crate::CssParser::default().parse_block_contents(source);
             assert!(report.is_clean(), "{report:?}");
             let Value::ScrollPaddingBlock(pair) = report.syntax()[0]
                 .known()
@@ -678,7 +679,8 @@ mod inverse_source_scope_contract {
             }
             assert_eq!(pair.serialize_specified(exact).unwrap(), expected);
         }
-        let report = crate::parse_style_attribute("scroll-padding-block:1px 2px");
+        let report =
+            crate::CssParser::default().parse_block_contents("scroll-padding-block:1px 2px");
         let Value::ScrollPaddingBlock(pair) = report.syntax()[0]
             .known()
             .unwrap()

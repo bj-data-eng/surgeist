@@ -8,20 +8,25 @@ use crate::css::support::sheet_cases::*;
 
 #[test]
 fn rejects_line_height_auto() {
-    let error = parse_sheet(".panel { line-height: auto; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { line-height: auto; }")
+        .expect_err("rejected parse report");
     assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
 fn rejects_line_height_min_content() {
-    let error =
-        parse_sheet(".panel { line-height: min-content; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { line-height: min-content; }")
+        .expect_err("rejected parse report");
     assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
 fn rejects_font_size_auto() {
-    let error = parse_sheet(".panel { font-size: auto; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { font-size: auto; }")
+        .expect_err("rejected parse report");
     assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
@@ -526,8 +531,9 @@ fn checked_typography_constructors_reject_invalid_states() {
 
 #[test]
 fn typography_and_text_property_families_accept_supported_values() {
-    let sheet = parse_sheet(
-        ".panel {
+    let sheet = CssParser::default()
+        .parse_sheet(
+            ".panel {
             writing-mode: horizontal-tb;
             text-align: center;
             text-align-last: auto;
@@ -553,8 +559,8 @@ fn typography_and_text_property_families_accept_supported_values() {
             text-decoration-thickness: auto;
             text-transform: capitalize;
         }",
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
     let declarations = style_rule(&sheet.rules()[0]).declarations();
 
     for property in [

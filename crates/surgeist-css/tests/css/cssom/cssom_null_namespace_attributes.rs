@@ -2,11 +2,15 @@
 //! #serialize-a-simple-selector attribute step2 emits a namespace separator
 //! only for a nonnull namespace. Wildcard spelling and compact authored output
 //! keep the previously accepted independent contracts.
-use surgeist_css::{CssNamespaceContext, CssRule, parse_rule, parse_sheet};
+use surgeist_css::{CssNamespaceContext, CssParser, CssRule};
 
 #[test]
 fn literal_null_attribute_separator_is_omitted_without_changing_authored_identity() {
-    let report = parse_rule("/*😀*/ [|a] {}", &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        "/*😀*/ [|a] {}",
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let value = report.syntax().as_ref().unwrap();
@@ -23,7 +27,7 @@ fn literal_null_attribute_separator_is_omitted_without_changing_authored_identit
 
 #[test]
 fn null_attribute_names_inside_logical_arguments_keep_wildcard_and_flags_distinct() {
-    let report = parse_sheet("[|a='é' s]:is([|b], [*|c]) {}");
+    let report = CssParser::default().parse_sheet("[|a='é' s]:is([|b], [*|c]) {}");
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     assert_eq!(
@@ -42,7 +46,7 @@ fn null_attribute_names_inside_logical_arguments_keep_wildcard_and_flags_distinc
 
 #[test]
 fn unprefixed_attributes_do_not_inherit_default_namespace_and_any_remains_raw() {
-    let report = parse_sheet("@namespace 'urn:default'; [|a][a][*|a] {}");
+    let report = CssParser::default().parse_sheet("@namespace 'urn:default'; [|a][a][*|a] {}");
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let CssRule::Style(_) = &report.syntax().rules()[1] else {

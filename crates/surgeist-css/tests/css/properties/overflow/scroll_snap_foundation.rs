@@ -284,7 +284,7 @@ fn stable_terminals_have_noninherited_fixed_initials_and_one_contribution() {
             .1;
         let source = declaration(name, value);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("one terminal expansion for {name}")
         };
@@ -331,7 +331,7 @@ fn axis_shorthands_expose_exact_logical_member_order_and_expand_to_two() {
             .1;
         let source = declaration(name, value);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("two axis contributions for {name}")
         };
@@ -369,7 +369,7 @@ fn stable_globals_and_pending_reentry_keep_original_occurrence_and_strict_gramma
         ] {
             let source = declaration(name, text);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("symbolic CSS-wide value for {name}")
             };
@@ -380,7 +380,7 @@ fn stable_globals_and_pending_reentry_keep_original_occurrence_and_strict_gramma
             }
         }
         let source = declaration(name, "var(--snap)");
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending substitution for {name}")
         };
         assert!(handle.source().same_occurrence(&source));
@@ -391,18 +391,18 @@ fn stable_globals_and_pending_reentry_keep_original_occurrence_and_strict_gramma
         };
         assert!(
             handle
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some()
         );
         assert!(
             handle
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
-        let components = parse_component_values(replacement).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), replacement).unwrap();
         let CssContributions::Longhands(values) = handle.reenter(components.clone()).unwrap()
         else {
             panic!("completed replacement for {name}")
@@ -416,7 +416,7 @@ fn stable_globals_and_pending_reentry_keep_original_occurrence_and_strict_gramma
 }
 
 fn length(text: &str) -> CssNumeric<CssLength> {
-    let components = parse_component_values(text).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [component] = components.items() else {
         panic!("one length: {text}")
     };
@@ -427,7 +427,7 @@ fn padding(text: &str) -> CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegati
     if text == "auto" {
         CssAutoOr::Auto
     } else {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let [component] = components.items() else {
             panic!("one padding value: {text}")
         };
@@ -524,8 +524,9 @@ fn snap_models_retain_optional_components_and_serialize_selected_keywords() {
         components.items()[0].origin(),
         CssValueOrigin::Programmatic
     ));
-    let constructed = parse_property_value_for_grammar(
-        grammar("scroll-margin-top"),
+    let constructed = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar("scroll-margin-top")),
         components.clone(),
         CssImportance::Normal,
     )
@@ -753,7 +754,7 @@ fn math_pair_captures_both_authored_trees_with_one_input_budget() {
     let math = |text| {
         CssNumeric::<CssLength>::try_from_calculation(
             CssCalculation::<CssLength>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -798,32 +799,35 @@ fn four_side_authored_values_expand_selected_mode_footprint() {
         ));
         for value in [valid, "initial", "inherit", "unset"] {
             let source = declaration(name, value);
-            assert_four_expansion(expand_declaration(&source));
+            assert_four_expansion(source.expand());
         }
         let source = declaration(name, "var(--inset)");
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("four-side substitution remains pending")
         };
         assert!(handle.source().same_occurrence(&source));
         assert!(
             handle
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some()
         );
         assert!(
             handle
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
-        let replacement = parse_component_values(valid).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), valid).unwrap();
         assert_four_contributions(handle.reenter(replacement.clone()));
 
-        let pending_report = parse_sheet(&format!(".a{{{name}:var(--inset)}}"));
+        let pending_report = CssParser::default().parse_sheet(format!(".a{{{name}:var(--inset)}}"));
         assert!(pending_report.is_clean());
-        let pending_normalized = normalize_sheet(pending_report.syntax()).unwrap();
+        let pending_normalized = pending_report
+            .syntax()
+            .normalize(Default::default())
+            .unwrap();
         let pending_item = pending_normalized
             .items()
             .iter()
@@ -834,10 +838,11 @@ fn four_side_authored_values_expand_selected_mode_footprint() {
             .expect("pending four-side declaration retained");
         assert!(matches!(pending_item.expansion(), CssExpansion::Pending(_)));
 
-        let report = parse_sheet(&format!(".a{{color:red;{name}:{valid};color:blue}}"));
+        let report =
+            CssParser::default().parse_sheet(format!(".a{{color:red;{name}:{valid};color:blue}}"));
         assert!(report.is_clean(), "{name}: {:?}", report.diagnostics());
         let syntax = report.syntax().clone();
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         assert_eq!(
             normalized
                 .items()

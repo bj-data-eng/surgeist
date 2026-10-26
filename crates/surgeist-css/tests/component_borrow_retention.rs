@@ -13,8 +13,9 @@ fn color(declaration: &CssDeclaration) -> &CssColor {
 }
 
 fn checked(values: CssComponentValues) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         values,
         CssImportance::Normal,
     )
@@ -25,7 +26,7 @@ fn checked(values: CssComponentValues) -> CssDeclaration {
 fn constructed_result_retains_mixed_originals_after_inputs_and_another_result_drop() {
     let (first, second, expected) = {
         let source = String::from("calc(1 + max(2, min(3,4))) 5 6");
-        let children = parse_component_values(&source).unwrap();
+        let children = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
         let CssComponentValueRef::Function(calc) = children.items()[0].view() else {
             panic!("exact nested root");
         };
@@ -76,8 +77,10 @@ fn constructed_result_retains_mixed_originals_after_inputs_and_another_result_dr
 fn profile_result_exposes_one_retained_calculation_graph_after_source_drop() {
     let result = {
         let text = String::from("calc(Cyan + max(Magenta, 1))");
-        CssProfileColorExpression::try_from_components(parse_component_values(&text).unwrap())
-            .unwrap()
+        CssProfileColorExpression::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), &text).unwrap(),
+        )
+        .unwrap()
     };
     let CssProfileColorExpressionRef::Calculation(calculation) = result.view() else {
         panic!("profile calculation");
@@ -104,7 +107,7 @@ fn profile_result_exposes_one_retained_calculation_graph_after_source_drop() {
 #[test]
 fn recovered_source_closures_are_retained_and_checked_property_admission_stays_strict() {
     let source = "color:rgb(calc(1 + 2) 3 4";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     let value = color(&report.syntax()[0]);
     let CssComponentValueRef::Function(root) =
@@ -120,10 +123,11 @@ fn recovered_source_closures_are_retained_and_checked_property_admission_stays_s
         value.serialize_specified(Default::default()).unwrap(),
         "rgb(3, 3, 4)"
     );
-    let values = parse_component_values("rgb(calc(1 + 2) 3 4").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "rgb(calc(1 + 2) 3 4").unwrap();
     assert!(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
             values,
             CssImportance::Normal
         )
@@ -136,7 +140,9 @@ fn completed_public_color_construction_resolves_nested_calculations_to_legacy_rg
     // Values 4 (WD 2024-03-12) §10: max(2, min(3, 4)) is 3, so the red channel
     // is 4; Color 4 (CRD 2026-09-08) §16.2 serializes an sRGB specified value
     // in the legacy comma form.
-    let values = parse_component_values("rgb(calc(1 + max(2, min(3,4))) 5 6)").unwrap();
+    let values =
+        CssComponentValues::parse(&CssParser::default(), "rgb(calc(1 + max(2, min(3,4))) 5 6)")
+            .unwrap();
     let result = checked(values);
     assert_eq!(
         color(&result)
@@ -151,7 +157,7 @@ fn relative_calculation_retains_required_authored_text_and_references_after_inpu
     let result = {
         let text = String::from("calc(r + .000000000000001)");
         CssRelativeColorExpression::try_from_components(
-            parse_component_values(&text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), &text).unwrap(),
             CssRelativeColorEnvironment::Rgb,
             CssRelativeColorResultDomain::NumberPercentage,
             Default::default(),

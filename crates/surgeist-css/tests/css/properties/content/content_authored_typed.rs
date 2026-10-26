@@ -7,7 +7,10 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_checked_closure_rejected;
 use crate::css::support::sole_declaration;
 use crate::css::support::value_assertions::assert_numeric_rejected;
-use surgeist_css::{CssSerializationLimits as L, *};
+use surgeist_css::{
+    CssComponentValue, CssComponentValues, CssDeclaration, CssParser, CssPropertyTarget,
+    CssSerializationLimits as L, *,
+};
 
 fn name(value: &str) -> CssContentName {
     CssContentName::try_new(CssIdent::try_new(value).unwrap()).unwrap()
@@ -20,7 +23,7 @@ fn declaration(property: &str, value: &str) -> CssDeclaration {
 }
 fn integer_calculation(value: &str) -> CssCalculation<CssInteger> {
     CssCalculation::<CssInteger>::try_from_components(
-        parse_component_values(value).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         Default::default(),
     )
     .unwrap()
@@ -386,10 +389,11 @@ fn checked_reconstruction_keeps_original_components_and_strict_closure() {
         (CssKnownProperty::BookmarkLabel, "counter(Chapter, decimal)"),
         (CssKnownProperty::BookmarkState, "closed"),
     ] {
-        let components = parse_component_values(input).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), input).unwrap();
         let before = components.clone();
-        let value = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let value = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components.clone(),
             CssImportance::Normal,
         )
@@ -398,15 +402,19 @@ fn checked_reconstruction_keeps_original_components_and_strict_closure() {
         assert!(value.parsed_value().is_none());
         assert!(value.position().is_none());
         assert_eq!(components, before);
-        let incomplete = parse_component_values(&format!("{input}/*unfinished")).unwrap();
-        assert_checked_closure_rejected(parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let incomplete =
+            CssComponentValues::parse(&CssParser::default(), format!("{input}/*unfinished"))
+                .unwrap();
+        assert_checked_closure_rejected(CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             incomplete,
             CssImportance::Normal,
         ));
         assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 before,
                 CssImportance::Normal
             )
@@ -417,7 +425,7 @@ fn checked_reconstruction_keeps_original_components_and_strict_closure() {
 
 #[test]
 fn string_set_checked_front_preserves_mixed_component_origins_without_inventing_leaf_spans() {
-    let parsed = parse_component_values("Chapter ").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "Chapter ").unwrap();
     let mut components = parsed.items().to_vec();
     components.push(CssComponentValue::try_string("programmatic").unwrap());
     let mixed = CssComponentValues::try_new(components, Default::default()).unwrap();
@@ -429,8 +437,9 @@ fn string_set_checked_front_preserves_mixed_component_origins_without_inventing_
         mixed.items().last().unwrap().origin(),
         &CssValueOrigin::Programmatic
     );
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::StringSet),
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::StringSet)),
         mixed.clone(),
         CssImportance::Normal,
     )
@@ -471,10 +480,16 @@ fn checked_content_image(
     grammar: bool,
 ) -> Result<CssDeclaration, CssPropertyValueError> {
     if grammar {
-        parse_property_value_for_grammar(property.grammar(), values, CssImportance::Important)
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(property.grammar()),
+            values,
+            CssImportance::Important,
+        )
     } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             values,
             CssImportance::Important,
         )
@@ -484,8 +499,10 @@ fn checked_content_image(
 #[test]
 fn bookmark_label_inherits_checked_image_resource_origin_and_pending_retry() {
     // 255 LightDark functions plus a URL fit exactly; 256 plus URL exceed 256.
-    let valid = parse_component_values(&content_image_source(255)).unwrap();
-    let invalid = parse_component_values(&content_image_source(256)).unwrap();
+    let valid =
+        CssComponentValues::parse(&CssParser::default(), content_image_source(255)).unwrap();
+    let invalid =
+        CssComponentValues::parse(&CssParser::default(), content_image_source(256)).unwrap();
     assert_eq!(valid.nesting_depth(), 255);
     assert_eq!(invalid.nesting_depth(), 256);
     let valid_before = valid.clone();
@@ -506,11 +523,11 @@ fn bookmark_label_inherits_checked_image_resource_origin_and_pending_retry() {
         let property = CssKnownProperty::from_name(name).unwrap();
         let pending = checked_content_image(
             property,
-            parse_component_values("var(--image)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "var(--image)").unwrap(),
             false,
         )
         .unwrap();
-        let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+        let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
             panic!("pending image consumer")
         };
         for _ in 0..2 {

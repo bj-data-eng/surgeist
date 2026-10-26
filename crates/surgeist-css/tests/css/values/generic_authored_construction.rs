@@ -157,7 +157,7 @@ fn exact_numeric_tokens_preserve_kind_sign_spelling_and_programmatic_origin() {
         ("1e-50%", "1e-50", CssNumericTokenKind::Number, false),
         ("+01.0PX", "+01.0", CssNumericTokenKind::Number, true),
     ] {
-        let parsed = parse_component_values(text).unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let programmatic = CssComponentValue::try_token(text).unwrap();
         assert!(matches!(
             parsed.items()[0].origin(),

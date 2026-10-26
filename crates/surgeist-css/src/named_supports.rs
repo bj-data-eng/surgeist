@@ -610,19 +610,21 @@ fn validate_emitted_budget(
     // Count the emitted syntax, including generated whitespace, semicolons,
     // and boundary comments. Reparse only for validation; the original tree
     // and every supplied or generated origin remain owned by the caller.
-    parse_component_values_with_limits(output.as_css(), limits).map_err(|error| {
-        let offset = crate::media::parsed_position(error.origin())
-            .map_or(0, |position| position.byte_offset().value());
-        CssSupportsConstructionError::from(crate::supports::SupportsConstructionKind::Component(
-            CssComponentValueError::new(
-                error.kind,
-                output
-                    .value_origin_at(offset)
-                    .cloned()
-                    .unwrap_or_else(|| fallback.clone()),
-            ),
-        ))
-    })?;
+    crate::component_values::parse_component_values_with_limits(output.as_css(), limits).map_err(
+        |error| {
+            let offset = crate::media::parsed_position(error.origin())
+                .map_or(0, |position| position.byte_offset().value());
+            CssSupportsConstructionError::from(
+                crate::supports::SupportsConstructionKind::Component(CssComponentValueError::new(
+                    error.kind,
+                    output
+                        .value_origin_at(offset)
+                        .cloned()
+                        .unwrap_or_else(|| fallback.clone()),
+                )),
+            )
+        },
+    )?;
     Ok(())
 }
 
@@ -767,5 +769,37 @@ impl<'a> Iterator for RecoveryOrigins<'a> {
             }
         }
         None
+    }
+}
+impl CssSupportsTestChild {
+    /// Admits exactly one flattened direct child with no discarded candidate or
+    /// structural recovery. Empty semicolons/trivia are ignored at every depth.
+    ///
+    /// The parser supplies the cumulative component limits.
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> CssParseReport<Option<CssSupportsTestChild>> {
+        crate::parser::parse_supports_test_child_with_limits(
+            source.as_ref(),
+            parser.component_limits(),
+        )
+    }
+}
+impl CssSupportsTestBody {
+    /// Admits complete genuine unbraced named-test contents. Recovered syntax is
+    /// `Some` with diagnostics; typed resource failure is `None`, never a clearing.
+    ///
+    /// The parser supplies the cumulative component limits.
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> CssParseReport<Option<CssSupportsTestBody>> {
+        crate::parser::parse_supports_test_contents_with_limits(
+            source.as_ref(),
+            parser.component_limits(),
+        )
     }
 }

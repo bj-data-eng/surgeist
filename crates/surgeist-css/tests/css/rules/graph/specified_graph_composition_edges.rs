@@ -12,10 +12,10 @@ use crate::css::support::rules::assert_exact_specified_sheet as exact;
 use crate::css::support::rules::clean_sheet as sheet;
 use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::{
-    CssCondition, CssContainerPrelude, CssContainerRule, CssCustomMediaBody, CssErrorCode,
-    CssNamespaceContext, CssRecoveryAction, CssRule, CssSerializationError,
-    CssSerializationLimits as Limits, CssSheet, CssSupportsLeaf, CssSupportsRule,
-    parse_component_values, parse_sheet,
+    CssComponentValues, CssCondition, CssContainerPrelude, CssContainerRule, CssCustomMediaBody,
+    CssErrorCode, CssNamespaceContext, CssParser, CssRecoveryAction, CssRule,
+    CssSerializationError, CssSerializationLimits as Limits, CssSheet, CssSupportsLeaf,
+    CssSupportsRule,
 };
 
 fn resource(error: &CssSerializationError, kind: Kind, index: Option<usize>) {
@@ -48,7 +48,7 @@ fn namespace_and_empty_font_controls_share_sheet_costs() {
 
 #[test]
 fn recovered_media_provider_control_keeps_member_order_and_exact_work_costs() {
-    let report = parse_sheet("@media screen,???,print{}");
+    let report = CssParser::default().parse_sheet("@media screen,???,print{}");
     let before = report.clone();
     let [CssRule::Media(rule)] = report.syntax().rules() else {
         panic!("media")
@@ -80,7 +80,7 @@ fn keyframe_custom_and_pending_occurrences_keep_token_spelling_and_comments() {
 
 #[test]
 fn keyframe_custom_implicit_function_closure_emits_complete_tokens() {
-    let report = parse_sheet("@keyframes k{from{--Case:Future(A/**/B");
+    let report = CssParser::default().parse_sheet("@keyframes k{from{--Case:Future(A/**/B");
     let before = report.clone();
     // Syntax 3 §5.4.8: EOF inside the open function is a parse error.
     ExpectedRejection::new(CssErrorCode::UnexpectedEnd).assert_first(&report);
@@ -108,7 +108,7 @@ fn keyframe_custom_implicit_function_closure_emits_complete_tokens() {
 
 #[test]
 fn keyframe_pending_implicit_var_closure_emits_complete_tokens() {
-    let report = parse_sheet("@keyframes k{to{opacity:var(--o");
+    let report = CssParser::default().parse_sheet("@keyframes k{to{opacity:var(--o");
     let before = report.clone();
     // Syntax 3 §5.4.8: EOF inside the open function is a parse error.
     ExpectedRejection::new(CssErrorCode::UnexpectedEnd).assert_first(&report);
@@ -205,8 +205,8 @@ fn distinct_keyframe_offsets_round_to_one_millionth_without_coalescing() {
 
 #[test]
 fn generic_import_projects_recovered_members_while_authored_import_rejects_them() {
-    let report =
-        parse_sheet("/* 😀 */\r\n@import \"x\" layer(theme) screen,???,print;@namespace n 'u';");
+    let report = CssParser::default()
+        .parse_sheet("/* 😀 */\r\n@import \"x\" layer(theme) screen,???,print;@namespace n 'u';");
     let before = report.clone();
     let [CssRule::Import(rule), CssRule::Namespace(_)] = report.syntax().rules() else {
         panic!("import and following namespace")
@@ -282,7 +282,7 @@ fn generic_custom_media_and_media_projection_keep_the_authored_only_prefix() {
 
 #[test]
 fn generic_custom_media_projects_recovered_members_while_authored_definition_rejects_them() {
-    let report = parse_sheet("/* λ */\n@custom-media --x (color),???,screen;");
+    let report = CssParser::default().parse_sheet("/* λ */\n@custom-media --x (color),???,screen;");
     let before = report.clone();
     let [CssRule::CustomMedia(rule)] = report.syntax().rules() else {
         panic!("custom media")
@@ -387,7 +387,7 @@ fn exact_lexical_region_budget(input: CssSheet, expected: &str, nodes: usize) {
 fn supports_omits_edge_whitespace_but_charges_the_complete_retained_region() {
     let context = CssNamespaceContext::default();
     let source = format!("{}(display:grid){}", " ".repeat(128), " ".repeat(256));
-    let components = parse_component_values(&source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     // Two whitespace components, one block, and its three inner tokens.
     assert_eq!(components.component_count(), 6);
     let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
@@ -418,7 +418,7 @@ fn supports_omits_edge_whitespace_but_charges_the_complete_retained_region() {
     assert_eq!(rule.condition(), &original);
 
     let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
-        parse_component_values("(display:grid)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "(display:grid)").unwrap(),
         &context,
         Default::default(),
     )
@@ -435,7 +435,7 @@ fn supports_omits_edge_whitespace_but_charges_the_complete_retained_region() {
 fn container_omits_edge_whitespace_but_charges_the_complete_retained_region() {
     let context = CssNamespaceContext::default();
     let source = format!("{}(width>1px){}", " ".repeat(128), " ".repeat(256));
-    let components = parse_component_values(&source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     assert_eq!(components.component_count(), 6);
     let prelude =
         CssContainerPrelude::try_from_components(components.clone(), Default::default()).unwrap();
@@ -459,7 +459,7 @@ fn container_omits_edge_whitespace_but_charges_the_complete_retained_region() {
     assert_eq!(rule.prelude(), &original);
 
     let prelude = CssContainerPrelude::try_from_components(
-        parse_component_values("(width>1px)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "(width>1px)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -552,7 +552,8 @@ fn wide_group_stops_atomically_under_small_independent_work_budgets_and_can_retr
 
 #[test]
 fn scoped_recovered_media_failure_keeps_provider_origin_and_enclosing_top_level_index() {
-    let report = parse_sheet("@namespace n 'u';@scope{@media screen,???,print{}}");
+    let report =
+        CssParser::default().parse_sheet("@namespace n 'u';@scope{@media screen,???,print{}}");
     let before = report.clone();
     let [CssRule::Namespace(_), CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("namespace and scope")

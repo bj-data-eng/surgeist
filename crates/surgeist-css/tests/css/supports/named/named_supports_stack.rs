@@ -1,9 +1,9 @@
 //! Deep generic test bodies retain their authored payload on an ordinary caller stack.
 
 use surgeist_css::{
-    CssComponentValueLimits, CssErrorCode, CssNormalizedItem, CssRule, CssSupportsConditionName,
-    CssSupportsConditionRule, CssSupportsTestBody, CssSupportsTestItem, normalize_sheet,
-    parse_component_values, parse_sheet,
+    CssComponentValueLimits, CssComponentValues, CssErrorCode, CssNormalizedItem, CssParser,
+    CssRule, CssSupportsConditionName, CssSupportsConditionRule, CssSupportsTestBody,
+    CssSupportsTestItem,
 };
 
 const CHILD: &str = "SURGEIST_NAMED_SUPPORTS_STACK_CHILD";
@@ -77,7 +77,7 @@ fn assert_nested_lifecycle(chain: Chain) {
     let body = body_source(chain, ADMITTED_BODY_DEPTH);
     let source = format!("@supports-condition --deep{{{body}}}");
     let expected_specified = specified_rule(chain, ADMITTED_BODY_DEPTH);
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
         panic!("expected one retained definition");
@@ -100,7 +100,7 @@ fn assert_nested_lifecycle(chain: Chain) {
     );
 
     let cloned = rule.clone();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_eq!(normalized.items().len(), 1);
     assert!(
         normalized
@@ -125,7 +125,7 @@ fn assert_nested_lifecycle(chain: Chain) {
     drop(normalized);
 
     // Checked construction must apply the same aggregate structural ceiling.
-    let components = parse_component_values(&body).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), &body).unwrap();
     let constructed_body =
         CssSupportsTestBody::try_from_components(components, Default::default()).unwrap();
     assert_chain(&constructed_body, chain, ADMITTED_BODY_DEPTH);
@@ -146,7 +146,7 @@ fn assert_nested_lifecycle(chain: Chain) {
     let too_deep_body = body_source(chain, ADMITTED_BODY_DEPTH + 1);
     let overflow_source =
         format!("@supports-condition --overflow{{{too_deep_body}}}@supports-condition --after{{}}");
-    let overflow_report = parse_sheet(&overflow_source);
+    let overflow_report = CssParser::default().parse_sheet(&overflow_source);
     assert!(!overflow_report.is_clean());
     assert!(
         overflow_report.diagnostics().iter().any(|diagnostic| {
@@ -163,7 +163,7 @@ fn assert_nested_lifecycle(chain: Chain) {
         panic!("overdeep definition must be dropped while following rule survives");
     };
     assert_eq!(after.name().as_str(), "--after");
-    let components = parse_component_values(&too_deep_body).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), &too_deep_body).unwrap();
     let tighter = CssComponentValueLimits::try_new(255, usize::MAX, usize::MAX).unwrap();
     let error = CssSupportsTestBody::try_from_components(components.clone(), tighter).unwrap_err();
     assert!(

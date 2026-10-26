@@ -19,8 +19,7 @@ const PROPERTIES: [(&str, &str); 6] = [
 ];
 
 fn one_contribution(source: &CssDeclaration) -> CssLonghandValue {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one terminal contribution")
     };
@@ -61,7 +60,7 @@ fn variation(value: &str) -> CssFontVariationSettings {
 }
 
 fn descriptor(kind: CssFontFaceDescriptorKind, value: &str) -> CssFontFaceDescriptorValue {
-    let report = parse_font_face_descriptor_value(value, kind);
+    let report = CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), value, kind);
     assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(value)) = report.syntax() else {
         panic!("ordinary descriptor")
@@ -89,7 +88,7 @@ fn feature_index_keeps_exact_integer_token_beyond_i32_and_rejects_wrong_roots() 
         "+0002147483648",
         "-0",
     ] {
-        let parsed = parse_component_values(text).unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let index =
             CssNumeric::<CssInteger, CssNonNegative>::try_from_component(parsed.items()[0].clone())
                 .unwrap();
@@ -134,14 +133,17 @@ fn feature_index_keeps_exact_integer_token_beyond_i32_and_rejects_wrong_roots() 
         ("1e2", NumericFailure::RootDomainMismatch),
         ("2%", NumericFailure::RootDomainMismatch),
     ] {
-        let component = parse_component_values(text).unwrap().items()[0].clone();
+        let component = CssComponentValues::parse(&CssParser::default(), text)
+            .unwrap()
+            .items()[0]
+            .clone();
         let error = CssNumeric::<CssInteger, CssNonNegative>::try_from_component(component.clone())
             .unwrap_err();
         assert_eq!(numeric_failure(&error), kind, "{text}");
         assert_eq!(error.origin(), Some(component.origin()), "{text}");
     }
     let math = CssCalculation::<CssInteger>::try_from_components(
-        parse_component_values("calc(2 + 3)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(2 + 3)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -169,7 +171,7 @@ fn feature_index_keeps_exact_integer_token_beyond_i32_and_rejects_wrong_roots() 
         "calc(5)"
     );
     let bare = CssCalculation::<CssInteger>::try_from_components(
-        parse_component_values("2147483648").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "2147483648").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -186,7 +188,7 @@ fn feature_index_keeps_exact_integer_token_beyond_i32_and_rejects_wrong_roots() 
     assert!(exact_bare.calculation().is_none());
     for text in ["-1", "2.5", "1e2"] {
         let calculation = CssCalculation::<CssInteger>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         );
         assert!(
@@ -276,7 +278,7 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_and_symbolic_math() {
         ("+0.5", "0.5".to_owned()),
         ("1e999", format!("1{}", "0".repeat(999))),
     ] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let number =
             CssNumeric::<CssNumber>::try_from_component(components.items()[0].clone()).unwrap();
         assert_eq!(
@@ -290,7 +292,10 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_and_symbolic_math() {
         assert!(matches!(number.origin(), CssValueOrigin::Parsed(_)));
     }
     let parsed = CssNumeric::<CssNumber>::try_from_component(
-        parse_component_values("-1.25").unwrap().items()[0].clone(),
+        CssComponentValues::parse(&CssParser::default(), "-1.25")
+            .unwrap()
+            .items()[0]
+            .clone(),
     )
     .unwrap();
     let programmatic = CssNumeric::<CssNumber>::try_from_component(
@@ -301,7 +306,7 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_and_symbolic_math() {
     assert_eq!(programmatic.origin(), &CssValueOrigin::Programmatic);
     let math = CssNumeric::<CssNumber>::try_from_calculation(
         CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values("calc(1 - 2)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(1 - 2)").unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -323,7 +328,7 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_and_symbolic_math() {
         "calc(-1)"
     );
     let bare = CssCalculation::<CssNumber>::try_from_components(
-        parse_component_values("-1e-999").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "-1e-999").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -501,7 +506,7 @@ fn six_longhands_have_exact_initials_and_preserve_globals_and_reentry_provenance
         ] {
             let source = declaration(name, text);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("global expansion: {name}")
             };
@@ -513,11 +518,11 @@ fn six_longhands_have_exact_initials_and_preserve_globals_and_reentry_provenance
         }
         for symbolic in ["var(--setting)", "env(setting)"] {
             let source = declaration(name, symbolic);
-            let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(pending) = source.expand().unwrap() else {
                 panic!("pending {name}")
             };
             assert!(pending.source().same_occurrence(&source));
-            let replacement = parse_component_values(initial).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), initial).unwrap();
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
             else {
                 panic!("reentry {name}")
@@ -534,7 +539,9 @@ fn six_longhands_have_exact_initials_and_preserve_globals_and_reentry_provenance
             for residual in ["var(--again)", "env(again)"] {
                 assert!(
                     pending
-                        .reenter(parse_component_values(residual).unwrap())
+                        .reenter(
+                            CssComponentValues::parse(&CssParser::default(), residual).unwrap()
+                        )
                         .unwrap_err()
                         .is_residual_substitution()
                 );
@@ -573,7 +580,7 @@ fn descriptor_payloads_use_property_models_and_effective_last_admitted_order() {
         variation_text
     );
     let source = "@font-face{font-feature-settings:\"kern\" on;font-variation-settings:\"wght\" 1;font-variation-settings:bad;font-feature-settings:env(features);font-variation-settings:\"wght\" -2}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
@@ -654,7 +661,7 @@ fn descriptor_pending_reentry_is_strict_and_keeps_new_variation_kind() {
     ] {
         let pending = CssAuthoredFontFaceDescriptorValue::try_from_components(
             kind,
-            parse_component_values("env(axis)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "env(axis)").unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -662,7 +669,7 @@ fn descriptor_pending_reentry_is_strict_and_keeps_new_variation_kind() {
             panic!("pending descriptor")
         };
         assert_eq!(pending.kind(), kind);
-        let replacement = parse_component_values(text).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let ordinary = pending
             .reparse_after_substitution(replacement, Default::default())
             .unwrap();
@@ -672,14 +679,14 @@ fn descriptor_pending_reentry_is_strict_and_keeps_new_variation_kind() {
             assert!(
                 pending
                     .reparse_after_substitution(
-                        parse_component_values(invalid).unwrap(),
+                        CssComponentValues::parse(&CssParser::default(), invalid).unwrap(),
                         Default::default()
                     )
                     .is_err(),
                 "{invalid}"
             );
         }
-        let recovered = parse_component_values("calc(1").unwrap();
+        let recovered = CssComponentValues::parse(&CssParser::default(), "calc(1").unwrap();
         assert!(
             pending
                 .reparse_after_substitution(recovered, Default::default())
@@ -704,17 +711,23 @@ fn otherwise_valid_implicitly_closed_math_recovers_only_in_ordinary_parsing() {
         ),
     ] {
         let source = format!("{property}:{incomplete}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(
             report.syntax().len(),
             1,
             "recovered value retained: {source}"
         );
         assert!(!report.is_clean(), "implicit closure diagnosed: {source}");
-        assert!(validate_style_attribute(&source).is_err());
-        let recovered = parse_component_values(incomplete).unwrap();
-        let checked_error = parse_property_value_for_grammar(
-            grammar(property),
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
+        let recovered = CssComponentValues::parse(&CssParser::default(), incomplete).unwrap();
+        let checked_error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(grammar(property)),
             recovered.clone(),
             CssImportance::Normal,
         )
@@ -729,7 +742,7 @@ fn otherwise_valid_implicitly_closed_math_recovers_only_in_ordinary_parsing() {
         assert_eq!(at.span().start().byte_offset().value(), incomplete.len());
         assert_eq!(at.span().end().byte_offset().value(), incomplete.len());
         let pending_source = declaration(property, "var(--font-setting)");
-        let CssExpansion::Pending(pending) = expand_declaration(&pending_source).unwrap() else {
+        let CssExpansion::Pending(pending) = pending_source.expand().unwrap() else {
             panic!("pending property: {property}")
         };
         assert!(
@@ -740,9 +753,10 @@ fn otherwise_valid_implicitly_closed_math_recovers_only_in_ordinary_parsing() {
                 .is_some()
         );
         declaration(property, complete);
-        parse_property_value_for_grammar(
-            grammar(property),
-            parse_component_values(complete).unwrap(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(grammar(property)),
+            CssComponentValues::parse(&CssParser::default(), complete).unwrap(),
             CssImportance::Normal,
         )
         .unwrap();
@@ -761,13 +775,13 @@ fn otherwise_valid_implicitly_closed_math_recovers_only_in_ordinary_parsing() {
         ),
     ] {
         let source = format!("@font-face{{{}:{incomplete}", kind.as_str());
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::FontFace(face)] = report.syntax().rules() else {
             panic!("recovered font face retained")
         };
         assert_eq!(face.descriptors().occurrences().len(), 1);
         assert!(!report.is_clean());
-        let recovered = parse_component_values(incomplete).unwrap();
+        let recovered = CssComponentValues::parse(&CssParser::default(), incomplete).unwrap();
         let function_origin = recovered
             .items()
             .iter()
@@ -806,7 +820,7 @@ fn otherwise_valid_implicitly_closed_math_recovers_only_in_ordinary_parsing() {
         let CssAuthoredFontFaceDescriptorValue::Pending(pending) =
             CssAuthoredFontFaceDescriptorValue::try_from_components(
                 kind,
-                parse_component_values("env(axis)").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "env(axis)").unwrap(),
                 Default::default(),
             )
             .unwrap()
@@ -890,11 +904,9 @@ fn list_serialization_obeys_shared_atomic_input_projection_and_byte_limits() {
 
 #[test]
 fn normalized_nested_declarations_retain_order_and_source_occurrences() {
-    let report = parse_sheet(
-        ".a{font-kerning:none;font-size-adjust:0.5;& .b{font-optical-sizing:none;font-language-override:\"SRB\"}font-variation-settings:\"wght\" -1}",
-    );
+    let report = CssParser::default().parse_sheet(".a{font-kerning:none;font-size-adjust:0.5;& .b{font-optical-sizing:none;font-language-override:\"SRB\"}font-variation-settings:\"wght\" -1}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()

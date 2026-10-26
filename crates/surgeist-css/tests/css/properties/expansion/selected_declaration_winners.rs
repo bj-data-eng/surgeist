@@ -7,9 +7,11 @@ use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn entries(source: &str) -> Vec<CssSpecifiedDeclarationEntry> {
-    let report = CssParserContext::new(CssParserMode::Standards)
-        .with_svg_glyph_orientation_vertical()
-        .parse_style_attribute(source);
+    let report = CssParser::new(
+        CssParserContext::new(CssParserMode::Standards).with_svg_glyph_orientation_vertical(),
+        Default::default(),
+    )
+    .parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
         .unwrap()

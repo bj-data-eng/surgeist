@@ -14,15 +14,15 @@ use surgeist_css::{
     CssAuthoredDeclarationValue, CssComponentValue, CssComponentValueRef, CssComponentValues,
     CssCustomPropertyName, CssDeclaration, CssErrorCode, CssFourSides, CssGlobalKeyword,
     CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssMarginValue, CssParsedOrigin,
-    CssPropertyNameRef, CssRule, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
-    parse_component_values, parse_property_value, parse_sheet, parse_style_attribute,
-    validate_sheet,
+    CssParser, CssPropertyNameRef, CssPropertyTarget, CssRule, CssSerializedOrigin, CssValueOrigin,
+    CssValueTokenRef,
 };
 
 fn known_value(property: CssKnownProperty, value: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
-        parse_component_values(value).expect("component syntax"),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+        CssComponentValues::parse(&CssParser::default(), value).expect("component syntax"),
         CssImportance::Normal,
     )
     .expect("property grammar")
@@ -99,8 +99,9 @@ fn checked_construction() {
         Default::default(),
     )
     .unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Margin),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Margin)),
         components,
         CssImportance::Important,
     )
@@ -130,8 +131,9 @@ fn checked_construction() {
         Default::default(),
     )
     .unwrap();
-    let error = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Padding),
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Padding)),
         negative,
         CssImportance::Normal,
     )
@@ -172,9 +174,10 @@ fn declared_value_branches() {
     );
 
     let name = CssCustomPropertyName::try_new("--Theme").unwrap();
-    let custom = parse_property_value(
-        CssPropertyNameRef::Custom(&name),
-        parse_component_values("unresolved(2px)").unwrap(),
+    let custom = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
+        CssComponentValues::parse(&CssParser::default(), "unresolved(2px)").unwrap(),
         CssImportance::Important,
     )
     .unwrap();
@@ -186,9 +189,10 @@ fn declared_value_branches() {
     );
     assert_eq!(custom.importance(), CssImportance::Important);
     assert_eq!(custom.position(), None);
-    let custom_global = parse_property_value(
-        CssPropertyNameRef::Custom(&name),
-        parse_component_values("initial").unwrap(),
+    let custom_global = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
+        CssComponentValues::parse(&CssParser::default(), "initial").unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -196,8 +200,9 @@ fn declared_value_branches() {
         custom_global.custom().unwrap().value().global(),
         Some(CssGlobalKeyword::Initial)
     );
-    let empty = parse_property_value(
-        CssPropertyNameRef::Custom(&name),
+    let empty = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
         CssComponentValues::try_new(Vec::new(), Default::default()).unwrap(),
         CssImportance::Normal,
     )
@@ -218,9 +223,10 @@ fn value_boundaries_and_error_origins() {
         ("var(--space);padding:2px", ";"),
         ("1px blue", "blue"),
     ] {
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Margin),
-            parse_component_values(value).unwrap(),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Margin)),
+            CssComponentValues::parse(&CssParser::default(), value).unwrap(),
             CssImportance::Normal,
         )
         .expect_err("one value cannot smuggle an annotation, declaration or extra grammar token");
@@ -228,8 +234,8 @@ fn value_boundaries_and_error_origins() {
         assert_source_span(parsed(responsible(&error.origin())), value, invalid_token);
     }
 
-    let left = parse_component_values("1px").unwrap();
-    let right = parse_component_values("2px").unwrap();
+    let left = CssComponentValues::parse(&CssParser::default(), "1px").unwrap();
+    let right = CssComponentValues::parse(&CssParser::default(), "2px").unwrap();
     let left_source = parsed(left.items()[0].origin()).source().clone();
     let right_source = parsed(right.items()[0].origin()).source().clone();
     let mixed = CssComponentValues::try_new(
@@ -241,8 +247,9 @@ fn value_boundaries_and_error_origins() {
         Default::default(),
     )
     .unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Margin),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Margin)),
         mixed,
         CssImportance::Normal,
     )
@@ -267,7 +274,7 @@ fn value_boundaries_and_error_origins() {
 
 fn parsed_declaration_coordinates() {
     let source = "/*😀*/.x{m\\61 rgin:1px 2px!important;padding:0;--Empty:;}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(style)] = report.syntax().rules() else {
         panic!("one style rule")
@@ -331,7 +338,13 @@ fn parsed_declaration_coordinates() {
                 .same_snapshot(name.source())
         );
     }
-    assert_eq!(&validate_sheet(source).unwrap(), report.syntax());
+    assert_eq!(
+        &CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap(),
+        report.syntax()
+    );
     println!("parsed declaration coordinates: ok");
 }
 
@@ -347,8 +360,8 @@ fn occurrence_identity_and_value_equality() {
     assert!(!first_source.same_snapshot(second_source));
 
     let source = "margin:var(--space);margin:var(--space)";
-    let first_parse = parse_style_attribute(source);
-    let second_parse = parse_style_attribute(source);
+    let first_parse = CssParser::default().parse_block_contents(source);
+    let second_parse = CssParser::default().parse_block_contents(source);
     assert!(first_parse.is_clean());
     assert!(second_parse.is_clean());
     let [first, next] = first_parse.syntax().as_slice() else {
@@ -396,7 +409,7 @@ fn original_snapshot_after_structural_recovery() {
             "@media all{".repeat(depth),
             "}".repeat(depth)
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(
             report.is_clean(),
             depth == 65,

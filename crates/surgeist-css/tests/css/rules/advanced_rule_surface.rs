@@ -21,10 +21,14 @@ fn advanced_css_surface_matrix_accepts_supported_forms() {
     ];
 
     for css in accepted {
-        assert!(parse_sheet(css).is_clean(), "{css} should parse");
+        assert!(
+            CssParser::default().parse_sheet(css).is_clean(),
+            "{css} should parse"
+        );
     }
 
-    let sheet = parse_sheet(r#"@import url("theme.css") supports(display: grid) layer(theme);"#)
+    let sheet = CssParser::default()
+        .parse_sheet(r#"@import url("theme.css") supports(display: grid) layer(theme);"#)
         .expect("clean parse report");
     let [CssRule::Import(import)] = sheet.rules() else {
         panic!("expected retained conditional import")
@@ -79,8 +83,9 @@ fn advanced_css_surface_matrix_rejects_unsupported_forms() {
 
 #[test]
 fn advanced_css_rule_surface_is_structurally_accessible() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"
             @import url("theme.css") screen and (min-width: 600px);
             @font-face { font-family: Inter; src: url("inter.woff2") format("woff2"); }
             @media (prefers-color-scheme: dark) { .panel { color: black; } }
@@ -88,8 +93,8 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
                 .toolbar > button[aria-expanded=true] { color: black; }
             }
         "#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
 
     let [
         CssRule::Import(import),
@@ -211,7 +216,7 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
 
 #[test]
 fn keyframes_and_authored_nesting_are_structurally_accessible() {
-    let sheet = parse_sheet("@keyframes fade { from { opacity: 0; } to { opacity: 1; } } .card { color: black; &:hover { opacity: 0.9; } @media (min-width: 600px) { > .title { color: white; } } }").expect("clean parse report");
+    let sheet = CssParser::default().parse_sheet("@keyframes fade { from { opacity: 0; } to { opacity: 1; } } .card { color: black; &:hover { opacity: 0.9; } @media (min-width: 600px) { > .title { color: white; } } }").expect("clean parse report");
     let [CssRule::Keyframes(keyframes), card] = sheet.rules() else {
         panic!("expected keyframes and authored card");
     };

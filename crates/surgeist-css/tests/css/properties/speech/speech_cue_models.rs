@@ -43,7 +43,7 @@ fn decibel_literal_preserves_exact_signed_coefficients_units_and_origins() {
         "-1e-400dB",
         r"-3d\42",
     ] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let component = values.items()[0].clone();
         let value = CssDecibelLiteral::try_from_component(component.clone()).unwrap();
         assert_eq!(value.component(), &component);
@@ -73,7 +73,10 @@ fn decibel_literal_preserves_exact_signed_coefficients_units_and_origins() {
 #[test]
 fn decibel_literal_rejects_wrong_domains_and_invalid_coefficients_at_the_original_origin() {
     for text in ["3", "3%", "3px", "3s", "none", "calc(3dB)"] {
-        let component = parse_component_values(text).unwrap().items()[0].clone();
+        let component = CssComponentValues::parse(&CssParser::default(), text)
+            .unwrap()
+            .items()[0]
+            .clone();
         let error = CssDecibelLiteral::try_from_component(component.clone()).unwrap_err();
         assert!(error.is_invalid_token(), "{error:?}");
         assert_eq!(error.origin(), component.origin());
@@ -404,7 +407,7 @@ fn equivalent_after_with_url_modifiers_consumes_nodes_without_extra_output_bytes
 
 #[test]
 fn checked_cue_models_reject_retained_url_modifier_argument_recovery() {
-    let report = parse_style_attribute("cue-before:url(\"a\" mod([");
+    let report = CssParser::default().parse_block_contents("cue-before:url(\"a\" mod([");
     assert!(!report.is_clean());
     let [source] = report.syntax().as_slice() else {
         panic!("retained recovered cue")

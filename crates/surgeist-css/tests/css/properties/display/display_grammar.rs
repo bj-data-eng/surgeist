@@ -71,7 +71,7 @@ fn complete_selected_display_grammar_is_retained() {
     assert_eq!(forms.iter().filter(|form| !form.contains(' ')).count(), 30);
     for value in forms {
         let source = format!("display:{value}!important");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{value}");
         let declaration = &report.syntax()[0];
@@ -116,7 +116,8 @@ fn invalid_display_category_combinations_reject_only_the_bad_declaration() {
         "masonry",
         "inline-masonry",
     ] {
-        let report = parse_style_attribute(&format!("color:red;display:{value};color:blue"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("color:red;display:{value};color:blue"));
         let [diagnostic] = report.diagnostics() else {
             panic!("one drop for {value}")
         };
@@ -136,8 +137,9 @@ fn checked_component_construction_uses_the_same_display_grammar() {
             tokens.push(CssComponentValue::try_token(word).unwrap());
         }
         let components = CssComponentValues::try_new(tokens, Default::default()).unwrap();
-        let declaration = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Display),
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Display)),
             components.clone(),
             CssImportance::Normal,
         )
@@ -160,9 +162,9 @@ fn already_admitted_display_values_have_intrinsic_expansion() {
         "grid-lanes",
         "inline-grid-lanes",
     ] {
-        let report = parse_style_attribute(&format!("display:{value}"));
+        let report = CssParser::default().parse_block_contents(format!("display:{value}"));
         assert!(report.is_clean());
-        assert!(expand_declaration(&report.syntax()[0]).is_ok(), "{value}");
+        assert!(report.syntax()[0].expand().is_ok(), "{value}");
     }
 }
 
@@ -180,7 +182,8 @@ fn selected_grid_lanes_keywords_preserve_identity_and_authored_spelling() {
             ("", CssImportance::Normal),
             ("!important", CssImportance::Important),
         ] {
-            let report = parse_style_attribute(&format!("display:{source}{suffix}"));
+            let report =
+                CssParser::default().parse_block_contents(format!("display:{source}{suffix}"));
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             let declaration = &report.syntax()[0];
             let CssKnownPropertyValueRef::Display(value) =
@@ -201,8 +204,9 @@ fn selected_grid_lanes_keywords_preserve_identity_and_authored_spelling() {
             Default::default(),
         )
         .unwrap();
-        let declaration = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Display),
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Display)),
             components.clone(),
             CssImportance::Normal,
         )

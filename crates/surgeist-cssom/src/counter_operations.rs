@@ -127,7 +127,8 @@ impl CssomBatch {
                 return Ok(false);
             }
             let (value, diagnostics) =
-                parse_counter_style_descriptor_value(source, kind).into_parts();
+                CssCounterStyleDescriptorValue::parse(&CssParser::default(), source, kind)
+                    .into_parts();
             check_resource_diagnostics(&diagnostics)?;
             operation_diagnostics = diagnostics;
             let Some(value) = value else {

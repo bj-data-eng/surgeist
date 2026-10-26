@@ -97,7 +97,7 @@ mod tests {
     use crate::CssSerializationLimits as Limits;
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
     use crate::specified_rule_serialization::SpecifiedProvider as _;
-    use crate::{CssColor, CssKnownPropertyValueRef, CssLineWidth, parse_style_attribute};
+    use crate::{CssColor, CssKnownPropertyValueRef, CssLineWidth};
 
     fn width(writer: &mut SpecifiedRuleWriter) -> Result<()> {
         CssLineWidth::Thin.append_to_rule_writer(writer)
@@ -224,7 +224,8 @@ mod tests {
 
     #[test]
     fn suppressed_numeric_and_rgb_children_charge_no_scratch_bytes() {
-        let report = parse_style_attribute("outline:2px solid rgb(1 2 3)");
+        let report =
+            crate::CssParser::default().parse_block_contents("outline:2px solid rgb(1 2 3)");
         assert!(report.is_clean());
         let CssKnownPropertyValueRef::Outline(value) = report.syntax()[0]
             .known()

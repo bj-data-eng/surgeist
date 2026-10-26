@@ -1059,10 +1059,14 @@ mod invalid_nesting_context_tests {
     #[test]
     fn incomparable_receiver_cannot_trade_compound_restriction_for_has_restriction() {
         let source = ":host(:is(.a &))";
-        let host = crate::parse_selector(source, &CssNamespaceContext::default())
-            .syntax()
-            .clone()
-            .unwrap();
+        let host = crate::CssSelector::parse(
+            &crate::CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        )
+        .syntax()
+        .clone()
+        .unwrap();
         let CssSelector::PseudoClass(CssPseudoClass::HostFunction(argument)) = &host else {
             panic!("Host")
         };

@@ -140,9 +140,10 @@ fn ordinary_rgb_censors_genuine_infinite_angle_cosine_to_zero() {
 }
 
 fn assert_color(source: &str, expected: &str) {
-    let components = parse_component_values(source).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         components.clone(),
         CssImportance::Normal,
     )

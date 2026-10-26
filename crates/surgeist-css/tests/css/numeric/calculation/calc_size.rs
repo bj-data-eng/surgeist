@@ -1,11 +1,11 @@
 use surgeist_css::{
     CssCalcSize, CssCalcSizeBasisRef, CssCalculation, CssCalculationExpressionRef,
-    CssComponentValueLimits, CssIntrinsicSizeKeyword, CssLengthPercentage, CssSerializationLimits,
-    parse_component_values,
+    CssComponentValueLimits, CssComponentValues, CssIntrinsicSizeKeyword, CssLengthPercentage,
+    CssParser, CssSerializationLimits,
 };
 
 fn checked(text: &str) -> CssCalcSize {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [component] = values.items() else {
         panic!("one function: {text}")
     };
@@ -14,7 +14,7 @@ fn checked(text: &str) -> CssCalcSize {
 }
 
 fn rejected(text: &str) {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [component] = values.items() else {
         panic!("one function: {text}")
     };
@@ -134,7 +134,7 @@ fn ordinary_numeric_admission_does_not_gain_size_or_calc_size() {
     ] {
         assert!(
             CssCalculation::<CssLengthPercentage>::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 Default::default()
             )
             .is_err(),
@@ -146,7 +146,7 @@ fn ordinary_numeric_admission_does_not_gain_size_or_calc_size() {
 #[test]
 fn entire_component_graph_is_bounded_before_nested_admission() {
     let source = "calc-size(calc-size(min-content, size), size + 1px)";
-    let values = parse_component_values(source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let component = values.items()[0].clone();
     for limits in [
         CssComponentValueLimits::try_new(256, values.component_count() - 1, 1_000).unwrap(),
@@ -165,7 +165,7 @@ fn deep_checked_graph_clones_and_projects_within_the_hard_ceiling() {
         "calc(".repeat(255),
         ")".repeat(255)
     );
-    let values = parse_component_values(&source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     assert_eq!(values.nesting_depth(), 256);
     let original = checked(&source);
     let copied = original.clone();
@@ -181,7 +181,7 @@ fn deep_checked_graph_clones_and_projects_within_the_hard_ceiling() {
         ")".repeat(256)
     );
     assert!(
-        parse_component_values(&over_limit)
+        CssComponentValues::parse(&CssParser::default(), &over_limit)
             .unwrap_err()
             .is_nesting_limit()
     );
@@ -193,7 +193,7 @@ fn nested_calc_size_bases_reach_the_hard_ceiling_without_recursion_overflow() {
     for _ in 0..255 {
         source = format!("calc-size({source}, size)");
     }
-    let values = parse_component_values(&source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     assert_eq!(values.nesting_depth(), 256);
     let value = checked(&source);
     let cloned = value.clone();
@@ -215,7 +215,7 @@ fn nested_calc_size_bases_reach_the_hard_ceiling_without_recursion_overflow() {
 
     let over_limit = format!("calc-size({source}, size)");
     assert!(
-        parse_component_values(&over_limit)
+        CssComponentValues::parse(&CssParser::default(), &over_limit)
             .unwrap_err()
             .is_nesting_limit()
     );
@@ -224,7 +224,11 @@ fn nested_calc_size_bases_reach_the_hard_ceiling_without_recursion_overflow() {
 #[test]
 fn calc_size_equality_ignores_origins_but_keeps_exact_checked_structure() {
     let value = checked("calc-size(min-content, size + 1px)");
-    let shifted = parse_component_values("  calc-size(min-content, size + 1px)").unwrap();
+    let shifted = CssComponentValues::parse(
+        &CssParser::default(),
+        "  calc-size(min-content, size + 1px)",
+    )
+    .unwrap();
     let component = shifted
         .items()
         .iter()

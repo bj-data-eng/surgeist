@@ -7,7 +7,7 @@ use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn speak_as(text: &str) -> CssSpeakAs {
-    let report = parse_style_attribute(&format!("speak-as:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("speak-as:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::SpeakAs(value) = report.syntax()[0]
         .known()
@@ -103,7 +103,8 @@ fn checked_speak_as_rejects_empty_modifiers_and_preserves_every_authored_choice(
 fn specified_speech_keywords_canonicalize_order_case_and_escapes_without_rewriting_authored_tokens()
 {
     let authored = r"NO-PUNCTUATION d\69 gits SPELL-OUT";
-    let report = parse_style_attribute(&format!("speak-as:{authored}!important"));
+    let report =
+        CssParser::default().parse_block_contents(format!("speak-as:{authored}!important"));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let source = &report.syntax()[0];
     let CssKnownPropertyValueRef::SpeakAs(value) =
@@ -121,8 +122,7 @@ fn specified_speech_keywords_canonicalize_order_case_and_escapes_without_rewriti
         expected
     );
     assert_eq!(*value.value(), speak_as(expected));
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("ordinary terminal")
     };
@@ -152,7 +152,7 @@ fn specified_speech_keywords_canonicalize_order_case_and_escapes_without_rewriti
         (r"n\65 ver", CssSpeak::Never, "never"),
         ("ALWAYS", CssSpeak::Always, "always"),
     ] {
-        let report = parse_style_attribute(&format!("speak:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("speak:{text}"));
         assert!(report.is_clean());
         let CssKnownPropertyValueRef::Speak(value) = report.syntax()[0]
             .known()
@@ -279,16 +279,23 @@ fn speech_property_support_reports_its_exact_normative_source_and_keeps_counter_
         );
         assert_eq!(feature.production(), production);
         assert_eq!(feature.status(), CssSupportStatus::Complete);
-        let report = parse_style_attribute(&format!("{}:{text}", property.canonical_name()));
+        let report = CssParser::default()
+            .parse_block_contents(format!("{}:{text}", property.canonical_name()));
         assert!(report.is_clean());
         assert_eq!(report.syntax()[0].known().unwrap().property(), property);
     }
     let descriptor = feature_metadata("official.descriptor.counter-style.speak-as").unwrap();
     assert_eq!(descriptor.source().id().as_str(), "O-COUNTERSTYLES3");
     assert!(
-        parse_sheet("@counter-style spoken{system:cyclic;symbols:x;speak-as:words}").is_clean()
+        CssParser::default()
+            .parse_sheet("@counter-style spoken{system:cyclic;symbols:x;speak-as:words}")
+            .is_clean()
     );
-    assert!(!parse_style_attribute("speak-as:words").is_clean());
+    assert!(
+        !CssParser::default()
+            .parse_block_contents("speak-as:words")
+            .is_clean()
+    );
     let historical = conformance_exclusion("excluded.O-CSS2.informative-property.speak").unwrap();
     assert_eq!(historical.reason(), CssExclusionReason::InformativeOnly);
 }

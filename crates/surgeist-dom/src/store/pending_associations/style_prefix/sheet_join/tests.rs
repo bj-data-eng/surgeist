@@ -2,7 +2,7 @@
 use super::super::tests::{begin_await, binding, envelope, flag, install, parse, qualifier, setup};
 use super::*;
 use crate::{DomParsedHtmlAssociationAdmissionError, DomStyleCssomRootError};
-use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
 use surgeist_cssom::*;
 use surgeist_html::{HtmlCspLayout, HtmlCspOwner};
 fn ready() -> (Dom, DocumentId, DomParsedHtmlAssociationId) {
@@ -46,20 +46,20 @@ fn input(
     prep: &DomParsedHtmlStyleSheetPreparation<'_, '_, '_>,
 ) -> Option<DomParsedHtmlStyleSheetInput> {
     let parser = CssParserContext::default();
-    let sheet = parser
-        .parse_sheet_utf16_with_limits(
+    let sheet = CssParser::new(parser, Default::default())
+        .parse_sheet_utf16(
             prep.request().text().shared_code_units().clone(),
             CssUtf16InputLimits::default(),
             || prep.step(&flag()),
         )
         .unwrap();
-    let media = parser
-        .parse_media_query_list_utf16_with_limits(
-            prep.request().media().unwrap().shared_code_units().clone(),
-            CssUtf16InputLimits::default(),
-            || prep.step(&flag()),
-        )
-        .unwrap();
+    let media = CssMediaQueryList::parse_utf16(
+        &CssParser::new(parser, Default::default()),
+        prep.request().media().unwrap().shared_code_units().clone(),
+        CssUtf16InputLimits::default(),
+        || prep.step(&flag()),
+    )
+    .unwrap();
     Some(DomParsedHtmlStyleSheetInput::new(
         sheet,
         media,
@@ -306,8 +306,8 @@ fn original_control_refuses_the_actual_final_css_postgrammar_poll_then_raised_re
         let hold = dom
             .begin_parsed_html_style(id, envelope(), &flag())
             .unwrap();
-        let report = CssParserContext::default()
-            .parse_sheet_utf16_with_limits(text.clone(), Default::default(), || {
+        let report = CssParser::new(CssParserContext::default(), Default::default())
+            .parse_sheet_utf16(text.clone(), Default::default(), || {
                 polls.set(polls.get() + 1);
                 hold.step(&flag())
             })
@@ -320,8 +320,8 @@ fn original_control_refuses_the_actual_final_css_postgrammar_poll_then_raised_re
             hold.step(&flag()).unwrap();
         }
         let calls = std::cell::Cell::new(0u64);
-        let error = CssParserContext::default()
-            .parse_sheet_utf16_with_limits(text.clone(), Default::default(), || {
+        let error = CssParser::new(CssParserContext::default(), Default::default())
+            .parse_sheet_utf16(text.clone(), Default::default(), || {
                 calls.set(calls.get() + 1);
                 hold.step(&flag())
             })
@@ -352,8 +352,8 @@ fn original_control_refuses_the_actual_final_css_postgrammar_poll_then_raised_re
     .unwrap();
     let hold = dom.begin_parsed_html_style(id, limits, &flag()).unwrap();
     assert!(hold.spent_work() >= envelope().work());
-    let report = CssParserContext::default()
-        .parse_sheet_utf16_with_limits(text, Default::default(), || hold.step(&flag()))
+    let report = CssParser::new(CssParserContext::default(), Default::default())
+        .parse_sheet_utf16(text, Default::default(), || hold.step(&flag()))
         .unwrap();
     assert!(report.syntax().rules().is_empty());
 }

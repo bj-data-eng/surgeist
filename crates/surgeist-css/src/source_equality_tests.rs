@@ -4,7 +4,7 @@
 //! comparison without rescanning it; distinct snapshots keep text equality.
 
 use super::SNAPSHOT_TEXT_BYTES_COMPARED;
-use crate::{CssSourceSnapshot, parse_component_values, parse_sheet};
+use crate::CssSourceSnapshot;
 
 fn compared_bytes(compare: impl FnOnce() -> bool) -> (bool, usize) {
     SNAPSHOT_TEXT_BYTES_COMPARED.with(|compared| compared.set(0));
@@ -24,14 +24,14 @@ fn large_sheet(rules: usize) -> String {
 #[test]
 fn values_sharing_one_snapshot_compare_without_reading_its_text() {
     let source = large_sheet(400);
-    let report = parse_sheet(&source);
+    let report = crate::CssParser::default().parse_sheet(&source);
     let sheet = report.syntax();
     let copy = sheet.clone();
     let (equal, bytes) = compared_bytes(|| *sheet == copy);
     assert!(equal);
     assert_eq!(bytes, 0, "shared-snapshot equality rescanned source text");
 
-    let values = parse_component_values(&source).unwrap();
+    let values = crate::component_values::parse_component_values(&source).unwrap();
     let copy = values.clone();
     let (equal, bytes) = compared_bytes(|| values == copy);
     assert!(equal);
@@ -46,8 +46,8 @@ fn values_sharing_one_snapshot_compare_without_reading_its_text() {
 #[test]
 fn distinct_snapshots_keep_text_equality() {
     let source = large_sheet(20);
-    let first = parse_sheet(&source);
-    let second = parse_sheet(&source);
+    let first = crate::CssParser::default().parse_sheet(&source);
+    let second = crate::CssParser::default().parse_sheet(&source);
     assert_eq!(first.syntax(), second.syntax());
     assert_eq!(
         CssSourceSnapshot::new(&source),
@@ -59,9 +59,9 @@ fn distinct_snapshots_keep_text_equality() {
         CssSourceSnapshot::new(&source),
         CssSourceSnapshot::new(&changed)
     );
-    let values = parse_component_values("a /* x */ b").unwrap();
-    let other = parse_component_values("a /* y */ b").unwrap();
+    let values = crate::component_values::parse_component_values("a /* x */ b").unwrap();
+    let other = crate::component_values::parse_component_values("a /* y */ b").unwrap();
     assert_ne!(values, other);
-    let same = parse_component_values("a /* x */ b").unwrap();
+    let same = crate::component_values::parse_component_values("a /* x */ b").unwrap();
     assert_eq!(values, same);
 }

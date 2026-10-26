@@ -3,7 +3,7 @@
 //! authored rule. Unknown or invalid descriptors use declaration recovery.
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-rule
 
-use surgeist_css::{CssRecoveryAction, CssRule, parse_sheet};
+use surgeist_css::{CssParser, CssRecoveryAction, CssRule};
 
 #[test]
 fn missing_matching_descriptors_preserves_clean_authored_font_face() {
@@ -13,7 +13,7 @@ fn missing_matching_descriptors_preserves_clean_authored_font_face() {
         ("@font-face { src: url(face.woff2); }", 1),
         ("@font-face { font-display: swap; }", 1),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("expected the authored font-face for {source}");
@@ -34,7 +34,7 @@ fn missing_matching_descriptors_preserves_clean_authored_font_face() {
 #[test]
 fn invalid_descriptor_does_not_discard_accepted_font_face() {
     let source = "@font-face { font-family: Demo; src: nope; font-display: swap; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("descriptor recovery must retain the accepted outer rule");
     };
@@ -55,7 +55,7 @@ fn invalid_descriptor_does_not_discard_accepted_font_face() {
 #[test]
 fn invalid_font_face_prelude_discards_the_outer_rule() {
     let source = "@font-face unexpected { src: url(face); } .after { color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
     let [diagnostic] = report.diagnostics() else {
         panic!("expected exactly the invalid outer rule diagnostic");

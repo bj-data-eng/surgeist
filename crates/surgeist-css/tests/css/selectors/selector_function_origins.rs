@@ -2,9 +2,8 @@
 //! Unknown function names are invalid under pinned Selectors 4 section 3.9:
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid
 use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSelector, CssTokenKind, parse_selector,
-    parse_sheet,
+    CssErrorCode, CssNamespaceContext, CssParser, CssPseudoClass, CssPseudoSelectorListItem,
+    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSelector, CssTokenKind,
 };
 
 fn assert_origin(
@@ -41,7 +40,8 @@ fn unknown_functions_blame_function_token_in_raw_and_sheet_contexts() {
         ("/*😀*/\r\n/*é*/:unknown(x)", (17, 1, 6), "unknown("),
         (":未知(x)", (1, 0, 1), "未知("),
     ] {
-        let report = parse_selector(raw, &CssNamespaceContext::default());
+        let report =
+            CssSelector::parse(&CssParser::default(), raw, &CssNamespaceContext::default());
         assert!(report.syntax().is_none(), "{raw}: {report:?}");
         let diagnostic = report
             .diagnostics()
@@ -58,7 +58,7 @@ fn unknown_functions_blame_function_token_in_raw_and_sheet_contexts() {
 
         let rejected_rule = format!("{raw}{{}}");
         let sheet = format!("{rejected_rule}.after{{color:red}}");
-        let report = parse_sheet(&sheet);
+        let report = CssParser::default().parse_sheet(&sheet);
         let [CssRule::Style(after)] = report.syntax().rules() else {
             panic!("retain only following valid rule: {report:?}");
         };
@@ -85,7 +85,11 @@ fn unknown_functions_blame_function_token_in_raw_and_sheet_contexts() {
 #[test]
 fn forgiving_unknown_function_preserves_whole_member_span_and_valid_member() {
     let source = ":is(:unknown(x),.ok)";
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     let Some(CssSelector::PseudoClass(CssPseudoClass::Is(members))) = report.syntax() else {
         panic!("retained forgiving selector: {report:?}");
     };
@@ -112,7 +116,11 @@ fn forgiving_unknown_function_preserves_whole_member_span_and_valid_member() {
 #[test]
 fn known_function_argument_error_keeps_argument_origin() {
     let source = ":lang(123)";
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.syntax().is_none());
     let diagnostic = report
         .diagnostics()
@@ -127,7 +135,11 @@ fn known_function_argument_error_keeps_argument_origin() {
         "123",
     );
     for source in [":lang(en)", ":not(.x)", ":is(.ok)"] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(
             report.is_clean() && report.syntax().is_some(),
             "{source}: {report:?}"

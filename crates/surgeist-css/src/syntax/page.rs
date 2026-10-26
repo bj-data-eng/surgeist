@@ -868,3 +868,64 @@ impl CssMarginDeclarationBlock {
         Ok(writer.css)
     }
 }
+impl CssPageSelectorList {
+    /// Parses the complete raw Page prelude, including empty, named, compound and comma-list forms.
+    /// All source coordinates belong to the original input; no at-rule wrapper is synthesized.
+    ///
+    /// The parser is not read: neither its document mode nor its component limits apply to this grammar, and only the fixed nesting ceiling bounds the input.
+    #[expect(
+        unused_variables,
+        reason = "this grammar does not read the parser configuration"
+    )]
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> crate::CssParseReport<Option<CssPageSelectorList>> {
+        crate::parser::parse_page_selector_list(source.as_ref())
+    }
+}
+impl CssMarginRule {
+    /// Parses exactly one complete margin at-rule in a Page destination.
+    ///
+    /// The decoded at-keyword and empty prelude use the actual Page grammar;
+    /// declaration recovery retains applicable properties/custom declarations and
+    /// priority. Real framing and origins come from the complete raw input, including
+    /// escaped names and surrounding trivia. No containing Page or brace is invented.
+    /// Extra nontrivia rejects the complete input. EOF closures use existing recovery.
+    ///
+    /// `None` means failed preparation: typed diagnostics distinguish preliminary
+    /// Syntax, placement, unsupported-name and resource failures. A retained child
+    /// may have local recovery. This API establishes a Page destination; live CSSOM
+    /// validates outside-Page hierarchy and insertion order after classification.
+    ///
+    /// The parser supplies the document mode and the cumulative component limits, which charge the full original input once.
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> crate::CssParseReport<Option<CssMarginRule>> {
+        crate::parser::parse_page_margin_rule_with_context(
+            source.as_ref(),
+            parser.component_limits(),
+            parser.context(),
+        )
+    }
+}
+impl CssPageDescriptorValue {
+    /// Parses one complete raw Page descriptor value without a descriptor-name origin or priority.
+    ///
+    /// The parser is not read: neither its document mode nor its component limits apply to this grammar, and only the fixed nesting ceiling bounds the input.
+    #[expect(
+        unused_variables,
+        reason = "this grammar does not read the parser configuration"
+    )]
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+        kind: CssPageDescriptorKind,
+    ) -> crate::CssParseReport<Option<CssPageDescriptorValue>> {
+        crate::parser::parse_page_descriptor_value(source.as_ref(), kind)
+    }
+}

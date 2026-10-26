@@ -8,7 +8,7 @@ use crate::css::support::value_assertions::{
 use surgeist_css::*;
 
 fn mixed_calculation(source: &str) -> (CssCalculation<CssLengthPercentage>, CssComponentValues) {
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
         components.clone(),
         Default::default(),
@@ -121,7 +121,7 @@ fn parsed_border_shadow_and_transform_accept_pure_percentage_cancellation() {
         "transform: translateZ(calc(10% / 10% * 1px))",
         "transform: perspective(calc(10% / 10% * 1px))",
     ] {
-        let report = parse_style_attribute(declaration);
+        let report = CssParser::default().parse_block_contents(declaration);
         assert!(
             report.is_clean(),
             "{declaration}: {:?}",
@@ -140,7 +140,7 @@ fn parsed_pure_consumers_reject_length_percentage_results() {
         "transform: translateZ(calc(1px + 10%))",
         "transform: perspective(calc(1px + 10%))",
     ] {
-        let report = parse_style_attribute(declaration);
+        let report = CssParser::default().parse_block_contents(declaration);
         let (name, _) = declaration.split_once(':').unwrap();
         assert_first_property_rejection(report.diagnostics(), known_property(name));
         assert!(report.syntax().is_empty(), "{declaration}");

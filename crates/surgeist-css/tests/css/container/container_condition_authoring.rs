@@ -10,7 +10,7 @@ use crate::css::support::sheet_cases::*;
 /// public stylesheet parser (Conditional Rules 5 §3.1), or its first
 /// diagnostic.
 fn container_condition(source: &str) -> Result<CssCondition<CssContainerLeaf>, CssError> {
-    let report = parse_sheet(&format!("@container {source} {{}}"));
+    let report = CssParser::default().parse_sheet(format!("@container {source} {{}}"));
     if let Some(diagnostic) = report.diagnostics().first() {
         return Err(diagnostic.error().clone());
     }
@@ -253,7 +253,8 @@ fn container_style_query_preserves_custom_property_authored_value() {
 
 #[test]
 fn container_rule_parser_accepts_unnamed_named_and_style_conditions() {
-    let sheet = parse_sheet("@container (inline-size > 30rem) { .card { color: black; } }")
+    let sheet = CssParser::default()
+        .parse_sheet("@container (inline-size > 30rem) { .card { color: black; } }")
         .expect("unnamed container rule parses");
     let [rule] = sheet.rules() else {
         panic!("expected one container rule");
@@ -277,7 +278,8 @@ fn container_rule_parser_accepts_unnamed_named_and_style_conditions() {
         &CssSelector::Class("card".to_owned())
     );
 
-    let sheet = parse_sheet("@container sidebar (width >= 300px) { .title { color: black; } }")
+    let sheet = CssParser::default()
+        .parse_sheet("@container sidebar (width >= 300px) { .title { color: black; } }")
         .expect("named container rule parses");
     let [rule] = sheet.rules() else {
         panic!("expected one container rule");
@@ -294,7 +296,8 @@ fn container_rule_parser_accepts_unnamed_named_and_style_conditions() {
         )))
     ));
 
-    let sheet = parse_sheet("@container style(--theme: dark) { .title { color: black; } }")
+    let sheet = CssParser::default()
+        .parse_sheet("@container style(--theme: dark) { .title { color: black; } }")
         .expect("style query container rule parses");
     let [rule] = sheet.rules() else {
         panic!("expected one container rule");
@@ -306,9 +309,9 @@ fn container_rule_parser_accepts_unnamed_named_and_style_conditions() {
 
 #[test]
 fn nested_conditional_rules_allow_media_and_container_in_either_direction() {
-    let sheet =
-        parse_sheet("@media screen { @container (width > 300px) { .panel { color: black; } } }")
-            .expect("media rule can contain a container rule");
+    let sheet = CssParser::default()
+        .parse_sheet("@media screen { @container (width > 300px) { .panel { color: black; } } }")
+        .expect("media rule can contain a container rule");
     let [media] = sheet.rules() else {
         panic!("expected one media rule");
     };
@@ -325,9 +328,9 @@ fn nested_conditional_rules_allow_media_and_container_in_either_direction() {
         &CssSelector::Class("panel".to_owned())
     );
 
-    let sheet =
-        parse_sheet("@container (width > 300px) { @media screen { .panel { color: black; } } }")
-            .expect("container rule can contain a media rule");
+    let sheet = CssParser::default()
+        .parse_sheet("@container (width > 300px) { @media screen { .panel { color: black; } } }")
+        .expect("container rule can contain a media rule");
     let [container] = sheet.rules() else {
         panic!("expected one container rule");
     };
@@ -347,7 +350,8 @@ fn nested_conditional_rules_allow_media_and_container_in_either_direction() {
 
 #[test]
 fn container_rule_parser_retains_unknown_features_and_rejects_invalid_bodies() {
-    let sheet = parse_sheet("@container (unknown > 1px) { .card { color: black; } }")
+    let sheet = CssParser::default()
+        .parse_sheet("@container (unknown > 1px) { .card { color: black; } }")
         .expect("clean parse report");
     assert!(matches!(
         container_rule(&sheet.rules()[0]).prelude().entries()[0]

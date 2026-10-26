@@ -145,7 +145,7 @@ fn required_palette_and_profile_values_reject_trivia_only_at_original_eof() {
             CssFontPaletteDescriptorKind::OverrideColors,
         ] {
             empty(
-                parse_font_palette_descriptor_value(source, kind),
+                CssFontPaletteDescriptorValue::parse(&CssParser::default(), source, kind),
                 source,
                 eof,
             );
@@ -156,7 +156,7 @@ fn required_palette_and_profile_values_reject_trivia_only_at_original_eof() {
             CssColorProfileDescriptorKind::Components,
         ] {
             empty(
-                parse_color_profile_descriptor_value(source, kind),
+                CssColorProfileDescriptorValue::parse(&CssParser::default(), source, kind),
                 source,
                 eof,
             );
@@ -188,7 +188,7 @@ fn successful_values_keep_the_complete_unicode_window_without_named_occurrences(
             10,
         ),
     ] {
-        let report = parse_font_palette_descriptor_value(source, kind);
+        let report = CssFontPaletteDescriptorValue::parse(&CssParser::default(), source, kind);
         assert!(report.is_clean(), "{source:?}: {report:?}");
         let value = report.syntax().as_ref().unwrap();
         assert_eq!(value.kind(), kind);
@@ -215,7 +215,7 @@ fn successful_values_keep_the_complete_unicode_window_without_named_occurrences(
             10,
         ),
     ] {
-        let report = parse_color_profile_descriptor_value(source, kind);
+        let report = CssColorProfileDescriptorValue::parse(&CssParser::default(), source, kind);
         assert!(report.is_clean(), "{source:?}: {report:?}");
         let value = report.syntax().as_ref().unwrap();
         assert_eq!(value.kind(), kind);
@@ -233,7 +233,11 @@ fn a_valid_value_before_a_root_tail_is_rejected_with_original_boundary_provenanc
     ] {
         for suffix in [";", "}"] {
             tail(
-                parse_font_palette_descriptor_value(&format!("{value}{suffix}"), kind),
+                CssFontPaletteDescriptorValue::parse(
+                    &CssParser::default(),
+                    format!("{value}{suffix}"),
+                    kind,
+                ),
                 boundary,
                 boundary + 1,
             );
@@ -250,7 +254,11 @@ fn a_valid_value_before_a_root_tail_is_rejected_with_original_boundary_provenanc
     ] {
         for suffix in [";", "}"] {
             tail(
-                parse_color_profile_descriptor_value(&format!("{value}{suffix}"), kind),
+                CssColorProfileDescriptorValue::parse(
+                    &CssParser::default(),
+                    format!("{value}{suffix}"),
+                    kind,
+                ),
                 boundary,
                 boundary + 1,
             );
@@ -267,7 +275,10 @@ fn source_depth_256_reaches_grammar_but_257_keeps_the_actual_typed_stop() {
             CssFontPaletteDescriptorKind::BasePalette,
             CssFontPaletteDescriptorKind::OverrideColors,
         ] {
-            depth(parse_font_palette_descriptor_value(&source, kind), exceeded);
+            depth(
+                CssFontPaletteDescriptorValue::parse(&CssParser::default(), &source, kind),
+                exceeded,
+            );
         }
         for kind in [
             CssColorProfileDescriptorKind::Src,
@@ -275,7 +286,7 @@ fn source_depth_256_reaches_grammar_but_257_keeps_the_actual_typed_stop() {
             CssColorProfileDescriptorKind::Components,
         ] {
             depth(
-                parse_color_profile_descriptor_value(&source, kind),
+                CssColorProfileDescriptorValue::parse(&CssParser::default(), &source, kind),
                 exceeded,
             );
         }
@@ -285,7 +296,8 @@ fn source_depth_256_reaches_grammar_but_257_keeps_the_actual_typed_stop() {
 #[test]
 fn each_family_retains_its_own_pending_eof_closure_and_fails_clean_validation() {
     // Palette accepts selected var substitution; profile admits env, not var.
-    let palette = parse_font_palette_descriptor_value(
+    let palette = CssFontPaletteDescriptorValue::parse(
+        &CssParser::default(),
         "var(--choice",
         CssFontPaletteDescriptorKind::BasePalette,
     );
@@ -293,7 +305,8 @@ fn each_family_retains_its_own_pending_eof_closure_and_fails_clean_validation() 
         palette.syntax().as_ref().unwrap().view(),
         CssFontPaletteDescriptorValueRef::Pending(_)
     ));
-    let profile = parse_color_profile_descriptor_value(
+    let profile = CssColorProfileDescriptorValue::parse(
+        &CssParser::default(),
         "env(profile",
         CssColorProfileDescriptorKind::Components,
     );
@@ -336,7 +349,8 @@ fn each_family_retains_its_own_pending_eof_closure_and_fails_clean_validation() 
     }
     assert!(palette.into_validation_result().is_err());
     assert!(profile.into_validation_result().is_err());
-    let invalid_profile = parse_color_profile_descriptor_value(
+    let invalid_profile = CssColorProfileDescriptorValue::parse(
+        &CssParser::default(),
         "var(--choice)",
         CssColorProfileDescriptorKind::Components,
     );

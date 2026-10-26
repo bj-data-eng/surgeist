@@ -472,23 +472,34 @@ pub(super) fn declaration(
     ) {
         return Err(invalid());
     }
-    let mut importance = CssImportance::Normal;
-    let mut value_end = items.len();
-    for (slot, &index) in significant.iter().enumerate().skip(2) {
-        match items[index].view() {
-            CssComponentValueRef::Token(CssValueTokenRef::Semicolon) => return Err(invalid()),
-            CssComponentValueRef::Token(CssValueTokenRef::Delim('!')) => {
-                if slot + 2 != significant.len()
-                    || !ident(&items[significant[slot + 1]])
-                        .is_some_and(|name| name.eq_ignore_ascii_case("important"))
-                {
-                    return Err(invalid());
-                }
-                importance = CssImportance::Important;
-                value_end = index;
-                break;
-            }
-            _ => {}
+    let value_slots = &significant[2..];
+    // The one detection of the trailing annotation (Syntax 3 (2026 CRD) §5.5.6
+    // step 6); any other `!` or `;` in the value is rejected below.
+    let tail = super::trailing_importance(
+        value_slots,
+        |_| false,
+        |&index| {
+            matches!(
+                items[index].view(),
+                CssComponentValueRef::Token(CssValueTokenRef::Delim('!'))
+            )
+        },
+        |&index| ident(&items[index]).is_some_and(|name| name.eq_ignore_ascii_case("important")),
+    );
+    let (importance, value_end, checked) = match tail {
+        Some((bang, _)) => (
+            CssImportance::Important,
+            value_slots[bang],
+            &value_slots[..bang],
+        ),
+        None => (CssImportance::Normal, items.len(), value_slots),
+    };
+    for &index in checked {
+        if matches!(
+            items[index].view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Semicolon | CssValueTokenRef::Delim('!'))
+        ) {
+            return Err(invalid());
         }
     }
     let admitted = if authored {
@@ -657,7 +668,7 @@ mod generated_selector_tests {
     #[test]
     fn live_depth_limit_maps_generated_function_error_to_original_unicode_source() {
         let source = "/*😀*/\r\nselector(:is(:where(.A)))";
-        let values = crate::parse_component_values(source).unwrap();
+        let values = crate::component_values::parse_component_values(source).unwrap();
         let function = values
             .items()
             .iter()

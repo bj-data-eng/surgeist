@@ -269,6 +269,44 @@ impl CssSvgGlyphOrientationVerticalMetadata {
         &[]
     }
 }
+impl CssSvgGlyphOrientationVerticalDeclaration {
+    /// Parses a fixed SVG presentation attribute value with Normal importance.
+    /// This retains document mode but uses attribute admission, independently of lookup selection.
+    ///
+    /// The parser supplies the document mode.
+    #[must_use]
+    pub fn parse_attribute(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> CssParseReport<Option<CssDeclaration>> {
+        crate::parser::parse_svg_glyph_attribute_value(source.as_ref(), parser.context())
+    }
+
+    /// Checks a fixed SVG presentation attribute's components; markup binding is downstream.
+    ///
+    /// The parser supplies the document mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns the typed failure of the first rejected component.
+    pub fn try_attribute_from_components(
+        parser: &crate::CssParser,
+        values: CssComponentValues,
+    ) -> Result<CssDeclaration, CssPropertyValueError> {
+        let context = parser.context();
+        let body = crate::property_value::checked_svg_glyph_value_body(
+            crate::svg_glyph::SvgGlyphAdmission::attribute(context),
+            &values,
+            context,
+        )?;
+        Ok(CssDeclaration::new_constructed(
+            context,
+            body,
+            CssImportance::Normal,
+            values,
+        ))
+    }
+}
 
 #[cfg(test)]
 mod writer_tests {

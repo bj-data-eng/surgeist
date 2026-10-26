@@ -98,7 +98,10 @@ fn create(
     let mut edit = batch(store);
     let ticket = edit
         .create_declarations(
-            parse_declaration_block_contents(text).into_parts().0,
+            CssParser::default()
+                .parse_block_contents(text)
+                .into_parts()
+                .0,
             computed,
             readonly,
             owner.then(|| CssomInputVersion {

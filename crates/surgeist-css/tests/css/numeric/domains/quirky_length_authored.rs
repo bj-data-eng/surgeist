@@ -10,16 +10,20 @@ use surgeist_css::*;
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);
 
 fn declaration(name: CssKnownProperty, values: CssComponentValues) -> CssDeclaration {
-    QUIRKS
-        .parse_property_value_for_grammar(name.grammar(), values, CssImportance::Normal)
-        .unwrap()
+    CssDeclaration::try_from_components(
+        &CssParser::new(QUIRKS, Default::default()),
+        CssPropertyTarget::Grammar(name.grammar()),
+        values,
+        CssImportance::Normal,
+    )
+    .unwrap()
 }
 
 #[test]
 fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels() {
     for (text, expected) in [("+7", "7px"), ("1.0", "1px"), ("1e1", "10px")] {
         for values in [
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             CssComponentValues::try_new(
                 vec![CssComponentValue::try_number(text).unwrap()],
                 Default::default(),
@@ -158,7 +162,7 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
 #[test]
 fn exact_zero_and_explicit_dimensions_remain_ordinary_retained_literals() {
     for text in ["0", "-0", "+0.0e99", "7px"] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let declaration = declaration(CssKnownProperty::MarginTop, values.clone());
         let CssKnownPropertyValueRef::MarginTop(margin) =
             declaration.known().unwrap().property_value().unwrap()
@@ -177,7 +181,7 @@ fn exact_zero_and_explicit_dimensions_remain_ordinary_retained_literals() {
 
 #[test]
 fn negative_nonzero_coefficients_retain_exact_sign_beyond_tokenizer_float_range() {
-    let values = parse_component_values("-1e-1000").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "-1e-1000").unwrap();
     let declaration = declaration(CssKnownProperty::MarginTop, values.clone());
     let CssKnownPropertyValueRef::MarginTop(margin) =
         declaration.known().unwrap().property_value().unwrap()
@@ -200,8 +204,9 @@ fn negative_nonzero_coefficients_retain_exact_sign_beyond_tokenizer_float_range(
         CssKnownProperty::Width,
     ] {
         assert_property_rejected(
-            QUIRKS.parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::new(QUIRKS, Default::default()),
+                CssPropertyTarget::Grammar(property.grammar()),
                 values.clone(),
                 CssImportance::Normal,
             ),
@@ -223,10 +228,11 @@ fn fit_content_function_arguments_do_not_inherit_the_named_property_permission()
             "fit-content(calc(7))",
             "calc-size(7, size)",
         ] {
-            let values = parse_component_values(text).unwrap();
+            let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             property_rejection(
-                QUIRKS.parse_property_value_for_grammar(
-                    property.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::new(QUIRKS, Default::default()),
+                    CssPropertyTarget::Grammar(property.grammar()),
                     values,
                     CssImportance::Normal,
                 ),
@@ -234,13 +240,13 @@ fn fit_content_function_arguments_do_not_inherit_the_named_property_permission()
             );
         }
         assert!(
-            QUIRKS
-                .parse_property_value_for_grammar(
-                    property.grammar(),
-                    parse_component_values("fit-content(7px)").unwrap(),
-                    CssImportance::Normal
-                )
-                .is_ok()
+            CssDeclaration::try_from_components(
+                &CssParser::new(QUIRKS, Default::default()),
+                CssPropertyTarget::Grammar(property.grammar()),
+                CssComponentValues::parse(&CssParser::default(), "fit-content(7px)").unwrap(),
+                CssImportance::Normal
+            )
+            .is_ok()
         );
     }
 }
@@ -284,7 +290,7 @@ fn clip_length(original: &CssComponentValue) -> CssNumeric<CssLength> {
 #[test]
 fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_properties() {
     for values in [
-        parse_component_values("+1e1").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "+1e1").unwrap(),
         CssComponentValues::try_new(
             vec![CssComponentValue::try_number("+1e1").unwrap()],
             Default::default(),
@@ -408,7 +414,8 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
         ] {
             let (name, _) = source.split_once(':').unwrap();
             assert_first_property_diagnostic(
-                QUIRKS.parse_declaration(source).diagnostics(),
+                CssDeclaration::parse(&CssParser::new(QUIRKS, Default::default()), source)
+                    .diagnostics(),
                 source,
                 known_property(name),
                 "10",
@@ -441,7 +448,7 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
 fn text_shadow_checked_spread_narrowing_rejects_exact_negative_pixels_and_keeps_retry_inputs() {
     for text in ["-1", "-1e-1000"] {
         for values in [
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             CssComponentValues::try_new(
                 vec![CssComponentValue::try_number(text).unwrap()],
                 Default::default(),

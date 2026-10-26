@@ -8,9 +8,8 @@ use surgeist_css::{
     CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssConditionKind,
     CssImportLayer, CssImportRule, CssImportTarget, CssKnownPropertyValueRef,
     CssMediaConstructionError, CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery, CssMediaRangeRef,
-    CssMediaType, CssNamespaceConstraint, CssNamespaceContext, CssOpacityValue, CssRule,
+    CssMediaType, CssNamespaceConstraint, CssNamespaceContext, CssOpacityValue, CssParser, CssRule,
     CssSelector, CssSerializationError, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin,
-    parse_component_values, parse_sheet,
 };
 
 fn values(items: Vec<CssComponentValue>) -> CssComponentValues {
@@ -87,7 +86,7 @@ fn whole_rule_admission_requires_one_import_and_an_explicit_terminator() {
     ] {
         assert!(
             CssImportRule::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 &CssNamespaceContext::default(),
                 Default::default(),
             )
@@ -237,7 +236,8 @@ fn malformed_media_rejects_the_whole_import_instead_of_retaining_never_members()
         "print, screen and",
     ] {
         let error = CssImportRule::try_from_components(
-            parse_component_values(&format!("@import 'x' {source};")).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), format!("@import 'x' {source};"))
+                .unwrap(),
             &CssNamespaceContext::default(),
             Default::default(),
         )
@@ -253,7 +253,8 @@ fn malformed_media_rejects_the_whole_import_instead_of_retaining_never_members()
 
 #[test]
 fn namespace_context_changes_selector_admission_without_resolving_the_namespace() {
-    let sheet = parse_sheet("@namespace svg 'urn:svg'; @namespace 'urn:default';");
+    let sheet =
+        CssParser::default().parse_sheet("@namespace svg 'urn:svg'; @namespace 'urn:default';");
     assert!(sheet.is_clean());
     let context = CssNamespaceContext::from_sheet(sheet.syntax());
     let unbound = tail("supports(selector(svg|a))");
@@ -266,7 +267,7 @@ fn namespace_context_changes_selector_admission_without_resolving_the_namespace(
         ("@import 'x' supports(selector(a));", false),
     ] {
         let import = CssImportRule::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             &context,
             Default::default(),
         )
@@ -296,19 +297,19 @@ fn namespace_context_changes_selector_admission_without_resolving_the_namespace(
 
 #[test]
 fn programmatic_import_and_mixed_numeric_children_keep_honest_independent_origins() {
-    let target = parse_component_values("/*😀*/'x'")
+    let target = CssComponentValues::parse(&CssParser::default(), "/*😀*/'x'")
         .unwrap()
         .items()
         .last()
         .unwrap()
         .clone();
-    let supports_leaf = parse_component_values("/*😀*/1e999")
+    let supports_leaf = CssComponentValues::parse(&CssParser::default(), "/*😀*/1e999")
         .unwrap()
         .items()
         .last()
         .unwrap()
         .clone();
-    let media_leaf = parse_component_values("/*λ*/\n+001.5PX")
+    let media_leaf = CssComponentValues::parse(&CssParser::default(), "/*λ*/\n+001.5PX")
         .unwrap()
         .items()
         .last()
@@ -415,7 +416,7 @@ fn programmatic_import_and_mixed_numeric_children_keep_honest_independent_origin
 
 #[test]
 fn parsed_at_keyword_and_terminator_keep_their_snapshots_among_programmatic_children() {
-    let parsed = parse_component_values("/*😀*/@IMPORT;").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "/*😀*/@IMPORT;").unwrap();
     let at = parsed.items()[1].clone();
     let end = parsed.items()[2].clone();
     let at_origin = at.origin().clone();
@@ -447,7 +448,7 @@ fn parsed_at_keyword_and_terminator_keep_their_snapshots_among_programmatic_chil
 
 #[test]
 fn recovered_components_reject_before_invalid_envelope_and_preserve_eof_provenance() {
-    let recovered = parse_component_values("Future(").unwrap();
+    let recovered = CssComponentValues::parse(&CssParser::default(), "Future(").unwrap();
     let CssComponentValueRef::Function(function) = recovered.items()[0].view() else {
         panic!("function")
     };
@@ -486,7 +487,7 @@ fn recovered_components_reject_before_invalid_envelope_and_preserve_eof_provenan
 #[test]
 fn all_input_trivia_counts_toward_limits_before_canonical_trivia_is_omitted() {
     let source = "@import 'x'; /**/";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let limits = CssComponentValueLimits::try_new(256, usize::MAX, source.len() - 1).unwrap();
     let error = CssImportRule::try_from_components(
         components.clone(),
@@ -522,7 +523,8 @@ fn all_input_trivia_counts_toward_limits_before_canonical_trivia_is_omitted() {
                 .component_error()
                 .is_some_and(|error| error.is_component_limit()))
     );
-    let components = parse_component_values("@import 'x' future();").unwrap();
+    let components =
+        CssComponentValues::parse(&CssParser::default(), "@import 'x' future();").unwrap();
     let limits = CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap();
     assert!(
         CssImportRule::try_from_components(components, &CssNamespaceContext::default(), limits)
@@ -537,7 +539,7 @@ fn all_input_trivia_counts_toward_limits_before_canonical_trivia_is_omitted() {
 fn byte_limits_include_canonical_media_expansion_and_the_output_terminator() {
     let source = "@import 'x' (ASPECT-RATIO:2);";
     let expected = "@import 'x' (aspect-ratio: 2 / 1);";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let tight = CssComponentValueLimits::try_new(256, usize::MAX, source.len()).unwrap();
     let error = CssImportRule::try_from_components(
         components.clone(),
@@ -644,7 +646,7 @@ fn canonical_output_keeps_complete_clause_interpretation_and_needed_token_bounda
             .as_css(),
         "@import 'x' Future(1/**/e2);"
     );
-    let report = parse_sheet(
+    let report = CssParser::default().parse_sheet(
         import
             .serialize_tokens(Default::default())
             .unwrap()

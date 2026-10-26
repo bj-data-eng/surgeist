@@ -1,7 +1,7 @@
 use surgeist_css::{
     CssConditionKind, CssErrorCode, CssMediaLeaf, CssMediaQuery, CssMediaType,
-    CssNamespaceConstraint, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction, CssRule,
-    CssSelector, parse_sheet,
+    CssNamespaceConstraint, CssParser, CssPseudoClass, CssPseudoSelectorListItem,
+    CssRecoveryAction, CssRule, CssSelector,
 };
 
 fn style_rule(
@@ -94,7 +94,7 @@ fn specialized_list_forgiving_selector_members_drop_independently_in_authored_or
     ];
 
     for (source, start, end, expected) in cases {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let retained = forgiving_selectors(&report)
             .iter()
             .map(selector_name)
@@ -134,7 +134,7 @@ fn forgiving_selector_lists_drop_only_undeclared_namespace_members() {
         "@namespace svg \"urn:svg\";",
         ":is(missing|a,svg|a,.kept) { color: red; }",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
         [CssRule::Namespace(_), CssRule::Style(_)]
@@ -177,7 +177,7 @@ fn forgiving_selector_lists_drop_only_undeclared_namespace_members() {
 #[test]
 fn specialized_list_empty_forgiving_member_uses_its_delimiting_comma_span() {
     let source = ":is(.a,,.b) { color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert_eq!(
         forgiving_selectors(&report)
@@ -201,7 +201,7 @@ fn specialized_list_empty_forgiving_member_uses_its_delimiting_comma_span() {
 #[test]
 fn specialized_list_forgiving_recovery_stops_at_balanced_nested_commas() {
     let source = ":is(???(a,b),.ok) { color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert_eq!(
         forgiving_selectors(&report)
@@ -232,7 +232,7 @@ fn specialized_list_not_has_nth_and_ordinary_selector_lists_remain_unforgiving()
     ];
 
     for source in sources {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.syntax().rules().is_empty(), "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -246,7 +246,7 @@ fn specialized_list_not_has_nth_and_ordinary_selector_lists_remain_unforgiving()
 #[test]
 fn selectors3_pseudos_preserve_forgiving_and_unforgiving_list_recovery() {
     let source = ":is(:target,:lang(en),:marker,:visited) { color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         forgiving_selectors(&report),
         [
@@ -269,7 +269,8 @@ fn selectors3_pseudos_preserve_forgiving_and_unforgiving_list_recovery() {
         start + ":".len(),
     );
 
-    let unforgiving = parse_sheet(":not(:target,:marker,:visited) { color: red; }");
+    let unforgiving =
+        CssParser::default().parse_sheet(":not(:target,:marker,:visited) { color: red; }");
     assert!(unforgiving.syntax().rules().is_empty());
     let [diagnostic] = unforgiving.diagnostics() else {
         panic!("expected whole-rule recovery for invalid :not() member")
@@ -305,7 +306,7 @@ fn specialized_list_media_members_become_never_in_authored_order() {
     ];
 
     for (source, span_start, span_end, responsible, never_index) in cases {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let queries = media_rule(&report).query().queries();
 
         assert_eq!(queries.len(), 3, "{source}");
@@ -350,7 +351,7 @@ fn specialized_list_media_members_become_never_in_authored_order() {
 #[test]
 fn specialized_list_repeated_failures_emit_one_ordered_action_per_member() {
     let selector_source = ":is(???,.ok,???) { color: red; }";
-    let selector_report = parse_sheet(selector_source);
+    let selector_report = CssParser::default().parse_sheet(selector_source);
     assert_eq!(
         forgiving_selectors(&selector_report)
             .iter()
@@ -372,7 +373,7 @@ fn specialized_list_repeated_failures_emit_one_ordered_action_per_member() {
     }
 
     let media_source = "@media ???,screen,,print,??? { .x { color: red; } }";
-    let media_report = parse_sheet(media_source);
+    let media_report = CssParser::default().parse_sheet(media_source);
     let queries = media_rule(&media_report).query().queries();
     assert_eq!(queries.len(), 5);
     assert!(matches!(queries[0], CssMediaQuery::Never(_)));
@@ -412,7 +413,7 @@ fn specialized_list_repeated_failures_emit_one_ordered_action_per_member() {
 #[test]
 fn specialized_list_unknown_features_and_repeated_malformed_members_recover_locally() {
     let source = "@media (unknown: yes),???,(width: calc(1px)),,print { .x { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let queries = media_rule(&report).query().queries();
     assert!(matches!(
         queries,
@@ -459,7 +460,7 @@ fn specialized_list_unknown_features_and_repeated_malformed_members_recover_loca
 #[test]
 fn specialized_list_empty_media_member_uses_delimiter_and_end_position() {
     let source = "@media screen,,print { .x { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let queries = media_rule(&report).query().queries();
 
     assert_eq!(queries.len(), 3);
@@ -487,7 +488,7 @@ fn specialized_list_empty_media_member_uses_delimiter_and_end_position() {
 #[test]
 fn specialized_list_media_recovery_stops_at_balanced_nested_commas() {
     let source = "@media ???(a,b),screen { .x { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let queries = media_rule(&report).query().queries();
 
     assert_eq!(queries.len(), 2);
@@ -508,7 +509,7 @@ fn specialized_list_media_recovery_stops_at_balanced_nested_commas() {
 #[test]
 fn specialized_list_unknown_feature_keeps_exact_text_and_position_without_recovery() {
     let source = "@media screen,(unknown: yes),print { .x { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let queries = media_rule(&report).query().queries();
     let member_start = source.find('(').expect("member start");
     let CssMediaQuery::Condition(condition) = &queries[1] else {
@@ -532,7 +533,7 @@ fn specialized_list_unknown_feature_keeps_exact_text_and_position_without_recove
 
 #[test]
 fn specialized_list_recovery_propagates_from_import_nested_and_scoped_contexts() {
-    let import = parse_sheet("@import \"theme.css\" ???,screen;");
+    let import = CssParser::default().parse_sheet("@import \"theme.css\" ???,screen;");
     let [CssRule::Import(import_rule)] = import.syntax().rules() else {
         panic!("expected retained import rule")
     };
@@ -547,7 +548,7 @@ fn specialized_list_recovery_propagates_from_import_nested_and_scoped_contexts()
         CssRecoveryAction::ReplaceMediaQueryWithNever
     );
 
-    let nested = parse_sheet(".parent { &:is(.ok,???) { color: red; } }");
+    let nested = CssParser::default().parse_sheet(".parent { &:is(.ok,???) { color: red; } }");
     assert_eq!(nested.syntax().rules().len(), 1);
     assert_eq!(nested.diagnostics().len(), 1);
     assert_eq!(
@@ -555,7 +556,7 @@ fn specialized_list_recovery_propagates_from_import_nested_and_scoped_contexts()
         CssRecoveryAction::DropSelectorListItem
     );
 
-    let scoped = parse_sheet(
+    let scoped = CssParser::default().parse_sheet(
         "@scope (:is(.root,???)) { :where(.kept,???) { color: red; } @media ???,screen {} }",
     );
     assert!(matches!(scoped.syntax().rules(), [CssRule::Scope(_)]));
@@ -577,7 +578,7 @@ fn specialized_list_recovery_propagates_from_import_nested_and_scoped_contexts()
 #[test]
 fn specialized_list_media_positions_use_utf8_bytes_and_utf16_columns() {
     let source = "@media screen, /*😀*/ ???, print { .x { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let queries = media_rule(&report).query().queries();
     let member_start = source.find(" /*😀*/").expect("member start");
     let responsible = source.find("???").expect("responsible token");
@@ -640,7 +641,7 @@ fn specialized_list_media_positions_use_utf8_bytes_and_utf16_columns() {
 #[test]
 fn specialized_list_clean_media_queries_are_positioned_and_never_false_sentinels() {
     let source = "@media screen,(width: 1px) { .x { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let queries = media_rule(&report).query().queries();
 
     assert!(report.is_clean());
@@ -670,7 +671,7 @@ fn specialized_list_clean_media_queries_are_positioned_and_never_false_sentinels
 #[test]
 fn specialized_list_media_position_delegation_covers_condition_typed_and_never() {
     let source = "@media /*😀*/ not (width: 1px), only screen, ??? { .x { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let queries = media_rule(&report).query().queries();
     let condition_offset = source.find("not").expect("condition start");
     let typed_offset = source.find("only").expect("typed-query start");

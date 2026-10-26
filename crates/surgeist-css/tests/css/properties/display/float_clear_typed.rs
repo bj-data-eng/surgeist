@@ -6,8 +6,7 @@ use crate::css::support::normal_declaration as parsed;
 use surgeist_css::*;
 
 fn ordinary(source: &CssDeclaration) -> CssLonghandValue {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one completed longhand")
     };
@@ -132,10 +131,10 @@ fn wrappers_keep_physical_and_flow_relative_keywords() {
 fn substituted_inline_end_reenters_to_exact_typed_keyword() {
     for name in ["float", "clear"] {
         let source = parsed(name, "var(--side)");
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending substitution")
         };
-        let replacement = parse_component_values("inline-end").unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), "inline-end").unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("reentered longhand")

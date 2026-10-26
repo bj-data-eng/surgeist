@@ -17,7 +17,7 @@ fn angle(coefficient: &str, unit: CssAngleUnit) -> CssNumeric<CssAngle> {
 
 fn parsed(value: &str) -> (CssDeclaration, CssImageOrientation) {
     let source = format!("/* 🦀 */ image-orientation:{value} !important; color:blue");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration, sibling] = report.syntax().as_slice() else {
         panic!("orientation and sibling")
@@ -143,16 +143,20 @@ fn both_authored_flip_orders_emit_angle_then_flip_without_changing_source_proven
 #[test]
 fn checked_property_and_grammar_reentry_preserve_supplied_angle_origins_during_serialization() {
     let source = "/* 🦀 */ flip -0.25turn";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     for declaration in [
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ImageOrientation),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::ImageOrientation,
+            )),
             components.clone(),
             CssImportance::Important,
         )
         .unwrap(),
-        parse_property_value_for_grammar(
-            CssKnownProperty::ImageOrientation.grammar(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssKnownProperty::ImageOrientation.grammar()),
             components.clone(),
             CssImportance::Important,
         )

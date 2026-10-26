@@ -23,10 +23,10 @@ pub struct MathDepthBoundary<'a> {
     pub template: &'a str,
     /// Depths that parse cleanly, in increasing order.
     pub accepted: &'a [usize],
-    /// Depths that stop at the nesting limit, in increasing order.
+    /// Depths that refuse the whole contents at the nesting limit, in increasing order.
     pub rejected: &'a [usize],
-    /// Whether the template has a valid sibling declaration that every depth
-    /// retains.
+    /// Whether the template has a valid sibling declaration that every accepted
+    /// depth retains.
     pub sibling_retained: bool,
 }
 
@@ -62,7 +62,7 @@ impl MathDepthBoundary<'_> {
         let retained = usize::from(self.sibling_retained);
         for &depth in self.accepted {
             let source = self.source(depth);
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(
                 report.is_clean(),
                 "depth {depth}: {:?}",
@@ -70,7 +70,9 @@ impl MathDepthBoundary<'_> {
             );
             assert_eq!(report.syntax().len(), retained + 1, "depth {depth}");
             assert_eq!(
-                validate_style_attribute(&source)
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
                     .expect("strict validation accepts a supported depth"),
                 *report.syntax(),
                 "depth {depth}"
@@ -87,27 +89,18 @@ impl MathDepthBoundary<'_> {
                 Some(first_over_limit),
                 "depth {depth}: the template holds no opening before its slot"
             );
-            let report = parse_style_attribute(&source);
-            assert_eq!(report.syntax().len(), retained, "depth {depth}");
-            let [diagnostic] = report.diagnostics() else {
-                panic!("depth {depth}: one diagnostic: {:?}", report.diagnostics());
-            };
-            assert_eq!(
-                diagnostic.error().code(),
-                CssErrorCode::NestingLimit,
-                "depth {depth}"
+            // Block contents charges every component once against the 256-level
+            // ceiling, so an over-limit depth refuses the whole contents.
+            let report = CssParser::default().parse_block_contents(&source);
+            assert!(report.syntax().is_empty(), "depth {depth}");
+            crate::css::support::parse_report::assert_contents_refused(
+                &report,
+                &source,
+                &format!("depth {depth}"),
             );
-            assert_eq!(
-                diagnostic.action(),
-                CssRecoveryAction::StopAtNestingLimit,
-                "depth {depth}"
-            );
-            assert_eq!(
-                diagnostic.error().position().byte_offset().value(),
-                first_over_limit,
-                "depth {depth}"
-            );
-            let failure = validate_style_attribute(&source)
+            let failure = CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects an over-limit depth");
             assert_eq!(failure.diagnostics(), report.diagnostics(), "depth {depth}");
             rejected(depth, &source, &report);

@@ -1,7 +1,7 @@
 use surgeist_css::*;
 
 fn checked_color(value: &str) -> CssColor {
-    let report = parse_style_attribute(&format!("border-top-color:{value}"));
+    let report = CssParser::default().parse_block_contents(format!("border-top-color:{value}"));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let Some(CssKnownPropertyValueRef::BorderTopColor(color)) =
         report.syntax()[0].known().unwrap().property_value()
@@ -46,7 +46,7 @@ fn six_logical_wrappers_expose_the_shared_checked_triple_and_preserve_omission()
             ("red solid thin", &expected, "thin solid red"),
             ("solid", &omitted, "solid"),
         ] {
-            let report = parse_style_attribute(&format!("{name}:{authored}"));
+            let report = CssParser::default().parse_block_contents(format!("{name}:{authored}"));
             assert!(report.is_clean(), "{name}: {:?}", report.diagnostics());
             let value = report.syntax()[0]
                 .known()
@@ -60,7 +60,8 @@ fn six_logical_wrappers_expose_the_shared_checked_triple_and_preserve_omission()
                 canonical
             );
         }
-        let report = parse_style_attribute(&format!("{name}:oklch(50% 0.2 30deg) solid 1e100px"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("{name}:oklch(50% 0.2 30deg) solid 1e100px"));
         assert!(report.is_clean(), "{name}: {:?}", report.diagnostics());
         let value = report.syntax()[0]
             .known()

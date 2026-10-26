@@ -5,7 +5,8 @@ use crate::css::support::failure_classes::SerializationFailure as E;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::sole_declaration as declaration;
 use surgeist_css::{
-    CssHorizontalPosition as H, CssSerializationLimits as L, CssVerticalPosition as V, *,
+    CssComponentValue, CssComponentValues, CssDeclaration, CssHorizontalPosition as H, CssParser,
+    CssSerializationLimits as L, CssVerticalPosition as V, *,
 };
 
 fn authored(source: &CssDeclaration) -> &CssBackgroundPositionList {
@@ -21,7 +22,7 @@ fn offset(css: &str) -> CssNumeric<CssLengthPercentage> {
     if css.starts_with("calc(") {
         CssNumeric::<CssLengthPercentage>::try_from_calculation(
             CssCalculation::<CssLengthPercentage>::try_from_components(
-                parse_component_values(css).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), css).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -105,8 +106,7 @@ fn ordinary_contributions_preserve_exact_edge_axes_signed_values_and_layer_order
     ])
     .unwrap();
     assert_eq!(authored(&source), &expected);
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("completed position")
     };
@@ -134,7 +134,7 @@ fn ordinary_contributions_preserve_exact_edge_axes_signed_values_and_layer_order
 #[test]
 fn reentry_preserves_checked_programmatic_axes_and_symbolic_calculation() {
     let source = declaration("background-position:var(--position)!important");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending position")
     };
     let replacement = CssComponentValues::try_new(
@@ -165,7 +165,8 @@ fn reentry_preserves_checked_programmatic_axes_and_symbolic_calculation() {
         };
         assert!(matches!(x.origin(), CssValueOrigin::Programmatic));
     }
-    let replacement = parse_component_values("calc(2px + 3%) center").unwrap();
+    let replacement =
+        CssComponentValues::parse(&CssParser::default(), "calc(2px + 3%) center").unwrap();
     let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("symbolic replacement")
     };

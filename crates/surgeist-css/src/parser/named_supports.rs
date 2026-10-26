@@ -620,17 +620,8 @@ fn partition(
     }
 }
 
-/// Admits complete genuine unbraced named-test contents. Recovered syntax is
-/// `Some` with diagnostics; typed resource failure is `None`, never a clearing.
 #[must_use]
-pub fn parse_supports_test_contents(source: &str) -> CssParseReport<Option<CssSupportsTestBody>> {
-    parse_supports_test_contents_with_limits(source, CssComponentValueLimits::default())
-}
-
-/// Whole original input, including discarded units/trivia, shares one arena's
-/// component, byte and structural-depth admission before native partitioning.
-#[must_use]
-pub fn parse_supports_test_contents_with_limits(
+pub(crate) fn parse_supports_test_contents_with_limits(
     source: &str,
     limits: CssComponentValueLimits,
 ) -> CssParseReport<Option<CssSupportsTestBody>> {
@@ -669,15 +660,8 @@ pub fn parse_supports_test_contents_with_limits(
     })
 }
 
-/// Admits exactly one flattened direct child with no discarded candidate or
-/// structural recovery. Empty semicolons/trivia are ignored at every depth.
 #[must_use]
-pub fn parse_supports_test_child(source: &str) -> CssParseReport<Option<CssSupportsTestChild>> {
-    parse_supports_test_child_with_limits(source, CssComponentValueLimits::default())
-}
-
-#[must_use]
-pub fn parse_supports_test_child_with_limits(
+pub(crate) fn parse_supports_test_child_with_limits(
     source: &str,
     limits: CssComponentValueLimits,
 ) -> CssParseReport<Option<CssSupportsTestChild>> {
@@ -741,12 +725,12 @@ mod tests {
                 origin: Cow::Borrowed(component.origin()),
             }
         }
-        let before = crate::parse_component_values(
+        let before = crate::component_values::parse_component_values(
             "                                                  before:yes;",
         )
         .unwrap();
-        let bad = crate::parse_component_values("bad:;").unwrap();
-        let after = crate::parse_component_values("after:yes;").unwrap();
+        let bad = crate::component_values::parse_component_values("bad:;").unwrap();
+        let after = crate::component_values::parse_component_values("after:yes;").unwrap();
         let mut tokens: Vec<_> = before
             .items()
             .iter()

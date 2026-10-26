@@ -6,9 +6,8 @@ use surgeist_css::{
     CssAngle, CssCalculation, CssComponentValue, CssComponentValueRef, CssComponentValues,
     CssContributions, CssExpansion, CssFontStyle, CssFontStyleKeyword, CssFontValue, CssImportance,
     CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef,
-    CssNumeric, CssObliqueAngleRange, CssPropertyKindRef, CssRecoveryAction,
+    CssNumeric, CssObliqueAngleRange, CssParser, CssPropertyKindRef, CssRecoveryAction,
     CssSerializationLimits, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
-    expand_declaration, parse_component_values, parse_style_attribute,
 };
 
 fn angle(text: &str) -> CssNumeric<CssAngle, CssObliqueAngleRange> {
@@ -19,7 +18,7 @@ fn angle(text: &str) -> CssNumeric<CssAngle, CssObliqueAngleRange> {
 }
 
 fn property(text: &str) -> CssFontStyle {
-    let report = parse_style_attribute(&format!("font-style:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("font-style:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::FontStyle(value) = report.syntax()[0]
         .known()
@@ -247,7 +246,8 @@ fn oblique_angles_compare_their_exact_decimal_with_the_quarter_turn_bound() {
         )
         .unwrap_err();
         assert!(error.is_out_of_range(), "{text}");
-        let report = parse_style_attribute(&format!("font-style:oblique {text}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("font-style:oblique {text}"));
         assert!(!report.is_clean(), "{text}");
     }
 }
@@ -263,7 +263,7 @@ fn wrong_domains_and_bare_math_roots_cannot_enter_the_angle_model() {
     }
     for text in ["0deg", "91deg"] {
         let calculation = CssCalculation::<CssAngle>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -273,7 +273,7 @@ fn wrong_domains_and_bare_math_roots_cannot_enter_the_angle_model() {
     }
     for text in ["calc(91deg)", "calc(-100deg)"] {
         let calculation = CssCalculation::<CssAngle>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -297,7 +297,7 @@ fn wrong_domains_and_bare_math_roots_cannot_enter_the_angle_model() {
         "oblique calc(10px)",
         "oblique 10deg 20deg",
     ] {
-        let report = parse_style_attribute(&format!("font-style:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("font-style:{text}"));
         assert!(report.syntax().is_empty(), "{text}");
         assert_eq!(report.diagnostics().len(), 1, "{text}");
         assert_eq!(
@@ -310,7 +310,7 @@ fn wrong_domains_and_bare_math_roots_cannot_enter_the_angle_model() {
 
 #[test]
 fn recovered_math_is_retained_by_parser_admission_and_rejected_by_typed_transfer() {
-    let report = parse_style_attribute("font-style:oblique calc(10deg");
+    let report = CssParser::default().parse_block_contents("font-style:oblique calc(10deg");
     assert_eq!(report.syntax().len(), 1);
     assert!(!report.is_clean());
     let CssKnownPropertyValueRef::FontStyle(value) = report.syntax()[0]
@@ -350,7 +350,7 @@ fn recovered_math_is_retained_by_parser_admission_and_rejected_by_typed_transfer
 fn checked_values_and_pending_reentry_preserve_real_origins_and_importance() {
     let parsed = normal_grammar_components(
         "font-style",
-        parse_component_values("oblique 12.50deg ").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "oblique 12.50deg ").unwrap(),
     )
     .unwrap();
     let CssKnownPropertyValueRef::FontStyle(value) =
@@ -421,13 +421,13 @@ fn checked_values_and_pending_reentry_preserve_real_origins_and_importance() {
         CssKnownProperty::FontStyle,
     );
 
-    let report = parse_style_attribute("font-style:env(style)!important");
+    let report = CssParser::default().parse_block_contents("font-style:env(style)!important");
     let source = &report.syntax()[0];
-    let CssExpansion::Pending(handle) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending property")
     };
     let CssContributions::Longhands(values) = handle
-        .reenter(parse_component_values("oblique -20grad").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "oblique -20grad").unwrap())
         .unwrap()
     else {
         panic!("reentry")
@@ -491,7 +491,7 @@ fn initial_metadata_css_wide_and_shorthand_ambiguity_are_typed() {
         CssLonghandValueRef::FontStyle(&CssFontStyle::Keyword(CssFontStyleKeyword::Normal))
     );
     for source in ["font-style:inherit", "font-style:unset!important"] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1);
     }
@@ -501,7 +501,7 @@ fn initial_metadata_css_wide_and_shorthand_ambiguity_are_typed() {
         ("font:oblique calc(16px) serif", None),
         ("font:oblique calc(700) calc(16px) serif", None),
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let CssKnownPropertyValueRef::Font(value) = report.syntax()[0]
             .known()
@@ -529,7 +529,10 @@ fn initial_metadata_css_wide_and_shorthand_ambiguity_are_typed() {
         "font:italic oblique 16px serif",
         "font:oblique 10deg italic 16px serif",
     ] {
-        assert!(!parse_style_attribute(source).is_clean(), "{source}");
+        assert!(
+            !CssParser::default().parse_block_contents(source).is_clean(),
+            "{source}"
+        );
     }
 }
 

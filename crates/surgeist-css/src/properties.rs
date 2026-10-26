@@ -684,7 +684,7 @@ macro_rules! define_property_identity {
 
         /// A grammar-checked property-coupled known declaration in the authored syntax phase.
         ///
-        /// Parsing and [`crate::parse_property_value`] construct this value through the same
+        /// Parsing and [`crate::CssParser::parse_property_value`] construct this value through the same
         /// property grammar. Its private value discriminator determines canonical property
         /// identity; the coupled grammar handle additionally preserves legacy authored semantics.
         /// Callers cannot construct or mutate a property/value/grammar mismatch.

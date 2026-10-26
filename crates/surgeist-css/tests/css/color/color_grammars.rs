@@ -3,19 +3,19 @@ use crate::css::support::math_depth::MathDepthBoundary;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::{
     CssColorComponent, CssColorHue, CssColorSyntax, CssKnownDeclaredValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssOpacityValue, CssRelativeColorEnvironment,
-    CssRelativeColorFunction, CssSystemColor, parse_style_attribute,
+    CssKnownPropertyValueRef, CssOpacityValue, CssParser, CssRelativeColorEnvironment,
+    CssRelativeColorFunction, CssSystemColor,
 };
 
 fn color_value(source: &str) -> surgeist_css::CssPropertyValue<surgeist_css::CssColor> {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     color_property_value(&report.syntax()[0]).clone()
 }
 
 #[test]
 fn opacity_percentage_is_retained_with_its_valid_sibling() {
-    let report = parse_style_attribute("opacity: 150%; color: red");
+    let report = CssParser::default().parse_block_contents("opacity: 150%; color: red");
 
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
@@ -31,7 +31,7 @@ fn opacity_percentage_is_retained_with_its_valid_sibling() {
 
 #[test]
 fn deprecated_system_color_is_retained_with_its_valid_sibling() {
-    let report = parse_style_attribute("color: ActiveBorder; opacity: 0.5");
+    let report = CssParser::default().parse_block_contents("color: ActiveBorder; opacity: 0.5");
 
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
@@ -47,8 +47,8 @@ fn deprecated_system_color_is_retained_with_its_valid_sibling() {
 
 #[test]
 fn perceptual_color_with_typed_math_is_retained_with_its_valid_sibling() {
-    let report =
-        parse_style_attribute("color: lab(calc(50% + 10%) calc(20 + 5) -30 / 120%); opacity: 0.5");
+    let report = CssParser::default()
+        .parse_block_contents("color: lab(calc(50% + 10%) calc(20 + 5) -30 / 120%); opacity: 0.5");
 
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
@@ -64,7 +64,8 @@ fn perceptual_color_with_typed_math_is_retained_with_its_valid_sibling() {
 
 #[test]
 fn relative_rgb_rejects_untyped_channel_identifiers_and_retains_its_valid_sibling() {
-    let report = parse_style_attribute("color: rgb(from red bogus bogus bogus); opacity: 0.5");
+    let report = CssParser::default()
+        .parse_block_contents("color: rgb(from red bogus bogus bogus); opacity: 0.5");
 
     assert_eq!(report.syntax().len(), 1, "{:?}", report.diagnostics());
     assert_eq!(report.diagnostics().len(), 1);
@@ -76,8 +77,8 @@ fn relative_rgb_rejects_untyped_channel_identifiers_and_retains_its_valid_siblin
 
 #[test]
 fn color_mix_preserved_subset_rejects_cross_space_hue_methods() {
-    let report =
-        parse_style_attribute("color: color-mix(in srgb longer hue, red, blue); opacity: 0.5");
+    let report = CssParser::default()
+        .parse_block_contents("color: color-mix(in srgb longer hue, red, blue); opacity: 0.5");
 
     assert_eq!(report.syntax().len(), 1, "{:?}", report.diagnostics());
     assert_eq!(report.diagnostics().len(), 1);
@@ -192,7 +193,7 @@ fn color_mix_rejects_malformed_components_and_invalid_nested_colors() {
         "device-cmyk(0 0 1)",
     ] {
         let source = format!("color: {invalid}; opacity: 0.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(
             report.syntax().len(),
             1,
@@ -217,7 +218,7 @@ fn color_mix_nesting_preserves_the_exact_parser_boundary() {
             ", blue)".repeat(depth),
         );
         let source = format!("color: {nested}; opacity: 0.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -233,18 +234,13 @@ fn color_mix_nesting_preserves_the_exact_parser_boundary() {
         ", blue)".repeat(depth),
     );
     let source = format!("color: {nested}; opacity: 0.5");
-    let report = parse_style_attribute(&source);
-    assert_eq!(report.syntax().len(), 1);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("depth {depth}: expected one diagnostic");
-    };
-    assert_eq!(
-        diagnostic.error().code(),
-        surgeist_css::CssErrorCode::NestingLimit,
-    );
-    assert_eq!(
-        diagnostic.action(),
-        surgeist_css::CssRecoveryAction::StopAtNestingLimit,
+    let report = CssParser::default().parse_block_contents(&source);
+    // Block contents charges the component limits for the whole input.
+    assert!(report.syntax().is_empty(), "depth {depth}");
+    crate::css::support::parse_report::assert_contents_refused(
+        &report,
+        &source,
+        &format!("depth {depth}"),
     );
 }
 
@@ -356,7 +352,7 @@ fn relative_color_channels_reject_foreign_names_dimensions_and_malformed_grammar
         "alpha(from red r g b)",
     ] {
         let source = format!("color: {invalid}; opacity: 0.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(
             report.syntax().len(),
             1,
@@ -385,7 +381,7 @@ fn relative_color_math_preserves_exact_values_without_float_range_evaluation() {
         ("calc(3e38 * 3e38)", ["3e38", "3e38"], true),
     ] {
         let source = format!("color: rgb(from red {math} g b); opacity: 0.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 2);
         let value = color_value(&source);
@@ -478,7 +474,7 @@ fn relative_color_nesting_preserves_the_exact_parser_boundary() {
             " r g b)".repeat(depth),
         );
         let source = format!("color: {nested}; opacity: 0.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -495,20 +491,12 @@ fn relative_color_nesting_preserves_the_exact_parser_boundary() {
             " r g b)".repeat(depth),
         );
         let source = format!("color: {nested}; opacity: 0.5");
-        let report = parse_style_attribute(&source);
-        assert_eq!(report.syntax().len(), 1, "depth {depth}");
-        let [diagnostic] = report.diagnostics() else {
-            panic!("depth {depth}: expected one diagnostic");
-        };
-        assert_eq!(
-            diagnostic.error().code(),
-            surgeist_css::CssErrorCode::NestingLimit,
-            "depth {depth}",
-        );
-        assert_eq!(
-            diagnostic.action(),
-            surgeist_css::CssRecoveryAction::StopAtNestingLimit,
-            "depth {depth}",
+        let report = CssParser::default().parse_block_contents(&source);
+        assert!(report.syntax().is_empty(), "depth {depth}");
+        crate::css::support::parse_report::assert_contents_refused(
+            &report,
+            &source,
+            &format!("depth {depth}"),
         );
     }
 }
@@ -779,7 +767,7 @@ fn invalid_perceptual_and_predefined_color_forms_drop_only_the_declaration() {
         "color(srgb 1px 2 3)",
     ] {
         let source = format!("color: {invalid}; opacity: 0.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{invalid}");
         assert_eq!(report.diagnostics().len(), 1, "{invalid}");
         assert_eq!(
@@ -813,7 +801,7 @@ fn invalid_color_separators_units_and_arities_drop_only_the_declaration() {
         "hwb(20deg 30% 40% 50%)",
     ] {
         let source = format!("color: {invalid}; opacity: 0.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{invalid}");
         assert_eq!(report.diagnostics().len(), 1, "{invalid}");
         assert_eq!(
@@ -837,7 +825,7 @@ fn authored_color_calculations_preserve_the_exact_depth_boundary() {
 
 #[test]
 fn opacity_preserves_finite_authored_number_and_percentage_branches() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "opacity: 0.5; ",
         "opacity: -0.5; ",
         "opacity: 1.5; ",
@@ -889,8 +877,8 @@ fn opacity_preserves_finite_authored_number_and_percentage_branches() {
 
 #[test]
 fn opacity_ordinary_global_and_substitution_values_remain_distinct() {
-    let report =
-        parse_style_attribute("opacity: 150%; opacity: inherit; opacity: var(--authored-opacity)");
+    let report = CssParser::default()
+        .parse_block_contents("opacity: 150%; opacity: inherit; opacity: var(--authored-opacity)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
     assert!(matches!(
@@ -919,7 +907,8 @@ fn opacity_ordinary_global_and_substitution_values_remain_distinct() {
 #[test]
 fn custom_profile_colors_are_retained_with_their_valid_sibling() {
     for color in ["color(--custom 1 2 3)", "color(from red --custom r g b)"] {
-        let report = parse_style_attribute(&format!("color: {color}; opacity: 0.5"));
+        let report =
+            CssParser::default().parse_block_contents(format!("color: {color}; opacity: 0.5"));
         assert!(report.is_clean(), "{color}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 2);
         assert_eq!(

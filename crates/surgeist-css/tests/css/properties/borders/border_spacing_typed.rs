@@ -12,8 +12,7 @@ use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 fn contribution(source: &CssDeclaration) -> CssLonghandContribution {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("border-spacing expands to one terminal")
     };
@@ -54,7 +53,7 @@ fn checked_pair_construction_accepts_zero_absolute_relative_and_symbolic_math() 
         );
     }
     let calculation = CssCalculation::<CssLength>::try_from_components(
-        parse_component_values("calc(1px + 2em)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(1px + 2em)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -185,10 +184,10 @@ fn initial_and_authored_contributions_expose_exact_numeric_axes() {
 #[test]
 fn pending_reentry_exposes_effective_axes_with_original_source() {
     let source = declaration("border-spacing:var(--gap)!important");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending substitution")
     };
-    let replacement = parse_component_values("2px 3em").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "2px 3em").unwrap();
     let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("reentered terminal")
     };
@@ -308,7 +307,8 @@ fn two_typed_calculation_axes_share_one_streaming_serialization_budget() {
 fn nonnegative_length(
     css: &str,
 ) -> surgeist_css::CssNumeric<surgeist_css::CssLength, surgeist_css::CssNonNegative> {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+    let components =
+        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
     if css.contains('(') {
         surgeist_css::CssNumeric::<surgeist_css::CssLength, surgeist_css::CssNonNegative>::try_from_calculation(
             surgeist_css::CssCalculation::<surgeist_css::CssLength>::try_from_components(components, Default::default())

@@ -710,7 +710,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         for &name in names {
             let expected = format!("{name}: {value_css} !important;");
             let source = format!("{name}:{input}!IMPORTANT");
-            let report = parse_declaration(&source);
+            let report = CssDeclaration::parse(&CssParser::default(), &source);
             if !report.is_clean() {
                 failures.push(format!("{source}: {:?}", report.diagnostics()));
                 continue;
@@ -728,7 +728,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
                     failures.push(format!("{source}: expected {expected:?}, got {output:?}"));
                     continue;
                 }
-                let reparse = parse_style_attribute(&expected);
+                let reparse = CssParser::default().parse_block_contents(&expected);
                 assert!(
                     reparse.is_clean(),
                     "{expected}: {:?}",
@@ -846,7 +846,7 @@ fn legacy_grammar_text_inverts_only_its_source_defined_semantic_mapping() {
         ] {
             assert_eq!(declaration.known().unwrap().grammar().name(), name);
             exact_limits(&declaration, &expected, 3, projection);
-            let reparse = parse_style_attribute(&expected);
+            let reparse = CssParser::default().parse_block_contents(&expected);
             assert!(
                 reparse.is_clean(),
                 "{expected}: {:?}",
@@ -950,9 +950,10 @@ fn semantic_children_canonicalize_numeric_math_and_aggregate_owners() {
 
 fn custom_checked(name: &str, value: &str, importance: CssImportance) -> CssDeclaration {
     let name = CssCustomPropertyName::try_new(name).unwrap();
-    parse_property_value(
-        CssPropertyNameRef::Custom(&name),
-        parse_component_values(value).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         importance,
     )
     .unwrap()
@@ -1044,8 +1045,9 @@ fn constructed_custom_adjacency_uses_the_shared_component_boundary_owner() {
         Default::default(),
     )
     .unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Custom(&name),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
         components.clone(),
         CssImportance::Normal,
     )
@@ -1111,7 +1113,7 @@ fn symbolic_edge_whitespace_is_trimmed_without_dropping_comments_or_refunding_wo
         };
         for declaration in [parsed(&format!("{name}:{input}!important")), checked] {
             exact_limits(&declaration, &expected, nodes, nodes);
-            let reparse = parse_style_attribute(&expected);
+            let reparse = CssParser::default().parse_block_contents(&expected);
             assert!(
                 reparse.is_clean(),
                 "{expected}: {:?}",
@@ -1143,7 +1145,7 @@ fn nested_symbolic_trivia_and_recovered_closures_keep_their_original_origins() {
         assert_eq!(declaration.value_components(), &components);
     }
     let source = "--X:var(--Case";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     // EOF closes the `var(` function implicitly.
     assert_diagnostics(
         report.diagnostics(),

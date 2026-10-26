@@ -1,11 +1,11 @@
 //! Fonts 4 §9.2 admits an authored palette definition as a global rule.
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-palette-values
 
-use surgeist_css::{CssRule, parse_sheet};
+use surgeist_css::{CssParser, CssRule};
 
 #[test]
 fn valid_palette_definition_precedes_following_style_without_recovery() {
-    let report = parse_sheet(
+    let report = CssParser::default().parse_sheet(
         "@font-palette-values --theme { font-family: Demo; base-palette: light; } \
          .after { color: red; }",
     );

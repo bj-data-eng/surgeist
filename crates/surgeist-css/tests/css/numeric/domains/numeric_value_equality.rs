@@ -7,7 +7,7 @@
 use surgeist_css::*;
 
 fn parsed(text: &str) -> CssComponentValue {
-    parse_component_values(text)
+    CssComponentValues::parse(&CssParser::default(), text)
         .unwrap()
         .items()
         .last()
@@ -20,7 +20,7 @@ fn numeric<T: CssNumericRoot>(component: CssComponentValue) -> CssNumeric<T> {
 fn math<T: CssNumericRoot>(text: &str) -> CssNumeric<T> {
     CssNumeric::<T>::try_from_calculation(
         CssCalculation::<T>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -29,7 +29,10 @@ fn math<T: CssNumericRoot>(text: &str) -> CssNumeric<T> {
 }
 /// The typed `height` value; the property wrapper also retains authored text.
 fn height(context: CssParserContext, value: &str) -> CssSizeValue {
-    let report = context.parse_declaration(&format!("height:{value}"));
+    let report = CssDeclaration::parse(
+        &CssParser::new(context, Default::default()),
+        format!("height:{value}"),
+    );
     assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     let declaration = report.syntax().as_ref().unwrap();
     let CssKnownPropertyValueRef::Height(height) =

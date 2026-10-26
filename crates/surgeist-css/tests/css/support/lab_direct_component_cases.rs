@@ -13,7 +13,7 @@ use surgeist_css::*;
 pub fn assert_specified_text(source: &str, expected: &str) {
     let checked = checked_color_declaration(source);
     let source_attribute = format!("color:{source}!important;opacity:.5");
-    let report = parse_style_attribute(&source_attribute);
+    let report = CssParser::default().parse_block_contents(&source_attribute);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
     let parsed = &report.syntax()[0];

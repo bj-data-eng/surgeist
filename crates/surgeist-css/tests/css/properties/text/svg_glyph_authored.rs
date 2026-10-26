@@ -14,7 +14,10 @@ const QUIRKS: CssParserContext =
     CssParserContext::new(CssParserMode::Quirks).with_svg_glyph_orientation_vertical();
 const NAME: CssPropertyNameRef<'static> = CssPropertyNameRef::SvgGlyphOrientationVertical;
 fn declaration(context: CssParserContext, value: &str) -> CssDeclaration {
-    let report = context.parse_declaration(&format!("glyph-orientation-vertical:{value}"));
+    let report = CssDeclaration::parse(
+        &CssParser::new(context, Default::default()),
+        format!("glyph-orientation-vertical:{value}"),
+    );
     assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     report.syntax().as_ref().unwrap().clone()
 }
@@ -37,14 +40,14 @@ fn original(origin: &CssValueOrigin, source: &str) -> CssSourceSpan {
     value.span()
 }
 fn pending(source: &CssDeclaration) -> CssPendingSubstitution {
-    let CssExpansion::Pending(value) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(value) = source.expand().unwrap() else {
         panic!("pending")
     };
     value
 }
 fn completed(source: &CssDeclaration) -> CssSvgGlyphOrientationVerticalContribution {
     let CssExpansion::Contributions(CssContributions::SvgGlyphOrientationVertical(value)) =
-        expand_declaration(source).unwrap()
+        source.expand().unwrap()
     else {
         panic!("one independent SVG contribution")
     };
@@ -122,26 +125,41 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
         ("90deg 0", "0", CssTokenKind::Number, 2, 6),
         ("inherit auto", "auto", CssTokenKind::Ident, 2, 8),
     ] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let before = values.clone();
         for context in [SVG, QUIRKS] {
-            let checked = context
-                .parse_property_value(NAME, values.clone(), CssImportance::Normal)
-                .unwrap_err();
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::new(context, Default::default()),
+                CssPropertyTarget::Property(NAME),
+                values.clone(),
+                CssImportance::Normal,
+            )
+            .unwrap_err();
             rejected_literal(&checked, spelling, kind, &values.items()[index]);
-            let attribute = context
-                .parse_svg_glyph_orientation_vertical_attribute_components(values.clone())
+            let attribute =
+                CssSvgGlyphOrientationVerticalDeclaration::try_attribute_from_components(
+                    &CssParser::new(context, Default::default()),
+                    values.clone(),
+                )
                 .unwrap_err();
             rejected_literal(&attribute, spelling, kind, &values.items()[index]);
             for report in [
-                context.parse_property_value_text(text, NAME, CssImportance::Normal),
-                context.parse_svg_glyph_orientation_vertical_attribute_value(text),
+                CssParser::new(context, Default::default()).parse_property_value(
+                    text,
+                    CssPropertyTextTarget::Property(NAME),
+                    CssImportance::Normal,
+                ),
+                CssSvgGlyphOrientationVerticalDeclaration::parse_attribute(
+                    &CssParser::new(context, Default::default()),
+                    text,
+                ),
             ] {
                 assert!(report.syntax().is_none() && !report.is_clean(), "{text}");
                 rejected_source_token(report.diagnostics()[0].error(), spelling, kind, offset);
             }
             let source = format!("glyph-orientation-vertical:{text}");
-            let report = context.parse_declaration(&source);
+            let report =
+                CssDeclaration::parse(&CssParser::new(context, Default::default()), &source);
             assert!(report.syntax().is_none() && !report.is_clean(), "{text}");
             rejected_source_token(
                 report.diagnostics()[0].error(),
@@ -160,9 +178,11 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
         );
     }
     for argument in ["0", "90"] {
-        let component =
-            CssComponentValue::try_function("calc", parse_component_values(argument).unwrap())
-                .unwrap();
+        let component = CssComponentValue::try_function(
+            "calc",
+            CssComponentValues::parse(&CssParser::default(), argument).unwrap(),
+        )
+        .unwrap();
         assert_eq!(component.origin(), &CssValueOrigin::Programmatic);
         let values =
             CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
@@ -173,9 +193,13 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
         assert_eq!(native.origin(), Some(component.origin()));
         assert_eq!(native.path(), Some(&[0][..]));
         for context in [SVG, QUIRKS] {
-            let error = context
-                .parse_property_value(NAME, values.clone(), CssImportance::Normal)
-                .unwrap_err();
+            let error = CssDeclaration::try_from_components(
+                &CssParser::new(context, Default::default()),
+                CssPropertyTarget::Property(NAME),
+                values.clone(),
+                CssImportance::Normal,
+            )
+            .unwrap_err();
             rejected_literal(&error, "calc(", CssTokenKind::Function, &component);
         }
         let CssComponentValueRef::Function(function) = component.view() else {
@@ -200,7 +224,7 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
             CssTokenKind::CurlyBracketBlock,
         ),
     ] {
-        let child_values = parse_component_values("90deg").unwrap();
+        let child_values = CssComponentValues::parse(&CssParser::default(), "90deg").unwrap();
         let block = CssComponentValue::try_block(block_kind, child_values.clone()).unwrap();
         let block_values =
             CssComponentValues::try_new(vec![block.clone()], Default::default()).unwrap();
@@ -214,12 +238,18 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
         assert_eq!(native.origin(), Some(&CssValueOrigin::Programmatic));
         for context in [SVG, QUIRKS] {
             for error in [
-                context
-                    .parse_property_value(NAME, block_values.clone(), CssImportance::Normal)
-                    .unwrap_err(),
-                context
-                    .parse_svg_glyph_orientation_vertical_attribute_components(block_values.clone())
-                    .unwrap_err(),
+                CssDeclaration::try_from_components(
+                    &CssParser::new(context, Default::default()),
+                    CssPropertyTarget::Property(NAME),
+                    block_values.clone(),
+                    CssImportance::Normal,
+                )
+                .unwrap_err(),
+                CssSvgGlyphOrientationVerticalDeclaration::try_attribute_from_components(
+                    &CssParser::new(context, Default::default()),
+                    block_values.clone(),
+                )
+                .unwrap_err(),
             ] {
                 rejected_literal(&error, spelling, kind, &block);
             }
@@ -237,9 +267,13 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
     let string_values =
         CssComponentValues::try_new(vec![string.clone()], Default::default()).unwrap();
     for context in [SVG, QUIRKS] {
-        let error = context
-            .parse_property_value(NAME, string_values.clone(), CssImportance::Normal)
-            .unwrap_err();
+        let error = CssDeclaration::try_from_components(
+            &CssParser::new(context, Default::default()),
+            CssPropertyTarget::Property(NAME),
+            string_values.clone(),
+            CssImportance::Normal,
+        )
+        .unwrap_err();
         rejected_literal(&error, "\"auto\"", CssTokenKind::String, &string);
     }
     for (text, spelling, kind, offset, path, native_kind) in [
@@ -420,7 +454,7 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
             NumericFailure::MalformedExpression,
         ),
     ] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let CssComponentValueRef::Function(function) = values.items()[0].view() else {
             unreachable!()
         };
@@ -447,24 +481,39 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
         assert_eq!(mixed_native.origin(), Some(mixed_responsible.origin()));
         for context in [SVG, QUIRKS] {
             for (components, responsible) in [(&values, responsible), (&mixed, mixed_responsible)] {
-                let error = context
-                    .parse_property_value(NAME, components.clone(), CssImportance::Normal)
-                    .unwrap_err();
+                let error = CssDeclaration::try_from_components(
+                    &CssParser::new(context, Default::default()),
+                    CssPropertyTarget::Property(NAME),
+                    components.clone(),
+                    CssImportance::Normal,
+                )
+                .unwrap_err();
                 rejected_literal(&error, spelling, kind, responsible);
-                let attribute = context
-                    .parse_svg_glyph_orientation_vertical_attribute_components(components.clone())
+                let attribute =
+                    CssSvgGlyphOrientationVerticalDeclaration::try_attribute_from_components(
+                        &CssParser::new(context, Default::default()),
+                        components.clone(),
+                    )
                     .unwrap_err();
                 rejected_literal(&attribute, spelling, kind, responsible);
             }
             for report in [
-                context.parse_property_value_text(text, NAME, CssImportance::Normal),
-                context.parse_svg_glyph_orientation_vertical_attribute_value(text),
+                CssParser::new(context, Default::default()).parse_property_value(
+                    text,
+                    CssPropertyTextTarget::Property(NAME),
+                    CssImportance::Normal,
+                ),
+                CssSvgGlyphOrientationVerticalDeclaration::parse_attribute(
+                    &CssParser::new(context, Default::default()),
+                    text,
+                ),
             ] {
                 assert!(report.syntax().is_none() && !report.is_clean(), "{text}");
                 rejected_source_token(report.diagnostics()[0].error(), spelling, kind, offset);
             }
             let source = format!("glyph-orientation-vertical:{text}");
-            let report = context.parse_declaration(&source);
+            let report =
+                CssDeclaration::parse(&CssParser::new(context, Default::default()), &source);
             assert!(report.syntax().is_none() && !report.is_clean(), "{text}");
             rejected_source_token(
                 report.diagnostics()[0].error(),
@@ -520,7 +569,7 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
             NumericFailure::MalformedExpression,
         ),
     ] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let native_responsible = responsible_component(&values, path);
         let native =
             CssCalculation::<CssAngle>::try_from_components(values.clone(), Default::default())
@@ -537,9 +586,13 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
             native_responsible.origin().clone()
         };
         for context in [SVG, QUIRKS] {
-            let error = context
-                .parse_property_value(NAME, values.clone(), CssImportance::Normal)
-                .unwrap_err();
+            let error = CssDeclaration::try_from_components(
+                &CssParser::new(context, Default::default()),
+                CssPropertyTarget::Property(NAME),
+                values.clone(),
+                CssImportance::Normal,
+            )
+            .unwrap_err();
             assert!(
                 error.code() == Some(CssErrorCode::UnexpectedEnd),
                 "{text}: {error:?}"
@@ -550,8 +603,15 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
                 "{text}"
             );
             for report in [
-                context.parse_property_value_text(text, NAME, CssImportance::Normal),
-                context.parse_svg_glyph_orientation_vertical_attribute_value(text),
+                CssParser::new(context, Default::default()).parse_property_value(
+                    text,
+                    CssPropertyTextTarget::Property(NAME),
+                    CssImportance::Normal,
+                ),
+                CssSvgGlyphOrientationVerticalDeclaration::parse_attribute(
+                    &CssParser::new(context, Default::default()),
+                    text,
+                ),
             ] {
                 assert!(report.syntax().is_none() && !report.is_clean());
                 assert!(report.diagnostics()[0].error().code() == CssErrorCode::UnexpectedEnd);
@@ -567,19 +627,27 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
         }
     }
     for text in ["", " "] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let expected =
             CssSerializedOrigin::End(values.items().last().map(|value| value.origin().clone()));
         for context in [SVG, QUIRKS] {
-            let error = context
-                .parse_property_value(NAME, values.clone(), CssImportance::Normal)
-                .unwrap_err();
+            let error = CssDeclaration::try_from_components(
+                &CssParser::new(context, Default::default()),
+                CssPropertyTarget::Property(NAME),
+                values.clone(),
+                CssImportance::Normal,
+            )
+            .unwrap_err();
             assert!(
                 error.code() == Some(CssErrorCode::UnexpectedEnd),
                 "{text:?}: {error:?}"
             );
             assert_eq!(error.origin(), expected);
-            let report = context.parse_property_value_text(text, NAME, CssImportance::Normal);
+            let report = CssParser::new(context, Default::default()).parse_property_value(
+                text,
+                CssPropertyTextTarget::Property(NAME),
+                CssImportance::Normal,
+            );
             assert!(report.syntax().is_none() && !report.is_clean());
             assert!(report.diagnostics()[0].error().code() == CssErrorCode::UnexpectedEnd);
             assert_eq!(
@@ -624,8 +692,10 @@ fn selection_preserves_modes_finite_alias_and_explicit_definition_precedence() {
         "0.0",
         "calc(90deg)",
     ] {
-        let report = CssParserContext::default()
-            .parse_declaration(&format!("glyph-orientation-vertical:{text}"));
+        let report = CssDeclaration::parse(
+            &CssParser::default(),
+            format!("glyph-orientation-vertical:{text}"),
+        );
         assert!(report.syntax().is_none() && !report.is_clean(), "{text}");
     }
     assert!(svg(&declaration(SVG, "auto")).value().unwrap().is_auto());
@@ -641,7 +711,10 @@ fn selection_preserves_modes_finite_alias_and_explicit_definition_precedence() {
             text
         );
     }
-    let escaped = SVG.parse_declaration(r"\67 lyph-orientation-vertical:180deg");
+    let escaped = CssDeclaration::parse(
+        &CssParser::new(SVG, Default::default()),
+        r"\67 lyph-orientation-vertical:180deg",
+    );
     assert!(escaped.is_clean());
     assert_eq!(escaped.syntax().as_ref().unwrap().property_name(), NAME);
     let source = declaration(SVG, "180deg");
@@ -660,17 +733,20 @@ fn selection_preserves_modes_finite_alias_and_explicit_definition_precedence() {
         "180"
     );
     let finite = CssPropertyGrammar::from_name("glyph-orientation-vertical").unwrap();
-    let explicit = QUIRKS
-        .parse_property_value_for_grammar(
-            finite,
-            parse_component_values("90").unwrap(),
-            CssImportance::Important,
-        )
-        .unwrap();
+    let explicit = CssDeclaration::try_from_components(
+        &CssParser::new(QUIRKS, Default::default()),
+        CssPropertyTarget::Grammar(finite),
+        CssComponentValues::parse(&CssParser::default(), "90").unwrap(),
+        CssImportance::Important,
+    )
+    .unwrap();
     assert_eq!(explicit.known().unwrap().grammar(), finite);
     assert!(explicit.svg_glyph_orientation_vertical().is_none());
-    let explicit_text =
-        SVG.parse_property_value_text_for_grammar("90deg", finite, CssImportance::Normal);
+    let explicit_text = CssParser::new(SVG, Default::default()).parse_property_value(
+        "90deg",
+        CssPropertyTextTarget::Grammar(finite),
+        CssImportance::Normal,
+    );
     assert_eq!(
         explicit_text
             .syntax()
@@ -681,13 +757,13 @@ fn selection_preserves_modes_finite_alias_and_explicit_definition_precedence() {
             .grammar(),
         finite
     );
-    let named = CssParserContext::default()
-        .parse_property_value(
-            NAME,
-            parse_component_values("180deg").unwrap(),
-            CssImportance::Normal,
-        )
-        .unwrap();
+    let named = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(NAME),
+        CssComponentValues::parse(&CssParser::default(), "180deg").unwrap(),
+        CssImportance::Normal,
+    )
+    .unwrap();
     assert_eq!(svg(&named).parser_mode(), CssParserMode::Standards);
     assert_eq!(
         svg(&named)
@@ -716,9 +792,13 @@ fn all_authored_fronts_preserve_angle_units_coefficients_origins_and_numeric_fla
     ] {
         for context in [SVG, QUIRKS] {
             let parsed = declaration(context, text);
-            let raw = context.parse_property_value_text(text, NAME, CssImportance::Important);
+            let raw = CssParser::new(context, Default::default()).parse_property_value(
+                text,
+                CssPropertyTextTarget::Property(NAME),
+                CssImportance::Important,
+            );
             assert!(raw.is_clean());
-            let values = parse_component_values(text).unwrap();
+            let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let rust = CssComponentValues::try_new(
                 vec![CssComponentValue::try_token(text).unwrap()],
                 Default::default(),
@@ -727,12 +807,20 @@ fn all_authored_fronts_preserve_angle_units_coefficients_origins_and_numeric_fla
             for source in [
                 parsed,
                 raw.syntax().as_ref().unwrap().clone(),
-                context
-                    .parse_property_value(NAME, values.clone(), CssImportance::Important)
-                    .unwrap(),
-                context
-                    .parse_property_value(NAME, rust.clone(), CssImportance::Important)
-                    .unwrap(),
+                CssDeclaration::try_from_components(
+                    &CssParser::new(context, Default::default()),
+                    CssPropertyTarget::Property(NAME),
+                    values.clone(),
+                    CssImportance::Important,
+                )
+                .unwrap(),
+                CssDeclaration::try_from_components(
+                    &CssParser::new(context, Default::default()),
+                    CssPropertyTarget::Property(NAME),
+                    rust.clone(),
+                    CssImportance::Important,
+                )
+                .unwrap(),
             ] {
                 let body = svg(&source);
                 assert_eq!(body.parser_mode(), context.mode());
@@ -749,13 +837,18 @@ fn all_authored_fronts_preserve_angle_units_coefficients_origins_and_numeric_fla
                     text
                 );
             }
-            let attribute = context.parse_svg_glyph_orientation_vertical_attribute_value(text);
+            let attribute = CssSvgGlyphOrientationVerticalDeclaration::parse_attribute(
+                &CssParser::new(context, Default::default()),
+                text,
+            );
             assert!(attribute.is_clean());
             for source in [
                 attribute.syntax().as_ref().unwrap().clone(),
-                context
-                    .parse_svg_glyph_orientation_vertical_attribute_components(rust.clone())
-                    .unwrap(),
+                CssSvgGlyphOrientationVerticalDeclaration::try_attribute_from_components(
+                    &CssParser::new(context, Default::default()),
+                    rust.clone(),
+                )
+                .unwrap(),
             ] {
                 let body = svg(&source);
                 assert!(body.is_presentation_attribute());
@@ -794,15 +887,26 @@ fn all_authored_fronts_preserve_angle_units_coefficients_origins_and_numeric_fla
     }
     for text in ["90", "90.0", "9e1", "-135", "45.0001", "1e308"] {
         for context in [SVG, QUIRKS] {
-            let values = parse_component_values(text).unwrap();
-            let result = context.parse_property_value(NAME, values.clone(), CssImportance::Normal);
+            let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+            let result = CssDeclaration::try_from_components(
+                &CssParser::new(context, Default::default()),
+                CssPropertyTarget::Property(NAME),
+                values.clone(),
+                CssImportance::Normal,
+            );
             if context == SVG {
                 let error = result.unwrap_err();
                 rejected_literal(&error, text, CssTokenKind::Number, &values.items()[0]);
-                let raw = context.parse_property_value_text(text, NAME, CssImportance::Normal);
+                let raw = CssParser::new(context, Default::default()).parse_property_value(
+                    text,
+                    CssPropertyTextTarget::Property(NAME),
+                    CssImportance::Normal,
+                );
                 assert!(raw.syntax().is_none() && !raw.is_clean());
-                let parsed =
-                    context.parse_declaration(&format!("glyph-orientation-vertical:{text}"));
+                let parsed = CssDeclaration::parse(
+                    &CssParser::new(context, Default::default()),
+                    format!("glyph-orientation-vertical:{text}"),
+                );
                 assert!(parsed.syntax().is_none() && !parsed.is_clean());
             } else {
                 assert_eq!(
@@ -818,7 +922,11 @@ fn all_authored_fronts_preserve_angle_units_coefficients_origins_and_numeric_fla
                         .as_css(),
                     text
                 );
-                let raw = context.parse_property_value_text(text, NAME, CssImportance::Important);
+                let raw = CssParser::new(context, Default::default()).parse_property_value(
+                    text,
+                    CssPropertyTextTarget::Property(NAME),
+                    CssImportance::Important,
+                );
                 assert!(raw.is_clean());
                 assert!(
                     svg(raw.syntax().as_ref().unwrap())
@@ -828,9 +936,11 @@ fn all_authored_fronts_preserve_angle_units_coefficients_origins_and_numeric_fla
                         .is_some()
                 );
             }
-            let attr = context
-                .parse_svg_glyph_orientation_vertical_attribute_components(values.clone())
-                .unwrap();
+            let attr = CssSvgGlyphOrientationVerticalDeclaration::try_attribute_from_components(
+                &CssParser::new(context, Default::default()),
+                values.clone(),
+            )
+            .unwrap();
             assert!(svg(&attr).is_presentation_attribute());
             assert_eq!(svg(&attr).parser_mode(), context.mode());
             assert_eq!(
@@ -838,8 +948,10 @@ fn all_authored_fronts_preserve_angle_units_coefficients_origins_and_numeric_fla
                 Some(&values.items()[0])
             );
             assert_eq!(attr.importance(), CssImportance::Normal);
-            let raw = CssParserContext::new(context.mode())
-                .parse_svg_glyph_orientation_vertical_attribute_value(text);
+            let raw = CssSvgGlyphOrientationVerticalDeclaration::parse_attribute(
+                &CssParser::new(CssParserContext::new(context.mode()), Default::default()),
+                text,
+            );
             assert!(raw.is_clean());
             assert!(svg(raw.syntax().as_ref().unwrap()).is_presentation_attribute());
         }
@@ -852,7 +964,10 @@ fn intrinsic_constructors_reject_wrong_roots_raw_overflow_and_recovered_math() {
     assert!(auto.is_auto());
     assert!(auto.angle().is_none() && auto.unitless_component().is_none());
     for text in ["90", "90.0", "9e1", "1e-400"] {
-        let component = parse_component_values(text).unwrap().items()[0].clone();
+        let component = CssComponentValues::parse(&CssParser::default(), text)
+            .unwrap()
+            .items()[0]
+            .clone();
         assert_eq!(
             CssSvgGlyphOrientationVerticalValue::try_from_unitless(component.clone())
                 .unwrap()
@@ -861,14 +976,20 @@ fn intrinsic_constructors_reject_wrong_roots_raw_overflow_and_recovered_math() {
         );
     }
     for text in ["auto", "90deg", "90%", "calc(90)"] {
-        let component = parse_component_values(text).unwrap().items()[0].clone();
+        let component = CssComponentValues::parse(&CssParser::default(), text)
+            .unwrap()
+            .items()[0]
+            .clone();
         let error =
             CssSvgGlyphOrientationVerticalValue::try_from_unitless(component.clone()).unwrap_err();
         assert!(error.is_root_domain_mismatch(), "{error:?}");
         assert_eq!(error.origin(), Some(component.origin()));
     }
     for text in ["1e309", "-1e1000"] {
-        let component = parse_component_values(text).unwrap().items()[0].clone();
+        let component = CssComponentValues::parse(&CssParser::default(), text)
+            .unwrap()
+            .items()[0]
+            .clone();
         let error =
             CssSvgGlyphOrientationVerticalValue::try_from_unitless(component.clone()).unwrap_err();
         assert!(error.is_out_of_range(), "{error:?}");
@@ -893,10 +1014,14 @@ fn intrinsic_constructors_reject_wrong_roots_raw_overflow_and_recovered_math() {
         "calc(90)",
     ] {
         for context in [SVG, QUIRKS] {
-            let values = parse_component_values(text).unwrap();
-            let error = context
-                .parse_property_value(NAME, values.clone(), CssImportance::Normal)
-                .unwrap_err();
+            let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+            let error = CssDeclaration::try_from_components(
+                &CssParser::new(context, Default::default()),
+                CssPropertyTarget::Property(NAME),
+                values.clone(),
+                CssImportance::Normal,
+            )
+            .unwrap_err();
             assert!(error.code().is_some(), "{text}: {error:?}");
             assert_eq!(
                 values
@@ -905,7 +1030,10 @@ fn intrinsic_constructors_reject_wrong_roots_raw_overflow_and_recovered_math() {
                     .as_css(),
                 text
             );
-            let report = context.parse_svg_glyph_orientation_vertical_attribute_value(text);
+            let report = CssSvgGlyphOrientationVerticalDeclaration::parse_attribute(
+                &CssParser::new(context, Default::default()),
+                text,
+            );
             assert!(report.syntax().is_none() && !report.is_clean());
         }
     }
@@ -934,7 +1062,10 @@ fn intrinsic_constructors_reject_wrong_roots_raw_overflow_and_recovered_math() {
                 .unwrap();
         assert_eq!(native, *value);
         for context in [SVG, QUIRKS] {
-            let attribute = context.parse_svg_glyph_orientation_vertical_attribute_value(text);
+            let attribute = CssSvgGlyphOrientationVerticalDeclaration::parse_attribute(
+                &CssParser::new(context, Default::default()),
+                text,
+            );
             assert!(attribute.is_clean());
             assert!(
                 svg(attribute.syntax().as_ref().unwrap())
@@ -945,13 +1076,13 @@ fn intrinsic_constructors_reject_wrong_roots_raw_overflow_and_recovered_math() {
                     .calculation()
                     .is_some()
             );
-            let checked = context
-                .parse_property_value(
-                    NAME,
-                    parse_component_values(text).unwrap(),
-                    CssImportance::Normal,
-                )
-                .unwrap();
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::new(context, Default::default()),
+                CssPropertyTarget::Property(NAME),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                CssImportance::Normal,
+            )
+            .unwrap();
             assert!(
                 svg(&checked)
                     .value()
@@ -1012,14 +1143,22 @@ fn binary64_raw_boundaries_never_replace_exact_original_coefficients() {
     );
     assert!(svg(&tiny).value().unwrap().unitless_component().is_some());
     for text in ["5e-324", "1.7976931348623157e308"] {
-        let values = parse_component_values(text).unwrap();
-        let error = SVG
-            .parse_property_value(NAME, values.clone(), CssImportance::Normal)
-            .unwrap_err();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+        let error = CssDeclaration::try_from_components(
+            &CssParser::new(SVG, Default::default()),
+            CssPropertyTarget::Property(NAME),
+            values.clone(),
+            CssImportance::Normal,
+        )
+        .unwrap_err();
         rejected_literal(&error, text, CssTokenKind::Number, &values.items()[0]);
-        let source = QUIRKS
-            .parse_property_value(NAME, values.clone(), CssImportance::Normal)
-            .unwrap();
+        let source = CssDeclaration::try_from_components(
+            &CssParser::new(QUIRKS, Default::default()),
+            CssPropertyTarget::Property(NAME),
+            values.clone(),
+            CssImportance::Normal,
+        )
+        .unwrap();
         assert_eq!(
             svg(&source).value().unwrap().unitless_component(),
             Some(&values.items()[0])
@@ -1030,11 +1169,15 @@ fn binary64_raw_boundaries_never_replace_exact_original_coefficients() {
         "-1.7976931348623159e308deg",
         "1.7976931348623159e308",
     ] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let before = values.clone();
-        let error = QUIRKS
-            .parse_property_value(NAME, values.clone(), CssImportance::Normal)
-            .unwrap_err();
+        let error = CssDeclaration::try_from_components(
+            &CssParser::new(QUIRKS, Default::default()),
+            CssPropertyTarget::Property(NAME),
+            values.clone(),
+            CssImportance::Normal,
+        )
+        .unwrap_err();
         let kind = if text.ends_with("deg") {
             CssTokenKind::Dimension
         } else {
@@ -1045,7 +1188,10 @@ fn binary64_raw_boundaries_never_replace_exact_original_coefficients() {
     }
 }
 fn declaration_recovered(text: &str) -> CssDeclaration {
-    let report = SVG.parse_declaration(&format!("glyph-orientation-vertical:{text}"));
+    let report = CssDeclaration::parse(
+        &CssParser::new(SVG, Default::default()),
+        format!("glyph-orientation-vertical:{text}"),
+    );
     assert!(!report.is_clean());
     report.syntax().as_ref().unwrap().clone()
 }
@@ -1059,20 +1205,27 @@ fn attribute_root_boundaries_precede_globals_and_pending_and_keep_fixed_importan
         "90;",
         "90}",
     ] {
-        let report = SVG.parse_svg_glyph_orientation_vertical_attribute_value(text);
+        let report = CssSvgGlyphOrientationVerticalDeclaration::parse_attribute(
+            &CssParser::new(SVG, Default::default()),
+            text,
+        );
         assert!(report.syntax().is_none() && !report.is_clean(), "{text}");
-        if let Ok(values) = parse_component_values(text) {
-            let error = SVG
-                .parse_svg_glyph_orientation_vertical_attribute_components(values)
-                .unwrap_err();
+        if let Ok(values) = CssComponentValues::parse(&CssParser::default(), text) {
+            let error = CssSvgGlyphOrientationVerticalDeclaration::try_attribute_from_components(
+                &CssParser::new(SVG, Default::default()),
+                values,
+            )
+            .unwrap_err();
             assert!(
                 error.code() == Some(CssErrorCode::UnexpectedToken),
                 "{text}: {error:?}"
             );
         }
     }
-    let report =
-        SVG.parse_svg_glyph_orientation_vertical_attribute_value("var(--g, \"!important\")");
+    let report = CssSvgGlyphOrientationVerticalDeclaration::parse_attribute(
+        &CssParser::new(SVG, Default::default()),
+        "var(--g, \"!important\")",
+    );
     let source = report.syntax().as_ref().unwrap();
     assert!(report.is_clean());
     assert!(svg(source).substitution_dependent().is_some());
@@ -1093,13 +1246,21 @@ fn checked_original_closure_utf16_mixed_sources_and_retry_keep_real_origins() {
         "calc(90deg",
         "var(--g, calc(1deg)",
     ] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let before = values.clone();
         for attribute in [false, true] {
             let error = if attribute {
-                SVG.parse_svg_glyph_orientation_vertical_attribute_components(values.clone())
+                CssSvgGlyphOrientationVerticalDeclaration::try_attribute_from_components(
+                    &CssParser::new(SVG, Default::default()),
+                    values.clone(),
+                )
             } else {
-                SVG.parse_property_value(NAME, values.clone(), CssImportance::Important)
+                CssDeclaration::try_from_components(
+                    &CssParser::new(SVG, Default::default()),
+                    CssPropertyTarget::Property(NAME),
+                    values.clone(),
+                    CssImportance::Important,
+                )
             }
             .unwrap_err();
             assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
@@ -1115,7 +1276,7 @@ fn checked_original_closure_utf16_mixed_sources_and_retry_keep_real_origins() {
         }
         assert_eq!(values, before);
     }
-    let comment = parse_component_values("/*").unwrap();
+    let comment = CssComponentValues::parse(&CssParser::default(), "/*").unwrap();
     let mixed = CssComponentValues::try_new(
         vec![
             CssComponentValue::try_ident("auto").unwrap(),
@@ -1124,9 +1285,13 @@ fn checked_original_closure_utf16_mixed_sources_and_retry_keep_real_origins() {
         Default::default(),
     )
     .unwrap();
-    let error = SVG
-        .parse_property_value(NAME, mixed, CssImportance::Normal)
-        .unwrap_err();
+    let error = CssDeclaration::try_from_components(
+        &CssParser::new(SVG, Default::default()),
+        CssPropertyTarget::Property(NAME),
+        mixed,
+        CssImportance::Normal,
+    )
+    .unwrap_err();
     let CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { opening, at })) =
         error.origin()
     else {
@@ -1135,8 +1300,7 @@ fn checked_original_closure_utf16_mixed_sources_and_retry_keep_real_origins() {
     assert_eq!(opening.source().as_str(), "/*");
     assert_eq!(at.span().start().byte_offset().value(), 2);
     let css = "/*😀*/ GLYPH-ORIENTATION-VERTICAL: +090.0deg !important";
-    let source = SVG
-        .parse_declaration(css)
+    let source = CssDeclaration::parse(&CssParser::new(SVG, Default::default()), css)
         .syntax()
         .as_ref()
         .unwrap()
@@ -1162,7 +1326,7 @@ fn checked_original_closure_utf16_mixed_sources_and_retry_keep_real_origins() {
         css.find("+090.0deg").unwrap() + 9
     );
     assert_eq!(angle.numeric().representation(), "+090.0");
-    let parsed = parse_component_values("/*😀*/180deg").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "/*😀*/180deg").unwrap();
     let mixed = CssComponentValues::try_new(
         vec![
             CssComponentValue::try_token(" ").unwrap(),
@@ -1171,9 +1335,13 @@ fn checked_original_closure_utf16_mixed_sources_and_retry_keep_real_origins() {
         Default::default(),
     )
     .unwrap();
-    let checked = SVG
-        .parse_property_value(NAME, mixed.clone(), CssImportance::Normal)
-        .unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::new(SVG, Default::default()),
+        CssPropertyTarget::Property(NAME),
+        mixed.clone(),
+        CssImportance::Normal,
+    )
+    .unwrap();
     assert!(
         checked.position().is_none()
             && checked.parsed_name().is_none()
@@ -1217,18 +1385,23 @@ fn globals_metadata_and_pending_reentry_use_actual_body_and_admission() {
     }
     let standard = declaration(SVG, "var(--g)!important");
     let handle = pending(&standard);
-    let invalid = parse_component_values("90").unwrap();
+    let invalid = CssComponentValues::parse(&CssParser::default(), "90").unwrap();
     let error = handle.reenter(invalid.clone()).unwrap_err();
     let Some(mapped) = error.replacement_error() else {
         panic!("replacement grammar error")
     };
     assert_eq!(
         mapped,
-        &SVG.parse_property_value(NAME, invalid, CssImportance::Normal)
-            .unwrap_err()
+        &CssDeclaration::try_from_components(
+            &CssParser::new(SVG, Default::default()),
+            CssPropertyTarget::Property(NAME),
+            invalid,
+            CssImportance::Normal
+        )
+        .unwrap_err()
     );
     assert!(handle.source().same_occurrence(&standard));
-    let replacement = parse_component_values("/*😀*/180deg").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "/*😀*/180deg").unwrap();
     let CssContributions::SvgGlyphOrientationVertical(value) =
         handle.reenter(replacement.clone()).unwrap()
     else {
@@ -1248,20 +1421,23 @@ fn globals_metadata_and_pending_reentry_use_actual_body_and_admission() {
     ] {
         assert!(
             handle
-                .reenter(parse_component_values(residual).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), residual).unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
     }
     for source in [
         declaration(QUIRKS, "env(g)"),
-        SVG.parse_svg_glyph_orientation_vertical_attribute_value("attr(data-g)")
-            .syntax()
-            .as_ref()
-            .unwrap()
-            .clone(),
+        CssSvgGlyphOrientationVerticalDeclaration::parse_attribute(
+            &CssParser::new(SVG, Default::default()),
+            "attr(data-g)",
+        )
+        .syntax()
+        .as_ref()
+        .unwrap()
+        .clone(),
     ] {
-        let replacement = parse_component_values("90").unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), "90").unwrap();
         let CssContributions::SvgGlyphOrientationVertical(value) =
             pending(&source).reenter(replacement.clone()).unwrap()
         else {
@@ -1274,23 +1450,23 @@ fn globals_metadata_and_pending_reentry_use_actual_body_and_admission() {
         assert!(value.source().same_occurrence(&source));
     }
     let finite = CssPropertyGrammar::from_name("glyph-orientation-vertical").unwrap();
-    let finite_source = QUIRKS
-        .parse_property_value_for_grammar(
-            finite,
-            parse_component_values("var(--g)").unwrap(),
-            CssImportance::Normal,
-        )
-        .unwrap();
+    let finite_source = CssDeclaration::try_from_components(
+        &CssParser::new(QUIRKS, Default::default()),
+        CssPropertyTarget::Grammar(finite),
+        CssComponentValues::parse(&CssParser::default(), "var(--g)").unwrap(),
+        CssImportance::Normal,
+    )
+    .unwrap();
     let finite_pending = pending(&finite_source);
     assert!(
         finite_pending
-            .reenter(parse_component_values("180deg").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "180deg").unwrap())
             .unwrap_err()
             .replacement_error()
             .is_some()
     );
     let CssContributions::Longhands(values) = finite_pending
-        .reenter(parse_component_values("90").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "90").unwrap())
         .unwrap()
     else {
         panic!("finite replay")
@@ -1299,16 +1475,16 @@ fn globals_metadata_and_pending_reentry_use_actual_body_and_admission() {
         values.items()[0].property(),
         CssKnownProperty::TextOrientation
     );
-    let explicit = CssParserContext::default()
-        .parse_property_value(
-            NAME,
-            parse_component_values("var(--g)").unwrap(),
-            CssImportance::Normal,
-        )
-        .unwrap();
+    let explicit = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(NAME),
+        CssComponentValues::parse(&CssParser::default(), "var(--g)").unwrap(),
+        CssImportance::Normal,
+    )
+    .unwrap();
     assert!(matches!(
         pending(&explicit)
-            .reenter(parse_component_values("180deg").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "180deg").unwrap())
             .unwrap(),
         CssContributions::SvgGlyphOrientationVertical(_)
     ));
@@ -1318,9 +1494,12 @@ fn globals_metadata_and_pending_reentry_use_actual_body_and_admission() {
 fn supports_overloads_preserve_literal_boundary_importance_standards_and_sources() {
     for property in ["glyph-orientation-vertical", "GLYPH-ORIENTATION-VERTICAL"] {
         let value = "/*😀*/180deg";
-        let test = QUIRKS
-            .parse_css_supports_declaration(property, value)
-            .unwrap();
+        let test = CssSupportsDeclaration::parse(
+            &CssParser::new(QUIRKS, Default::default()),
+            property,
+            value,
+        )
+        .unwrap();
         assert_eq!(test.importance(), CssImportance::Normal);
         assert_eq!(
             test.svg_glyph_orientation_vertical().unwrap().parser_mode(),
@@ -1341,9 +1520,12 @@ fn supports_overloads_preserve_literal_boundary_importance_standards_and_sources
         r"\67 lyph-orientation-vertical",
         "glyph-orientation-\nvertical",
     ] {
-        let error = SVG
-            .parse_css_supports_declaration(property, "180deg")
-            .unwrap_err();
+        let error = CssSupportsDeclaration::parse(
+            &CssParser::new(SVG, Default::default()),
+            property,
+            "180deg",
+        )
+        .unwrap_err();
         assert!(error.is_invalid_declaration_grammar());
         original(error.origin(), property);
     }
@@ -1353,9 +1535,12 @@ fn supports_overloads_preserve_literal_boundary_importance_standards_and_sources
         "180deg!/**/important",
         "var(--g)!important",
     ] {
-        let error = SVG
-            .parse_css_supports_declaration("glyph-orientation-vertical", text)
-            .unwrap_err();
+        let error = CssSupportsDeclaration::parse(
+            &CssParser::new(SVG, Default::default()),
+            "glyph-orientation-vertical",
+            text,
+        )
+        .unwrap_err();
         assert!(error.is_invalid_declaration_grammar());
         assert_eq!(
             original(error.origin(), text).start().byte_offset().value(),
@@ -1365,35 +1550,49 @@ fn supports_overloads_preserve_literal_boundary_importance_standards_and_sources
             format!("(glyph-orientation-vertical:{text})"),
             format!("glyph-orientation-vertical:{text}"),
         ] {
-            let condition = SVG.parse_css_supports_condition(&source).unwrap();
+            let condition = CssCondition::<CssSupportsLeaf>::parse_condition_text(
+                &CssParser::new(SVG, Default::default()),
+                &source,
+            )
+            .unwrap();
             assert_eq!(query(&condition).importance(), CssImportance::Important);
             assert!(query(&condition).svg_glyph_orientation_vertical().is_some());
         }
     }
-    let custom = SVG
-        .parse_css_supports_declaration("--Case", "\"!important\"")
-        .unwrap();
+    let custom = CssSupportsDeclaration::parse(
+        &CssParser::new(SVG, Default::default()),
+        "--Case",
+        "\"!important\"",
+    )
+    .unwrap();
     assert!(custom.known().is_none() && custom.svg_glyph_orientation_vertical().is_none());
     for text in [
         "(glyph-orientation-vertical:90)",
         "glyph-orientation-vertical:90",
     ] {
-        let condition = QUIRKS.parse_css_supports_condition(text).unwrap();
+        let condition = CssCondition::<CssSupportsLeaf>::parse_condition_text(
+            &CssParser::new(QUIRKS, Default::default()),
+            text,
+        )
+        .unwrap();
         assert!(query(&condition).svg_glyph_orientation_vertical().is_none());
     }
     assert!(
-        QUIRKS
-            .parse_css_supports_declaration("glyph-orientation-vertical", "90")
-            .unwrap()
-            .svg_glyph_orientation_vertical()
-            .is_none()
-    );
-    let rule = QUIRKS
-        .parse_supports_condition(
-            "(glyph-orientation-vertical:90)",
-            &CssNamespaceContext::default(),
+        CssSupportsDeclaration::parse(
+            &CssParser::new(QUIRKS, Default::default()),
+            "glyph-orientation-vertical",
+            "90"
         )
-        .unwrap();
+        .unwrap()
+        .svg_glyph_orientation_vertical()
+        .is_none()
+    );
+    let rule = CssCondition::<CssSupportsLeaf>::parse(
+        &CssParser::new(QUIRKS, Default::default()),
+        "(glyph-orientation-vertical:90)",
+        &CssNamespaceContext::default(),
+    )
+    .unwrap();
     assert_eq!(
         query(&rule)
             .svg_glyph_orientation_vertical()
@@ -1405,8 +1604,12 @@ fn supports_overloads_preserve_literal_boundary_importance_standards_and_sources
         "/*😀*/ GLYPH-ORIENTATION-VERTICAL: 180deg",
         "glyph-orientation-vertical: 10",
     ] {
-        let original_values = parse_component_values(text).unwrap();
-        let condition = SVG.parse_css_supports_condition(text).unwrap();
+        let original_values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+        let condition = CssCondition::<CssSupportsLeaf>::parse_condition_text(
+            &CssParser::new(SVG, Default::default()),
+            text,
+        )
+        .unwrap();
         let test = query(&condition);
         assert_eq!(test.components(), original_values.items());
         assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
@@ -1424,7 +1627,11 @@ fn supports_overloads_preserve_literal_boundary_importance_standards_and_sources
         original(test.property_component().origin(), text);
     }
     let text = "(glyph-orientation-vertical:180deg) and (width:1px)";
-    let condition = SVG.parse_css_supports_condition(text).unwrap();
+    let condition = CssCondition::<CssSupportsLeaf>::parse_condition_text(
+        &CssParser::new(SVG, Default::default()),
+        text,
+    )
+    .unwrap();
     let CssConditionKind::And(children) = condition.kind() else {
         panic!("complete And first")
     };
@@ -1445,13 +1652,17 @@ fn supports_overloads_preserve_literal_boundary_importance_standards_and_sources
         text
     );
     assert!(
-        parse_css_supports_declaration("glyph-orientation-vertical", "180deg")
-            .unwrap()
-            .known()
-            .is_none()
+        CssSupportsDeclaration::parse(
+            &CssParser::default(),
+            "glyph-orientation-vertical",
+            "180deg"
+        )
+        .unwrap()
+        .known()
+        .is_none()
     );
     assert_eq!(
-        parse_css_supports_declaration("glyph-orientation-vertical", "90")
+        CssSupportsDeclaration::parse(&CssParser::default(), "glyph-orientation-vertical", "90")
             .unwrap()
             .known()
             .unwrap()
@@ -1474,9 +1685,12 @@ fn supports_component_recovery_and_resource_failures_are_not_grammar_retried() {
             "180deg!important/*",
         ),
     ] {
-        let error = SVG
-            .parse_css_supports_declaration(property, value)
-            .unwrap_err();
+        let error = CssSupportsDeclaration::parse(
+            &CssParser::new(SVG, Default::default()),
+            property,
+            value,
+        )
+        .unwrap_err();
         assert!(
             error.is_recovered_input(),
             "recovery precedes literal/importance grammar: {error:?}"
@@ -1491,7 +1705,11 @@ fn supports_component_recovery_and_resource_failures_are_not_grammar_retried() {
         "(glyph-orientation-vertical:calc(90deg)",
         "glyph-orientation-vertical:auto/*",
     ] {
-        let error = SVG.parse_css_supports_condition(text).unwrap_err();
+        let error = CssCondition::<CssSupportsLeaf>::parse_condition_text(
+            &CssParser::new(SVG, Default::default()),
+            text,
+        )
+        .unwrap_err();
         assert!(
             error.is_recovered_input(),
             "original recovered failure: {error:?}"
@@ -1502,9 +1720,11 @@ fn supports_component_recovery_and_resource_failures_are_not_grammar_retried() {
         assert_eq!(opening.source().as_str(), text);
         assert_eq!(at.span().start().byte_offset().value(), text.len());
     }
-    let error = SVG
-        .parse_css_supports_condition("glyph-orientation-vertical:)")
-        .unwrap_err();
+    let error = CssCondition::<CssSupportsLeaf>::parse_condition_text(
+        &CssParser::new(SVG, Default::default()),
+        "glyph-orientation-vertical:)",
+    )
+    .unwrap_err();
     let Some(component) = error.component_error() else {
         panic!("component error")
     };
@@ -1514,7 +1734,11 @@ fn supports_component_recovery_and_resource_failures_are_not_grammar_retried() {
         "calc(".repeat(257),
         ")".repeat(257)
     );
-    let error = SVG.parse_css_supports_condition(&text).unwrap_err();
+    let error = CssCondition::<CssSupportsLeaf>::parse_condition_text(
+        &CssParser::new(SVG, Default::default()),
+        &text,
+    )
+    .unwrap_err();
     let Some(component) = error.component_error() else {
         panic!("nesting limit")
     };
@@ -1531,9 +1755,12 @@ fn supports_component_recovery_and_resource_failures_are_not_grammar_retried() {
             ComponentFailure::ByteLimit,
         ),
     ] {
-        let error = SVG
-            .parse_supports_condition_with_limits(text, &CssNamespaceContext::default(), limits)
-            .unwrap_err();
+        let error = CssCondition::<CssSupportsLeaf>::parse(
+            &CssParser::new(SVG, limits),
+            text,
+            &CssNamespaceContext::default(),
+        )
+        .unwrap_err();
         let Some(component) = error.component_error() else {
             panic!("resource error")
         };
@@ -1555,7 +1782,11 @@ fn supports_component_recovery_and_resource_failures_are_not_grammar_retried() {
         "(".repeat(40),
         ")".repeat(40)
     );
-    let condition = QUIRKS.parse_css_supports_condition(&deep).unwrap();
+    let condition = CssCondition::<CssSupportsLeaf>::parse_condition_text(
+        &CssParser::new(QUIRKS, Default::default()),
+        &deep,
+    )
+    .unwrap();
     // Every explicit grouping pair around the declaration test is a structural layer.
     let mut test = &condition;
     let mut layers = 0;
@@ -1578,9 +1809,12 @@ fn supports_component_recovery_and_resource_failures_are_not_grammar_retried() {
             .as_css(),
         deep
     );
-    let valid = SVG
-        .parse_css_supports_declaration("glyph-orientation-vertical", "180deg")
-        .unwrap();
+    let valid = CssSupportsDeclaration::parse(
+        &CssParser::new(SVG, Default::default()),
+        "glyph-orientation-vertical",
+        "180deg",
+    )
+    .unwrap();
     assert!(
         valid
             .svg_glyph_orientation_vertical()
@@ -1601,9 +1835,9 @@ fn nested_rule_fragment_import_keyframe_and_recovery_fronts_retain_definition() 
         "@supports (glyph-orientation-vertical:180deg){.a{glyph-orientation-vertical:180deg}}",
         ".a{& .b{glyph-orientation-vertical:180deg}}",
     ] {
-        let sheet = SVG.parse_sheet(css);
+        let sheet = CssParser::new(SVG, Default::default()).parse_sheet(css);
         assert!(sheet.is_clean(), "{css}: {:?}", sheet.diagnostics());
-        let normalized = normalize_sheet(sheet.syntax()).unwrap();
+        let normalized = sheet.syntax().normalize(Default::default()).unwrap();
         let declarations: Vec<_> = normalized
             .items()
             .iter()
@@ -1628,7 +1862,7 @@ fn nested_rule_fragment_import_keyframe_and_recovery_fronts_retain_definition() 
                 .representation(),
             "180"
         );
-        let fragment = SVG.parse_rule(css, &namespaces);
+        let fragment = CssRule::parse(&CssParser::new(SVG, Default::default()), css, &namespaces);
         assert!(fragment.is_clean(), "{css}: {:?}", fragment.diagnostics());
         assert_eq!(
             fragment
@@ -1642,7 +1876,11 @@ fn nested_rule_fragment_import_keyframe_and_recovery_fronts_retain_definition() 
                 .unwrap()
         );
     }
-    let block = SVG.parse_style_block("{glyph-orientation-vertical:180deg}", &namespaces);
+    let block = CssStyleBlock::parse(
+        &CssParser::new(SVG, Default::default()),
+        "{glyph-orientation-vertical:180deg}",
+        &namespaces,
+    );
     assert!(block.is_clean());
     assert_eq!(
         block.syntax().as_ref().unwrap().declarations()[0]
@@ -1650,7 +1888,7 @@ fn nested_rule_fragment_import_keyframe_and_recovery_fronts_retain_definition() 
             .unwrap(),
         "glyph-orientation-vertical: 180deg;"
     );
-    let list = QUIRKS.parse_style_attribute(
+    let list = CssParser::new(QUIRKS, Default::default()).parse_block_contents(
         "bad:1;glyph-orientation-vertical:90!important;color:123;glyph-orientation-vertical:180deg",
     );
     assert_eq!(list.diagnostics().len(), 1);
@@ -1678,7 +1916,8 @@ fn nested_rule_fragment_import_keyframe_and_recovery_fronts_retain_definition() 
         "color: rgb(0, 1, 35);"
     );
     assert!(svg(&list.syntax()[2]).value().unwrap().angle().is_some());
-    let import = QUIRKS.parse_rule(
+    let import = CssRule::parse(
+        &CssParser::new(QUIRKS, Default::default()),
         "@import \"x\" supports(glyph-orientation-vertical:90);",
         &namespaces,
     );
@@ -1691,7 +1930,7 @@ fn nested_rule_fragment_import_keyframe_and_recovery_fronts_retain_definition() 
         test.svg_glyph_orientation_vertical().unwrap().parser_mode(),
         CssParserMode::Quirks
     );
-    let report = QUIRKS.parse_sheet("@keyframes g{from{glyph-orientation-vertical:90;glyph-orientation-vertical:180deg!important;opacity:0}}");
+    let report = CssParser::new(QUIRKS, Default::default()).parse_sheet("@keyframes g{from{glyph-orientation-vertical:90;glyph-orientation-vertical:180deg!important;opacity:0}}");
     assert_eq!(report.diagnostics().len(), 1);
     assert!(report.diagnostics()[0].error().code() == CssErrorCode::InvalidDeclarationAnnotation);
     let detail = report.diagnostics()[0].error();
@@ -1714,7 +1953,10 @@ fn nested_rule_fragment_import_keyframe_and_recovery_fronts_retain_definition() 
         values[1].known().unwrap().property(),
         CssKnownProperty::Opacity
     );
-    let malformed = SVG.parse_declaration("glyph-orientation-vertical:180deg!important extra");
+    let malformed = CssDeclaration::parse(
+        &CssParser::new(SVG, Default::default()),
+        "glyph-orientation-vertical:180deg!important extra",
+    );
     assert!(malformed.syntax().is_none());
     let detail = malformed.diagnostics()[0].error();
     assert_eq!(
@@ -1726,7 +1968,8 @@ fn nested_rule_fragment_import_keyframe_and_recovery_fronts_retain_definition() 
         detail.declaration_context().unwrap(),
         CssDeclarationContextRef::SvgGlyphOrientationVertical
     );
-    let descriptor = SVG.parse_rule(
+    let descriptor = CssRule::parse(
+        &CssParser::new(SVG, Default::default()),
         "@font-face{glyph-orientation-vertical:180deg;font-family:Example}",
         &namespaces,
     );
@@ -1737,7 +1980,7 @@ fn nested_rule_fragment_import_keyframe_and_recovery_fronts_retain_definition() 
     assert_eq!(rule.descriptors().occurrences().len(), 1);
     for value in ["auto/*", "initial/*", "var(--g", "calc(90deg"] {
         let css = format!("glyph-orientation-vertical:{value}");
-        let report = SVG.parse_style_attribute(&css);
+        let report = CssParser::new(SVG, Default::default()).parse_block_contents(&css);
         assert!(!report.is_clean());
         let source = &report.syntax()[0];
         assert_eq!(source.parser_context(), SVG);
@@ -1757,9 +2000,9 @@ fn nested_rule_fragment_import_keyframe_and_recovery_fronts_retain_definition() 
         "@media all{".repeat(70),
         "}".repeat(70)
     );
-    let report = SVG.parse_sheet(&deep);
+    let report = CssParser::new(SVG, Default::default()).parse_sheet(&deep);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declaration = normalized
         .items()
         .iter()
@@ -1820,10 +2063,10 @@ fn operational_metadata_is_distinct_from_finite_partial_and_canonical_inventory(
 #[test]
 fn normalization_retains_order_independent_targets_symbolic_all_and_late_occurrence_failure() {
     let css = ".a{glyph-orientation-vertical:180deg!important;text-orientation:upright;all:unset;glyph-orientation-vertical:var(--g)}";
-    let report = SVG.parse_sheet(css);
+    let report = CssParser::new(SVG, Default::default()).parse_sheet(css);
     assert!(report.is_clean());
     let before = report.clone();
-    let normalized = normalize_report(&report).unwrap();
+    let normalized = report.normalize(Default::default()).unwrap();
     assert_eq!(normalized.diagnostics(), report.diagnostics());
     let declarations: Vec<_> = normalized
         .syntax()
@@ -1880,17 +2123,13 @@ fn normalization_retains_order_independent_targets_symbolic_all_and_late_occurre
     ));
     let exact = CssNormalizationLimits::try_new(1, 1, 4, 4).unwrap();
     assert_eq!(
-        normalize_sheet_with_limits(report.syntax(), exact)
-            .unwrap()
-            .items()
-            .len(),
+        report.syntax().normalize(exact).unwrap().items().len(),
         normalized.syntax().items().len()
     );
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(1, 1, 4, 3).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(1, 1, 4, 3).unwrap())
+        .unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 3))
@@ -1903,9 +2142,9 @@ fn normalization_retains_order_independent_targets_symbolic_all_and_late_occurre
             .same_occurrence(declarations[3].source())
     );
     assert_eq!(report, before);
-    let finite = CssParserContext::default()
+    let finite = CssParser::default()
         .parse_sheet(".a{glyph-orientation-vertical:90!important;text-orientation:upright}");
-    let finite = normalize_sheet(finite.syntax()).unwrap();
+    let finite = finite.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = finite
         .items()
         .iter()
@@ -2049,7 +2288,7 @@ fn specified_goldens_use_shared_leaf_math_tariffs_and_atomic_three_budget_retry(
         }
         assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         // Complete specified declarations include their list semicolon.
-        let reparsed = SVG.parse_style_attribute(expected);
+        let reparsed = CssParser::new(SVG, Default::default()).parse_block_contents(expected);
         assert!(
             reparsed.is_clean(),
             "{expected}: {:?}",
@@ -2087,7 +2326,7 @@ fn specified_goldens_use_shared_leaf_math_tariffs_and_atomic_three_budget_retry(
             .as_css(),
         "45.0000005"
     );
-    let sheet = SVG
+    let sheet = CssParser::new(SVG, Default::default())
         .parse_sheet(".a{glyph-orientation-vertical:180deg}.b{glyph-orientation-vertical:90deg}");
     let before = sheet.clone();
     let expected =

@@ -899,11 +899,10 @@ impl SpecifiedRuleWriter {
 mod tests {
     use crate::{
         CssRule, CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
-        parse_sheet,
     };
 
     fn exact_nodes(source: &str, expected: &str, nodes: usize) {
-        let report = parse_sheet(source);
+        let report = crate::CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let before = report.clone();
         assert_eq!(
@@ -955,7 +954,7 @@ mod tests {
 
     #[test]
     fn recovered_charset_only_sheet_charges_its_empty_retained_aggregate() {
-        let report = parse_sheet("@charset \"windows-1252\";");
+        let report = crate::CssParser::default().parse_sheet("@charset \"windows-1252\";");
         assert!(!report.is_clean());
         let [diagnostic] = report.diagnostics() else {
             panic!("one unknown charset")
@@ -987,7 +986,8 @@ mod tests {
 
     #[test]
     fn final_group_delimiters_report_the_enclosing_rule_without_returning_partial_text() {
-        let report = parse_sheet("@namespace n 'u';@scope{@layer{@font-face{}}}");
+        let report = crate::CssParser::default()
+            .parse_sheet("@namespace n 'u';@scope{@layer{@font-face{}}}");
         assert!(report.is_clean());
         let before = report.clone();
         let expected = "@namespace n url(\"u\");\n@scope { @layer { @font-face { } } }";

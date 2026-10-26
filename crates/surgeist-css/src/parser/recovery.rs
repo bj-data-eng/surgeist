@@ -581,29 +581,6 @@ impl RecoveryState {
         Ok(self.component_openings_in(start..end))
     }
 
-    // Raw lists are unwrapped: unmatched closing braces are ordinary components,
-    // and a generic at-rule ends immediately after its first root curly block.
-    pub(super) fn check_declaration_list_unit<'i>(
-        &self,
-        source: &'i str,
-        input: &Parser<'i, '_>,
-        at_rule: bool,
-    ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
-        let start = input.position().byte_index();
-        let end = scan_nested_tokens(
-            source,
-            start,
-            self.depth.get(),
-            "css.declaration",
-            if at_rule {
-                ScanBoundary::RawAtRule
-            } else {
-                ScanBoundary::RawDeclaration
-            },
-        )?;
-        Ok(self.component_openings_in(start..end))
-    }
-
     pub(super) fn check_specialized_components<'i>(
         &self,
         source: &str,
@@ -1254,8 +1231,6 @@ enum BlockKind {
 #[derive(Clone, Copy)]
 enum ScanBoundary {
     DeclarationValue,
-    RawDeclaration,
-    RawAtRule,
     FailedCurlyBlock,
     SpecializedPrelude,
     CommaMember,
@@ -1279,12 +1254,6 @@ fn scan_nested_tokens<'i>(
         if let Some(closing) = closing_block(&token) {
             if blocks.last().is_some_and(|kind| *kind == closing) {
                 blocks.pop();
-                if blocks.is_empty()
-                    && closing == BlockKind::Curly
-                    && matches!(boundary, ScanBoundary::RawAtRule)
-                {
-                    return Ok(token_end);
-                }
                 continue;
             }
             // The caller has already entered this component. Its closing
@@ -1308,12 +1277,7 @@ fn scan_nested_tokens<'i>(
             continue;
         }
         if blocks.is_empty()
-            && matches!(
-                boundary,
-                ScanBoundary::DeclarationValue
-                    | ScanBoundary::RawDeclaration
-                    | ScanBoundary::RawAtRule
-            )
+            && matches!(boundary, ScanBoundary::DeclarationValue)
             && matches!(token, Token::Semicolon)
         {
             return Ok(token_start);

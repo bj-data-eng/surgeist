@@ -339,7 +339,7 @@ fn unspelled_native_error_payloads_keep_component_order_and_do_not_invent_source
 fn checked_implicit_groups_keep_original_component_occurrences_and_child_eof_without_fabricating_root_source()
  {
     let text = " f([x";
-    let values = crate::parse_component_values(text).unwrap();
+    let values = crate::component_values::parse_component_values(text).unwrap();
     let CssComponentValueRef::Function(original_function) = values.items()[1].view() else {
         panic!("actual checked function")
     };
@@ -504,9 +504,9 @@ fn comma_ranges_preserve_all_nested_kinds_trivia_and_final_empty_members() {
 
 #[test]
 fn raw_comma_selector_uses_actual_native_and_checked_kinds_and_keeps_mixed_origins() {
-    let first = crate::parse_component_values("A").unwrap();
-    let comma = crate::parse_component_values(",").unwrap();
-    let last = crate::parse_component_values("B").unwrap();
+    let first = crate::component_values::parse_component_values("A").unwrap();
+    let comma = crate::component_values::parse_component_values(",").unwrap();
+    let last = crate::component_values::parse_component_values("B").unwrap();
     let native = |token| SyntaxToken {
         payload: TokenPayload::Native(token),
         spelling: None,

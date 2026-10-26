@@ -16,7 +16,7 @@ fn exact_integer(value: &str) -> CssNumericLiteral<CssInteger> {
 
 fn parsed_line(value: &str) -> CssGridLine {
     let source = format!("grid-row-start: {value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::GridRowStart(value) = report.syntax()[0]
         .known()
@@ -64,7 +64,11 @@ fn parsed_exact_and_math_lines_keep_current_values_and_canonical_output() {
             .unwrap(),
         "calc(2.5)"
     );
-    assert!(!parse_style_attribute("grid-row-start: calc(1px)").is_clean());
+    assert!(
+        !CssParser::default()
+            .parse_block_contents("grid-row-start: calc(1px)")
+            .is_clean()
+    );
 }
 
 #[test]
@@ -169,7 +173,7 @@ fn checked_construction_excludes_invalid_states_and_keeps_authored_variants() {
     let math = CssGridLine::try_indexed(
         CssNumeric::<CssInteger>::try_from_calculation(
             CssCalculation::<CssInteger>::try_from_components(
-                parse_component_values("calc(0)").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "calc(0)").unwrap(),
                 Default::default(),
             )
             .unwrap(),

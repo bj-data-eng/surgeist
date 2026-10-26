@@ -3,40 +3,6 @@ use super::*;
 use crate::syntax_consumption::{self as syntax, CursorItem, TokenKind};
 use crate::{CssComponentValueLimits, CssParseReport, CssParserContext, CssRecoveryAction};
 
-/// Parses the declaration projection of raw CSS Syntax block contents.
-///
-/// No surrounding braces are required or invented. A root `}` stops consumption;
-/// declarations after it are never retained. Root semicolons, trivia and EOF are
-/// empty slots. Generic at-rules and qualified rules are consumed as complete
-/// nested units and dropped from this declaration-only projection. Declaration
-/// admission and fallback use the existing ordinary property grammar, including
-/// custom-property recovery through the root semicolon. Nested rule boundaries
-/// do not swallow following declarations. Ordered occurrences, duplicates,
-/// importance and original name/value source identities remain authored data;
-/// CSSOM winner selection is a separate operation.
-///
-/// Recovery/resource diagnostics are retained independently of an empty or
-/// nonempty projection. The historical [`parse_declaration_list_text`] remains
-/// distinct: its invalid units synchronize through a semicolon, including closers.
-#[must_use]
-pub fn parse_declaration_block_contents(source: &str) -> CssParseReport<CssDeclarationList> {
-    parse_declaration_block_contents_with_limits(source, CssComponentValueLimits::default())
-}
-
-/// Parses with cumulative whole-input byte, component and depth limits.
-///
-/// Every original component is charged once, including descendants, trivia and
-/// source after the root stop token. A failed allowance returns an empty projection
-/// and its typed resource diagnostic; no partially admitted declarations escape.
-/// Grammar probes/fallback share that admitted arena and do not reset the budget.
-#[must_use]
-pub fn parse_declaration_block_contents_with_limits(
-    source: &str,
-    limits: CssComponentValueLimits,
-) -> CssParseReport<CssDeclarationList> {
-    parse_with_context(source, limits, CssParserContext::default())
-}
-
 pub(crate) fn parse_with_context(
     source: &str,
     limits: CssComponentValueLimits,
@@ -239,26 +205,25 @@ fn parse_contents_with_snapshot<R: Receiver>(
             // for an unrecognized name or missing colon. Probe only the owned
             // header grammar here, so a run of rule bodies without semicolons
             // is not repeatedly scanned as one declaration value.
-            let header = input.try_parse(|unit| {
-                let name = unit.expect_ident_cloned()?;
-                unit.expect_colon()?;
-                if !name.starts_with("--") {
-                    receiver.check_name(name.as_ref(), location)?;
-                }
-                Ok(())
-            });
+            let header = input
+                .try_parse(|unit| {
+                    let name = unit.expect_ident_cloned()?;
+                    unit.expect_colon()?;
+                    if !name.starts_with("--") {
+                        receiver.check_name(name.as_ref(), location)?;
+                    }
+                    Ok(())
+                })
+                .map_err(semicolon_as_end);
             input.reset(&start);
             if let Err(error) = header {
-                let _ = syntax::consume_qualified_rule_context(&mut cursor, true);
+                let action = reconsume_as_rule(&mut cursor);
                 let end_byte = offset(&cursor);
                 advance_to(&mut input, end_byte);
-                if let Some(diagnostic) = block_item_diagnostic_from_start(
-                    source,
-                    error,
-                    start_byte,
-                    end_byte,
-                    CssRecoveryAction::DropQualifiedRule,
-                ) {
+                let span_end = dropped_end(&cursor, end_byte, action);
+                if let Some(diagnostic) =
+                    block_item_diagnostic_from_start(source, error, start_byte, span_end, action)
+                {
                     diagnostics.push(diagnostic);
                 }
                 continue;
@@ -297,14 +262,14 @@ fn parse_contents_with_snapshot<R: Receiver>(
                 cursor = declaration_cursor;
                 CssRecoveryAction::DropDeclaration
             } else {
-                let _ = syntax::consume_qualified_rule_context(&mut cursor, true);
-                CssRecoveryAction::DropQualifiedRule
+                reconsume_as_rule(&mut cursor)
             };
             let end_byte = offset(&cursor);
             advance_to(&mut input, end_byte);
+            let span_end = dropped_end(&cursor, end_byte, action);
             let resource = crate::error::is_resource_parse_error(&error);
             if let Some(diagnostic) =
-                block_item_diagnostic_from_start(source, error, start_byte, end_byte, action)
+                block_item_diagnostic_from_start(source, error, start_byte, span_end, action)
             {
                 diagnostics.push(diagnostic);
             }
@@ -325,6 +290,53 @@ fn parse_contents_with_snapshot<R: Receiver>(
             CssParseReport::new((!resource_failure).then_some(declarations), diagnostics),
         )
     })
+}
+
+/// A declaration unit ends at its `;`, so a `;` found where the header needed more
+/// input is the end of that unit, as it is for every declaration list.
+fn semicolon_as_end(error: ParseError<'_, CssError>) -> ParseError<'_, CssError> {
+    match error.kind {
+        cssparser::ParseErrorKind::Basic(cssparser::BasicParseErrorKind::UnexpectedToken(
+            cssparser::Token::Semicolon,
+        )) => ParseError {
+            kind: cssparser::ParseErrorKind::Basic(cssparser::BasicParseErrorKind::EndOfInput),
+            location: error.location,
+        },
+        _ => error,
+    }
+}
+
+/// Syntax 3 (2026 CRD) §5.5.5: a unit that is not a declaration is reconsumed as
+/// a qualified rule with `;` as its stop token. The drop is reported for what it
+/// consumed: a rule that reached its `{}` block is a dropped qualified rule, and
+/// a unit that ended at the stop token, a root `}` or EOF without a block is a
+/// dropped declaration, as in every other declaration list.
+fn reconsume_as_rule(cursor: &mut syntax::SyntaxCursor<'_>) -> CssRecoveryAction {
+    if syntax::consume_qualified_rule_context(cursor, true).is_ok() {
+        CssRecoveryAction::DropQualifiedRule
+    } else {
+        CssRecoveryAction::DropDeclaration
+    }
+}
+
+/// A dropped declaration's span ends after the `;` that terminates it, as in every
+/// other declaration list. The `;` itself stays unconsumed: the next iteration
+/// discards it as an empty slot.
+fn dropped_end(
+    cursor: &syntax::SyntaxCursor<'_>,
+    end_byte: usize,
+    action: CssRecoveryAction,
+) -> usize {
+    let terminated = matches!(
+        cursor.peek(),
+        CursorItem::Node(node)
+            if cursor.document.nodes[node].token().kind() == TokenKind::Semicolon
+    );
+    if action == CssRecoveryAction::DropDeclaration && terminated {
+        end_byte + 1
+    } else {
+        end_byte
+    }
 }
 
 fn offset(cursor: &syntax::SyntaxCursor<'_>) -> usize {

@@ -13,7 +13,7 @@ use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
     CssCondition, CssConditionKind, CssImportLayer, CssImportRule, CssImportance, CssMediaLeaf,
-    CssMediaQuery, CssRecoveryAction, CssRule, CssSupportsLeaf, parse_sheet, validate_sheet,
+    CssMediaQuery, CssParser, CssRecoveryAction, CssRule, CssSupportsLeaf,
 };
 
 const INVALID_DECLARATIONS: &[&str] = &[
@@ -26,9 +26,15 @@ const INVALID_DECLARATIONS: &[&str] = &[
 
 fn condition(contents: &str) -> CssCondition<CssSupportsLeaf> {
     let source = format!("@supports ({contents}) {{}} .after{{color:red}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {report:?}");
-    assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     let [CssRule::Supports(rule), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("retained condition and following style: {source}: {report:?}");
     };
@@ -38,9 +44,15 @@ fn condition(contents: &str) -> CssCondition<CssSupportsLeaf> {
 
 fn import(tail: &str) -> CssImportRule {
     let source = format!("@import 'x.css' {tail}; .after{{color:red}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {report:?}");
-    assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     let [CssRule::Import(rule), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("retained import and following style: {source}: {report:?}");
     };
@@ -189,7 +201,7 @@ fn supports_bad_url_and_bad_string_tokens_cannot_be_declarations_or_opaque_fallb
     // admitted through <any-value>. The actual closing parenthesis is present.
     for contents in ["color:url(a b)", "color:\"broken\n"] {
         let source = format!("@supports ({contents}) {{}} .after{{color:red}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             matches!(report.syntax().rules(), [CssRule::Style(_)]),
             "{source}: {report:?}"
@@ -199,7 +211,11 @@ fn supports_bad_url_and_bad_string_tokens_cannot_be_declarations_or_opaque_fallb
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -225,7 +241,7 @@ fn supports_lexical_failures_preserve_typed_errors_and_original_token_positions(
                 "{}"
             };
             let source = format!("/*😀*/\r\n{prelude}{ending} .after{{color:red}}");
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(
                 matches!(report.syntax().rules(), [CssRule::Style(_)]),
                 "{source}: {report:?}"
@@ -253,7 +269,11 @@ fn supports_lexical_failures_preserve_typed_errors_and_original_token_positions(
             assert_eq!(diagnostic.error().position(), position);
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
             assert_eq!(
-                validate_sheet(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_sheet(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
         }

@@ -23,8 +23,7 @@ use crate::css::support::serialization_limits::LimitLadder;
 use authored_property::assert_source;
 
 fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("completed intrinsic contribution")
     };
@@ -139,12 +138,12 @@ fn normalization_counts_complete_terminals_and_pending_occurrences_cumulatively(
             "@media screen{{.a{{{name}:{}!important;{name}:var(--text);{name}:unset!important;color:red}}}}",
             ordinary_cases(name)[0]
         );
-        let report = parse_sheet(&css);
+        let report = CssParser::default().parse_sheet(&css);
         assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
         let before = report.clone();
         let count = terminals(name).len() * 2 + 2;
         let exact = CssNormalizationLimits::try_new(1, 2, 4, count).unwrap();
-        let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+        let normalized = report.syntax().normalize(exact).unwrap();
         let declarations: Vec<_> = normalized
             .items()
             .iter()
@@ -224,7 +223,7 @@ fn normalization_counts_complete_terminals_and_pending_occurrences_cumulatively(
             ),
         ] {
             for _ in 0..2 {
-                let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+                let error = report.syntax().normalize(limits).unwrap_err();
                 assert_eq!(error.exhausted_limit(), Some((resource, limit)));
                 assert_eq!(error.declaration_order(), Some(3));
                 assert!(
@@ -236,7 +235,7 @@ fn normalization_counts_complete_terminals_and_pending_occurrences_cumulatively(
             }
         }
         assert_eq!(report, before);
-        assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+        assert!(report.syntax().normalize(exact).is_ok());
     }
 }
 fn declaration_limits(name: &str, text: &str, nodes: usize) {
@@ -255,7 +254,7 @@ fn every_emitted_keyword_and_literal_charges_exact_declaration_work_and_utf8_byt
     }
 }
 fn sheet_limits(input: &str, expected: &str, nodes: usize) {
-    let report = parse_sheet(input);
+    let report = CssParser::default().parse_sheet(input);
     assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
     // Each rule fits separately; exhaustion only comes from cumulative use.
     LimitLadder::new(expected, nodes, nodes).assert_cumulative_sheet(report.syntax(), 1);
@@ -722,9 +721,7 @@ fn decoded_keywords_comments_and_case_preserve_original_authorship_and_canonical
 }
 #[test]
 fn spacing_projection_does_not_reset_white_space_letter_word_or_justify_siblings() {
-    let report = parse_style_attribute(
-        "white-space:pre;word-spacing:2px;letter-spacing:3px;text-justify:distribute;text-spacing:none!important;color:red",
-    );
+    let report = CssParser::default().parse_block_contents("white-space:pre;word-spacing:2px;letter-spacing:3px;text-justify:distribute;text-spacing:none!important;color:red");
     assert!(report.is_clean());
     assert_eq!(report.syntax().len(), 6);
     let source = &report.syntax()[4];
@@ -787,7 +784,7 @@ fn signed_length_provider_keeps_exact_source_and_bare_root_admission_with_atomic
         ("1.25em", "1.25em"),
     ] {
         let text = format!("/*😀*/{input}");
-        let components = parse_component_values(&text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
         let token = components
             .items()
             .iter()
@@ -826,7 +823,7 @@ fn signed_length_provider_keeps_exact_source_and_bare_root_admission_with_atomic
     }
     for text in ["1", "-1", "1%"] {
         let calculation = CssCalculation::<CssLength>::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             Default::default(),
         );
         if let Ok(calculation) = calculation {

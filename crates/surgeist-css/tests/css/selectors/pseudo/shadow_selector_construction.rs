@@ -307,7 +307,11 @@ fn checked_logical_suffix_arguments_inherit_position_and_remain_pseudo_only() {
 
 #[test]
 fn empty_forgiving_lists_cannot_be_reused_for_nonempty_argument_grammars() {
-    let report = parse_selector(":is()", &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        ":is()",
+        &CssNamespaceContext::default(),
+    );
     let Some(CssSelector::PseudoClass(CssPseudoClass::Is(empty))) = report.syntax().clone() else {
         panic!("retained empty forgiving list")
     };

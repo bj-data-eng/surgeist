@@ -90,6 +90,16 @@ impl CssSheet {
         self.location.as_ref()
     }
 
+    /// Attaches the host-supplied symbolic stylesheet location, or null when absent.
+    ///
+    /// The location is opaque host context. It never affects parsing, and it takes
+    /// part in equality.
+    #[must_use]
+    pub fn with_location(mut self, location: Option<crate::CssStylesheetLocation>) -> Self {
+        self.location = location;
+        self
+    }
+
     pub(crate) fn set_location(&mut self, location: Option<crate::CssStylesheetLocation>) {
         self.location = location;
     }
@@ -2636,7 +2646,7 @@ impl std::ops::Deref for CssKeyframeDeclarationList {
 /// accessor. It does not interpolate, apply, cascade, or resolve the authored value.
 ///
 /// ```compile_fail
-/// let report = surgeist_css::parse_sheet("@keyframes x { from { opacity: 0 } }");
+/// let report = surgeist_css::CssParser::default().parse_sheet("@keyframes x { from { opacity: 0 } }");
 /// assert!(report.is_clean());
 /// let surgeist_css::CssRule::Keyframes(rule) = &report.syntax().rules()[0] else {
 ///     unreachable!()
@@ -2728,7 +2738,7 @@ impl CssKeyframeDeclaration {
 /// The complete importance state of an ordinary authored declaration.
 ///
 /// Importance is recognized at a parsed declaration boundary or supplied separately to
-/// [`crate::parse_property_value`]; it is not part of the property value. Its two states form
+/// [`crate::CssParser::parse_property_value`]; it is not part of the property value. Its two states form
 /// a closed, exhaustively matchable set.
 /// Downstream cascade policy may consume it, but this crate does not apply cascade.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -2744,16 +2754,14 @@ pub enum CssImportance {
 ///
 /// Its private fields couple a known property to its schema-selected value type, or a custom name
 /// to its authored custom value. Parsed declarations retain original name and value origins;
-/// [`crate::parse_property_value`] constructs declarations from checked components without
+/// [`CssDeclaration::try_from_components`] constructs declarations from checked components without
 /// manufacturing a property-name position. Callers cannot create a property/value mismatch.
 ///
 /// ```compile_fail,E0308
-/// use surgeist_css::{
-///     CssKnownPropertyValueRef, CssPropertyValue, CssSizeValue, parse_style_attribute,
-/// };
+/// use surgeist_css::{CssKnownPropertyValueRef, CssPropertyValue, CssSizeValue, CssParser};
 ///
-/// let width_report = parse_style_attribute("width: 1px");
-/// let opacity_report = parse_style_attribute("opacity: .5");
+/// let width_report = CssParser::default().parse_block_contents("width: 1px");
+/// let opacity_report = CssParser::default().parse_block_contents("opacity: .5");
 /// let Some(CssKnownPropertyValueRef::Width(width)) =
 ///     width_report.syntax()[0].known().unwrap().property_value()
 /// else { panic!("expected width") };
@@ -3067,7 +3075,7 @@ impl CssDeclaration {
 ///
 /// Known values are coupled to their schema identity; custom values remain attached to their
 /// case-sensitive custom name. SVG values retain their actual independent admission.
-/// Parsing and [`crate::parse_property_value`] construct these
+/// Parsing and [`crate::CssParser::parse_property_value`] construct these
 /// checked bodies without performing cascade or substitution.
 #[non_exhaustive]
 #[expect(
@@ -3087,7 +3095,7 @@ pub enum CssDeclarationBody {
 /// A checked authored custom-property declaration.
 ///
 /// Its private fields prevent attaching the custom value to a known property name. Parsing and
-/// [`crate::parse_property_value`] preserve custom syntax without substituting references,
+/// [`crate::CssParser::parse_property_value`] preserve custom syntax without substituting references,
 /// computing cascade, or validating a post-substitution value.
 ///
 /// ```compile_fail
@@ -9140,5 +9148,79 @@ impl CssRule {
             Self::Else(rule) => Some(rule.rules_mut()),
             _ => None,
         }
+    }
+}
+impl CssRule {
+    /// Parses exactly one complete ordinary rule using supplied namespace bindings.
+    ///
+    /// The original source must contain one supported style rule or at-rule, with
+    /// optional surrounding whitespace/comments. Multiple rules, trailing nontrivia
+    /// and rejected outer grammar return `None` with `RejectInput`. Encoding directives
+    /// are stylesheet metadata and cannot produce a rule; no BOM or CDO/CDC is stripped.
+    /// Imports and namespaces use isolated top-level grammar, without insertion-order
+    /// validation against an existing sheet. The supplied namespace context is immutable.
+    ///
+    /// A retained rule preserves its inner declaration, selector, query and child-rule
+    /// recovery diagnostics. Implicit EOF closures are reported only when the outer
+    /// rule survives; resource diagnostics preserve `StopAtNestingLimit`. Positions
+    /// refer to the original UTF-8 source and zero-based UTF-16 coordinates. Nested
+    /// contents remain inside their owning rule. This performs no matching, cascade,
+    /// CSSOM insertion or contextual resolution.
+    ///
+    /// The parser supplies the document mode.
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+        namespaces: &crate::CssNamespaceContext,
+    ) -> crate::CssParseReport<Option<CssRule>> {
+        crate::parser::parse_rule_with_context(source.as_ref(), namespaces, parser.context())
+    }
+}
+impl CssStyleBlock {
+    /// Parses exactly one real-brace style block with supplied namespace bindings.
+    ///
+    /// The source contains the braces and optional surrounding whitespace/comments,
+    /// without a selector. Empty and recovered-empty blocks are retained. A second
+    /// block, missing opening brace or trailing nontrivia rejects the complete input
+    /// with `RejectInput`; resource failures preserve `StopAtNestingLimit`.
+    ///
+    /// Inner declarations, nested rules and subsequent declaration runs use ordinary
+    /// style-body grammar and preserve their recovery diagnostics. Relative child
+    /// selectors and explicit anchors remain symbolic. No parent selector is invented.
+    /// The block origin includes its actual braces or ends at implicit EOF, excludes
+    /// surrounding trivia, and shares the original source snapshot with declarations.
+    /// Implicit closure diagnostics are published only after the outer block survives.
+    ///
+    /// The parser supplies the document mode.
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+        namespaces: &crate::CssNamespaceContext,
+    ) -> crate::CssParseReport<Option<CssStyleBlock>> {
+        crate::parser::parse_style_block_with_context(source.as_ref(), namespaces, parser.context())
+    }
+}
+impl CssDeclaration {
+    /// Parses exactly one complete, grammar-valid ordinary declaration from raw source.
+    ///
+    /// Surrounding whitespace and comments are accepted. The source must contain a
+    /// recognized property or a valid custom property, its colon, and its value;
+    /// top-level semicolons and stray closing delimiters reject the entire input.
+    /// Use `CssParser::parse_block_contents` for a declaration list with separators.
+    /// Name and value origins share the original source snapshot, and importance is
+    /// recognized by the ordinary declaration grammar. No annotation span is added.
+    /// Rejection returns `None` with `RejectInput`, except resource exhaustion retains
+    /// `StopAtNestingLimit`. Implicit EOF closures are reported only after the complete
+    /// declaration survives. This validates property grammar beyond CSS Syntax's
+    /// generic consume-declaration algorithm and performs no contextual resolution.
+    ///
+    /// The parser supplies the document mode.
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> crate::CssParseReport<Option<CssDeclaration>> {
+        crate::parser::parse_declaration_with_context(source.as_ref(), parser.context())
     }
 }

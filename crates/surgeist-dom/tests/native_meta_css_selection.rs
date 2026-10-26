@@ -4,8 +4,8 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_color::Color;
 use surgeist_css::{
-    CssColorSchemeKeyword, CssColorSchemeParseReport, CssComponentValueLimits, CssGlobalKeyword,
-    CssKnownPropertyValueRef, CssUtf16InputLimits, CssUtf16PropertyValueLimits, CssValueOrigin,
+    CssColorSchemeKeyword, CssColorSchemeParseReport, CssGlobalKeyword, CssKnownPropertyValueRef,
+    CssUtf16InputLimits, CssUtf16PropertyValueLimits, CssValueOrigin,
 };
 use surgeist_dom::*;
 
@@ -26,7 +26,6 @@ fn limits() -> DomLimits {
     .unwrap()
     .with_meta_color_scheme_limits(CssUtf16PropertyValueLimits {
         input: CssUtf16InputLimits::default(),
-        syntax: CssComponentValueLimits::default(),
         max_work: 1_000_000,
         max_live_bytes: 2 * 1024 * 1024,
         max_retained_bytes: 2 * 1024 * 1024,

@@ -20,7 +20,7 @@ fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
         CssKnownProperty::ZIndex => "z-index",
         _ => panic!("selected integer property"),
     };
-    let report = parse_style_attribute(&format!("{name}:{text}!important"));
+    let report = CssParser::default().parse_block_contents(format!("{name}:{text}!important"));
     assert!(
         report.is_clean(),
         "{name}:{text}: {:?}",
@@ -105,14 +105,15 @@ fn assert_checked_outside_i32(property: CssKnownProperty) {
             programmatic.items()[0].origin(),
             CssValueOrigin::Programmatic
         ));
-        let retained_parsed = parse_component_values(text).unwrap();
+        let retained_parsed = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         assert!(matches!(
             retained_parsed.items()[0].origin(),
             CssValueOrigin::Parsed(_)
         ));
         for components in [programmatic, retained_parsed] {
-            let declaration = parse_property_value(
-                CssPropertyNameRef::Known(property),
+            let declaration = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Normal,
             )
@@ -187,8 +188,9 @@ fn exact_i32_boundaries_signs_and_leading_zeros_retain_tokens() {
                 Default::default(),
             )
             .unwrap();
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(property),
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Normal,
             )
@@ -209,8 +211,9 @@ fn z_index_auto_and_integer_math_keep_their_typed_boundaries() {
             Default::default(),
         )
         .unwrap();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ZIndex),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ZIndex)),
             components.clone(),
             CssImportance::Normal,
         )
@@ -268,7 +271,7 @@ fn admitted_order_literals_and_math_expand_once_with_source_identity() {
     for text in ["0", "-2", "calc(1.5)", "calc(-1.5)"] {
         let declaration = parsed(CssKnownProperty::Order, text);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&declaration).expect("Order intrinsic expansion")
+            declaration.expand().expect("Order intrinsic expansion")
         else {
             panic!("ordinary longhand contributions")
         };
@@ -308,16 +311,18 @@ fn noninteger_ordinary_tokens_and_wrong_numeric_roots_remain_invalid() {
             "calc(1%)",
             "inherit 1",
         ] {
-            let report = parse_style_attribute(&format!("color:red;{name}:{text};color:blue"));
+            let report = CssParser::default()
+                .parse_block_contents(format!("color:red;{name}:{text};color:blue"));
             let [diagnostic] = report.diagnostics() else {
                 panic!("one invalid integer declaration: {name}:{text}")
             };
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
             assert_eq!(report.syntax().len(), 2);
-            let components = parse_component_values(text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             property_rejection(
-                parse_property_value(
-                    CssPropertyNameRef::Known(property),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                     components,
                     CssImportance::Normal,
                 ),
@@ -325,7 +330,7 @@ fn noninteger_ordinary_tokens_and_wrong_numeric_roots_remain_invalid() {
             );
         }
     }
-    let report = parse_style_attribute("order:auto");
+    let report = CssParser::default().parse_block_contents("order:auto");
     crate::css::support::value_assertions::assert_first_property_diagnostic(
         report.diagnostics(),
         "order:auto",

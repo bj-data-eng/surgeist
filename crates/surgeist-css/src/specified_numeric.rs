@@ -198,7 +198,7 @@ mod ordinary_literal_comparison_tests {
     use super::*;
 
     fn component(text: &str) -> CssComponentValue {
-        let values = crate::parse_component_values(text).unwrap();
+        let values = crate::component_values::parse_component_values(text).unwrap();
         let [value] = values.items() else {
             panic!("one retained component")
         };

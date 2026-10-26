@@ -9,9 +9,9 @@ use crate::css::support::value_assertions::clean_media_query as query;
 use crate::css::support::value_assertions::media_resource_kind as resource_kind;
 use surgeist_css::{
     CssCalculationExpressionRef, CssConditionKind, CssMediaFeatureQuery, CssMediaGridRef,
-    CssMediaLeaf, CssMediaQuery, CssMediaRangeRef, CssMediaResolutionRef, CssQueryComparison,
-    CssRecoveryAction, CssSerializationLimits as Limits, CssSerializedOrigin,
-    CssUnknownMediaFeatureReason, CssValueOrigin, parse_cssom_media_query, parse_media_query_list,
+    CssMediaLeaf, CssMediaQuery, CssMediaQueryList, CssMediaRangeRef, CssMediaResolutionRef,
+    CssParser, CssQueryComparison, CssRecoveryAction, CssSerializationLimits as Limits,
+    CssSerializedOrigin, CssUnknownMediaFeatureReason, CssValueOrigin,
 };
 
 fn feature(query: &CssMediaQuery) -> &CssMediaFeatureQuery {
@@ -423,7 +423,7 @@ fn cssom_quantity_equality_compares_lexical_bytes_without_unit_conversion() {
 #[test]
 fn feature_lists_share_resources_and_report_the_later_original_member() {
     let source = "/*😀*/\n(width:1px), (resolution:96dpi)";
-    let report = parse_media_query_list(source);
+    let report = CssMediaQueryList::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let original = report.clone();
     let list = report.syntax();
@@ -470,7 +470,7 @@ fn feature_lists_share_resources_and_report_the_later_original_member() {
 #[test]
 fn malformed_neighbor_recovery_keeps_feature_reports_and_atomic_resource_retries() {
     let source = "screen, ???, print";
-    let report = parse_media_query_list(source);
+    let report = CssMediaQueryList::parse(&CssParser::default(), source);
     let original = report.clone();
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
@@ -526,7 +526,7 @@ fn malformed_neighbor_recovery_keeps_feature_reports_and_atomic_resource_retries
     );
     assert_eq!(report, original);
 
-    let single = parse_cssom_media_query(source);
+    let single = CssMediaQuery::parse_medium(&CssParser::default(), source);
     assert!(single.syntax().is_none());
     assert_eq!(single.diagnostics(), report.diagnostics());
 }

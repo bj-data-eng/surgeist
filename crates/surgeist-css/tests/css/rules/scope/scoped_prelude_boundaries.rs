@@ -2,7 +2,7 @@
 //! The same supported scoped selector remains valid regardless of ancestor depth.
 
 use surgeist_css::{
-    CssRule, CssSelector, CssSelectorCombinator, CssStyleRule, CssStyleSelector, parse_sheet,
+    CssParser, CssRule, CssSelector, CssSelectorCombinator, CssStyleRule, CssStyleSelector,
 };
 
 fn style_at_scope_depth(
@@ -33,7 +33,7 @@ fn scoped_anchor_remains_valid_when_its_rule_starts_a_structural_chunk() {
             "@scope{".repeat(depth),
             "}".repeat(depth)
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -63,7 +63,7 @@ fn scoped_relative_selector_remains_valid_when_its_rule_starts_a_structural_chun
             "@scope{".repeat(depth),
             "}".repeat(depth)
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",

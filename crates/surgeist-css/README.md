@@ -20,14 +20,14 @@ and uses the shared rounding policy; computation and quadrant rounding remain
 downstream. See the [glyph reference](docs/reference.md#independent-svg-glyph-definition)
 for precedence, sources and unresolved normative clauses.
 
-Byte stylesheets enter through `decode_stylesheet_bytes(bytes, hints)` and
-`parse_decoded_stylesheet(&input, optional_location)`. Decoding uses standard
+Byte stylesheets enter through `CssDecodedStylesheetInput::decode(bytes, hints, limits)` and
+`CssParser::parse_sheet_bytes(&input)`, with `with_location` attaching the optional location. Decoding uses standard
 Encoding labels, CSS fallback precedence and BOM overrides, with optional atomic
 byte limits. The immutable input retains original bytes and the exact unfiltered
 UTF-8 snapshot used by parsing. The stylesheet location is host-supplied symbolic
 text; see the [entry-point reference](docs/reference.md#entry-points-and-features).
 
-`CssParserContext::parse_sheet_utf16_with_limits` accepts shared original UTF16,
+`CssParser::parse_sheet_utf16` accepts shared original UTF16,
 uses the general CSS Syntax input cursor for newline/NUL/surrogate preprocessing,
 and invokes the ordinary stylesheet grammar in the supplied complete context.
 Finite preparation limits cover original units, normalized bytes, map entries,
@@ -38,7 +38,7 @@ and after grammar execution. The grammar retains its existing resource limits;
 it does not provide fine-grained cancellation or a whole-grammar work budget.
 Failure returns no partial report.
 
-`CssParserContext::parse_media_query_list_utf16_with_limits` uses the same private
+`CssMediaQueryList::parse_utf16` uses the same private
 prepared-source owner and ordinary media-query grammar. `CssUtf16InputLimits`
 and `CssUtf16InputError` apply to both real UTF16 grammar frontends; the UTF8
 media-query function remains its actual input format, with a context method for
@@ -65,7 +65,7 @@ provenance independently of formatting, resource execution or Arc strong counts.
 Source storage admission is separate from input parsing admission and caller-owned
 historical captures.
 
-`CssParserContext::parse_declaration_block_contents_utf16_with_limits` admits
+`CssParser::parse_block_contents_utf16` admits
 original UTF16 through that same preprocessing boundary and the existing raw
 declaration-block grammar. Its sealed `CssDeclarationBlockParseReport` retains
 the complete root source even for empty or wholly recovered input. Values and
@@ -79,7 +79,7 @@ do not promise per-action grammar work or live-allocation accounting. Consumers
 admit retained sources independently; a source receipt is not a complete report
 or checked-value storage receipt.
 
-`CssParserContext::parse_color_scheme_utf16_with_limits` supplies the independent
+`CssColorScheme::parse_utf16` supplies the independent
 bounded authored `color-scheme` value front. It preserves the shared original
 UTF16 and its preprocessed source through the existing component and property
 grammars, including arbitrary substitution fallbacks. Concrete values, CSS-wide
@@ -419,11 +419,9 @@ contextual and quirky-color/CSS.supports scope.
 ## Start
 
 ```rust
-use surgeist_css::{CssRecoveryAction, parse_sheet};
+use surgeist_css::{CssRecoveryAction, CssParser};
 
-let report = parse_sheet(
-    ".before { color: red; } @unknown value; .after { color: blue; }",
-);
+let report = CssParser::default().parse_sheet(".before { color: red; } @unknown value; .after { color: blue; }");
 assert_eq!(report.syntax().rules().len(), 2);
 assert_eq!(report.diagnostics().len(), 1);
 assert_eq!(report.diagnostics()[0].action(), CssRecoveryAction::DropAtRule);

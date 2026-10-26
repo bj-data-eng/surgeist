@@ -5,7 +5,7 @@
 use super::NumericInputContext;
 use crate::{
     CssComponentValue, CssComponentValueRef, CssComponentValues, CssParsedOrigin,
-    CssSourceSnapshot, CssValueOrigin, CssValueTokenRef, parse_component_values,
+    CssSourceSnapshot, CssValueOrigin, CssValueTokenRef,
 };
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region, StatsAlloc};
 use std::alloc::System;
@@ -71,7 +71,7 @@ fn check_mapped_collection() {
     // A programmatic root with actual parsed children exercises mixed origins.
     // All fixture construction, validation, serialization and parser setup stay
     // outside the measured call. Ordinary ASCII names need no escape decoding.
-    let children = parse_component_values(CHILDREN).unwrap();
+    let children = crate::component_values::parse_component_values(CHILDREN).unwrap();
     let root = CssComponentValue::try_function("rgb", children).unwrap();
     let expected_leaf_origin = parsed_origin(first_number(&root)).clone();
     let values = CssComponentValues::try_new(
@@ -146,7 +146,11 @@ fn check_read_only_retention() {
     // Input construction and retention assertions remain outside the measured
     // call. The calculation needs integer-domain validation, not a public result.
     let values = [128, 65_536].map(|length| {
-        parse_component_values(&format!("calc(1 /*{}*/ + 2)", "x".repeat(length))).unwrap()
+        crate::component_values::parse_component_values(&format!(
+            "calc(1 /*{}*/ + 2)",
+            "x".repeat(length)
+        ))
+        .unwrap()
     });
     for contextual in [false, true] {
         let stats = values.each_ref().map(|values| {
@@ -170,7 +174,7 @@ fn check_read_only_retention() {
             "read-only check retained comment payload: contextual={contextual}, growth={growth}, stats={stats:?}"
         );
     }
-    let invalid = parse_component_values("calc(1px + 2px)").unwrap();
+    let invalid = crate::component_values::parse_component_values("calc(1px + 2px)").unwrap();
     let error = super::check_component(&invalid.items()[0], super::CalculationRoot::Integer)
         .expect_err("a length sum cannot enter the integer domain");
     assert_eq!(
@@ -218,7 +222,7 @@ fn read_only_component_check_preserves_context_closure_policy() {
 #[test]
 fn numerical_attempt_moves_owned_input_and_returns_it_for_failed_retry() {
     let context = NumericInputContext::Checked;
-    let values = parse_component_values("calc(1fr + 2fr)").unwrap();
+    let values = crate::component_values::parse_component_values("calc(1fr + 2fr)").unwrap();
     let original = values.items().as_ptr();
     let expression = context
         .admit_or_return_input(
@@ -238,7 +242,7 @@ fn numerical_attempt_moves_owned_input_and_returns_it_for_failed_retry() {
         "calc(1fr + 2fr)"
     );
 
-    let values = parse_component_values("calc(1px + 2px)").unwrap();
+    let values = crate::component_values::parse_component_values("calc(1px + 2px)").unwrap();
     let original = values.items().as_ptr();
     let failure = context
         .admit_or_return_input(
@@ -274,7 +278,7 @@ fn numerical_attempt_moves_owned_input_and_returns_it_for_failed_retry() {
 #[test]
 fn numerical_attempt_keeps_borrowed_failure_identity_and_owns_completed_output() {
     let context = NumericInputContext::Checked;
-    let values = parse_component_values("calc(1px + 2px)").unwrap();
+    let values = crate::component_values::parse_component_values("calc(1px + 2px)").unwrap();
     let failure = context
         .admit_or_return_input(
             super::CalculationComponents::Borrowed(values.items()),

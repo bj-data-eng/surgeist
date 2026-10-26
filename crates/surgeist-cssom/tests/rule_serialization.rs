@@ -157,8 +157,13 @@ fn recursive_text_uses_current_selectors_selected_survivors_order_and_media() {
     let ticket = edit
         .insert_group_rule(&style, "& d { height: 2px; }", 2)
         .unwrap();
-    edit.set_media(&media, parse_media_query_list("print").into_parts().0)
-        .unwrap();
+    edit.set_media(
+        &media,
+        CssMediaQueryList::parse(&CssParser::default(), "print")
+            .into_parts()
+            .0,
+    )
+    .unwrap();
     let inserted = store.commit(edit).unwrap().rule(&ticket).unwrap().clone();
     let current = store.snapshot();
     assert_eq!(
@@ -243,8 +248,13 @@ fn current_import_media_without_child_sheet_is_serialized_with_genuine_clauses()
         .id()
         .clone();
     let mut edit = batch(&store);
-    edit.set_media(&media, parse_media_query_list("print").into_parts().0)
-        .unwrap();
+    edit.set_media(
+        &media,
+        CssMediaQueryList::parse(&CssParser::default(), "print")
+            .into_parts()
+            .0,
+    )
+    .unwrap();
     store.commit(edit).unwrap();
     let snapshot = store.snapshot();
     assert_eq!(

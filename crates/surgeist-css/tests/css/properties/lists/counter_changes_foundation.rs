@@ -24,7 +24,7 @@ fn ordinary(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
 fn rejected<'a>(property: CssKnownProperty, value: &str, rest: impl Into<Option<&'a str>>) {
     let rest = rest.into();
     let source = format!("color:red;{}:{value};height:2px", property.canonical_name());
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         report
             .syntax()
@@ -48,7 +48,13 @@ fn rejected<'a>(property: CssKnownProperty, value: &str, rest: impl Into<Option<
         value,
         rest,
     );
-    assert!(validate_style_attribute(&source).is_err(), "{source}");
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_err(),
+        "{source}"
+    );
     assert_checked_value_rejected_at(property, value, rest);
 }
 
@@ -181,8 +187,9 @@ fn programmatic_components_share_grammar_and_have_programmatic_origins() {
             Default::default(),
         )
         .unwrap();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components,
             CssImportance::Normal,
         )
@@ -204,8 +211,9 @@ fn programmatic_components_share_grammar_and_have_programmatic_origins() {
         )
         .unwrap();
         assert_programmatic_rejection(
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 invalid,
                 CssImportance::Normal,
             ),
@@ -251,7 +259,7 @@ fn ordinary_and_global_contributions_preserve_identity_importance_and_order() {
     }
     let source = declaration(CssKnownProperty::All, "initial");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&source).unwrap()
+        source.expand().unwrap()
     else {
         panic!("all supplies a reset")
     };
@@ -264,14 +272,14 @@ fn ordinary_and_global_contributions_preserve_identity_importance_and_order() {
 fn pending_reentry_is_strict_and_reuses_the_original_occurrence() {
     for property in PROPERTIES {
         let source = declaration(property, "var(--counter)");
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("known counter property is pending")
         };
         assert!(pending.source().same_occurrence(&source));
         for invalid in ["chapter 1px", "chapter, section", "reversed(chapter)"] {
             assert!(
                 pending
-                    .reenter(parse_component_values(invalid).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                     .unwrap_err()
                     .replacement_error()
                     .is_some()
@@ -279,12 +287,13 @@ fn pending_reentry_is_strict_and_reuses_the_original_occurrence() {
         }
         assert!(
             pending
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
         for replacement_css in ["none", "chapter -2 section", "chapter calc(2.5)", "inherit"] {
-            let replacement = parse_component_values(replacement_css).unwrap();
+            let replacement =
+                CssComponentValues::parse(&CssParser::default(), replacement_css).unwrap();
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
             else {
                 panic!("one reentered longhand")
@@ -302,9 +311,10 @@ fn pending_reentry_is_strict_and_reuses_the_original_occurrence() {
 
 #[test]
 fn normalization_keeps_three_counter_longhands_in_order_and_fails_atomically_at_limit() {
-    let report = parse_sheet(".a{counter-reset:a;color:red;counter-increment:a 2;counter-set:b}");
+    let report = CssParser::default()
+        .parse_sheet(".a{counter-reset:a;color:red;counter-increment:a 2;counter-set:b}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -336,7 +346,7 @@ fn normalization_keeps_three_counter_longhands_in_order_and_fails_atomically_at_
         assert!(item.source().same_occurrence(declarations[order].source()));
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 3).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 3))

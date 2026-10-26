@@ -12,7 +12,7 @@ type Kind = SerializationFailure;
 
 fn parsed(text: &str) -> CssRotate {
     let source = format!("rotate:{text}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Rotate(value) = report.syntax()[0]
         .known()
@@ -128,7 +128,7 @@ fn wpt_rotate_parsing_valid_specified_values() {
 #[test]
 fn property_and_transform_function_paths_agree_on_equivalent_rotations() {
     fn declaration(source: &str) -> String {
-        let report = parse_declaration(source);
+        let report = CssDeclaration::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         report
             .syntax()
@@ -458,7 +458,7 @@ fn zero_axis_children_are_emitted_with_their_ordinary_work_and_bytes() {
 fn checked_number_and_angle_math_share_canonical_output_with_parser_admission() {
     let axis = CssNumeric::<CssNumber>::try_from_calculation(
         CssCalculation::<CssNumber>::try_from_components(
-            parse_component_values("calc(-1 - 1)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(-1 - 1)").unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -466,7 +466,7 @@ fn checked_number_and_angle_math_share_canonical_output_with_parser_admission() 
     .unwrap();
     let angle = CssNumeric::<CssAngle>::try_from_calculation(
         CssCalculation::<CssAngle>::try_from_components(
-            parse_component_values("calc(15deg + 15deg)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "calc(15deg + 15deg)").unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -501,7 +501,7 @@ fn checked_number_and_angle_math_share_canonical_output_with_parser_admission() 
 #[test]
 fn success_and_failure_preserve_non_ascii_source_origins_and_operands() {
     let source = "/*😀*/rotate:0 0 -2 calc(15deg + 15deg)";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::Rotate(value) = report.syntax()[0]
         .known()
@@ -551,7 +551,7 @@ fn rotate3d_classifies_operation_free_axis_leaves_from_their_exact_coefficients(
     // 5e-7 is a nonzero component emitted with its exact six-place text (#1297).
     // rotate3d()'s own zero-axis and full-turn replacement is unchanged here.
     fn declaration(source: &str) -> String {
-        let report = parse_declaration(source);
+        let report = CssDeclaration::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         report
             .syntax()

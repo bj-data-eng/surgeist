@@ -6,12 +6,12 @@ use crate::css::support::failure_classes::component_failure;
 use surgeist_css::*;
 
 fn list(css: &str) -> CssMediaQueryList {
-    let report = parse_media_query_list(css);
+    let report = CssMediaQueryList::parse(&CssParser::default(), css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     report.syntax().clone()
 }
 fn definition(css: &str) -> CssCustomMediaRule {
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     let [CssRule::CustomMedia(rule)] = report.syntax().rules() else {
         panic!("definition")
@@ -181,7 +181,7 @@ fn reference_inspection_agrees_across_parsed_and_mixed_origin_checked_admission(
     assert_eq!(reference.component(), &block);
     let output = condition.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), r"(--\78)");
-    let again = parse_media_query(output.as_css());
+    let again = CssMediaQuery::parse(&CssParser::default(), output.as_css());
     assert!(again.is_clean());
     let CssMediaQuery::Condition(condition) = again.syntax() else {
         panic!("condition")
@@ -237,7 +237,7 @@ fn parsed_rule_grammar_tokens_and_eof_terminators_keep_honest_origins() {
         matches!(out.origin_at(out.as_css().len()-1),Some(CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)))if origin.span().start().byte_offset().value()==34)
     );
     let source = "@custom-media --x true";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [diagnostic] = report.diagnostics() else {
         panic!("one retained statement EOF diagnostic");
     };
@@ -304,7 +304,9 @@ fn parsed_rule_grammar_tokens_and_eof_terminators_keep_honest_origins() {
         eof.as_css()
     );
     assert_eq!(
-        validate_sheet(source),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
         report.clone().into_validation_result()
     );
 }
@@ -355,7 +357,7 @@ fn canonical_rule_output_preserves_exact_values_and_opaque_token_boundaries() {
 
 #[test]
 fn recovered_members_and_implicit_components_are_rejected_by_checked_construction() {
-    let report = parse_media_query_list("(color), ???, screen");
+    let report = CssMediaQueryList::parse(&CssParser::default(), "(color), ???, screen");
     // The second member first fails at its `?` delimiter.
     assert_diagnostics(
         report.diagnostics(),
@@ -382,7 +384,7 @@ fn recovered_members_and_implicit_components_are_rejected_by_checked_constructio
             "{source}"
         );
     }
-    let recovered = parse_media_query_list("(color");
+    let recovered = CssMediaQueryList::parse(&CssParser::default(), "(color");
     assert!(
         CssCustomMediaRule::try_new(
             programmatic_name(),
@@ -396,7 +398,7 @@ fn recovered_members_and_implicit_components_are_rejected_by_checked_constructio
 
 #[test]
 fn parsed_recovery_prevents_partial_output_but_discarded_blocks_do_not_leak_member_diagnostics() {
-    let report = parse_sheet("@custom-media --x (color), ???, screen;");
+    let report = CssParser::default().parse_sheet("@custom-media --x (color), ???, screen;");
     let [CssRule::CustomMedia(rule)] = report.syntax().rules() else {
         panic!("retained definition")
     };
@@ -408,7 +410,7 @@ fn parsed_recovery_prevents_partial_output_but_discarded_blocks_do_not_leak_memb
         "@custom-media --x ??? {} .after{}",
         "@custom-media --x ??? { .discard{}",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert_eq!(
             report.diagnostics().len(),
             1,
@@ -505,7 +507,7 @@ fn deep_checked_definition_admission_and_serialization_fit_an_ordinary_stack() {
 #[test]
 fn lexical_bad_members_recover_locally_inside_retained_definitions() {
     let source = "@custom-media --x url(a b), screen; .after{}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CustomMedia(rule), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("definition and sibling: {:?}", report)
     };

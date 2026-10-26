@@ -9,9 +9,9 @@ use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, nth_coefficients as coefficients,
 };
 use surgeist_css::{
-    CssComponentValueRef, CssNamespaceContext, CssNthAnPlusB, CssNthPattern, CssNumericTokenKind,
-    CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction, CssRule, CssSelector,
-    CssStyleSelector, CssValueTokenRef, parse_component_values, parse_selector, parse_sheet,
+    CssComponentValueRef, CssComponentValues, CssNamespaceContext, CssNthAnPlusB, CssNthPattern,
+    CssNumericTokenKind, CssParser, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction,
+    CssRule, CssSelector, CssStyleSelector, CssValueTokenRef,
 };
 
 fn pattern(selector: &CssSelector) -> CssNthPattern {
@@ -45,7 +45,11 @@ fn assert_pattern(argument: &str, expected: (i32, i32), canonical: &str) {
 fn assert_rejected(source: &str) {
     assert_selector_input_rejected(
         source,
-        parse_selector(source, &CssNamespaceContext::default()),
+        CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        ),
     );
 }
 
@@ -132,7 +136,7 @@ fn lexical_integer_flag_and_source_sign_remain_distinct_from_numeric_value() {
         ("2.0", CssNumericTokenKind::Number, false, None),
         ("2e0", CssNumericTokenKind::Number, false, None),
     ] {
-        let components = parse_component_values(source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let [component] = components.items() else {
             panic!("one lexical token: {source}");
         };
@@ -368,7 +372,7 @@ fn all_nth_wrappers_keep_coefficients_and_only_child_wrappers_admit_of_lists() {
 fn invalid_nth_outer_rule_drops_locally_and_preserves_a_later_sibling() {
     for argument in ["+ n", "n + -2", "2.0n", "n + 2 garbage"] {
         let source = format!(":nth-child({argument}){{}} .after{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean(), "{source}: {report:?}");
         assert!(
             report

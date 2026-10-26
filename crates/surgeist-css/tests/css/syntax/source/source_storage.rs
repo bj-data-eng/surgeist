@@ -2,7 +2,7 @@ use surgeist_css::*;
 
 #[test]
 fn source_traversal_charges_exact_work_and_independent_representation_depth() {
-    let report = parse_sheet(".a { --token: calc(1 + var(--other)); }");
+    let report = CssParser::default().parse_sheet(".a { --token: calc(1 + var(--other)); }");
     let source = report.syntax().parse_source().unwrap().source();
     let bytes = source.storage_usage().retained_bytes();
     let mut measured = CssSourceRetention::new(bytes, 10_000, 100);
@@ -36,14 +36,14 @@ fn source_traversal_charges_exact_work_and_independent_representation_depth() {
 
 #[test]
 fn source_storage_deduplicates_identity_and_stops_before_descendants_on_failure() {
-    let report = parse_sheet(".a { --token: value }");
+    let report = CssParser::default().parse_sheet(".a { --token: value }");
     let source = report.syntax().parse_source().unwrap().source();
     let bytes = source.storage_usage().retained_bytes();
     let mut admission = CssSourceRetention::new(bytes, 10_000, 100);
     admission.visit(report.syntax()).unwrap();
     admission.visit(report.syntax()).unwrap();
     assert_eq!(admission.usage(), source.storage_usage());
-    let other = parse_sheet(".a { --token: value }");
+    let other = CssParser::default().parse_sheet(".a { --token: value }");
     assert_eq!(report.syntax(), other.syntax());
     assert_eq!(
         admission.visit(other.syntax()),
@@ -99,7 +99,7 @@ fn source_retention_refusals_display_their_resource_or_cause_without_a_source() 
     }
 
     // A refusal reached by an actual traversal displays the same text.
-    let report = parse_sheet(".a { color: red; }");
+    let report = CssParser::default().parse_sheet(".a { color: red; }");
     let bytes = report
         .syntax()
         .parse_source()

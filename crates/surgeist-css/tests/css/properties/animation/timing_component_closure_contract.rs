@@ -6,7 +6,7 @@ use surgeist_css::*;
 
 fn rejection_failures(property: CssKnownProperty, source: &str) -> Vec<String> {
     let mut failures = Vec::new();
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let before = components.clone();
     let serialized = components.serialize_tokens(Default::default()).unwrap();
     // The component serializer exposes the original implicit delimiter origin;
@@ -28,16 +28,18 @@ fn rejection_failures(property: CssKnownProperty, source: &str) -> Vec<String> {
     for (front, result) in [
         (
             "property",
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Important,
             ),
         ),
         (
             "grammar",
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Important,
             ),
@@ -72,16 +74,18 @@ fn assert_recovered_inputs_rejected(property: CssKnownProperty, sources: &[&str]
 
 fn assert_complete(property: CssKnownProperty, sources: &[&str]) {
     for &source in sources {
-        let components = parse_component_values(source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         for declaration in [
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Important,
             )
             .unwrap(),
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Important,
             )

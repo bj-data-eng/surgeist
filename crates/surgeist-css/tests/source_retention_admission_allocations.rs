@@ -4,7 +4,7 @@
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region, StatsAlloc};
 use std::{alloc::System, cell::Cell};
 use surgeist_css::{
-    CssSourceRetention, CssSourceRetentionAction, CssSourceRetentionError, parse_sheet,
+    CssParser, CssSourceRetention, CssSourceRetentionAction, CssSourceRetentionError,
 };
 
 #[global_allocator]
@@ -13,13 +13,15 @@ static GLOBAL: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
 #[test]
 fn refused_requested_or_actual_replacement_disposes_only_new_backing_before_return() {
     for stop in [1, 2] {
-        let first = parse_sheet("a {}")
+        let first = CssParser::default()
+            .parse_sheet("a {}")
             .syntax()
             .parse_source()
             .unwrap()
             .source()
             .clone();
-        let second = parse_sheet("b {}")
+        let second = CssParser::default()
+            .parse_sheet("b {}")
             .syntax()
             .parse_source()
             .unwrap()

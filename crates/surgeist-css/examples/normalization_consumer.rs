@@ -23,10 +23,9 @@ use surgeist_css::{
     CssFontFaceDescriptorValue, CssGlobalKeyword, CssImportance, CssKnownProperty as Property,
     CssLonghandContributions, CssLonghandValueRef, CssMediaLeaf, CssMediaQuery,
     CssNormalizationLimits, CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem,
-    CssNormalizedSheet, CssPropertyNameRef, CssRecoveryAction, CssRule, CssRuleContext,
-    CssRuleContextKindRef, CssSelector, CssSelectorBinding, CssSelectorCombinator, CssStyleRule,
-    CssValueOrigin, expand_declaration, normalize_report, normalize_sheet,
-    normalize_sheet_with_limits, parse_component_values, parse_property_value, parse_sheet,
+    CssNormalizedSheet, CssParser, CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction,
+    CssRule, CssRuleContext, CssRuleContextKindRef, CssSelector, CssSelectorBinding,
+    CssSelectorCombinator, CssStyleRule, CssValueOrigin,
 };
 
 fn declaration_items(sheet: &CssNormalizedSheet) -> Vec<&CssNormalizedDeclaration> {
@@ -146,10 +145,14 @@ fn ancestors(rule: &CssRuleContext) -> Vec<&'static str> {
 }
 
 fn ordered_grouped_contributions() {
-    let report = parse_sheet(".a, #b { margin-block:1px 2px; margin-left:3px; all:revert-layer }");
+    let report = CssParser::default()
+        .parse_sheet(".a, #b { margin-block:1px 2px; margin-left:3px; all:revert-layer }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let authored = style(&report.syntax().rules()[0]);
-    let normalized = normalize_sheet(report.syntax()).expect("supported declarations");
+    let normalized = report
+        .syntax()
+        .normalize(Default::default())
+        .expect("supported declarations");
     let [
         CssNormalizedItem::Rule(rule),
         CssNormalizedItem::Declaration(first),
@@ -193,9 +196,9 @@ fn ordered_grouped_contributions() {
     {
         assert_occurrence(actual, expected);
     }
-    let empty_report = parse_sheet(".empty, #E {}");
+    let empty_report = CssParser::default().parse_sheet(".empty, #E {}");
     assert!(empty_report.is_clean(), "{:?}", empty_report.diagnostics());
-    let empty_sheet = normalize_sheet(empty_report.syntax()).unwrap();
+    let empty_sheet = empty_report.syntax().normalize(Default::default()).unwrap();
     let [CssNormalizedItem::Rule(empty_rule)] = empty_sheet.items() else {
         panic!("an empty style rule remains exactly one rule item")
     };
@@ -220,9 +223,10 @@ fn ordered_grouped_contributions() {
 }
 
 fn pending_shorthand_and_reentry() {
-    let report = parse_sheet(".a { margin-block:var(--m)!important; margin-left:9px }");
+    let report =
+        CssParser::default().parse_sheet(".a { margin-block:var(--m)!important; margin-left:9px }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = declaration_items(&normalized);
     let CssExpansion::Pending(pending) = declarations[0].expansion() else {
         panic!("substitution must remain pending")
@@ -239,7 +243,7 @@ fn pending_shorthand_and_reentry() {
             .as_css(),
         "var(--m)"
     );
-    let replacement = parse_component_values("4px 5px").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "4px 5px").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("completed margin contributions")
     };
@@ -267,7 +271,7 @@ fn pending_shorthand_and_reentry() {
         }
     }
     let error = pending
-        .reenter(parse_component_values("var(--still-pending)").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "var(--still-pending)").unwrap())
         .unwrap_err();
     assert!(error.is_residual_substitution());
     assert!(matches!(
@@ -279,10 +283,10 @@ fn pending_shorthand_and_reentry() {
 }
 
 fn custom_values_and_construction() {
-    let report =
-        parse_sheet(".a { --Theme:var(--fallback, 2px)!important; --reset:inherit; --empty: }");
+    let report = CssParser::default()
+        .parse_sheet(".a { --Theme:var(--fallback, 2px)!important; --reset:inherit; --empty: }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = declaration_items(&normalized);
     assert_eq!(declarations.len(), 3);
     for (index, expected_name) in ["--Theme", "--reset", "--empty"].into_iter().enumerate() {
@@ -305,17 +309,18 @@ fn custom_values_and_construction() {
         global.declaration().value(),
         &CssCustomPropertyDeclaredValue::Global(CssGlobalKeyword::Inherit)
     );
-    let parsed = parse_component_values("var(--fallback, 2px)").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "var(--fallback, 2px)").unwrap();
     let name = CssCustomPropertyName::try_new("--Theme").unwrap();
-    let constructed = parse_property_value(
-        CssPropertyNameRef::Custom(&name),
+    let constructed = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
         parsed,
         CssImportance::Important,
     )
     .unwrap();
     assert!(constructed.position().is_none());
     let CssExpansion::Contributions(CssContributions::Custom(direct)) =
-        expand_declaration(&constructed).unwrap()
+        constructed.expand().unwrap()
     else {
         panic!("same expansion boundary for constructed declarations")
     };
@@ -324,8 +329,8 @@ fn custom_values_and_construction() {
         Some(direct.declaration()),
         declarations[0].source().custom()
     );
-    let left = parse_component_values("2px").unwrap();
-    let right = parse_component_values("3px").unwrap();
+    let left = CssComponentValues::parse(&CssParser::default(), "2px").unwrap();
+    let right = CssComponentValues::parse(&CssParser::default(), "3px").unwrap();
     let mixed = CssComponentValues::try_new(
         vec![
             left.items()[0].clone(),
@@ -335,14 +340,15 @@ fn custom_values_and_construction() {
         Default::default(),
     )
     .unwrap();
-    let constructed_margin = parse_property_value(
-        CssPropertyNameRef::Known(Property::MarginBlock),
+    let constructed_margin = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(Property::MarginBlock)),
         mixed,
         CssImportance::Normal,
     )
     .unwrap();
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&constructed_margin).unwrap()
+        constructed_margin.expand().unwrap()
     else {
         panic!("constructed margin contribution")
     };
@@ -352,13 +358,16 @@ fn custom_values_and_construction() {
     assert!(matches!(origins[1].origin(), CssValueOrigin::Programmatic));
     assert_eq!(origins[0].origin(), left.items()[0].origin());
     assert_eq!(origins[2].origin(), right.items()[0].origin());
-    let parsed_margin = parse_sheet(".a {margin-block:2px 3px}");
+    let parsed_margin = CssParser::default().parse_sheet(".a {margin-block:2px 3px}");
     assert!(
         parsed_margin.is_clean(),
         "{:?}",
         parsed_margin.diagnostics()
     );
-    let normalized_margin = normalize_sheet(parsed_margin.syntax()).unwrap();
+    let normalized_margin = parsed_margin
+        .syntax()
+        .normalize(Default::default())
+        .unwrap();
     let parsed_declarations = declaration_items(&normalized_margin);
     assert_eq!(
         parsed_declarations[0].source().body(),
@@ -377,10 +386,10 @@ fn custom_values_and_construction() {
 }
 
 fn nested_declaration_context_identity() {
-    let report =
-        parse_sheet(".a, #b { margin-block:0; & .c { padding-block:1px } margin-block:2px }");
+    let report = CssParser::default()
+        .parse_sheet(".a, #b { margin-block:0; & .c { padding-block:1px } margin-block:2px }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let all_rules = rules(&normalized);
     assert_eq!(
         all_rules
@@ -427,11 +436,9 @@ fn nested_declaration_context_identity() {
 }
 
 fn pseudo_element_context_preservation() {
-    let report = parse_sheet(
-        ".a, .a::before { margin-block:0; @media screen { margin-block:1px } & { margin-block:2px } margin-block:3px }",
-    );
+    let report = CssParser::default().parse_sheet(".a, .a::before { margin-block:0; @media screen { margin-block:1px } & { margin-block:2px } margin-block:3px }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = declaration_items(&normalized);
     assert_eq!(declarations.len(), 4);
     let parent = declarations[0].selector_context();
@@ -455,7 +462,7 @@ fn pseudo_element_context_preservation() {
 }
 
 fn nested_selector_binding_classification() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         ".a, #b { ",
         "> .c {margin-block:1px} .c {margin-block:2px} .c & {margin-block:3px} ",
         "& + & {margin-block:4px} :is(&,.x) {margin-block:5px} ",
@@ -463,7 +470,7 @@ fn nested_selector_binding_classification() {
         ":not(:is(&,.x)) {margin-block:8px} }",
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = declaration_items(&normalized);
     let expected = [
         CssSelectorBinding::LeadingCombinator(CssSelectorCombinator::Child),
@@ -502,9 +509,9 @@ fn linear_selector_representation() {
         ));
     }
     css.push_str(&"}".repeat(8));
-    let report = parse_sheet(&css);
+    let report = CssParser::default().parse_sheet(&css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_eq!(normalized.items().len(), 16);
     let declarations = declaration_items(&normalized);
     assert_eq!(declarations.len(), 8);
@@ -524,8 +531,9 @@ fn linear_selector_representation() {
             );
         }
     }
-    let repeated = parse_sheet(".same {margin-block:0} .same {margin-block:0}");
-    let normalized = normalize_sheet(repeated.syntax()).unwrap();
+    let repeated =
+        CssParser::default().parse_sheet(".same {margin-block:0} .same {margin-block:0}");
+    let normalized = repeated.syntax().normalize(Default::default()).unwrap();
     let occurrences = declaration_items(&normalized);
     assert!(
         !occurrences[0]
@@ -546,13 +554,13 @@ fn linear_selector_representation() {
 }
 
 fn symbolic_conditional_and_layer_contexts() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@layer theme { @media screen { @supports (display:grid) { ",
         "@container sidebar (inline-size > 30rem) { .a { margin-block:1px; ",
         "@media print { padding-block:2px } margin-block:3px } } } } }",
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = declaration_items(&normalized);
     assert_eq!(declarations.len(), 3);
     assert_eq!(
@@ -625,7 +633,7 @@ fn symbolic_conditional_and_layer_contexts() {
 }
 
 fn ordered_terminal_payloads() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@charset \"UTF-8\"; ",
         "@layer reset, theme; ",
         "@import url(theme.css) layer(theme) supports(display:grid) print; ",
@@ -647,7 +655,7 @@ fn ordered_terminal_payloads() {
         diagnostic.action(),
         surgeist_css::CssRecoveryAction::DropAtRule
     );
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let contexts = rules(&normalized);
     assert_eq!(
         contexts
@@ -724,10 +732,10 @@ fn ordered_terminal_payloads() {
 
 fn normalization_resource_boundaries() {
     let css = ".a { margin-block:0; .b { padding-block:1px } }";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let exact = CssNormalizationLimits::try_new(1, 2, 2, 4).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     assert_eq!(normalized.items().len(), 4);
     assert!(CssNormalizationLimits::try_new(257, 2, 2, 4).is_none());
     for (limits, resource, limit, position, ordinal) in [
@@ -767,7 +775,7 @@ fn normalization_resource_boundaries() {
             Some(0),
         ),
     ] {
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+        let error = report.syntax().normalize(limits).unwrap_err();
         assert!(
             error.exhausted_limit() == Some((resource, limit)),
             "{error:?}"
@@ -776,71 +784,65 @@ fn normalization_resource_boundaries() {
         assert_eq!(error.declaration_order(), ordinal);
         assert_eq!(error.declaration().is_some(), ordinal.is_some());
     }
-    let empty = parse_sheet("");
+    let empty = CssParser::default().parse_sheet("");
     assert!(
-        normalize_sheet_with_limits(
-            empty.syntax(),
-            CssNormalizationLimits::try_new(0, 0, 0, 0).unwrap()
-        )
-        .unwrap()
-        .items()
-        .is_empty()
+        empty
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(0, 0, 0, 0).unwrap())
+            .unwrap()
+            .items()
+            .is_empty()
     );
-    let empty_rule = parse_sheet(".a {}");
+    let empty_rule = CssParser::default().parse_sheet(".a {}");
     assert!(
-        normalize_sheet_with_limits(
-            empty_rule.syntax(),
-            CssNormalizationLimits::try_new(0, 1, 0, 0).unwrap()
-        )
-        .is_ok()
+        empty_rule
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(0, 1, 0, 0).unwrap())
+            .is_ok()
     );
-    let nested_run = parse_sheet(".a {margin-block:0; @media screen {padding-block:1px}}");
+    let nested_run =
+        CssParser::default().parse_sheet(".a {margin-block:0; @media screen {padding-block:1px}}");
     assert!(nested_run.is_clean(), "{:?}", nested_run.diagnostics());
     assert!(
-        normalize_sheet_with_limits(
-            nested_run.syntax(),
-            CssNormalizationLimits::try_new(2, 3, 2, 8).unwrap()
-        )
-        .is_ok()
+        nested_run
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(2, 3, 2, 8).unwrap())
+            .is_ok()
     );
-    let error = normalize_sheet_with_limits(
-        nested_run.syntax(),
-        CssNormalizationLimits::try_new(2, 2, 2, 8).unwrap(),
-    )
-    .unwrap_err();
+    let error = nested_run
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(2, 2, 2, 8).unwrap())
+        .unwrap_err();
     assert!(error.exhausted_limit() == Some((CssNormalizationResource::Rules, 2)));
     assert_eq!(
         error.declaration_order(),
         None,
         "admitting a nested-declaration rule precedes admitting its declaration"
     );
-    let symbolic = parse_sheet(".a {--x:var(--y);all:unset;margin-block:var(--m)}");
+    let symbolic =
+        CssParser::default().parse_sheet(".a {--x:var(--y);all:unset;margin-block:var(--m)}");
     assert!(symbolic.is_clean(), "{:?}", symbolic.diagnostics());
     assert_eq!(
         declaration_items(
-            &normalize_sheet_with_limits(
-                symbolic.syntax(),
-                CssNormalizationLimits::try_new(0, 1, 3, 3).unwrap()
-            )
-            .unwrap()
+            &symbolic
+                .syntax()
+                .normalize(CssNormalizationLimits::try_new(0, 1, 3, 3).unwrap())
+                .unwrap()
         )
         .len(),
         3
     );
-    let error = normalize_sheet_with_limits(
-        symbolic.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 3, 2).unwrap(),
-    )
-    .unwrap_err();
+    let error = symbolic
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 3, 2).unwrap())
+        .unwrap_err();
     assert_eq!(error.declaration_order(), Some(2));
     assert!(error.exhausted_limit() == Some((CssNormalizationResource::Contributions, 2)));
     println!("normalization resource boundaries: ok");
 }
 
 fn unchanged_recovery_diagnostics() {
-    let report = parse_sheet(
-        ".a {margin-block:0; padding-block:nope; @media (width:) and {padding-block:1px} margin-left:2px}",
-    );
+    let report = CssParser::default().parse_sheet(".a {margin-block:0; padding-block:nope; @media (width:) and {padding-block:1px} margin-left:2px}");
     assert!(!report.is_clean());
     assert!(
         report
@@ -854,7 +856,7 @@ fn unchanged_recovery_diagnostics() {
             .iter()
             .any(|diagnostic| diagnostic.action() == CssRecoveryAction::ReplaceMediaQueryWithNever)
     );
-    let normalized = normalize_report(&report).unwrap();
+    let normalized = report.normalize(Default::default()).unwrap();
     assert!(!normalized.is_clean());
     assert_eq!(normalized.diagnostics(), report.diagnostics());
     assert_eq!(declaration_items(normalized.syntax()).len(), 3);
@@ -866,14 +868,14 @@ fn unchanged_recovery_diagnostics() {
         unreachable!()
     };
     assert!(matches!(query.queries(), [CssMediaQuery::Never(_)]));
-    let clean = parse_sheet(".a {margin-block:0}");
-    let normalized_clean = normalize_report(&clean).unwrap();
+    let clean = CssParser::default().parse_sheet(".a {margin-block:0}");
+    let normalized_clean = clean.normalize(Default::default()).unwrap();
     assert!(normalized_clean.is_clean());
     assert!(normalized_clean.diagnostics().is_empty());
     assert_eq!(declaration_items(normalized_clean.syntax()).len(), 1);
-    let opaque = parse_sheet(".a {@media (width:) {padding-block:1px}}");
+    let opaque = CssParser::default().parse_sheet(".a {@media (width:) {padding-block:1px}}");
     assert!(opaque.is_clean(), "{:?}", opaque.diagnostics());
-    let normalized_opaque = normalize_report(&opaque).unwrap();
+    let normalized_opaque = opaque.normalize(Default::default()).unwrap();
     assert!(normalized_opaque.is_clean());
     assert_eq!(normalized_opaque.diagnostics(), opaque.diagnostics());
     assert_eq!(declaration_items(normalized_opaque.syntax()).len(), 1);
@@ -895,7 +897,7 @@ fn unchanged_recovery_diagnostics() {
 }
 
 fn complete_scoped_rule_traversal() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@scope (.root) to (.stop) { @layer reset; @media screen { ",
         "@supports (display:grid) { @container box (inline-size > 30rem) { ",
         "@layer theme { @scope (.inner) { ",
@@ -903,7 +905,7 @@ fn complete_scoped_rule_traversal() {
         "&:hover {margin-block:4px} } } } } } }",
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let contexts = rules(&normalized);
     assert_eq!(
         contexts

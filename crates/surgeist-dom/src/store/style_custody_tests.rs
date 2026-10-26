@@ -177,7 +177,7 @@ fn complete_sheet(
     owner: &DomStyleCssomRoot,
     cancel: &AtomicBool,
 ) {
-    use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+    use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
 
     let request = lease
@@ -197,20 +197,20 @@ fn complete_sheet(
         )
         .unwrap();
     let parser = CssParserContext::default();
-    let body = parser
-        .parse_sheet_utf16_with_limits(
+    let body = CssParser::new(parser, Default::default())
+        .parse_sheet_utf16(
             request.source().text().clone(),
             CssUtf16InputLimits::default(),
             || Ok::<_, ()>(()),
         )
         .unwrap();
-    let media = parser
-        .parse_media_query_list_utf16_with_limits(
-            Arc::new(Vec::new()),
-            CssUtf16InputLimits::default(),
-            || Ok::<_, ()>(()),
-        )
-        .unwrap();
+    let media = CssMediaQueryList::parse_utf16(
+        &CssParser::new(parser, Default::default()),
+        Arc::new(Vec::new()),
+        CssUtf16InputLimits::default(),
+        || Ok::<_, ()>(()),
+    )
+    .unwrap();
     let mut inputs = CssomSheetInputs::external(version, true);
     inputs.owner = Some("actual-style".into());
     let mut edit = owner

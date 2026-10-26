@@ -2484,3 +2484,76 @@ pub enum CssAttributeCaseSensitivity {
     AsciiCaseInsensitive,
     ExplicitSensitive,
 }
+impl CssSelector {
+    /// Parses exactly one ordinary selector using the supplied namespace bindings.
+    ///
+    /// Rejected outer syntax is `None` with diagnostics. Forgiving inner lists retain
+    /// admitted members and diagnose invalid members. Invalid delimiter-`&` members
+    /// remain explicit match-nothing items; other invalid members are discarded.
+    /// Positions refer directly to `source`;
+    /// implicit EOF closures are reported only when the outer syntax is retained.
+    /// Explicit `&` anchors remain symbolic; without a parent selector list they match
+    /// the context's scope elements and contribute zero specificity. Leading relative
+    /// combinators are not admitted by this front door.
+    ///
+    /// The supplied namespace bindings apply to qualified names.
+    ///
+    /// The parser is not read: neither its document mode nor its component limits apply to this grammar, and only the fixed nesting ceiling bounds the input.
+    #[expect(
+        unused_variables,
+        reason = "this grammar does not read the parser configuration"
+    )]
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+        namespaces: &crate::CssNamespaceContext,
+    ) -> crate::CssParseReport<Option<CssSelector>> {
+        crate::parser::parse_selector(source.as_ref(), namespaces)
+    }
+}
+impl CssRelativeSelectorList {
+    /// Parses a complete nonempty general relative selector list atomically.
+    ///
+    /// Each member retains its explicit leading `>`, `+`, `~` or `||` relationship,
+    /// or an implicit descendant relation. Namespace bindings and diagnostics use
+    /// the caller's original source. One invalid outer member rejects the whole list;
+    /// forgiving inner Is/Where recovery retains its existing diagnostics. Use
+    /// `into_validation_result` when only a clean report is acceptable.
+    ///
+    /// General relative grammar permits legal terminal pseudo-elements and independent
+    /// Has functions. Attaching the resulting list as Has's own argument imposes its
+    /// narrower pseudo-element and nested-Has restrictions. Detached anchors remain
+    /// symbolic; parsing does not bind or match them. Specified-output limits apply
+    /// to later serialization or checked readmission, separately from parsing.
+    ///
+    /// ```
+    /// use surgeist_css::{CssNamespaceContext, CssSelectorCombinator, CssParser, CssRelativeSelectorList};
+    /// let list = CssRelativeSelectorList::parse(&CssParser::default(), "> .Child, .Descendant", &CssNamespaceContext::default()).into_validation_result().unwrap().unwrap();
+    /// assert_eq!(list.selectors()[0].combinator(), CssSelectorCombinator::Child);
+    /// assert_eq!(list.selectors()[1].combinator(), CssSelectorCombinator::Descendant);
+    /// assert_eq!(list.serialize_specified(Default::default()).unwrap(), "> .Child, .Descendant");
+    /// ```
+    ///
+    /// An ordinary checked list cannot take a relative carrier:
+    ///
+    /// ```compile_fail
+    /// use surgeist_css::{CssRelativeSelector, CssSelector, CssSelectorCombinator, CssSelectorList};
+    /// let relative = CssRelativeSelector::new(CssSelectorCombinator::Child, CssSelector::Class("One".into()));
+    /// let _ = CssSelectorList::try_new(vec![relative]);
+    /// ```
+    ///
+    /// The parser is not read: neither its document mode nor its component limits apply to this grammar, and only the fixed nesting ceiling bounds the input.
+    #[expect(
+        unused_variables,
+        reason = "this grammar does not read the parser configuration"
+    )]
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+        namespaces: &crate::CssNamespaceContext,
+    ) -> crate::CssParseReport<Option<CssRelativeSelectorList>> {
+        crate::parser::parse_relative_selector_list(source.as_ref(), namespaces)
+    }
+}

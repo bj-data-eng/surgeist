@@ -7,8 +7,7 @@ use std::collections::BTreeSet;
 
 use serde_json::{Value, json};
 use surgeist_css::{
-    CssDeclarationList, CssImportance, CssKnownPropertyValueRef, CssRule, CssSelector, parse_sheet,
-    validate_sheet,
+    CssDeclarationList, CssImportance, CssKnownPropertyValueRef, CssParser, CssRule, CssSelector,
 };
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
@@ -95,9 +94,9 @@ fn rules(actual: &[CssRule]) -> Value {
 /// Public retained rules, their typed values and strict validation for one row.
 fn typed_rules_reconcile(row: &Value) -> Result<(), String> {
     let input = text(row, "input");
-    let report = parse_sheet(input);
+    let report = CssParser::default().parse_sheet(input);
     let actual = json!({"ordered_rules": rules(report.syntax().rules()),
-        "validation_accepts": validate_sheet(input).is_ok()});
+        "validation_accepts": CssParser::default().parse_sheet(input).into_validation_result().is_ok()});
     let predicted = json!({"ordered_rules": row["expected"]["ordered_rules"],
         "validation_accepts": row["expected"]["validation_accepts"]});
     if actual == predicted {

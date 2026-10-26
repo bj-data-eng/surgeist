@@ -3,12 +3,12 @@
 //! not the style body's acceptance of nested rules and declaration runs.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nesting
 
-use surgeist_css::parse_sheet;
+use surgeist_css::CssParser;
 
 #[test]
 fn scoped_style_body_accepts_nested_rules_and_surrounding_declarations() {
     let source = "@scope { .parent { color: red; .child { width: 1px; } opacity: 1; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(
         report.is_clean(),
         "valid scoped style nesting must not discard syntax during recovery: {:?}",
@@ -48,7 +48,7 @@ fn scoped_style_children_and_trailing_declarations_survive_structural_splits() {
             "@scope{".repeat(scope_depth),
             "}".repeat(scope_depth),
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report.is_clean(),
             "depth {scope_depth}: {:?}",
@@ -98,7 +98,7 @@ fn nested_conditionals_keep_scoped_parent_context_and_order_across_splits() {
             "@scope{".repeat(scope_depth),
             "}".repeat(scope_depth),
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report.is_clean(),
             "depth {scope_depth}: {:?}",

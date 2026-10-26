@@ -392,7 +392,9 @@ fn color_surface_accepts_expanded_strict_forms() {
         ".panel { color: color-mix(in oklch, red 40%, blue); }",
         ".panel { color: rgb(from red r g b / alpha); }",
     ] {
-        parse_sheet(css).unwrap_or_else(|error| panic!("{css} should parse: {error:?}"));
+        CssParser::default()
+            .parse_sheet(css)
+            .unwrap_or_else(|error| panic!("{css} should parse: {error:?}"));
     }
 }
 

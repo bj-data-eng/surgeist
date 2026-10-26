@@ -30,7 +30,7 @@ fn mix(value: &CssFontPalette) -> &CssFontPaletteMix {
 }
 
 fn literal(text: &str) -> CssColorMixWeight {
-    let components = parse_component_values(text).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     CssColorMixWeight::literal(
         CssColorMixPercentage::try_from_component(components.items()[0].clone()).unwrap(),
     )
@@ -38,9 +38,10 @@ fn literal(text: &str) -> CssColorMixWeight {
 
 fn assert_text(authored: &str, expected: &str) {
     let parsed = important_declaration("font-palette", authored);
-    let components = parse_component_values(authored).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::FontPalette),
+    let components = CssComponentValues::parse(&CssParser::default(), authored).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::FontPalette)),
         components.clone(),
         CssImportance::Important,
     )
@@ -160,7 +161,7 @@ fn checked_mixes_preserve_order_duplicates_weights_and_omitted_method() {
 #[test]
 fn parsed_components_expose_ordered_palettes_and_original_weight_origins() {
     let text = "font-palette:palette-mix(25% --Theme,dark 50%,--Theme)";
-    let report = parse_style_attribute(text);
+    let report = CssParser::default().parse_block_contents(text);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let value = mix(palette(&report.syntax()[0]));
     assert_eq!(value.components().len(), 3);
@@ -311,7 +312,7 @@ fn calculated_weights_keep_their_graph_and_leave_omitted_weights_unknown() {
     ] {
         assert_text(authored, expected);
     }
-    let graph = parse_component_values("calc(100% - 20%)").unwrap();
+    let graph = CssComponentValues::parse(&CssParser::default(), "calc(100% - 20%)").unwrap();
     let root =
         CssCalculation::<CssPercentage>::try_from_components(graph.clone(), Default::default())
             .unwrap();
@@ -380,7 +381,7 @@ fn checked_palette_and_math_graphs_share_the_complete_256_level_ceiling() {
             .is_nesting_limit()
     );
     let text = format!("{}10%{}", "calc(".repeat(256), ")".repeat(256));
-    let graph = parse_component_values(&text).unwrap();
+    let graph = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
     let calculation =
         CssCalculation::<CssPercentage>::try_from_components(graph, Default::default()).unwrap();
     let weight = CssColorMixWeight::try_calculation(calculation).unwrap();
@@ -470,10 +471,11 @@ fn specified_limits_are_cumulative_atomic_and_exact_for_simple_palette_leaves() 
 
 #[test]
 fn strict_checked_admission_and_reentry_reject_implicit_closures() {
-    let recovered = parse_component_values("palette-mix(dark").unwrap();
+    let recovered = CssComponentValues::parse(&CssParser::default(), "palette-mix(dark").unwrap();
     assert_implicit_closure_rejection(
-        &parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::FontPalette),
+        &CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::FontPalette)),
             recovered.clone(),
             CssImportance::Normal,
         )
@@ -481,7 +483,7 @@ fn strict_checked_admission_and_reentry_reject_implicit_closures() {
         "palette-mix(dark",
     );
     let source = important_declaration("font-palette", "var(--palette)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending")
     };
     assert!(
@@ -491,8 +493,11 @@ fn strict_checked_admission_and_reentry_reject_implicit_closures() {
             .replacement_error()
             .is_some()
     );
-    let replacement =
-        parse_component_values("palette-mix(in --Profile, --Theme calc(10%), dark)").unwrap();
+    let replacement = CssComponentValues::parse(
+        &CssParser::default(),
+        "palette-mix(in --Profile, --Theme calc(10%), dark)",
+    )
+    .unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("palette")
     };
@@ -519,7 +524,8 @@ fn shared_argument_failures_keep_the_palette_property_diagnostic_context() {
         "palette-mix(light -1%, dark)",
         "palette-mix(in srgb longer hue, light, dark)",
     ] {
-        let report = parse_style_attribute(&format!("font-palette:{value};color:red"));
+        let report =
+            CssParser::default().parse_block_contents(format!("font-palette:{value};color:red"));
         assert_eq!(report.syntax().len(), 1);
         assert_eq!(report.diagnostics().len(), 1);
         let detail = report.diagnostics()[0].error();
@@ -533,9 +539,10 @@ fn shared_argument_failures_keep_the_palette_property_diagnostic_context() {
             detail.known_property().unwrap(),
             CssKnownProperty::FontPalette
         );
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::FontPalette),
-            parse_component_values(value).unwrap(),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::FontPalette)),
+            CssComponentValues::parse(&CssParser::default(), value).unwrap(),
             CssImportance::Normal,
         )
         .unwrap_err();

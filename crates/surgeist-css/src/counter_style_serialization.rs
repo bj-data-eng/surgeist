@@ -275,7 +275,7 @@ mod tests {
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
 
     fn parsed(source: &str) -> CssCounterStyleRule {
-        let report = crate::parse_sheet(source);
+        let report = crate::CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let [crate::CssRule::CounterStyle(rule)] = report.syntax().rules() else {
             panic!("expected counter-style rule")

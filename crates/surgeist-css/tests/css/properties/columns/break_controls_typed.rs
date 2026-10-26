@@ -115,8 +115,13 @@ fn constructed_components_retain_programmatic_provenance_and_typed_mapping() {
             Default::default(),
         )
         .unwrap();
-        let declaration =
-            parse_property_value_for_grammar(grammar, components, CssImportance::Normal).unwrap();
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(grammar),
+            components,
+            CssImportance::Normal,
+        )
+        .unwrap();
         assert!(declaration.position().is_none());
         assert!(matches!(
             declaration.value_components().items()[0].origin(),
@@ -136,8 +141,13 @@ fn constructed_components_retain_programmatic_provenance_and_typed_mapping() {
         Default::default(),
     )
     .unwrap();
-    let declaration =
-        parse_property_value_for_grammar(grammar, components, CssImportance::Normal).unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar),
+        components,
+        CssImportance::Normal,
+    )
+    .unwrap();
     assert!(matches!(
         declaration.value_components().items()[0].origin(),
         CssValueOrigin::Programmatic
@@ -185,7 +195,7 @@ fn parsed_wrappers_keep_authored_spelling_and_distinct_legacy_grammar() {
         ),
     ] {
         let source = format!("{name}:{authored}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let declaration = &report.syntax()[0];
         let known = declaration.known().unwrap();
@@ -203,7 +213,8 @@ fn parsed_wrappers_keep_authored_spelling_and_distinct_legacy_grammar() {
             _ => panic!("expected before or after"),
         }
     }
-    let report = parse_style_attribute("break-inside:avoid-region;page-break-inside:avoid");
+    let report = CssParser::default()
+        .parse_block_contents("break-inside:avoid-region;page-break-inside:avoid");
     assert!(report.is_clean());
     for (declaration, (expected, grammar)) in report.syntax().iter().zip([
         (CssBreakInside::AvoidRegion, "break-inside"),

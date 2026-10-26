@@ -5,12 +5,11 @@
 
 use crate::css::support::rules::{ExpectedRejection, descriptor_rejected_at, invalid_descriptor};
 use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as FaceValue, CssComponentValues,
-    CssFontFaceDescriptorKind as FaceKind, CssFontPaletteDescriptorKind as PaletteKind,
-    CssFontPaletteDescriptorValue as PaletteValue, CssFontPaletteDescriptorValueRef,
-    CssRecoveryAction, CssRule, CssValueOrigin, parse_component_values, parse_font_face_block,
-    parse_font_face_descriptor_value, parse_font_palette_descriptor_value,
-    parse_font_palette_values_block, parse_sheet,
+    CssAuthoredFontFaceDescriptorValue as FaceValue, CssAuthoredFontFaceDescriptorValue,
+    CssBlockContext, CssBlockFragment, CssComponentValues, CssFontFaceDescriptorKind as FaceKind,
+    CssFontFaceDescriptors, CssFontPaletteDescriptor, CssFontPaletteDescriptorKind as PaletteKind,
+    CssFontPaletteDescriptorValue as PaletteValue, CssFontPaletteDescriptorValue,
+    CssFontPaletteDescriptorValueRef, CssParser, CssRecoveryAction, CssRule, CssValueOrigin,
 };
 
 const FACE_VALUES: [&str; 4] = [
@@ -73,7 +72,11 @@ fn pending_palette(value: &PaletteValue, kind: PaletteKind, text: &str, source: 
 #[test]
 fn raw_font_face_width_defers_matched_root_blocks_and_retains_original_components() {
     for value in FACE_VALUES {
-        let report = parse_font_face_descriptor_value(value, FaceKind::FontWidth);
+        let report = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            value,
+            FaceKind::FontWidth,
+        );
         assert!(report.is_clean(), "{value}: {report:?}");
         pending_face(report.syntax().as_ref().unwrap(), value, value);
     }
@@ -82,7 +85,7 @@ fn raw_font_face_width_defers_matched_root_blocks_and_retains_original_component
 #[test]
 fn checked_font_face_width_defers_matched_root_blocks_without_losing_provenance() {
     for value in FACE_VALUES {
-        let components = parse_component_values(value).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
         let checked = FaceValue::try_from_components(
             FaceKind::FontWidth,
             components.clone(),
@@ -101,7 +104,11 @@ fn checked_font_face_width_defers_matched_root_blocks_without_losing_provenance(
 fn font_face_body_retains_pending_width_with_matched_blocks_and_ordinary_neighbor() {
     for value in FACE_VALUES {
         let source = format!("{{font-width:{value};font-display:swap;}}");
-        let report = parse_font_face_block(&source);
+        let report = CssBlockFragment::<CssFontFaceDescriptors>::parse(
+            &CssParser::default(),
+            &source,
+            &CssBlockContext::default(),
+        );
         assert!(report.is_clean(), "{source}: {report:?}");
         let descriptors = report.syntax().as_ref().unwrap().body();
         assert_eq!(descriptors.occurrences().len(), 2);
@@ -119,7 +126,7 @@ fn font_face_rule_retains_pending_width_with_matched_blocks_and_following_rule()
     for value in FACE_VALUES {
         let source =
             format!("@font-face{{font-width:{value};font-display:swap;}} .after{{color:red;}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
         let [CssRule::FontFace(face), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("font-face and following rule must survive");
@@ -140,7 +147,7 @@ fn font_face_rule_retains_pending_width_with_matched_blocks_and_following_rule()
 fn raw_palette_descriptors_defer_matched_root_blocks_and_retain_original_components() {
     for kind in PALETTE_KINDS {
         for value in PALETTE_VALUES {
-            let report = parse_font_palette_descriptor_value(value, kind);
+            let report = CssFontPaletteDescriptorValue::parse(&CssParser::default(), value, kind);
             assert!(report.is_clean(), "{}:{value}: {report:?}", kind.as_str());
             pending_palette(report.syntax().as_ref().unwrap(), kind, value, value);
         }
@@ -151,7 +158,7 @@ fn raw_palette_descriptors_defer_matched_root_blocks_and_retain_original_compone
 fn checked_palette_descriptors_defer_matched_root_blocks_without_losing_provenance() {
     for kind in PALETTE_KINDS {
         for value in PALETTE_VALUES {
-            let components = parse_component_values(value).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
             let checked =
                 PaletteValue::try_new(kind, components.clone(), Default::default()).unwrap();
             pending_palette(&checked, kind, value, value);
@@ -165,7 +172,11 @@ fn palette_body_retains_pending_matched_blocks_and_real_family_neighbor() {
     for kind in PALETTE_KINDS {
         for value in PALETTE_VALUES {
             let source = format!("{{font-family:Demo;{}:{value};}}", kind.as_str());
-            let report = parse_font_palette_values_block(&source);
+            let report = CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+                &CssParser::default(),
+                &source,
+                &CssBlockContext::default(),
+            );
             assert!(report.is_clean(), "{source}: {report:?}");
             let descriptors = report.syntax().as_ref().unwrap().body();
             assert_eq!(descriptors.len(), 2);
@@ -182,7 +193,7 @@ fn palette_rule_retains_pending_matched_blocks_and_following_rule() {
                 "@font-palette-values --x{{font-family:Demo;{}:{value};}} .after{{color:red;}}",
                 kind.as_str()
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(report.is_clean(), "{source}: {report:?}");
             let [CssRule::FontPaletteValues(palette), CssRule::Style(_)] = report.syntax().rules()
             else {
@@ -208,10 +219,14 @@ fn malformed_env_and_ordinary_root_blocks_remain_invalid_in_raw_and_checked_fron
     ] {
         let at = |expected: ExpectedRejection| expected.at(token);
         let face_rejection = at(invalid_descriptor("font-face", "font-width"));
-        let face = parse_font_face_descriptor_value(value, FaceKind::FontWidth);
+        let face = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            value,
+            FaceKind::FontWidth,
+        );
         assert!(face.syntax().is_none(), "{value}: {face:?}");
         face_rejection.assert_first(&face);
-        let components = parse_component_values(value).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
         let error = FaceValue::try_from_components(
             FaceKind::FontWidth,
             components.clone(),
@@ -225,7 +240,7 @@ fn malformed_env_and_ordinary_root_blocks_remain_invalid_in_raw_and_checked_fron
         // The palette fronts name their at-rule and descriptor too.
         for kind in PALETTE_KINDS {
             let palette_rejection = at(invalid_descriptor("font-palette-values", kind.as_str()));
-            let palette = parse_font_palette_descriptor_value(value, kind);
+            let palette = CssFontPaletteDescriptorValue::parse(&CssParser::default(), value, kind);
             assert!(
                 palette.syntax().is_none(),
                 "{}:{value}: {palette:?}",
@@ -252,11 +267,15 @@ fn root_bangs_semicolons_and_unmatched_closers_are_not_rescued_by_valid_env() {
         ("env(choice))", ")"),
     ] {
         let face_rejection = descriptor_rejected_at("font-face", "font-width", token);
-        let face = parse_font_face_descriptor_value(value, FaceKind::FontWidth);
+        let face = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            value,
+            FaceKind::FontWidth,
+        );
         assert!(face.syntax().is_none(), "{value}: {face:?}");
         face_rejection.assert_first(&face);
         for kind in PALETTE_KINDS {
-            let palette = parse_font_palette_descriptor_value(value, kind);
+            let palette = CssFontPaletteDescriptorValue::parse(&CssParser::default(), value, kind);
             assert!(
                 palette.syntax().is_none(),
                 "{}:{value}: {palette:?}",
@@ -267,7 +286,7 @@ fn root_bangs_semicolons_and_unmatched_closers_are_not_rescued_by_valid_env() {
         }
         // Component admission may itself reject unmatched closers. If it admits
         // the token stream, the descriptor constructor must reject it.
-        if let Ok(components) = parse_component_values(value) {
+        if let Ok(components) = CssComponentValues::parse(&CssParser::default(), value) {
             let error = FaceValue::try_from_components(
                 FaceKind::FontWidth,
                 components.clone(),
@@ -295,7 +314,11 @@ fn root_bangs_semicolons_and_unmatched_closers_are_not_rescued_by_valid_env() {
 fn font_face_malformed_env_and_ordinary_blocks_drop_only_the_bad_descriptor() {
     for value in ["{}", "{hello}", "env() {}", "env(choice) env() {}"] {
         let body = format!("{{font-width:{value};font-display:swap;}}");
-        let report = parse_font_face_block(&body);
+        let report = CssBlockFragment::<CssFontFaceDescriptors>::parse(
+            &CssParser::default(),
+            &body,
+            &CssBlockContext::default(),
+        );
         assert!(!report.is_clean(), "{body}: {report:?}");
         let descriptors = report.syntax().as_ref().unwrap().body();
         assert!(descriptors.effective(FaceKind::FontWidth).is_none());
@@ -307,7 +330,7 @@ fn font_face_malformed_env_and_ordinary_blocks_drop_only_the_bad_descriptor() {
                 .any(|d| d.action() == CssRecoveryAction::DropDescriptor)
         );
         let source = format!("@font-face{body} .after{{color:red;}}");
-        let sheet = parse_sheet(&source);
+        let sheet = CssParser::default().parse_sheet(&source);
         assert!(!sheet.is_clean(), "{source}: {sheet:?}");
         let [CssRule::FontFace(face), CssRule::Style(_)] = sheet.syntax().rules() else {
             panic!("valid siblings survive")
@@ -326,7 +349,11 @@ fn palette_malformed_env_and_ordinary_blocks_drop_only_the_bad_descriptor() {
     for kind in PALETTE_KINDS {
         for value in ["{}", "{hello}", "env() {}", "env(choice) env() {}"] {
             let body = format!("{{font-family:Demo;{}:{value};}}", kind.as_str());
-            let report = parse_font_palette_values_block(&body);
+            let report = CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+                &CssParser::default(),
+                &body,
+                &CssBlockContext::default(),
+            );
             assert!(!report.is_clean(), "{body}: {report:?}");
             assert_eq!(report.syntax().as_ref().unwrap().body().len(), 1);
             assert!(
@@ -336,7 +363,7 @@ fn palette_malformed_env_and_ordinary_blocks_drop_only_the_bad_descriptor() {
                     .any(|d| d.action() == CssRecoveryAction::DropDescriptor)
             );
             let source = format!("@font-palette-values --x{body} .after{{color:red;}}");
-            let sheet = parse_sheet(&source);
+            let sheet = CssParser::default().parse_sheet(&source);
             assert!(!sheet.is_clean(), "{source}: {sheet:?}");
             let [CssRule::FontPaletteValues(palette), CssRule::Style(_)] = sheet.syntax().rules()
             else {

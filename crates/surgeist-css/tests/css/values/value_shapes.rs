@@ -411,7 +411,7 @@ fn constructors_that_cannot_fail_do_not_return_an_option() {
 
 /// The smallest `(input, projection)` limits at which the stylesheet's CSSOM text is written.
 fn cssom_sheet_charge(css: &str) -> (usize, usize) {
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean(), "{css}: {report:?}");
     let sheet = report.syntax();
     let defaults = CssSerializationLimits::default();
@@ -634,7 +634,7 @@ fn shape_function_round_radii_stay_verbatim_in_specified_and_cssom_text() {
     ] {
         let expected = format!("{css};");
         assert_eq!(written(css), expected, "specified: {css}");
-        let report = parse_style_attribute(css);
+        let report = CssParser::default().parse_block_contents(css);
         assert_eq!(
             report
                 .syntax()

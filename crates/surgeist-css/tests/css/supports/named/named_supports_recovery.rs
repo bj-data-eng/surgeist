@@ -3,8 +3,8 @@
 //! require local recovery, with recovered input rejected by checked construction.
 
 use surgeist_css::{
-    CssRecoveryAction, CssRule, CssSheet, CssSupportsConditionRule, CssSupportsTestBody,
-    CssSupportsTestItem, parse_sheet, validate_sheet,
+    CssParser, CssRecoveryAction, CssRule, CssSheet, CssSupportsConditionRule, CssSupportsTestBody,
+    CssSupportsTestItem,
 };
 
 fn definition(sheet: &CssSheet) -> &CssSupportsConditionRule {
@@ -33,7 +33,7 @@ fn declaration_names(body: &CssSupportsTestBody) -> Vec<&str> {
 }
 
 fn assert_recovered_definition(source: &str) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(!report.is_clean(), "{source:?} must report recovery");
     let definition = definition(report.syntax());
     let origin = definition
@@ -41,7 +41,10 @@ fn assert_recovered_definition(source: &str) {
         .recovery_origin()
         .expect("retained body records its first recovery")
         .clone();
-    let failure = validate_sheet(source).expect_err("recovered input is not clean validation");
+    let failure = CssParser::default()
+        .parse_sheet(source)
+        .into_validation_result()
+        .expect_err("recovered input is not clean validation");
     assert_eq!(failure.diagnostics(), report.diagnostics());
     assert!(
         CssSupportsConditionRule::try_new(
@@ -60,7 +63,7 @@ fn missing_colon_item_recovers_locally_while_block_form_remains_a_qualified_test
         " head: yes; broken; future x { child: yes; } tail: yes;",
         "} .after {}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
         [CssRule::SupportsCondition(_), CssRule::Style(_)]
@@ -96,7 +99,7 @@ fn missing_colon_item_recovers_locally_while_block_form_remains_a_qualified_test
     assert_recovered_definition(source);
 
     let clean = "@supports-condition --feature { future x { child: yes; } tail: yes; }";
-    let report = parse_sheet(clean);
+    let report = CssParser::default().parse_sheet(clean);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert!(matches!(
         definition(report.syntax()).body().items(),
@@ -105,7 +108,13 @@ fn missing_colon_item_recovers_locally_while_block_form_remains_a_qualified_test
             CssSupportsTestItem::Declarations(_)
         ]
     ));
-    assert_eq!(validate_sheet(clean).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(clean)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
 }
 
 #[test]
@@ -115,7 +124,7 @@ fn bad_string_url_and_nested_function_tokens_drop_only_their_declaration() {
         "@supports-condition --x { head: yes; bad:url(a b); tail: yes; } .after {}",
         "@supports-condition --x { head: yes; bad: fn(url(a b)); tail: yes; } .after {}",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(matches!(
             report.syntax().rules(),
             [CssRule::SupportsCondition(_), CssRule::Style(_)]
@@ -136,13 +145,19 @@ fn bad_string_url_and_nested_function_tokens_drop_only_their_declaration() {
         "@supports-condition --x { head: yes; bad:url(a); tail: yes; }",
         "@supports-condition --x { head: yes; bad: fn(url(a)); tail: yes; }",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{source:?}: {:?}", report.diagnostics());
         assert_eq!(
             declaration_names(definition(report.syntax()).body()),
             ["head", "bad", "tail"]
         );
-        assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
+        assert_eq!(
+            CssParser::default()
+                .parse_sheet(source)
+                .into_validation_result()
+                .unwrap(),
+            *report.syntax()
+        );
     }
 }
 
@@ -155,7 +170,7 @@ fn invalid_only_and_trailing_bad_tokens_do_not_become_clean_test_candidates() {
             vec!["head"],
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert_eq!(report.syntax().rules().len(), 1);
         assert_eq!(
             declaration_names(definition(report.syntax()).body()),
@@ -169,7 +184,7 @@ fn invalid_only_and_trailing_bad_tokens_do_not_become_clean_test_candidates() {
 fn a_curly_value_with_a_bad_token_drops_one_declaration_but_a_rule_keeps_good_children() {
     let declaration_source =
         "@supports-condition --x { future: { bad:url(a b); good:1 }; tail:yes; }";
-    let declaration = parse_sheet(declaration_source);
+    let declaration = CssParser::default().parse_sheet(declaration_source);
     let body = definition(declaration.syntax()).body();
     assert_eq!(declaration_names(body), ["tail"]);
     assert!(
@@ -186,7 +201,7 @@ fn a_curly_value_with_a_bad_token_drops_one_declaration_but_a_rule_keeps_good_ch
     assert_recovered_definition(declaration_source);
 
     let rule_source = "@supports-condition --x { a { bad:url(a b); good:1 } tail:yes; }";
-    let rule = parse_sheet(rule_source);
+    let rule = CssParser::default().parse_sheet(rule_source);
     let body = definition(rule.syntax()).body();
     let [
         CssSupportsTestItem::QualifiedRule(qualified),
@@ -205,7 +220,7 @@ fn a_curly_value_with_a_bad_token_drops_one_declaration_but_a_rule_keeps_good_ch
     assert_recovered_definition(rule_source);
 
     let clean_declaration = "@supports-condition --x { future: { good:1 }; tail:yes; }";
-    let report = parse_sheet(clean_declaration);
+    let report = CssParser::default().parse_sheet(clean_declaration);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(
         declaration_names(definition(report.syntax()).body()),
@@ -230,13 +245,13 @@ fn standalone_bad_tokens_do_not_resurrect_following_text_or_erase_separate_rules
         ),
         ("@supports-condition --x { url(a b) }", vec![]),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert_eq!(declaration_names(definition(report.syntax()).body()), names);
         assert_recovered_definition(source);
     }
 
     let separate = "@supports-condition --x { url(a b); @future { good:1; } tail:yes; }";
-    let report = parse_sheet(separate);
+    let report = CssParser::default().parse_sheet(separate);
     let body = definition(report.syntax()).body();
     let [
         CssSupportsTestItem::AtRule(at_rule),
@@ -253,7 +268,7 @@ fn standalone_bad_tokens_do_not_resurrect_following_text_or_erase_separate_rules
     // Without a semicolon, Syntax consumes the bad prefix and following
     // at-keyword as one failed candidate up to its first curly block.
     let combined = "@supports-condition --x { url(a b) @future { good:1; } tail:yes; }";
-    let report = parse_sheet(combined);
+    let report = CssParser::default().parse_sheet(combined);
     let body = definition(report.syntax()).body();
     assert_eq!(declaration_names(body), ["tail"]);
     assert!(
@@ -280,7 +295,7 @@ fn malformed_generic_rule_preludes_drop_the_parent_not_promote_its_children() {
             CssRecoveryAction::DropAtRule,
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let body = definition(report.syntax()).body();
         assert_eq!(declaration_names(body), ["tail"], "{source:?}");
         assert!(
@@ -306,7 +321,7 @@ fn malformed_candidates_in_qualified_and_at_rule_tests_preserve_parents_and_sibl
         " @future { first: yes; broken:url(a b); last: yes; }",
         " after: yes; } .outside {}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
         [CssRule::SupportsCondition(_), CssRule::Style(_)]
@@ -332,7 +347,7 @@ fn malformed_candidates_in_qualified_and_at_rule_tests_preserve_parents_and_sibl
     assert_recovered_definition(source);
 
     let clean = "@supports-condition --x { & { first: yes; } @future { last: yes; } }";
-    let report = parse_sheet(clean);
+    let report = CssParser::default().parse_sheet(clean);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert!(matches!(
         definition(report.syntax()).body().items(),
@@ -346,7 +361,7 @@ fn malformed_candidates_in_qualified_and_at_rule_tests_preserve_parents_and_sibl
 #[test]
 fn unmatched_closer_drops_the_affected_candidate_without_laundering_the_report() {
     let source = "@supports-condition --x { before: yes; bad: ); after: yes; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(
         declaration_names(definition(report.syntax()).body()),
         ["before", "after"]
@@ -357,7 +372,7 @@ fn unmatched_closer_drops_the_affected_candidate_without_laundering_the_report()
 #[test]
 fn eof_rule_block_function_and_comment_recovery_retains_provenance_but_fails_strict_reuse() {
     let rule_eof = "@supports-condition --x { final: yes";
-    let report = parse_sheet(rule_eof);
+    let report = CssParser::default().parse_sheet(rule_eof);
     assert_eq!(
         declaration_names(definition(report.syntax()).body()),
         ["final"]
@@ -370,7 +385,7 @@ fn eof_rule_block_function_and_comment_recovery_retains_provenance_but_fails_str
     assert_recovered_definition(rule_eof);
 
     let nested_eof = "@supports-condition --x { & { child: fn(a";
-    let report = parse_sheet(nested_eof);
+    let report = CssParser::default().parse_sheet(nested_eof);
     let [CssSupportsTestItem::QualifiedRule(qualified)] =
         definition(report.syntax()).body().items()
     else {
@@ -386,7 +401,7 @@ fn eof_rule_block_function_and_comment_recovery_retains_provenance_but_fails_str
     assert_recovered_definition(nested_eof);
 
     let comment_eof = "@supports-condition --x { final: yes; /*";
-    let report = parse_sheet(comment_eof);
+    let report = CssParser::default().parse_sheet(comment_eof);
     assert_eq!(
         declaration_names(definition(report.syntax()).body()),
         ["final"]

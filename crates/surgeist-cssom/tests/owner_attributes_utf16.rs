@@ -33,11 +33,13 @@ fn setup_in(
     (owner, id)
 }
 fn media(context: CssParserContext, raw: Arc<Vec<u16>>) -> CssParseReport<CssMediaQueryList> {
-    context
-        .parse_media_query_list_utf16_with_limits(raw, CssUtf16InputLimits::default(), || {
-            Ok::<_, ()>(())
-        })
-        .unwrap()
+    CssMediaQueryList::parse_utf16(
+        &CssParser::new(context, Default::default()),
+        raw,
+        CssUtf16InputLimits::default(),
+        || Ok::<_, ()>(()),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -494,7 +496,7 @@ fn parsed_sheet_import_qualifies_initial_media_context_and_retains_source() {
     let mut edit = batch(&mismatched);
     assert!(matches!(
         edit.create_parsed_sheet_with_media_reports(
-            parse_sheet(""),
+            CssParser::default().parse_sheet(""),
             report.clone(),
             inputs.clone()
         ),
@@ -521,7 +523,11 @@ fn parsed_sheet_import_qualifies_initial_media_context_and_retains_source() {
     .unwrap();
     let mut edit = batch(&owner);
     let construction = edit
-        .create_parsed_sheet_with_media_reports(context.parse_sheet(""), report, inputs)
+        .create_parsed_sheet_with_media_reports(
+            CssParser::new(context, Default::default()).parse_sheet(""),
+            report,
+            inputs,
+        )
         .unwrap();
     let id = owner
         .commit(edit)
@@ -555,8 +561,8 @@ fn two_report_creation_checks_full_media_input_and_keeps_diagnostics_separate() 
         let before = owner.snapshot();
         let mut edit = batch(&owner);
         let result = edit.create_parsed_sheet_with_media_reports(
-            parse_sheet(""),
-            parse_media_query_list("/*long*/"),
+            CssParser::default().parse_sheet(""),
+            CssMediaQueryList::parse(&CssParser::default(), "/*long*/"),
             CssomSheetInputs::external(version("style", 1), true),
         );
         if success {
@@ -595,8 +601,8 @@ fn two_report_creation_checks_full_media_input_and_keeps_diagnostics_separate() 
     let mut edit = batch(&owner);
     let construction = edit
         .create_parsed_sheet_with_media_reports(
-            parse_sheet("@unknown;"),
-            parse_media_query_list("???"),
+            CssParser::default().parse_sheet("@unknown;"),
+            CssMediaQueryList::parse(&CssParser::default(), "???"),
             CssomSheetInputs::external(version("style", 1), true),
         )
         .unwrap();
@@ -633,8 +639,8 @@ fn two_report_creation_rejects_resource_recovery_and_conflicting_media_atomicall
     let deep = format!("{}color{}", "(".repeat(2000), ")".repeat(2000));
     assert!(matches!(
         edit.create_parsed_sheet_with_media_reports(
-            parse_sheet(""),
-            parse_media_query_list(&deep),
+            CssParser::default().parse_sheet(""),
+            CssMediaQueryList::parse(&CssParser::default(), &deep),
             CssomSheetInputs::external(version("style", 1), true)
         ),
         Err(CssomError::ParseResource(_))
@@ -642,12 +648,14 @@ fn two_report_creation_rejects_resource_recovery_and_conflicting_media_atomicall
     assert!(matches!(owner.commit(edit), Err(CssomError::BatchAborted)));
     assert_eq!(owner.snapshot().revision(), before.revision());
     let mut inputs = CssomSheetInputs::external(version("style", 1), true);
-    inputs.media = parse_media_query_list("screen").into_parts().0;
+    inputs.media = CssMediaQueryList::parse(&CssParser::default(), "screen")
+        .into_parts()
+        .0;
     let mut edit = batch(&owner);
     assert!(matches!(
         edit.create_parsed_sheet_with_media_reports(
-            parse_sheet(""),
-            parse_media_query_list("print"),
+            CssParser::default().parse_sheet(""),
+            CssMediaQueryList::parse(&CssParser::default(), "print"),
             inputs
         ),
         Err(CssomError::InvalidInput(

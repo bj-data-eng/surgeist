@@ -15,7 +15,9 @@ use crate::css::support::{
     authored_declaration_through_front as declaration, check_property_components as checked,
     discoverable_property as property,
 };
-use surgeist_css::{CssSerializationLimits as L, *};
+use surgeist_css::{
+    CssComponentValues, CssDeclaration, CssParser, CssRule, CssSerializationLimits as L, *,
+};
 const NAMES: [&str; 6] = [
     "content",
     "quotes",
@@ -44,7 +46,7 @@ fn accept(name: &str, cases: &[(&str, &str)]) {
                 "{input} front {front}"
             );
             assert_eq!(source, before);
-            let reparse = parse_style_attribute(&output);
+            let reparse = CssParser::default().parse_block_contents(&output);
             assert!(reparse.is_clean(), "{output}: {:?}", reparse.diagnostics());
             let [reparsed] = reparse.syntax().as_slice() else {
                 panic!("one reentered occurrence")
@@ -64,7 +66,7 @@ fn invalid<'a, T: Copy + Into<Responsible<'a>>>(name: &str, values: &[(&str, T)]
     for &(value, token) in values {
         let middle = format!("{name}:{value};");
         let css = format!("/*😀*/color:red!important;{middle}color:blue");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         let [before, after] = report.syntax().as_slice() else {
             panic!("only adjacent colors survive {css}")
         };
@@ -95,10 +97,14 @@ fn invalid<'a, T: Copy + Into<Responsible<'a>>>(name: &str, values: &[(&str, T)]
             css[..start].encode_utf16().count()
         );
         assert_eq!(
-            validate_style_attribute(&css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
-        let components = parse_component_values(value).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
         let original = components.clone();
         for grammar in [false, true] {
             assert_checked_rejected(checked(p, components.clone(), grammar), p, token);
@@ -347,8 +353,7 @@ fn bookmark_state_is_an_exclusive_case_insensitive_keyword() {
 }
 
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("ordinary longhand contribution")
     };
@@ -438,13 +443,13 @@ fn pending(name: &str, valid: &str, invalid: &str) {
         for front in 0..5 {
             let source = declaration(name, authored, front);
             let original = source.clone();
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("whole pending source")
             };
             assert!(handle.source().same_occurrence(&source));
             for _ in 0..2 {
                 for bad in [invalid, "inherit bogus", "bogus"] {
-                    let components = parse_component_values(bad).unwrap();
+                    let components = CssComponentValues::parse(&CssParser::default(), bad).unwrap();
                     let direct = checked(p, components.clone(), false).unwrap_err();
                     let error = handle.reenter(components).unwrap_err();
                     let Some(actual) = error.replacement_error() else {
@@ -461,12 +466,16 @@ fn pending(name: &str, valid: &str, invalid: &str) {
                 ] {
                     assert!(
                         handle
-                            .reenter(parse_component_values(residual).unwrap())
+                            .reenter(
+                                CssComponentValues::parse(&CssParser::default(), residual).unwrap()
+                            )
                             .unwrap_err()
                             .is_residual_substitution()
                     );
                 }
-                let replacement = parse_component_values(&format!("/*😀*/{valid}")).unwrap();
+                let replacement =
+                    CssComponentValues::parse(&CssParser::default(), format!("/*😀*/{valid}"))
+                        .unwrap();
                 let before = replacement.clone();
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
@@ -477,7 +486,8 @@ fn pending(name: &str, valid: &str, invalid: &str) {
                 assert!(values.items()[0].ordinary_value().is_some());
                 assert_eq!(replacement, before);
                 for (text, keyword) in GLOBALS {
-                    let replacement = parse_component_values(text).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), text).unwrap();
                     let CssContributions::Longhands(values) =
                         handle.reenter(replacement.clone()).unwrap()
                     else {
@@ -558,7 +568,7 @@ fn strict_original(name: &str, ordinary: &str, unclosed: &str) {
         "var(--generated)/*unfinished".into(),
     ];
     for input in inputs {
-        let components = parse_component_values(&input).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &input).unwrap();
         let original = components.clone();
         let origin = implicit_origin(&components);
         for grammar in [false, true] {
@@ -601,10 +611,10 @@ fn reentry_rejects_original_closure_after_residual_scan_and_remains_reusable_for
         ("bookmark-state", "open", "open/*unfinished"),
     ] {
         let source = declaration(name, "var(--generated)", 0);
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
-        let replacement = parse_component_values(open).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), open).unwrap();
         let origin = implicit_origin(&replacement);
         let error = handle.reenter(replacement).unwrap_err();
         let Some(actual) = error.replacement_error() else {
@@ -614,13 +624,16 @@ fn reentry_rejects_original_closure_after_residual_scan_and_remains_reusable_for
         assert_eq!(actual.origin(), CssSerializedOrigin::End(Some(origin)));
         assert!(
             handle
-                .reenter(parse_component_values("future(var(--again)").unwrap())
+                .reenter(
+                    CssComponentValues::parse(&CssParser::default(), "future(var(--again)")
+                        .unwrap()
+                )
                 .unwrap_err()
                 .is_residual_substitution()
         );
         assert!(
             handle
-                .reenter(parse_component_values(valid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), valid).unwrap())
                 .is_ok()
         );
         assert!(handle.source().same_occurrence(&source));
@@ -652,18 +665,18 @@ fn typed_attribute_functions_keep_the_whole_occurrence_pending_until_full_replac
         for front in 0..5 {
             let source = declaration(name, input, front);
             let original = source.clone();
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("valid attr is whole pending")
             };
             assert!(
                 handle
-                    .reenter(parse_component_values(input).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), input).unwrap())
                     .unwrap_err()
                     .is_residual_substitution()
             );
             assert!(
                 handle
-                    .reenter(parse_component_values(valid).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), valid).unwrap())
                     .is_ok()
             );
             assert_eq!(source, original);
@@ -674,14 +687,14 @@ fn typed_attribute_functions_keep_the_whole_occurrence_pending_until_full_replac
 #[test]
 fn normalized_six_property_composition_keeps_context_order_and_cumulative_contributions() {
     let input = ".a{content:counter(chapter)!important;quotes:match-parent;string-set:Chapter \"A\", Author \"B\";bookmark-level:1;bookmark-label:var(--label);bookmark-state:closed!important}";
-    let report = parse_sheet(input);
+    let report = CssParser::default().parse_sheet(input);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssRule::Style(style) = &report.syntax().rules()[0] else {
         panic!("style rule")
     };
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(0, 1, 6, 6).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -723,7 +736,7 @@ fn normalized_six_property_composition_keeps_context_order_and_cumulative_contri
             CssNormalizationResource::Contributions,
         ),
     ] {
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+        let error = report.syntax().normalize(limits).unwrap_err();
         assert_eq!(error.exhausted_limit(), Some((resource, 5)));
         assert_eq!(error.declaration_order(), Some(5));
         assert!(
@@ -735,14 +748,14 @@ fn normalized_six_property_composition_keeps_context_order_and_cumulative_contri
         assert!(error.rule_context().is_some());
         assert_eq!(report, before);
     }
-    assert!(normalize_report_with_limits(&report, exact).is_ok());
+    assert!(report.normalize(exact).is_ok());
 }
 
 #[test]
 fn universal_reset_includes_all_six_authored_content_properties_symbolically() {
     let source = declaration("all", "initial", 0);
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&source).unwrap()
+        source.expand().unwrap()
     else {
         panic!("all")
     };
@@ -899,7 +912,8 @@ fn full_image_depth_error_survives_content_list_retry_and_pending_reentry() {
     for _ in 0..256 {
         text = format!("light-dark({text}, none)");
     }
-    let components = parse_component_values(&text).expect("raw structural ceiling");
+    let components =
+        CssComponentValues::parse(&CssParser::default(), &text).expect("raw structural ceiling");
     assert_eq!(components.nesting_depth(), 256);
     let original = components.clone();
     for name in ["content", "bookmark-label"] {
@@ -914,7 +928,7 @@ fn full_image_depth_error_survives_content_list_retry_and_pending_reentry() {
             );
         }
         let source = declaration(name, "var(--image)", 0);
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending image consumer")
         };
         for _ in 0..2 {
@@ -928,7 +942,7 @@ fn full_image_depth_error_survives_content_list_retry_and_pending_reentry() {
         }
         assert!(
             handle
-                .reenter(parse_component_values("content(text)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "content(text)").unwrap())
                 .is_ok()
         );
         assert!(handle.source().same_occurrence(&source));

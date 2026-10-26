@@ -20,7 +20,7 @@ fn both(source: &str, inspect: impl Fn(&CssCondition<CssSupportsLeaf>)) {
     let clone = condition.clone();
     assert_eq!(condition, clone);
     let sheet = format!("@supports {source} {{}}");
-    let report = parse_sheet(&sheet);
+    let report = CssParser::default().parse_sheet(&sheet);
     assert!(report.is_clean(), "{sheet}: {:?}", report.diagnostics());
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("retained group")
@@ -41,7 +41,7 @@ fn both(source: &str, inspect: impl Fn(&CssCondition<CssSupportsLeaf>)) {
             .unwrap(),
         expected
     );
-    let replay = parse_sheet(&expected);
+    let replay = CssParser::default().parse_sheet(&expected);
     assert!(replay.is_clean(), "{:?}", replay.diagnostics());
     let [CssRule::Supports(rule)] = replay.syntax().rules() else {
         panic!("replayed group")
@@ -219,7 +219,7 @@ fn arbitrary_at_keywords_keep_original_tokens_decoded_names_and_function_delimit
 #[test]
 fn programmatic_function_wrapper_keeps_the_independently_parsed_at_keyword_origin() {
     let source = "/*😀*/\n@--Mixed";
-    let argument = parse_component_values(source)
+    let argument = CssComponentValues::parse(&CssParser::default(), source)
         .unwrap()
         .items()
         .last()
@@ -344,10 +344,10 @@ fn predicates_compose_with_booleans_names_and_selectors_across_group_consumers()
             format!("@scope (.root) {{ @supports {COMPOSED} {{ .child {{ color: red; }} }} }}"),
         ),
     ] {
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let before = report.clone();
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let conditions: Vec<_> = normalized
             .items()
             .iter()
@@ -402,7 +402,7 @@ fn predicates_compose_with_booleans_names_and_selectors_across_group_consumers()
             expected
         );
         assert_eq!(report, before);
-        let replay = parse_sheet(&expected);
+        let replay = CssParser::default().parse_sheet(&expected);
         assert!(replay.is_clean(), "{:?}", replay.diagnostics());
         assert_eq!(
             replay
@@ -417,13 +417,13 @@ fn predicates_compose_with_booleans_names_and_selectors_across_group_consumers()
 #[test]
 fn import_supports_uses_the_same_typed_predicates_and_checked_lexical_owner() {
     let source = format!("@import 'x.css' supports({COMPOSED});");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Import(parsed)] = report.syntax().rules() else {
         panic!("retained import")
     };
     let constructed = CssImportRule::try_from_components(
-        parse_component_values(&source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
         &CssNamespaceContext::default(),
         Default::default(),
     )
@@ -443,7 +443,7 @@ fn import_supports_uses_the_same_typed_predicates_and_checked_lexical_owner() {
             .unwrap(),
         source
     );
-    let replay = parse_sheet(&source);
+    let replay = CssParser::default().parse_sheet(&source);
     let [CssRule::Import(rule)] = replay.syntax().rules() else {
         panic!("replayed import")
     };
@@ -486,13 +486,14 @@ fn balanced_invalid_predicate_arguments_remain_opaque_but_invalid_outer_algebra_
         "font-tech(variations) and at-rule(@media) or font-format(woff2)",
     ] {
         let error = CssCondition::<CssSupportsLeaf>::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             &CssNamespaceContext::default(),
             Default::default(),
         )
         .unwrap_err();
         assert!(error.is_invalid_condition_grammar());
-        let report = parse_sheet(&format!("@supports {source}{{}} .after{{color:red}}"));
+        let report =
+            CssParser::default().parse_sheet(format!("@supports {source}{{}} .after{{color:red}}"));
         assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
         let [diagnostic] = report.diagnostics() else {
             panic!("one failed outer condition")
@@ -516,11 +517,12 @@ fn lexical_failures_in_function_predicates_are_terminal_and_recover_to_the_later
             ComponentFailure::BadString,
         ),
     ] {
-        let component_error = parse_component_values(predicate).unwrap_err();
+        let component_error =
+            CssComponentValues::parse(&CssParser::default(), predicate).unwrap_err();
         assert_eq!(component_failure(&component_error), kind);
         for (prefix, ending) in [("@supports ", "{}"), ("@import 'x' supports(", ");")] {
             let source = format!("/*😀*/\r\n{prefix}{predicate}{ending} .after{{color:red}}");
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(
                 matches!(report.syntax().rules(), [CssRule::Style(_)]),
                 "{source}: {report:?}"
@@ -553,7 +555,7 @@ fn lexical_failures_in_function_predicates_are_terminal_and_recover_to_the_later
 #[test]
 fn complete_predicate_graph_limits_are_cumulative_and_retries_preserve_origins() {
     let source = "font-tech(variations) and at-rule(@unknown)";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     // Two functions and their arguments, two spaces and one operator: seven
     // components at depth one. Closing delimiters affect bytes, not node count.
     let exact = CssComponentValueLimits::try_new(1, 7, source.len()).unwrap();
@@ -636,7 +638,7 @@ fn recovered_predicate_delimiters_keep_parsed_import_payloads_but_fail_strict_re
         "font-format(woff2",
         "at-rule(@media",
     ] {
-        let components = parse_component_values(predicate).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), predicate).unwrap();
         let error = CssCondition::<CssSupportsLeaf>::try_from_components(
             components,
             &CssNamespaceContext::default(),
@@ -650,7 +652,7 @@ fn recovered_predicate_delimiters_keep_parsed_import_payloads_but_fail_strict_re
         assert_eq!(at.source().as_str(), predicate);
         assert_eq!(at.span().start().byte_offset().value(), predicate.len());
         let source = format!("@import 'x' supports({predicate}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean());
         assert!(
             report
@@ -702,6 +704,6 @@ fn recovered_predicate_delimiters_keep_parsed_import_payloads_but_fail_strict_re
             .as_ref()
             .is_err_and(|error| error.is_recovered_input())
         );
-        assert!(parse_sheet(&expected).is_clean());
+        assert!(CssParser::default().parse_sheet(&expected).is_clean());
     }
 }

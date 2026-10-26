@@ -91,7 +91,7 @@ fn when_leaf(leaf: &CssWhenLeaf) -> String {
 }
 
 fn media(source: &str) -> String {
-    let report = parse_sheet(&format!("@media {source} {{}}"));
+    let report = CssParser::default().parse_sheet(format!("@media {source} {{}}"));
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::Media(rule)] = report.syntax().rules() else {
         panic!("one media rule");
@@ -103,7 +103,7 @@ fn media(source: &str) -> String {
 }
 
 fn supports(source: &str) -> String {
-    let report = parse_sheet(&format!("@supports {source} {{}}"));
+    let report = CssParser::default().parse_sheet(format!("@supports {source} {{}}"));
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("one supports rule");
@@ -112,7 +112,7 @@ fn supports(source: &str) -> String {
 }
 
 fn container(source: &str) -> String {
-    let report = parse_sheet(&format!("@container {source} {{}}"));
+    let report = CssParser::default().parse_sheet(format!("@container {source} {{}}"));
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("one container rule");
@@ -124,7 +124,7 @@ fn container(source: &str) -> String {
 }
 
 fn when(source: &str) -> String {
-    let report = parse_sheet(&format!("@when {source} {{}}"));
+    let report = CssParser::default().parse_sheet(format!("@when {source} {{}}"));
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::When(rule)] = report.syntax().rules() else {
         panic!("one when rule");
@@ -215,7 +215,7 @@ fn when_conditions_keep_negation_junction_and_group_layers() {
 
 #[test]
 fn every_grouping_pair_keeps_its_own_origin_and_serialization_is_unchanged() {
-    let report = parse_sheet("@supports  ( ( display:flex ) ) {}");
+    let report = CssParser::default().parse_sheet("@supports  ( ( display:flex ) ) {}");
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("supports");
     };
@@ -247,7 +247,7 @@ fn every_grouping_pair_keeps_its_own_origin_and_serialization_is_unchanged() {
 
 #[test]
 fn condition_lists_require_two_operands_of_the_same_grammar() {
-    let report = parse_sheet("@supports (a:b) and (c:d) {}");
+    let report = CssParser::default().parse_sheet("@supports (a:b) and (c:d) {}");
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("supports");
     };

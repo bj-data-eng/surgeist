@@ -346,8 +346,9 @@ fn parsed_content_retains_strings_counters_and_images() {
             .unwrap(),
         "contents linear-gradient(red, blue)"
     );
-    let programmatic = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Content),
+    let programmatic = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Content)),
         CssComponentValues::try_new(
             vec![CssComponentValue::try_ident("contents").unwrap()],
             Default::default(),

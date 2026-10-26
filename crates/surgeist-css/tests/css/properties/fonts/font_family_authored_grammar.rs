@@ -12,9 +12,8 @@
 
 use surgeist_css::{
     CssDeclaration, CssErrorCode, CssFontFaceSource, CssFontFamilyList, CssFontFamilyNameKind,
-    CssFontValue, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction,
-    CssRule, CssSystemFont, parse_sheet, parse_style_attribute, validate_sheet,
-    validate_style_attribute,
+    CssFontValue, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssParser,
+    CssRecoveryAction, CssRule, CssSystemFont,
 };
 
 const SIMPLE_GENERICS: &[&str] = &[
@@ -73,7 +72,7 @@ fn families(declaration: &CssDeclaration) -> &CssFontFamilyList {
 
 fn assert_literal_in_all_contexts(authored: &str, decoded: &str, kind: CssFontFamilyNameKind) {
     let source = format!("font-family:{authored};font:16px {authored}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2, "{source}");
     for declaration in report.syntax().iter() {
@@ -84,10 +83,13 @@ fn assert_literal_in_all_contexts(authored: &str, decoded: &str, kind: CssFontFa
         assert_eq!(name.as_str(), decoded, "{source}");
         assert_eq!(name.generic_family(), None, "{source}");
     }
-    validate_style_attribute(&source).expect("clean properties must validate");
+    CssParser::default()
+        .parse_block_contents(&source)
+        .into_validation_result()
+        .expect("clean properties must validate");
 
     let source = format!("@font-face{{font-family:{authored};src:local({authored})}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("expected one font face: {source}");
@@ -104,7 +106,10 @@ fn assert_literal_in_all_contexts(authored: &str, decoded: &str, kind: CssFontFa
         panic!("expected one local source: {source}");
     };
     assert_eq!(name.as_str(), decoded, "{source}");
-    validate_sheet(&source).expect("clean descriptors must validate");
+    CssParser::default()
+        .parse_sheet(&source)
+        .into_validation_result()
+        .expect("clean descriptors must validate");
 }
 
 fn assert_property_rejection(authored: &str) {
@@ -113,7 +118,7 @@ fn assert_property_rejection(authored: &str) {
         format!("font:16px {authored}"),
     ] {
         let source = format!("{declaration};color:red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}: {report:?}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -128,7 +133,11 @@ fn assert_property_rejection(authored: &str) {
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics(),
         );
     }
@@ -139,7 +148,7 @@ fn all_fifteen_generics_are_recognized_in_properties_and_explicit_font_tails() {
     for canonical in SIMPLE_GENERICS.iter().chain(FUNCTION_GENERICS) {
         for authored in [canonical.to_string(), canonical.to_ascii_uppercase()] {
             let source = format!("font-family:{authored};font:16px {authored}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(report.syntax().len(), 2);
             for declaration in report.syntax().iter() {
@@ -169,7 +178,7 @@ fn escaped_generic_keywords_and_function_arguments_have_the_same_meaning() {
         (r"generic(nastali\71)", "generic(nastaliq)"),
     ] {
         let source = format!("font-family:{authored}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let CssKnownPropertyValueRef::FontFamily(value) = report.syntax()[0]
             .known()
@@ -192,7 +201,7 @@ fn escaped_generic_keywords_and_function_arguments_have_the_same_meaning() {
 fn generic_lists_preserve_authored_order_source_and_importance() {
     let authored = r#""Avenir Next", SYSTEM-UI, g\65 neric(kai), serif"#;
     let source = format!("  FONT-FAMILY: {authored} ! IMPORTANT; color:red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
     let declaration = &report.syntax()[0];
@@ -334,7 +343,7 @@ fn system_font_spellings_are_literal_names_in_family_positions() {
         assert_literal_in_all_contexts(authored, decoded, CssFontFamilyNameKind::IdentSequence);
     }
     // This is the normative section 2.7 example, with its explicit size retained.
-    let report = parse_style_attribute("font:large menu");
+    let report = CssParser::default().parse_block_contents("font:large menu");
     assert!(report.is_clean(), "{report:?}");
     let CssKnownPropertyValueRef::Font(value) = report.syntax()[0]
         .known()
@@ -385,7 +394,7 @@ fn font_face_and_local_names_reject_generics_and_reserved_tokens_with_local_reco
         let source = format!(
             "@font-face{{font-family:{authored};src:url(before),local({authored}),local(After)}}.after{{color:red}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::FontFace(face), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("expected retained rules: {source}: {report:?}");
         };
@@ -429,7 +438,11 @@ fn font_face_and_local_names_reject_generics_and_reserved_tokens_with_local_reco
             start + member.len()
         );
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -451,7 +464,7 @@ fn css_nul_preprocessing_and_escape_decoding_preserve_replacement_characters() {
 fn global_family_values_and_whole_system_font_shorthands_keep_their_branches() {
     for keyword in ["initial", "inherit", "unset", "revert", "revert-layer"] {
         let source = format!("font-family:{keyword}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert!(report.syntax()[0].known().unwrap().global().is_some());
         assert_property_rejection(&format!("{keyword},serif"));
@@ -467,7 +480,7 @@ fn global_family_values_and_whole_system_font_shorthands_keep_their_branches() {
     ] {
         for authored in [spelling.to_owned(), spelling.to_ascii_uppercase()] {
             let source = format!("font:{authored}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {report:?}");
             let CssKnownPropertyValueRef::Font(value) = report.syntax()[0]
                 .known()

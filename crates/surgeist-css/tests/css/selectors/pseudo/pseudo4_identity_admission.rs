@@ -59,8 +59,12 @@ fn admitted(cases: &[(&str, &str)]) -> Vec<CssSelector> {
     let reports: Vec<_> = cases
         .iter()
         .map(|(source, _)| {
-            let selector = parse_selector(source, &CssNamespaceContext::default());
-            let sheet = parse_sheet(&format!("{source}{{color:red}}"));
+            let selector = CssSelector::parse(
+                &CssParser::default(),
+                source,
+                &CssNamespaceContext::default(),
+            );
+            let sheet = CssParser::default().parse_sheet(format!("{source}{{color:red}}"));
             (selector, sheet)
         })
         .collect();
@@ -97,7 +101,11 @@ fn admitted(cases: &[(&str, &str)]) -> Vec<CssSelector> {
             &format!("{source}{{color:red}}"),
         );
         assert_eq!(rule.declarations().len(), 1);
-        let replay = parse_selector(expected, &CssNamespaceContext::default());
+        let replay = CssSelector::parse(
+            &CssParser::default(),
+            expected,
+            &CssNamespaceContext::default(),
+        );
         assert!(replay.is_clean(), "{expected}: {replay:?}");
         let replay_value = replay.syntax().as_ref().unwrap();
         assert_eq!(
@@ -116,8 +124,13 @@ fn admitted(cases: &[(&str, &str)]) -> Vec<CssSelector> {
 
 fn rejected(cases: &[&str]) {
     for source in cases {
-        let selector = parse_selector(source, &CssNamespaceContext::default());
-        let sheet = parse_sheet(&format!("{source}{{color:red}}.after{{color:blue}}"));
+        let selector = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
+        let sheet =
+            CssParser::default().parse_sheet(format!("{source}{{color:red}}.after{{color:blue}}"));
         assert_eq!(
             (
                 selector.is_clean(),

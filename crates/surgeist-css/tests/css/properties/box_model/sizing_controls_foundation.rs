@@ -34,8 +34,7 @@ fn accepted(name: &str, value: &str) {
 }
 
 fn one_value(source: &CssDeclaration) -> CssLonghandValue {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one terminal contribution")
     };
@@ -174,7 +173,7 @@ fn three_sizing_shorthands_set_only_physical_width_then_height_and_repeat_first(
             let source = declaration(name, authored);
             checked(name, authored);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("{name} expands to two physical longhands")
             };
@@ -264,7 +263,7 @@ fn frame_and_min_intrinsic_terminals_have_exact_keyword_sets_and_initials() {
 fn css_wide_all_and_pending_reentry_keep_member_order_and_source() {
     let all_source = declaration("all", "initial");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all_source).unwrap()
+        all_source.expand().unwrap()
     else {
         panic!("symbolic all reset")
     };
@@ -280,7 +279,7 @@ fn css_wide_all_and_pending_reentry_keep_member_order_and_source() {
             let source = declaration(name, text);
             checked(name, text);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("{name} has symbolic global contributions")
             };
@@ -299,7 +298,7 @@ fn css_wide_all_and_pending_reentry_keep_member_order_and_source() {
         }
         for pending in ["var(--size)", "env(--size)"] {
             let source = declaration(name, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("{name} retains pending substitution")
             };
             assert!(handle.source().same_occurrence(&source));
@@ -310,14 +309,18 @@ fn css_wide_all_and_pending_reentry_keep_member_order_and_source() {
             };
             assert!(
                 handle
-                    .reenter(parse_component_values(invalid_value).unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), invalid_value).unwrap()
+                    )
                     .unwrap_err()
                     .replacement_error()
                     .is_some()
             );
             assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
                     .is_residual_substitution()
             );
@@ -338,7 +341,8 @@ fn css_wide_all_and_pending_reentry_keep_member_order_and_source() {
             } else {
                 vec![replacement_text]
             };
-            let replacement = parse_component_values(replacement_text).unwrap();
+            let replacement =
+                CssComponentValues::parse(&CssParser::default(), replacement_text).unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("{name} reenters to terminal contributions")
@@ -360,7 +364,7 @@ fn css_wide_all_and_pending_reentry_keep_member_order_and_source() {
                 assert_eq!(item.replacement_components(), Some(&replacement));
             }
             let CssContributions::Longhands(globals) = handle
-                .reenter(parse_component_values("inherit").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
                 .unwrap()
             else {
                 panic!("{name} reenters to global contributions")
@@ -383,7 +387,8 @@ fn css_wide_all_and_pending_reentry_keep_member_order_and_source() {
 #[test]
 fn ordinary_size_is_not_the_page_size_descriptor_and_normalization_keeps_order() {
     accepted("size", "10px 20px");
-    let report = parse_sheet("@page{margin-top:1px;size:10px 20px;margin-bottom:2px}");
+    let report =
+        CssParser::default().parse_sheet("@page{margin-top:1px;size:10px 20px;margin-bottom:2px}");
     assert!(report.is_clean());
     let [CssRule::Page(page)] = report.syntax().rules() else {
         panic!("one retained page rule")
@@ -412,9 +417,7 @@ fn ordinary_size_is_not_the_page_size_descriptor_and_normalization_keeps_order()
         grammar("margin-bottom").target_property()
     );
 
-    let report = parse_sheet(
-        ".a{size:1px 2px;frame-sizing:content-block-size;max-size:auto;min-size:fit-content(3px);min-intrinsic-sizing:zero-if-extrinsic zero-if-scroll;max-size:none}",
-    );
+    let report = CssParser::default().parse_sheet(".a{size:1px 2px;frame-sizing:content-block-size;max-size:auto;min-size:fit-content(3px);min-intrinsic-sizing:zero-if-extrinsic zero-if-scroll;max-size:none}");
     let [diagnostic] = report.diagnostics() else {
         panic!(
             "one invalid max-size diagnostic: {:?}",
@@ -423,7 +426,7 @@ fn ordinary_size_is_not_the_page_size_descriptor_and_normalization_keeps_order()
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()

@@ -82,9 +82,9 @@ fn nul_is_retained_in_identity_and_identifier_output_replaces_it_only_on_output(
     assert_eq!(name.as_str().as_bytes(), b"--a\0Z");
     let replaced = CssCustomPropertyName::try_from_decoded("--a�Z").unwrap();
     assert_ne!(name, replaced);
-    let report = parse_property_value_text(
+    let report = CssParser::default().parse_property_value(
         "RAW",
-        CssPropertyNameRef::Custom(&name),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Custom(&name)),
         CssImportance::Normal,
     );
     assert!(report.is_clean());
@@ -110,9 +110,9 @@ fn owned_semantic_names_compose_real_value_origins_and_parsed_name_equality_afte
     };
     let report = {
         let input = "MiXeD".to_owned();
-        parse_property_value_text(
+        CssParser::default().parse_property_value(
             &input,
-            CssPropertyNameRef::Custom(&name),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Custom(&name)),
             CssImportance::Important,
         )
     };
@@ -128,7 +128,7 @@ fn owned_semantic_names_compose_real_value_origins_and_parsed_name_equality_afte
     );
     let parsed = {
         let input = "--bad\\ name:MiXeD".to_owned();
-        parse_declaration_block_contents(&input)
+        CssParser::default().parse_block_contents(&input)
     };
     let parsed = &parsed.syntax().as_slice()[0];
     assert_eq!(parsed.custom().unwrap().name(), &name);

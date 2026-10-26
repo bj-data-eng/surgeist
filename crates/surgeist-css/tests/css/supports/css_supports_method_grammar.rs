@@ -19,7 +19,8 @@ fn literal_property_arguments_reject_css_trivia_and_escape_processing() {
         r"\63 olor",
         "co\nlor",
     ] {
-        let error = parse_css_supports_declaration(property, "red").unwrap_err();
+        let error =
+            CssSupportsDeclaration::parse(&CssParser::default(), property, "red").unwrap_err();
         assert!(
             error.is_invalid_declaration_grammar(),
             "{property:?}: {error:?}"
@@ -35,7 +36,8 @@ fn two_argument_values_reject_root_importance_without_changing_rule_grammar() {
         "red!/**/important",
         "var(--x)!important",
     ] {
-        let error = parse_css_supports_declaration("color", value).unwrap_err();
+        let error =
+            CssSupportsDeclaration::parse(&CssParser::default(), "color", value).unwrap_err();
         assert!(error.is_invalid_declaration_grammar());
         original(error.origin(), value);
         let CssValueOrigin::Parsed(origin) = error.origin() else {
@@ -46,7 +48,11 @@ fn two_argument_values_reject_root_importance_without_changing_rule_grammar() {
             value.find('!').unwrap()
         );
         let condition = format!("(color:{value})");
-        let query = parse_css_supports_condition(&condition).unwrap();
+        let query = CssCondition::<CssSupportsLeaf>::parse_condition_text(
+            &CssParser::default(),
+            &condition,
+        )
+        .unwrap();
         assert_eq!(declaration(&query).importance(), CssImportance::Important);
     }
 }
@@ -59,7 +65,9 @@ fn bare_one_argument_declarations_gain_parentheses_with_original_child_sources()
         ("color:red!important", true),
     ] {
         let before = text.to_owned();
-        let condition = parse_css_supports_condition(text).unwrap();
+        let condition =
+            CssCondition::<CssSupportsLeaf>::parse_condition_text(&CssParser::default(), text)
+                .unwrap();
         let query = declaration(&condition);
         assert_eq!(query.known().is_some(), known);
         original(query.property_component().origin(), text);
@@ -73,7 +81,7 @@ fn bare_one_argument_declarations_gain_parentheses_with_original_child_sources()
                 .as_css(),
             format!("({text})")
         );
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         assert_eq!(query.components(), values.items());
         assert_eq!(text, before);
     }
@@ -81,7 +89,8 @@ fn bare_one_argument_declarations_gain_parentheses_with_original_child_sources()
 #[test]
 fn complete_conditions_remain_first_and_both_method_overloads_force_standards() {
     let text = "(color:red) and (width:1px)";
-    let condition = parse_css_supports_condition(text).unwrap();
+    let condition =
+        CssCondition::<CssSupportsLeaf>::parse_condition_text(&CssParser::default(), text).unwrap();
     assert!(matches!(condition.kind(), CssConditionKind::And(_)));
     assert_eq!(
         condition
@@ -91,7 +100,8 @@ fn complete_conditions_remain_first_and_both_method_overloads_force_standards() 
         text
     );
     for property in ["color", "COLOR"] {
-        let value = parse_css_supports_declaration(property, "/*😀*/red").unwrap();
+        let value =
+            CssSupportsDeclaration::parse(&CssParser::default(), property, "/*😀*/red").unwrap();
         assert!(value.known().is_some());
         assert_eq!(value.importance(), CssImportance::Normal);
         original(value.origin(), property);
@@ -101,30 +111,39 @@ fn complete_conditions_remain_first_and_both_method_overloads_force_standards() 
     }
     for (name, value) in [("color", "123"), ("future-property", "future(1)")] {
         assert!(
-            parse_css_supports_declaration(name, value)
+            CssSupportsDeclaration::parse(&CssParser::default(), name, value)
                 .unwrap()
                 .known()
                 .is_none()
         );
     }
     let quirk = CssParserContext::new(CssParserMode::Quirks);
-    let rule = quirk
-        .parse_supports_condition("(color:123)", &CssNamespaceContext::default())
-        .unwrap();
+    let rule = CssCondition::<CssSupportsLeaf>::parse(
+        &CssParser::new(quirk, Default::default()),
+        "(color:123)",
+        &CssNamespaceContext::default(),
+    )
+    .unwrap();
     assert!(declaration(&rule).known().is_some());
     assert!(
-        declaration(&parse_css_supports_condition("color:123").unwrap())
-            .known()
-            .is_none()
+        declaration(
+            &CssCondition::<CssSupportsLeaf>::parse_condition_text(
+                &CssParser::default(),
+                "color:123"
+            )
+            .unwrap()
+        )
+        .known()
+        .is_none()
     );
     assert!(
-        parse_css_supports_declaration("color", "123")
+        CssSupportsDeclaration::parse(&CssParser::default(), "color", "123")
             .unwrap()
             .known()
             .is_none()
     );
     assert!(
-        parse_css_supports_declaration("--Case", r#""!important""#)
+        CssSupportsDeclaration::parse(&CssParser::default(), "--Case", r#""!important""#)
             .unwrap()
             .known()
             .is_none()
@@ -133,24 +152,35 @@ fn complete_conditions_remain_first_and_both_method_overloads_force_standards() 
 #[test]
 fn method_retry_preserves_component_and_recovered_errors_and_valid_retry() {
     for text in ["(color:rgb(1 2 3)", "color:red/*"] {
-        let error = parse_css_supports_condition(text).unwrap_err();
+        let error =
+            CssCondition::<CssSupportsLeaf>::parse_condition_text(&CssParser::default(), text)
+                .unwrap_err();
         assert!(error.is_recovered_input());
         assert!(matches!(
             error.origin(),
             CssValueOrigin::ImplicitClosure { .. }
         ));
     }
-    let error = parse_css_supports_condition("color:)").unwrap_err();
+    let error =
+        CssCondition::<CssSupportsLeaf>::parse_condition_text(&CssParser::default(), "color:)")
+            .unwrap_err();
     assert!(error.component_error().is_some());
     let text = "(color:".to_owned() + &"f(".repeat(257) + "red" + &")".repeat(258);
-    let error = parse_css_supports_condition(&text).unwrap_err();
+    let error = CssCondition::<CssSupportsLeaf>::parse_condition_text(&CssParser::default(), &text)
+        .unwrap_err();
     let Some(error) = error.component_error() else {
         panic!("original component resource failure")
     };
     assert!(error.is_nesting_limit(), "{error:?}");
     assert!(
-        declaration(&parse_css_supports_condition("color:red").unwrap())
-            .known()
-            .is_some()
+        declaration(
+            &CssCondition::<CssSupportsLeaf>::parse_condition_text(
+                &CssParser::default(),
+                "color:red"
+            )
+            .unwrap()
+        )
+        .known()
+        .is_some()
     );
 }

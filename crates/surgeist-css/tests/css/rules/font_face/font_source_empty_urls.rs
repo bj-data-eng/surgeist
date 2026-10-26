@@ -8,13 +8,13 @@
 use crate::css::support::rules::retained_demo_font_face as font_face;
 use surgeist_css::{
     CssFontFaceSource, CssFontFaceUrlSource, CssFontFormatHint, CssFontTechHint, CssParseReport,
-    CssSheet, parse_sheet, validate_sheet,
+    CssParser, CssSheet,
 };
 
 fn assert_clean_urls(value: &str, expected: &[&str]) -> CssParseReport<CssSheet> {
     let source =
         format!("@font-face{{font-family:Demo;src:{value};font-display:swap}}.after{{color:red}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(
         report.is_clean(),
         "valid authored URL sources must not need recovery: {value:?}: {:?}",
@@ -30,7 +30,13 @@ fn assert_clean_urls(value: &str, expected: &[&str]) -> CssParseReport<CssSheet>
         })
         .collect::<Vec<_>>();
     assert_eq!(actual, expected, "authored source order for {value:?}");
-    assert_eq!(&validate_sheet(&source).unwrap(), report.syntax());
+    assert_eq!(
+        &CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap(),
+        report.syntax()
+    );
     report
 }
 

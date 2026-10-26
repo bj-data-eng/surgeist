@@ -1,8 +1,8 @@
 //! Syntax 3 §5.5.2 returns an at-rule with an EOF fault. These cases compose
 //! that contract with existing ordinary/scoped structural recovery boundaries.
 use surgeist_css::{
-    CssErrorCode, CssLayerNameList, CssParseReport, CssRecoveryAction, CssRule, CssSheet,
-    CssSourcePosition, parse_sheet, validate_sheet,
+    CssErrorCode, CssLayerNameList, CssParseReport, CssParser, CssRecoveryAction, CssRule,
+    CssSheet, CssSourcePosition,
 };
 
 const DEPTHS: [usize; 6] = [63, 64, 65, 127, 128, 129];
@@ -125,7 +125,11 @@ fn assert_local_eof(report: &CssParseReport<CssSheet>, source: &str, start: usiz
     assert_original_position(diagnostic.span().end(), source, end);
     assert!(!report.is_clean());
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_eq!(
@@ -144,8 +148,8 @@ fn check_depths(scoped: bool) {
         .map(|depth| {
             let (source, start, end) = specimen(depth, scoped, false);
             let (terminated, control_start, _) = specimen(depth, scoped, true);
-            let report = parse_sheet(&source);
-            let control = parse_sheet(&terminated);
+            let report = CssParser::default().parse_sheet(&source);
+            let control = CssParser::default().parse_sheet(&terminated);
             (
                 depth,
                 source,
@@ -167,7 +171,13 @@ fn check_depths(scoped: bool) {
             "terminated control at depth {depth}: {:?}",
             control.diagnostics()
         );
-        assert_eq!(validate_sheet(&terminated).unwrap(), *control.syntax());
+        assert_eq!(
+            CssParser::default()
+                .parse_sheet(&terminated)
+                .into_validation_result()
+                .unwrap(),
+            *control.syntax()
+        );
         assert_local_eof(&report, &source, start, end);
     }
 }

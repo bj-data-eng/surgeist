@@ -4,7 +4,11 @@ use surgeist_css::*;
 
 fn main() {
     let condition = CssCondition::<CssContainerLeaf>::try_from_components(
-        parse_component_values("style((color: var(--theme)) and (1px < --size <= 10px))").unwrap(),
+        CssComponentValues::parse(
+            &CssParser::default(),
+            "style((color: var(--theme)) and (1px < --size <= 10px))",
+        )
+        .unwrap(),
         Default::default(),
     )
     .unwrap();

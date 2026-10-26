@@ -29,13 +29,15 @@ fn visibility_initial_and_constructed_values_have_exact_typed_payloads() {
             Default::default(),
         )
         .unwrap();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Visibility),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Visibility)),
             components.clone(),
             CssImportance::Important,
         )
         .unwrap();
-        let report = parse_style_attribute(&format!("visibility:{text}!important"));
+        let report =
+            CssParser::default().parse_block_contents(format!("visibility:{text}!important"));
         assert!(report.is_clean());
         for declaration in [checked, report.syntax()[0].clone()] {
             let before = declaration.clone();
@@ -63,7 +65,7 @@ fn visibility_initial_and_constructed_values_have_exact_typed_payloads() {
             );
             assert_eq!(value.as_css(), text);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&declaration).unwrap()
+                declaration.expand().unwrap()
             else {
                 panic!("ordinary")
             };
@@ -118,7 +120,7 @@ fn visibility_canonical_keywords_obey_exact_limits_without_mutation() {
                 kind
             );
         }
-        let report = parse_style_attribute(&format!("visibility:{expected}"));
+        let report = CssParser::default().parse_block_contents(format!("visibility:{expected}"));
         assert!(report.is_clean());
         let CssKnownPropertyValueRef::Visibility(parsed) = report.syntax()[0]
             .known()
@@ -143,7 +145,7 @@ fn visibility_canonical_keywords_obey_exact_limits_without_mutation() {
 #[test]
 fn recovered_visibility_normalization_preserves_occurrences_and_exact_budgets() {
     let text = ".a{visibility:visible;visibility:auto;visibility:hidden!important}";
-    let report = parse_sheet(text);
+    let report = CssParser::default().parse_sheet(text);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
@@ -155,7 +157,11 @@ fn recovered_visibility_normalization_preserves_occurrences_and_exact_budgets() 
         Some("auto"),
     );
     assert_eq!(
-        validate_sheet(text).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(text)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     for (limits, resource, limit) in [
@@ -176,17 +182,18 @@ fn recovered_visibility_normalization_preserves_occurrences_and_exact_budgets() 
         ),
     ] {
         assert_eq!(
-            normalize_sheet_with_limits(report.syntax(), limits)
+            report
+                .syntax()
+                .normalize(limits)
                 .unwrap_err()
                 .exhausted_limit(),
             Some((resource, limit))
         );
     }
-    let sheet = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap(),
-    )
-    .unwrap();
+    let sheet = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap())
+        .unwrap();
     let items: Vec<_> = sheet
         .items()
         .iter()
@@ -247,10 +254,10 @@ fn nested_visibility_runs_preserve_contexts_across_structural_chunks() {
             "@media all{".repeat(depth),
             "}".repeat(depth),
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{depth}: {:?}", report.diagnostics());
         for _ in 0..2 {
-            let sheet = normalize_sheet(report.syntax()).unwrap();
+            let sheet = report.syntax().normalize(Default::default()).unwrap();
             let items: Vec<_> = sheet
                 .items()
                 .iter()

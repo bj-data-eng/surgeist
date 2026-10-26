@@ -97,7 +97,7 @@ fn ordinary_huge_and_nonzero_underflow_channels_remain_exact() {
 fn checked_mixed_origin_graph_keeps_the_actual_scalar_sources() {
     let mut children = vec![CssComponentValue::try_number("0.1").unwrap()];
     children.extend(
-        parse_component_values("1e100 0")
+        CssComponentValues::parse(&CssParser::default(), "1e100 0")
             .unwrap()
             .items()
             .iter()
@@ -116,8 +116,9 @@ fn checked_mixed_origin_graph_keeps_the_actual_scalar_sources() {
             .as_css(),
         "rgb(0.1/**/1e100 0)"
     );
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         values.clone(),
         CssImportance::Normal,
     )
@@ -197,9 +198,10 @@ fn formerly_overflowing_relative_slots_keep_their_typed_environment() {
         ("rgb(from red 1e999deg g b)", "1e999deg"),
     ] {
         assert_color_value_rejected(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Color),
-                parse_component_values(text).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssImportance::Normal,
             ),
             CssKnownProperty::Color,
@@ -350,7 +352,7 @@ fn percentage_slots_retain_the_authored_coefficient_without_scaling() {
 #[test]
 fn border_color_assignments_retain_exact_nested_colors() {
     for text in ["hsl(0 30% 50%)", "color-mix(in srgb, red 0.1%, blue)"] {
-        let report = parse_style_attribute(&format!("border-color:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("border-color:{text}"));
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let CssKnownPropertyValueRef::BorderColor(value) = report.syntax()[0]
             .known()
@@ -381,7 +383,7 @@ fn border_color_assignments_retain_exact_nested_colors() {
             assert_eq!(weight.literal().numeric().representation(), "0.1");
         }
     }
-    let report = parse_style_attribute("border-color:hsl(0 25% 50%)");
+    let report = CssParser::default().parse_block_contents("border-color:hsl(0 25% 50%)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderColor(value) = report.syntax()[0]
         .known()
@@ -394,9 +396,7 @@ fn border_color_assignments_retain_exact_nested_colors() {
     assert!(
         matches!(value.value().assigned()[0].hsl_value().unwrap().saturation(), CssColorComponent::Percentage(value) if value.numeric().representation() == "25")
     );
-    let report = parse_style_attribute(
-        "border-color: red hsl(0 30% 50%) color-mix(in srgb, blue 0.1%, green) currentcolor !important",
-    );
+    let report = CssParser::default().parse_block_contents("border-color: red hsl(0 30% 50%) color-mix(in srgb, blue 0.1%, green) currentcolor !important");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax()[0].importance(), CssImportance::Important);
     let CssKnownPropertyValueRef::BorderColor(value) = report.syntax()[0]
@@ -472,12 +472,17 @@ fn decimal_proof_capacity_does_not_limit_exact_literal_admission() {
     }
     let source = "rgb(1e100 0 0)";
     let limits = CssComponentValueLimits::try_new(256, usize::MAX, source.len() - 1).unwrap();
-    let error = parse_component_values_with_limits(source, limits).unwrap_err();
+    let error =
+        CssComponentValues::parse(&CssParser::new(CssParserContext::default(), limits), source)
+            .unwrap_err();
     assert!(error.is_byte_limit(), "{error:?}");
     let limits = CssComponentValueLimits::try_new(256, usize::MAX, source.len()).unwrap();
-    let values = parse_component_values_with_limits(source, limits).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    let values =
+        CssComponentValues::parse(&CssParser::new(CssParserContext::default(), limits), source)
+            .unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         values,
         CssImportance::Normal,
     )
@@ -581,19 +586,18 @@ fn deep_mixed_color_graph_retains_exact_leaf_at_the_shared_depth_boundary() {
         }
     }
     let text = nested(257);
-    let report = parse_style_attribute(&format!("color:{text};opacity:.5"));
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one depth failure")
-    };
-    assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    assert_eq!(report.syntax().len(), 1);
-    assert_eq!(
-        report.syntax()[0].known().unwrap().property(),
-        CssKnownProperty::Opacity
+    let contents = format!("color:{text};opacity:.5");
+    let report = CssParser::default().parse_block_contents(&contents);
+    // Block contents charges the component limits for the whole input.
+    assert!(report.syntax().is_empty());
+    crate::css::support::parse_report::assert_contents_refused(
+        &report,
+        &contents,
+        "exact depth 257",
     );
     // Checked property input cannot bypass the component graph's same ceiling.
     assert!(
-        parse_component_values(&text)
+        CssComponentValues::parse(&CssParser::default(), &text)
             .unwrap_err()
             .is_nesting_limit()
     );

@@ -10,7 +10,7 @@ fn named(name: &str) -> CssColor {
     CssColor::from_named(CssNamedColor::try_new(name).unwrap())
 }
 fn component(css: &str) -> CssComponentValue {
-    let values = parse_component_values(css).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), css).unwrap();
     assert_eq!(values.items().len(), 1);
     values.items()[0].clone()
 }
@@ -94,11 +94,12 @@ fn angular_literals_admit_angles_percentages_and_exact_zero_without_number_coerc
         let value = angular(css);
         assert!(matches!(value.origin(), CssValueOrigin::Parsed(_)));
         assert!(
-            parse_style_attribute(&format!(
-                "background-image:conic-gradient(red {})",
-                value.serialize_specified(Default::default()).unwrap()
-            ))
-            .is_clean()
+            CssParser::default()
+                .parse_block_contents(format!(
+                    "background-image:conic-gradient(red {})",
+                    value.serialize_specified(Default::default()).unwrap()
+                ))
+                .is_clean()
         );
     }
     for css in ["1", "1e-99", "1px", "1s", "none", "calc(1deg)"] {
@@ -112,7 +113,7 @@ fn angular_literals_admit_angles_percentages_and_exact_zero_without_number_coerc
 #[test]
 fn angular_percentage_math_retains_the_contextual_angle_type_and_authored_origin() {
     let expression = CssCalculation::<CssAnglePercentage>::try_from_components(
-        parse_component_values("calc(1turn + 25%)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(1turn + 25%)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -134,7 +135,7 @@ fn angular_percentage_math_retains_the_contextual_angle_type_and_authored_origin
     for css in ["calc(1px + 25%)", "calc(1deg + 1s)", "calc(0)"] {
         assert!(
             CssCalculation::<CssAnglePercentage>::try_from_components(
-                parse_component_values(css).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), css).unwrap(),
                 Default::default()
             )
             .is_err(),
@@ -273,7 +274,7 @@ fn math(functions: usize, leaf: &str) -> CssComponentValues {
     for _ in 0..functions {
         css = format!("calc({css})");
     }
-    parse_component_values(&css).unwrap()
+    CssComponentValues::parse(&CssParser::default(), &css).unwrap()
 }
 fn angular_math(functions: usize) -> CssAngularColorStopPosition {
     CssAngularColorStopPosition::from_calculation(
@@ -465,14 +466,16 @@ fn selected_metadata_traces_the_exact_gradient_import_without_claiming_siblings(
         );
     }
     assert!(
-        !parse_style_attribute("background-image:repeating-conic-gradient(red,blue)").is_clean()
+        !CssParser::default()
+            .parse_block_contents("background-image:repeating-conic-gradient(red,blue)")
+            .is_clean()
     );
 }
 
 #[test]
 fn parsed_conic_second_position_and_from_keep_the_original_source_spans() {
     let source = "/*😀*/background-image:conic-gradient(from calc(15deg + 5deg) at block-start 3px inline-end 4% in lab, red 10deg calc(20deg + 25%))!important";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BackgroundImage(images) = report.syntax()[0]
         .known()
@@ -782,9 +785,16 @@ fn missing_rgb_sibling_defaults_follow_the_retained_color_carrier() {
             "",
         ),
     ] {
-        let declaration = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
-            parse_component_values(&format!("conic-gradient(rgb(none 0 255), {sibling})")).unwrap(),
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::BackgroundImage,
+            )),
+            CssComponentValues::parse(
+                &CssParser::default(),
+                format!("conic-gradient(rgb(none 0 255), {sibling})"),
+            )
+            .unwrap(),
             CssImportance::Normal,
         )
         .unwrap();
@@ -805,7 +815,8 @@ fn missing_rgb_sibling_defaults_follow_the_retained_color_carrier() {
                 .unwrap(),
             expected
         );
-        let report = parse_style_attribute(&format!("background-image: {expected}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("background-image: {expected}"));
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         assert_eq!(
             report.syntax()[0]
@@ -849,7 +860,7 @@ fn matching_legacy_keyword_default_is_omitted_without_resolving_current_color() 
         expected
     );
     assert!(gradient.interpolation().is_some());
-    let report = parse_style_attribute(&format!("background-image: {expected}"));
+    let report = CssParser::default().parse_block_contents(format!("background-image: {expected}"));
     assert!(report.is_clean());
 }
 
@@ -862,9 +873,16 @@ fn matching_relative_legacy_function_default_preserves_the_declared_carrier() {
         "hsl(from currentcolor h s l)",
         "hwb(from currentcolor h w b)",
     ] {
-        let declaration = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
-            parse_component_values(&format!("conic-gradient(in oklab, {color}, blue)")).unwrap(),
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::BackgroundImage,
+            )),
+            CssComponentValues::parse(
+                &CssParser::default(),
+                format!("conic-gradient(in oklab, {color}, blue)"),
+            )
+            .unwrap(),
             CssImportance::Normal,
         )
         .unwrap();
@@ -885,7 +903,8 @@ fn matching_relative_legacy_function_default_preserves_the_declared_carrier() {
                 .unwrap(),
             expected
         );
-        let report = parse_style_attribute(&format!("background-image: {expected}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("background-image: {expected}"));
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         assert_eq!(
             report.syntax()[0]

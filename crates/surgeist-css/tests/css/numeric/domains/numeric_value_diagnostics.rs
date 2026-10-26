@@ -4,9 +4,9 @@
 
 use crate::css::support::property_admission::GrammarFacts;
 use surgeist_css::{
-    CssErrorCode, CssImportance, CssKnownProperty, CssParserContext, CssPropertyNameRef,
-    CssSerializedOrigin, CssTokenKind, CssValueOrigin, parse_component_values,
-    parse_property_value, parse_property_value_for_grammar, parse_style_attribute, validate_sheet,
+    CssComponentValues, CssDeclaration, CssErrorCode, CssImportance, CssKnownProperty, CssParser,
+    CssPropertyNameRef, CssPropertyTarget, CssPropertyTextTarget, CssSerializedOrigin,
+    CssTokenKind, CssValueOrigin,
 };
 
 /// The responsible token: its kind, authored spelling and offset in the value.
@@ -39,7 +39,7 @@ fn assert_every_front(name: &str, value: &str, expected: Responsible) {
     let declaration = format!("{name}:{value}");
     let value_offset = name.len() + 1;
 
-    let report = parse_style_attribute(&declaration);
+    let report = CssParser::default().parse_block_contents(&declaration);
     let [diagnostic] = report.diagnostics() else {
         panic!("{declaration}: one diagnostic")
     };
@@ -52,7 +52,10 @@ fn assert_every_front(name: &str, value: &str, expected: Responsible) {
     );
 
     let sheet = format!(".a{{{declaration}}}");
-    let failure = validate_sheet(&sheet).unwrap_err();
+    let failure = CssParser::default()
+        .parse_sheet(&sheet)
+        .into_validation_result()
+        .unwrap_err();
     let [diagnostic] = failure.diagnostics() else {
         panic!("{sheet}: one diagnostic")
     };
@@ -64,20 +67,22 @@ fn assert_every_front(name: &str, value: &str, expected: Responsible) {
         "{front}"
     );
 
-    let components = parse_component_values(value).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     for (front, result) in [
         (
             "by-name",
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Normal,
             ),
         ),
         (
             "by-grammar",
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Normal,
             ),
@@ -97,9 +102,9 @@ fn assert_every_front(name: &str, value: &str, expected: Responsible) {
         );
     }
 
-    let text = CssParserContext::default().parse_property_value_text(
+    let text = CssParser::default().parse_property_value(
         value,
-        CssPropertyNameRef::Known(property),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(property)),
         CssImportance::Normal,
     );
     let [diagnostic] = text.diagnostics() else {

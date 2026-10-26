@@ -308,7 +308,9 @@ fn owner_attributes_and_disabled_do_not_inherit_css_rules_security_guards() {
     facts.location = Some("https://host.example/fixed".into());
     facts.title = std::sync::Arc::new("old".encode_utf16().collect());
     facts.disallow_modification = true;
-    facts.media = parse_media_query_list("screen").into_parts().0;
+    facts.media = CssMediaQueryList::parse(&CssParser::default(), "screen")
+        .into_parts()
+        .0;
     let mut edit = batch(&owner);
     let ticket = edit.create_parsed_sheet("a {}", facts).unwrap();
     let sheet = owner.commit(edit).unwrap().sheet(&ticket).unwrap().clone();

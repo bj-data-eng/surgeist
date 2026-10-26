@@ -18,7 +18,7 @@ type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;
 
 fn length_percentage(source: &str) -> CssNumeric<CssLengthPercentage> {
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let calculation =
         CssCalculation::<CssLengthPercentage>::try_from_components(components, Default::default())
             .unwrap();
@@ -105,7 +105,7 @@ fn raw_percentage_comparisons_fold_without_a_dimension_hint() {
         ("clamp(none,2%,3%)", "calc(2%)"),
         ("clamp(1%,2%,none)", "calc(2%)"),
     ] {
-        let components = parse_component_values(source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let calculation = CssCalculation::<CssPercentage>::try_from_components(
             components.clone(),
             Default::default(),

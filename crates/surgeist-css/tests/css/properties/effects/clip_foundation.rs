@@ -15,8 +15,7 @@ fn clip(source: &CssDeclaration) -> &CssClip {
 }
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("one clip longhand contribution")
     };
@@ -86,7 +85,7 @@ fn mixed_separators_percentages_and_wrong_arity_drop_only_the_invalid_declaratio
         "rect(0, calc(1px + 2%), 2px, 3px)",
     ] {
         let source = format!("color:red;clip:{invalid};height:2px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2, "{invalid}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -107,7 +106,7 @@ fn mixed_separators_percentages_and_wrong_arity_drop_only_the_invalid_declaratio
 #[test]
 fn pending_clip_reentry_is_strict_repeatable_and_retains_replacement_provenance() {
     let source = declaration("clip:var(--region)!important");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("clip substitution is pending")
     };
     assert!(pending.source().same_occurrence(&source));
@@ -118,7 +117,7 @@ fn pending_clip_reentry_is_strict_repeatable_and_retains_replacement_provenance(
     ] {
         assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some()
@@ -126,11 +125,12 @@ fn pending_clip_reentry_is_strict_repeatable_and_retains_replacement_provenance(
     }
     assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
-    let replacement = parse_component_values("rect(auto, -1px, 2em, 0)").unwrap();
+    let replacement =
+        CssComponentValues::parse(&CssParser::default(), "rect(auto, -1px, 2em, 0)").unwrap();
     for _ in 0..2 {
         let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
         else {
@@ -146,7 +146,7 @@ fn pending_clip_reentry_is_strict_repeatable_and_retains_replacement_provenance(
         assert_eq!(item.replacement_components(), Some(&replacement));
     }
     let CssContributions::Longhands(items) = pending
-        .reenter(parse_component_values("inherit").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
         .unwrap()
     else {
         panic!("one global")
@@ -159,9 +159,10 @@ fn pending_clip_reentry_is_strict_repeatable_and_retains_replacement_provenance(
 
 #[test]
 fn normalization_preserves_mixed_order_and_fails_at_contribution_boundary() {
-    let report = parse_sheet(".a{clip:auto;flex-direction:column;clip:rect(auto, -1px, 2em, 0)}");
+    let report = CssParser::default()
+        .parse_sheet(".a{clip:auto;flex-direction:column;clip:rect(auto, -1px, 2em, 0)}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -196,7 +197,7 @@ fn normalization_preserves_mixed_order_and_fails_at_contribution_boundary() {
         assert!(item.source().same_occurrence(declarations[index].source()));
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 2))

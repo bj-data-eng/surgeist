@@ -20,9 +20,10 @@ fn assert_admitted(name: &str, value: &str) {
     assert!(known.property_value().is_some());
     assert!(known.global().is_none());
     assert!(known.substitution_dependent().is_none());
-    let components = parse_component_values(value).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(property(name)),
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
         components.clone(),
         CssImportance::Important,
     )
@@ -40,8 +41,18 @@ fn assert_admitted(name: &str, value: &str) {
             .as_css(),
         value
     );
-    assert!(validate_style_attribute(&format!("{name}:{value}")).is_ok());
-    assert!(validate_sheet(&format!(".speech{{{name}:{value}}}")).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(format!("{name}:{value}"))
+            .into_validation_result()
+            .is_ok()
+    );
+    assert!(
+        CssParser::default()
+            .parse_sheet(format!(".speech{{{name}:{value}}}"))
+            .into_validation_result()
+            .is_ok()
+    );
     let values = expanded(&source);
     let [item] = values.items() else {
         panic!("one terminal contribution")
@@ -67,7 +78,8 @@ fn voice_duration_admits_auto_and_exact_nonnegative_ordinary_time() {
     ] {
         assert_admitted("voice-duration", text);
     }
-    let report = parse_sheet(".parent{voice-duration:1s}.child{voice-duration:2s;voice-rate:fast}");
+    let report = CssParser::default()
+        .parse_sheet(".parent{voice-duration:1s}.child{voice-duration:2s;voice-rate:fast}");
     assert!(
         report.is_clean(),
         "duration subtree precedence belongs downstream: {:?}",
@@ -308,7 +320,7 @@ fn invalid_prosody_grammars_drop_one_declaration_and_keep_valid_siblings() {
     ] {
         for value in invalid {
             let source = format!("color:red;{name}:{value};height:1px");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(report.syntax().len(), 2, "{source}");
             assert_eq!(
                 report.syntax()[0].known().unwrap().property(),
@@ -333,13 +345,18 @@ fn invalid_prosody_grammars_drop_one_declaration_and_keep_valid_siblings() {
                 "{source}"
             );
             assert_eq!(
-                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
             assert!(
-                parse_property_value(
-                    CssPropertyNameRef::Known(property(name)),
-                    parse_component_values(value).unwrap(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
+                    CssComponentValues::parse(&CssParser::default(), value).unwrap(),
                     CssImportance::Normal
                 )
                 .is_err(),
@@ -396,13 +413,14 @@ fn prosody_substitution_reentry_checks_phase_and_grammar_atomically_with_origins
                 .as_css(),
             "var(--prosody)"
         );
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending prosody")
         };
         for text in [valid, "inherit"] {
-            let replacement = parse_component_values(text).unwrap();
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(property(name)),
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
                 replacement.clone(),
                 CssImportance::Important,
             )
@@ -428,7 +446,7 @@ fn prosody_substitution_reentry_checks_phase_and_grammar_atomically_with_origins
             "normal;color:red",
         ] {
             let error = handle
-                .reenter(parse_component_values(text).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                 .unwrap_err();
             assert!(
                 error.replacement_error().is_some(),
@@ -437,13 +455,13 @@ fn prosody_substitution_reentry_checks_phase_and_grammar_atomically_with_origins
         }
         assert!(
             handle
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
         assert!(
             handle
-                .reenter(parse_component_values(valid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), valid).unwrap())
                 .is_ok()
         );
     }
@@ -457,7 +475,7 @@ fn prosody_case_escapes_comments_and_exact_coefficients_survive_bounded_raw_seri
         ("VOICE-RANGE", "voice-range", r"H\49 GH/**/-3.5S\54"),
         (r"voice\2d rate", "voice-rate", "9007199254740993%/**/FAST"),
     ] {
-        let report = parse_style_attribute(&format!("{name}:{value}!important"));
+        let report = CssParser::default().parse_block_contents(format!("{name}:{value}!important"));
         assert!(
             report.is_clean(),
             "{name}:{value}: {:?}",
@@ -489,8 +507,9 @@ fn prosody_case_escapes_comments_and_exact_coefficients_survive_bounded_raw_seri
                 .as_css(),
             value
         );
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(property(canonical)),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property(canonical))),
             components.clone(),
             CssImportance::Important,
         )
@@ -510,7 +529,7 @@ fn ordinary_range_failure_keeps_the_exact_token_position_and_complete_recovery_s
         let prefix = "color:red;/*😀*/";
         let unit = format!("{name}:{value};");
         let source = format!("{prefix}{unit}height:1px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2);
         let [diagnostic] = report.diagnostics() else {
             panic!("one range diagnostic")
@@ -530,7 +549,7 @@ fn ordinary_range_failure_keeps_the_exact_token_position_and_complete_recovery_s
             prefix.len() + unit.len()
         );
         let sheet_source = format!(".a{{{source}}}");
-        let sheet = parse_sheet(&sheet_source);
+        let sheet = CssParser::default().parse_sheet(&sheet_source);
         let [CssRule::Style(rule)] = sheet.syntax().rules() else {
             panic!("retained rule")
         };
@@ -544,7 +563,11 @@ fn ordinary_range_failure_keeps_the_exact_token_position_and_complete_recovery_s
             source.find(rejected).unwrap() + 3
         );
         assert_eq!(
-            validate_sheet(&sheet_source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&sheet_source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             sheet.diagnostics()
         );
     }
@@ -559,7 +582,7 @@ fn recovered_prosody_calculations_remain_diagnosed_and_checked_reentry_rejects_o
         ("voice-rate", "fast calc(-1%"),
     ] {
         let source = format!("{name}:{value}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(!report.is_clean());
         let [declaration] = report.syntax().as_slice() else {
             panic!("retained recovered math: {source}")
@@ -568,7 +591,11 @@ fn recovered_prosody_calculations_remain_diagnosed_and_checked_reentry_rejects_o
         assert!(declaration.known().unwrap().property_value().is_some());
         assert!(!report.diagnostics().is_empty());
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
         let components = declaration.value_components();
@@ -576,15 +603,16 @@ fn recovered_prosody_calculations_remain_diagnosed_and_checked_reentry_rejects_o
         assert!(closed_text.as_css().ends_with(')'));
         // Serializing a recovery graph cannot launder its original implicit closure.
         assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(property(name)),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
                 components.clone(),
                 CssImportance::Normal
             )
             .is_err()
         );
         let pending = self::declaration(name, "var(--prosody)");
-        let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+        let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
             panic!("pending")
         };
         assert!(

@@ -293,7 +293,7 @@ fn selector_success_keeps_block_and_children_and_records_new_occurrence_even_sam
 #[test]
 fn public_keyframe_offset_probe_distinguishes_exact_literal_data_and_symbolic_provenance() {
     let parse = |text| {
-        parse_keyframe_selector_list(text)
+        CssParsedKeyframeSelectors::parse(&CssParser::default(), text)
             .into_parts()
             .0
             .unwrap()

@@ -1,7 +1,7 @@
 //! Checked construction preserves exact tokens and bounded public operations.
 use surgeist_css::{
-    CssCalculation, CssCalculationExpressionRef, CssComponentValue, CssComponentValues, CssLength,
-    CssNumber, parse_component_values,
+    CssCalculation, CssCalculationExpressionRef, CssComponentValue, CssComponentValues,
+    CssDeclaration, CssLength, CssNumber, CssParser, CssPropertyTarget,
 };
 
 #[test]
@@ -22,13 +22,13 @@ fn adjacent_programmatic_tokens_do_not_turn_into_an_exponent() {
 #[test]
 fn empty_and_trailing_values_report_the_responsible_origin() {
     let empty = CssCalculation::<CssNumber>::try_from_components(
-        parse_component_values(" ").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), " ").unwrap(),
         Default::default(),
     )
     .unwrap_err();
     assert!(empty.is_empty_value(), "{empty:?}");
     assert_eq!(empty.origin(), None);
-    let values = parse_component_values("1 2").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "1 2").unwrap();
     let extra = values.items()[2].origin().clone();
     let error =
         CssCalculation::<CssNumber>::try_from_components(values, Default::default()).unwrap_err();
@@ -46,7 +46,7 @@ fn exact_numeric_depth_limit_fits_an_ordinary_stack() {
             .spawn(|| {
                 let source = format!("{}1{}", "calc(".repeat(256), ")".repeat(256));
                 let calculation = CssCalculation::<CssNumber>::try_from_components(
-                    parse_component_values(&source).unwrap(),
+                    CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
                     Default::default(),
                 )
                 .unwrap();
@@ -104,17 +104,18 @@ fn exact_numeric_depth_limit_fits_an_ordinary_stack() {
 fn property_bridge_retains_the_programmatic_root_and_original_parsed_children() {
     use surgeist_css::{
         CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssOpacityValue,
-        CssPropertyNameRef, CssValueOrigin, parse_property_value,
+        CssPropertyNameRef, CssValueOrigin,
     };
-    let children = parse_component_values("1e99999 / 2").unwrap();
+    let children = CssComponentValues::parse(&CssParser::default(), "1e99999 / 2").unwrap();
     let expected_leaf = children.items()[0].origin().clone();
     let values = CssComponentValues::try_new(
         vec![CssComponentValue::try_function("calc", children).unwrap()],
         Default::default(),
     )
     .unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Opacity),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Opacity)),
         values.clone(),
         CssImportance::Important,
     )
@@ -153,10 +154,10 @@ fn property_bridge_retains_the_programmatic_root_and_original_parsed_children() 
 fn supports_math_keeps_full_stylesheet_coordinates_after_unicode_prefix() {
     use surgeist_css::{
         CssConditionKind, CssKnownPropertyValueRef, CssOpacityValue, CssRule, CssSupportsLeaf,
-        CssValueOrigin, parse_sheet,
+        CssValueOrigin,
     };
     let source = "/*λ*/\n@supports (opacity: calc(1e99999 / 2)) {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssRule::Supports(rule) = &report.syntax().rules()[0] else {
         panic!("expected supports")
@@ -204,9 +205,8 @@ fn supports_math_keeps_full_stylesheet_coordinates_after_unicode_prefix() {
 fn textual_numeric_eof_recovery_retains_the_value_but_checked_construction_rejects_it() {
     use surgeist_css::{
         CssCalculation, CssErrorCode, CssKnownPropertyValueRef, CssLength, CssRecoveryAction,
-        parse_style_attribute,
     };
-    let report = parse_style_attribute("width:calc(1px");
+    let report = CssParser::default().parse_block_contents("width:calc(1px");
     assert_eq!(report.syntax().len(), 1, "{:?}", report.diagnostics());
     assert!(!report.is_clean());
     let [diagnostic] = report.diagnostics() else {
@@ -222,7 +222,12 @@ fn textual_numeric_eof_recovery_retains_the_value_but_checked_construction_rejec
         "width:calc(1px".len()
     );
     assert_eq!(diagnostic.span().start(), diagnostic.span().end());
-    assert!(surgeist_css::validate_style_attribute("width:calc(1px").is_err());
+    assert!(
+        surgeist_css::CssParser::default()
+            .parse_block_contents("width:calc(1px")
+            .into_validation_result()
+            .is_err()
+    );
     let CssKnownPropertyValueRef::Width(width) = report.syntax()[0]
         .known()
         .unwrap()
@@ -254,11 +259,8 @@ fn textual_numeric_eof_recovery_retains_the_value_but_checked_construction_rejec
 
 #[test]
 fn incompatible_sum_reports_the_original_right_operand() {
-    use surgeist_css::{
-        CssImportance, CssKnownProperty, CssPropertyNameRef, CssSerializedOrigin,
-        parse_property_value,
-    };
-    let children = parse_component_values("1px + 1s").unwrap();
+    use surgeist_css::{CssImportance, CssKnownProperty, CssPropertyNameRef, CssSerializedOrigin};
+    let children = CssComponentValues::parse(&CssParser::default(), "1px + 1s").unwrap();
     let right = children.items()[4].origin().clone();
     let values = CssComponentValues::try_new(
         vec![CssComponentValue::try_function("calc", children).unwrap()],
@@ -270,8 +272,9 @@ fn incompatible_sum_reports_the_original_right_operand() {
             .unwrap_err();
     assert!(direct.is_incompatible_types(), "{direct:?}");
     assert_eq!(direct.origin(), Some(&right));
-    let property = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Width),
+    let property = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
         values,
         CssImportance::Normal,
     )
@@ -282,7 +285,7 @@ fn incompatible_sum_reports_the_original_right_operand() {
 #[test]
 fn empty_function_opening_counts_toward_the_nesting_limit_before_grammar() {
     use surgeist_css::CssComponentValueLimits;
-    let values = parse_component_values("min()").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "min()").unwrap();
     assert_eq!(values.nesting_depth(), 1);
     let origin = values.items()[0].origin().clone();
     let limits = CssComponentValueLimits::try_new(0, 8, 64).unwrap();

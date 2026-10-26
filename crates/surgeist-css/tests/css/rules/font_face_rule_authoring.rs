@@ -292,8 +292,9 @@ fn font_face_numeric_descriptors_enforce_invariants() {
 
 #[test]
 fn font_face_rule_parser_accepts_descriptor_block() {
-    let sheet = parse_sheet(
-        r#"@font-face {
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"@font-face {
             font-family: "Inter";
             src: url("inter.woff2") format("woff2");
             font-weight: 400 700;
@@ -301,8 +302,8 @@ fn font_face_rule_parser_accepts_descriptor_block() {
             font-display: swap;
             unicode-range: U+0000-00FF, U+0100-017F;
         }"#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("expected one font-face rule");
     };
@@ -343,12 +344,10 @@ fn font_face_rule_parser_accepts_descriptor_block() {
 
 #[test]
 fn font_face_rule_parser_accepts_source_list_forms() {
-    let sheet = parse_sheet(
-        r#"@font-face {
+    let sheet = CssParser::default().parse_sheet(r#"@font-face {
             font-family: Avenir Next;
             src: local("Inter"), url("inter.woff2") format("woff2"), url("inter-var.woff2") tech(variations);
-        }"#,
-    )
+        }"#)
     .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("expected one font-face rule");
@@ -381,15 +380,16 @@ fn font_face_rule_parser_accepts_source_list_forms() {
 
 #[test]
 fn font_face_rule_parser_accepts_strict_numeric_ranges() {
-    let sheet = parse_sheet(
-        r#"@font-face {
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"@font-face {
             font-family: Inter;
             src: url(inter.woff2);
             font-style: oblique -10deg 20deg;
             font-stretch: 75% 125%;
         }"#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("expected one font-face rule");
     };

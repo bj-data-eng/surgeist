@@ -3,12 +3,13 @@
 //! direction defaults to `to bottom`.
 
 use surgeist_css::{
-    CssGradient, CssImageValue, CssKnownProperty, CssKnownPropertyValueRef, parse_style_attribute,
+    CssGradient, CssImageValue, CssKnownProperty, CssKnownPropertyValueRef, CssParser,
 };
 
 #[test]
 fn valid_authored_linear_gradient_is_retained_as_background_image() {
-    let report = parse_style_attribute("background-image: linear-gradient(red, blue)");
+    let report =
+        CssParser::default().parse_block_contents("background-image: linear-gradient(red, blue)");
 
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {

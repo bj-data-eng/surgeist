@@ -3,9 +3,9 @@
 //! Literal expectations use numeric/color/URL semantics rather than serialization.
 use surgeist_css::{
     CssBoxSize, CssCalculationType, CssComponentValueRef, CssErrorCode, CssImageValue,
-    CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
-    CssRecoveryAction, CssSizeValue, CssTokenKind, CssValueOrigin, CssValueTokenRef,
-    parse_property_value_text,
+    CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssParser, CssPropertyNameRef,
+    CssPropertyTextTarget, CssRecoveryAction, CssSizeValue, CssTokenKind, CssValueOrigin,
+    CssValueTokenRef,
 };
 
 #[derive(Clone, Copy)]
@@ -530,9 +530,9 @@ fn raw_property_corpus_obeys_selected_grammar_and_original_coordinates() {
         let matching: Vec<_> = cases.iter().filter(|case| case["id"] == id).collect();
         assert_eq!(matching.len(), 1, "one original input for {id}");
         let input = matching[0]["input"].as_str().unwrap();
-        let report = parse_property_value_text(
+        let report = CssParser::default().parse_property_value(
             input,
-            CssPropertyNameRef::Known(property),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(property)),
             CssImportance::Normal,
         );
         let clean = !matches!(expected, Reject(..));

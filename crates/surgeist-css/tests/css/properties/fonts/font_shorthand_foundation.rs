@@ -34,9 +34,10 @@ const RESET_ONLY: [&str; 12] = [
 ];
 
 fn direct(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar(name)),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         CssImportance::Normal,
     )
     .unwrap_or_else(|error| panic!("{name}:{value}: {error:?}"))
@@ -68,8 +69,7 @@ fn font_metadata_has_seven_settable_and_twelve_reset_only_members() {
 #[test]
 fn explicit_font_sets_present_values_and_resets_every_other_member() {
     let source = important_declaration("font", "condensed oblique 25deg 753 16px/20px serif");
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("explicit font expands")
     };
@@ -94,7 +94,7 @@ fn explicit_font_sets_present_values_and_resets_every_other_member() {
         };
         if let Some(authored) = authored {
             let CssExpansion::Contributions(CssContributions::Longhands(expected)) =
-                expand_declaration(&direct(name, authored)).unwrap()
+                direct(name, authored).expand().unwrap()
             else {
                 panic!("direct {name} expands")
             };
@@ -120,7 +120,7 @@ fn explicit_font_sets_present_values_and_resets_every_other_member() {
                 _ => unreachable!("every font member has a pinned initial"),
             };
             let CssExpansion::Contributions(CssContributions::Longhands(expected)) =
-                expand_declaration(&direct(name, initial)).unwrap()
+                direct(name, initial).expand().unwrap()
             else {
                 panic!("direct {name} initial expands")
             };
@@ -181,13 +181,12 @@ fn explicit_font_sets_present_values_and_resets_every_other_member() {
     );
 
     let caps = important_declaration("font", "small-caps 16px serif");
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&caps).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = caps.expand().unwrap()
     else {
         panic!("small-caps font expands")
     };
     let CssExpansion::Contributions(CssContributions::Longhands(expected)) =
-        expand_declaration(&direct("font-variant-caps", "small-caps")).unwrap()
+        direct("font-variant-caps", "small-caps").expand().unwrap()
     else {
         panic!("small-caps longhand expands")
     };
@@ -222,8 +221,7 @@ fn explicit_font_sets_present_values_and_resets_every_other_member() {
 #[test]
 fn css_wide_and_pending_font_values_cover_all_nineteen_members() {
     let source = important_declaration("font", "inherit");
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("inherit font expands")
     };
@@ -242,27 +240,29 @@ fn css_wide_and_pending_font_values_cover_all_nineteen_members() {
     }
 
     let pending_source = important_declaration("font", "var(--typeface)");
-    let CssExpansion::Pending(pending) = expand_declaration(&pending_source).unwrap() else {
+    let CssExpansion::Pending(pending) = pending_source.expand().unwrap() else {
         panic!("font substitution remains pending")
     };
     assert!(pending.source().same_occurrence(&pending_source));
     assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
     // Fonts 4 §2.7: `700` would be a second <'font-weight'>.
     assert_invalid_replacement_at(
         &pending
-            .reenter(parse_component_values("bold 700 16px serif").unwrap())
+            .reenter(
+                CssComponentValues::parse(&CssParser::default(), "bold 700 16px serif").unwrap(),
+            )
             .unwrap_err(),
         CssKnownProperty::Font,
         "bold 700 16px serif",
         "700 16px serif",
     );
     let CssContributions::Longhands(values) = pending
-        .reenter(parse_component_values("small-caps 16px serif").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "small-caps 16px serif").unwrap())
         .unwrap()
     else {
         panic!("valid substitution expands")
@@ -282,7 +282,7 @@ fn font_grammar_retains_pinned_controls_and_neighbor_recovery() {
         "normal normal normal normal 16px serif",
     ] {
         let source = format!("font:{value}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(direct("font", value).known().is_some());
     }
@@ -300,7 +300,7 @@ fn font_grammar_retains_pinned_controls_and_neighbor_recovery() {
         ("75% condensed 16px serif", "16px serif"),
     ] {
         let source = format!("color:red;font:{value};color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert!(direct("color", "red").known().is_some());
@@ -310,22 +310,21 @@ fn font_grammar_retains_pinned_controls_and_neighbor_recovery() {
 
 #[test]
 fn normalized_font_keeps_order_and_enforces_nineteen_contribution_limit() {
-    let report = parse_sheet(".a{font:small-caps 16px serif!important;color:red}");
+    let report =
+        CssParser::default().parse_sheet(".a{font:small-caps 16px serif!important;color:red}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 2, 19).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 2, 19).unwrap())
+        .unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 19))
     );
-    let normalized = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 2, 20).unwrap(),
-    )
-    .unwrap();
+    let normalized = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 2, 20).unwrap())
+        .unwrap();
     let declarations = normalized
         .items()
         .iter()

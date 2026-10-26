@@ -7,7 +7,7 @@ use crate::css::support::property_admission::assert_numeric_rejected;
 use crate::css::support::serialization_limits::assert_limits as budget;
 use crate::css::support::sole_declaration as declaration;
 use crate::css::support::value_assertions::checked_range;
-use surgeist_css::{CssSerializationLimits as L, *};
+use surgeist_css::{CssComponentValue, CssParser, CssSerializationLimits as L, *};
 
 fn time(text: &str) -> CssNumeric<CssTime> {
     CssNumeric::<CssTime>::try_from_literal(
@@ -312,7 +312,11 @@ fn parsed_longhands_use_the_same_canonical_providers_as_constructed_lists() {
         }
         .unwrap();
         assert_eq!(text, expected, "{property}");
-        assert!(parse_style_attribute(&format!("{property}:{text}")).is_clean());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("{property}:{text}"))
+                .is_clean()
+        );
     }
 }
 

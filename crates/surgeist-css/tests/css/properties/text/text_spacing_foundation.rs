@@ -71,9 +71,10 @@ fn signed_percentages_and_mixed_math_remain_authored_symbolic_values() {
             assert!(item.ordinary_value().is_some(), "{name}:{value}");
             assert!(item.source().same_occurrence(&source));
             assert_eq!(item.source().importance(), CssImportance::Important);
-            let checked = parse_property_value_for_grammar(
-                CssPropertyGrammar::from_name(name).unwrap(),
-                parse_component_values(value).unwrap(),
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(CssPropertyGrammar::from_name(name).unwrap()),
+                CssComponentValues::parse(&CssParser::default(), value).unwrap(),
                 CssImportance::Important,
             )
             .unwrap();
@@ -125,7 +126,7 @@ fn invalid_dimensions_keywords_and_multiple_values_drop_without_losing_neighbors
     for &(_, name, _) in PROPERTIES {
         for invalid in ["1", "1fr", "auto", "normal 1px", "10% 1px", "calc(1 + 2)"] {
             let source = format!("color:red;{name}:{invalid};height:2px");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(report.syntax().len(), 2, "{name}:{invalid}");
             assert_eq!(
                 report.syntax()[0].known().unwrap().property(),
@@ -139,7 +140,12 @@ fn invalid_dimensions_keywords_and_multiple_values_drop_without_losing_neighbors
                 panic!("one invalid declaration")
             };
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-            assert!(validate_style_attribute(&source).is_err());
+            assert!(
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .is_err()
+            );
         }
     }
 }
@@ -148,14 +154,14 @@ fn invalid_dimensions_keywords_and_multiple_values_drop_without_losing_neighbors
 fn pending_spacing_reentry_is_strict_repeatable_and_preserves_source_and_replacement() {
     for &(property, name, _) in PROPERTIES {
         let source = declaration(name, "var(--spacing)");
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending spacing")
         };
         assert!(pending.source().same_occurrence(&source));
         for invalid in ["1fr", "normal 1px", "10% 1px"] {
             assert!(
                 pending
-                    .reenter(parse_component_values(invalid).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                     .unwrap_err()
                     .replacement_error()
                     .is_some()
@@ -163,11 +169,12 @@ fn pending_spacing_reentry_is_strict_repeatable_and_preserves_source_and_replace
         }
         assert!(
             pending
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
-        let replacement = parse_component_values("calc(1em + 10%)").unwrap();
+        let replacement =
+            CssComponentValues::parse(&CssParser::default(), "calc(1em + 10%)").unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -187,9 +194,10 @@ fn pending_spacing_reentry_is_strict_repeatable_and_preserves_source_and_replace
 
 #[test]
 fn normalization_preserves_mixed_spacing_order_and_exact_contribution_failure() {
-    let report = parse_sheet(".a{word-spacing:normal;letter-spacing:-2em;word-spacing:10%}");
+    let report = CssParser::default()
+        .parse_sheet(".a{word-spacing:normal;letter-spacing:-2em;word-spacing:10%}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -224,7 +232,7 @@ fn normalization_preserves_mixed_spacing_order_and_exact_contribution_failure() 
         assert!(item.source().same_occurrence(declarations[index].source()));
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 2))

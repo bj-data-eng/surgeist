@@ -19,8 +19,7 @@ use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
 fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("completed intrinsic contribution")
     };
@@ -133,12 +132,12 @@ fn normalization_counts_complete_terminals_and_pending_occurrences_cumulatively(
             "@media screen{{.a{{{name}:{}!important;{name}:var(--text);{name}:unset!important;color:red}}}}",
             ordinary_cases(name)[0]
         );
-        let report = parse_sheet(&css);
+        let report = CssParser::default().parse_sheet(&css);
         assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
         let before = report.clone();
         let count = terminals(name).len() * 2 + 2;
         let exact = CssNormalizationLimits::try_new(1, 2, 4, count).unwrap();
-        let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+        let normalized = report.syntax().normalize(exact).unwrap();
         let declarations: Vec<_> = normalized
             .items()
             .iter()
@@ -218,7 +217,7 @@ fn normalization_counts_complete_terminals_and_pending_occurrences_cumulatively(
             ),
         ] {
             for _ in 0..2 {
-                let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+                let error = report.syntax().normalize(limits).unwrap_err();
                 assert_eq!(error.exhausted_limit(), Some((resource, limit)));
                 assert_eq!(error.declaration_order(), Some(3));
                 assert!(
@@ -230,7 +229,7 @@ fn normalization_counts_complete_terminals_and_pending_occurrences_cumulatively(
             }
         }
         assert_eq!(report, before);
-        assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+        assert!(report.syntax().normalize(exact).is_ok());
     }
 }
 fn declaration_limits(name: &str, text: &str, nodes: usize) {
@@ -249,7 +248,7 @@ fn every_emitted_keyword_and_literal_charges_exact_declaration_work_and_utf8_byt
     }
 }
 fn sheet_limits(input: &str, expected: &str, nodes: usize) {
-    let report = parse_sheet(input);
+    let report = CssParser::default().parse_sheet(input);
     assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
     // Each rule fits separately; exhaustion only comes from cumulative use.
     LimitLadder::new(expected, nodes, nodes).assert_cumulative_sheet(report.syntax(), 1);
@@ -386,9 +385,7 @@ fn escaped_case_and_comment_keywords_keep_original_sources_and_canonical_roles()
 }
 #[test]
 fn each_single_terminal_isolated_from_group_alignment_and_spacing_siblings() {
-    let report = parse_style_attribute(
-        "text-justify:no-compress!important;text-group-align:center;letter-spacing:2px;word-spacing:3px;color:red",
-    );
+    let report = CssParser::default().parse_block_contents("text-justify:no-compress!important;text-group-align:center;letter-spacing:2px;word-spacing:3px;color:red");
     assert!(report.is_clean());
     let names = [
         "text-justify",
@@ -399,7 +396,7 @@ fn each_single_terminal_isolated_from_group_alignment_and_spacing_siblings() {
     ];
     for (source, name) in report.syntax().iter().zip(names) {
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("intrinsic single terminal")
         };

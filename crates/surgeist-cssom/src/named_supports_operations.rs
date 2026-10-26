@@ -122,9 +122,11 @@ impl CssomBatch {
                 maximum: self.limits.max_input_bytes,
             });
         }
-        let (child, diagnostics) =
-            parse_supports_test_child_with_limits(source, component_limits(&self.limits))
-                .into_parts();
+        let (child, diagnostics) = CssSupportsTestChild::parse(
+            &CssParser::new(CssParserContext::default(), component_limits(&self.limits)),
+            source,
+        )
+        .into_parts();
         check_resource_diagnostics(&diagnostics)?;
         let child = child.ok_or(CssomError::Source(CssomException::Syntax))?;
         let depth = self.staged.named_supports_depth(id, &self.limits)?;

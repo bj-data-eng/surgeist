@@ -5,7 +5,7 @@ use crate::css::support::named_property::longhand_contributions as longhands;
 use surgeist_css::*;
 
 fn font(source: &str) -> CssFontValue {
-    let report = parse_style_attribute(&format!("font:{source}"));
+    let report = CssParser::default().parse_block_contents(format!("font:{source}"));
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Font(value) = report.syntax()[0]
         .known()
@@ -19,14 +19,14 @@ fn font(source: &str) -> CssFontValue {
 }
 
 fn direct_longhand(name: &str, value: &str) -> CssLonghandValue {
-    let report = parse_style_attribute(&format!("{name}:{value}"));
+    let report = CssParser::default().parse_block_contents(format!("{name}:{value}"));
     assert!(
         report.is_clean(),
         "{name}:{value}: {:?}",
         report.diagnostics()
     );
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&report.syntax()[0]).unwrap()
+        report.syntax()[0].expand().unwrap()
     else {
         panic!("direct longhand: {name}")
     };
@@ -207,10 +207,10 @@ fn globals_and_pending_system_reentry_preserve_all_members_and_provenance() {
             && item.source().same_occurrence(&source)));
     }
     let source = important_declaration("font", "env(font)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending system font")
     };
-    let replacement = parse_component_values("menu").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "menu").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("reentered system font")
     };
@@ -308,7 +308,7 @@ fn cssom_block_spaces_the_line_height_separator() {
         ("font: 16px/normal Alpha", "font: 16px Alpha;"),
         ("font: 16px Alpha", "font: 16px Alpha;"),
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let serialized = CssSpecifiedDeclarationBlock::try_from_declarations(
             report.syntax(),

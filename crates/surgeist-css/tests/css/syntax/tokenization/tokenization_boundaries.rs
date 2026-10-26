@@ -8,8 +8,8 @@
 
 use crate::css::support::authored_syntax::assert_strict_rejection;
 use surgeist_css::{
-    CssComponentValueRef, CssDeclarationList, CssHashFlag, CssValueOrigin, CssValueTokenRef,
-    parse_component_values, parse_style_attribute, validate_style_attribute,
+    CssComponentValueRef, CssComponentValues, CssDeclarationList, CssHashFlag, CssParser,
+    CssValueOrigin, CssValueTokenRef,
 };
 
 #[derive(Debug)]
@@ -27,7 +27,8 @@ enum ExpectedToken<'a> {
 }
 
 fn assert_tokens(source: &str, expected: &[ExpectedToken<'_>]) {
-    let values = parse_component_values(source).expect("valid component token sequence");
+    let values = CssComponentValues::parse(&CssParser::default(), source)
+        .expect("valid component token sequence");
     assert_eq!(values.items().len(), expected.len(), "{source:?}");
     for (component, expected) in values.items().iter().zip(expected) {
         let CssComponentValueRef::Token(actual) = component.view() else {
@@ -87,24 +88,29 @@ fn assert_custom_values(declarations: &CssDeclarationList, expected: &[(&str, &s
 }
 
 fn assert_clean_custom(source: &str, expected: &[(&str, &str)]) {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source:?}: {:?}", report.diagnostics());
     assert_custom_values(report.syntax(), expected);
     assert_eq!(
-        validate_style_attribute(source),
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result(),
         Ok(report.syntax().clone())
     );
 }
 
 fn assert_retained_lexical_error(source: &str, expected: &[(&str, &str)]) {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_custom_values(report.syntax(), expected);
     assert!(
         !report.diagnostics().is_empty(),
         "a required lexical parse error must remain observable: {source:?}"
     );
     assert!(!report.is_clean());
-    let failure = validate_style_attribute(source).expect_err("lexical recovery is not clean CSS");
+    let failure = CssParser::default()
+        .parse_block_contents(source)
+        .into_validation_result()
+        .expect_err("lexical recovery is not clean CSS");
     assert_eq!(failure.diagnostics(), report.diagnostics());
 }
 
@@ -293,7 +299,8 @@ fn quoted_url_dispatch_preserves_function_name_and_string_arguments() {
         ("uRl( \"a\")", "uRl", Some(" ")),
         (r"\75 rl( 'a')", "url", Some(" ")),
     ] {
-        let values = parse_component_values(source).expect("quoted URL is a function");
+        let values = CssComponentValues::parse(&CssParser::default(), source)
+            .expect("quoted URL is a function");
         let [component] = values.items() else {
             panic!("one function: {source:?}");
         };
@@ -340,12 +347,17 @@ fn unquoted_urls_consume_payload_whitespace_escapes_and_eof() {
 fn bad_url_remnants_skip_escaped_closers_and_preserve_following_declaration() {
     for bad_url in [r"url(a b\)still)", r"url(a b\29 still)"] {
         let source = format!("--bad:{bad_url};--after:kept");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_custom_values(report.syntax(), &[("--after", "kept")]);
         assert!(!report.is_clean());
-        assert!(validate_style_attribute(&source).is_err());
-        let failure =
-            parse_component_values(bad_url).expect_err("post-whitespace URL payload is bad");
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
+        let failure = CssComponentValues::parse(&CssParser::default(), bad_url)
+            .expect_err("post-whitespace URL payload is bad");
         assert!(failure.is_bad_url(), "{failure:?}");
         let CssValueOrigin::Parsed(origin) = failure.origin() else {
             panic!("authored bad URL origin");
@@ -362,7 +374,9 @@ fn bad_url_remnants_skip_escaped_closers_and_preserve_following_declaration() {
         "url(a b",
     ] {
         assert!(
-            parse_component_values(bad_url).unwrap_err().is_bad_url(),
+            CssComponentValues::parse(&CssParser::default(), bad_url)
+                .unwrap_err()
+                .is_bad_url(),
             "{bad_url:?}"
         );
     }
@@ -372,8 +386,8 @@ fn bad_url_remnants_skip_escaped_closers_and_preserve_following_declaration() {
 fn raw_string_newlines_are_bad_strings_and_leave_a_surviving_sibling() {
     for newline in ["\n", "\r", "\r\n", "\u{c}"] {
         let value = format!("\"a{newline}");
-        let failure =
-            parse_component_values(&value).expect_err("raw newline terminates a bad string");
+        let failure = CssComponentValues::parse(&CssParser::default(), &value)
+            .expect_err("raw newline terminates a bad string");
         assert!(failure.is_bad_string(), "{failure:?}");
         let CssValueOrigin::Parsed(origin) = failure.origin() else {
             panic!("authored bad string origin");
@@ -385,10 +399,15 @@ fn raw_string_newlines_are_bad_strings_and_leave_a_surviving_sibling() {
             "newline is reconsumed"
         );
         let source = format!("--bad:{value};--after:kept");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_custom_values(report.syntax(), &[("--after", "kept")]);
         assert!(!report.is_clean());
-        assert_strict_rejection(validate_style_attribute(&source), report.diagnostics());
+        assert_strict_rejection(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result(),
+            report.diagnostics(),
+        );
     }
 }
 

@@ -12,8 +12,7 @@ fn parsed(value: &str) -> CssDeclaration {
 }
 
 fn ordinary(source: &CssDeclaration) -> CssLonghandContribution {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("content expands to one longhand")
     };
@@ -25,7 +24,7 @@ fn ordinary(source: &CssDeclaration) -> CssLonghandContribution {
 
 fn assert_recovered<'a>(invalid: &str, token: impl Into<Responsible<'a>>) {
     let source = format!("color:red;content:{invalid};height:2px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let properties = report
         .syntax()
         .iter()
@@ -45,7 +44,11 @@ fn assert_recovered<'a>(invalid: &str, token: impl Into<Responsible<'a>>) {
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_invalid_value(diagnostic.error(), CssKnownProperty::Content, token);
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -211,14 +214,14 @@ fn invalid_combinations_and_function_arguments_recover_without_losing_neighbors(
 #[test]
 fn pending_content_reentry_is_strict_and_retains_replacement_provenance() {
     let source = parsed("var(--generated)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("content substitution is pending")
     };
     assert!(pending.source().same_occurrence(&source));
     for invalid in ["normal contents", "\"caption\" /", "leader()"] {
         assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some()
@@ -226,7 +229,7 @@ fn pending_content_reentry_is_strict_and_retains_replacement_provenance() {
     }
     assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
@@ -235,7 +238,8 @@ fn pending_content_reentry_is_strict_and_retains_replacement_provenance() {
         "linear-gradient(red, blue) / \"spoken\"",
         "inherit",
     ] {
-        let replacement = parse_component_values(replacement_css).unwrap();
+        let replacement =
+            CssComponentValues::parse(&CssParser::default(), replacement_css).unwrap();
         let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("one reentered content terminal")
@@ -252,9 +256,9 @@ fn pending_content_reentry_is_strict_and_retains_replacement_provenance() {
 
 #[test]
 fn normalized_content_preserves_order_and_reports_atomic_limit_failure() {
-    let report = parse_sheet(".a{content:normal;color:red;content:contents}");
+    let report = CssParser::default().parse_sheet(".a{content:normal;color:red;content:contents}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -285,7 +289,7 @@ fn normalized_content_preserves_order_and_reports_atomic_limit_failure() {
         assert!(item.source().same_occurrence(declarations[order].source()));
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 2))

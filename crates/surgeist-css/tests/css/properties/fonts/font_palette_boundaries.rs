@@ -1,9 +1,8 @@
 //! Matched blocks remain declaration-value data under whole-value substitution
 //! admission, including the palette owner's independent var permission.
 use surgeist_css::{
-    CssFontPaletteDescriptorKind as Kind, CssFontPaletteDescriptorValue,
-    CssFontPaletteDescriptorValueRef, CssRule, parse_component_values,
-    parse_font_palette_descriptor_value, parse_sheet,
+    CssComponentValues, CssFontPaletteDescriptorKind as Kind, CssFontPaletteDescriptorValue,
+    CssFontPaletteDescriptorValueRef, CssParser, CssRule,
 };
 
 #[test]
@@ -14,20 +13,20 @@ fn root_matched_blocks_remain_pending_in_every_descriptor() {
                 "@font-palette-values --x {{ font-family: Demo; {}: {value}; base-palette: dark; }} .after {{ color: red; }}",
                 kind.as_str()
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(report.is_clean(), "{}: {value}: {report:?}", kind.as_str());
             let [CssRule::FontPaletteValues(rule), CssRule::Style(_)] = report.syntax().rules()
             else {
                 panic!("valid sibling descriptors and following rule must survive");
             };
             assert_eq!(rule.descriptors().len(), 3);
-            let fragment = parse_font_palette_descriptor_value(value, kind);
+            let fragment = CssFontPaletteDescriptorValue::parse(&CssParser::default(), value, kind);
             assert!(
                 fragment.is_clean(),
                 "{}: {value}: {fragment:?}",
                 kind.as_str()
             );
-            let components = parse_component_values(value).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
             let constructed = CssFontPaletteDescriptorValue::try_new(
                 kind,
                 components.clone(),
@@ -67,13 +66,13 @@ fn nested_fallback_blocks_remain_pending_across_descriptor_entry_points() {
                 "@font-palette-values --x {{ font-family: Demo; {}: {value}; }}",
                 kind.as_str()
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(report.is_clean(), "{:?}", report.diagnostics());
             let [CssRule::FontPaletteValues(rule)] = report.syntax().rules() else {
                 panic!("expected palette");
             };
             let parsed = rule.descriptors()[1].value();
-            let fragment = parse_font_palette_descriptor_value(value, kind);
+            let fragment = CssFontPaletteDescriptorValue::parse(&CssParser::default(), value, kind);
             assert!(fragment.is_clean());
             let constructed = CssFontPaletteDescriptorValue::try_new(
                 kind,

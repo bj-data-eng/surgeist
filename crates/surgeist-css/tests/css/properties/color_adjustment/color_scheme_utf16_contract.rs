@@ -11,7 +11,6 @@ use surgeist_css::*;
 fn limits() -> CssUtf16PropertyValueLimits {
     CssUtf16PropertyValueLimits {
         input: CssUtf16InputLimits::default(),
-        syntax: CssComponentValueLimits::default(),
         max_work: 1_000_000,
         max_live_bytes: 2 * 1024 * 1024,
         max_retained_bytes: 2 * 1024 * 1024,
@@ -19,14 +18,14 @@ fn limits() -> CssUtf16PropertyValueLimits {
 }
 
 fn parse_in(context: CssParserContext, units: Vec<u16>) -> CssColorSchemeParseReport {
-    context
-        .parse_color_scheme_utf16_with_limits(
-            Arc::new(units),
-            limits(),
-            |_| Ok::<_, ()>(()),
-            |_| {},
-        )
-        .unwrap()
+    CssColorScheme::parse_utf16(
+        &CssParser::new(context, Default::default()),
+        Arc::new(units),
+        limits(),
+        |_| Ok::<_, ()>(()),
+        |_| {},
+    )
+    .unwrap()
 }
 
 fn parse(text: &str) -> CssColorSchemeParseReport {
@@ -102,10 +101,7 @@ fn global_and_substitution_values_remain_authored_and_url_fallbacks_use_css_toke
         let report = parse(text);
         let declaration = report.result().as_ref().unwrap();
         assert!(
-            matches!(
-                expand_declaration(declaration).unwrap(),
-                CssExpansion::Pending(_)
-            ),
+            matches!(declaration.expand().unwrap(), CssExpansion::Pending(_)),
             "{text}"
         );
         assert_eq!(
@@ -133,7 +129,7 @@ fn decoded_attr_syntax_treats_escaped_css_newlines_as_whitespace() {
             .as_ref()
             .unwrap_or_else(|error| panic!("valid decoded syntax {text:?}: {error:?}"));
         assert!(matches!(
-            expand_declaration(declaration).unwrap(),
+            declaration.expand().unwrap(),
             CssExpansion::Pending(_)
         ));
         assert_eq!(
@@ -257,7 +253,8 @@ fn padded_original_capacity_and_retained_report_have_separate_limits() {
     let bound = report.retained_storage().bytes();
     for (maximum, succeeds) in [(bound, true), (bound - 1, false)] {
         let final_live = Cell::new(0);
-        let result = CssParserContext::default().parse_color_scheme_utf16_with_limits(
+        let result = CssColorScheme::parse_utf16(
+            &CssParser::default(),
             Arc::new(vec![100, 97, 114, 107]),
             CssUtf16PropertyValueLimits {
                 max_retained_bytes: maximum,
@@ -288,22 +285,23 @@ fn padded_original_capacity_and_retained_report_have_separate_limits() {
 fn assert_admission_cuts(text: &str) {
     let input: Arc<Vec<_>> = Arc::new(text.encode_utf16().collect());
     let calls = Cell::new(0usize);
-    CssParserContext::default()
-        .parse_color_scheme_utf16_with_limits(
-            input.clone(),
-            limits(),
-            |_| {
-                calls.set(calls.get() + 1);
-                Ok::<_, usize>(())
-            },
-            |_| {},
-        )
-        .unwrap();
+    CssColorScheme::parse_utf16(
+        &CssParser::default(),
+        input.clone(),
+        limits(),
+        |_| {
+            calls.set(calls.get() + 1);
+            Ok::<_, usize>(())
+        },
+        |_| {},
+    )
+    .unwrap();
     assert!(calls.get() > input.len());
     for refusal in 0..calls.get() {
         let seen = Cell::new(0usize);
         let live = Cell::new(0usize);
-        let result = CssParserContext::default().parse_color_scheme_utf16_with_limits(
+        let result = CssColorScheme::parse_utf16(
+            &CssParser::default(),
             input.clone(),
             limits(),
             |event| {

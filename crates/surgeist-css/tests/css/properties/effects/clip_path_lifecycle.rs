@@ -30,7 +30,7 @@ fn clip_value(source: &CssDeclaration) -> &CssClipPath {
 }
 
 fn terminals(source: &CssDeclaration) -> CssLonghandContributions {
-    match expand_declaration(source).expect("clip-path intrinsic expansion") {
+    match source.expand().expect("clip-path intrinsic expansion") {
         CssExpansion::Contributions(CssContributions::Longhands(values)) => values,
         other => panic!("completed terminal, got {other:?}"),
     }
@@ -40,7 +40,7 @@ fn assert_rejected(value: &str) {
     let prefix = "/* 🦀 */ ";
     let unit = format!("clip-path:{value};");
     let source = format!("{prefix}{unit} color:blue");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [sibling] = report.syntax().as_slice() else {
         panic!("only color survives {value}: {:?}", report.syntax())
     };
@@ -79,7 +79,11 @@ fn assert_rejected(value: &str) {
         source[..byte].encode_utf16().count()
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -275,7 +279,7 @@ fn parsed_and_checked_ordinary_values_expand_with_their_occurrence_and_importanc
                 )
                 .unwrap()
             } else {
-                parse_component_values(text).unwrap()
+                CssComponentValues::parse(&CssParser::default(), text).unwrap()
             };
             if matches!(text, "none" | "border-box") {
                 assert_eq!(
@@ -283,8 +287,9 @@ fn parsed_and_checked_ordinary_values_expand_with_their_occurrence_and_importanc
                     &CssValueOrigin::Programmatic
                 );
             }
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ClipPath)),
                 components.clone(),
                 importance,
             )
@@ -328,7 +333,7 @@ fn parsed_and_checked_ordinary_values_expand_with_their_occurrence_and_importanc
 fn substitution_reentry_rejects_invalid_or_residual_values_and_remains_reusable() {
     for text in ["var(--clip)", "env(clip)"] {
         let source = validated_declaration("clip-path", text, CssImportance::Important);
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending substitution")
         };
         assert!(pending.source().same_occurrence(&source));
@@ -343,14 +348,14 @@ fn substitution_reentry_rejects_invalid_or_residual_values_and_remains_reusable(
             "none!important",
         ] {
             let error = pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err();
             assert!(error.replacement_error().is_some(), "{invalid}: {error:?}");
         }
         for residual in ["var(--again)", "circle(env(radius))", "attr(clip)"] {
             assert!(
                 pending
-                    .reenter(parse_component_values(residual).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), residual).unwrap())
                     .unwrap_err()
                     .is_residual_substitution()
             );
@@ -362,7 +367,7 @@ fn substitution_reentry_rejects_invalid_or_residual_values_and_remains_reusable(
             "polygon(round -1px, 0 0)",
             "inherit",
         ] {
-            let replacement = parse_component_values(valid).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), valid).unwrap();
             for _ in 0..2 {
                 let CssContributions::Longhands(values) = pending
                     .reenter(replacement.clone())
@@ -400,11 +405,13 @@ fn substitution_reentry_rejects_invalid_or_residual_values_and_remains_reusable(
 #[test]
 fn normalization_preserves_child_order_pending_context_and_resource_errors() {
     let css = ".outer{clip-path:circle(25%)!important;color:red;.child{clip-path:inherit}clip-path:var(--clip)}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(1, 3, 4, 4).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact)
+    let normalized = report
+        .syntax()
+        .normalize(exact)
         .expect("intrinsic clip-path normalization");
     let values: Vec<_> = normalized
         .items()
@@ -478,7 +485,7 @@ fn normalization_preserves_child_order_pending_context_and_resource_errors() {
             CssNormalizationResource::Contributions,
         ),
     ] {
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+        let error = report.syntax().normalize(limits).unwrap_err();
         assert_eq!(error.exhausted_limit(), Some((resource, 3)));
         assert_eq!(error.declaration_order(), Some(3));
         assert!(
@@ -493,21 +500,21 @@ fn normalization_preserves_child_order_pending_context_and_resource_errors() {
         );
     }
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 
 #[test]
 fn recovery_normalization_keeps_valid_clip_occurrences_in_source_order() {
-    let report = parse_sheet(
-        ".a{clip-path:none;clip-path:none border-box;clip-path:circle()!important;clip-path:inherit}",
-    );
+    let report = CssParser::default().parse_sheet(".a{clip-path:none;clip-path:none border-box;clip-path:circle()!important;clip-path:inherit}");
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
-    let normalized =
-        normalize_sheet(report.syntax()).expect("recovered valid declarations normalize");
+    let normalized = report
+        .syntax()
+        .normalize(Default::default())
+        .expect("recovered valid declarations normalize");
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -538,5 +545,5 @@ fn recovery_normalization_keeps_valid_clip_occurrences_in_source_order() {
         assert_eq!(terminal.property(), CssKnownProperty::ClipPath);
         assert!(terminal.source().same_occurrence(value.source()));
     }
-    assert_eq!(validate_sheet(".a{clip-path:none;clip-path:none border-box;clip-path:circle()!important;clip-path:inherit}").unwrap_err().diagnostics(), report.diagnostics());
+    assert_eq!(CssParser::default().parse_sheet(".a{clip-path:none;clip-path:none border-box;clip-path:circle()!important;clip-path:inherit}").into_validation_result().unwrap_err().diagnostics(), report.diagnostics());
 }

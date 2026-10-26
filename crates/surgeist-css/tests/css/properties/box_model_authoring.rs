@@ -15,19 +15,25 @@ fn assert_percentage_literal(component: &CssComponentValue, expected_number: &st
 
 #[test]
 fn rejects_padding_auto() {
-    let error = parse_sheet(".panel { padding: auto; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { padding: auto; }")
+        .expect_err("rejected parse report");
     assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
 fn rejects_border_width_percent() {
-    let error = parse_sheet(".panel { border-width: 10%; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { border-width: 10%; }")
+        .expect_err("rejected parse report");
     assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
 fn rejects_gap_auto() {
-    let error = parse_sheet(".panel { gap: auto; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { gap: auto; }")
+        .expect_err("rejected parse report");
     assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
@@ -426,7 +432,7 @@ fn checked_corner_radius_constructor_rejects_parser_invalid_values() {
     }
     for css in ["-1px", "-1%"] {
         let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
-            parse_component_values(css).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), css).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -520,8 +526,9 @@ fn checked_shadow_constructor_rejects_invalid_pairings_and_lengths() {
 
 #[test]
 fn box_model_property_families_accept_supported_values() {
-    let sheet = parse_sheet(
-        ".panel {
+    let sheet = CssParser::default()
+        .parse_sheet(
+            ".panel {
             inset: auto 1px 2%;
             top: auto;
             right: 1px;
@@ -562,8 +569,8 @@ fn box_model_property_families_accept_supported_values() {
             border-bottom-left-radius: calc(1px + 2%);
             box-shadow: 1px 2px;
         }",
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
     let declarations = style_rule(&sheet.rules()[0]).declarations();
 
     for property in [
@@ -625,7 +632,7 @@ fn non_negative_box_model_properties_reject_negative_lengths() {
         ".panel { border-width: -1px; }",
         ".panel { box-shadow: 1px 2px -3px; }",
     ] {
-        let error = parse_sheet(input).expect_err(input);
+        let error = CssParser::default().parse_sheet(input).expect_err(input);
         assert!(error.code() == CssErrorCode::InvalidPropertyValue);
     }
 }

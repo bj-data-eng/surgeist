@@ -34,7 +34,8 @@ fn assert_type(ty: CssNumericType, exponents: [i32; 7], hint: Option<CssNumericD
     assert_eq!(ty.percent_hint(), hint);
 }
 fn declaration(name: &str, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{text}!important;height:1px"));
+    let report =
+        CssParser::default().parse_block_contents(format!("{name}:{text}!important;height:1px"));
     assert!(
         report.is_clean(),
         "{name}:{text}: {:?}",
@@ -100,7 +101,12 @@ fn percentage_admitting_color_and_opacity_match_number_without_erasing_each_dime
                 text
             );
             assert_eq!(source.importance(), CssImportance::Important);
-            assert!(validate_style_attribute(&format!("{name}:{text}")).is_ok());
+            assert!(
+                CssParser::default()
+                    .parse_block_contents(format!("{name}:{text}"))
+                    .into_validation_result()
+                    .is_ok()
+            );
         }
     }
 }
@@ -114,8 +120,9 @@ fn hinted_number_construction_preserves_original_components_and_unresolved_perce
     ] {
         let text = value_for(name, expression);
         let original = components(&text);
-        let source = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let source = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             original.clone(),
             CssImportance::Important,
         )
@@ -164,20 +171,21 @@ fn hinted_number_substitution_reentry_keeps_the_consumer_permission_and_source_o
         ("opacity", CssKnownProperty::Opacity),
     ] {
         let source = declaration(name, "var(--numeric)");
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending substitution")
         };
         let text = value_for(name, "calc((1px + 1%) / 1px)");
         let replacement = components(&text);
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             replacement.clone(),
             CssImportance::Important,
         )
         .unwrap();
         hinted_number(&checked, CssNumericDimension::Length);
         let CssExpansion::Contributions(CssContributions::Longhands(expected)) =
-            expand_declaration(&checked).unwrap()
+            checked.expand().unwrap()
         else {
             panic!("checked terminal")
         };
@@ -402,7 +410,7 @@ fn integer_number_phase_and_unitless_zero_controls_do_not_promote_or_mix_domains
     }
     for name in ["color", "opacity"] {
         let text = value_for(name, "calc(.25 + 25%)");
-        let report = parse_style_attribute(&format!("{name}:{text};height:1px"));
+        let report = CssParser::default().parse_block_contents(format!("{name}:{text};height:1px"));
         assert_eq!(report.syntax().len(), 1);
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -414,7 +422,9 @@ fn integer_number_phase_and_unitless_zero_controls_do_not_promote_or_mix_domains
             CssRecoveryAction::DropDeclaration
         );
         assert_eq!(
-            validate_style_attribute(&format!("{name}:{text};height:1px"))
+            CssParser::default()
+                .parse_block_contents(format!("{name}:{text};height:1px"))
+                .into_validation_result()
                 .unwrap_err()
                 .diagnostics(),
             report.diagnostics()

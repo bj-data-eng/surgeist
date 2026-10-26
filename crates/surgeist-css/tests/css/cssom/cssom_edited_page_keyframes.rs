@@ -5,14 +5,14 @@ use crate::css::support::failure_classes::SerializationFailure as Resource;
 use crate::css::support::serialization_limits::LimitFailure;
 use crate::css::support::{graph_cssom, graph_specified};
 use surgeist_css::{
-    CssGroupPreludeRef as Prelude, CssImportance, CssKeyframeRuleView, CssKeyframesName,
-    CssKeyframesRuleView, CssKeyframesString, CssKnownProperty as K, CssMarginBox,
-    CssMarginRuleView, CssNamespaceContext, CssPageRuleView, CssPropertyNameRef, CssRule,
-    CssRuleAdmissionContext as Context, CssRuleGraphInput as View,
-    CssSerializationLimits as Limits, CssSpecifiedDeclarationBlock as Block,
-    CssSpecifiedDeclarationEntry as Entry, CssSpecifiedPageDeclarationBlock as PageBlock,
-    CssSpecifiedPageDeclarationEntry as PageEntry, classify_rule_syntax, parse_keyframe_rule,
-    parse_keyframe_selector_list, parse_page_block, parse_page_selector_list, parse_sheet,
+    CssBlockContext, CssBlockFragment, CssGroupPreludeRef as Prelude, CssImportance,
+    CssKeyframeRuleView, CssKeyframesName, CssKeyframesRuleView, CssKeyframesString,
+    CssKnownProperty as K, CssMarginBox, CssMarginRuleView, CssNamespaceContext, CssPageBody,
+    CssPageRuleView, CssPageSelectorList, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
+    CssParser, CssPropertyNameRef, CssRule, CssRuleAdmissionContext as Context,
+    CssRuleGraphInput as View, CssRuleSyntax, CssSerializationLimits as Limits,
+    CssSpecifiedDeclarationBlock as Block, CssSpecifiedDeclarationEntry as Entry,
+    CssSpecifiedPageDeclarationBlock as PageBlock, CssSpecifiedPageDeclarationEntry as PageEntry,
 };
 
 fn terminal(block: &Block, property: K) -> &Entry {
@@ -37,7 +37,7 @@ fn page_property(block: &PageBlock, property: K) -> &Entry {
         .unwrap()
 }
 fn group_query() -> surgeist_css::CssMediaQueryList {
-    let report = parse_sheet("@media print {}");
+    let report = CssParser::default().parse_sheet("@media print {}");
     let CssRule::Media(media) = &report.syntax().rules()[0] else {
         panic!("media")
     };
@@ -49,7 +49,7 @@ fn contextual_admission_establishes_page_and_keyframes_group_permission_not_styl
     // Conditional3 allows ordinary rule lists; Nesting1 restricts rules with style
     // ancestry. Formatting views deliberately do not grant insertion permission.
     for source in ["@page invoice{}", "@keyframes k{from{}}"] {
-        let classified = classify_rule_syntax(source);
+        let classified = CssRuleSyntax::classify(&CssParser::default(), source);
         assert!(classified.is_clean());
         let candidate = classified.syntax().as_ref().unwrap();
         let admitted = candidate.admit(&CssNamespaceContext::default(), Context::Group);
@@ -70,7 +70,7 @@ fn contextual_admission_establishes_page_and_keyframes_group_permission_not_styl
 #[test]
 fn recursive_page_preserves_mixed_selected_order_shorthand_survivors_pending_and_margin_domain() {
     let source = "/*😀*/ @media print { @page old { margin:1px 2px; size:A4; @top-left { margin:3px 4px; content:'X'; } } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let CssRule::Media(media) = &report.syntax().rules()[0] else {
@@ -90,7 +90,11 @@ fn recursive_page_preserves_mixed_selected_order_shorthand_survivors_pending_and
         .find(|v| matches!(v, PageEntry::Descriptor(_)))
         .unwrap()
         .clone();
-    let raw = parse_page_block("{ margin-top:var(--edited); --Case:RAW; }");
+    let raw = CssBlockFragment::<CssPageBody>::parse(
+        &CssParser::default(),
+        "{ margin-top:var(--edited); --Case:RAW; }",
+        &CssBlockContext::default(),
+    );
     assert!(raw.is_clean());
     let raw_selected = raw
         .syntax()
@@ -127,7 +131,8 @@ fn recursive_page_preserves_mixed_selected_order_shorthand_survivors_pending_and
         CssMarginRuleView::try_new(CssMarginBox::BottomRight, &empty_margin).unwrap(),
         CssMarginRuleView::try_new(CssMarginBox::TopCenter, &current_margin).unwrap(),
     ];
-    let raw_selectors = parse_page_selector_list(" /*edit*/ invoice:first:left ");
+    let raw_selectors =
+        CssPageSelectorList::parse(&CssParser::default(), " /*edit*/ invoice:first:left ");
     assert!(raw_selectors.is_clean());
     let selectors = raw_selectors.syntax().as_ref().unwrap();
     let leaf = View::page(CssPageRuleView::new(selectors, &current, &margins));
@@ -194,7 +199,7 @@ fn recursive_page_preserves_mixed_selected_order_shorthand_survivors_pending_and
 fn whole_keyframes_preserves_renamed_edited_deleted_and_appended_duplicate_children() {
     let source =
         "/*😀*/ @media print { @keyframes old { from {margin:1px 2px;opacity:0} to {opacity:1} } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean());
     let before = report.clone();
     let CssRule::Media(media) = &report.syntax().rules()[0] else {
@@ -209,12 +214,16 @@ fn whole_keyframes_preserves_renamed_edited_deleted_and_appended_duplicate_child
     let right = terminal(&old, K::MarginRight);
     let edited =
         Block::try_from_keyframe_entries(std::slice::from_ref(right), Default::default()).unwrap();
-    let key_text = parse_keyframe_selector_list(" /*edit*/ 50%, from, 50% ");
+    let key_text =
+        CssParsedKeyframeSelectors::parse(&CssParser::default(), " /*edit*/ 50%, from, 50% ");
     assert!(key_text.is_clean());
     let current_first =
         CssKeyframeRuleView::try_new(key_text.syntax().as_ref().unwrap().selectors(), &edited)
             .unwrap();
-    let appended = parse_keyframe_rule(" /*append*/ 50%, from, 50% {opacity:.5;}");
+    let appended = CssParsedKeyframeRule::parse(
+        &CssParser::default(),
+        " /*append*/ 50%, from, 50% {opacity:.5;}",
+    );
     assert!(appended.is_clean());
     let appended_block = appended.syntax().as_ref().unwrap().block();
     let appended_declarations =
@@ -289,7 +298,7 @@ fn whole_keyframes_preserves_renamed_edited_deleted_and_appended_duplicate_child
 #[test]
 fn empty_whole_keyframes_and_empty_children_keep_selected_name_classification_and_domain_proof() {
     let empty = Block::try_from_keyframe_entries(&[], Default::default()).unwrap();
-    let raw = parse_keyframe_selector_list("from, from");
+    let raw = CssParsedKeyframeSelectors::parse(&CssParser::default(), "from, from");
     let child =
         CssKeyframeRuleView::try_new(raw.syntax().as_ref().unwrap().selectors(), &empty).unwrap();
     let children = [child, child];
@@ -317,7 +326,7 @@ fn empty_whole_keyframes_and_empty_children_keep_selected_name_classification_an
 
 #[test]
 fn coupled_recursive_payloads_share_input_projection_and_output_limits_and_allow_unchanged_retry() {
-    let selectors = parse_page_selector_list("");
+    let selectors = CssPageSelectorList::parse(&CssParser::default(), "");
     let page_block = PageBlock::try_from_entries(&[], Default::default()).unwrap();
     let page = View::page(CssPageRuleView::new(
         selectors.syntax().as_ref().unwrap(),
@@ -391,7 +400,7 @@ fn coupled_recursive_payloads_share_input_projection_and_output_limits_and_allow
 #[test]
 fn whole_keyframes_exact_empty_child_work_is_cumulative_not_restarted() {
     let declarations = Block::try_from_keyframe_entries(&[], Default::default()).unwrap();
-    let raw = parse_keyframe_selector_list("from, from");
+    let raw = CssParsedKeyframeSelectors::parse(&CssParser::default(), "from, from");
     let child =
         CssKeyframeRuleView::try_new(raw.syntax().as_ref().unwrap().selectors(), &declarations)
             .unwrap();
@@ -447,7 +456,11 @@ fn whole_keyframes_exact_empty_child_work_is_cumulative_not_restarted() {
 
 #[test]
 fn unresolved_pending_page_footprint_remains_a_typed_source_attributed_capability_failure() {
-    let raw = parse_page_block("/*😀*/ {margin:var(--edges);size:A4;}");
+    let raw = CssBlockFragment::<CssPageBody>::parse(
+        &CssParser::default(),
+        "/*😀*/ {margin:var(--edges);size:A4;}",
+        &CssBlockContext::default(),
+    );
     assert!(raw.is_clean());
     let before = raw.clone();
     let declarations = raw.syntax().as_ref().unwrap().body().declarations();
@@ -482,7 +495,7 @@ fn recursive_page_and_margin_keep_independent_fixed_footprint_pending_shorthand_
     // reconstructing the original shorthand requires all same-origin members.
     // references/css-variables-1--CR-css-variables-1-20220616--5ce7b2c106af.md#pending-substitution-value
     let source = "/*😀*/ @media print { @page invoice { border-top:var(--page-edge); size:A4; @top-left { border-top:var(--margin-edge); content:'X'; } } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let CssRule::Media(media) = &report.syntax().rules()[0] else {

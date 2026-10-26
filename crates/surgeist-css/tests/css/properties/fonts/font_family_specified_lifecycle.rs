@@ -21,7 +21,11 @@ fn families(value: &CssDeclaration) -> &CssFontFamilyList {
 }
 
 fn literal(text: &str) -> CssFontFaceFamily {
-    let report = parse_font_face_descriptor_value(text, CssFontFaceDescriptorKind::FontFamily);
+    let report = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        text,
+        CssFontFaceDescriptorKind::FontFamily,
+    );
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::FontFamily(
         value,
@@ -177,10 +181,11 @@ fn standalone_name_limits_charge_tokens_and_emitted_utf8_bytes() {
 
 #[test]
 fn checked_property_admission_retains_components_and_rejects_annotations() {
-    let components = parse_component_values(r#"A\ B, "serif""#).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), r#"A\ B, "serif""#).unwrap();
     let before = components.clone();
-    let value = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::FontFamily),
+    let value = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::FontFamily)),
         components.clone(),
         CssImportance::Important,
     )
@@ -193,9 +198,10 @@ fn checked_property_admission_retains_components_and_rejects_annotations() {
         r#"A\ B, "serif""#
     );
     assert_eq!(value.value_components(), &before);
-    let bad = parse_component_values("A!important").unwrap();
-    let error = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::FontFamily),
+    let bad = CssComponentValues::parse(&CssParser::default(), "A!important").unwrap();
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::FontFamily)),
         bad,
         CssImportance::Normal,
     )
@@ -228,7 +234,7 @@ fn metadata_globals_and_pending_reentry_keep_symbolic_lifecycle() {
     ] {
         let source = important_declaration("font-family", text);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("global")
         };
@@ -242,10 +248,11 @@ fn metadata_globals_and_pending_reentry_keep_symbolic_lifecycle() {
     for pending_text in ["var(--family)", "env(family)"] {
         let source = important_declaration("font-family", pending_text);
         let before = source.clone();
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending")
         };
-        let replacement = parse_component_values(r#"A\ B, "serif", serif"#).unwrap();
+        let replacement =
+            CssComponentValues::parse(&CssParser::default(), r#"A\ B, "serif", serif"#).unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("longhand")
@@ -267,7 +274,7 @@ fn metadata_globals_and_pending_reentry_keep_symbolic_lifecycle() {
         // there, so the comma is the last authored token.
         assert_invalid_replacement_at(
             &pending
-                .reenter(parse_component_values("A,").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "A,").unwrap())
                 .unwrap_err(),
             CssKnownProperty::FontFamily,
             "A,",
@@ -277,7 +284,7 @@ fn metadata_globals_and_pending_reentry_keep_symbolic_lifecycle() {
         // part of a value, so strict reentry rejects its `!` delimiter as
         // syntax rather than as a family name.
         let error = pending
-            .reenter(parse_component_values("A!important").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "A!important").unwrap())
             .unwrap_err();
         let Some(error) = error.replacement_error() else {
             panic!("invalid replacement: {error:?}")
@@ -298,14 +305,20 @@ fn metadata_globals_and_pending_reentry_keep_symbolic_lifecycle() {
 #[test]
 fn invalid_family_lists_recover_locally_without_emitting_a_partial_list() {
     for text in ["A,", "A default", "A serif", "generic(unknown)", "A + B"] {
-        let report = parse_style_attribute(&format!("font-family:{text};color:red"));
+        let report =
+            CssParser::default().parse_block_contents(format!("font-family:{text};color:red"));
         assert!(!report.is_clean(), "{text}");
         assert_eq!(report.syntax().len(), 1, "{text}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
             CssKnownProperty::Color
         );
-        assert!(validate_style_attribute(&format!("font-family:{text}")).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("font-family:{text}"))
+                .into_validation_result()
+                .is_err()
+        );
     }
 }
 
@@ -362,7 +375,7 @@ fn decoded_descriptor_families_round_trip_as_literals_in_face_and_feature_consum
             expected
         );
         assert_eq!(literal(expected), family);
-        let face_sheet = parse_sheet(&format!(
+        let face_sheet = CssParser::default().parse_sheet(format!(
             "@font-face {{font-family:{expected};src:url(font)}}"
         ));
         assert!(
@@ -384,7 +397,8 @@ fn decoded_descriptor_families_round_trip_as_literals_in_face_and_feature_consum
             panic!("face family")
         };
         assert_eq!(face_family, &family);
-        let sheet = parse_sheet(&format!("@font-feature-values {expected} {{}}"));
+        let sheet =
+            CssParser::default().parse_sheet(format!("@font-feature-values {expected} {{}}"));
         assert!(sheet.is_clean(), "{name}: {:?}", sheet.diagnostics());
         let [CssRule::FontFeatureValues(rule)] = sheet.syntax().rules() else {
             panic!("feature rule")
@@ -421,7 +435,8 @@ fn literal_and_palette_routes_share_output_without_inventing_identifier_nodes() 
             expected
         );
     }
-    let parsed = parse_font_palette_descriptor_value(
+    let parsed = CssFontPaletteDescriptorValue::parse(
+        &CssParser::default(),
         "'Demo Font', 'serif'",
         CssFontPaletteDescriptorKind::FontFamily,
     );

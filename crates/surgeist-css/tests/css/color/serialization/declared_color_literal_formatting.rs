@@ -906,8 +906,11 @@ fn checked_programmatic_origin_retains_number_and_percentage_categories() {
 #[test]
 fn declarations_validate_and_keep_raw_graph_importance_and_siblings() {
     let source = "color: rgb(from red .1234567 g b) !important; opacity: .5";
-    let validated = validate_style_attribute(source).unwrap();
-    let report = parse_style_attribute(source);
+    let validated = CssParser::default()
+        .parse_block_contents(source)
+        .into_validation_result()
+        .unwrap();
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(&validated, report.syntax());
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
@@ -928,7 +931,8 @@ fn declarations_validate_and_keep_raw_graph_importance_and_siblings() {
 
 #[test]
 fn hue_percentages_stay_invalid_and_recovery_retains_sibling() {
-    let report = parse_style_attribute("color: hsl(from red 20% s l); opacity: .5");
+    let report =
+        CssParser::default().parse_block_contents("color: hsl(from red 20% s l); opacity: .5");
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(
@@ -950,10 +954,7 @@ fn substitutions_remain_pending_and_checked_construction_reports_origin() {
             .as_css(),
         source
     );
-    assert!(matches!(
-        expand_declaration(&d).unwrap(),
-        CssExpansion::Pending(_)
-    ));
+    assert!(matches!(d.expand().unwrap(), CssExpansion::Pending(_)));
     let raw = components("var(--n)");
     let before = raw.clone();
     let error = CssRelativeColorExpression::try_from_components(

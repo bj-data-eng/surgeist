@@ -8,8 +8,9 @@ use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::*;
 
 fn checked_components(values: CssComponentValues) -> CssDeclaration {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         values.clone(),
         CssImportance::Normal,
     )
@@ -19,7 +20,7 @@ fn checked_components(values: CssComponentValues) -> CssDeclaration {
 }
 
 fn checked(text: &str) -> CssDeclaration {
-    checked_components(parse_component_values(text).unwrap())
+    checked_components(CssComponentValues::parse(&CssParser::default(), text).unwrap())
 }
 
 fn color(text: &str) -> CssColor {
@@ -116,7 +117,8 @@ fn bare_percentage_roots_cannot_masquerade_as_calculated_mix_weights() {
         for root in [
             CssCalculation::<CssPercentage>::try_literal(coefficient).unwrap(),
             CssCalculation::<CssPercentage>::try_from_components(
-                parse_component_values(&format!("{coefficient}%")).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), format!("{coefficient}%"))
+                    .unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -152,7 +154,7 @@ fn bare_percentage_roots_cannot_masquerade_as_calculated_mix_weights() {
 fn genuine_calculations_preserve_the_graph_origins_and_specified_range() {
     for coefficient in ["-5", "120", "25"] {
         let source = format!("calc({coefficient}%)");
-        let parsed_graph = parse_component_values(&source).unwrap();
+        let parsed_graph = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
         let programmatic_graph = CssComponentValues::try_new(
             vec![
                 CssComponentValue::try_function(
@@ -299,7 +301,7 @@ fn enclosing_mix_counts_calculation_depth_in_its_composed_graph() {
     for (depth, succeeds) in [(255, true), (256, false)] {
         let source = format!("{}25%{}", "calc(".repeat(depth), ")".repeat(depth));
         let calculation = CssCalculation::<CssPercentage>::try_from_components(
-            parse_component_values(&source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -398,21 +400,15 @@ fn mixed_nary_relative_graphs_obey_the_shared_boundary_and_drop_normally() {
     }
     let source = nested_list(257);
     assert!(
-        parse_component_values(&source)
+        CssComponentValues::parse(&CssParser::default(), &source)
             .unwrap_err()
             .is_nesting_limit()
     );
-    let report = parse_style_attribute(&format!("color:{source};opacity:.5"));
-    assert_eq!(report.diagnostics().len(), 1);
-    assert_eq!(
-        report.diagnostics()[0].error().code(),
-        CssErrorCode::NestingLimit
-    );
-    assert_eq!(report.syntax().len(), 1);
-    assert_eq!(
-        report.syntax()[0].known().unwrap().property(),
-        CssKnownProperty::Opacity
-    );
+    let contents = format!("color:{source};opacity:.5");
+    let report = CssParser::default().parse_block_contents(&contents);
+    // Block contents charges the component limits for the whole input.
+    assert!(report.syntax().is_empty());
+    crate::css::support::parse_report::assert_contents_refused(&report, &contents, "mix depth 257");
     let child = color(&nested_list(256));
     assert!(
         CssColorMix::try_new(None, vec![CssColorMixComponent::new(child, None)])
@@ -428,7 +424,11 @@ fn moderately_wide_lists_charge_component_and_byte_budgets_cumulatively() {
     // One function, 128 identifiers and 127 commas: exactly 256 components.
     let count = 2 * width;
     let limits = CssComponentValueLimits::try_new(256, count, source.len()).unwrap();
-    let graph = parse_component_values_with_limits(&source, limits).unwrap();
+    let graph = CssComponentValues::parse(
+        &CssParser::new(CssParserContext::default(), limits),
+        &source,
+    )
+    .unwrap();
     let declaration = checked_components(graph.clone());
     let mix = wrapper(&declaration).value().color_mix_value().unwrap();
     assert_eq!(mix.components().len(), width);
@@ -443,7 +443,13 @@ fn moderately_wide_lists_charge_component_and_byte_budgets_cumulatively() {
     ] {
         let limits = CssComponentValueLimits::try_new(256, components, bytes).unwrap();
         assert_eq!(
-            component_failure(&parse_component_values_with_limits(&source, limits).unwrap_err()),
+            component_failure(
+                &CssComponentValues::parse(
+                    &CssParser::new(CssParserContext::default(), limits),
+                    &source
+                )
+                .unwrap_err()
+            ),
             expected
         );
         assert_eq!(

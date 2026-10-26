@@ -67,11 +67,12 @@ fn typed(declaration: &CssDeclaration) -> CssItemFlow {
 }
 
 fn fronts(text: &str) -> [CssDeclaration; 2] {
-    let report = parse_style_attribute(&format!("item-flow:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("item-flow:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    let constructed = parse_property_value_for_grammar(
-        CssKnownProperty::ItemFlow.grammar(),
-        parse_component_values(text).unwrap(),
+    let constructed = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(CssKnownProperty::ItemFlow.grammar()),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -139,7 +140,7 @@ fn all_480_complete_typed_keyword_tuples_reparse_without_erasing_wrap_states() {
                             expected
                         );
                         let CssExpansion::Contributions(CssContributions::Longhands(children)) =
-                            expand_declaration(&declaration).unwrap()
+                            declaration.expand().unwrap()
                         else {
                             panic!("four ordinary constituents")
                         };
@@ -278,7 +279,7 @@ fn constructed_symbolic_tolerance_composes_without_changing_owning_work_costs() 
     let tolerance = CssFlowTolerance::length_percentage(
         CssNumeric::<CssLengthPercentage>::try_from_calculation(
             CssCalculation::<CssLengthPercentage>::try_from_components(
-                parse_component_values("calc(1px + 2em)").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "calc(1px + 2em)").unwrap(),
                 Default::default(),
             )
             .unwrap(),

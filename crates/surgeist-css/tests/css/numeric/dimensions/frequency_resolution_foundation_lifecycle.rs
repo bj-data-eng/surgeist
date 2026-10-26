@@ -88,7 +88,7 @@ fn signed_resolution_roots_retain_exact_coefficients_and_math_structure() {
         ("1.0000000000000001x", "1.0000000000000001", "x"),
     ] {
         let calculation = CssCalculation::<CssResolution>::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -108,7 +108,7 @@ fn signed_resolution_roots_retain_exact_coefficients_and_math_structure() {
     }
     for source in ["calc(-1dppx)", "calc(-1dppx / 0)"] {
         let calculation = CssCalculation::<CssResolution>::try_from_components(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -127,7 +127,7 @@ fn signed_resolution_roots_retain_exact_coefficients_and_math_structure() {
 }
 
 fn resolution_feature(source: &str) -> CssMediaFeatureQuery {
-    let report = parse_media_query(source);
+    let report = CssMediaQuery::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(
         report
@@ -248,7 +248,7 @@ mod construction {
     use std::error::Error;
 
     fn token(source: &str) -> CssComponentValue {
-        parse_component_values(source)
+        CssComponentValues::parse(&CssParser::default(), source)
             .unwrap()
             .items()
             .last()
@@ -258,7 +258,7 @@ mod construction {
     fn frequency(source: &str) -> CssNumeric<CssFrequency> {
         CssNumeric::<CssFrequency>::try_from_calculation(
             CssCalculation::<CssFrequency>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -268,7 +268,7 @@ mod construction {
     fn resolution(source: &str) -> CssNumeric<CssResolution, CssNonNegative> {
         CssNumeric::<CssResolution, CssNonNegative>::try_from_calculation(
             CssCalculation::<CssResolution>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -516,7 +516,7 @@ mod construction {
         }
         for source in ["0", "1s", "(1hz)"] {
             let error = CssCalculation::<CssFrequency>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default(),
             )
             .unwrap_err();
@@ -526,7 +526,7 @@ mod construction {
         }
         for source in ["0", "1hz", "(1dpi)"] {
             let error = CssCalculation::<CssResolution>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default(),
             )
             .unwrap_err();
@@ -563,8 +563,8 @@ mod construction {
         assert!(error.source().is_some());
         assert_eq!(error.path(), None);
         for components in [
-            parse_component_values("1hz").unwrap(),
-            parse_component_values("1dppx").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "1hz").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "1dppx").unwrap(),
         ] {
             let limits = CssComponentValueLimits::try_new(1, 1, 0).unwrap();
             let error = if decoded_unit(&components.items()[0]) == "hz" {
@@ -587,7 +587,7 @@ mod construction {
     fn strict_calculation_frontdoors_reject_original_recovery_without_admitting_a_clean_prefix() {
         for source in ["calc(1hz", "calc(min(-1hz, 2hz"] {
             let error = CssCalculation::<CssFrequency>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default(),
             )
             .unwrap_err();
@@ -596,7 +596,7 @@ mod construction {
         }
         for source in ["calc(-1dppx", "calc(min(-1dppx, 2dppx"] {
             let error = CssCalculation::<CssResolution>::try_from_components(
-                parse_component_values(source).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 Default::default(),
             )
             .unwrap_err();
@@ -605,7 +605,7 @@ mod construction {
         }
         assert!(
             CssCalculation::<CssFrequency>::try_from_components(
-                parse_component_values("1hz 2hz").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "1hz 2hz").unwrap(),
                 Default::default()
             )
             .unwrap_err()
@@ -613,7 +613,7 @@ mod construction {
         );
         assert!(
             CssCalculation::<CssResolution>::try_from_components(
-                parse_component_values("1dpi 2dpi").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "1dpi 2dpi").unwrap(),
                 Default::default()
             )
             .unwrap_err()
@@ -754,7 +754,7 @@ mod construction {
             (r"(resolution: -1\64 pi)", "-1", "dpi"),
             (r"(resolution >= -2\78)", "-2", "x"),
         ] {
-            let report = parse_media_query(source);
+            let report = CssMediaQuery::parse(&CssParser::default(), source);
             assert!(report.is_clean(), "{:?}", report.diagnostics());
             let CssMediaQuery::Condition(condition) = report.syntax() else {
                 panic!("condition")

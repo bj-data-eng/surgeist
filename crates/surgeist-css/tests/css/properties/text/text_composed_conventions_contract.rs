@@ -264,8 +264,7 @@ fn members(name: &str) -> Vec<&str> {
 }
 
 fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("completed intrinsic terminals")
     };
@@ -471,7 +470,7 @@ fn strict_original(name: &str) {
     ];
     values.extend(GLOBALS.map(|(text, _)| format!("{text}/*")));
     for text in values {
-        let components = parse_component_values(&text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
         let before = components.clone();
         let origin = implicit_origin(&components);
         for grammar in [false, true] {
@@ -531,7 +530,7 @@ fn browser_recovery_retains_original_occurrences_and_diagnostics_without_cleanin
             "var(--text)/*".into(),
         ] {
             let css = format!(".a{{{}:{text}", w.name);
-            let report = parse_sheet(&css);
+            let report = CssParser::default().parse_sheet(&css);
             assert!(!report.is_clean());
             assert!(
                 report
@@ -539,9 +538,14 @@ fn browser_recovery_retains_original_occurrences_and_diagnostics_without_cleanin
                     .iter()
                     .any(|d| d.action() == CssRecoveryAction::RetainWithImplicitClosure)
             );
-            assert!(validate_sheet(&css).is_err());
+            assert!(
+                CssParser::default()
+                    .parse_sheet(&css)
+                    .into_validation_result()
+                    .is_err()
+            );
             let before = report.clone();
-            let normalized = normalize_report(&report).unwrap();
+            let normalized = report.normalize(Default::default()).unwrap();
             assert_eq!(normalized.diagnostics(), report.diagnostics());
             let declarations: Vec<_> = normalized
                 .syntax()
@@ -577,7 +581,7 @@ fn pending_reentry_keeps_source_importance_and_replacement_origins_with_residual
         for text in ["var(--text)", "env(text)", "attr(data-text *)"] {
             let source = parsed(w.name, text);
             let before = source.clone();
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("whole pending occurrence")
             };
             for residual in [
@@ -589,7 +593,9 @@ fn pending_reentry_keeps_source_importance_and_replacement_origins_with_residual
                 for _ in 0..2 {
                     assert!(
                         handle
-                            .reenter(parse_component_values(residual).unwrap())
+                            .reenter(
+                                CssComponentValues::parse(&CssParser::default(), residual).unwrap()
+                            )
                             .unwrap_err()
                             .is_residual_substitution()
                     );
@@ -597,19 +603,19 @@ fn pending_reentry_keeps_source_importance_and_replacement_origins_with_residual
             }
             for _ in 0..2 {
                 let error = handle
-                    .reenter(parse_component_values(w.invalid).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), w.invalid).unwrap())
                     .unwrap_err();
                 assert!(error.replacement_error().is_some());
             }
             let recovered = format!("{}/*", w.authored);
-            let components = parse_component_values(&recovered).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), &recovered).unwrap();
             let origin = implicit_origin(&components);
             let error = handle.reenter(components).unwrap_err();
             let Some(error) = error.replacement_error() else {
                 panic!("original replacement closure")
             };
             assert_closure(error, &origin, &recovered);
-            let replacement = parse_component_values(w.authored).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), w.authored).unwrap();
             let replacement_before = replacement.clone();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -637,7 +643,7 @@ fn pending_reentry_keeps_source_importance_and_replacement_origins_with_residual
                 }
             }
             for (global, keyword) in GLOBALS {
-                let replacement = parse_component_values(global).unwrap();
+                let replacement = CssComponentValues::parse(&CssParser::default(), global).unwrap();
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
                 else {
@@ -675,12 +681,12 @@ fn composed_normalization_and_sheet_bytes_preserve_all_occurrences_and_member_bo
             .collect::<Vec<_>>()
             .join(" ")
     );
-    let report = parse_sheet(&input);
+    let report = CssParser::default().parse_sheet(&input);
     assert!(report.is_clean());
     let before = report.clone();
     let terminal_budget = WITNESSES.iter().map(|w| members(w.name).len()).sum();
     let exact = CssNormalizationLimits::try_new(0, 1, WITNESSES.len(), terminal_budget).unwrap();
-    let normalized = normalize_report_with_limits(&report, exact).unwrap();
+    let normalized = report.normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .syntax()
         .items()
@@ -722,7 +728,7 @@ fn composed_normalization_and_sheet_bytes_preserve_all_occurrences_and_member_bo
     }
     let short =
         CssNormalizationLimits::try_new(0, 1, WITNESSES.len(), terminal_budget - 1).unwrap();
-    let error = normalize_report_with_limits(&report, short).unwrap_err();
+    let error = report.normalize(short).unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, terminal_budget - 1))
@@ -750,7 +756,7 @@ fn composed_normalization_and_sheet_bytes_preserve_all_occurrences_and_member_bo
         );
         assert_eq!(report, before);
     }
-    assert!(normalize_report_with_limits(&report, exact).is_ok());
+    assert!(report.normalize(exact).is_ok());
     assert_eq!(
         report.syntax().serialize_specified(byte_exact).unwrap(),
         expected

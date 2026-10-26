@@ -166,12 +166,12 @@ fn longhand_payloads_preserve_distinct_choices_and_emit_canonical_keywords() {
         assert_eq!(output, expected);
         let reparsed = declaration(name, &output);
         let CssExpansion::Contributions(CssContributions::Longhands(before)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("longhand")
         };
         let CssExpansion::Contributions(CssContributions::Longhands(after)) =
-            expand_declaration(&reparsed).unwrap()
+            reparsed.expand().unwrap()
         else {
             panic!("longhand")
         };
@@ -278,10 +278,10 @@ fn normalization_counts_all_four_members_and_returns_the_exact_late_failure() {
         ".a{font-synthesis:weight!important;font-synthesis:none;",
         "font-synthesis-style:oblique-only;font-synthesis-weight:var(--synthesis);color:red}"
     );
-    let report = parse_sheet(text);
+    let report = CssParser::default().parse_sheet(text);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let exact = CssNormalizationLimits::try_new(0, 1, 5, 11).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -324,12 +324,12 @@ fn normalization_counts_all_four_members_and_returns_the_exact_late_failure() {
             4,
         ),
     ] {
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+        let error = report.syntax().normalize(limits).unwrap_err();
         assert_eq!(error.exhausted_limit(), Some((resource, limit)));
         assert_eq!(error.declaration_order(), Some(4));
         assert!(error.declaration().unwrap().same_occurrence(&color));
         assert_eq!(error.position(), color.position());
-        let after = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+        let after = report.syntax().normalize(exact).unwrap();
         let after_color = after
             .items()
             .iter()

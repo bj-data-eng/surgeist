@@ -46,8 +46,7 @@ fn accepted(name: &str, value: &str) {
 
 fn one_value(name: &str, value: &str) -> CssLonghandValue {
     let source = declaration(name, value);
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("{name} has a terminal contribution")
     };
@@ -227,7 +226,7 @@ fn physical_shorthand_expands_four_corners_in_top_left_clockwise_order() {
         let source = declaration(SHORTHAND, authored);
         checked(SHORTHAND, authored);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("border-radius expands to physical corners")
         };
@@ -248,7 +247,7 @@ fn physical_shorthand_expands_four_corners_in_top_left_clockwise_order() {
 fn css_wide_all_and_pending_reentry_preserve_members_and_occurrences() {
     let all_source = declaration("all", "initial");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all_source).unwrap()
+        all_source.expand().unwrap()
     else {
         panic!("all is a symbolic universal reset")
     };
@@ -266,7 +265,7 @@ fn css_wide_all_and_pending_reentry_preserve_members_and_occurrences() {
             let source = declaration(name, text);
             checked(name, text);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("{name} has symbolic global contributions")
             };
@@ -279,24 +278,26 @@ fn css_wide_all_and_pending_reentry_preserve_members_and_occurrences() {
         }
         for pending in ["var(--radius)", "env(--radius)"] {
             let source = declaration(name, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("{name} retains pending substitution")
             };
             assert!(handle.source().same_occurrence(&source));
             assert!(
                 handle
-                    .reenter(parse_component_values("-1e-100px").unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), "-1e-100px").unwrap())
                     .unwrap_err()
                     .replacement_error()
                     .is_some()
             );
             assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
                     .is_residual_substitution()
             );
-            let replacement = parse_component_values("1px 2%").unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), "1px 2%").unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("{name} reenters to terminal contributions")
@@ -314,11 +315,9 @@ fn css_wide_all_and_pending_reentry_preserve_members_and_occurrences() {
 
 #[test]
 fn normalization_retains_logical_corner_names_and_order_without_mapping() {
-    let report = parse_sheet(
-        ".a{border-top-left-radius:1px;border-start-end-radius:2% 3px;border-radius:4px / 5%;border-end-start-radius:6px}",
-    );
+    let report = CssParser::default().parse_sheet(".a{border-top-left-radius:1px;border-start-end-radius:2% 3px;border-radius:4px / 5%;border-end-start-radius:6px}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let authored = normalized
         .items()
         .iter()
@@ -339,11 +338,11 @@ fn normalization_retains_logical_corner_names_and_order_without_mapping() {
         ]
         .map(|name| grammar(name).target_property())
     );
-    let report = parse_sheet(
+    let report = CssParser::default().parse_sheet(
         ".a{border-start-start-radius:var(--corner);border-end-end-radius:env(--corner)}",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_eq!(normalized.items().iter().filter(|item| matches!(item,
         CssNormalizedItem::Declaration(value) if matches!(value.expansion(), CssExpansion::Pending(_))
     )).count(), 2);

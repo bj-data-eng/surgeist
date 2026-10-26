@@ -26,7 +26,7 @@ fn order_initial_is_literal_zero_and_ordinary_values_keep_identity() {
             panic!("order")
         };
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("ordinary")
         };
@@ -46,7 +46,7 @@ fn order_initial_is_literal_zero_and_ordinary_values_keep_identity() {
 #[test]
 fn order_reentry_is_atomic_and_preserves_exact_replacement_origin() {
     let source = declaration("order:var(--priority)!important");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending")
     };
     for input in [
@@ -59,18 +59,18 @@ fn order_reentry_is_atomic_and_preserves_exact_replacement_origin() {
         "1!important",
     ] {
         let error = handle
-            .reenter(parse_component_values(input).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), input).unwrap())
             .unwrap_err();
         assert!(error.replacement_error().is_some(), "{input}: {error:?}");
     }
     assert!(
         handle
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
     for replacement in [
-        parse_component_values("+0002147483648").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "+0002147483648").unwrap(),
         CssComponentValues::try_new(
             vec![CssComponentValue::try_number("+0002147483648").unwrap()],
             Default::default(),
@@ -99,7 +99,7 @@ fn order_reentry_is_atomic_and_preserves_exact_replacement_origin() {
         }
     }
     let CssContributions::Longhands(items) = handle
-        .reenter(parse_component_values("inherit").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
         .unwrap()
     else {
         panic!("global")
@@ -113,7 +113,7 @@ fn order_reentry_is_atomic_and_preserves_exact_replacement_origin() {
 #[test]
 fn normalization_preserves_authored_order_around_nested_rules_instead_of_sorting_values() {
     let text = ".a{order:2147483648;order:1.0;.child{order:-2147483649}order:0!important}";
-    let report = parse_sheet(text);
+    let report = CssParser::default().parse_sheet(text);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
@@ -125,10 +125,14 @@ fn normalization_preserves_authored_order_around_nested_rules_instead_of_sorting
         Some("1.0"),
     );
     assert_eq!(
-        validate_sheet(text).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(text)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
-    let sheet = normalize_sheet(report.syntax()).unwrap();
+    let sheet = report.syntax().normalize(Default::default()).unwrap();
     let items: Vec<_> = sheet
         .items()
         .iter()
@@ -177,11 +181,10 @@ fn normalization_preserves_authored_order_around_nested_rules_instead_of_sorting
             .same_context(items[0].selector_context())
     );
     assert_eq!(items[2].source().importance(), CssImportance::Important);
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(256, usize::MAX, 3, 2).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(256, usize::MAX, 3, 2).unwrap())
+        .unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 2))

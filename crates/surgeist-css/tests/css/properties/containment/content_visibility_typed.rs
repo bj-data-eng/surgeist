@@ -8,8 +8,7 @@ use surgeist_css::*;
 const PROPERTY: CssKnownProperty = CssKnownProperty::ContentVisibility;
 
 fn terminal(source: &CssDeclaration) -> CssLonghandContribution {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one ordinary longhand")
     };
@@ -66,8 +65,9 @@ fn intrinsic_visible_and_each_authored_keyword_have_exact_typed_terminal_values(
 fn programmatic_identifier_and_parsed_identifier_retain_distinct_origins() {
     let token = CssComponentValue::try_ident("auto").unwrap();
     assert!(matches!(token.origin(), CssValueOrigin::Programmatic));
-    let constructed = parse_property_value(
-        CssPropertyNameRef::Known(PROPERTY),
+    let constructed = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(PROPERTY)),
         CssComponentValues::try_new(vec![token], Default::default()).unwrap(),
         CssImportance::Normal,
     )
@@ -144,7 +144,7 @@ fn canonical_keywords_obey_exact_node_and_byte_limits_without_mutating_authored_
             );
         }
         let authored = format!("content-visibility:{}!important", expected.to_uppercase());
-        let report = parse_style_attribute(&authored);
+        let report = CssParser::default().parse_block_contents(&authored);
         assert!(report.is_clean());
         let CssKnownPropertyValueRef::ContentVisibility(wrapper) = report.syntax()[0]
             .known()

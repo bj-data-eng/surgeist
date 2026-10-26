@@ -3,7 +3,7 @@ use surgeist_css::*;
 
 fn color(text: &str, clean: bool) -> CssColor {
     let source = format!("text-decoration-color:{text}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         report.is_clean(),
         clean,
@@ -29,7 +29,7 @@ fn color(text: &str, clean: bool) -> CssColor {
 
 fn thickness(text: &str, clean: bool) -> CssTextDecorationThickness {
     let source = format!("text-decoration-thickness:{text}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         report.is_clean(),
         clean,

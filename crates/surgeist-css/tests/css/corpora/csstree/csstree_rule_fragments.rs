@@ -6,8 +6,8 @@
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/
 use surgeist_css::{
-    CssDeclarationList, CssErrorCode, CssKnownPropertyValueRef, CssNamespaceContext,
-    CssRecoveryAction, CssRule, CssSelector, CssStyleSelector, parse_rule,
+    CssDeclarationList, CssErrorCode, CssKnownPropertyValueRef, CssNamespaceContext, CssParser,
+    CssRecoveryAction, CssRule, CssSelector, CssStyleSelector,
 };
 
 type ExpectedDiagnostic = (&'static str, &'static str, usize, u32, u32);
@@ -334,7 +334,11 @@ fn rule_corpus_preserves_outer_admission_inner_recovery_and_typed_content() {
         let inputs: Vec<_> = cases.iter().filter(|c| c["id"] == id).collect();
         assert_eq!(inputs.len(), 1, "{id}");
         let input = inputs[0]["input"].as_str().unwrap();
-        let report = parse_rule(input, &CssNamespaceContext::default());
+        let report = CssRule::parse(
+            &CssParser::default(),
+            input,
+            &CssNamespaceContext::default(),
+        );
         assert_eq!(report.syntax().is_some(), retained, "{id}: {report:?}");
         assert_eq!(
             report.is_clean(),

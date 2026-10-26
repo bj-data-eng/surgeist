@@ -5,15 +5,15 @@ use crate::css::support::failure_classes::SerializationFailure as ResourceKind;
 use crate::css::support::value_assertions::clean_media_query as query;
 use crate::css::support::value_assertions::media_resource_kind as resource_kind;
 use surgeist_css::{
-    CssRecoveryAction, CssSerializationLimits as Limits, CssSerializedOrigin, CssValueOrigin,
-    parse_cssom_media_query, parse_media_query, parse_media_query_list,
+    CssMediaQuery, CssMediaQueryList, CssParser, CssRecoveryAction,
+    CssSerializationLimits as Limits, CssSerializedOrigin, CssValueOrigin,
 };
 
 #[test]
 fn single_query_requires_exactly_one_list_member_and_preserves_recovery_diagnostics() {
     for source in ["", " /* empty */ ", "screen, print", "screen, ???"] {
-        let expected = parse_media_query_list(source);
-        let single = parse_cssom_media_query(source);
+        let expected = CssMediaQueryList::parse(&CssParser::default(), source);
+        let single = CssMediaQuery::parse_medium(&CssParser::default(), source);
         assert!(single.syntax().is_none(), "{source}");
         assert_eq!(single.diagnostics(), expected.diagnostics(), "{source}");
     }
@@ -25,7 +25,7 @@ fn single_query_requires_exactly_one_list_member_and_preserves_recovery_diagnost
         "screen"
     );
 
-    let ignored = parse_cssom_media_query("???");
+    let ignored = CssMediaQuery::parse_medium(&CssParser::default(), "???");
     assert_eq!(ignored.diagnostics().len(), 1);
     assert_eq!(
         ignored.diagnostics()[0].action(),
@@ -46,7 +46,7 @@ fn single_query_requires_exactly_one_list_member_and_preserves_recovery_diagnost
 #[test]
 fn ignored_members_project_to_not_all_in_place_without_mutating_authored_reports() {
     let source = "/* 😀 */\r\nscreen, ???, print, &test, speech";
-    let report = parse_media_query_list(source);
+    let report = CssMediaQueryList::parse(&CssParser::default(), source);
     let original = report.clone();
     let output = report.syntax().serialize_cssom(Default::default()).unwrap();
     assert_eq!(output.as_css(), "screen, not all, print, not all, speech");
@@ -76,7 +76,7 @@ fn ignored_members_project_to_not_all_in_place_without_mutating_authored_reports
 
 #[test]
 fn a_recovered_single_query_keeps_its_authored_fail_closed_serialization() {
-    let report = parse_media_query("screen and");
+    let report = CssMediaQuery::parse(&CssParser::default(), "screen and");
     let original = report.clone();
     assert_eq!(
         report
@@ -137,7 +137,7 @@ fn cssom_output_drops_only_and_redundant_all_and_keeps_negated_types_and_list_or
             "screen and (color), not all and (monochrome), all",
         ),
     ] {
-        let list = parse_media_query_list(source);
+        let list = CssMediaQueryList::parse(&CssParser::default(), source);
         assert_eq!(
             list.syntax()
                 .serialize_cssom(Default::default())
@@ -170,7 +170,7 @@ fn authored_output_keeps_the_authored_only_prefix() {
         ("NOT ALL and (COLOR)", "not all and (color)"),
     ] {
         assert_eq!(
-            parse_media_query(source)
+            CssMediaQuery::parse(&CssParser::default(), source)
                 .syntax()
                 .serialize_tokens(Default::default())
                 .unwrap()
@@ -180,7 +180,7 @@ fn authored_output_keeps_the_authored_only_prefix() {
         );
     }
     assert_eq!(
-        parse_media_query_list("PRINT, ONLY SCREEN")
+        CssMediaQueryList::parse(&CssParser::default(), "PRINT, ONLY SCREEN")
             .syntax()
             .serialize_tokens(Default::default())
             .unwrap()
@@ -260,7 +260,7 @@ fn byte_equality_is_canonical_case_sensitive_and_distinct_from_authored_identity
             .cssom_equals(&query("(monochrome) and (color)"), Default::default())
             .unwrap()
     );
-    let recovered = parse_cssom_media_query("???");
+    let recovered = CssMediaQuery::parse_medium(&CssParser::default(), "???");
     assert!(
         recovered
             .syntax()
@@ -297,7 +297,9 @@ fn query_resource_limits_are_exact_atomic_and_preserve_responsible_origins() {
 
 #[test]
 fn list_members_share_node_and_byte_limits_including_the_list_aggregate() {
-    let list = parse_media_query_list("screen, print").into_parts().0;
+    let list = CssMediaQueryList::parse(&CssParser::default(), "screen, print")
+        .into_parts()
+        .0;
     assert_eq!(
         list.serialize_cssom(Limits::new(5, 5, 13))
             .unwrap()
@@ -317,7 +319,9 @@ fn list_members_share_node_and_byte_limits_including_the_list_aggregate() {
             expected
         );
     }
-    let empty = parse_media_query_list("").into_parts().0;
+    let empty = CssMediaQueryList::parse(&CssParser::default(), "")
+        .into_parts()
+        .0;
     assert_eq!(
         empty
             .serialize_cssom(Limits::new(1, 1, 0))
@@ -329,7 +333,10 @@ fn list_members_share_node_and_byte_limits_including_the_list_aggregate() {
 
 #[test]
 fn recovery_charges_synthetic_projection_and_comparison_shares_both_query_budgets() {
-    let recovered = parse_cssom_media_query("???").into_parts().0.unwrap();
+    let recovered = CssMediaQuery::parse_medium(&CssParser::default(), "???")
+        .into_parts()
+        .0
+        .unwrap();
     // One retained query node and two generated keyword projection nodes.
     assert_eq!(
         recovered
@@ -366,7 +373,7 @@ fn deep_and_eof_recovered_conditions_use_the_same_owning_grammar_and_emitter() {
             .as_css(),
         source
     );
-    let eof = parse_cssom_media_query("((COLOR)");
+    let eof = CssMediaQuery::parse_medium(&CssParser::default(), "((COLOR)");
     assert_eq!(eof.diagnostics().len(), 1);
     assert_eq!(
         eof.diagnostics()[0].action(),

@@ -65,7 +65,7 @@ fn selected_3d_properties_admit_keywords_positions_and_unfloored_nonnegative_len
         ),
     ] {
         let text = format!("color:red;{name}:{input};color:blue");
-        let report = parse_style_attribute(&text);
+        let report = CssParser::default().parse_block_contents(&text);
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 3);
         admission(name, input, output);
@@ -262,14 +262,16 @@ fn all_pending_forms_reenter_strictly_and_reuse_original_identity_and_replacemen
             for pending in ["var(--t)", "env(t)", "attr(data-t *)"] {
                 let source = front.valid(p, pending, pending);
                 let before = source.clone();
-                let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+                let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                     panic!("supported pending transform")
                 };
                 assert!(handle.source().same_occurrence(&source));
                 for invalid in ["var(--again)", "env(again)", "attr(data-again *)"] {
                     assert!(
                         handle
-                            .reenter(parse_component_values(invalid).unwrap())
+                            .reenter(
+                                CssComponentValues::parse(&CssParser::default(), invalid).unwrap()
+                            )
                             .unwrap_err()
                             .is_residual_substitution()
                     );
@@ -283,7 +285,10 @@ fn all_pending_forms_reenter_strictly_and_reuse_original_identity_and_replacemen
                     for _ in 0..2 {
                         assert!(
                             handle
-                                .reenter(parse_component_values(invalid).unwrap())
+                                .reenter(
+                                    CssComponentValues::parse(&CssParser::default(), invalid)
+                                        .unwrap()
+                                )
                                 .unwrap_err()
                                 .replacement_error()
                                 .is_some()
@@ -293,7 +298,8 @@ fn all_pending_forms_reenter_strictly_and_reuse_original_identity_and_replacemen
                 for (text, expected_global) in
                     std::iter::once((input, None)).chain(GLOBALS.map(|(text, k)| (text, Some(k))))
                 {
-                    let replacement = parse_component_values(text).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), text).unwrap();
                     let CssContributions::Longhands(values) =
                         handle.reenter(replacement.clone()).unwrap()
                     else {
@@ -387,7 +393,7 @@ fn checked_original_closures_reject_ordinary_global_and_pending_values_at_origin
                 .map(str::to_owned),
             )
         {
-            let values = parse_component_values(&text).unwrap();
+            let values = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
             let before = values.clone();
             let origin = implicit_origin(&values);
             for grammar in [false, true] {
@@ -407,11 +413,11 @@ fn pending_reentry_closures_reject_without_consuming_the_handle_and_complete_com
         let p = property(name);
         let value = if name == "scale" { "2 2 1" } else { value };
         let source = checked(p, "var(--t)", false);
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         for text in [format!("{value}/*"), "initial/*".to_owned()] {
-            let replacement = parse_component_values(&text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
             let origin = implicit_origin(&replacement);
             for _ in 0..2 {
                 let error = handle.reenter(replacement.clone()).unwrap_err();
@@ -423,7 +429,10 @@ fn pending_reentry_closures_reject_without_consuming_the_handle_and_complete_com
         }
         assert!(
             handle
-                .reenter(parse_component_values(&format!("{value}/**/")).unwrap())
+                .reenter(
+                    CssComponentValues::parse(&CssParser::default(), format!("{value}/**/"))
+                        .unwrap()
+                )
                 .is_ok()
         );
         assert!(handle.source().same_occurrence(&source));
@@ -432,11 +441,9 @@ fn pending_reentry_closures_reject_without_consuming_the_handle_and_complete_com
 #[test]
 fn normalized_composed_transform_families_preserve_occurrences_order_importance_and_pending_identity()
  {
-    let report = parse_sheet(
-        ".a{transform:translateX(10%);rotate:x 30deg!important;scale:50%;perspective:.25px;transform:var(--t)}",
-    );
+    let report = CssParser::default().parse_sheet(".a{transform:translateX(10%);rotate:x 30deg!important;scale:50%;perspective:.25px;transform:var(--t)}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let items: Vec<_> = normalized
         .items()
         .iter()
@@ -478,7 +485,7 @@ fn normalized_composed_transform_families_preserve_occurrences_order_importance_
         }
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 4).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 4))
@@ -534,9 +541,7 @@ fn retained_provider_controls_charge_suppressed_defaults_and_specified_math_cumu
 }
 #[test]
 fn composed_sheets_share_bytes_and_retry_after_late_failure_without_mutation() {
-    let report = parse_sheet(
-        ".a{transform:scale(50%,150%);perspective:.25px!important}.b{rotate:x 30deg;transform-origin:top left 2px}",
-    );
+    let report = CssParser::default().parse_sheet(".a{transform:scale(50%,150%);perspective:.25px!important}.b{rotate:x 30deg;transform-origin:top left 2px}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let sheet = report.syntax();
     let before = sheet.clone();
@@ -572,9 +577,12 @@ fn checked_nested_transform_values_clone_compare_serialize_and_drop_on_joined_or
                     "calc(".repeat(depth),
                     ")".repeat(depth)
                 );
-                let components = parse_component_values(&value).unwrap();
-                let a = parse_property_value(
-                    CssPropertyNameRef::Known(CssKnownProperty::Transform),
+                let components = CssComponentValues::parse(&CssParser::default(), &value).unwrap();
+                let a = CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                        CssKnownProperty::Transform,
+                    )),
                     components.clone(),
                     CssImportance::Normal,
                 )
@@ -624,7 +632,7 @@ fn checked_programmatic_tokens_and_parsed_numeric_children_keep_exact_original_p
         );
     }
     let text = "/*😀*/\r\ntranslate:25% 1e-999px 0px!important";
-    let report = parse_style_attribute(text);
+    let report = CssParser::default().parse_block_contents(text);
     assert!(report.is_clean());
     let source = &report.syntax()[0];
     let before = source.clone();

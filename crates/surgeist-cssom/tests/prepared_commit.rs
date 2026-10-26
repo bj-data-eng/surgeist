@@ -57,8 +57,8 @@ fn prepared_report_publishes_real_tickets_diagnostics_source_and_summary() {
             .encode_utf16()
             .collect::<Vec<_>>(),
     );
-    let report = CssParserContext::default()
-        .parse_sheet_utf16_with_limits(raw.clone(), CssUtf16InputLimits::default(), || {
+    let report = CssParser::new(CssParserContext::default(), Default::default())
+        .parse_sheet_utf16(raw.clone(), CssUtf16InputLimits::default(), || {
             Ok::<_, ()>(())
         })
         .unwrap();
@@ -239,8 +239,8 @@ fn linked_source() -> (CssomContext, Weak<Vec<u16>>) {
             .collect::<Vec<_>>(),
     );
     let weak = Arc::downgrade(&original);
-    let report = CssParserContext::default()
-        .parse_sheet_utf16_with_limits(original, CssUtf16InputLimits::default(), || Ok::<_, ()>(()))
+    let report = CssParser::new(CssParserContext::default(), Default::default())
+        .parse_sheet_utf16(original, CssUtf16InputLimits::default(), || Ok::<_, ()>(()))
         .unwrap();
     let mut source = store(CssomLimits {
         summary_history: 0,

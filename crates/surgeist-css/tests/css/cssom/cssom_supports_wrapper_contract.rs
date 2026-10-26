@@ -5,13 +5,13 @@
 
 use crate::css::support::{graph_cssom, graph_specified};
 use surgeist_css::{
-    CssGroupPreludeRef as Prelude, CssRule, CssRuleCssomFormat, CssRuleGraphInput as View,
-    CssSpecifiedDeclarationBlock as Block, parse_sheet,
+    CssGroupPreludeRef as Prelude, CssParser, CssRule, CssRuleCssomFormat,
+    CssRuleGraphInput as View, CssSpecifiedDeclarationBlock as Block,
 };
 
 #[test]
 fn empty_parsed_supports_has_exactly_one_closing_line_feed() {
-    let report = parse_sheet("@supports (display: grid) {}");
+    let report = CssParser::default().parse_sheet("@supports (display: grid) {}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
@@ -41,8 +41,9 @@ fn empty_parsed_supports_has_exactly_one_closing_line_feed() {
 
 #[test]
 fn multiline_children_receive_a_prefix_only_on_their_first_line() {
-    let report =
-        parse_sheet("@supports (display:grid) { @media screen { .child { color:red } } .last {} }");
+    let report = CssParser::default().parse_sheet(
+        "@supports (display:grid) { @media screen { .child { color:red } } .last {} }",
+    );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("Supports rule");
@@ -73,7 +74,8 @@ fn multiline_children_receive_a_prefix_only_on_their_first_line() {
 
 #[test]
 fn supports_inside_a_style_preserves_actual_nested_selector_ancestry() {
-    let report = parse_sheet(".host { @supports (display:grid) { .child {} } }");
+    let report =
+        CssParser::default().parse_sheet(".host { @supports (display:grid) { .child {} } }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     assert_eq!(
@@ -92,7 +94,8 @@ fn supports_inside_a_style_preserves_actual_nested_selector_ancestry() {
 
 #[test]
 fn borrowed_scoped_supports_formats_without_adopting_a_scope_wrapper() {
-    let report = parse_sheet("@scope (.host) { @supports (display:grid) { & .child {} } }");
+    let report = CssParser::default()
+        .parse_sheet("@scope (.host) { @supports (display:grid) { & .child {} } }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("scope");
@@ -113,7 +116,8 @@ fn borrowed_scoped_supports_formats_without_adopting_a_scope_wrapper() {
 
 #[test]
 fn edited_supports_preserves_selected_survivors_and_filters_empty_child_text() {
-    let report = parse_sheet("@supports (display:grid) {} .child { margin:1px 2px 3px 4px }");
+    let report = CssParser::default()
+        .parse_sheet("@supports (display:grid) {} .child { margin:1px 2px 3px 4px }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Supports(supports), CssRule::Style(style)] = report.syntax().rules() else {
         panic!("Supports and style");
@@ -150,7 +154,7 @@ fn edited_supports_preserves_selected_survivors_and_filters_empty_child_text() {
 }
 
 fn assert_empty_edited_frame(retain_empty_children: bool) {
-    let report = parse_sheet("@supports (display:grid) {}");
+    let report = CssParser::default().parse_sheet("@supports (display:grid) {}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Supports(supports)] = report.syntax().rules() else {
         panic!("Supports");
@@ -191,8 +195,8 @@ fn all_empty_edited_children_have_the_one_line_feed_frame() {
 
 #[test]
 fn specified_condition_retains_logical_grouping_and_future_tokens() {
-    let report =
-        parse_sheet("@supports ((display:grid) or (display:flex)) and (future-token(foo)) {}");
+    let report = CssParser::default()
+        .parse_sheet("@supports ((display:grid) or (display:flex)) and (future-token(foo)) {}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     let [CssRule::Supports(supports)] = report.syntax().rules() else {
@@ -221,7 +225,7 @@ fn specified_condition_retains_logical_grouping_and_future_tokens() {
 
 #[test]
 fn media_empty_frame_and_unselected_container_are_independent_controls() {
-    let report = parse_sheet("@media screen {} @container (width>1px) {}");
+    let report = CssParser::default().parse_sheet("@media screen {} @container (width>1px) {}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [media @ CssRule::Media(_), container @ CssRule::Container(_)] = report.syntax().rules()
     else {

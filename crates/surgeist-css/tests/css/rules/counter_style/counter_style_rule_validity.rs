@@ -4,14 +4,13 @@
 //! with authored symbols or additive-symbols.
 
 use surgeist_css::{
-    CssCounterStyleDescriptorKind, CssCounterStyleRule, CssErrorCode, CssNormalizedItem,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef, normalize_report, parse_sheet,
-    validate_sheet,
+    CssCounterStyleDescriptorKind, CssCounterStyleRule, CssErrorCode, CssNormalizedItem, CssParser,
+    CssRecoveryAction, CssRule, CssRuleContextKindRef,
 };
 
 fn assert_retained(body: &str, canonical: &str) -> CssCounterStyleRule {
     let source = format!(".before{{}} @counter-style Incomplete {{ {body} }} .after{{}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [
         CssRule::Style(_),
@@ -34,8 +33,13 @@ fn assert_retained(body: &str, canonical: &str) -> CssCounterStyleRule {
             format!("@counter-style Incomplete {{ {canonical} }}")
         }
     );
-    assert!(validate_sheet(&source).is_ok());
-    let normalized = normalize_report(&report).unwrap();
+    assert!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .is_ok()
+    );
+    let normalized = report.normalize(Default::default()).unwrap();
     let retained: Vec<_> = normalized
         .syntax()
         .items()
@@ -134,7 +138,7 @@ fn omitted_system_stays_omitted_in_an_empty_authored_rule() {
 fn invalid_symbol_descriptor_drops_only_that_descriptor_on_incomplete_rule() {
     let source =
         "@counter-style Incomplete { system:numeric; symbols:inherit; suffix:'.'; } .after{}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("recovery must keep the valid but non-defining rule");
     };
@@ -152,11 +156,15 @@ fn invalid_symbol_descriptor_drops_only_that_descriptor_on_incomplete_rule() {
         "@counter-style Incomplete { system: numeric; suffix: \".\"; }"
     );
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_eq!(
-        normalize_report(&report).unwrap().diagnostics(),
+        report.normalize(Default::default()).unwrap().diagnostics(),
         report.diagnostics()
     );
 }
@@ -164,7 +172,7 @@ fn invalid_symbol_descriptor_drops_only_that_descriptor_on_incomplete_rule() {
 #[test]
 fn conditional_and_scoped_incomplete_rules_keep_original_payloads() {
     let source = "@media print { @counter-style Incomplete { system:additive; } } @scope { @counter-style Other { system:numeric; symbols:a; } .after{} }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Media(media), CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("two wrapper rules");
@@ -175,7 +183,7 @@ fn conditional_and_scoped_incomplete_rules_keep_original_payloads() {
     let [CssRule::CounterStyle(second), CssRule::Style(_)] = scope.rules().rules() else {
         panic!("scoped counter rule and sibling");
     };
-    let normalized = normalize_report(&report).unwrap();
+    let normalized = report.normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .syntax()
         .items()
@@ -193,7 +201,7 @@ fn conditional_and_scoped_incomplete_rules_keep_original_payloads() {
 
 #[test]
 fn eof_closed_empty_rule_is_retained_with_its_implicit_closure_diagnostic() {
-    let report = parse_sheet("@counter-style Incomplete {");
+    let report = CssParser::default().parse_sheet("@counter-style Incomplete {");
     let [diagnostic] = report.diagnostics() else {
         panic!("one implicit rule closure: {:?}", report.diagnostics());
     };
@@ -240,7 +248,7 @@ fn extends_with_valid_symbols_retains_rule_without_defining_style() {
     for descriptor in ["symbols:a;", "additive-symbols:0 N;"] {
         let source =
             format!("@counter-style Invalid {{ system:extends Missing; {descriptor} }} .after{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean());
         let [CssRule::CounterStyle(counter), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("retained grammar-valid rule")
@@ -260,7 +268,7 @@ fn extends_with_valid_symbols_retains_rule_without_defining_style() {
 
 #[test]
 fn missing_block_remains_an_invalid_at_rule() {
-    let report = parse_sheet("@counter-style Incomplete;");
+    let report = CssParser::default().parse_sheet("@counter-style Incomplete;");
     assert!(report.syntax().rules().is_empty());
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(

@@ -294,14 +294,24 @@ fn ordinary_block() -> String {
 #[test]
 fn all_nineteen_ordinary_speech_properties_compose_in_attributes_and_stylesheets() {
     let text = ordinary_block();
-    let report = parse_style_attribute(&text);
+    let report = CssParser::default().parse_block_contents(&text);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 19);
-    assert!(validate_style_attribute(&text).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&text)
+            .into_validation_result()
+            .is_ok()
+    );
     let sheet_text = format!(".speech{{{text}}}");
-    let sheet = parse_sheet(&sheet_text);
+    let sheet = CssParser::default().parse_sheet(&sheet_text);
     assert!(sheet.is_clean(), "{:?}", sheet.diagnostics());
-    assert!(validate_sheet(&sheet_text).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_sheet(&sheet_text)
+            .into_validation_result()
+            .is_ok()
+    );
     let [CssRule::Style(rule)] = sheet.syntax().rules() else {
         panic!("one composed Speech rule")
     };
@@ -383,9 +393,10 @@ fn every_speech_property_crosses_strict_construction_and_owning_bounded_canonica
         let canonical = declaration(case.name, case.canonical);
         assert_eq!(specified(&canonical, exact).unwrap(), case.canonical);
         assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(property(case.name)),
-                parse_component_values(case.invalid).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property(case.name))),
+                CssComponentValues::parse(&CssParser::default(), case.invalid).unwrap(),
                 CssImportance::Normal
             )
             .is_err()
@@ -400,11 +411,21 @@ fn all_five_css_wide_keywords_compose_across_all_nineteen_properties_and_their_t
             .iter()
             .map(|case| format!("{}:{text}!important;", case.name))
             .collect();
-        let report = parse_style_attribute(&block);
+        let report = CssParser::default().parse_block_contents(&block);
         assert!(report.is_clean());
         assert_eq!(report.syntax().len(), 19);
-        assert!(validate_style_attribute(&block).is_ok());
-        assert!(validate_sheet(&format!(".speech{{{block}}}")).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&block)
+                .into_validation_result()
+                .is_ok()
+        );
+        assert!(
+            CssParser::default()
+                .parse_sheet(format!(".speech{{{block}}}"))
+                .into_validation_result()
+                .is_ok()
+        );
         let mut terminals = 0;
         for (source, case) in report.syntax().iter().zip(&CASES) {
             let known = source.known().unwrap();
@@ -432,9 +453,11 @@ fn all_five_css_wide_keywords_compose_across_all_nineteen_properties_and_their_t
                 assert_eq!(item.source().importance(), CssImportance::Important);
             }
             assert!(
-                parse_property_value(
-                    CssPropertyNameRef::Known(property(case.name)),
-                    parse_component_values(&format!("{text} extra")).unwrap(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property(case.name))),
+                    CssComponentValues::parse(&CssParser::default(), format!("{text} extra"))
+                        .unwrap(),
                     CssImportance::Normal
                 )
                 .is_err()
@@ -488,14 +511,14 @@ fn all_properties_reenter_ordinary_and_global_values_atomically_with_both_occurr
         .iter()
         .map(|case| format!("{}:var(--speech)!important;", case.name))
         .collect();
-    let report = parse_style_attribute(&block);
+    let report = CssParser::default().parse_block_contents(&block);
     assert!(report.is_clean());
     assert_eq!(report.syntax().len(), 19);
     for (source, case) in report.syntax().iter().zip(&CASES) {
-        let CssExpansion::Pending(handle) = expand_declaration(source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending Speech property")
         };
-        let replacement = parse_component_values(case.authored).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), case.authored).unwrap();
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
             panic!("completed ordinary Speech")
@@ -515,7 +538,7 @@ fn all_properties_reenter_ordinary_and_global_values_atomically_with_both_occurr
             assert_eq!(item.replacement_components(), Some(&replacement));
         }
         for (text, keyword) in GLOBALS {
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("completed global Speech")
@@ -536,7 +559,7 @@ fn all_properties_reenter_ordinary_and_global_values_atomically_with_both_occurr
         ] {
             assert!(
                 handle
-                    .reenter(parse_component_values(&invalid).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), &invalid).unwrap())
                     .unwrap_err()
                     .replacement_error()
                     .is_some(),
@@ -546,7 +569,7 @@ fn all_properties_reenter_ordinary_and_global_values_atomically_with_both_occurr
         }
         assert!(
             handle
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
                 .is_residual_substitution()
         );
@@ -630,7 +653,7 @@ fn composed_invalid_occurrences_drop_atomically_with_precise_utf16_crlf_provenan
         body.push_str(&format!("{}:{}!important;", case.name, case.authored));
     }
     body.push_str("height:1px");
-    let report = parse_style_attribute(&body);
+    let report = CssParser::default().parse_block_contents(&body);
     assert_eq!(report.syntax().len(), 21);
     assert_eq!(report.diagnostics().len(), 19);
     assert_eq!(
@@ -673,11 +696,15 @@ fn composed_invalid_occurrences_drop_atomically_with_precise_utf16_crlf_provenan
         );
     }
     assert_eq!(
-        validate_style_attribute(&body).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&body)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     let sheet_text = format!(".speech{{{body}}}");
-    let sheet = parse_sheet(&sheet_text);
+    let sheet = CssParser::default().parse_sheet(&sheet_text);
     let [CssRule::Style(rule)] = sheet.syntax().rules() else {
         panic!("retained composed style rule")
     };
@@ -698,7 +725,11 @@ fn composed_invalid_occurrences_drop_atomically_with_precise_utf16_crlf_provenan
         );
     }
     assert_eq!(
-        validate_sheet(&sheet_text).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(&sheet_text)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         sheet.diagnostics()
     );
 }

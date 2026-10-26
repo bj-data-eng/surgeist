@@ -25,8 +25,8 @@ use crate::css::support::position_view::CartesianPosition as _;
 use std::collections::BTreeSet;
 
 use surgeist_css::{
-    CssDeclaration, CssDeclarationContextRef, CssErrorCode, CssImportance, CssPropertyNameRef,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, parse_sheet, parse_style_attribute,
+    CssDeclaration, CssDeclarationContextRef, CssErrorCode, CssImportance, CssParser,
+    CssPropertyNameRef, CssRecoveryAction, CssRecoveryDiagnostic, CssRule,
 };
 
 const FIXTURE: &str = include_str!("../../fixtures/public-report-characterization.tsv");
@@ -396,6 +396,7 @@ fn is_diagnostic_code(code: &str) -> bool {
             | "InvalidDescriptorValue"
             | "InvalidDescriptorCombination"
             | "InvalidColorSyntax"
+            | "InvalidComponentValue"
             | "NestingLimit"
     )
 }
@@ -424,6 +425,7 @@ fn validate_diagnostic_root_and_payload(
         "InvalidAtRulePlacement" | "UnsupportedAtRule" | "UnknownDescriptor" | "NestingLimit" => {
             validate_payload_parts(payload, 2, root, case_id)
         }
+        "InvalidComponentValue" => validate_payload_parts(payload, 1, root, case_id),
         "UnsupportedProperty" => {
             let parts = payload.split(':').collect::<Vec<_>>();
             if parts.len() != 2 || !is_prefixed_stable_id(parts[0], "baseline.property.") {
@@ -1093,7 +1095,7 @@ fn observe(expected: &Row) -> Observation {
     let mut frozen = FrozenDeclarationCursor::new(expected);
     let (clean, retained, diagnostics) = match expected.entry.as_str() {
         "sheet" => {
-            let report = parse_sheet(&expected.input);
+            let report = CssParser::default().parse_sheet(&expected.input);
             let retained = sheet_observables(report.syntax().rules(), &mut frozen);
             (
                 report.is_clean(),
@@ -1102,7 +1104,7 @@ fn observe(expected: &Row) -> Observation {
             )
         }
         "style" => {
-            let report = parse_style_attribute(&expected.input);
+            let report = CssParser::default().parse_block_contents(&expected.input);
             let retained =
                 declaration_observables(report.syntax().as_slice(), "public", &mut frozen);
             (
@@ -4966,6 +4968,16 @@ fn root_and_payload(error: &surgeist_css::CssError) -> String {
                 .map_or_else(|| "-".to_owned(), |limit| limit.to_string()),
             production()
         ),
+        CssErrorCode::InvalidComponentValue => format!(
+            "InvalidComponentValue:{}",
+            error.component_error().map_or_else(
+                || "-".to_owned(),
+                |detail| format!(
+                    "{:?}",
+                    crate::css::support::failure_classes::component_failure(detail)
+                )
+            )
+        ),
         _ => "Future".to_owned(),
     }
 }
@@ -5012,6 +5024,7 @@ fn code_name(code: CssErrorCode) -> &'static str {
         CssErrorCode::InvalidDescriptorCombination => "InvalidDescriptorCombination",
         CssErrorCode::InvalidColorSyntax => "InvalidColorSyntax",
         CssErrorCode::NestingLimit => "NestingLimit",
+        CssErrorCode::InvalidComponentValue => "InvalidComponentValue",
         _ => "Future",
     }
 }
@@ -5034,8 +5047,10 @@ fn action_name(action: CssRecoveryAction) -> &'static str {
 fn assert_strict_parity(row: &Row) {
     match row.entry.as_str() {
         "sheet" => {
-            let ordinary = parse_sheet(&row.input);
-            let strict = surgeist_css::validate_sheet(&row.input);
+            let ordinary = CssParser::default().parse_sheet(&row.input);
+            let strict = surgeist_css::CssParser::default()
+                .parse_sheet(&row.input)
+                .into_validation_result();
             if ordinary.is_clean() {
                 assert_eq!(
                     strict,
@@ -5053,8 +5068,10 @@ fn assert_strict_parity(row: &Row) {
             }
         }
         "style" => {
-            let ordinary = parse_style_attribute(&row.input);
-            let strict = surgeist_css::validate_style_attribute(&row.input);
+            let ordinary = CssParser::default().parse_block_contents(&row.input);
+            let strict = surgeist_css::CssParser::default()
+                .parse_block_contents(&row.input)
+                .into_validation_result();
             if ordinary.is_clean() {
                 assert_eq!(
                     strict,

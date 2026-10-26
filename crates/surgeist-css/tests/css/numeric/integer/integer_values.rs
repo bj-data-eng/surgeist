@@ -4,7 +4,7 @@ use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
 fn order(text: &str) -> CssNumeric<CssInteger> {
-    let report = parse_style_attribute(&format!("order:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("order:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Order(value) = report.syntax()[0]
         .known()
@@ -67,7 +67,7 @@ fn checked_integer_literals_preserve_components_and_reject_other_token_kinds() {
         "-2147483649",
         "9999999999999999999999999999999999999999",
     ] {
-        let parsed = parse_component_values(text).unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         for component in [
             parsed.items()[0].clone(),
             CssComponentValue::try_number(text).unwrap(),
@@ -81,7 +81,7 @@ fn checked_integer_literals_preserve_components_and_reject_other_token_kinds() {
         }
     }
     for text in ["1.0", "1e2", "1%", "1px", "auto", " ", "calc(1)", "[1]"] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         assert_eq!(components.items().len(), 1);
         let component = components.items()[0].clone();
         let error =
@@ -100,7 +100,7 @@ fn both_integer_properties_preserve_exact_payloads_and_original_origins() {
             "+0009007199254740993",
             "-123456789012345678901234567890",
         ] {
-            let components = parse_component_values(text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             for supplied in [
                 components,
                 CssComponentValues::try_new(
@@ -109,8 +109,9 @@ fn both_integer_properties_preserve_exact_payloads_and_original_origins() {
                 )
                 .unwrap(),
             ] {
-                let declaration = parse_property_value(
-                    CssPropertyNameRef::Known(property),
+                let declaration = CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                     supplied.clone(),
                     CssImportance::Normal,
                 )
@@ -224,7 +225,7 @@ fn ordinary_integer_limits_charge_canonical_bytes_and_one_node_per_stage() {
 fn explicit_calculation_leaf_keeps_its_exact_coefficient_without_mutating_input() {
     // An operation-free calculation leaf serializes its exact authored
     // coefficient, as the literal does (#1297), not binary64 9007199254740992.
-    let components = parse_component_values("9007199254740993").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "9007199254740993").unwrap();
     let calculation =
         CssCalculation::<CssInteger>::try_from_components(components.clone(), Default::default())
             .unwrap();
@@ -241,7 +242,7 @@ fn explicit_calculation_leaf_keeps_its_exact_coefficient_without_mutating_input(
     );
     assert_eq!(calculation.components(), &components);
     let math = CssCalculation::<CssInteger>::try_from_components(
-        parse_component_values("calc(9007199254740993)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(9007199254740993)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -287,7 +288,7 @@ fn integer_context_math_preserves_fractional_results_and_symbolic_requirements()
     ] {
         assert_output(&order(input), expected);
         let calculation = CssCalculation::<CssInteger>::try_from_components(
-            parse_component_values(input).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), input).unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -316,7 +317,8 @@ fn integer_context_math_preserves_fractional_results_and_symbolic_requirements()
 
 #[test]
 fn parsed_exact_payloads_retain_the_original_source_token() {
-    let report = parse_style_attribute("order:+0002147483648;z-index:-2147483649");
+    let report =
+        CssParser::default().parse_block_contents("order:+0002147483648;z-index:-2147483649");
     assert!(report.is_clean());
     assert_eq!(report.syntax().len(), 2);
     for (declaration, expected) in report
@@ -354,7 +356,7 @@ fn parsed_exact_payloads_retain_the_original_source_token() {
 #[test]
 fn ordinary_huge_integers_and_operation_free_calculation_leaves_stay_exact() {
     let digits = "9".repeat(400);
-    let components = parse_component_values(&digits).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), &digits).unwrap();
     let calculation =
         CssCalculation::<CssInteger>::try_from_components(components.clone(), Default::default())
             .unwrap();
@@ -365,7 +367,7 @@ fn ordinary_huge_integers_and_operation_free_calculation_leaves_stay_exact() {
     );
     assert_eq!(calculation.components(), &components);
     let math = CssCalculation::<CssInteger>::try_from_components(
-        parse_component_values(&format!("calc({digits})")).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), format!("calc({digits})")).unwrap(),
         Default::default(),
     )
     .unwrap();

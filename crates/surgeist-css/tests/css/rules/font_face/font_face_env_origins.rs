@@ -3,16 +3,16 @@
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValue, CssComponentValueLimits,
-    CssComponentValueRef, CssComponentValues, CssFontFaceDescriptorKind as Kind,
-    CssFontFaceDescriptorValue as Ordinary, CssFontFaceWidth, CssFontWidth, CssSerializedOrigin,
-    CssValueOrigin, CssValueTokenRef, parse_component_values, parse_font_face_descriptor_value,
+    CssAuthoredFontFaceDescriptorValue as Authored, CssAuthoredFontFaceDescriptorValue,
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Ordinary, CssFontFaceWidth,
+    CssFontWidth, CssParser, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
 };
 
 fn pending(kind: Kind) -> surgeist_css::CssPendingFontFaceDescriptorValue {
     let value = Authored::try_from_components(
         kind,
-        parse_component_values("env(selection, fallback)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "env(selection, fallback)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -33,7 +33,7 @@ fn strict_reentry_rejects_nested_residual_functions_and_recovered_src_members() 
     ] {
         let error = width
             .reparse_after_substitution(
-                parse_component_values(replacement).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), replacement).unwrap(),
                 Default::default(),
             )
             .unwrap_err();
@@ -45,13 +45,18 @@ fn strict_reentry_rejects_nested_residual_functions_and_recovered_src_members() 
     }
 
     let source = pending(Kind::Src);
-    let raw = parse_font_face_descriptor_value("bogus, url(good.woff2)", Kind::Src);
+    let raw = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        "bogus, url(good.woff2)",
+        Kind::Src,
+    );
     assert!(
         raw.syntax().is_some(),
         "ordinary raw parsing retains a valid member"
     );
     assert!(!raw.is_clean(), "ordinary raw parsing reports bad member");
-    let replacement = parse_component_values("bogus, url(good.woff2)").unwrap();
+    let replacement =
+        CssComponentValues::parse(&CssParser::default(), "bogus, url(good.woff2)").unwrap();
     for error in [
         Authored::try_from_components(Kind::Src, replacement.clone(), Default::default())
             .unwrap_err(),
@@ -69,7 +74,7 @@ fn strict_reentry_rejects_nested_residual_functions_and_recovered_src_members() 
 
 #[test]
 fn mixed_width_replacement_keeps_exact_numeric_origin_and_pending_components_keep_mixed_origins() {
-    let mut items = parse_component_values("62.500000000000000000001% ")
+    let mut items = CssComponentValues::parse(&CssParser::default(), "62.500000000000000000001% ")
         .unwrap()
         .items()
         .to_vec();
@@ -98,7 +103,7 @@ fn mixed_width_replacement_keeps_exact_numeric_origin_and_pending_components_kee
         "62.5%"
     );
 
-    let mut mixed = parse_component_values("env(selection) ")
+    let mut mixed = CssComponentValues::parse(&CssParser::default(), "env(selection) ")
         .unwrap()
         .items()
         .to_vec();
@@ -177,7 +182,7 @@ fn adjacent_number_and_percent_delimiter_do_not_become_a_percentage_token() {
 
 #[test]
 fn component_depth_count_and_byte_limits_fail_atomically() {
-    let values = parse_component_values("env(width)").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "env(width)").unwrap();
     for (limits, expected) in [
         (
             CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap(),
@@ -200,7 +205,7 @@ fn component_depth_count_and_byte_limits_fail_atomically() {
         );
     }
     let width = pending(Kind::FontWidth);
-    let replacement = parse_component_values("75%").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "75%").unwrap();
     let error = width
         .reparse_after_substitution(
             replacement,
@@ -223,7 +228,7 @@ fn checked_construction_rejects_implicit_eof_closures_before_serialization() {
         "env(width, \"fallback",
         "env(width)/*",
     ] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let error =
             Authored::try_from_components(Kind::FontWidth, values, Default::default()).unwrap_err();
         assert!(error.is_recovered_component(), "{text}");
@@ -242,7 +247,10 @@ fn checked_construction_rejects_implicit_eof_closures_before_serialization() {
         (Kind::FontWidth, "75%/*"),
     ] {
         let error = pending(kind)
-            .reparse_after_substitution(parse_component_values(text).unwrap(), Default::default())
+            .reparse_after_substitution(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default(),
+            )
             .unwrap_err();
         assert!(error.is_recovered_component(), "{text}");
         assert!(matches!(

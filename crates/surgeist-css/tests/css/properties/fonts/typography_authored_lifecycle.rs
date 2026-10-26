@@ -36,8 +36,7 @@ fn declared(source: &CssDeclaration) -> CssLonghandValueRef<'_> {
     }
 }
 fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("complete ordinary")
     };
@@ -405,7 +404,7 @@ fn tab_math_retains_pure_root_graph_origins_and_deferred_negative_ranges() {
     let number = CssTabSize::Number(
         CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
             CssCalculation::<CssNumber>::try_from_components(
-                parse_component_values("calc(-1)").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "calc(-1)").unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -415,7 +414,7 @@ fn tab_math_retains_pure_root_graph_origins_and_deferred_negative_ranges() {
     let length = CssTabSize::Length(
         CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
             CssCalculation::<CssLength>::try_from_components(
-                parse_component_values("calc(-1px)").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "calc(-1px)").unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -433,7 +432,7 @@ fn tab_math_retains_pure_root_graph_origins_and_deferred_negative_ranges() {
     let math = CssTabSize::Length(
         CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
             CssCalculation::<CssLength>::try_from_components(
-                parse_component_values("calc(1px + 2em)").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "calc(1px + 2em)").unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -454,11 +453,11 @@ fn tab_math_retains_pure_root_graph_origins_and_deferred_negative_ranges() {
 fn tab_reentry_borrows_the_supplied_numeric_children_and_preserves_original_occurrence() {
     for pending in ["var(--tab)", "env(tab)", "attr(data-tab *)"] {
         let source = checked(P::TabSize, pending, true);
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         for text in ["0", "0PX", "calc(-1)", "CALC(1PX + 2EM)"] {
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let snapshot = replacement.clone();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -470,8 +469,9 @@ fn tab_reentry_borrows_the_supplied_numeric_children_and_preserves_original_occu
             assert!(item.source().same_occurrence(&source));
             assert_eq!(item.source().importance(), CssImportance::Important);
             assert_eq!(item.replacement_components(), Some(&replacement));
-            let reference = parse_property_value_for_grammar(
-                P::TabSize.grammar(),
+            let reference = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(P::TabSize.grammar()),
                 replacement.clone(),
                 CssImportance::Normal,
             )
@@ -490,13 +490,17 @@ fn tab_reentry_borrows_the_supplied_numeric_children_and_preserves_original_occu
         }
         assert_invalid_replacement_at(
             &handle
-                .reenter(parse_component_values("-1e-999").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "-1e-999").unwrap())
                 .unwrap_err(),
             P::TabSize,
             "-1e-999",
             "-1e-999",
         );
-        assert!(handle.reenter(parse_component_values("8").unwrap()).is_ok());
+        assert!(
+            handle
+                .reenter(CssComponentValues::parse(&CssParser::default(), "8").unwrap())
+                .is_ok()
+        );
     }
 }
 #[test]

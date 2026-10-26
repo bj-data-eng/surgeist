@@ -1,10 +1,10 @@
 use std::error::Error as _;
 
 use super::*;
-use crate::{CssValueOrigin, parse_component_values};
+use crate::CssValueOrigin;
 
 fn last_component(text: &str) -> CssComponentValue {
-    parse_component_values(text)
+    crate::component_values::parse_component_values(text)
         .unwrap()
         .items()
         .last()
@@ -53,7 +53,7 @@ fn recovered<T: CssNumericRoot>(
     text: &str,
     serialized: &str,
 ) -> (CssCalculation<T>, CssValueOrigin) {
-    let components = parse_component_values(text).unwrap();
+    let components = crate::component_values::parse_component_values(text).unwrap();
     let component = components
         .items()
         .iter()
@@ -128,7 +128,10 @@ fn recovered_original_closure_precedes_value_normalization_and_range_checks() {
 fn resolution_children_share_consumed_input_projection_and_output_budgets() {
     use crate::CssSerializationLimits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    let component = parse_component_values("-0dppx").unwrap().items()[0].clone();
+    let component = crate::component_values::parse_component_values("-0dppx")
+        .unwrap()
+        .items()[0]
+        .clone();
     let value = CssNumericLiteral::<CssResolution>::try_from_component(component).unwrap();
     let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::new(2, 2, 10));
     let mut output = String::new();

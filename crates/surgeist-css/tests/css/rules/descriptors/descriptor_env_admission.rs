@@ -4,13 +4,13 @@
 //! Phase views and strict reentry are covered by descriptor_env_phase_contract.
 
 use surgeist_css::{
-    CssComponentValueRef, CssComponentValues, CssCounterStyleDescriptorKind as Counter,
-    CssCounterStyleDescriptorRef as CounterOccurrence, CssDescriptorOccurrence, CssErrorCode,
-    CssFontFeatureValueKind as Feature, CssFontFeatureValuesItem as Item, CssParseReport,
-    CssParsedOrigin, CssRecoveryAction as Action, CssRule, CssValueOrigin,
-    parse_counter_style_block, parse_counter_style_descriptor_value,
-    parse_font_feature_display_value, parse_font_feature_value, parse_font_feature_value_block,
-    parse_font_feature_values_block, parse_sheet,
+    CssBlockContext, CssBlockFragment, CssComponentValueRef, CssComponentValues,
+    CssCounterStyleDescriptorKind as Counter, CssCounterStyleDescriptorRef as CounterOccurrence,
+    CssCounterStyleDescriptorValue, CssCounterStyleDescriptors, CssDescriptorOccurrence,
+    CssErrorCode, CssFontFeatureDisplayValue, CssFontFeatureValue, CssFontFeatureValueBlock,
+    CssFontFeatureValueKind as Feature, CssFontFeatureValuesItem as Item, CssFontFeatureValuesItem,
+    CssParseReport, CssParsedOrigin, CssParser, CssRecoveryAction as Action, CssRule,
+    CssValueOrigin,
 };
 
 const COUNTERS: [Counter; 10] = [
@@ -147,7 +147,8 @@ fn record<T>(record: &CssDescriptorOccurrence<T>, source: &str, name: &str) {
 #[test]
 fn every_counter_descriptor_admits_env_and_keeps_its_value_window() {
     for kind in COUNTERS {
-        let report = parse_counter_style_descriptor_value("env(choice, 7)", kind);
+        let report =
+            CssCounterStyleDescriptorValue::parse(&CssParser::default(), "env(choice, 7)", kind);
         admitted(&report);
         let value = report.syntax().as_ref().unwrap();
         assert_eq!(value.kind(), kind);
@@ -158,7 +159,7 @@ fn every_counter_descriptor_admits_env_and_keeps_its_value_window() {
 
 #[test]
 fn outer_font_display_admits_env_without_an_ordinary_keyword() {
-    let report = parse_font_feature_display_value("env(choice, 7)");
+    let report = CssFontFeatureDisplayValue::parse(&CssParser::default(), "env(choice, 7)");
     admitted(&report);
     let value = report.syntax().as_ref().unwrap();
     whole(value.origin().unwrap(), "env(choice, 7)");
@@ -168,7 +169,7 @@ fn outer_font_display_admits_env_without_an_ordinary_keyword() {
 #[test]
 fn every_subsidiary_value_admits_env_without_completed_indexes() {
     for kind in FEATURES {
-        let report = parse_font_feature_value("env(choice, 7)", kind);
+        let report = CssFontFeatureValue::parse(&CssParser::default(), "env(choice, 7)", kind);
         admitted(&report);
         let value = report.syntax().as_ref().unwrap();
         assert_eq!(value.kind(), kind);
@@ -180,7 +181,11 @@ fn every_subsidiary_value_admits_env_without_completed_indexes() {
 #[test]
 fn counter_body_retains_every_pending_descriptor_with_real_names_and_values() {
     let source = "{system:env(choice, 7);negative:env(choice, 7);symbols:env(choice, 7);prefix:env(choice, 7);suffix:env(choice, 7);range:env(choice, 7);pad:env(choice, 7);fallback:env(choice, 7);additive-symbols:env(choice, 7);speak-as:env(choice, 7)}";
-    let report = parse_counter_style_block(source);
+    let report = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     admitted(&report);
     let fragment = report.syntax().as_ref().unwrap();
     whole(fragment.origin(), source);
@@ -211,7 +216,7 @@ fn counter_body_retains_every_pending_descriptor_with_real_names_and_values() {
     record(i, source, "additive-symbols");
     record(j, source, "speak-as");
     let sheet_source = format!("@counter-style demo{source}tail{{}}");
-    let sheet = parse_sheet(&sheet_source);
+    let sheet = CssParser::default().parse_sheet(&sheet_source);
     assert!(sheet.is_clean(), "{sheet:?}");
     let [CssRule::CounterStyle(rule), CssRule::Style(_)] = sheet.syntax().rules() else {
         panic!("counter and later sibling")
@@ -222,7 +227,11 @@ fn counter_body_retains_every_pending_descriptor_with_real_names_and_values() {
 #[test]
 fn mixed_font_body_retains_outer_display_and_all_seven_named_definition_owners() {
     let source = "{font-display:env(choice);@stylistic{Pick:env(choice)}@historical-forms{Pick:env(choice)}@styleset{Pick:env(choice)}@character-variant{Pick:env(choice)}@swash{Pick:env(choice)}@ornaments{Pick:env(choice)}@annotation{Pick:env(choice)}}";
-    let report = parse_font_feature_values_block(source);
+    let report = CssBlockFragment::<Vec<CssFontFeatureValuesItem>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     admitted(&report);
     let fragment = report.syntax().as_ref().unwrap();
     whole(fragment.origin(), source);
@@ -240,7 +249,7 @@ fn mixed_font_body_retains_outer_display_and_all_seven_named_definition_owners()
         assert!(definition.position().is_some());
     }
     let sheet_source = format!("@font-feature-values Demo{source}tail{{}}");
-    let sheet = parse_sheet(&sheet_source);
+    let sheet = CssParser::default().parse_sheet(&sheet_source);
     assert!(sheet.is_clean(), "{sheet:?}");
     let [CssRule::FontFeatureValues(rule), CssRule::Style(_)] = sheet.syntax().rules() else {
         panic!("features and later sibling")
@@ -251,7 +260,11 @@ fn mixed_font_body_retains_outer_display_and_all_seven_named_definition_owners()
 #[test]
 fn standalone_subsidiary_bodies_retain_pending_names_in_every_kind() {
     for kind in FEATURES {
-        let report = parse_font_feature_value_block("{Pick:env(choice)}", kind);
+        let report = CssBlockFragment::<CssFontFeatureValueBlock>::parse_definition(
+            &CssParser::default(),
+            "{Pick:env(choice)}",
+            kind,
+        );
         admitted(&report);
         let block = report.syntax().as_ref().unwrap().body();
         assert_eq!(block.kind(), kind);
@@ -278,53 +291,88 @@ fn valid_env_defers_the_whole_value_including_nested_and_residual_var_tokens() {
         "env(choice) var()",
         "env(choice){}", // Matched blocks remain declaration-value data.
     ] {
-        admitted(&parse_counter_style_descriptor_value(
+        admitted(&CssCounterStyleDescriptorValue::parse(
+            &CssParser::default(),
             source,
             Counter::Range,
         ));
-        admitted(&parse_font_feature_display_value(source));
-        admitted(&parse_font_feature_value(source, Feature::Stylistic));
+        admitted(&CssFontFeatureDisplayValue::parse(
+            &CssParser::default(),
+            source,
+        ));
+        admitted(&CssFontFeatureValue::parse(
+            &CssParser::default(),
+            source,
+            Feature::Stylistic,
+        ));
     }
 }
 
 #[test]
 fn malformed_env_family_and_var_only_do_not_gain_descriptor_permission() {
     for source in ["env()", "env(123)", "env(choice) env()", "var(--later)"] {
-        rejected(parse_counter_style_descriptor_value(source, Counter::Range));
-        rejected(parse_font_feature_display_value(source));
-        rejected(parse_font_feature_value(source, Feature::Stylistic));
+        rejected(CssCounterStyleDescriptorValue::parse(
+            &CssParser::default(),
+            source,
+            Counter::Range,
+        ));
+        rejected(CssFontFeatureDisplayValue::parse(
+            &CssParser::default(),
+            source,
+        ));
+        rejected(CssFontFeatureValue::parse(
+            &CssParser::default(),
+            source,
+            Feature::Stylistic,
+        ));
     }
 }
 
 #[test]
 fn root_annotations_and_outer_exhaustion_are_checked_before_env_deferral() {
     for source in ["env(choice)!important", "env(choice);", "env(choice)}"] {
-        rejected(parse_counter_style_descriptor_value(
+        rejected(CssCounterStyleDescriptorValue::parse(
+            &CssParser::default(),
             source,
             Counter::Prefix,
         ));
-        rejected(parse_font_feature_display_value(source));
-        rejected(parse_font_feature_value(source, Feature::Styleset));
+        rejected(CssFontFeatureDisplayValue::parse(
+            &CssParser::default(),
+            source,
+        ));
+        rejected(CssFontFeatureValue::parse(
+            &CssParser::default(),
+            source,
+            Feature::Styleset,
+        ));
     }
     // Fallback itself is declaration-value: its root bang is forbidden, whereas
     // a bang inside a nested function is neither root importance nor that ban.
-    rejected(parse_counter_style_descriptor_value(
+    rejected(CssCounterStyleDescriptorValue::parse(
+        &CssParser::default(),
         "env(choice, !important)",
         Counter::Prefix,
     ));
-    rejected(parse_font_feature_display_value("env(choice, !important)"));
-    rejected(parse_font_feature_value(
+    rejected(CssFontFeatureDisplayValue::parse(
+        &CssParser::default(),
+        "env(choice, !important)",
+    ));
+    rejected(CssFontFeatureValue::parse(
+        &CssParser::default(),
         "env(choice, !important)",
         Feature::Styleset,
     ));
-    admitted(&parse_counter_style_descriptor_value(
+    admitted(&CssCounterStyleDescriptorValue::parse(
+        &CssParser::default(),
         "env(choice, f(!important))",
         Counter::Prefix,
     ));
-    admitted(&parse_font_feature_display_value(
+    admitted(&CssFontFeatureDisplayValue::parse(
+        &CssParser::default(),
         "env(choice, f(!important))",
     ));
-    admitted(&parse_font_feature_value(
+    admitted(&CssFontFeatureValue::parse(
+        &CssParser::default(),
         "env(choice, f(!important))",
         Feature::Styleset,
     ));
@@ -332,7 +380,11 @@ fn root_annotations_and_outer_exhaustion_are_checked_before_env_deferral() {
 
 #[test]
 fn invalid_descriptor_annotations_drop_only_the_child_and_keep_later_env() {
-    let counter = parse_counter_style_block("{prefix:env(choice)!important;suffix:env(later)}");
+    let counter = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        "{prefix:env(choice)!important;suffix:env(later)}",
+        &CssBlockContext::default(),
+    );
     assert!(!counter.is_clean());
     assert!(
         counter
@@ -349,8 +401,10 @@ fn invalid_descriptor_annotations_drop_only_the_child_and_keep_later_env() {
         .collect::<Vec<_>>();
     assert!(matches!(records.as_slice(), [CounterOccurrence::Suffix(_)]));
     assert!(counter.into_validation_result().is_err());
-    let outer = parse_font_feature_values_block(
+    let outer = CssBlockFragment::<Vec<CssFontFeatureValuesItem>>::parse(
+        &CssParser::default(),
         "{font-display:env(choice)!important;font-display:env(later)}",
+        &CssBlockContext::default(),
     );
     assert!(!outer.is_clean());
     assert!(
@@ -364,7 +418,8 @@ fn invalid_descriptor_annotations_drop_only_the_child_and_keep_later_env() {
         [Item::FontDisplay(_)]
     ));
     assert!(outer.into_validation_result().is_err());
-    let child = parse_font_feature_value_block(
+    let child = CssBlockFragment::<CssFontFeatureValueBlock>::parse_definition(
+        &CssParser::default(),
         "{bad:env(choice)!important;Keep:env(later)}",
         Feature::Styleset,
     );
@@ -416,17 +471,19 @@ fn implicit_source_env_closure_retains_the_candidate_but_fails_clean_validation(
         assert!(value_origin.source().same_snapshot(opening.source()));
         assert!(value_origin.source().same_snapshot(at.source()));
     }
-    let counter = parse_counter_style_descriptor_value("env(choice", Counter::Prefix);
+    let counter =
+        CssCounterStyleDescriptorValue::parse(&CssParser::default(), "env(choice", Counter::Prefix);
     assert!(counter.syntax().is_some(), "{counter:?}");
     let value = counter.syntax().as_ref().unwrap();
     check(value.components(), value.origin().unwrap());
     implicit(counter);
-    let display = parse_font_feature_display_value("env(choice");
+    let display = CssFontFeatureDisplayValue::parse(&CssParser::default(), "env(choice");
     assert!(display.syntax().is_some(), "{display:?}");
     let value = display.syntax().as_ref().unwrap();
     check(value.components(), value.origin().unwrap());
     implicit(display);
-    let indexes = parse_font_feature_value("env(choice", Feature::Styleset);
+    let indexes =
+        CssFontFeatureValue::parse(&CssParser::default(), "env(choice", Feature::Styleset);
     assert!(indexes.syntax().is_some(), "{indexes:?}");
     let value = indexes.syntax().as_ref().unwrap();
     check(value.components(), value.origin().unwrap());
@@ -460,15 +517,16 @@ fn unicode_trivia_keeps_the_whole_window_and_real_env_utf16_coordinates() {
         assert!(origin.source().same_snapshot(opening.source()));
         assert!(origin.source().same_snapshot(closing.source()));
     }
-    let counter = parse_counter_style_descriptor_value(source, Counter::Prefix);
+    let counter =
+        CssCounterStyleDescriptorValue::parse(&CssParser::default(), source, Counter::Prefix);
     admitted(&counter);
     let value = counter.syntax().as_ref().unwrap();
     check(value.components(), value.origin().unwrap(), source);
-    let display = parse_font_feature_display_value(source);
+    let display = CssFontFeatureDisplayValue::parse(&CssParser::default(), source);
     admitted(&display);
     let value = display.syntax().as_ref().unwrap();
     check(value.components(), value.origin().unwrap(), source);
-    let indexes = parse_font_feature_value(source, Feature::Styleset);
+    let indexes = CssFontFeatureValue::parse(&CssParser::default(), source, Feature::Styleset);
     admitted(&indexes);
     let value = indexes.syntax().as_ref().unwrap();
     check(value.components(), value.origin().unwrap(), source);
@@ -498,17 +556,24 @@ fn actual_256_openers_admit_env_and_257_preserves_resource_precedence() {
             ")".repeat(depth - 1)
         );
         check(
-            parse_counter_style_descriptor_value(&source, Counter::Prefix),
+            CssCounterStyleDescriptorValue::parse(&CssParser::default(), &source, Counter::Prefix),
             depth,
         );
-        check(parse_font_feature_display_value(&source), depth);
-        check(parse_font_feature_value(&source, Feature::Styleset), depth);
+        check(
+            CssFontFeatureDisplayValue::parse(&CssParser::default(), &source),
+            depth,
+        );
+        check(
+            CssFontFeatureValue::parse(&CssParser::default(), &source, Feature::Styleset),
+            depth,
+        );
     }
 }
 
 #[test]
 fn real_rules_select_later_pending_occurrences_and_keep_specified_output_symbolic() {
-    let report = parse_sheet("@counter-style demo{prefix:\"old\";prefix:env(choice)}tail{}");
+    let report = CssParser::default()
+        .parse_sheet("@counter-style demo{prefix:\"old\";prefix:env(choice)}tail{}");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("counter plus real sibling")
@@ -519,9 +584,7 @@ fn real_rules_select_later_pending_occurrences_and_keep_specified_output_symboli
             .unwrap(),
         "env(choice)"
     );
-    let report = parse_sheet(
-        "@font-feature-values Demo{font-display:swap;font-display:env(display);@styleset{Pick:1;Pick:env(index)}}tail{}",
-    );
+    let report = CssParser::default().parse_sheet("@font-feature-values Demo{font-display:swap;font-display:env(display);@styleset{Pick:1;Pick:env(index)}}tail{}");
     assert!(report.is_clean(), "{report:?}");
     let [
         rule @ CssRule::FontFeatureValues(features),

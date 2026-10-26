@@ -1,5 +1,5 @@
 //! Concrete composed-owner support and source edits, without a host binding.
-use surgeist_css::{CssPropertyGrammar, parse_declaration_block_contents};
+use surgeist_css::{CssParser, CssPropertyGrammar};
 use surgeist_cssom::*;
 
 fn main() -> Result<(), CssomError> {
@@ -21,7 +21,8 @@ fn main() -> Result<(), CssomError> {
     let mut store = CssomStore::new(CssomLimits::default(), context)?;
     let mut batch = store.batch(CssomEditGuard::from_snapshot(&store.snapshot()))?;
     let ticket = batch.create_declarations(
-        parse_declaration_block_contents("width: 1px")
+        CssParser::default()
+            .parse_block_contents("width: 1px")
             .into_parts()
             .0,
         false,

@@ -15,8 +15,7 @@ fn spacing(source: &CssDeclaration) -> &CssSidePair<CssNumeric<CssLength, CssNon
 }
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("one border-spacing longhand contribution")
     };
@@ -112,7 +111,8 @@ fn symbolic_pure_length_math_remains_in_the_authored_pair() {
         assert_eq!(expanded(&source).len(), 1);
     }
     for invalid in ["-1px", "1%", "1px 2px 3px"] {
-        let report = parse_style_attribute(&format!("border-spacing:{invalid};color:red"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("border-spacing:{invalid};color:red"));
         assert_eq!(report.diagnostics().len(), 1, "{invalid}");
         assert_eq!(
             report.diagnostics()[0].action(),
@@ -129,14 +129,14 @@ fn symbolic_pure_length_math_remains_in_the_authored_pair() {
 #[test]
 fn pending_border_spacing_reentry_is_strict_repeatable_and_provenanced() {
     let source = declaration("border-spacing:var(--spacing)!important");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("substitution-dependent border-spacing remains pending")
     };
     assert!(pending.source().same_occurrence(&source));
     for invalid in ["1%", "-1px", "1px 2px 3px", "1px / 2px"] {
         assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
                 .replacement_error()
                 .is_some()
@@ -144,11 +144,11 @@ fn pending_border_spacing_reentry_is_strict_repeatable_and_provenanced() {
     }
     assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
-    let replacement = parse_component_values("2px 3em").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "2px 3em").unwrap();
     for _ in 0..2 {
         let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
         else {
@@ -164,7 +164,7 @@ fn pending_border_spacing_reentry_is_strict_repeatable_and_provenanced() {
         assert_eq!(item.replacement_components(), Some(&replacement));
     }
     let CssContributions::Longhands(items) = pending
-        .reenter(parse_component_values("inherit").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
         .unwrap()
     else {
         panic!("reentered symbolic global")
@@ -178,9 +178,10 @@ fn pending_border_spacing_reentry_is_strict_repeatable_and_provenanced() {
 
 #[test]
 fn normalization_keeps_mixed_order_and_fails_at_exact_contribution_limit() {
-    let report = parse_sheet(".a{border-spacing:1px;flex-direction:column;border-spacing:2px 3em}");
+    let report = CssParser::default()
+        .parse_sheet(".a{border-spacing:1px;flex-direction:column;border-spacing:2px 3em}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -215,7 +216,7 @@ fn normalization_keeps_mixed_order_and_fails_at_exact_contribution_limit() {
         assert!(item.source().same_occurrence(declarations[index].source()));
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
         error.exhausted_limit(),
         Some((CssNormalizationResource::Contributions, 2))

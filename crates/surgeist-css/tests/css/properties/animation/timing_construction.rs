@@ -3,8 +3,8 @@ use surgeist_css::{
     CssAnimation, CssAnimationComponents, CssAnimationDirection, CssAnimationFillMode,
     CssAnimationIterationCount, CssAnimationList, CssAnimationName, CssAnimationPlayState,
     CssCubicBezier, CssEasing, CssEasingKeyword, CssInteger, CssKnownPropertyValueRef,
-    CssNonNegative, CssNumeric, CssNumericLiteral, CssPositive, CssStepPosition, CssSteps, CssTime,
-    CssTimeUnit, CssTransition, CssTransitionList, CssTransitionProperty, parse_style_attribute,
+    CssNonNegative, CssNumeric, CssNumericLiteral, CssParser, CssPositive, CssStepPosition,
+    CssSteps, CssTime, CssTimeUnit, CssTransition, CssTransitionList, CssTransitionProperty,
 };
 
 #[test]
@@ -153,7 +153,8 @@ fn easing_construction_checks_bezier_and_step_ranges() {
 
 #[test]
 fn parsed_symbolic_easing_remains_typed_through_checked_aggregates() {
-    let report = parse_style_attribute("transition-timing-function: steps(calc(1 + 1), jump-none)");
+    let report = CssParser::default()
+        .parse_block_contents("transition-timing-function: steps(calc(1 + 1), jump-none)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::TransitionTimingFunction(wrapper) = report.syntax()[0]
         .known()

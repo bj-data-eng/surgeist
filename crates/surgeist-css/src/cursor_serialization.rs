@@ -127,9 +127,7 @@ mod tests {
     use super::*;
     use crate::CssSerializationLimits as Limits;
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
-    use crate::{
-        CssCalculation, CssContentString, CssNumber, CssNumeric, CssUrl, parse_component_values,
-    };
+    use crate::{CssCalculation, CssContentString, CssNumber, CssNumeric, CssUrl};
 
     fn number(value: &str) -> CssNumeric<CssNumber> {
         CssNumeric::<CssNumber>::try_from_component(
@@ -268,7 +266,7 @@ mod tests {
         let resolution =
             crate::CssNumeric::<crate::CssResolution, crate::CssNonNegative>::try_from_calculation(
                 crate::CssCalculation::<crate::CssResolution>::try_from_components(
-                    parse_component_values("calc(-1x)").unwrap(),
+                    crate::component_values::parse_component_values("calc(-1x)").unwrap(),
                     Default::default(),
                 )
                 .unwrap(),
@@ -337,7 +335,7 @@ mod tests {
 
     #[test]
     fn suppressed_number_math_enforces_the_child_projection_limit_and_preserves_original_origin() {
-        let components = parse_component_values("calc(1 + 2)").unwrap();
+        let components = crate::component_values::parse_component_values("calc(1 + 2)").unwrap();
         let number = CssNumeric::<CssNumber>::try_from_calculation(
             CssCalculation::<CssNumber>::try_from_components(components, Default::default())
                 .unwrap(),

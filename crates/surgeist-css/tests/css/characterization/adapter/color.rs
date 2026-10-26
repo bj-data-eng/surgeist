@@ -14,8 +14,8 @@ use surgeist_css::{
     CssColorParseOutcome, CssColorParseStep, CssColorPropertyFacts, CssColorResolveError,
     CssColorSchemeFact, CssColorSlot, CssColorStandardFailure, CssColorStandardFailureKind,
     CssColorTransform, CssColorUnavailable, CssColorUnsupported, CssDeviceColorFact, CssImportance,
-    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssUsedColorCheckpoint,
-    parse_property_value_text, parse_used_color, resolve_authored_color,
+    CssKnownProperty, CssKnownPropertyValueRef, CssParser, CssPropertyNameRef,
+    CssPropertyTextTarget, CssUsedColorCheckpoint, parse_used_color,
 };
 
 use super::{Observation, emitted, error_chain};
@@ -262,9 +262,9 @@ fn authored(
     facts: &CssColorFacts<'_>,
     limits: CssAuthoredColorOrdinaryLimits,
 ) -> Observation {
-    let report = parse_property_value_text(
+    let report = CssParser::default().parse_property_value(
         input,
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         CssImportance::Normal,
     );
     let mut observation = Observation::default();
@@ -280,7 +280,7 @@ fn authored(
             return observation;
         }
     };
-    match resolve_authored_color(color, facts, facts.identity(), limits) {
+    match color.resolve(facts, facts.identity(), limits) {
         Ok(result) => match result.outcome() {
             CssAuthoredColorOutcome::Used(color) => {
                 observation.shape = "used".to_owned();

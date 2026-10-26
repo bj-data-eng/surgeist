@@ -5,13 +5,13 @@ use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssComponentValues, CssCondition, CssConditionKind,
-    CssContainerGeneralEnclosed, CssContainerLeaf, CssErrorCode, CssGeneralEnclosed,
-    CssRecoveryAction, CssRule, CssSerializedOrigin, CssValueOrigin, parse_component_values,
-    parse_sheet, validate_sheet,
+    CssContainerGeneralEnclosed, CssContainerLeaf, CssErrorCode, CssGeneralEnclosed, CssParser,
+    CssRecoveryAction, CssRule, CssSerializedOrigin, CssValueOrigin,
 };
 
 fn condition(query: &str) -> CssCondition<CssContainerLeaf> {
-    let report = parse_sheet(&format!("@container {query} {{ .x {{ color:red }} }}"));
+    let report =
+        CssParser::default().parse_sheet(format!("@container {query} {{ .x {{ color:red }} }}"));
     assert!(report.is_clean(), "{query}: {:?}", report.diagnostics());
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("container")
@@ -64,9 +64,15 @@ fn assert_color_style(condition: &CssCondition<CssContainerLeaf>) {
 #[test]
 fn nested_negated_unknown_operands_keep_boolean_structure_and_the_original_snapshot() {
     let source = "/*😀*/ @container not ((a) and (not (b))) { .x { color:red } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
-    assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("container")
     };
@@ -184,7 +190,7 @@ fn empty_comments_escaped_functions_and_nested_components_remain_lexical_operand
 
 #[test]
 fn programmatic_opaque_wrapper_preserves_parsed_children_and_required_token_boundaries() {
-    let parsed = parse_component_values("/*😀*/1").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "/*😀*/1").unwrap();
     let child = parsed.items().last().unwrap().clone();
     let original = child.origin().clone();
     let wrapper = CssGeneralEnclosed::try_function(
@@ -228,7 +234,7 @@ fn programmatic_opaque_wrapper_preserves_parsed_children_and_required_token_boun
 fn a_recovered_lexical_operand_retains_its_eof_closure_origin() {
     // A missing container rule block is independently invalid. Exercise the
     // recovered lexical operand through its public checked enclosure owner.
-    let components = parse_component_values("Future(").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "Future(").unwrap();
     let value = CssGeneralEnclosed::try_from_component(components.items()[0].clone()).unwrap();
     let condition = CssCondition::<CssContainerLeaf>::try_from_enclosed(value).unwrap();
     let value = opaque(&condition);
@@ -262,7 +268,8 @@ fn lexical_errors_and_malformed_outer_boolean_grammar_are_not_hidden_by_fallback
         ("not not Future()", grammar, 4),
         ("Future() and Other() or Third()", grammar, 21),
     ] {
-        let report = parse_sheet(&format!("@container {query} {{ .x {{ color:red }} }}"));
+        let report = CssParser::default()
+            .parse_sheet(format!("@container {query} {{ .x {{ color:red }} }}"));
         assert_diagnostics(
             report.diagnostics(),
             &[(
@@ -278,7 +285,7 @@ fn lexical_errors_and_malformed_outer_boolean_grammar_are_not_hidden_by_fallback
 #[test]
 fn component_depth_limit_rejects_an_oversized_opaque_query() {
     let query = format!("{}x{}", "Future(".repeat(257), ")".repeat(257));
-    let report = parse_sheet(&format!("@container {query} {{}}"));
+    let report = CssParser::default().parse_sheet(format!("@container {query} {{}}"));
     assert!(report.syntax().rules().is_empty());
     assert!(
         report
@@ -303,7 +310,7 @@ fn speculative_query_branches_preserve_terminal_bad_token_categories_and_origina
     ] {
         let source = format!("/*😀*/ @container {query} {{ .x {{ color:red }} }}");
         let offset = source.find(offending).unwrap();
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.syntax().rules().is_empty(), "{query}");
         let [diagnostic] = report.diagnostics() else {
             panic!("one terminal lexical failure: {:?}", report.diagnostics())
@@ -333,9 +340,10 @@ fn speculative_query_branches_preserve_terminal_bad_token_categories_and_origina
 
 #[test]
 fn checked_enclosure_classification_prefers_the_same_recognized_branches_as_parsing() {
-    let feature =
-        CssGeneralEnclosed::try_parenthesized(parse_component_values("width > 1px").unwrap())
-            .unwrap();
+    let feature = CssGeneralEnclosed::try_parenthesized(
+        CssComponentValues::parse(&CssParser::default(), "width > 1px").unwrap(),
+    )
+    .unwrap();
     assert!(matches!(
         CssCondition::<CssContainerLeaf>::try_from_enclosed(feature)
             .unwrap()
@@ -346,9 +354,11 @@ fn checked_enclosure_classification_prefers_the_same_recognized_branches_as_pars
         condition("(width > 1px)").kind(),
         CssConditionKind::Leaf(CssContainerLeaf::Feature(_))
     ));
-    let style =
-        CssGeneralEnclosed::try_function("style", parse_component_values("--theme").unwrap())
-            .unwrap();
+    let style = CssGeneralEnclosed::try_function(
+        "style",
+        CssComponentValues::parse(&CssParser::default(), "--theme").unwrap(),
+    )
+    .unwrap();
     assert!(matches!(
         CssCondition::<CssContainerLeaf>::try_from_enclosed(style)
             .unwrap()
@@ -360,7 +370,8 @@ fn checked_enclosure_classification_prefers_the_same_recognized_branches_as_pars
         CssConditionKind::Leaf(CssContainerLeaf::Style(_))
     ));
     let grouped = CssGeneralEnclosed::try_parenthesized(
-        parse_component_values("(width > 1px) and style(--theme)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "(width > 1px) and style(--theme)")
+            .unwrap(),
     )
     .unwrap();
     let checked = CssCondition::<CssContainerLeaf>::try_from_enclosed(grouped).unwrap();
@@ -393,9 +404,11 @@ fn checked_unknown_and_failed_recognized_enclosures_retain_the_supplied_lexical_
         ("style", "future-property:red"),
         ("Future", "1/**/e2"),
     ] {
-        let enclosure =
-            CssGeneralEnclosed::try_function(name, parse_component_values(contents).unwrap())
-                .unwrap();
+        let enclosure = CssGeneralEnclosed::try_function(
+            name,
+            CssComponentValues::parse(&CssParser::default(), contents).unwrap(),
+        )
+        .unwrap();
         let original = enclosure.clone();
         let checked = CssCondition::<CssContainerLeaf>::try_from_enclosed(enclosure).unwrap();
         assert_eq!(opaque(&checked).component(), original.component());
@@ -409,9 +422,11 @@ fn checked_unknown_and_failed_recognized_enclosures_retain_the_supplied_lexical_
             format!("{name}({contents})")
         );
     }
-    let enclosure =
-        CssGeneralEnclosed::try_function("style", parse_component_values("color:red").unwrap())
-            .unwrap();
+    let enclosure = CssGeneralEnclosed::try_function(
+        "style",
+        CssComponentValues::parse(&CssParser::default(), "color:red").unwrap(),
+    )
+    .unwrap();
     let original = enclosure.component().clone();
     let checked = CssCondition::<CssContainerLeaf>::try_from_enclosed(enclosure).unwrap();
     assert_eq!(checked.components(), std::slice::from_ref(&original));
@@ -419,9 +434,10 @@ fn checked_unknown_and_failed_recognized_enclosures_retain_the_supplied_lexical_
     assert_color_style(&checked);
     assert_color_style(&condition("style(color:red)"));
     // Invalid recognized grammar still has a complete general-enclosed branch.
-    let enclosure =
-        CssGeneralEnclosed::try_parenthesized(parse_component_values("width: nonsense").unwrap())
-            .unwrap();
+    let enclosure = CssGeneralEnclosed::try_parenthesized(
+        CssComponentValues::parse(&CssParser::default(), "width: nonsense").unwrap(),
+    )
+    .unwrap();
     assert!(matches!(
         CssCondition::<CssContainerLeaf>::try_from_enclosed(enclosure)
             .unwrap()
@@ -433,7 +449,7 @@ fn checked_unknown_and_failed_recognized_enclosures_retain_the_supplied_lexical_
 #[test]
 fn wrong_outer_syntax_is_rejected_by_the_enclosure_owner_with_its_original_origin() {
     for source in ["/*😀*/ident", "/*😀*/[x]", "/*😀*/{x}"] {
-        let components = parse_component_values(source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let component = components.items().last().unwrap().clone();
         let expected = component.origin().clone();
         let error = CssGeneralEnclosed::try_from_component(component).unwrap_err();
@@ -521,7 +537,7 @@ fn style_variable_grammar_preserves_valid_references_and_falls_back_for_invalid_
         let parsed = condition(&query);
         let enclosure = CssGeneralEnclosed::try_function(
             "style",
-            parse_component_values(&format!("--theme:{source}")).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), format!("--theme:{source}")).unwrap(),
         )
         .unwrap();
         let checked = CssCondition::<CssContainerLeaf>::try_from_enclosed(enclosure).unwrap();
@@ -550,7 +566,7 @@ fn style_variable_grammar_preserves_valid_references_and_falls_back_for_invalid_
         let parsed = condition(&query);
         let enclosure = CssGeneralEnclosed::try_function(
             "style",
-            parse_component_values(&format!("--theme:{source}")).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), format!("--theme:{source}")).unwrap(),
         )
         .unwrap();
         let checked = CssCondition::<CssContainerLeaf>::try_from_enclosed(enclosure).unwrap();
@@ -578,7 +594,7 @@ fn constructed_style_value_serialization_keeps_adjacent_number_and_identifier_se
     };
     for first in [
         CssComponentValue::try_number("1").unwrap(),
-        parse_component_values("/*😀*/1")
+        CssComponentValues::parse(&CssParser::default(), "/*😀*/1")
             .unwrap()
             .items()
             .last()
@@ -619,8 +635,10 @@ fn constructed_style_value_serialization_keeps_adjacent_number_and_identifier_se
 
 fn parsed_and_checked_feature(body: &str) -> [CssCondition<CssContainerLeaf>; 2] {
     let parsed = condition(&format!("({body})"));
-    let enclosed =
-        CssGeneralEnclosed::try_parenthesized(parse_component_values(body).unwrap()).unwrap();
+    let enclosed = CssGeneralEnclosed::try_parenthesized(
+        CssComponentValues::parse(&CssParser::default(), body).unwrap(),
+    )
+    .unwrap();
     [
         parsed,
         CssCondition::<CssContainerLeaf>::try_from_enclosed(enclosed).unwrap(),

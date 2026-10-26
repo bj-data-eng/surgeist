@@ -57,9 +57,15 @@ const COLOR_GOLDENS: &[(&str, &str)] = &[
 ];
 fn fronts(name: &str, text: &str) -> Vec<CssDeclaration> {
     let css = format!("/*😀*/{}:{text}!important", name.to_ascii_uppercase());
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert_eq!(&validate_style_attribute(&css).unwrap(), report.syntax());
+    assert_eq!(
+        &CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap(),
+        report.syntax()
+    );
     let [parsed] = report.syntax().as_slice() else {
         panic!("one complete authored occurrence")
     };
@@ -80,8 +86,16 @@ fn fronts(name: &str, text: &str) -> Vec<CssDeclaration> {
         checked(name, text, true),
     ];
     for report in [
-        parse_property_value_text(text, CssPropertyNameRef::Known(p), CssImportance::Important),
-        parse_property_value_text_for_grammar(text, p.grammar(), CssImportance::Important),
+        CssParser::default().parse_property_value(
+            text,
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(p)),
+            CssImportance::Important,
+        ),
+        CssParser::default().parse_property_value(
+            text,
+            CssPropertyTextTarget::Grammar(p.grammar()),
+            CssImportance::Important,
+        ),
     ] {
         assert!(
             report.is_clean(),
@@ -127,7 +141,7 @@ fn canonical(name: &str, text: &str, expected: &str) {
         assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         // Canonical text must be accepted again through the actual strict owner.
         let css = source.serialize_specified(Default::default()).unwrap();
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         assert!(report.is_clean());
         assert_eq!(
             report.syntax()[0]
@@ -138,8 +152,7 @@ fn canonical(name: &str, text: &str, expected: &str) {
     }
 }
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one authored terminal")
     };
@@ -166,7 +179,7 @@ fn strict_error(error: &CssPropertyValueError, original: &str) {
     assert_eq!(at.span().end().byte_offset().value(), original.len());
 }
 fn rejects_original(text: &str) {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let before = values.clone();
     for grammar in [false, true] {
         for _ in 0..2 {
@@ -224,9 +237,10 @@ fn color_terminal_contributions_keep_both_importance_states_and_original_occurre
         "rgb(from red r g b / alpha)",
     ] {
         for importance in [CssImportance::Normal, CssImportance::Important] {
-            let source = parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Color),
-                parse_component_values(text).unwrap(),
+            let source = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 importance,
             )
             .unwrap();
@@ -268,7 +282,7 @@ fn global_keywords_and_universal_reset_include_color_without_contextual_resoluti
         }
         let source = checked("all", text, true);
         let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("universal reset")
         };
@@ -303,7 +317,7 @@ fn exact_color_channels_and_intrinsic_alpha_remain_separate_from_specified_proje
 fn mixed_programmatic_and_parsed_channels_keep_their_actual_origins() {
     let mut children = vec![CssComponentValue::try_number("0.1").unwrap()];
     children.extend(
-        parse_component_values("1e100 0")
+        CssComponentValues::parse(&CssParser::default(), "1e100 0")
             .unwrap()
             .items()
             .iter()
@@ -356,7 +370,7 @@ fn invalid_color_grammar_drops_only_its_declaration_and_retains_original_coordin
         let prefix = "/*😀*/ ";
         let target = format!("color:{text};");
         let css = format!("{prefix}{target}color:blue");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         let [sibling] = report.syntax().as_slice() else {
             panic!("valid sibling")
         };
@@ -384,10 +398,14 @@ fn invalid_color_grammar_drops_only_its_declaration_and_retains_original_coordin
             prefix.encode_utf16().count()
         );
         assert_eq!(
-            validate_style_attribute(&css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         for grammar in [false, true] {
             assert!(
                 checked_components("color", values.clone(), grammar)
@@ -397,14 +415,14 @@ fn invalid_color_grammar_drops_only_its_declaration_and_retains_original_coordin
             );
         }
         for report in [
-            parse_property_value_text(
+            CssParser::default().parse_property_value(
                 text,
-                CssPropertyNameRef::Known(CssKnownProperty::Color),
+                CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
                 CssImportance::Normal,
             ),
-            parse_property_value_text_for_grammar(
+            CssParser::default().parse_property_value(
                 text,
-                CssKnownProperty::Color.grammar(),
+                CssPropertyTextTarget::Grammar(CssKnownProperty::Color.grammar()),
                 CssImportance::Normal,
             ),
         ] {
@@ -421,7 +439,7 @@ fn complete_pending_values_reenter_repeatedly_with_original_source_and_replaceme
     for text in ["var(--paint)", "env(paint)", "attr(data-paint *)"] {
         for source in fronts("color", text) {
             let before = source.clone();
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("pending")
             };
             assert!(handle.source().same_occurrence(&source));
@@ -435,7 +453,7 @@ fn complete_pending_values_reenter_repeatedly_with_original_source_and_replaceme
             ] {
                 assert!(
                     handle
-                        .reenter(parse_component_values(invalid).unwrap())
+                        .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                         .unwrap_err()
                         .replacement_error()
                         .is_some()
@@ -444,7 +462,9 @@ fn complete_pending_values_reenter_repeatedly_with_original_source_and_replaceme
             for residual in ["var(--again)", "env(again)", "attr(data-again *)"] {
                 assert!(
                     handle
-                        .reenter(parse_component_values(residual).unwrap())
+                        .reenter(
+                            CssComponentValues::parse(&CssParser::default(), residual).unwrap()
+                        )
                         .unwrap_err()
                         .is_residual_substitution()
                 );
@@ -455,9 +475,9 @@ fn complete_pending_values_reenter_repeatedly_with_original_source_and_replaceme
             )
             .unwrap();
             for replacement in [
-                parse_component_values("red").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "red").unwrap(),
                 programmatic,
-                parse_component_values("unset").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "unset").unwrap(),
             ] {
                 for _ in 0..2 {
                     let CssContributions::Longhands(values) =
@@ -527,10 +547,10 @@ fn checked_pending_color_rejects_original_substitution_eof_closure() {
 fn pending_reentry_rejects_recovered_ordinary_replacement_then_accepts_complete_retry() {
     for original in ["red/*", "rgb(1 2 3", "light-dark(red,blue"] {
         let source = checked("color", "var(--paint)", true);
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
-        let replacement = parse_component_values(original).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), original).unwrap();
         let before = replacement.clone();
         let error = handle.reenter(replacement.clone()).unwrap_err();
         let Some(detail) = error.replacement_error() else {
@@ -540,7 +560,7 @@ fn pending_reentry_rejects_recovered_ordinary_replacement_then_accepts_complete_
         assert_eq!(replacement, before);
         assert!(
             handle
-                .reenter(parse_component_values("red/**/").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "red/**/").unwrap())
                 .is_ok()
         );
         assert!(handle.source().same_occurrence(&source));
@@ -556,11 +576,11 @@ fn pending_reentry_rejects_recovered_global_replacement_with_original_eof_origin
         "revert-layer/*",
     ] {
         let source = checked("color", "var(--paint)", true);
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         let error = handle
-            .reenter(parse_component_values(original).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), original).unwrap())
             .unwrap_err();
         let Some(detail) = error.replacement_error() else {
             panic!("invalid replacement")
@@ -568,7 +588,7 @@ fn pending_reentry_rejects_recovered_global_replacement_with_original_eof_origin
         strict_error(detail, original);
         assert!(
             handle
-                .reenter(parse_component_values("unset/**/").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "unset/**/").unwrap())
                 .is_ok()
         );
     }
@@ -577,7 +597,7 @@ fn pending_reentry_rejects_recovered_global_replacement_with_original_eof_origin
 fn browser_recovery_retains_authored_color_occurrences_and_reports_unclean_input() {
     for text in ["red/*", "rgb(1 2 3", "initial/*", "var(--paint"] {
         let css = format!("color:{text}");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         assert!(!report.is_clean());
         let [source] = report.syntax().as_slice() else {
             panic!("browser recovery retains one occurrence")
@@ -585,7 +605,11 @@ fn browser_recovery_retains_authored_color_occurrences_and_reports_unclean_input
         assert_eq!(source.known().unwrap().property(), CssKnownProperty::Color);
         assert_eq!(source.parsed_value().unwrap().source().as_str(), css);
         assert_eq!(
-            validate_style_attribute(&css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -593,12 +617,12 @@ fn browser_recovery_retains_authored_color_occurrences_and_reports_unclean_input
 #[test]
 fn nested_color_occurrences_normalize_in_original_order_with_atomic_cumulative_limits() {
     let css = ".a{color:red!important;.b{color:currentcolor}color:CanvasText;color:var(--paint)}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     // Two style rules plus the ordered outer declaration segment after nesting.
     let exact = CssNormalizationLimits::try_new(1, 3, 4, 4).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -648,7 +672,7 @@ fn nested_color_occurrences_normalize_in_original_order_with_atomic_cumulative_l
             CssNormalizationResource::Contributions,
         ),
     ] {
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+        let error = report.syntax().normalize(limits).unwrap_err();
         assert_eq!(error.exhausted_limit(), Some((resource, 3)));
         assert_eq!(error.declaration_order(), Some(3));
         assert!(
@@ -659,7 +683,7 @@ fn nested_color_occurrences_normalize_in_original_order_with_atomic_cumulative_l
         );
     }
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 #[test]
 fn named_color_declaration_has_exact_three_input_three_projection_prices_and_atomic_failures() {
@@ -696,7 +720,7 @@ fn named_color_declaration_has_exact_three_input_three_projection_prices_and_ato
 }
 #[test]
 fn sheet_siblings_share_final_color_bytes_and_fail_atomically_at_the_later_rule() {
-    let report = parse_sheet(".a{color:red}.b{color:currentcolor}");
+    let report = CssParser::default().parse_sheet(".a{color:red}.b{color:currentcolor}");
     assert!(report.is_clean());
     let sheet = report.syntax();
     let before = sheet.clone();
@@ -775,7 +799,7 @@ fn ordinary_mode_keeps_all_seven_quirky_color_properties_on_normal_color_grammar
         "border-left-color",
     ] {
         for text in ["ABC", "123", "12abc"] {
-            let values = parse_component_values(text).unwrap();
+            let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             // Color 4 Appendix B: standards mode admits no quirky color, so
             // the sole token is the responsible one.
             for grammar in [false, true] {
@@ -786,7 +810,8 @@ fn ordinary_mode_keeps_all_seven_quirky_color_properties_on_normal_color_grammar
                     text,
                 );
             }
-            let report = parse_style_attribute(&format!("{name}:{text};color:red"));
+            let report =
+                CssParser::default().parse_block_contents(format!("{name}:{text};color:red"));
             let [diagnostic] = report.diagnostics() else {
                 panic!("{name}:{text}: one diagnostic")
             };
@@ -818,7 +843,7 @@ fn ordinary_mode_keeps_all_seven_quirky_color_properties_on_normal_color_grammar
 #[test]
 fn ordinary_supports_preserves_unsupported_bare_quirky_color_tests_as_syntax() {
     for text in ["color:123", "background-color:ABC", "border-color:12abc"] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let before = values.clone();
         let declaration =
             CssSupportsDeclaration::try_from_components(values.clone(), Default::default())
@@ -837,7 +862,7 @@ fn ordinary_supports_preserves_unsupported_bare_quirky_color_tests_as_syntax() {
 
 #[test]
 fn invalid_checked_color_reports_the_actual_original_token_not_generated_source() {
-    let values = parse_component_values("10px").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "10px").unwrap();
     let before = values.clone();
     let CssValueOrigin::Parsed(original) = values.items()[0].origin() else {
         panic!("parsed token")

@@ -29,7 +29,7 @@ fn css_text(declarations: &CssDeclarationList) -> String {
 fn assert_recovered_math_kept(property: &str, value: &str) {
     let source = format!("{property}: {value}");
     let closed_source = format!("color: red; {property}: {}", closed(value));
-    let expected = parse_style_attribute(&closed_source);
+    let expected = CssParser::default().parse_block_contents(&closed_source);
     assert!(
         expected.is_clean(),
         "{closed_source}: {:?}",
@@ -37,7 +37,7 @@ fn assert_recovered_math_kept(property: &str, value: &str) {
     );
     let expected = css_text(expected.syntax());
 
-    let attribute = parse_style_attribute(&format!("color: red; {source}"));
+    let attribute = CssParser::default().parse_block_contents(format!("color: red; {source}"));
     assert_eq!(
         attribute.syntax().as_slice().len(),
         2,
@@ -50,7 +50,7 @@ fn assert_recovered_math_kept(property: &str, value: &str) {
         "{source} in a style attribute"
     );
 
-    let sheet = parse_sheet(&format!(".a {{ color: red; {source}"));
+    let sheet = CssParser::default().parse_sheet(format!(".a {{ color: red; {source}"));
     let declarations = style_rule(&sheet.syntax().rules()[0]).declarations();
     assert_eq!(
         declarations.as_slice().len(),
@@ -72,11 +72,15 @@ fn absolute_voice_pitch_keeps_recovered_frequency_math() {
         ("absolute calc(100Hz)", true),
         ("absolute calc(100Hz", false),
     ] {
-        let values = parse_component_values(value).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), value).unwrap();
         assert_eq!(
-            context
-                .parse_property_value(name, values, CssImportance::Normal)
-                .is_ok(),
+            CssDeclaration::try_from_components(
+                &CssParser::new(context, Default::default()),
+                CssPropertyTarget::Property(name),
+                values,
+                CssImportance::Normal
+            )
+            .is_ok(),
             accepted,
             "{value}"
         );
@@ -360,7 +364,7 @@ fn cursor_rejection_admits_recovered_resolution_math_like_a_bare_resolution() {
         "cursor: image-set(\"a.png\" 2dppx",
         "cursor: image-set(\"a.png\" calc(2dppx",
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.syntax().as_slice().is_empty(), "{source}");
         assert_first_property_diagnostic(
             report.diagnostics(),

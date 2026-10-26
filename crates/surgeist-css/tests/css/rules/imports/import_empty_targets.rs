@@ -4,9 +4,8 @@
 use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::{
     CssConditionKind, CssErrorCode, CssImportLayer, CssImportRule, CssImportString,
-    CssImportTarget, CssImportUrl, CssMediaQuery, CssMediaType, CssNamespaceContext,
-    CssRecoveryAction, CssRule, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin, parse_rule,
-    parse_sheet, validate_sheet,
+    CssImportTarget, CssImportUrl, CssMediaQuery, CssMediaType, CssNamespaceContext, CssParser,
+    CssRecoveryAction, CssRule, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin,
 };
 
 // Authored spelling, URL-versus-string target, exact decoded value.
@@ -47,9 +46,15 @@ fn decoded_target_constructors_preserve_empty_and_whitespace_values() {
 fn empty_and_whitespace_targets_are_clean_sheet_rules_with_following_styles() {
     for &(target, url, decoded) in TARGETS {
         let source = format!("@import {target}; .after {{ color: red; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-        assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+        assert_eq!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap(),
+            *report.syntax()
+        );
         let [CssRule::Import(import), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("retained import and following style: {source}");
         };
@@ -64,7 +69,11 @@ fn empty_and_whitespace_targets_are_clean_sheet_rules_with_following_styles() {
 fn empty_and_whitespace_targets_are_clean_exact_one_rule_fragments() {
     for &(target, url, decoded) in TARGETS {
         let source = format!("@import {target};");
-        let report = parse_rule(&source, &CssNamespaceContext::default());
+        let report = CssRule::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let Some(CssRule::Import(import)) = report.syntax() else {
             panic!("one import fragment: {source}");
@@ -77,14 +86,18 @@ fn empty_and_whitespace_targets_are_clean_exact_one_rule_fragments() {
 fn canonical_empty_target_imports_preserve_spelling_and_are_idempotent() {
     for &(target, url, decoded) in TARGETS {
         let source = format!("@IMPORT {target};");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [CssRule::Import(import)] = report.syntax().rules() else {
             panic!("one authored import: {source}");
         };
         let output = import.serialize_tokens(Default::default()).unwrap();
         assert_eq!(output.as_css(), format!("@import {target};"));
-        let reparsed = parse_rule(output.as_css(), &CssNamespaceContext::default());
+        let reparsed = CssRule::parse(
+            &CssParser::default(),
+            output.as_css(),
+            &CssNamespaceContext::default(),
+        );
         assert!(reparsed.is_clean(), "{:?}", reparsed.diagnostics());
         let Some(CssRule::Import(import)) = reparsed.syntax() else {
             panic!("one reparsed import");
@@ -104,7 +117,7 @@ fn canonical_empty_target_imports_preserve_spelling_and_are_idempotent() {
 fn empty_targets_preserve_layer_supports_and_symbolic_media_clauses() {
     for target in ["\"\"", "url()"] {
         let source = format!("@import {target} layer(theme) supports(display:grid) print;");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [CssRule::Import(import)] = report.syntax().rules() else {
             panic!("one conditional import");
@@ -140,7 +153,7 @@ fn initial_layer_statements_allow_empty_target_imports_and_following_imports() {
         "@layer reset; @import ''; @import url(); ",
         "@import 'theme.css'; .after { color: red; }"
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [
         CssRule::LayerStatement(_),
@@ -165,7 +178,7 @@ fn empty_target_imports_advance_the_import_phase_before_later_layer_statements()
         "@import ''; @layer middle; @import 'late.css'; ",
         ".after { color: red; }"
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [
         CssRule::Import(import),
         CssRule::LayerStatement(_),
@@ -179,13 +192,18 @@ fn empty_target_imports_advance_the_import_phase_before_later_layer_statements()
         panic!("only the late import is invalid");
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
-    assert!(validate_sheet(source).is_err());
+    assert!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .is_err()
+    );
 }
 
 #[test]
 fn an_empty_string_import_at_eof_gets_a_programmatic_semicolon_with_statement_recovery() {
     let source = "@import ''";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [statement] = report.diagnostics() else {
         panic!("one retained statement EOF diagnostic");
     };
@@ -214,7 +232,9 @@ fn an_empty_string_import_at_eof_gets_a_programmatic_semicolon_with_statement_re
         "a semicolon or block terminating an at-rule"
     );
     assert_eq!(
-        validate_sheet(source),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
         report.clone().into_validation_result()
     );
     let [CssRule::Import(import)] = report.syntax().rules() else {
@@ -237,7 +257,7 @@ fn eof_unclosed_empty_urls_retain_targets_with_implicit_closure_diagnostics() {
         ("@import url(", "@import url();"),
         ("@import url(\"\"", "@import url(\"\");"),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [CssRule::Import(import)] = report.syntax().rules() else {
             panic!("retained EOF import: {source}");
         };
@@ -284,7 +304,9 @@ fn eof_unclosed_empty_urls_retain_targets_with_implicit_closure_diagnostics() {
         assert_eq!(closure.span().start().byte_offset().value(), source.len());
         assert_eq!(closure.span().end().byte_offset().value(), source.len());
         assert_eq!(
-            validate_sheet(source),
+            CssParser::default()
+                .parse_sheet(source)
+                .into_validation_result(),
             report.clone().into_validation_result()
         );
         let output = import.serialize_tokens(Default::default()).unwrap();
@@ -293,7 +315,7 @@ fn eof_unclosed_empty_urls_retain_targets_with_implicit_closure_diagnostics() {
             output.origin_at(output.as_css().len() - 1),
             Some(CssSerializedOrigin::Token(CssValueOrigin::Programmatic))
         ));
-        assert!(parse_sheet(output.as_css()).is_clean());
+        assert!(CssParser::default().parse_sheet(output.as_css()).is_clean());
     }
 }
 
@@ -308,11 +330,15 @@ fn missing_numeric_and_lexically_bad_targets_reject_without_losing_styles() {
         ("@import url(a b);", prelude.clone()),
         ("@import \"a\n;", prelude.clone()),
     ] {
-        let fragment = parse_rule(invalid, &CssNamespaceContext::default());
+        let fragment = CssRule::parse(
+            &CssParser::default(),
+            invalid,
+            &CssNamespaceContext::default(),
+        );
         assert!(fragment.syntax().is_none(), "{invalid}");
         expected.assert_first(&fragment);
         let source = format!("{invalid} .after {{ color: red; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         expected.assert_first(&report);
         assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
     }

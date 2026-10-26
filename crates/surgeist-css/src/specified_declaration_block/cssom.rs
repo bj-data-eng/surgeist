@@ -490,7 +490,7 @@ mod tests {
     };
 
     fn block(source: &str) -> CssSpecifiedDeclarationBlock {
-        let report = crate::parse_style_attribute(source);
+        let report = crate::CssParser::default().parse_block_contents(source);
         assert!(report.is_clean());
         CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
             .unwrap()
@@ -584,7 +584,8 @@ mod tests {
 
     #[test]
     fn pending_probe_requires_genuine_same_original_even_for_equal_text() {
-        let report = crate::parse_style_attribute("pause:var(--P);pause:var(--P)");
+        let report =
+            crate::CssParser::default().parse_block_contents("pause:var(--P);pause:var(--P)");
         assert!(report.is_clean());
         let list = report.syntax();
         let mut value =
@@ -812,9 +813,7 @@ mod tests {
             assert_eq!(css, expected, "{source}");
             assert!(writer.css.is_empty());
         }
-        let report = crate::parse_style_attribute(
-            "grid-row-start:calc(1 + 2);grid-column-start:calc(1 + 2);grid-row-end:calc(1 + 2);grid-column-end:calc(1 + 2)",
-        );
+        let report = crate::CssParser::default().parse_block_contents("grid-row-start:calc(1 + 2);grid-column-start:calc(1 + 2);grid-row-end:calc(1 + 2);grid-column-end:calc(1 + 2)");
         assert!(report.is_clean());
         let list = report.syntax();
         let value =
@@ -912,7 +911,7 @@ mod tests {
 
     #[test]
     fn private_color_probe_charges_the_actual_exact_coefficient_allocations() {
-        let report = crate::parse_style_attribute("color:color(srgb 1 0 0)");
+        let report = crate::CssParser::default().parse_block_contents("color:color(srgb 1 0 0)");
         assert!(report.is_clean());
         let crate::CssKnownPropertyValueRef::Color(value) = report.syntax()[0]
             .known()

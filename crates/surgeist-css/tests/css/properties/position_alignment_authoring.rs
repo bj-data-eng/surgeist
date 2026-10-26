@@ -8,7 +8,9 @@ use crate::css::support::sheet_cases::*;
 
 #[test]
 fn invalid_display_keyword_is_typed_with_property_context() {
-    let error = parse_sheet(".panel { display: solid; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { display: solid; }")
+        .expect_err("rejected parse report");
 
     let detail = &error;
     assert_eq!(
@@ -22,7 +24,9 @@ fn invalid_display_keyword_is_typed_with_property_context() {
 
 #[test]
 fn unsupported_overflow_keyword_is_typed_with_property_context() {
-    let error = parse_sheet(".panel { overflow: none; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { overflow: none; }")
+        .expect_err("rejected parse report");
 
     let detail = &error;
     assert_eq!(
@@ -36,7 +40,9 @@ fn unsupported_overflow_keyword_is_typed_with_property_context() {
 
 #[test]
 fn unsupported_position_keyword_is_typed_with_property_context() {
-    let error = parse_sheet(".panel { position: running; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { position: running; }")
+        .expect_err("rejected parse report");
 
     let detail = &error;
     assert_eq!(
@@ -50,8 +56,9 @@ fn unsupported_position_keyword_is_typed_with_property_context() {
 
 #[test]
 fn unsupported_alignment_keyword_is_typed_with_property_context() {
-    let error =
-        parse_sheet(".panel { align-items: unsafe stretch; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { align-items: unsafe stretch; }")
+        .expect_err("rejected parse report");
 
     let detail = &error;
     assert_eq!(
@@ -331,7 +338,10 @@ fn safe_prefixed_alignment_positions_are_admitted_but_stretch_is_rejected() {
         ".panel { place-content: safe flex-start; }",
     ];
     for case in accepted {
-        assert!(parse_sheet(case).is_clean(), "{case} should be admitted");
+        assert!(
+            CssParser::default().parse_sheet(case).is_clean(),
+            "{case} should be admitted"
+        );
     }
     let rejected = [
         (

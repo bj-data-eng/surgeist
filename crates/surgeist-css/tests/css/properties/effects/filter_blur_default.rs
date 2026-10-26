@@ -9,7 +9,7 @@ fn omitted_blur_radius_retains_authored_input_and_specified_zero() {
         "filter:blur(/**/)",
         "backdrop-filter:blur()",
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {report:?}");
         let declaration = &report.syntax()[0];
         let value = declaration.known().unwrap().property_value().unwrap();
@@ -40,7 +40,7 @@ fn omitted_blur_radius_retains_authored_input_and_specified_zero() {
 
 #[test]
 fn omitted_blur_radius_survives_implicit_function_closure() {
-    let report = parse_style_attribute("filter:blur(");
+    let report = CssParser::default().parse_block_contents("filter:blur(");
     assert_eq!(report.syntax().len(), 1, "{report:?}");
     assert!(!report.is_clean());
     assert!(
@@ -53,7 +53,7 @@ fn omitted_blur_radius_survives_implicit_function_closure() {
 #[test]
 fn explicit_blur_radii_keep_their_values_and_authored_spelling() {
     for (argument, expected) in [("0", "0"), ("0px", "0px"), ("2px", "2px")] {
-        let report = parse_style_attribute(&format!("filter:blur({argument})"));
+        let report = CssParser::default().parse_block_contents(format!("filter:blur({argument})"));
         assert!(report.is_clean(), "{report:?}");
         let CssKnownPropertyValueRef::Filter(value) = report.syntax()[0]
             .known()
@@ -77,7 +77,7 @@ fn explicit_blur_radii_keep_their_values_and_authored_spelling() {
         assert_eq!(value.as_css(), format!("blur({argument})"));
     }
     for argument in ["-1px", "1%", ",", "1px 2px"] {
-        let report = parse_style_attribute(&format!("filter:blur({argument})"));
+        let report = CssParser::default().parse_block_contents(format!("filter:blur({argument})"));
         assert!(report.syntax().is_empty(), "{argument}: {report:?}");
         assert!(!report.is_clean());
     }

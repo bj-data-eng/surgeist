@@ -3,11 +3,13 @@ use crate::css::support::parse_report as common;
 use common::CssParseReportTestExt;
 use surgeist_css::{
     CssDeclarationBody, CssGlobalKeyword, CssKnownDeclaredValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssPropertyNameRef, CssRule, parse_sheet,
+    CssKnownPropertyValueRef, CssParser, CssPropertyNameRef, CssRule,
 };
 
 fn declarations(source: &str) -> Vec<surgeist_css::CssDeclaration> {
-    let sheet = parse_sheet(source).expect("valid stylesheet");
+    let sheet = CssParser::default()
+        .parse_sheet(source)
+        .expect("valid stylesheet");
     let [CssRule::Style(rule)] = sheet.rules() else {
         panic!("expected one style rule");
     };

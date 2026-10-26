@@ -8,10 +8,10 @@ use crate::css::support::authored_syntax::{
     assert_origin_region as origin, assert_position as position,
 };
 use surgeist_css::{
-    CssBlockFragment, CssErrorCode, CssEscapeFailure, CssFontDisplay, CssFontFeatureValueBlock,
-    CssFontFeatureValueDefinition, CssFontFeatureValueKind as Kind,
-    CssFontFeatureValuesItem as Item, CssParseReport, CssParsedOrigin, CssRecoveryAction, CssRule,
-    parse_font_feature_value_block, parse_font_feature_values_block, parse_sheet,
+    CssBlockContext, CssBlockFragment, CssErrorCode, CssEscapeFailure, CssFontDisplay,
+    CssFontFeatureValueBlock, CssFontFeatureValueDefinition, CssFontFeatureValueKind as Kind,
+    CssFontFeatureValuesItem as Item, CssFontFeatureValuesItem, CssParseReport, CssParsedOrigin,
+    CssParser, CssRecoveryAction, CssRule,
 };
 
 type OuterReport = CssParseReport<Option<CssBlockFragment<Vec<Item>>>>;
@@ -28,10 +28,18 @@ const KINDS: [Kind; 7] = [
 ];
 
 fn outer(source: &str) -> OuterReport {
-    parse_font_feature_values_block(source)
+    CssBlockFragment::<Vec<CssFontFeatureValuesItem>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    )
 }
 fn subsidiary(source: &str, kind: Kind) -> SubsidiaryReport {
-    parse_font_feature_value_block(source, kind)
+    CssBlockFragment::<CssFontFeatureValueBlock>::parse_definition(
+        &CssParser::default(),
+        source,
+        kind,
+    )
 }
 
 fn block(item: &Item) -> &CssFontFeatureValueBlock {
@@ -1018,7 +1026,7 @@ fn defined_child_resource_failure_recovers_the_definition_and_preserves_child_an
 #[test]
 fn genuine_rule_controls_confirm_provider_semantics_without_fabricating_fragment_input() {
     let source = "@font-feature-values Demo{font-display:swap;@styleset{First:0 100 101}font-display:optional;@swash{bad:1.0;Good:+0002}}";
-    let real = parse_sheet(source);
+    let real = CssParser::default().parse_sheet(source);
     let [CssRule::FontFeatureValues(rule)] = real.syntax().rules() else {
         panic!("genuine existing rule")
     };

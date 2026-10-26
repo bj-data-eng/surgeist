@@ -66,8 +66,7 @@ pub fn background_images(css: &str) -> CssImageValueList {
 /// source occurrence and its importance.
 #[track_caller]
 pub fn expanded_longhands(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("completed expansion")
     };
@@ -409,7 +408,10 @@ pub fn assert_selector_rejected(source: &str) {
 /// [`assert_selector_rejected`] in a namespace context.
 #[track_caller]
 pub fn assert_selector_rejected_in(source: &str, context: &CssNamespaceContext) {
-    assert_selector_report_rejected(source, parse_selector(source, context));
+    assert_selector_report_rejected(
+        source,
+        CssSelector::parse(&CssParser::default(), source, context),
+    );
 }
 
 /// Typed evidence that a selector fragment `report` of `source` rejected the

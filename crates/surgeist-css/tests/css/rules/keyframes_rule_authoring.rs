@@ -15,14 +15,15 @@ fn keyframes_rule(rule: &CssRule) -> &CssKeyframesRule {
 
 #[test]
 fn keyframes_rule_parser_accepts_strict_blocks() {
-    let sheet = parse_sheet(
-        r#"@keyframes fade {
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"@keyframes fade {
             from { opacity: 0; transform: translateX(0px); }
             50% { opacity: 0.5; }
             to { opacity: 1; transform: translateX(10px); }
         }"#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("expected one keyframes rule");
     };
@@ -55,13 +56,14 @@ fn keyframes_rule_parser_accepts_strict_blocks() {
 
 #[test]
 fn keyframes_rule_parser_accepts_string_names_and_selector_lists() {
-    let sheet = parse_sheet(
-        r#"@keyframes "fade in" {
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"@keyframes "fade in" {
             0%, 100% { opacity: 1; }
         }
         .panel { animation-name: "fade in"; animation: "fade in" 120ms ease; }"#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
     let [keyframes, style] = sheet.rules() else {
         panic!("expected keyframes and style rules");
     };
@@ -107,14 +109,12 @@ fn keyframes_rule_parser_accepts_string_names_and_selector_lists() {
 
 #[test]
 fn keyframes_rule_parser_accepts_keyframes_inside_conditional_groups() {
-    let sheet = parse_sheet(
-        r#"@media screen {
+    let sheet = CssParser::default().parse_sheet(r#"@media screen {
             @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
         }
         @container sidebar (inline-size > 30rem) {
             @keyframes slide { 0% { transform: translateX(0px); } 100% { transform: translateX(10px); } }
-        }"#,
-    )
+        }"#)
     .expect("clean parse report");
 
     let [media, container] = sheet.rules() else {

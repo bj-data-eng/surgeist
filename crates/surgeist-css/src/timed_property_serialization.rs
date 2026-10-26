@@ -564,7 +564,8 @@ mod tests {
 
     #[test]
     fn suppressed_symbolic_delay_performs_the_same_projection_work() {
-        let report = crate::parse_style_attribute("transition-delay:calc(1s + 2s)");
+        let report =
+            crate::CssParser::default().parse_block_contents("transition-delay:calc(1s + 2s)");
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let crate::CssKnownPropertyValueRef::TransitionDelay(value) = report.syntax()[0]
             .known()

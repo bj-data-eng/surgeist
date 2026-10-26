@@ -16,17 +16,17 @@ use surgeist_css::*;
 const MEMBERS: [&str; 3] = ["flex-grow", "flex-shrink", "flex-basis"];
 
 fn direct(name: &str, value: &str) -> Result<CssDeclaration, CssPropertyValueError> {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar(name)),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         CssImportance::Normal,
     )
 }
 
 fn expanded(value: &str) -> Vec<CssLonghandContribution> {
     let source = declaration(value);
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("flex:{value} expands to three longhands")
     };
@@ -89,7 +89,7 @@ fn flex_basis_accepts_width_values_plus_content_and_contextual_calc_size() {
         "calc-size(calc-size(content, size), size + 1px)",
     ] {
         assert!(direct("flex-basis", value).is_ok(), "flex-basis:{value}");
-        let report = parse_style_attribute(&format!("flex-basis:{value}"));
+        let report = CssParser::default().parse_block_contents(format!("flex-basis:{value}"));
         assert!(
             report.is_clean(),
             "flex-basis:{value}: {:?}",
@@ -190,7 +190,7 @@ fn flex_shorthand_accepts_each_grammar_form_and_rejects_reordered_factors() {
         "calc-size(content, size) 2 3",
     ] {
         let source = format!("flex:{value}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(direct("flex", value).is_ok(), "{source}");
     }
@@ -222,7 +222,7 @@ fn flex_expansion_uses_specified_zero_and_keyword_presets() {
     // to an independently parsed longhand, not to the UA's `0%` shortcut.
     let items = expanded("1");
     let CssExpansion::Contributions(CssContributions::Longhands(expected)) =
-        expand_declaration(&direct("flex-basis", "0").unwrap()).unwrap()
+        direct("flex-basis", "0").unwrap().expand().unwrap()
     else {
         panic!("direct basis zero expands")
     };
@@ -232,7 +232,7 @@ fn flex_expansion_uses_specified_zero_and_keyword_presets() {
     );
     let items = expanded("none");
     let CssExpansion::Contributions(CssContributions::Longhands(expected)) =
-        expand_declaration(&direct("flex-basis", "auto").unwrap()).unwrap()
+        direct("flex-basis", "auto").unwrap().expand().unwrap()
     else {
         panic!("direct basis auto expands")
     };
@@ -245,8 +245,7 @@ fn flex_expansion_uses_specified_zero_and_keyword_presets() {
 #[test]
 fn flex_css_wide_and_pending_values_cover_all_three_terminals() {
     let source = declaration("inherit");
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("inherit flex expands")
     };
@@ -261,23 +260,23 @@ fn flex_css_wide_and_pending_values_cover_all_three_terminals() {
     }
 
     let pending_source = declaration("var(--flex)");
-    let CssExpansion::Pending(pending) = expand_declaration(&pending_source).unwrap() else {
+    let CssExpansion::Pending(pending) = pending_source.expand().unwrap() else {
         panic!("flex substitution remains pending")
     };
     assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
             .is_residual_substitution()
     );
     // Flexbox 1 §7.1: grow, optional shrink and one basis; a third number is extra.
     assert_reentry_rejected(
-        pending.reenter(parse_component_values("2 content 3").unwrap()),
+        pending.reenter(CssComponentValues::parse(&CssParser::default(), "2 content 3").unwrap()),
         CssKnownProperty::Flex,
         Some("3"),
     );
     let CssContributions::Longhands(values) = pending
-        .reenter(parse_component_values("content 2 3").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "content 2 3").unwrap())
         .unwrap()
     else {
         panic!("valid flex substitution expands")

@@ -7,14 +7,14 @@ use crate::css::support::color_and_selector_fixtures::{
 };
 use surgeist_css::{
     CssAttributeCaseSensitivity, CssErrorCode, CssNamespaceConstraint, CssNamespaceContext,
-    CssNamespaceName, CssNamespacePrefix, CssNthPattern, CssPseudoClass, CssPseudoSelectorListItem,
-    CssQualifiedNamePrefix, CssRecoveryAction, CssRelativeSelectorList, CssSelector,
-    CssSelectorCombinator as Combinator, CssSerializationLimits as Limits, CssSourcePosition,
-    CssTokenKind, parse_relative_selector_list, parse_selector, parse_selector_list,
+    CssNamespaceName, CssNamespacePrefix, CssNthPattern, CssParsedStyleSelectors, CssParser,
+    CssPseudoClass, CssPseudoSelectorListItem, CssQualifiedNamePrefix, CssRecoveryAction,
+    CssRelativeSelectorList, CssSelector, CssSelectorCombinator as Combinator,
+    CssSerializationLimits as Limits, CssSourcePosition, CssStyleSelectorContext, CssTokenKind,
 };
 
 fn clean_in(source: &str, context: &CssNamespaceContext) -> CssRelativeSelectorList {
-    let report = parse_relative_selector_list(source, context);
+    let report = CssRelativeSelectorList::parse(&CssParser::default(), source, context);
     assert!(report.is_clean(), "{source:?}: {report:?}");
     report.into_validation_result().unwrap().unwrap()
 }
@@ -24,7 +24,10 @@ fn clean(source: &str) -> CssRelativeSelectorList {
 }
 
 fn rejected_in(source: &str, context: &CssNamespaceContext) {
-    assert_selector_input_rejected(source, parse_relative_selector_list(source, context));
+    assert_selector_input_rejected(
+        source,
+        CssRelativeSelectorList::parse(&CssParser::default(), source, context),
+    );
 }
 
 fn position(actual: CssSourcePosition, expected: (usize, u32, u32)) {
@@ -178,7 +181,11 @@ fn independent_has_selectors_remain_general_relatives_without_authorizing_nested
     // Has's restriction invalidates the inner Has; Is forgives that member,
     // retaining valid empty Is syntax and the original contextual diagnostic.
     let source = "> :has(:is(:has(.One)))";
-    let recovered = parse_relative_selector_list(source, &CssNamespaceContext::default());
+    let recovered = CssRelativeSelectorList::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(!recovered.is_clean());
     let [member] = recovered.syntax().as_ref().unwrap().selectors() else {
         panic!("one recovered general relative");
@@ -239,9 +246,13 @@ fn independent_has_selectors_remain_general_relatives_without_authorizing_nested
     );
     for source in [":has(> :has(+ .One))", ":has(> .Cell::before)"] {
         assert!(
-            parse_selector(source, &CssNamespaceContext::default())
-                .syntax()
-                .is_none()
+            CssSelector::parse(
+                &CssParser::default(),
+                source,
+                &CssNamespaceContext::default()
+            )
+            .syntax()
+            .is_none()
         );
     }
     let valid = clean("> .One, + .Two, ~ .Three, || .Four");
@@ -310,20 +321,39 @@ fn ordinary_fronts_reject_explicit_relatives_while_general_front_retains_carrier
         // Selectors 4 §4.1: an ordinary complex selector begins with a compound.
         assert_selector_input_rejected(
             source,
-            parse_selector(source, &CssNamespaceContext::default()),
+            CssSelector::parse(
+                &CssParser::default(),
+                source,
+                &CssNamespaceContext::default(),
+            ),
         );
         assert_selector_input_rejected(
             source,
-            parse_selector_list(source, &CssNamespaceContext::default()),
+            CssParsedStyleSelectors::parse(
+                &CssParser::default(),
+                source,
+                &CssNamespaceContext::default(),
+                CssStyleSelectorContext::Ordinary,
+            ),
         );
         assert!(!clean(source).selectors().is_empty());
     }
-    let ordinary = parse_selector_list(".One, .Two", &CssNamespaceContext::default())
-        .into_validation_result()
-        .unwrap()
-        .unwrap();
+    let ordinary = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        ".One, .Two",
+        &CssNamespaceContext::default(),
+        CssStyleSelectorContext::Ordinary,
+    )
+    .into_validation_result()
+    .unwrap()
+    .unwrap();
     let relative = clean(".One, .Two");
-    for (ordinary, relative) in ordinary.selectors().iter().zip(relative.selectors()) {
+    for (ordinary, relative) in ordinary
+        .selectors()
+        .selectors()
+        .iter()
+        .zip(relative.selectors())
+    {
         assert_eq!(ordinary.selector(), relative.selector());
         assert_eq!(relative.combinator(), Combinator::Descendant);
     }
@@ -480,7 +510,11 @@ fn generic_relative_carriers_do_not_apply_nesting_prelude_classification() {
 #[test]
 fn outer_error_keeps_original_unicode_crlf_token_and_complete_source_span() {
     let source = "/*😀*/\r\n> .é, + :NoPe";
-    let report = parse_relative_selector_list(source, &CssNamespaceContext::default());
+    let report = CssRelativeSelectorList::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.syntax().is_none());
     let [diagnostic] = report.diagnostics() else {
         panic!("one outer rejection");
@@ -509,7 +543,11 @@ fn outer_error_keeps_original_unicode_crlf_token_and_complete_source_span() {
 #[test]
 fn inner_forgiveness_retains_members_and_exact_original_diagnostics_without_becoming_clean() {
     let source = "/*😀*/\r\n> :is(.é, :NoPe), + .Two";
-    let report = parse_relative_selector_list(source, &CssNamespaceContext::default());
+    let report = CssRelativeSelectorList::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     let list = report.syntax().as_ref().unwrap();
     assert_eq!(list.selectors().len(), 2);
     let CssSelector::PseudoClass(CssPseudoClass::Is(inner)) = list.selectors()[0].selector() else {
@@ -541,7 +579,8 @@ fn inner_forgiveness_retains_members_and_exact_original_diagnostics_without_beco
 
 #[test]
 fn later_outer_error_keeps_prior_inner_diagnostics_but_returns_no_partial_list() {
-    let report = parse_relative_selector_list(
+    let report = CssRelativeSelectorList::parse(
+        &CssParser::default(),
         "> :is(:NoPe,.One), + :NoPe",
         &CssNamespaceContext::default(),
     );
@@ -567,7 +606,11 @@ fn later_outer_error_keeps_prior_inner_diagnostics_but_returns_no_partial_list()
 #[test]
 fn actual_eof_closure_keeps_retained_relative_syntax_and_original_eof_position() {
     let source = "/*😀*/\r\n> :is(.é";
-    let report = parse_relative_selector_list(source, &CssNamespaceContext::default());
+    let report = CssRelativeSelectorList::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert_eq!(
         report
             .syntax()
@@ -621,7 +664,11 @@ fn relative_fragments_share_the_exact_256_function_depth_and_257_rejection_bound
         );
     }
     let source = format!("> {}.One{}", ":is(".repeat(257), ")".repeat(257));
-    let report = parse_relative_selector_list(&source, &CssNamespaceContext::default());
+    let report = CssRelativeSelectorList::parse(
+        &CssParser::default(),
+        &source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.syntax().is_none());
     let [diagnostic] = report.diagnostics() else {
         panic!("one depth limit");
@@ -654,7 +701,11 @@ fn relative_fragments_share_the_exact_256_function_depth_and_257_rejection_bound
 fn large_clean_relative_list_keeps_parse_budget_separate_from_default_specified_admission() {
     // One list aggregate + 32,768 relative carriers + 32,768 scalar classes.
     let source = format!("{}.A", ".A, ".repeat(32_767));
-    let report = parse_relative_selector_list(&source, &CssNamespaceContext::default());
+    let report = CssRelativeSelectorList::parse(
+        &CssParser::default(),
+        &source,
+        &CssNamespaceContext::default(),
+    );
     assert!(
         report.is_clean(),
         "large flat relative list must parse cleanly"

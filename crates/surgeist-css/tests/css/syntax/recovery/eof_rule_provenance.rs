@@ -1,4 +1,4 @@
-use surgeist_css::{CssErrorCode, CssKnownProperty, CssRecoveryAction, CssRule, parse_sheet};
+use surgeist_css::{CssErrorCode, CssKnownProperty, CssParser, CssRecoveryAction, CssRule};
 
 // The public nesting-limit contract identifies the enclosing grammar production.
 // CSS Syntax token identity is case-insensitive for at-rule names, including
@@ -15,7 +15,7 @@ fn assert_eof_limit(at_keyword: &str, condition: &str, production: &str) {
 fn assert_eof_limit_after_prelude(prelude: &str, condition: &str, production: &str) {
     let before = ".before{}\n";
     let source = format!("{before}{prelude}{}{condition}", "(".repeat(257));
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
     let [diagnostic] = report.diagnostics() else {
         panic!("{prelude}: {:?}", report.diagnostics());
@@ -105,7 +105,7 @@ fn completed_semicolon_and_curly_rules_survive_a_later_eof_limit() {
     let before = "@layer first; .before{}\n";
     let prelude = "@container (width > 1px) and ";
     let source = format!("{before}{prelude}{}height > 2px", "(".repeat(257));
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(matches!(
         report.syntax().rules(),
         [CssRule::LayerStatement(_), CssRule::Style(_)]
@@ -132,7 +132,7 @@ fn assert_later_declaration_eof_limit(group: Option<&str>) {
     let depth = if group.is_some() { 2 } else { 1 };
     let prefix = format!("{group_start}.before{{}}.target{{margin:1px;--bomb:");
     let source = format!("{prefix}{}x", "f(".repeat(257 - depth));
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let children = if group.is_some() {
         let [parent] = report.syntax().rules() else {
             panic!("parent rule must survive: {report:?}");

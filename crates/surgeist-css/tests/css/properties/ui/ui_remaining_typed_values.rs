@@ -210,7 +210,10 @@ fn navigation_checked_models_preserve_original_ids_strings_and_exclude_legacy_ta
             assert!(CssNavigationId::try_from_component(component).is_err());
         }
     }
-    let component = parse_component_values(r"#N\65 xt").unwrap().items()[0].clone();
+    let component = CssComponentValues::parse(&CssParser::default(), r"#N\65 xt")
+        .unwrap()
+        .items()[0]
+        .clone();
     let original = component.origin().clone();
     let id = CssNavigationId::try_from_component(component.clone()).unwrap();
     assert_eq!(id.as_str(), "Next");
@@ -246,13 +249,17 @@ fn legacy_navigation_has_typed_diagnostic_original_string_and_reusable_report_pa
     let value = r#"#N\65 xt "\5f ROOT""#;
     let property = CssKnownProperty::NavUp;
     for report in [
-        parse_property_value_text(
+        CssParser::default().parse_property_value(
             value,
-            CssPropertyNameRef::Known(property),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(property)),
             CssImportance::Normal,
         ),
-        parse_property_value_text_for_grammar(value, property.grammar(), CssImportance::Normal),
-        parse_declaration(&format!("nav-up:{value}")),
+        CssParser::default().parse_property_value(
+            value,
+            CssPropertyTextTarget::Grammar(property.grammar()),
+            CssImportance::Normal,
+        ),
+        CssDeclaration::parse(&CssParser::default(), format!("nav-up:{value}")),
     ] {
         assert!(!report.is_clean());
         let diagnostic = &report.diagnostics()[0];
@@ -290,9 +297,14 @@ fn legacy_navigation_has_typed_diagnostic_original_string_and_reusable_report_pa
         assert!(CssNavigationTargetName::try_from_component(target.component().clone()).is_err());
     }
     let source = format!("@keyframes a{{from{{nav-up:{value};nav-up:#Other root}}}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let before = report.clone();
-    assert!(validate_sheet(&source).is_err());
+    assert!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .is_err()
+    );
     let diagnostic = report
         .diagnostics()
         .iter()
@@ -332,15 +344,23 @@ fn legacy_navigation_has_typed_diagnostic_original_string_and_reusable_report_pa
             .contains(r#"nav-up: #Next "_ROOT";"#)
     );
     assert_eq!(report, before);
-    assert!(validate_sheet("@keyframes a{from{nav-up:#Next root;nav-up:#Other current}}").is_ok());
-    let valid = parse_style_attribute("nav-up:#Next root;nav-down:#Next \"\"");
+    assert!(
+        CssParser::default()
+            .parse_sheet("@keyframes a{from{nav-up:#Next root;nav-up:#Other current}}")
+            .into_validation_result()
+            .is_ok()
+    );
+    let valid = CssParser::default().parse_block_contents("nav-up:#Next root;nav-down:#Next \"\"");
     assert!(valid.is_clean());
     assert!(conformance_exclusion("excluded.X-UI4.property.ime-mode").is_some());
     assert!(CssKnownProperty::from_name("ime-mode").is_none());
 }
 #[test]
 fn stripes_checked_construction_preserves_optional_thickness_and_exact_origins() {
-    let color = parse_component_values("ReD").unwrap().items()[0].clone();
+    let color = CssComponentValues::parse(&CssParser::default(), "ReD")
+        .unwrap()
+        .items()[0]
+        .clone();
     let origin = color.origin().clone();
     let thickness = CssStripeThickness::Flex(
         CssNumeric::<CssFlex>::try_from_component(
@@ -365,7 +385,7 @@ fn stripes_checked_construction_preserves_optional_thickness_and_exact_origins()
             .is_err_and(|error| error.is_empty_stripes())
     );
     let image = CssImage1D::try_from_components(
-        parse_component_values("stripes(2px ReD, blue 100%)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "stripes(2px ReD, blue 100%)").unwrap(),
     )
     .unwrap();
     assert_eq!(
@@ -422,24 +442,29 @@ fn stripe_thickness_uses_exact_ranges_signed_flex_and_grid_boundary() {
             "stripes(red calc(1em + 1px))",
         ),
     ] {
-        let image =
-            CssImage1D::try_from_components(parse_component_values(source).unwrap()).unwrap();
+        let image = CssImage1D::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             image.serialize_specified(Default::default()).unwrap(),
             expected
         );
         assert_eq!(
-            CssImage1D::try_from_components(parse_component_values(expected).unwrap())
-                .unwrap()
-                .serialize_specified(Default::default())
-                .unwrap(),
+            CssImage1D::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), expected).unwrap()
+            )
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
             expected
         );
     }
 }
 #[test]
 fn recovered_stripe_closure_is_retained_only_by_browser_and_checked_reentry_rejects_it() {
-    let report = parse_style_attribute("outline-color:stripes(red calc(1fr + 2fr)");
+    let report =
+        CssParser::default().parse_block_contents("outline-color:stripes(red calc(1fr + 2fr)");
     assert!(!report.is_clean());
     let declaration = &report.syntax()[0];
     let CssKnownPropertyValueRef::OutlineColor(value) =
@@ -457,8 +482,9 @@ fn recovered_stripe_closure_is_retained_only_by_browser_and_checked_reentry_reje
             .is_err_and(|error| error.recovered_origin().is_some())
     );
     assert!(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::OutlineColor),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::OutlineColor)),
             components,
             CssImportance::Normal
         )
@@ -469,8 +495,10 @@ fn recovered_stripe_closure_is_retained_only_by_browser_and_checked_reentry_reje
 #[test]
 fn typed_stripe_errors_use_original_component_origins_and_aggregate_depth() {
     let source = "/*lead*/stripes(red 101%)";
-    let error =
-        CssImage1D::try_from_components(parse_component_values(source).unwrap()).unwrap_err();
+    let error = CssImage1D::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+    )
+    .unwrap_err();
     let Some(error) = error.property_value_error() else {
         panic!("grammar error")
     };
@@ -489,17 +517,26 @@ fn typed_stripe_errors_use_original_component_origins_and_aggregate_depth() {
             ")".repeat(depth)
         )
     };
-    let color = parse_component_values(&nested(255)).unwrap().items()[0].clone();
+    let color = CssComponentValues::parse(&CssParser::default(), nested(255))
+        .unwrap()
+        .items()[0]
+        .clone();
     let stripe = CssStripe::try_new(color, None).unwrap();
     assert!(CssStripes::try_new(vec![stripe]).is_ok());
     let source = format!("stripes({})", nested(255));
-    let image = CssImage1D::try_from_components(parse_component_values(&source).unwrap()).unwrap();
+    let image = CssImage1D::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
+    )
+    .unwrap();
     assert_eq!(image.stripes().stripes().len(), 1);
     let CssValueOrigin::Parsed(origin) = image.stripes().origin() else {
         panic!("original stripes origin")
     };
     assert_eq!(origin.source().as_str(), source);
-    let color = parse_component_values(&nested(256)).unwrap().items()[0].clone();
+    let color = CssComponentValues::parse(&CssParser::default(), nested(256))
+        .unwrap()
+        .items()[0]
+        .clone();
     assert!(
         CssStripe::try_new(color, None)
             .as_ref()
@@ -509,7 +546,7 @@ fn typed_stripe_errors_use_original_component_origins_and_aggregate_depth() {
 #[test]
 fn signed_flex_checked_calculation_reuses_numeric_owner_and_rejects_recovered_graph() {
     let calculation = CssCalculation::<CssFlex>::try_from_components(
-        parse_component_values("calc(2fr - 3fr)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "calc(2fr - 3fr)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -521,7 +558,8 @@ fn signed_flex_checked_calculation_reuses_numeric_owner_and_rejects_recovered_gr
     );
     let other = CssNumeric::<CssFlex>::try_from_calculation(
         CssCalculation::<CssFlex>::try_from_components(
-            parse_component_values("/*other origin*/calc(2fr - 3fr)").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "/*other origin*/calc(2fr - 3fr)")
+                .unwrap(),
             Default::default(),
         )
         .unwrap(),
@@ -532,7 +570,8 @@ fn signed_flex_checked_calculation_reuses_numeric_owner_and_rejects_recovered_gr
         CssStripeThickness::Flex(value),
         CssStripeThickness::Flex(other)
     );
-    let report = parse_style_attribute("outline-color:stripes(red calc(2fr - 3fr");
+    let report =
+        CssParser::default().parse_block_contents("outline-color:stripes(red calc(2fr - 3fr");
     assert!(!report.is_clean());
     let CssKnownPropertyValueRef::OutlineColor(value) = report.syntax()[0]
         .known()
@@ -554,7 +593,7 @@ fn signed_flex_checked_calculation_reuses_numeric_owner_and_rejects_recovered_gr
 }
 #[test]
 fn interest_checked_construction_rejects_recovered_time_from_either_slot() {
-    let report = parse_style_attribute("interest-delay-start:calc(1s + 2s");
+    let report = CssParser::default().parse_block_contents("interest-delay-start:calc(1s + 2s");
     assert!(!report.is_clean());
     let CssKnownPropertyValueRef::InterestDelayStart(value) = report.syntax()[0]
         .known()

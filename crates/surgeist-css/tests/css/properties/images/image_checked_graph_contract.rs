@@ -23,7 +23,7 @@ fn math(functions: usize, leaf: &str) -> CssComponentValues {
     for _ in 0..functions {
         text = format!("calc({text})");
     }
-    let values = parse_component_values(&text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
     assert_eq!(values.nesting_depth() as usize, functions);
     values
 }
@@ -413,7 +413,7 @@ fn none_and_low_depth_image_controls_preserve_every_family_and_payload() {
 
 #[test]
 fn mixed_source_numeric_components_survive_admission_and_failed_enclosing_composition() {
-    let parsed = parse_component_values("/*😀*/1px").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "/*😀*/1px").unwrap();
     let parsed_before = parsed.clone();
     let mut components = parsed.clone();
     for _ in 0..256 {
@@ -444,14 +444,20 @@ fn mixed_source_numeric_components_survive_admission_and_failed_enclosing_compos
 
 fn cursor_fronts(text: &str, admitted: bool) {
     let p = CssKnownProperty::Cursor;
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let before = values.clone();
     for grammar in [false, true] {
         let result = if grammar {
-            parse_property_value_for_grammar(p.grammar(), values.clone(), CssImportance::Important)
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(p.grammar()),
+                values.clone(),
+                CssImportance::Important,
+            )
         } else {
-            parse_property_value(
-                CssPropertyNameRef::Known(p),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(p)),
                 values.clone(),
                 CssImportance::Important,
             )
@@ -465,14 +471,22 @@ fn cursor_fronts(text: &str, admitted: bool) {
         }
     }
     for report in [
-        parse_property_value_text(text, CssPropertyNameRef::Known(p), CssImportance::Important),
-        parse_property_value_text_for_grammar(text, p.grammar(), CssImportance::Important),
+        CssParser::default().parse_property_value(
+            text,
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(p)),
+            CssImportance::Important,
+        ),
+        CssParser::default().parse_property_value(
+            text,
+            CssPropertyTextTarget::Grammar(p.grammar()),
+            CssImportance::Important,
+        ),
     ] {
         assert_eq!(report.is_clean(), admitted);
         assert_eq!(report.syntax().is_some(), admitted);
     }
     let css = format!("color:red;cursor:{text}!important;color:blue");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     if admitted {
         assert!(report.is_clean());
         assert_eq!(report.syntax().len(), 3);

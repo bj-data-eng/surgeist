@@ -48,7 +48,10 @@ fn pair_construction_preserves_omission_and_width_height_order() {
         Some(
             CssMaxSizeValue::try_box_size(CssBoxSize::LengthPercentage(
                 CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
-                    parse_component_values("2.5%").unwrap().items()[0].clone(),
+                    CssComponentValues::parse(&CssParser::default(), "2.5%")
+                        .unwrap()
+                        .items()[0]
+                        .clone(),
                 )
                 .unwrap(),
             ))
@@ -99,7 +102,7 @@ fn exact_and_symbolic_values_share_a_pair_budget() {
     let raw_math = CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(
         CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
             CssCalculation::<CssLengthPercentage>::try_from_components(
-                parse_component_values("calc(1px + 2%)").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "calc(1px + 2%)").unwrap(),
                 Default::default(),
             )
             .unwrap(),
@@ -115,7 +118,7 @@ fn exact_and_symbolic_values_share_a_pair_budget() {
     let calc = CssCalcSize::try_from_component(
         CssComponentValue::try_function(
             "calc-size",
-            parse_component_values("min-content, size + 1px").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "min-content, size + 1px").unwrap(),
         )
         .unwrap(),
         Default::default(),

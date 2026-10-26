@@ -2,7 +2,7 @@
 use surgeist_css::*;
 
 fn checked(source: &str, namespaces: &CssNamespaceContext) -> CssCondition<CssSupportsLeaf> {
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let original = components.clone();
     let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
         components,
@@ -60,7 +60,7 @@ fn constructed_logical_selectors_have_decoded_typed_members_and_original_spellin
 #[test]
 fn parsed_unicode_crlf_rule_keeps_original_opener_and_serialized_token_origins() {
     let source = "/*😀*/\r\n@supports selector(:is(.A)) { .Keep {color:red;} }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean());
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("Supports rule")
@@ -148,7 +148,7 @@ fn generated_snapshot_preserves_default_and_case_sensitive_named_namespace_conte
     ));
     let source =
         "@namespace Svg 'urn:svg'; @namespace 'urn:default'; @supports selector(:is(Svg|Leaf)) {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean());
     let [
         CssRule::Namespace(_),
@@ -185,7 +185,7 @@ fn diagnosed_selector_probes_remain_original_general_enclosed_without_raw_carrie
         };
         assert_eq!(opaque.authored(), Some(source));
         assert_eq!(opaque.component(), &condition.components()[0]);
-        let report = parse_sheet(&format!(
+        let report = CssParser::default().parse_sheet(format!(
             "@supports {source} {{ .Keep {{color:red;}} }} .After {{color:blue;}}"
         ));
         assert!(report.is_clean());
@@ -204,7 +204,7 @@ fn diagnosed_selector_probes_remain_original_general_enclosed_without_raw_carrie
 fn nested_style_context_and_outer_eof_closures_stay_with_the_original_owner() {
     let context =
         CssParserContext::new(CssParserMode::Quirks).with_svg_glyph_orientation_vertical();
-    let report = context.parse_sheet(
+    let report = CssParser::new(context, Default::default()).parse_sheet(
         ".Parent { @supports selector(:is(.A)) {color:red; & .Child {color:blue;} } }",
     );
     assert!(report.is_clean());
@@ -225,7 +225,7 @@ fn nested_style_context_and_outer_eof_closures_stay_with_the_original_owner() {
         [CssRule::NestedDeclarations(_), CssRule::Style(_)]
     ));
     let source = "@supports selector(:is(.A)) { .Keep {color:red;";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("retained EOF blocks")
     };
@@ -264,7 +264,10 @@ fn programmatic_components_and_output_retry_do_not_invent_original_coordinates()
         Default::default(),
     )
     .unwrap();
-    for arguments in [arguments, parse_component_values(":is(.A)").unwrap()] {
+    for arguments in [
+        arguments,
+        CssComponentValues::parse(&CssParser::default(), ":is(.A)").unwrap(),
+    ] {
         let original = arguments.clone();
         let outer = CssComponentValue::try_function("selector", arguments).unwrap();
         let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
@@ -359,7 +362,8 @@ fn component_backed_dir_lang_and_part_arguments_use_the_generated_owner() {
 
 #[test]
 fn scoped_and_import_supports_share_the_same_source_owning_operand() {
-    let report = parse_sheet("@scope (.Root) { @supports selector(:where(.A)) { .Keep {} } }");
+    let report = CssParser::default()
+        .parse_sheet("@scope (.Root) { @supports selector(:where(.A)) { .Keep {} } }");
     assert!(report.is_clean());
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("scope")
@@ -373,7 +377,8 @@ fn scoped_and_import_supports_share_the_same_source_owning_operand() {
             "A".into()
         ))]
     );
-    let report = parse_sheet("@import 'x.css' supports(selector(:is(.A))); .Keep {}");
+    let report =
+        CssParser::default().parse_sheet("@import 'x.css' supports(selector(:is(.A))); .Keep {}");
     assert!(report.is_clean());
     let [CssRule::Import(import), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("import and sibling")
