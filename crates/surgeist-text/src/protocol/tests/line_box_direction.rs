@@ -3,6 +3,8 @@
 
 #[path = "line_box_direction/alignment_frame.rs"]
 mod alignment_frame;
+#[path = "line_box_direction/post_expansion_overflow.rs"]
+mod post_expansion_overflow;
 
 use super::*;
 use crate::*;
