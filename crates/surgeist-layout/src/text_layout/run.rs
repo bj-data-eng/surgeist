@@ -961,6 +961,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         last_baseline: None,
         atomics: Vec::new(),
         controls: Vec::new(),
+        nonformatted_controls: Vec::new(),
         post_line_clear_intents: Vec::new(),
         line_bands: Vec::new(),
         formatted_lines: None,

@@ -113,6 +113,14 @@ pub(super) struct LogicalLineBandOf<S: LayoutScalar = DefaultScalar> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct NonFormattedInlineControlOf<S: LayoutScalar = DefaultScalar> {
+    /// The original numerical witness remains real despite zero used height.
+    pub control: InlineBoundaryControlOf<S>,
+    pub inline_start: S,
+    pub block_start: S,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct InlineControlSourceOf<S: LayoutScalar = DefaultScalar> {
     pub kind: InlineParticipantLayoutKind,
     pub source_index: usize,
@@ -139,6 +147,14 @@ impl<S: LayoutScalar> InlineEndpointOf<S> {
             kind: input.kind(),
             axes: FlowAxes::new(input.writing_mode(), input.direction()),
             edge: input.edge(),
+        }
+    }
+
+    pub(super) fn from_control(control: InlineBoundaryControlOf<S>) -> Self {
+        Self {
+            kind: control.kind(),
+            axes: control.flow().flow_axes,
+            edge: control.edge(),
         }
     }
 
@@ -172,6 +188,7 @@ pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
     pub last_baseline: Option<S>,
     pub atomics: Vec<AtomicInlineSourceOf<S>>,
     pub controls: Vec<InlineControlSourceOf<S>>,
+    pub nonformatted_controls: Vec<NonFormattedInlineControlOf<S>>,
     pub post_line_clear_intents: Vec<PostLineClearIntent>,
     pub line_bands: Vec<LogicalLineBandOf<S>>,
 }
@@ -285,6 +302,7 @@ struct SelectedInlineLineOf<S: LayoutScalar> {
     after_baseline: S,
     fallback_line_band: Option<InlineMetricContributionOf<S>>,
     used_inline_extent: S,
+    has_in_flow_content: bool,
     split_baseline_edge_phase: Option<S>,
     inline_start_override: Option<S>,
     uses_float_strut_phase: bool,
@@ -302,6 +320,7 @@ struct InlineLineSummaryOf<S: LayoutScalar> {
     after_baseline: S,
     fallback_line_band: Option<InlineMetricContributionOf<S>>,
     used_inline_extent: S,
+    has_in_flow_content: bool,
     split_baseline_edge_phase: Option<S>,
 }
 
@@ -318,6 +337,58 @@ enum SelectedInlineLineEnd {
     Soft,
     Forced,
     Paragraph,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NumericLineDisposition {
+    Formatted,
+    NonFormatted,
+}
+
+impl NumericLineDisposition {
+    fn for_line(ending: surgeist_text::LineEnd, has_in_flow_content: bool) -> Self {
+        if ending == surgeist_text::LineEnd::Forced || has_in_flow_content {
+            Self::Formatted
+        } else {
+            Self::NonFormatted
+        }
+    }
+}
+
+impl SelectedInlineLineEnd {
+    fn line_end(self) -> surgeist_text::LineEnd {
+        match self {
+            Self::Soft => surgeist_text::LineEnd::Soft,
+            Self::Forced => surgeist_text::LineEnd::Forced,
+            Self::Paragraph => surgeist_text::LineEnd::Paragraph,
+        }
+    }
+}
+
+fn numeric_line_alignment(
+    normal: TextAlign,
+    last: crate::TextAlignLast,
+    ending: SelectedInlineLineEnd,
+) -> TextAlign {
+    let alignment = normal.for_line(last, ending != SelectedInlineLineEnd::Soft);
+    if alignment == TextAlign::Justify {
+        normal.unexpandable(last)
+    } else {
+        alignment
+    }
+}
+
+/// A numeric run separates adjoining margins only if it can produce an actual
+/// formatted line. This uses the same participant semantics as line summaries;
+/// numerical struts, a previous force and zero/nonzero advances are not roles.
+pub(super) fn numeric_run_has_formatted_line<S: LayoutScalar>(
+    participants: &[MixedInlineParticipantOf<S>],
+    wrapping: Option<&crate::inline_wrapping::NumericWrapping>,
+) -> bool {
+    participants.iter().copied().any(|participant| {
+        participant.has_in_flow_content()
+            || matches!(participant, MixedInlineParticipantOf::ForcedLineBreak(_))
+    }) || wrapping.is_some_and(|wrapping| wrapping.forced(0) || wrapping.next_forced(0).is_some())
 }
 
 #[derive(Clone)]
@@ -413,6 +484,16 @@ impl<S: LayoutScalar> InlineLineMetricGroupsOf<S> {
 }
 
 impl<S: LayoutScalar> MixedInlineParticipantOf<S> {
+    fn has_in_flow_content(self) -> bool {
+        match self {
+            Self::Atomic { .. } => true,
+            Self::Boundary(control) => {
+                control.edge().border() != S::ZERO || control.edge().padding() != S::ZERO
+            }
+            Self::ForcedLineBreak(_) => false,
+        }
+    }
+
     fn following_break(self) -> Option<InlineBreakOpportunity> {
         match self {
             Self::Atomic { participation, .. } => Some(participation.following_break()),
@@ -528,12 +609,16 @@ fn summarize_inline_line<S: LayoutScalar>(
     let mut used_inline_extent = S::ZERO;
     let discarded_start_end = edges.leading_discard_len();
     let discarded_end_start = edges.trailing_discard_start();
+    let mut has_in_flow_content = false;
     let mut before_trailing_metric_groups = metric_groups;
     let mut before_trailing_inline_extent = used_inline_extent;
     for (index, participant) in participants.iter().copied().enumerate() {
         if index == discarded_end_start {
             before_trailing_metric_groups = metric_groups;
             before_trailing_inline_extent = used_inline_extent;
+        }
+        if discarded_start_end <= index && index < discarded_end_start {
+            has_in_flow_content |= participant.has_in_flow_content();
         }
         if index >= discarded_start_end {
             metric_groups.include(participant.alignment(), participant.metrics(flow_axes));
@@ -557,6 +642,7 @@ fn summarize_inline_line<S: LayoutScalar>(
         after_baseline: metrics.after_baseline,
         fallback_line_band,
         used_inline_extent,
+        has_in_flow_content,
         split_baseline_edge_phase: metric_groups.split_baseline_edge_phase(),
     }
 }
@@ -597,6 +683,7 @@ fn selected_from_summary<S: LayoutScalar>(
         after_baseline: summary.after_baseline,
         fallback_line_band: summary.fallback_line_band,
         used_inline_extent: summary.used_inline_extent,
+        has_in_flow_content: summary.has_in_flow_content,
         split_baseline_edge_phase: summary.split_baseline_edge_phase,
         inline_start_override: None,
         uses_float_strut_phase: false,
@@ -947,6 +1034,7 @@ struct NumericReceiptAccumulatorOf<S: LayoutScalar> {
     groups: InlineLineMetricGroupsOf<S>,
     phase_groups: InlineLineMetricGroupsOf<S>,
     advance: S,
+    has_in_flow_content: bool,
     last_boundary: Option<Option<InlineMetricContributionOf<S>>>,
     starts_phase: bool,
     has_boundary: bool,
@@ -960,6 +1048,7 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
             groups,
             phase_groups: InlineLineMetricGroupsOf::from_strut(None),
             advance: S::ZERO,
+            has_in_flow_content: false,
             last_boundary: None,
             starts_phase: false,
             has_boundary: false,
@@ -968,6 +1057,7 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
         }
     }
     fn push(&mut self, participant: MixedInlineParticipantOf<S>, axes: FlowAxes) {
+        self.has_in_flow_content |= participant.has_in_flow_content();
         self.groups
             .include(participant.alignment(), participant.metrics(axes));
         self.advance = self.advance + participant.inline_advance(axes);
@@ -1031,6 +1121,7 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
                 after_baseline: metrics.after_baseline,
                 fallback_line_band: fallback,
                 used_inline_extent: self.advance,
+                has_in_flow_content: self.has_in_flow_content,
                 split_baseline_edge_phase: groups.split_baseline_edge_phase(),
             },
             groups,
@@ -1120,6 +1211,11 @@ fn resolve_numeric_candidate<S: LayoutScalar>(
     available: S,
     mut band_source: impl FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
 ) -> Result<bool, crate::inline_wrapping::NumericWrappingError> {
+    if NumericLineDisposition::for_line(receipt.end.line_end(), receipt.summary.has_in_flow_content)
+        == NumericLineDisposition::NonFormatted
+    {
+        return Ok(true);
+    }
     let original = receipt.summary;
     let mut floating = false;
     let mut seen = Vec::new();
@@ -1715,6 +1811,26 @@ where
         else {
             break;
         };
+        if NumericLineDisposition::for_line(
+            provisional.end.line_end(),
+            provisional.line.has_in_flow_content,
+        ) == NumericLineDisposition::NonFormatted
+        {
+            provisional.line.ending = provisional.end.line_end();
+            provisional.line.indent = line_indent;
+            provisional.line.alignment =
+                numeric_line_alignment(input.text_align, input.text_align_last, provisional.end);
+            provisional.line.band = LogicalLineBandOf {
+                inline_start: S::ZERO,
+                inline_end: available,
+                block_start: block_cursor,
+                block_end: block_cursor,
+            };
+            cursor = provisional.next_cursor;
+            pending_strut = provisional.pending_strut;
+            selected_lines.push(provisional.line);
+            continue;
+        }
         if float_strut.is_some() {
             resolve_float_strut_phase(&mut provisional.line, float_strut, input.flow_axes);
         }
@@ -1838,18 +1954,9 @@ where
             debug_assert_eq!(consumed.descriptor, selected.next_cursor.descriptor);
         }
         cursor = selected.next_cursor;
-        line.alignment = input.text_align.for_line(
-            input.text_align_last,
-            selected.end != SelectedInlineLineEnd::Soft,
-        );
-        if line.alignment == TextAlign::Justify {
-            line.alignment = input.text_align.unexpandable(input.text_align_last);
-        }
-        line.ending = match selected.end {
-            SelectedInlineLineEnd::Soft => surgeist_text::LineEnd::Soft,
-            SelectedInlineLineEnd::Forced => surgeist_text::LineEnd::Forced,
-            SelectedInlineLineEnd::Paragraph => surgeist_text::LineEnd::Paragraph,
-        };
+        line.alignment =
+            numeric_line_alignment(input.text_align, input.text_align_last, selected.end);
+        line.ending = selected.end.line_end();
         if let Some(lines) = &mut formatted_lines {
             lines.push(crate::text_layout::formatted::NumericFormattedLine {
                 source_end: selected.next_cursor.source,
@@ -1888,10 +1995,34 @@ where
     let mut last_baseline = None;
     let mut atomics = Vec::new();
     let mut controls = Vec::new();
+    let mut nonformatted_controls = Vec::new();
     let mut post_line_clear_intents = Vec::new();
     let mut line_bands = Vec::new();
     let mut lines = Vec::new();
-    for (line_index, line) in selected_lines.into_iter().enumerate() {
+    let mut line_index = 0;
+    for line in selected_lines {
+        if NumericLineDisposition::for_line(line.ending, line.has_in_flow_content)
+            == NumericLineDisposition::NonFormatted
+        {
+            let (_, _, inline_starts) = resolved_inline_unit_slots(
+                &line,
+                &supplied[line.descriptor_range.clone()],
+                input.flow_axes,
+                line.alignment,
+                line_direction,
+            );
+            for (index, unit) in line.units.into_iter().enumerate() {
+                let MixedInlineParticipantOf::Boundary(control) = unit.participant else {
+                    unreachable!("nonformatted numeric participation contains only boundaries");
+                };
+                nonformatted_controls.push(NonFormattedInlineControlOf {
+                    control,
+                    inline_start: inline_starts[index],
+                    block_start: line.band.block_start,
+                });
+            }
+            continue;
+        }
         if input.observe_tail {
             lines.push(crate::hyphenation::CommittedInlineLine {
                 end: line.ending,
@@ -1965,11 +2096,7 @@ where
                         source_index: control.source_index(),
                         inline_start,
                         inline_extent: control.edge().advance(),
-                        endpoint: Some(InlineEndpointOf {
-                            kind: control.kind(),
-                            axes: control.flow().flow_axes,
-                            edge: control.edge(),
-                        }),
+                        endpoint: Some(InlineEndpointOf::from_control(control)),
                         block_start: control_block,
                         line_index,
                         visual_index: Some(visual_indices[source_index]),
@@ -1999,6 +2126,7 @@ where
                 visual_index: None,
             });
         }
+        line_index += 1;
     }
 
     Ok(MixedInlineRunReportOf {
@@ -2014,6 +2142,7 @@ where
         last_baseline,
         atomics,
         controls,
+        nonformatted_controls,
         post_line_clear_intents,
         line_bands,
     })
@@ -2458,3 +2587,6 @@ pub(super) fn inline_run_max_content_width<S: LayoutScalar>(items: &[InlineParti
     .size
     .width
 }
+
+#[cfg(test)]
+mod phantom_completion_tests;
