@@ -115,6 +115,33 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
     ) -> Option<Self> {
         use super::capture::CapturedScopeRelation;
         use crate::inline_wrapping::{ScopeEndpoint, WrappingScopeError};
+        let native_projection = |pair: (Node, Node)| -> Result<
+            crate::inline_wrapping::NativePairProjection<Node>,
+            WrappingScopeError,
+        > {
+            if let Some(slot) = associations.semantic_slot(&binding.prepared) {
+                let owner = graph
+                    .index(slot.container)
+                    .ok_or(WrappingScopeError::NodeNotReachable)?;
+                let endpoint = |node| -> Result<ScopeEndpoint<Node>, WrappingScopeError> {
+                    let rank = graph.children[owner]
+                        .iter()
+                        .position(|&index| graph.nodes[index] == node)
+                        .ok_or(WrappingScopeError::DifferentFlow)?;
+                    Ok(if rank < slot.gap {
+                        ScopeEndpoint::BeforeRun
+                    } else {
+                        ScopeEndpoint::AfterRun
+                    })
+                };
+                Ok(crate::inline_wrapping::NativePairProjection {
+                    start: endpoint(pair.0)?,
+                    end: endpoint(pair.1)?,
+                })
+            } else {
+                context.native_pair_projection(graph, binding.container, &binding.nodes, pair)
+            }
+        };
         let project = |row: &crate::inline_wrapping::ScopeRow<Node>| {
             let relation = row.capture.as_ref().map(|scope| {
                 (
@@ -130,14 +157,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                 Some((_, CapturedScopeRelation::Unavailable)) | None => row
                     .pair
                     .ok_or(WrappingScopeError::UnsupportedIncidence)
-                    .and_then(|pair| {
-                        context.native_pair_projection(
-                            graph,
-                            binding.container,
-                            &binding.nodes,
-                            pair,
-                        )
-                    })
+                    .and_then(&native_projection)
                     .map(|pair| {
                         let endpoint = |endpoint| match endpoint {
                             ScopeEndpoint::BeforeRun => EndpointIncidence::BeforeRun,
@@ -176,18 +196,16 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                 if physical_positions.iter().any(|actual| actual.node == node) {
                     continue;
                 }
-                let position = context
-                    .native_pair_projection(graph, binding.container, &binding.nodes, (node, node))
-                    .and_then(|pair| match pair.start {
-                        ScopeEndpoint::BeforeRun => Ok((0, 0)),
-                        ScopeEndpoint::AfterRun => Ok((binding.nodes.len(), binding.nodes.len())),
-                        ScopeEndpoint::Local(node) => binding
-                            .nodes
-                            .iter()
-                            .position(|actual| *actual == node)
-                            .map(|at| (at, at + 1))
-                            .ok_or(WrappingScopeError::UnsupportedIncidence),
-                    });
+                let position = native_projection((node, node)).and_then(|pair| match pair.start {
+                    ScopeEndpoint::BeforeRun => Ok((0, 0)),
+                    ScopeEndpoint::AfterRun => Ok((binding.nodes.len(), binding.nodes.len())),
+                    ScopeEndpoint::Local(node) => binding
+                        .nodes
+                        .iter()
+                        .position(|actual| *actual == node)
+                        .map(|at| (at, at + 1))
+                        .ok_or(WrappingScopeError::UnsupportedIncidence),
+                });
                 physical_positions.push(PhysicalPosition {
                     node,
                     gaps: position,
@@ -199,18 +217,16 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                 if physical_positions.iter().any(|actual| actual.node == node) {
                     continue;
                 }
-                let position = context
-                    .native_pair_projection(graph, binding.container, &binding.nodes, (node, node))
-                    .and_then(|pair| match pair.start {
-                        ScopeEndpoint::BeforeRun => Ok((0, 0)),
-                        ScopeEndpoint::AfterRun => Ok((binding.nodes.len(), binding.nodes.len())),
-                        ScopeEndpoint::Local(node) => binding
-                            .nodes
-                            .iter()
-                            .position(|actual| *actual == node)
-                            .map(|at| (at, at + 1))
-                            .ok_or(WrappingScopeError::UnsupportedIncidence),
-                    });
+                let position = native_projection((node, node)).and_then(|pair| match pair.start {
+                    ScopeEndpoint::BeforeRun => Ok((0, 0)),
+                    ScopeEndpoint::AfterRun => Ok((binding.nodes.len(), binding.nodes.len())),
+                    ScopeEndpoint::Local(node) => binding
+                        .nodes
+                        .iter()
+                        .position(|actual| *actual == node)
+                        .map(|at| (at, at + 1))
+                        .ok_or(WrappingScopeError::UnsupportedIncidence),
+                });
                 physical_positions.push(PhysicalPosition {
                     node,
                     gaps: position,
@@ -224,22 +240,18 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
             } else {
                 pair.1
             };
-            context
-                .native_pair_projection(graph, binding.container, &binding.nodes, (node, node))
-                .and_then(|projected| match projected.start {
-                    ScopeEndpoint::BeforeRun | ScopeEndpoint::AfterRun => {
-                        Ok(EdgeIncidence::Outside)
-                    }
-                    ScopeEndpoint::Local(node) => binding
-                        .controls
-                        .iter()
-                        .find(|c| c.node == node)
-                        .map(|c| EdgeIncidence::Control {
-                            control: c.occurrence.clone(),
-                            after: side == surgeist_text::SourceBoxSide::After,
-                        })
-                        .ok_or(WrappingScopeError::UnsupportedIncidence),
-                })
+            native_projection((node, node)).and_then(|projected| match projected.start {
+                ScopeEndpoint::BeforeRun | ScopeEndpoint::AfterRun => Ok(EdgeIncidence::Outside),
+                ScopeEndpoint::Local(node) => binding
+                    .controls
+                    .iter()
+                    .find(|c| c.node == node)
+                    .map(|c| EdgeIncidence::Control {
+                        control: c.occurrence.clone(),
+                        after: side == surgeist_text::SourceBoxSide::After,
+                    })
+                    .ok_or(WrappingScopeError::UnsupportedIncidence),
+            })
         };
         let edges=context.edge_locations(binding.container).filter(|(_,edge)|edge.effect.avoided).map(|(id,edge)| {
             let incidence=match &edge.box_ {
@@ -248,7 +260,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                         participants.iter().position(|p|matches!(p,surgeist_text::PreparedParticipant::Atomic(a)if a==&atomic.occurrence))
                             .map(|offset|EdgeIncidence::Offset(offset+usize::from(edge.side==surgeist_text::SourceBoxSide::After)))
                             .ok_or(WrappingScopeError::UnsupportedIncidence)
-                    } else {context.native_pair_projection(graph,binding.container,&binding.nodes,(*node,*node)).and_then(|p|match p.start {
+                    } else {native_projection((*node,*node)).and_then(|p|match p.start {
                         ScopeEndpoint::BeforeRun|ScopeEndpoint::AfterRun=>Ok(EdgeIncidence::Outside),
                         ScopeEndpoint::Local(_)=>Err(WrappingScopeError::UnsupportedIncidence),
                     })}
@@ -261,8 +273,24 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                 crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::NativePair{start,end})=>physical_edge((*start,*end),edge.side),
             }; (id,incidence)
         }).collect::<Vec<_>>();
+        let unlisted = binding
+            .prepared
+            .captured_paragraph()
+            .map_or_else(Vec::new, |paragraph| {
+                paragraph
+                    .scope_intersections()
+                    .map(|intersection| intersection.scope())
+                    .filter(|scope| {
+                        scope.role() == surgeist_text::ScopeRole::Inline
+                            && !context
+                                .box_rows(binding.container)
+                                .any(|(_, row)| row.capture.as_ref() == Some(scope))
+                    })
+                    .collect()
+            });
         (!rows.is_empty()
             || !edges.is_empty()
+            || associations.semantic_slot(&binding.prepared).is_some() && !unlisted.is_empty()
             || boxes
                 .iter()
                 .any(|(_, row, _)| row.metric_contribution.is_some()))
@@ -287,21 +315,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                         .map(|cut| (boundary.clone(), cut))
                 })
                 .collect(),
-            unlisted: binding
-                .prepared
-                .captured_paragraph()
-                .map_or_else(Vec::new, |paragraph| {
-                    paragraph
-                        .scope_intersections()
-                        .map(|intersection| intersection.scope())
-                        .filter(|scope| {
-                            scope.role() == surgeist_text::ScopeRole::Inline
-                                && !context
-                                    .box_rows(binding.container)
-                                    .any(|(_, row)| row.capture.as_ref() == Some(scope))
-                        })
-                        .collect()
-                }),
+            unlisted,
             physical_controls: binding
                 .controls
                 .iter()

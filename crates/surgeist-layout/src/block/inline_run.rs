@@ -18,6 +18,7 @@ pub(super) fn inline_run_end<'input, Tree, M>(
     children: &[<Tree as Traverse>::Node],
     constants: &Constants<<Tree as Traverse>::Scalar>,
     mut index: usize,
+    semantic_end: usize,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, usize, <Tree as Traverse>::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -27,7 +28,7 @@ where
             .paragraph_starting(container, &children[index - 1..])
             .map(|binding| index - 1 + binding.nodes.len())
     });
-    while index < captured_end.unwrap_or(children.len()) {
+    while index < captured_end.unwrap_or(children.len()).min(semantic_end) {
         if captured_end.is_none()
             && !crate::inline::continues_run(tree.layout_input(children[index]))
         {
@@ -126,15 +127,29 @@ fn validate_inline_control_flow<Node, S: LayoutScalar, M>(
     Ok(())
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(super) struct VisibleInlineRunTransition {
     pub(super) start: usize,
     pub(super) end: usize,
+    semantic: Option<surgeist_text::PreparedText>,
 }
 
 impl VisibleInlineRunTransition {
     pub(super) const fn new(start: usize, end: usize) -> Self {
-        Self { start, end }
+        Self {
+            start,
+            end,
+            semantic: None,
+        }
+    }
+    pub(super) fn semantic<Node>(
+        slot: &crate::text_layout::capture::SemanticParagraphSlot<Node>,
+    ) -> Self {
+        Self {
+            start: slot.gap,
+            end: slot.gap,
+            semantic: Some(slot.prepared.clone()),
+        }
     }
 
     pub(super) fn apply<'input, Tree, S, M>(
@@ -176,10 +191,16 @@ impl VisibleInlineRunTransition {
         *is_collapsing_first_margin = false;
         context.cursor_block = *cursor_block;
         let constants = context.constants;
+        let semantic = self.semantic.as_ref().map(|prepared| {
+            tree.text_computation()
+                .and_then(|state| state.semantic_paragraph(node, prepared))
+                .expect("semantic transition retains its validated actual binding")
+        });
         let mut placement = layout_inline_run_children(
             tree,
             node,
             &children[self.start..self.end],
+            semantic,
             context,
             float_exclusions,
             contributions,
@@ -359,6 +380,7 @@ fn layout_inline_run_children<'input, Tree, S, M>(
     tree: &mut Tree,
     container: <Tree as Traverse>::Node,
     run: &[<Tree as Traverse>::Node],
+    semantic: Option<&'input crate::TextParagraphBinding<<Tree as Traverse>::Node>>,
     context: InlineRunContext<'_, S>,
     float_exclusions: &mut FloatExclusions<S, <Tree as Traverse>::Node>,
     contributions: &mut ScrollContributionAccumulatorOf<S>,
@@ -395,9 +417,10 @@ where
     let mut participants = Vec::new();
     let mut atomic_children = Vec::new();
     let mut control_children = Vec::new();
-    let text_binding = tree
-        .text_computation()
-        .and_then(|state| state.paragraph(container, run));
+    let text_binding = semantic.or_else(|| {
+        tree.text_computation()
+            .and_then(|state| state.paragraph(container, run))
+    });
     if text_binding.is_none()
         && run.iter().any(|node| {
             let input = tree.layout_input(*node);
@@ -1119,6 +1142,7 @@ where
         if let Some(state) = tree.text_computation() {
             state.record_boxes(crate::text_layout::boxes::BoxRunUse {
                 container,
+                prepared: output.paragraph.prepared.clone(),
                 nodes: run.to_vec(),
                 input,
                 available: match available_inline_extent {
@@ -1270,6 +1294,7 @@ where
                 .expect("capture branch retains actual Text state");
             state.record_scope_fragments(
                 output.paragraph.container,
+                output.paragraph.prepared.clone(),
                 output.paragraph.nodes.clone(),
                 scope_fragments,
             );

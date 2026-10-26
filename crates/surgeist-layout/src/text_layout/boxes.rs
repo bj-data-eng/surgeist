@@ -409,6 +409,7 @@ pub(crate) struct BoxTrialUse {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct BoxRunUse<Node, S: crate::LayoutScalar> {
     pub container: Node,
+    pub prepared: surgeist_text::PreparedText,
     pub nodes: Vec<Node>,
     pub input: crate::ComputeInputOf<S>,
     pub available: super::fit::Available,

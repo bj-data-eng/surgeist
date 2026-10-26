@@ -155,7 +155,11 @@ where
         .text_computation()
         .is_some_and(|text| text.formatted_active());
 
+    let semantic_work = tree
+        .text_computation()
+        .is_some_and(|text| text.has_semantic(node));
     if children.is_empty()
+        && !semantic_work
         && !observe_formatted
         && input.run_mode() == RunMode::ComputeSize
         && let Size {
@@ -168,6 +172,7 @@ where
         )));
     }
     if input.run_mode() == RunMode::ComputeSize
+        && !semantic_work
         && !observe_formatted
         && let Size {
             width: Some(width),

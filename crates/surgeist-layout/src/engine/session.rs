@@ -181,30 +181,35 @@ where
             // Host geometry has no slot for this immutable selection basis.
             // Keep influencing results out of that cache, including ancestors
             // that could otherwise conceal an old selected sequence.
-            let mut included = vec![false; graph.nodes.len()];
-            let mut pending = wrapping
-                .dependencies()
-                .into_iter()
-                .map(|node| {
-                    graph
-                        .index(node)
-                        .expect("the normalized scope proved dependency membership")
-                })
-                .collect::<Vec<_>>();
-            while let Some(index) = pending.pop() {
-                if !included[index] {
-                    included[index] = true;
-                    pending.extend(graph.parents[index].iter().copied());
-                }
-            }
-            self.wrapping_uncached = graph
-                .nodes
-                .iter()
-                .copied()
-                .zip(included)
-                .filter_map(|(node, included)| included.then_some(node))
-                .collect();
+            self.uncache_flow_dependencies(graph, wrapping.dependencies().into_iter());
         }
+    }
+
+    fn uncache_flow_dependencies(
+        &mut self,
+        graph: &crate::engine::validation::ValidationGraph<Tree::Node>,
+        nodes: impl Iterator<Item = Tree::Node>,
+    ) {
+        let mut included = vec![false; graph.nodes.len()];
+        for &node in &self.wrapping_uncached {
+            included[graph.index(node).expect("retained validated dependency")] = true;
+        }
+        let mut pending = nodes
+            .map(|node| graph.index(node).expect("validated flow dependency"))
+            .collect::<Vec<_>>();
+        while let Some(index) = pending.pop() {
+            if !included[index] {
+                included[index] = true;
+                pending.extend(graph.parents[index].iter().copied());
+            }
+        }
+        self.wrapping_uncached = graph
+            .nodes
+            .iter()
+            .copied()
+            .zip(included)
+            .filter_map(|(node, included)| included.then_some(node))
+            .collect();
     }
 
     pub(super) fn with_flow(
@@ -213,6 +218,22 @@ where
     ) -> Self {
         let mut session = Self::new(capture.tree, invalidated_nodes);
         session.install_wrapping(capture.wrapping.clone(), &capture.graph);
+        let semantic = capture
+            .paragraphs
+            .iter()
+            .filter_map(|binding| {
+                capture
+                    .associations
+                    .semantic_slot(&binding.prepared)
+                    .map(|slot| slot.container)
+            })
+            .collect::<Vec<_>>();
+        if !semantic.is_empty() {
+            // Actual semantic work needs the same scope/metric projection even
+            // when no wrapping preference or supplied metric activates it.
+            session.wrapping = Some(capture.wrapping.clone());
+            session.uncache_flow_dependencies(&capture.graph, semantic.into_iter());
+        }
         if !capture.paragraphs.is_empty() {
             let mut text = crate::text_layout::state::TextComputation::new(
                 &capture.paragraphs,
@@ -926,6 +947,7 @@ where
             for group in &packet.scope_fragments {
                 text.record_scope_fragments(
                     group.container,
+                    group.prepared.clone(),
                     group.nodes.clone(),
                     group.fragments.clone(),
                 );
@@ -1912,3 +1934,7 @@ mod grid_overflow_observation_tests {
         assert_rigid_translation_reuses_finalization::<f64>();
     }
 }
+
+#[cfg(test)]
+#[path = "semantic_size_tests.rs"]
+mod semantic_size_tests;

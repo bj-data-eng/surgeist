@@ -946,14 +946,15 @@ fn computed_only_paragraph_retains_real_endpoints_in_nonformatted_completion() {
 }
 
 #[test]
-fn node_free_computed_only_paragraph_preserves_exact_empty_run_scheduling_limit() {
+fn node_free_computed_paragraph_admits_its_real_capture_without_child_nodes() {
     let f = prepare(empty_input(false, text::ParagraphStrut::DefaultFont));
     assert!(f.binding.nodes.is_empty());
     assert!(f.binding.origins.is_empty());
     assert!(f.binding.controls.is_empty());
-    assert_eq!(computed_group(&f, 1).view().source_position().get(), 0);
+    let computed = computed_group(&f, 1);
+    assert_eq!(computed.view().source_position().get(), 0);
     let tree = tree::<f64>(&f, false);
-    let error = LayoutFlowInput::try_new(
+    let flow = LayoutFlowInput::try_new(
         &tree,
         0,
         vec![f.binding.clone()],
@@ -962,14 +963,25 @@ fn node_free_computed_only_paragraph_preserves_exact_empty_run_scheduling_limit(
             child_order: Vec::new(),
         },
     )
-    .err()
-    .expect("there is not yet a native semantic-slot scheduler for a node-free run");
-    assert!(matches!(
-        error.kind(),
-        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::TextBinding(
-            TextBindingError::EmptyRun
-        ))
-    ));
+    .expect("actual computed participation admits a semantic paragraph in the unique empty-container gap");
+    assert_eq!(flow.paragraphs().len(), 1);
+    let actual = &flow.paragraphs()[0];
+    assert_eq!(actual.container, f.binding.container);
+    assert_eq!(actual.prepared, f.binding.prepared);
+    assert_eq!(
+        actual.prepared.captured_paragraph(),
+        f.processed.captured_paragraph(0)
+    );
+    assert!(actual.nodes.is_empty());
+    assert!(actual.origins.is_empty());
+    assert!(actual.controls.is_empty());
+    assert!(actual.atomics.is_empty());
+    // Admission retains the actual issued computed participant, not a native
+    // placeholder or a newly prepared source. Final geometry is qualified by
+    // the public node-free completion tests with actual box metric witnesses.
+    assert!(actual.prepared.participants().any(|participant| {
+        matches!(participant, text::PreparedParticipant::ComputedLineBoundary(group) if group == computed)
+    }));
 }
 
 fn missing_metrics<S: LayoutScalar>() {
