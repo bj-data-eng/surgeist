@@ -310,9 +310,9 @@ fn public_keyframe_offset_probe_distinguishes_exact_literal_data_and_symbolic_pr
     let b = parse("calc( 10% )");
     assert!(a.literal_value().is_none());
     assert!(a.calculation().is_some());
-    assert_ne!(
+    assert_eq!(
         a, b,
-        "authored calculation equality includes separate source inputs"
+        "calculation equality compares numeric values, not source inputs or spacing"
     );
 }
 #[test]
