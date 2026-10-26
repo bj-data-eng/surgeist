@@ -1298,3 +1298,5 @@ fn genuine_source_native_box_alias_has_one_effective_force_and_keeps_distinct_ca
     genuine_source_native_alias::<f32>();
     genuine_source_native_alias::<f64>();
 }
+
+mod unscoped_native_pair;
