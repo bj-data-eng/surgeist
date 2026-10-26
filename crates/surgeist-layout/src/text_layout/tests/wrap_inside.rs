@@ -861,7 +861,13 @@ fn numeric<S: LayoutScalar>() {
                     (i - first, 10.0)
                 };
                 let x = if rtl {
-                    10.0 - slot as f64 * 10.0
+                    // Actual atomics have level0 in this RTL containing flow.
+                    // L2 keeps their physical left-to-right source order; the
+                    // level1 boundary controls have zero advance. The occupied
+                    // margin-flow interval is right-aligned within width25,
+                    // and each border starts5px before its margin-flow slot.
+                    let members = if i < first { first } else { 3 - first };
+                    25.0 - members as f64 * 10.0 - 5.0 + slot as f64 * 10.0
                 } else {
                     5.0 + slot as f64 * 10.0
                 };

@@ -216,7 +216,12 @@ fn check_simple<S: LayoutScalar>(
             let logical = 10.0 * position as f64 + margin;
             let x = match f.direction {
                 Direction::Ltr => logical,
-                Direction::Rtl => f.width.to_f64() - logical - 10.0,
+                // All atomics have resolved level0: physical L2 order is
+                // source order even inside RTL. The used row is right-aligned;
+                // its physical left margin is -margin, not logical start +margin.
+                Direction::Rtl => {
+                    f.width.to_f64() - 10.0 * nodes.len() as f64 + 10.0 * position as f64 - margin
+                }
             };
             let actual = output(&batch, node as u32);
             assert_eq!(actual.location, Point::new(n(x), n(10.0 * line as f64)));
@@ -571,15 +576,18 @@ fn propagation<S: LayoutScalar>() {
                 pending = selected.pending_strut;
             }
             let b = f.compute();
-            for (node, logical, y) in [
-                (1, 0.0, 0.0),
-                (2, if empty { 3.0 } else { 8.0 }, 10.0),
-                (3, if empty { 19.0 } else { 24.0 }, 10.0),
+            // Atomic levels remain0. RTL L2 reverses only adjacent level1
+            // boundary runs. Used widths are10/34, or15/29 with the real empty
+            // sibling: their line-left bases are90/66, or85/71.
+            for (node, ltr, rtl, y) in [
+                (1, 0.0, if empty { 85.0 } else { 90.0 }, 0.0),
+                (2, if empty { 3.0 } else { 8.0 }, 74.0, 10.0),
+                (3, if empty { 19.0 } else { 24.0 }, 90.0, 10.0),
             ] {
                 let x = if direction == Direction::Ltr {
-                    logical
+                    ltr
                 } else {
-                    100.0 - logical - 10.0
+                    rtl
                 };
                 assert_eq!(output(&b, node).location, Point::new(n(x), n(y)));
             }
@@ -668,11 +676,13 @@ fn opaque_context<S: LayoutScalar>() {
         // equal real10/0 metrics place them on the same outer line; 5+3+2+4
         // real BP and three actual10 boxes give44 total inline flow.
         assert_eq!(output(&b, 1).location.y, output(&b, 3).location.y);
-        for (node, logical) in [(1, 0.0), (2, 18.0), (3, 34.0)] {
+        // RTL line-left is100-44=56. Actual L2 order is P, innerStart3,
+        // outerStart5, A, outerEnd4, innerEnd2, Q; atomic x is56/74/90.
+        for (node, ltr, rtl) in [(1, 0.0, 56.0), (2, 18.0, 74.0), (3, 34.0, 90.0)] {
             let x = if direction == Direction::Ltr {
-                logical
+                ltr
             } else {
-                100.0 - logical - 10.0
+                rtl
             };
             assert_eq!(output(&b, node).location.x, n(x));
         }
@@ -907,7 +917,9 @@ fn assert_mixed_output<S: LayoutScalar>(f: &Fixture<S>, expected: &[&[usize]]) {
             let x = if f.direction == Direction::Ltr {
                 logical
             } else {
-                f.width.to_f64() - logical - 10.0
+                // Level0 atomics retain line-left source order; genuine
+                // level1 boundaries here have zero advance.
+                f.width.to_f64() - 10.0 * nodes.len() as f64 + logical
             };
             assert_eq!(
                 output(&batch, node as u32).location,

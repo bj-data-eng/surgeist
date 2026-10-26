@@ -3033,13 +3033,15 @@ fn block_rtl_atomic_inline_run_places_items_from_right_edge() {
     .unwrap();
     round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
+    // Both actual supplied levels are0: L2 preserves A20/B30 inside
+    // the physical right-aligned hull50..100.
     assert_eq!(
         tree.final_layout(1).unwrap().location,
-        Point::new(80.0, 0.0)
+        Point::new(50.0, 0.0)
     );
     assert_eq!(
         tree.final_layout(2).unwrap().location,
-        Point::new(50.0, 0.0)
+        Point::new(70.0, 0.0)
     );
 }
 
@@ -3140,13 +3142,15 @@ fn block_legacy_right_rtl_aligns_atomic_inline_run_to_physical_right_edge() {
     .unwrap();
     round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
+    // Both actual supplied levels are0: L2 preserves A20/B30 inside
+    // the physical right-aligned hull50..100.
     assert_eq!(
         tree.final_layout(1).unwrap().location,
-        Point::new(80.0, 0.0)
+        Point::new(50.0, 0.0)
     );
     assert_eq!(
         tree.final_layout(2).unwrap().location,
-        Point::new(50.0, 0.0)
+        Point::new(70.0, 0.0)
     );
 }
 
@@ -4003,8 +4007,8 @@ fn numeric_inline_endpoint_uses_one_real_strip_and_moves_the_next_box_all_flows_
                         },
                         S::from_f64(10.0)
                     );
-                    let reverse =
-                        (direction == Direction::Rtl) != (writing_mode == WritingMode::SidewaysLr);
+                    // Actual levels [0,1,0] retain L2 order A/strip/B.
+                    // Line-left is physical bottom only in sideways-lr.
                     let second = public_final_output(&batch, 3);
                     assert_eq!(
                         if vertical {
@@ -4012,7 +4016,11 @@ fn numeric_inline_endpoint_uses_one_real_strip_and_moves_the_next_box_all_flows_
                         } else {
                             second.location.x
                         },
-                        S::from_f64(if reverse { 0.0 } else { 18.0 })
+                        S::from_f64(if writing_mode == WritingMode::SidewaysLr {
+                            0.0
+                        } else {
+                            18.0
+                        })
                     );
                     // Physical top/right/bottom/left sides are literal oracles,
                     // independent of the production FlowAxes mapping helper.
