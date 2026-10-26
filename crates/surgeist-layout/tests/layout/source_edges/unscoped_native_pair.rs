@@ -78,3 +78,5 @@ fn real_early_native_pair_with_unassociated_endpoint_controls_keeps_endpoint_for
     actual_early_native_pair_without_inline_scope::<f32>();
     actual_early_native_pair_without_inline_scope::<f64>();
 }
+
+mod final_layout;
