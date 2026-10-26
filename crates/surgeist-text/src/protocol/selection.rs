@@ -565,6 +565,13 @@ fn validate_context(context: &LineContext, base_level: u8) -> Result<()> {
             ));
         }
     }
+    if context.alignment_insets != super::LineAlignmentInsets::ZERO
+        && context.available_inline.is_none()
+    {
+        return Err(protocol_error(ProtocolError::UnsupportedContext {
+            field: ProtocolContextField::AlignmentInsets,
+        }));
+    }
     finite("line indent", context.indent)?;
     Ok(())
 }
@@ -686,6 +693,7 @@ pub(crate) fn standalone_request(
         termination,
         alternative,
         context: LineContext {
+            alignment_insets: crate::LineAlignmentInsets::ZERO,
             formatted_line: super::FormattedLineContext::default(),
             base_direction: if prepared.analyzed.analysis.base_level & 1 == 0 {
                 ParagraphBaseDirection::LeftToRight

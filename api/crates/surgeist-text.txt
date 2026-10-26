@@ -613,6 +613,7 @@ pub enum surgeist_text::ProcessingCapacityError
 pub surgeist_text::ProcessingCapacityError::Allocation
 pub surgeist_text::ProcessingCapacityError::Overflow
 pub enum surgeist_text::ProtocolContextField
+pub surgeist_text::ProtocolContextField::AlignmentInsets
 pub surgeist_text::ProtocolContextField::BaseDirection
 pub surgeist_text::ProtocolContextField::CssParagraphBoundary
 pub surgeist_text::ProtocolContextField::LineEnd
@@ -1748,6 +1749,12 @@ pub const fn surgeist_text::Line::bounds(self) -> surgeist_text::Rect
 pub const fn surgeist_text::Line::index(self) -> usize
 pub const fn surgeist_text::Line::new(index: usize, range: surgeist_text::Range, baseline: f64, bounds: surgeist_text::Rect) -> Self
 pub const fn surgeist_text::Line::range(self) -> surgeist_text::Range
+pub struct surgeist_text::LineAlignmentInsets
+impl surgeist_text::LineAlignmentInsets
+pub const surgeist_text::LineAlignmentInsets::ZERO: Self
+pub const fn surgeist_text::LineAlignmentInsets::line_left(self) -> f64
+pub const fn surgeist_text::LineAlignmentInsets::line_right(self) -> f64
+pub fn surgeist_text::LineAlignmentInsets::try_new(line_left: f64, line_right: f64) -> surgeist_text::Result<Self>
 pub struct surgeist_text::LineAnchor
 pub surgeist_text::LineAnchor::baseline: f64
 pub surgeist_text::LineAnchor::inline_origin: f64
@@ -1756,6 +1763,7 @@ pub surgeist_text::LineBoxStrut::alignment: surgeist_text::LineBoxAlignment
 pub surgeist_text::LineBoxStrut::metrics: surgeist_text::LineStrut
 pub struct surgeist_text::LineContext
 pub surgeist_text::LineContext::alignment: surgeist_text::Alignment
+pub surgeist_text::LineContext::alignment_insets: surgeist_text::LineAlignmentInsets
 pub surgeist_text::LineContext::available_inline: core::option::Option<f64>
 pub surgeist_text::LineContext::base_direction: surgeist_text::ParagraphBaseDirection
 pub surgeist_text::LineContext::end: surgeist_text::LineEnd

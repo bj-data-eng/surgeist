@@ -1014,6 +1014,7 @@ mod tests {
                 participants: prepared.participants().collect(),
                 alternative: None,
                 context: LineContext {
+                    alignment_insets: crate::LineAlignmentInsets::ZERO,
                     formatted_line: crate::FormattedLineContext::default(),
                     base_direction,
                     line_box_direction: match base_direction {
@@ -1595,6 +1596,7 @@ mod tests {
                     termination: crate::PreparedTermination::Ordinary(opportunity),
                     alternative: None,
                     context: LineContext {
+                        alignment_insets: crate::LineAlignmentInsets::ZERO,
                         formatted_line: crate::FormattedLineContext::default(),
                         base_direction: ParagraphBaseDirection::LeftToRight,
                         line_box_direction: crate::LineBoxDirection::LeftToRight,
@@ -1842,6 +1844,7 @@ mod tests {
                 termination: crate::PreparedTermination::Ordinary(termination),
                 alternative: None,
                 context: LineContext {
+                    alignment_insets: crate::LineAlignmentInsets::ZERO,
                     formatted_line: crate::FormattedLineContext::default(),
                     base_direction: ParagraphBaseDirection::LeftToRight,
                     line_box_direction: crate::LineBoxDirection::LeftToRight,
@@ -2082,6 +2085,7 @@ mod tests {
                 termination: crate::PreparedTermination::Ordinary(termination),
                 alternative: None,
                 context: LineContext {
+                    alignment_insets: crate::LineAlignmentInsets::ZERO,
                     formatted_line: crate::FormattedLineContext::default(),
                     base_direction,
                     line_box_direction: match base_direction {
@@ -2464,6 +2468,7 @@ mod tests {
                     termination: crate::PreparedTermination::Ordinary(termination),
                     alternative: None,
                     context: LineContext {
+                        alignment_insets: crate::LineAlignmentInsets::ZERO,
                         formatted_line: crate::FormattedLineContext::default(),
                         base_direction: ParagraphBaseDirection::LeftToRight,
                         line_box_direction: crate::LineBoxDirection::LeftToRight,

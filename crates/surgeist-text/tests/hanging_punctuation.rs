@@ -124,6 +124,7 @@ fn request(
         line_box_struts: Vec::new(),
         line_strut: None,
         context: t::LineContext {
+            alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
             base_direction: if p.analyzed_source().direction() == t::Direction::RightToLeft {
                 t::ParagraphBaseDirection::RightToLeft
             } else {

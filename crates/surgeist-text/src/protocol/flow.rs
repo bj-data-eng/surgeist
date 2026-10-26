@@ -538,6 +538,7 @@ mod tests {
         };
         FlowObservationRequest {
             context: LineContext {
+                alignment_insets: crate::LineAlignmentInsets::ZERO,
                 formatted_line: FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 line_box_direction: LineBoxDirection::LeftToRight,
@@ -713,6 +714,7 @@ mod tests {
             line_box_struts: Vec::new(),
             line_strut: None,
             context: LineContext {
+                alignment_insets: crate::LineAlignmentInsets::ZERO,
                 formatted_line: FormattedLineContext::default(),
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 line_box_direction: LineBoxDirection::LeftToRight,

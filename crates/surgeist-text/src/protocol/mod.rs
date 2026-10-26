@@ -10,6 +10,9 @@ use crate::engine::PreparedData;
 use crate::{Alignment, FontCatalogueIdentity, Point, Range, Rect, Result};
 use selection::SelectedData;
 
+mod alignment;
+pub use alignment::LineAlignmentInsets;
+
 pub(crate) mod boundary;
 mod conditional;
 pub(crate) use conditional::request_context;
@@ -267,6 +270,8 @@ pub struct LineContext {
     pub start: LineStart,
     pub end: LineEnd,
     pub available_inline: Option<f64>,
+    /// Used line-left/right padding for content alignment only.
+    pub alignment_insets: LineAlignmentInsets,
     pub indent: f64,
     pub alignment: Alignment,
     pub tabs: TabContext,
@@ -705,6 +710,7 @@ pub enum ProtocolContextField {
     TabReference,
     TabMetrics,
     CssParagraphBoundary,
+    AlignmentInsets,
     Spacing,
 }
 /// Actual invalid association or incomplete input; no caller ordinal issues a capability.

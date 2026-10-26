@@ -1000,6 +1000,15 @@ query order and finite cache history cannot change their result. Actual policy,
 containing basis, incoming accepted state and resolved candidate context remain
 part of captured pass/request/replay identity.
 
+### Native text-group alignment
+
+The [native group-alignment determination](../references/text-group-alignment--native-determination.md)
+owns same-BFC membership, natural pre-justification measurement, nested residual
+padding and per-line side resolution under #68. Text's alignment-only content
+frame is distinct from the outer line frame and earlier wrapping/tab/hanging
+basis. Layout resolves groups and spacing before publishing coherent geometry.
+The determination defines required behavior; #1478 tracks its implementation.
+
 ### Native whitespace edges and hanging
 
 Text owns selected-line Phase II classification under #64/#72; Layout consumes

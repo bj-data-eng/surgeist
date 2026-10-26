@@ -39,6 +39,7 @@ fn selected_line(
             alternative: None,
             incoming: None,
             context: text::LineContext {
+                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
                 formatted_line: text::FormattedLineContext::default(),
                 base_direction: text::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: text::LineBoxDirection::LeftToRight,

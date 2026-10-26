@@ -1,6 +1,9 @@
 //! CSS Text4 §9.3 keeps line-box geometry independent of body UBA. These
 //! functional tests supply the new resolved fact explicitly, with real Ahem.
 
+#[path = "line_box_direction/alignment_frame.rs"]
+mod alignment_frame;
+
 use super::*;
 use crate::*;
 

@@ -194,6 +194,7 @@ fn placed_pair(prepared: &text::PreparedText, opening: f64) -> text::Layout {
         boundary_context: vec![],
         line_strut: None,
         context: text::LineContext {
+            alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
             base_direction: text::ParagraphBaseDirection::LeftToRight,
             line_box_direction: surgeist_text::LineBoxDirection::LeftToRight,
             formatted_line: text::FormattedLineContext::default(),

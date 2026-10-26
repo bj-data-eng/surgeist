@@ -1615,6 +1615,7 @@ fn selection_request(
         alternative: endpoint.alternative,
         incoming: incoming.cloned(),
         context: LineContext {
+            alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
             formatted_line: surgeist_text::FormattedLineContext::default(),
             line_box_direction,
             base_direction: input.base_direction,

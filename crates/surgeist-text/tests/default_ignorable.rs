@@ -105,6 +105,7 @@ fn observe(
             line_box_struts: Vec::new(),
             line_strut: None,
             context: text::LineContext {
+                alignment_insets: surgeist_text::LineAlignmentInsets::ZERO,
                 formatted_line: surgeist_text::FormattedLineContext::default(),
                 base_direction: direction,
                 line_box_direction: match direction {
