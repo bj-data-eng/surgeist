@@ -1,6 +1,6 @@
 use super::context::NativeSpan;
 use super::*;
-use crate::{Display, LayoutTree, Position, engine::validation::ValidationGraph};
+use crate::{Display, LayoutScalar, LayoutTree, Position, engine::validation::ValidationGraph};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct EdgeLocation<Node> {
@@ -14,7 +14,16 @@ pub(crate) struct EdgeLocation<Node> {
 pub(crate) struct EdgePlan<Node> {
     pub(crate) locations: Vec<EdgeLocation<Node>>,
     pub(crate) dependencies: Vec<Node>,
+    pub(crate) subtrees: Vec<SubtreeRealization>,
 }
+/// This is generated participation proof, independent of strut dimensions.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SubtreeRealization {
+    Empty,
+    Participating,
+    Unavailable,
+}
+
 #[derive(Clone)]
 struct BoxFact<Node> {
     box_: GeneratedBoxRef<Node>,
@@ -265,6 +274,10 @@ impl<Node: Copy + Eq> EdgePlan<Node> {
                 suffix: order.suffix,
             });
         }
+        let mut realization = RealizationProof::new(tree, &boxes, rows, &normalized, &unmodeled);
+        let subtrees = (0..rows.len())
+            .map(|index| realization.resolve(index))
+            .collect::<Result<Vec<_>, _>>()?;
         let mut locations = Vec::new();
         for (index, b) in boxes.iter().enumerate() {
             for (side, decl) in [
@@ -405,7 +418,180 @@ impl<Node: Copy + Eq> EdgePlan<Node> {
         Ok(Self {
             locations,
             dependencies,
+            subtrees,
         })
+    }
+}
+
+/// Reuses the same normalized generated-child inventory that owns propagation.
+/// Strut geometry is deliberately absent from this participation proof.
+struct RealizationProof<'a, Tree: LayoutTree> {
+    tree: &'a Tree,
+    boxes: &'a [BoxFact<Tree::Node>],
+    rows: &'a [ScopeRow<Tree::Node>],
+    orders: Vec<Option<&'a ChildOrderProof>>,
+    unmodeled: &'a [(Tree::Node, usize)],
+    memo: Vec<Option<SubtreeRealization>>,
+    children: Vec<Vec<usize>>,
+    visiting: Vec<bool>,
+    text: std::collections::HashMap<
+        surgeist_text::PreparedText,
+        std::collections::HashSet<surgeist_text::PreparedOrigin>,
+    >,
+}
+impl<'a, Tree: LayoutTree> RealizationProof<'a, Tree> {
+    fn new(
+        tree: &'a Tree,
+        boxes: &'a [BoxFact<Tree::Node>],
+        rows: &'a [ScopeRow<Tree::Node>],
+        orders: &'a [ChildOrderProof],
+        unmodeled: &'a [(Tree::Node, usize)],
+    ) -> Self {
+        let mut indexed = vec![None; boxes.len()];
+        for order in orders {
+            indexed[order.parent] = Some(order);
+        }
+        Self {
+            tree,
+            boxes,
+            rows,
+            orders: indexed,
+            unmodeled,
+            memo: vec![None; boxes.len()],
+            children: vec![Vec::new(); boxes.len()],
+            visiting: vec![false; boxes.len()],
+            text: std::collections::HashMap::new(),
+        }
+    }
+    fn leaf(&mut self, index: usize) -> Option<SubtreeRealization> {
+        use SubtreeRealization::{Empty, Participating};
+        let GeneratedBoxRef::Node(node) = self.boxes[index].box_ else {
+            return None;
+        };
+        let input = self.tree.layout_input(node);
+        let Some(participation) = input.as_inline_text() else {
+            // Atomics/opaque generated nodes remain participants, including
+            // zero/signed-width cases. No measured-width atomicity shortcut.
+            return Some(Participating);
+        };
+        let origin = participation.origin();
+        let prepared = origin.prepared_text();
+        #[expect(
+            clippy::mutable_key_type,
+            reason = "Text preparation and origin hashing use immutable allocation identity and occurrence index; lazy cache contents never affect the keys"
+        )]
+        let participating = self.text.entry(prepared.clone()).or_insert_with(|| {
+            prepared
+                .unit_views()
+                .filter(|unit| {
+                    unit.empty_origin().is_none()
+                        && unit.processed_range().start() != unit.processed_range().end()
+                })
+                .flat_map(|unit| {
+                    unit.origins()
+                        .map(|piece| piece.origin())
+                        .collect::<Vec<_>>()
+                })
+                .collect()
+        });
+        Some(if participating.contains(origin) {
+            Participating
+        } else {
+            Empty
+        })
+    }
+    fn expand(&mut self, index: usize) -> Result<SubtreeRealization, WrappingScopeError> {
+        use SubtreeRealization::{Empty, Participating, Unavailable};
+        let decoration =
+            self.rows
+                .get(index)
+                .and_then(|row| row.pair)
+                .is_some_and(|(start, end)| {
+                    [start, end].into_iter().any(|node| {
+                        self.tree
+                            .layout_input(node)
+                            .as_inline_boundary()
+                            .is_some_and(|boundary| {
+                                boundary.edge().border() != Tree::Scalar::ZERO
+                                    || boundary.edge().padding() != Tree::Scalar::ZERO
+                            })
+                    })
+                });
+        if decoration {
+            return Ok(Participating);
+        }
+        let order = if let Some(order) = self.orders[index] {
+            (order.prefix == ChildOrderCompleteness::Complete
+                && order.suffix == ChildOrderCompleteness::Complete)
+                .then(|| order.children.clone())
+        } else if self.boxes[index].native.is_some() {
+            Some(inferred_children(self.boxes, self.tree, index)?)
+        } else {
+            None
+        };
+        let unrepresented = self.boxes[index].native.as_ref().is_some_and(|span| {
+            self.unmodeled.iter().any(|(flow, rank)| {
+                *flow == self.boxes[index].flow && span.first < *rank && *rank < span.last
+            })
+        });
+        let state = if order.is_some() && !unrepresented {
+            Empty
+        } else {
+            Unavailable
+        };
+        self.children[index] = order
+            .into_iter()
+            .flatten()
+            .filter_map(|(child, participation)| {
+                (participation == GeneratedBoxParticipation::InFlow).then_some(child)
+            })
+            .collect();
+        Ok(state)
+    }
+    fn resolve(&mut self, root: usize) -> Result<SubtreeRealization, WrappingScopeError> {
+        use SubtreeRealization::{Empty, Participating, Unavailable};
+        let mut stack = vec![(root, false)];
+        let mut initial = Vec::new();
+        while let Some((index, finishing)) = stack.pop() {
+            if self.memo[index].is_some() {
+                continue;
+            }
+            if finishing {
+                let mut state = initial.pop().ok_or(WrappingScopeError::ChildOrder)?;
+                for &child in &self.children[index] {
+                    match self.memo[child].ok_or(WrappingScopeError::ChildOrder)? {
+                        Participating => {
+                            state = Participating;
+                            break;
+                        }
+                        Unavailable if state == Empty => state = Unavailable,
+                        Empty | Unavailable => {}
+                    }
+                }
+                self.visiting[index] = false;
+                self.memo[index] = Some(state);
+                continue;
+            }
+            if self.visiting[index] {
+                return Err(WrappingScopeError::ChildOrder);
+            }
+            if let Some(value) = self.leaf(index) {
+                self.memo[index] = Some(value);
+                continue;
+            }
+            let state = self.expand(index)?;
+            if state == Participating {
+                self.memo[index] = Some(state);
+                continue;
+            }
+            self.visiting[index] = true;
+            initial.push(state);
+            stack.push((index, true));
+            for &child in self.children[index].iter().rev() {
+                stack.push((child, false));
+            }
+        }
+        self.memo[root].ok_or(WrappingScopeError::ChildOrder)
     }
 }
 

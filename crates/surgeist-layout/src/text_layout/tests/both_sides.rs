@@ -515,8 +515,9 @@ fn assert_outgoing_counter_once(p: &text::PreparedText) {
                 .minimum
                 .map_or(position.proposed, |minimum| position.proposed.max(minimum)))
         },
-        |line, _, _| {
+        |line, _, _, box_struts| {
             Ok(fit::LineAllocations {
+                line_box_struts: box_struts.to_vec(),
                 atomics: Vec::new(),
                 controls: line.selected_line().request().controls.clone(),
                 line_strut: None,

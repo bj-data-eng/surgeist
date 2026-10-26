@@ -7,6 +7,7 @@ use surgeist_text as text;
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RoleUse {
     pub(crate) request: text::LineSelectionRequest,
+    pub(crate) boxes: Option<super::boxes::BoxAssignment>,
     pub(crate) amounts: Vec<f64>,
     pub(crate) usage: text::FormattedLineUsage,
     pub(crate) outgoing: Option<text::HyphenationContinuation>,
@@ -50,6 +51,7 @@ pub(crate) enum RoleBasis {
 pub(crate) struct ProspectiveRoleBasis {
     recipe: text::PreparedMeasurementFlow,
     observations: Vec<text::FlowObservation>,
+    boxes: Vec<Option<super::boxes::BoxAssignment>>,
     query_start: text::PreparedBoundary,
     query_incoming: Option<text::HyphenationContinuation>,
     checkpoint: EntryCheckpoint,
@@ -70,6 +72,7 @@ struct EntryCheckpoint {
 struct CheckpointReceipt {
     line: text::FinalizedLine,
     amounts: Vec<f64>,
+    boxes: Option<super::boxes::BoxAssignment>,
 }
 
 impl PartialEq for CheckpointReceipt {
@@ -78,6 +81,7 @@ impl PartialEq for CheckpointReceipt {
         // authentic receipt for observation without comparing its allocation.
         self.line.selected_line().request() == other.line.selected_line().request()
             && self.amounts == other.amounts
+            && self.boxes == other.boxes
     }
 }
 
@@ -85,8 +89,13 @@ pub(super) struct RoleEntry<'a> {
     pub current_first: bool,
     pub query_start: &'a text::PreparedBoundary,
     pub query_incoming: Option<&'a text::HyphenationContinuation>,
+    pub boxes: Option<&'a super::boxes::BoxAssignment>,
     pub accepted: &'a [FittedLine],
-    pub preceding: Option<(&'a text::FinalizedLine, &'a [f64])>,
+    pub preceding: Option<(
+        &'a text::FinalizedLine,
+        &'a [f64],
+        Option<&'a super::boxes::BoxAssignment>,
+    )>,
 }
 
 pub(super) fn measurement(request: &text::LineSelectionRequest) -> bool {
@@ -168,6 +177,28 @@ fn prospective(
         &request.termination,
     )?;
     let mut observations = Vec::new();
+    let mut box_assignments = Vec::new();
+    let box_checkpoint = if input.wrapping.is_some() {
+        Some(checkpoint(input, &recipe.entry(), entry, false)?)
+    } else {
+        None
+    };
+    let mut unconsumed_prefix = box_checkpoint
+        .as_ref()
+        .is_some_and(|checkpoint| !checkpoint.outside);
+    let mut box_frontier = box_checkpoint
+        .as_ref()
+        .and_then(|checkpoint| checkpoint.receipts.last())
+        .and_then(|receipt| {
+            let selected = receipt.line.selected_line();
+            receipt.boxes.as_ref().map(|boxes| {
+                if selected.request().end == recipe.entry() {
+                    boxes.outgoing.clone()
+                } else {
+                    boxes.incoming.clone()
+                }
+            })
+        });
     let phrase = matches!(
         &request.termination,
         text::PreparedTermination::PhraseMeasurement(_)
@@ -176,12 +207,60 @@ fn prospective(
     let mut following = false;
     let mut outside = false;
     for segment in recipe.segments() {
-        let observation = observe(input, request, &segment)?;
+        let boxes = if segment.role() == text::FlowSegmentRole::Target {
+            entry.boxes.cloned()
+        } else if let Some(resolver) = input.wrapping {
+            let controls: Vec<_> = input.controls.iter().filter(|allocation| segment.participants().any(|participant| matches!(participant, text::PreparedParticipant::Control(control) if control == allocation.occurrence))).cloned().collect();
+            let choices = resolver.choices(
+                &segment.start(),
+                &segment.end(),
+                box_frontier.as_ref().map(|frontier| {
+                    if unconsumed_prefix {
+                        super::boxes::BoxEntry::UnconsumedFrom(frontier)
+                    } else {
+                        super::boxes::BoxEntry::ConsumedTo(frontier)
+                    }
+                }),
+                &controls,
+                flow_ending(&segment),
+            )?;
+            if entry
+                .boxes
+                .is_some_and(|target| target.incoming.boundary == segment.end())
+            {
+                choices
+                    .into_iter()
+                    .find(|choice| {
+                        entry.boxes.is_some_and(|target| {
+                            choice.outgoing.incidence == target.incoming.incidence
+                        })
+                    })
+                    .ok_or_else(invalid_flow)
+                    .map(Some)?
+            } else {
+                choices.into_iter().next()
+            }
+        } else {
+            None
+        };
+        let observation = observe(input, request, &segment, boxes.as_ref())?;
         let retained = observation.has_retained_flow_participation();
         let forced = segment
             .mandatory_end()
             .is_some_and(|offer| offer.view().kind() == text::PreparedBreakKind::Forced);
         let emitted = retained || forced;
+        if let Some(boxes) = &boxes {
+            if emitted {
+                box_frontier = Some(boxes.outgoing.clone());
+                unconsumed_prefix = false;
+            } else {
+                if box_frontier.is_none() {
+                    box_frontier = Some(boxes.incoming.clone());
+                }
+                unconsumed_prefix = true;
+            }
+        }
+        box_assignments.push(boxes);
         match segment.role() {
             text::FlowSegmentRole::EntryPrefix => {
                 if phrase && (emitted || segment.outgoing().is_some()) {
@@ -219,6 +298,7 @@ fn prospective(
     Ok(ProspectiveRoleBasis {
         recipe,
         observations,
+        boxes: box_assignments,
         query_start: entry.query_start.clone(),
         query_incoming: entry.query_incoming.cloned(),
         checkpoint,
@@ -236,7 +316,7 @@ fn checkpoint(
 ) -> Result<EntryCheckpoint, FitError> {
     let at = entry_boundary.view().participant_offset();
     let mut receipts = Vec::new();
-    for (line, amounts, first) in entry
+    for (line, amounts, first, boxes) in entry
         .accepted
         .iter()
         .map(|line| {
@@ -244,12 +324,13 @@ fn checkpoint(
                 &line.finalized,
                 line.amounts.as_slice(),
                 line.first_formatted,
+                line.boxes.as_ref(),
             )
         })
         .chain(
             entry
                 .preceding
-                .map(|(line, amounts)| (line, amounts, entry.current_first)),
+                .map(|(line, amounts, boxes)| (line, amounts, entry.current_first, boxes)),
         )
     {
         let selected = line.selected_line();
@@ -260,6 +341,7 @@ fn checkpoint(
             receipts.push(CheckpointReceipt {
                 line: line.clone(),
                 amounts: amounts.to_vec(),
+                boxes: boxes.cloned(),
             });
             continue;
         }
@@ -278,6 +360,7 @@ fn checkpoint(
             receipts.push(CheckpointReceipt {
                 line: line.clone(),
                 amounts: amounts.to_vec(),
+                boxes: boxes.cloned(),
             });
             return Ok(EntryCheckpoint {
                 entry: entry_boundary.clone(),
@@ -298,10 +381,23 @@ fn checkpoint(
     })
 }
 
+fn flow_ending(segment: &text::PreparedFlowSegment) -> text::LineEnd {
+    if segment.role() == text::FlowSegmentRole::Target {
+        text::LineEnd::Soft
+    } else {
+        match segment.mandatory_end().map(|offer| offer.view().kind()) {
+            Some(text::PreparedBreakKind::Forced) => text::LineEnd::Forced,
+            Some(text::PreparedBreakKind::ParagraphEnd) => text::LineEnd::Paragraph,
+            _ => text::LineEnd::Soft,
+        }
+    }
+}
+
 fn observe(
     input: &FitInput<'_>,
     target: &text::LineSelectionRequest,
     segment: &text::PreparedFlowSegment,
+    boxes: Option<&super::boxes::BoxAssignment>,
 ) -> Result<text::FlowObservation, FitError> {
     let participants: Vec<_> = segment.participants().collect();
     let mut context = target.context.clone();
@@ -311,21 +407,13 @@ fn observe(
     } else {
         text::LineStart::Continuation
     };
-    context.end = if segment.role() == text::FlowSegmentRole::Target {
-        text::LineEnd::Soft
-    } else {
-        match segment.mandatory_end().map(|offer| offer.view().kind()) {
-            Some(text::PreparedBreakKind::Forced) => text::LineEnd::Forced,
-            Some(text::PreparedBreakKind::ParagraphEnd) => text::LineEnd::Paragraph,
-            _ => text::LineEnd::Soft,
-        }
-    };
+    context.end = flow_ending(segment);
     let mut request = text::FlowObservationRequest {
         context,
         atomics: input.atomics.iter().filter(|row| participants.iter().any(|p| matches!(p,text::PreparedParticipant::Atomic(value) if value==&row.occurrence))).map(|row| target.atomics.iter().find(|actual|actual.occurrence==row.occurrence).unwrap_or(row).clone()).collect(),
         controls: input.controls.iter().filter(|row| participants.iter().any(|p| matches!(p,text::PreparedParticipant::Control(value) if value==&row.occurrence))).map(|row| target.controls.iter().find(|actual|actual.occurrence==row.occurrence).unwrap_or(row).clone()).collect(),
         line_strut: target.line_strut,
-        line_box_struts: target.line_box_struts.clone(),
+        line_box_struts: if segment.role() == text::FlowSegmentRole::Target { target.line_box_struts.clone() } else { boxes.map_or_else(Vec::new, super::boxes::BoxAssignment::struts) },
         boundary_context: Vec::new(),
     };
     while let Some(occurrence) = input

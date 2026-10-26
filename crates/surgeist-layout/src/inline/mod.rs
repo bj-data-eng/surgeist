@@ -931,6 +931,7 @@ struct NumericCandidateReceiptOf<S: LayoutScalar> {
     next_cursor: InlineSourceCursor,
     pending_strut: Option<InlineMetricContributionOf<S>>,
     summary: InlineLineSummaryOf<S>,
+    groups: InlineLineMetricGroupsOf<S>,
     phase_groups: InlineLineMetricGroupsOf<S>,
     last_boundary: Option<Option<InlineMetricContributionOf<S>>>,
     starts_phase: bool,
@@ -1032,6 +1033,7 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
                 used_inline_extent: self.advance,
                 split_baseline_edge_phase: groups.split_baseline_edge_phase(),
             },
+            groups,
             phase_groups,
             last_boundary: self.last_boundary,
             starts_phase: self.starts_phase,
@@ -1041,6 +1043,73 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
             band: None,
         }
     }
+}
+
+fn allocate_numeric_box_metrics<S: LayoutScalar>(
+    receipt: &mut NumericCandidateReceiptOf<S>,
+    wrapping: &crate::inline_wrapping::NumericWrapping,
+    participants: &[MixedInlineParticipantOf<S>],
+    start: usize,
+    end: usize,
+) -> Result<(), crate::inline_wrapping::NumericWrappingError> {
+    use crate::{InlineBoxMetricContribution as Contribution, WrappingScopeError};
+    for allocation in wrapping.metrics(start, end) {
+        let owned: Vec<_> = allocation
+            .endpoints
+            .into_iter()
+            .flatten()
+            .filter(|&index| start <= index && index < end)
+            .map(|index| match participants.get(index) {
+                Some(MixedInlineParticipantOf::Boundary(control)) => {
+                    Ok((control.alignment(), control.metrics()))
+                }
+                _ => Err(WrappingScopeError::CaptureAssociation),
+            })
+            .collect::<Result<_, _>>()?;
+        let (alignment, metrics) = match allocation.contribution {
+            Contribution::NoContribution => {
+                if !owned.is_empty() {
+                    return Err(WrappingScopeError::ConflictingBoxMetrics.into());
+                }
+                continue;
+            }
+            Contribution::Strut(strut) => {
+                let baseline = S::from_f64(strut.metrics.baseline);
+                let extent = S::from_f64(strut.metrics.line_extent);
+                if !baseline.is_finite() || !extent.is_finite() || extent < baseline {
+                    return Err(WrappingScopeError::InvalidBoxMetrics.into());
+                }
+                let alignment = match strut.alignment {
+                    surgeist_text::LineBoxAlignment::Baseline => InlineControlAlignment::Baseline,
+                    surgeist_text::LineBoxAlignment::Top => InlineControlAlignment::Top,
+                    surgeist_text::LineBoxAlignment::Bottom => InlineControlAlignment::Bottom,
+                };
+                if owned.iter().any(|(actual_alignment, metrics)| {
+                    *actual_alignment != alignment
+                        || metrics.baseline() != baseline
+                        || metrics.after_baseline() != extent - baseline
+                }) {
+                    return Err(WrappingScopeError::ConflictingBoxMetrics.into());
+                }
+                (
+                    alignment,
+                    InlineMetricContributionOf {
+                        baseline,
+                        after_baseline: extent - baseline,
+                    },
+                )
+            }
+        };
+        if owned.is_empty() {
+            receipt.groups.include(alignment, metrics);
+            receipt.phase_groups.include(alignment, metrics);
+        }
+    }
+    let metrics = receipt.groups.resolve();
+    receipt.summary.baseline = metrics.baseline;
+    receipt.summary.after_baseline = metrics.after_baseline;
+    receipt.summary.split_baseline_edge_phase = receipt.groups.split_baseline_edge_phase();
+    Ok(())
 }
 
 fn resolve_numeric_candidate<S: LayoutScalar>(
@@ -1227,6 +1296,13 @@ fn select_scope_inline_line<S: LayoutScalar>(
     if let Some(fallback) = completion.summary.fallback_line_band {
         completion.has_fallback_atomic=run.participants[cursor.source..stop].iter().any(|p|matches!(*p,MixedInlineParticipantOf::Atomic {item,..} if item.fallback_block_start_in_band(axes,fallback).is_some()));
     }
+    allocate_numeric_box_metrics(
+        &mut completion,
+        wrapping,
+        run.participants,
+        cursor.source,
+        stop,
+    )?;
     let build = |receipt: NumericCandidateReceiptOf<S>| {
         let end = receipt.next_cursor.source - usize::from(receipt.summary.line_break.is_some());
         let mut line = selected_from_summary(
@@ -1268,6 +1344,28 @@ fn select_scope_inline_line<S: LayoutScalar>(
         candidate
     })
     .or_else(|| Some(build(completion)));
+    let fallback = if !wrapping.has_metrics() {
+        fallback
+    } else if let Some(candidate) = fallback {
+        let end = candidate.next_cursor.source - usize::from(candidate.line.line_break.is_some());
+        let mut accumulator = NumericReceiptAccumulatorOf::new(pending);
+        for participant in run.participants[cursor.source..end].iter().copied() {
+            accumulator.push(participant, axes);
+        }
+        let mut receipt = accumulator.receipt(
+            candidate.end,
+            candidate.next_cursor,
+            candidate.line.line_break,
+            pending,
+            end - cursor.source,
+        );
+        receipt.pending_strut = candidate.pending_strut;
+        allocate_numeric_box_metrics(&mut receipt, wrapping, run.participants, cursor.source, end)?;
+        fits(&mut receipt)?;
+        Some(build(receipt))
+    } else {
+        None
+    };
     let mut first: Option<NumericCandidateReceiptOf<S>> = None;
     let mut frontier: Option<
         crate::inline_wrapping::PreferenceFrontier<NumericCandidateReceiptOf<S>>,
@@ -1290,6 +1388,13 @@ fn select_scope_inline_line<S: LayoutScalar>(
             pending,
             end - cursor.source,
         );
+        allocate_numeric_box_metrics(
+            &mut candidate,
+            wrapping,
+            run.participants,
+            cursor.source,
+            end,
+        )?;
         if !fits(&mut candidate)? {
             continue;
         }

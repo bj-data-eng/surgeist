@@ -75,6 +75,13 @@ pub(crate) struct ComputedNativeCut {
 }
 
 impl ComputedNativeCut {
+    pub(crate) fn enclosing(gaps: &[usize]) -> Option<Self> {
+        Some(Self {
+            lower: *gaps.iter().min()?,
+            upper: *gaps.iter().max()?,
+        })
+    }
+
     pub(crate) fn side_of_node(self, offset: usize) -> Option<std::cmp::Ordering> {
         if offset < self.lower {
             Some(std::cmp::Ordering::Less)
@@ -145,6 +152,12 @@ impl<Node> Default for ScopeAssociations<Node> {
     }
 }
 impl<Node: Copy + Eq> ScopeAssociations<Node> {
+    pub(crate) fn native_pairs(&self) -> impl Iterator<Item = (&CapturedScope, (Node, Node))> {
+        self.inline
+            .iter()
+            .map(|row| (&row.scope, (row.start, row.end)))
+    }
+
     pub(crate) fn computed_cut(
         &self,
         boundary: &surgeist_text::PreparedComputedLineBoundary,
@@ -313,6 +326,7 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
     graph: &ValidationGraph<Tree::Node>,
     paragraphs: &[TextParagraphBinding<Tree::Node>],
     wrapping_scopes: &[WrappingScopeInput<Tree::Node>],
+    inventory_scopes: &[CapturedScope],
 ) -> ResultOf<Tree, CaptureResolution<Tree::Node>> {
     if paragraphs.is_empty() {
         return Ok(CaptureResolution {
@@ -352,7 +366,7 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
     };
     proof.index()?;
     proof.activate_computed()?;
-    proof.activate_wrapping(wrapping_scopes)?;
+    proof.activate_wrapping(wrapping_scopes, inventory_scopes)?;
     proof.prepare_observations()?;
     // A is selected from producer topology before resolving its supplied rows.
     let regions = proof.result.regions.clone();
@@ -709,8 +723,9 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
     fn activate_wrapping(
         &mut self,
         inputs: &[WrappingScopeInput<Tree::Node>],
+        inventory_scopes: &[CapturedScope],
     ) -> ResultOf<Tree, ()> {
-        if inputs.is_empty() {
+        if inputs.is_empty() && inventory_scopes.is_empty() {
             return Ok(());
         }
         for paragraph in &self.result.paragraphs {
@@ -781,9 +796,13 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                     }
                     let active = match input {
                         WrappingScopeInput::NativePair {
-                            wrap_inside, edges, ..
+                            wrap_inside,
+                            edges,
+                            metric_contribution,
+                            ..
                         } => {
                             *wrap_inside == WrapInside::Avoid
+                                || metric_contribution.is_some()
                                 || edges.has_effect(crate::inline_wrapping::WrappingMode::Inline)
                         }
                         _ => false,
@@ -813,49 +832,42 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                 scope,
                 wrap_inside,
                 edges,
+                metric_contribution,
             } = input
             {
-                if scope.role() != ScopeRole::Inline {
-                    return Err(crate::inline_wrapping::wrapping_error(
-                        self.graph.nodes[0],
-                        WrappingScopeError::NonInlineScope,
-                    ));
-                }
-                if !self.known.contains(scope) {
-                    let present = self.result.paragraphs.iter().any(|p| p.captured.is_some());
-                    let same = self
-                        .result
-                        .paragraphs
-                        .iter()
-                        .filter_map(|p| p.captured.as_ref())
-                        .any(|p| p.enter_position().same_capture(&scope.enter_position()));
-                    let reason = if present && !same {
-                        WrappingScopeError::ForeignCapture
-                    } else {
-                        WrappingScopeError::MissingCapture
-                    };
-                    return Err(crate::inline_wrapping::wrapping_error(
-                        self.graph.nodes[0],
-                        reason,
-                    ));
-                }
-                let mut current = Some(scope.clone());
-                while let Some(scope) = current.filter(|s| s.role() == ScopeRole::Inline) {
-                    push_unique(&mut self.wrapping, scope.clone());
-                    current = scope.parent();
-                }
-                push_unique(&mut self.domains, scope.domain());
-                if scope.entry_control().is_some() || scope.exit_control().is_some() {
-                    push_unique(&mut self.scopes, scope.clone());
-                } else {
-                    push_unique(&mut self.semantic, scope.clone());
-                }
-                if *wrap_inside == WrapInside::Avoid
-                    || edges.has_effect(crate::inline_wrapping::WrappingMode::Inline)
-                {
-                    add_region(&mut self.result.regions, scope.clone());
-                }
+                self.activate_scope(
+                    scope,
+                    *wrap_inside == WrapInside::Avoid
+                        || metric_contribution.is_some()
+                        || edges.has_effect(crate::inline_wrapping::WrappingMode::Inline),
+                )?;
             }
+        }
+        let active_inventory = inputs.iter().any(|input| match input {
+            WrappingScopeInput::Captured {
+                wrap_inside,
+                edges,
+                metric_contribution,
+                ..
+            }
+            | WrappingScopeInput::NativePair {
+                wrap_inside,
+                edges,
+                metric_contribution,
+                ..
+            } => {
+                *wrap_inside == WrapInside::Avoid
+                    || metric_contribution.is_some()
+                    || edges.has_effect(crate::inline_wrapping::WrappingMode::Inline)
+            }
+        }) || self.graph.nodes.iter().any(|node| {
+            self.tree
+                .node_input(*node)
+                .wrap_edges
+                .has_effect(crate::inline_wrapping::WrappingMode::Inline)
+        });
+        for scope in inventory_scopes {
+            self.activate_scope(scope, active_inventory)?;
         }
         // Known physical pairing is metadata, not a request to validate every
         // unrelated interior. Resolve only actual supplied endpoint bindings.
@@ -873,8 +885,8 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                     push_unique(&mut self.wrapping, scope.clone());
                     if inputs.iter().any(|input| {
                         matches!(input, WrappingScopeInput::NativePair {
-                            start:a, end:b, wrap_inside, edges,
-                        } if start.node == *a && end.node == *b && (*wrap_inside==WrapInside::Avoid || edges.has_effect(crate::inline_wrapping::WrappingMode::Inline)))
+                            start:a, end:b, wrap_inside, edges, metric_contribution,
+                        } if start.node == *a && end.node == *b && (*wrap_inside==WrapInside::Avoid || metric_contribution.is_some() || edges.has_effect(crate::inline_wrapping::WrappingMode::Inline)))
                     }) {
                         add_region(&mut self.result.regions, scope.clone());
                     }
@@ -891,6 +903,49 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                     }
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// Validate a genuine captured actual-box reference, independently of declarations.
+    fn activate_scope(&mut self, scope: &CapturedScope, active: bool) -> ResultOf<Tree, ()> {
+        if scope.role() != ScopeRole::Inline {
+            return Err(crate::inline_wrapping::wrapping_error(
+                self.graph.nodes[0],
+                WrappingScopeError::NonInlineScope,
+            ));
+        }
+        if !self.known.contains(scope) {
+            let present = self.result.paragraphs.iter().any(|p| p.captured.is_some());
+            let same = self
+                .result
+                .paragraphs
+                .iter()
+                .filter_map(|p| p.captured.as_ref())
+                .any(|p| p.enter_position().same_capture(&scope.enter_position()));
+            let reason = if present && !same {
+                WrappingScopeError::ForeignCapture
+            } else {
+                WrappingScopeError::MissingCapture
+            };
+            return Err(crate::inline_wrapping::wrapping_error(
+                self.graph.nodes[0],
+                reason,
+            ));
+        }
+        let mut current = Some(scope.clone());
+        while let Some(scope) = current.filter(|s| s.role() == ScopeRole::Inline) {
+            push_unique(&mut self.wrapping, scope.clone());
+            current = scope.parent();
+        }
+        push_unique(&mut self.domains, scope.domain());
+        if scope.entry_control().is_some() || scope.exit_control().is_some() {
+            push_unique(&mut self.scopes, scope.clone());
+        } else {
+            push_unique(&mut self.semantic, scope.clone());
+        }
+        if active {
+            add_region(&mut self.result.regions, scope.clone());
         }
         Ok(())
     }
@@ -1694,6 +1749,10 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         Ok(())
     }
     fn validate_metadata(&mut self) -> ResultOf<Tree, ()> {
+        #[expect(
+            clippy::mutable_key_type,
+            reason = "Text handle hashing uses immutable capture identity and occurrence index; lazy cache contents never affect the key"
+        )]
         let mut proven = HashSet::new();
         for (index, paragraph) in self.result.paragraphs.iter().enumerate() {
             if paragraph.class != ParagraphClass::AssociationOnly {
@@ -2009,6 +2068,10 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                     event,
                 })
                 .collect();
+            #[expect(
+                clippy::mutable_key_type,
+                reason = "Text handle hashing uses immutable capture identity and occurrence index; lazy cache contents never affect the key"
+            )]
             let mut paragraphs = HashMap::new();
             for (index, event) in events.iter().enumerate() {
                 match &event.event {

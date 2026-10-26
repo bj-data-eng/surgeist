@@ -212,6 +212,9 @@ pub surgeist_layout::HyphenateLimitLines::NoLimit
 pub enum surgeist_layout::InlineBoundaryKind
 pub surgeist_layout::InlineBoundaryKind::End
 pub surgeist_layout::InlineBoundaryKind::Start
+pub enum surgeist_layout::InlineBoxMetricContribution
+pub surgeist_layout::InlineBoxMetricContribution::NoContribution
+pub surgeist_layout::InlineBoxMetricContribution::Strut(surgeist_text::protocol::LineBoxStrut)
 pub enum surgeist_layout::InlineBoxRef<Node, Scope>
 pub surgeist_layout::InlineBoxRef::NativePair
 pub surgeist_layout::InlineBoxRef::NativePair::end: Node
@@ -824,6 +827,7 @@ pub surgeist_layout::WrapInside::Avoid
 pub surgeist_layout::WrappingScopeError::AmbiguousNode
 pub surgeist_layout::WrappingScopeError::CaptureAssociation
 pub surgeist_layout::WrappingScopeError::ChildOrder
+pub surgeist_layout::WrappingScopeError::ConflictingBoxMetrics
 pub surgeist_layout::WrappingScopeError::ConflictingScope
 pub surgeist_layout::WrappingScopeError::CrossingScopes
 pub surgeist_layout::WrappingScopeError::DifferentFlow
@@ -832,6 +836,8 @@ pub surgeist_layout::WrappingScopeError::EndpointOrder
 pub surgeist_layout::WrappingScopeError::EndpointRole
 pub surgeist_layout::WrappingScopeError::ForeignCapture
 pub surgeist_layout::WrappingScopeError::InconsistentIncidence
+pub surgeist_layout::WrappingScopeError::InvalidBoxMetrics
+pub surgeist_layout::WrappingScopeError::MissingBoxMetrics
 pub surgeist_layout::WrappingScopeError::MissingCapture
 pub surgeist_layout::WrappingScopeError::MissingChildOrder
 pub surgeist_layout::WrappingScopeError::NodeNotReachable
@@ -841,11 +847,13 @@ pub surgeist_layout::WrappingScopeError::UnsupportedIncidence
 pub enum surgeist_layout::WrappingScopeInput<Node>
 pub surgeist_layout::WrappingScopeInput::Captured
 pub surgeist_layout::WrappingScopeInput::Captured::edges: surgeist_layout::WrapEdges
+pub surgeist_layout::WrappingScopeInput::Captured::metric_contribution: core::option::Option<surgeist_layout::InlineBoxMetricContribution>
 pub surgeist_layout::WrappingScopeInput::Captured::scope: surgeist_text::processing::contextual::capture::CapturedScope
 pub surgeist_layout::WrappingScopeInput::Captured::wrap_inside: surgeist_layout::WrapInside
 pub surgeist_layout::WrappingScopeInput::NativePair
 pub surgeist_layout::WrappingScopeInput::NativePair::edges: surgeist_layout::WrapEdges
 pub surgeist_layout::WrappingScopeInput::NativePair::end: Node
+pub surgeist_layout::WrappingScopeInput::NativePair::metric_contribution: core::option::Option<surgeist_layout::InlineBoxMetricContribution>
 pub surgeist_layout::WrappingScopeInput::NativePair::start: Node
 pub surgeist_layout::WrappingScopeInput::NativePair::wrap_inside: surgeist_layout::WrapInside
 pub enum surgeist_layout::WritingMode

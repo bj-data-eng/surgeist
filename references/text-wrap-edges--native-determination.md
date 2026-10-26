@@ -129,3 +129,90 @@ incidence refusal is truthful; full box-edge support includes representable empt
 boxes. Acceptance must cover asymmetric empty-box declarations, one ordered cut
 across several boxes, pins and removal custody, hidden-unit nonmatches, foreign
 capture/domain errors, and selected-placement replay with observable box metrics.
+
+## Inventory-realizable placements
+
+Text's correspondence proof authenticates an original cut; Layout additionally
+proves that the actual generated inventory can realize it. Before preference
+ranking or metric trials, exclude a soft placement that internally cuts a wholly
+movable empty in-flow subtree merely to distribute its struts. This includes a
+glyph-free parent whose complete in-flow subtree has zero advance and no actual
+content, forced boundary or other retained occurrence requiring separate line
+fragments. An empty child alone does not supply that reason. Assign each such
+box and its empty subtree wholly to one line, with each contribution once.
+
+For nested S(T) under these conditions, Text may authenticate BeforeS,
+InsideS/BeforeT, InsideS/AfterT and AfterS. Layout admits only BeforeS and AfterS.
+S.After Avoid then prefers BeforeS; reversing the exterior constraint prefers
+AfterS. WrapInside Auto does not admit an unrealizable placement. All-Auto may
+retain either complete whole-subtree outcome when otherwise equally preferred.
+
+Use genuine complete generated-box and participation evidence recursively. Skip
+a proven unrealizable class; missing required realization evidence is a precise
+refusal. Preserve Text's issued opportunity, executed relation prefix and public
+incidence identity. Zero width alone is insufficient: real text, atomics,
+retained removal/control pins, forced breaks, content on both sides, bidi and
+decoration can require actual fragments. Nonempty parents and genuine forces
+retain their existing fragmentation behavior.
+
+The [inline fragmentation model](css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#line-boxes)
+describes splitting overflowing inline contents or a forced break; empty-box
+metrics do not independently authorize an extra continuation. Text4's exterior
+margin-edge rule supplies related edge precedent. The recursive completion for
+these otherwise-empty native subtrees is explicit Surgeist policy, not a claim
+that CSS makes every glyph-free parent monolithic.
+
+## Actual box metrics
+
+`WrappingScopeInput::metric_contribution` supplies the actual associated box's
+line-box contribution. `Some(Strut(...))` is used geometry, including its
+baseline/top/bottom alignment, and applies on the assigned line even when edge
+declarations are Auto. `Some(NoContribution)` affirmatively supplies absence;
+`None` means evidence was not supplied. Genuine canonical/native aliases share
+one witness: a supplied value can fill an unsupplied alias, while contradictory
+supplied values refuse. Do not add the same box contribution twice.
+
+When original-placement selection reaches an otherwise unrepresented box,
+missing evidence cannot become zero or a guessed font strut. A captured Inline
+scope remains an actual box even without a declaration row or emitted glyphs.
+Empty-origin events, removals and pins can fix its placement without supplying
+its metrics. Neutral or irrelevant callers do not acquire unrelated witness
+requirements.
+
+An existing allocation discharges the demand only when the consumed contract
+proves that it owns this same box's contribution. The current public Text
+protocol permits this proof for an actually selected control strut with a
+validated canonical/native endpoint association. A control merely inside an
+ancestor box is not that proof. Control struts are Layout-allocated geometry,
+not evidence that a font was resolved for another box.
+
+The [inline layout-bounds rule](css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#inline-height)
+uses directly contained glyphs and, for glyph-free or fallback-only boxes, the
+box's own first-available-font strut. Current glyph-font/range readback does not
+certify that per-box ownership. Descendant font contributions, a PreparedScope,
+an EmptyOrigin or the paragraph-wide strut therefore cannot discharge a missing
+box witness. Supply real native used geometry or refuse precisely; do not move
+font-family resolution or fallback inference into Layout.
+
+Prepared Text flows combine the admitted allocations through Text's existing
+metric groups. Numeric-only native flows use their existing numeric metric
+owner and actual control geometry. Assignment and canonical allocation feedback
+retain box identity, alignment and incoming/outgoing custody through candidate
+evaluation, rejection, continuation, replay and cache reuse.
+
+### Paragraph completion and retained pins
+
+A boundary incidence authenticates an original prefix placement, not additional
+selection or placement authority. A computed force and paragraph completion can
+share a prepared boundary whose sole original placement remains inside a box.
+Layout must not treat the last available incidence as proof that every box has
+completed. For a paragraph-ending assignment, genuine inline-scope exits before
+that captured paragraph's exit require an outgoing `AtAfter` or `After` relation.
+Use actual same-capture/domain scope exits, not clipped intersection endpoints;
+scopes continuing beyond the paragraph retain their existing frontier custody.
+
+When no authenticated placement closes those local boxes, the current adapter
+returns `UnsupportedIncidence` before publishing geometry. It must not silently
+omit a box contribution, forge an exterior placement, or infer a box-only
+receiver from numerical struts. Genuine Forced endings and ordinary trailing-box
+completion remain distinct. Node-free completion is a separate scheduling scope.

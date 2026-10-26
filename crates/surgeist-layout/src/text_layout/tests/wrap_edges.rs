@@ -230,12 +230,23 @@ impl Fixture {
     }
 
     fn policies(&self, edges: WrapEdges, form: u8) -> Vec<WrappingScopeInput<u32>> {
+        // Native witness for this box's declared Ahem10/absolute10 metrics:
+        // baseline8, extent10 (ahem_style), explicitly Baseline-aligned. This
+        // is not a receipt inferred from descendant glyphs or paragraph strut.
         let scope = WrappingScopeInput::Captured {
+            metric_contribution: Some(InlineBoxMetricContribution::Strut(text::LineBoxStrut {
+                metrics: text::LineStrut {
+                    baseline: 8.0,
+                    line_extent: 10.0,
+                },
+                alignment: text::LineBoxAlignment::Baseline,
+            })),
             scope: self.scope.clone(),
             wrap_inside: WrapInside::Auto,
             edges,
         };
         let pair = WrappingScopeInput::NativePair {
+            metric_contribution: None,
             start: 20,
             end: 21,
             wrap_inside: WrapInside::Auto,
@@ -519,7 +530,7 @@ fn cross_origin_snapped_pair_preserves_its_precise_admission_refusal() {
 }
 
 #[test]
-fn unrepresented_logical_edge_refuses_soft_incidence_and_late_line_requires_source_processing() {
+fn authentic_logical_edge_supports_soft_incidence_and_late_line_requires_source_processing() {
     fn lane<S: LayoutScalar>() {
         for before in [false, true] {
             let range = if before { 3..5 } else { 1..3 };
@@ -532,11 +543,42 @@ fn unrepresented_logical_edge_refuses_soft_incidence_and_late_line_requires_sour
                 &logical,
                 3,
             );
-            assert_error(
-                logical
+            // The issued three-letter prefix has a genuine original box
+            // edge even without physical controls. Authenticate that exact
+            // shared cut instead of reconstructing an edge from UTF-16 alone.
+            let prepared = &logical.binding.prepared;
+            let boundary = prepared
+                .opportunity_views()
+                .find(|offer| {
+                    offer.kind() == text::PreparedBreakKind::Allowed
+                        && offer.boundary().view().source_before().get() == 3
+                        && offer.boundary().view().source_after().get() == 3
+                })
+                .unwrap()
+                .boundary();
+            let expected = if before {
+                text::CapturedScopeIncidence::AtBefore
+            } else {
+                text::CapturedScopeIncidence::AtAfter
+            };
+            assert!(
+                prepared
+                    .boundary_incidences(&boundary)
+                    .unwrap()
+                    .iter()
+                    .any(|incidence| prepared
+                        .incidence_scope_relation(incidence, &logical.scope)
+                        .unwrap()
+                        == expected)
+            );
+            // Three Ahem10 letters fit30, but that cut is avoided. The latest
+            // unviolated issued cut is2; the remaining three letters fit30.
+            assert_ascii(
+                &logical
                     .compute::<S>(edges(before, WrapEdge::Avoid), 0)
-                    .expect_err("logical box edge needs authenticated original-cut correspondence"),
-                WrappingScopeError::UnsupportedIncidence,
+                    .unwrap(),
+                &logical,
+                2,
             );
             for physical in [false, true] {
                 let fixture = Fixture::new("ABCDE", range.clone(), physical);

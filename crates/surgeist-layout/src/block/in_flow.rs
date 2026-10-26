@@ -194,6 +194,7 @@ where
         .and_then(|text| text.formatted_new_flow());
     let mut first_in_flow = true;
     let mut inline_indent_state = None;
+    let mut box_frontier = None;
     let mut line_box_context = crate::line_box::LineBoxContext::new(
         constants.line_box_direction_policy,
         constants.direction,
@@ -319,6 +320,7 @@ where
                     node,
                     children,
                     InlineRunContext {
+                        box_frontier: box_frontier.clone(),
                         tail: if !tail_active {
                             crate::text_layout::fit::TailContext::Unrestricted
                         } else if children[transition.end..].iter().all(|&node| {
@@ -352,6 +354,7 @@ where
                         }),
                     },
                     InlineRunTransitionState {
+                        box_frontier: &mut box_frontier,
                         formatted: &mut formatted,
                         indent_state: &mut inline_indent_state,
                         line_box_context: &mut line_box_context,

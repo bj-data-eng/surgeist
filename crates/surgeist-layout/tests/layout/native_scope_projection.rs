@@ -111,6 +111,7 @@ fn positions<S: LayoutScalar>(
         Vec::new(),
         WrappingInput {
             scopes: vec![WrappingScopeInput::NativePair {
+                metric_contribution: None,
                 edges: WrapEdges::AUTO,
                 start: 4,
                 end: 6,

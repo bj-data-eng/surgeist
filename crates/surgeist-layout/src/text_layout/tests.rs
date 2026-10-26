@@ -2088,3 +2088,9 @@ mod wrap_inside;
 
 #[path = "tests/wrap_edges.rs"]
 mod wrap_edges;
+
+#[path = "tests/box_incidence.rs"]
+mod box_incidence;
+
+#[path = "tests/box_incidence_cases.rs"]
+mod box_incidence_cases;

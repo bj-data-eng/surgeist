@@ -40,6 +40,7 @@ pub(super) enum FloatInlineSpace {
 /// never repeats placement without its preceding-inline constraint.
 #[derive(Clone, Debug)]
 pub(super) struct AcceptedFloatPlacement<S: LayoutScalar> {
+    pub(super) boxes: Option<crate::text_layout::boxes::BoxAssignment>,
     pub(super) logical_origin: LogicalPointOf<S>,
     pub(super) inline_space: FloatInlineSpace,
     pub(super) margin_block_start: S,
@@ -909,6 +910,14 @@ where
     for float in floats {
         let location = if let Some(accepted) = &float.accepted {
             if accepted.inline_space != FloatInlineSpace::Finite {
+                return Err(super::inline_run::text_run_error(
+                    container,
+                    crate::text_layout::fit::FitError::InvalidGeometry,
+                ));
+            }
+            if accepted.boxes.as_ref().is_some_and(|boxes| {
+                boxes.outgoing.boundary != accepted.line.selected_line().request().end
+            }) {
                 return Err(super::inline_run::text_run_error(
                     container,
                     crate::text_layout::fit::FitError::InvalidGeometry,

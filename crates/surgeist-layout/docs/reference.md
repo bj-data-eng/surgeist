@@ -114,13 +114,38 @@ Missing demanded incidence returns `MissingChildOrder`. Mixed inside/edge
 avoidance uses the [independent-constraint policy](../../../references/text-wrap-edges--native-determination.md#independent-avoidance-constraints).
 Avoidance adds no ordinary opportunities.
 
-Text-backed soft edge avoidance requires authentic physical endpoint or atomic
-incidence. A logical scope edge without that proof returns `UnsupportedIncidence`;
-the [original-cut refinement](../../../references/text-wrap-edges--native-determination.md#original-box-cut-incidence)
-specifies the remaining empty-box support. A Text-backed `Line` declaration
+Text-backed soft edge avoidance selects one Text-issued original incidence of
+the existing boundary, with authentic generated-box order and association.
+Genuine empty captured boxes can have distinct before/after choices; one choice
+governs every participating scope. Each material box-metric assignment is fitted
+before preference selection. Missing correspondence returns
+`UnsupportedIncidence`; see the [original-cut contract](../../../references/text-wrap-edges--native-determination.md#original-box-cut-incidence).
+A Text-backed `Line` declaration
 requires source processing before preparation and currently returns
 `SourceProcessingRequired` at this late admission boundary. Computed mandatory
 boundaries already prepared by Text retain their separate issued causes.
+
+Both scope variants carry `metric_contribution`.
+`Some(InlineBoxMetricContribution::Strut(...))` supplies actual used geometry and
+alignment; `Some(NoContribution)` affirmatively supplies absence, and `None`
+leaves the evidence unsupplied. Influential boxes need a real witness unless an
+actually selected same-box control allocation already owns that contribution.
+Glyph or descendant-font containment cannot establish the box's own strut.
+Aliases share one supplied witness; contributions are not duplicated.
+Missing, invalid and contradictory evidence return `MissingBoxMetrics`,
+`InvalidBoxMetrics` and `ConflictingBoxMetrics`, respectively. See the
+[metric ownership contract](../../../references/text-wrap-edges--native-determination.md#actual-box-metrics).
+
+The accepted original incidence and box attribution continue into the receiving
+line, actual allocation feedback, replay and cache identity. This custody is
+independent of the receiving preparation's spelling boundary. Text combines
+allocated box struts with its existing metric groups; numeric-only native flow
+uses its existing metric owner. Equal glyph prefixes do not establish equal
+box assignment or float clearance.
+At paragraph completion, the original cut must also close inline boxes whose
+genuine exits precede that paragraph's exit. A terminal computed pin lacking
+that proof returns `UnsupportedIncidence`; metrics cannot supply missing
+completion authority or silently replace an unfinished box.
 
 Text-backed scopes use authenticated mixed-prefix and canonical source incidence,
 including transformed, collapsed and removed content. A semantic captured scope

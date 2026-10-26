@@ -4,7 +4,8 @@ use std::{collections::BTreeMap, sync::Arc};
 mod declarations;
 pub use declarations::{
     ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
-    InlineBoxRef, InlineChildOrderInput, WrapEdge, WrapEdges, WrappingInput,
+    InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, WrapEdge, WrapEdges,
+    WrappingInput,
 };
 pub(crate) use declarations::{EdgeEffect, EdgePreferences, WrappingMode};
 
@@ -26,18 +27,20 @@ pub enum WrapInside {
 }
 
 /// Actual native endpoints or a canonical captured inline scope.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum WrappingScopeInput<Node> {
     NativePair {
         start: Node,
         end: Node,
         wrap_inside: WrapInside,
         edges: WrapEdges,
+        metric_contribution: Option<InlineBoxMetricContribution>,
     },
     Captured {
         scope: CapturedScope,
         wrap_inside: WrapInside,
         edges: WrapEdges,
+        metric_contribution: Option<InlineBoxMetricContribution>,
     },
 }
 
@@ -62,6 +65,9 @@ pub enum WrappingScopeError {
     ChildOrder,
     MissingChildOrder,
     SourceProcessingRequired,
+    MissingBoxMetrics,
+    InvalidBoxMetrics,
+    ConflictingBoxMetrics,
 }
 
 #[derive(Debug, Default)]
