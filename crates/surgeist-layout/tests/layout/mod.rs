@@ -11,3 +11,5 @@ mod source_edges_empty_continuation;
 mod source_edges_native_source_interleaving;
 mod source_edges_propagation;
 mod terminal_box_completion;
+
+mod numeric_completion;
