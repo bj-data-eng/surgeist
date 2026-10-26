@@ -117,3 +117,5 @@ fn visible_shared_block_excludes_float_height_while_root_contains_it_f32() {
 fn visible_shared_block_excludes_float_height_while_root_contains_it_f64() {
     ordinary_block_excludes_its_float_but_root_contains_it::<f64>();
 }
+
+mod placement;
