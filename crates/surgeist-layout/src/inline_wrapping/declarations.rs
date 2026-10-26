@@ -13,6 +13,15 @@ pub enum WrapEdge {
     Line,
     Flex,
 }
+/// Actual geometry of one associated inline box, independent of break preference.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum InlineBoxMetricContribution {
+    /// The host affirmatively supplies no line-box metric contribution.
+    NoContribution,
+    /// Actual allocated metrics; no font or endpoint geometry is inferred.
+    Strut(surgeist_text::LineBoxStrut),
+}
+
 /// Original normalized declarations, independent of effective propagation.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct WrapEdges {
@@ -95,7 +104,7 @@ pub struct InlineChildOrderInput<Node, Scope = CapturedScope> {
     pub suffix: ChildOrderCompleteness,
     pub formatting_context: Node,
 }
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WrappingInput<Node> {
     pub scopes: Vec<super::WrappingScopeInput<Node>>,
     pub child_order: Vec<InlineChildOrderInput<Node>>,

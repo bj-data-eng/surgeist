@@ -1,5 +1,6 @@
 //! The concrete immutable Text capture and its Layout-owned consuming adapter.
 
+pub(crate) mod boxes;
 pub(crate) mod capture;
 pub(crate) mod fit;
 pub(crate) mod formatted;
@@ -530,7 +531,31 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 return Err(binding_error(node, TextBindingError::MissingParagraph));
             }
         }
-        let resolved = capture::resolve(tree, &graph, &paragraphs, &wrapping_input.scopes)?;
+        #[expect(
+            clippy::mutable_key_type,
+            reason = "Text handle hashing uses immutable capture identity and occurrence index; lazy cache contents never affect the key"
+        )]
+        let mut seen_scopes = std::collections::HashSet::new();
+        let inventory_scopes: Vec<_> = wrapping_input
+            .child_order
+            .iter()
+            .flat_map(|order| {
+                std::iter::once(&order.parent).chain(order.children.iter().map(|child| &child.box_))
+            })
+            .filter_map(|box_| {
+                let crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(scope)) = box_ else {
+                    return None;
+                };
+                seen_scopes.insert(scope.clone()).then(|| scope.clone())
+            })
+            .collect();
+        let resolved = capture::resolve(
+            tree,
+            &graph,
+            &paragraphs,
+            &wrapping_input.scopes,
+            &inventory_scopes,
+        )?;
         let wrapping = crate::inline_wrapping::WrappingContext::new(
             tree,
             &graph,

@@ -18,6 +18,7 @@ pub(super) struct FloatEvent<Node, S: LayoutScalar> {
     following: Option<TextSeam>,
     position: usize,
     inside: bool,
+    native_offset: usize,
 }
 
 impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
@@ -155,6 +156,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
             following: next_seam,
             position: actual.1,
             inside: actual.2,
+            native_offset: offset,
         })
     }
 }
@@ -283,6 +285,9 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                         && !event.inside
                         && !represented(original_request.request(), &event.seam)
             });
+            let boxes = prefix
+                .map_or(replay.boxes.as_ref(), |frame| frame.boxes.as_ref())
+                .cloned();
             let (line, placed) =
                 prefix.map_or((line, replay.placed), |frame| (&frame.line, frame.placed));
             let selected = line.selected_line();
@@ -293,12 +298,34 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             } else {
                 request.end.view().participant_offset()
             };
+            let boundary_side = if event.position == end && !event.inside {
+                match boxes.as_ref().map(|assignment| &assignment.outgoing.native) {
+                    Some(crate::text_layout::boxes::NativeBoxCut::Proven(cut)) => Some(
+                        cut.side_of_node(event.native_offset).ok_or_else(|| {
+                            super::inline_run::text_run_error(
+                                container,
+                                FitError::Wrapping(crate::WrappingScopeError::UnsupportedIncidence),
+                            )
+                        })? == std::cmp::Ordering::Less,
+                    ),
+                    Some(crate::text_layout::boxes::NativeBoxCut::Unavailable) => {
+                        return Err(super::inline_run::text_run_error(
+                            container,
+                            FitError::Wrapping(crate::WrappingScopeError::UnsupportedIncidence),
+                        ));
+                    }
+                    Some(crate::text_layout::boxes::NativeBoxCut::Prefix) | None => None,
+                }
+            } else {
+                None
+            };
             let eligible = if event.inside {
                 start <= event.position && event.position < end
             } else {
                 start <= event.position
                     && (event.position < end
-                        || event.position == end && request.context.end != LineEnd::Forced)
+                        || event.position == end
+                            && boundary_side.unwrap_or(request.context.end != LineEnd::Forced))
             };
             if !eligible {
                 continue;
@@ -378,6 +405,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 }),
             );
             pending.accepted = Some(AcceptedFloatPlacement {
+                boxes: boxes.clone(),
                 logical_origin,
                 inline_space: self.inline_space,
                 margin_block_start: location.margin_block_start,
@@ -387,6 +415,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 line: line.clone(),
             });
             basis.push(EncounterBasis {
+                boxes,
                 event: index,
                 prefix,
                 preceding,

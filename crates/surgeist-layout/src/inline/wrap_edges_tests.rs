@@ -482,6 +482,7 @@ fn nested<S: LayoutScalar>(
     f.atomic(3, WrapEdges::AUTO, InlineBreakOpportunity::Allowed, false);
     for (start, end) in [(10, 13), (11, 12)] {
         f.wrapping.scopes.push(WrappingScopeInput::NativePair {
+            metric_contribution: None,
             start,
             end,
             wrap_inside: WrapInside::Auto,
@@ -491,6 +492,7 @@ fn nested<S: LayoutScalar>(
     let mut outer = vec![];
     if empty {
         f.wrapping.scopes.push(WrappingScopeInput::NativePair {
+            metric_contribution: None,
             start: 14,
             end: 15,
             wrap_inside: WrapInside::Auto,
@@ -876,6 +878,7 @@ fn mixed_constraints<S: LayoutScalar>(direction: Direction, width: f64) -> Fixtu
     // is interior to the respective complete native pair; after3 is outside.
     for (start, end) in [(10, 11), (12, 13)] {
         f.wrapping.scopes.push(WrappingScopeInput::NativePair {
+            metric_contribution: None,
             start,
             end,
             wrap_inside: WrapInside::Avoid,

@@ -53,8 +53,9 @@ pub(crate) fn fragment_for(
                 .minimum
                 .map_or(position.proposed, |minimum| position.proposed.max(minimum)))
         },
-        |_, _, _| {
+        |_, _, _, box_struts| {
             Ok(crate::text_layout::fit::LineAllocations {
+                line_box_struts: box_struts.to_vec(),
                 atomics: Vec::new(),
                 controls: Vec::new(),
                 line_strut: None,

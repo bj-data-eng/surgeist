@@ -19,6 +19,7 @@ pub(crate) struct PendingParagraph<Node> {
     pub nodes: Vec<Node>,
     pub prepared: surgeist_text::PreparedText,
     pub lines: Vec<LinePlacement>,
+    pub boxes: Vec<Option<super::boxes::BoxAssignment>>,
     pub bands: Vec<super::fit::LineBands>,
     pub flows: Vec<super::fit::LineFlow>,
     pub amounts: Vec<Vec<f64>>,
@@ -36,6 +37,7 @@ pub(crate) struct PendingParagraph<Node> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct LineBasis {
+    boxes: Option<super::boxes::BoxAssignment>,
     zone: super::fit::ZoneBasis,
     phrases: Vec<super::fit::PhraseBasis>,
     encounters: Vec<super::fit::EncounterBasis>,
@@ -51,6 +53,7 @@ pub(crate) struct LineBasis {
 pub(crate) struct PassBasis<Node, S: LayoutScalar> {
     pub wrapping: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>>,
     pub formatted: Option<super::formatted::FormattedPassBasis<Node, S>>,
+    pub boxes: Vec<super::boxes::BoxRunUse<Node, S>>,
     pub line_boxes: Vec<(
         Node,
         crate::line_box::LineBoxContext,
@@ -93,6 +96,7 @@ pub(crate) struct TextComputation<'input, Node, S: LayoutScalar> {
     pub associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
     pub frames: std::sync::Arc<[CanonicalFrame<Node, S>]>,
     pub pending: Vec<PendingParagraph<Node>>,
+    pub boxes: Vec<super::boxes::BoxRunUse<Node, S>>,
     pub reusable: std::sync::Arc<[super::fit::ReusableLine]>,
     pub atomic_origins: Vec<(Node, Point<f64>)>,
     pub absolute_baselines: Vec<(Node, f64)>,
@@ -362,6 +366,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             associations,
             frames: std::sync::Arc::from([]),
             pending: Vec::new(),
+            boxes: Vec::new(),
             reusable: std::sync::Arc::from([]),
             atomic_origins: Vec::new(),
             absolute_baselines: Vec::new(),
@@ -403,6 +408,12 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
 
     pub fn frame(&self, node: Node) -> Option<CanonicalFrame<Node, S>> {
         self.frames.iter().find(|frame| frame.node == node).copied()
+    }
+
+    pub(crate) fn record_boxes(&mut self, uses: super::boxes::BoxRunUse<Node, S>) {
+        if !uses.trials.is_empty() && !self.boxes.contains(&uses) {
+            self.boxes.push(uses);
+        }
     }
 
     pub fn record(&mut self, paragraph: PendingParagraph<Node>) {
@@ -466,6 +477,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
 
     pub fn basis(&self, frames: Vec<CanonicalFrame<Node, S>>) -> PassBasis<Node, S> {
         PassBasis {
+            boxes: self.boxes.clone(),
             wrapping: self.wrapping.clone(),
             formatted: self
                 .formatted
@@ -496,10 +508,15 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                         .zip(&paragraph.encounters)
                         .zip(&paragraph.zones)
                         .zip(&paragraph.phrases)
+                        .zip(&paragraph.boxes)
                 })
                 .map(
-                    |((((((placement, band), flow), amounts), encounters), zone), phrases)| {
+                    |(
+                        ((((((placement, band), flow), amounts), encounters), zone), phrases),
+                        boxes,
+                    )| {
                         LineBasis {
+                            boxes: boxes.clone(),
                             zone: zone.clone(),
                             phrases: phrases.clone(),
                             encounters: encounters.clone(),

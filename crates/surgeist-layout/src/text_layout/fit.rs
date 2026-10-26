@@ -1,5 +1,6 @@
 //! Candidate fitting over the actual immutable Text operations.
 
+use super::boxes::{BoxAssignment, BoxEntry, BoxResolver};
 use super::formatted::FormattedTailSnapshot;
 pub(crate) use super::roles::{RoleBasis, RoleUse};
 use crate::{TextAlign, TextAlignLast, TextJustification};
@@ -25,6 +26,7 @@ pub(crate) struct Band {
 /// A source-line encounter checkpoint is not the mutable text avoidance cursor.
 #[derive(Clone)]
 pub(crate) struct EncounterReplay {
+    pub boxes: Option<BoxAssignment>,
     /// Actual preceding source encounters of a pure portion measurement.
     pub preceding: Option<PrecedingEncounter>,
     pub source_floor: f64,
@@ -33,9 +35,17 @@ pub(crate) struct EncounterReplay {
     pub defer_preceding: bool,
 }
 
+impl EncounterReplay {
+    fn with_boxes(mut self, boxes: Option<BoxAssignment>) -> Self {
+        self.boxes = boxes;
+        self
+    }
+}
+
 /// Actual receipt and placed anchor belong to one accepted trial frame.
 #[derive(Clone)]
 pub(crate) struct PrecedingEncounter {
+    pub boxes: Option<BoxAssignment>,
     pub line: FinalizedLine,
     pub placed: f64,
 }
@@ -111,6 +121,7 @@ pub(crate) enum EncounterReset {
 /// Actual source-event ordinal and accepted scalar geometry for cycle identity.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct EncounterBasis {
+    pub boxes: Option<BoxAssignment>,
     pub event: usize,
     pub prefix: f64,
     pub preceding: bool,
@@ -124,6 +135,7 @@ pub(crate) struct EncounterBasis {
 struct CandidateBasis {
     encounters: Vec<EncounterBasis>,
     request: LineSelectionRequest,
+    boxes: Option<BoxAssignment>,
     amounts: Vec<f64>,
     logical_start: f64,
     placed_start: f64,
@@ -147,6 +159,8 @@ pub(crate) struct LineFlow {
 }
 
 pub(crate) struct FittedLine {
+    pub boxes: Option<BoxAssignment>,
+    pub box_uses: Vec<super::boxes::BoxTrialUse>,
     pub first_formatted: bool,
     pub role_uses: Vec<RoleUse>,
     pub line_box_end: crate::line_box::LineBoxContext,
@@ -195,8 +209,7 @@ impl From<crate::inline_wrapping::WrappingScopeError> for FitError {
     }
 }
 
-pub(crate) type WrappingClassifier<'a> =
-    dyn Fn(&PreparedBoundary) -> Result<crate::inline_wrapping::AvoidClass, FitError> + 'a;
+pub(crate) type WrappingClassifier<'a> = dyn BoxResolver + 'a;
 
 pub(crate) struct FitInput<'a> {
     pub wrapping: Option<&'a WrappingClassifier<'a>>,
@@ -222,6 +235,7 @@ pub(crate) struct FitInput<'a> {
 }
 
 pub(crate) struct LineAllocations {
+    pub line_box_struts: Vec<surgeist_text::LineBoxStrut>,
     pub atomics: Vec<AtomicAllocation>,
     pub controls: Vec<ControlAllocation>,
     pub line_strut: Option<surgeist_text::LineStrut>,
@@ -530,6 +544,7 @@ struct CandidatePosition {
 
 #[derive(Clone)]
 struct EvaluatedCandidate {
+    boxes: Option<BoxAssignment>,
     request: LineSelectionRequest,
     finalized: FinalizedLine,
     amounts: Vec<f64>,
@@ -544,6 +559,7 @@ impl EvaluatedCandidate {
     fn basis(&self, position: &CandidatePosition) -> CandidateBasis {
         CandidateBasis {
             encounters: self.encounters.clone(),
+            boxes: self.boxes.clone(),
             request: self.request.clone(),
             amounts: self.amounts.clone(),
             logical_start: position.logical_start,
@@ -627,12 +643,17 @@ impl ScopedChoices {
         if self.error.is_some() {
             return;
         }
-        let result = classify(&candidate.request.end).and_then(|class| {
-            self.frontier
-                .get_or_insert_with(|| class.frontier())
-                .consider(class, candidate)
-                .map_err(FitError::Wrapping)
-        });
+        let result = candidate
+            .boxes
+            .as_ref()
+            .ok_or(FitError::InvalidGeometry)
+            .and_then(|boxes| classify.classify(boxes))
+            .and_then(|class| {
+                self.frontier
+                    .get_or_insert_with(|| class.frontier())
+                    .consider(class, candidate)
+                    .map_err(FitError::Wrapping)
+            });
         if let Err(error) = result {
             self.error = Some(error);
         }
@@ -655,8 +676,81 @@ struct EndpointContext<'a> {
     position: &'a CandidatePosition,
     indent_state: crate::text_indent::IndentLineState,
     hyphenation_state: crate::hyphenation::LineHyphenationState,
-    rejected_choices: &'a [LineSelectionRequest],
+    rejected_choices: &'a [CandidateKey],
     conditional: bool,
+}
+
+fn box_checkpoint<'a>(
+    start: &PreparedBoundary,
+    query: &'a EndpointContext<'_>,
+    preceding: Option<&'a EvaluatedCandidate>,
+) -> Result<Option<BoxEntry<'a>>, FitError> {
+    let checkpoint = |line: &FinalizedLine,
+                      boxes: Option<&'a BoxAssignment>|
+     -> Result<Option<BoxEntry<'a>>, FitError> {
+        let Some(boxes) = boxes else {
+            return Ok(None);
+        };
+        let selected = line.selected_line();
+        let request = selected.request();
+        if request.end == *start {
+            return Ok(Some(BoxEntry::ConsumedTo(&boxes.outgoing)));
+        }
+        if request.start == *start {
+            return Ok(Some(BoxEntry::ConsumedTo(&boxes.incoming)));
+        }
+        if request.start.prepared_text() == start.prepared_text()
+            && request.start.view().participant_offset() < start.view().participant_offset()
+            && start.view().participant_offset() < request.end.view().participant_offset()
+        {
+            let participant = start
+                .prepared_text()
+                .participants()
+                .nth(start.view().participant_offset())
+                .ok_or(FitError::InvalidGeometry)?;
+            let prefix =
+                line.prefix_at(&surgeist_text::TextSeam::BeforeParticipant(participant))?;
+            return Ok(Some(if prefix.has_retained_flow_participation() {
+                BoxEntry::ConsumedTo(&boxes.incoming)
+            } else {
+                BoxEntry::UnconsumedFrom(&boxes.incoming)
+            }));
+        }
+        Ok(None)
+    };
+    if let Some(candidate) = preceding
+        && let Some(entry) = checkpoint(&candidate.finalized, candidate.boxes.as_ref())?
+    {
+        return Ok(Some(entry));
+    }
+    for line in query.accepted_prefix.iter().rev() {
+        if let Some(entry) = checkpoint(&line.finalized, line.boxes.as_ref())? {
+            return Ok(Some(entry));
+        }
+    }
+    Ok(None)
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct CandidateKey {
+    request: LineSelectionRequest,
+    boxes: Option<BoxAssignment>,
+}
+impl EvaluatedCandidate {
+    fn key(&self) -> CandidateKey {
+        CandidateKey {
+            request: self.request.clone(),
+            boxes: self.boxes.clone(),
+        }
+    }
+}
+impl FittedLine {
+    fn key(&self) -> CandidateKey {
+        CandidateKey {
+            request: self.finalized.selected_line().request().clone(),
+            boxes: self.boxes.clone(),
+        }
+    }
 }
 
 struct EndpointChoice {
@@ -670,6 +764,7 @@ struct EndpointChoice {
 /// restores its accepted encounter checkpoint; it is not a child publication.
 struct CandidateEnvironment<B, C, A, R, X> {
     roles: Vec<RoleUse>,
+    box_uses: Vec<super::boxes::BoxTrialUse>,
     band: B,
     canonical: C,
     allocate: A,
@@ -681,7 +776,12 @@ impl<B, C, A, R, X> CandidateEnvironment<B, C, A, R, X>
 where
     B: FnMut(f64, f64) -> Result<Band, FitError>,
     C: FnMut(BlockPosition, f64) -> Result<f64, FitError>,
-    A: FnMut(&FinalizedLine, Band, f64) -> Result<LineAllocations, FitError>,
+    A: FnMut(
+        &FinalizedLine,
+        Band,
+        f64,
+        &[surgeist_text::LineBoxStrut],
+    ) -> Result<LineAllocations, FitError>,
     R: FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
     X: FnMut(EncounterReset),
 {
@@ -698,19 +798,96 @@ where
     fn evaluate_mode(
         &mut self,
         input: &FitInput<'_>,
-        mut request: LineSelectionRequest,
+        request: LineSelectionRequest,
         query: &EndpointContext<'_>,
         preceding: Option<&EvaluatedCandidate>,
         natural_only: bool,
     ) -> Result<EvaluatedCandidate, FitError> {
+        let Some(resolver) = input.wrapping else {
+            return self.evaluate_assignment(input, request, query, preceding, natural_only, None);
+        };
+        let incoming = box_checkpoint(&request.start, query, preceding)?;
+        let assignments = resolver.choices(
+            &request.start,
+            &request.end,
+            incoming,
+            &request.controls,
+            request.context.end,
+        )?;
+        let mut ordinary = None;
+        let mut unrejected = None;
+        let mut fitting = Vec::new();
+        for assignment in assignments {
+            let mut request = request.clone();
+            request.line_box_struts = assignment.struts();
+            let trial = self.evaluate_assignment(
+                input,
+                request,
+                query,
+                preceding,
+                natural_only,
+                Some(assignment),
+            )?;
+            if ordinary.is_none() {
+                ordinary = Some(trial.clone());
+            }
+            if !query.rejected_choices.contains(&trial.key()) {
+                if unrejected.is_none() {
+                    unrejected = Some(trial.clone());
+                }
+                if trial.fits {
+                    fitting.push(trial);
+                }
+            }
+        }
+        if fitting.len() > 1
+            && matches!(input.available, Available::Definite(_))
+            && request.context.end == LineEnd::Soft
+        {
+            let mut frontier = None;
+            for trial in fitting {
+                let class =
+                    resolver.classify(trial.boxes.as_ref().ok_or(FitError::InvalidGeometry)?)?;
+                frontier
+                    .get_or_insert_with(|| class.frontier())
+                    .consider(class, trial)?;
+            }
+            return frontier
+                .and_then(|frontier| frontier.into_preferred())
+                .ok_or(FitError::InvalidGeometry);
+        }
+        fitting
+            .into_iter()
+            .next()
+            .or(unrejected)
+            .or(ordinary)
+            .ok_or(FitError::InvalidGeometry)
+    }
+
+    fn evaluate_assignment(
+        &mut self,
+        input: &FitInput<'_>,
+        mut request: LineSelectionRequest,
+        query: &EndpointContext<'_>,
+        preceding: Option<&EvaluatedCandidate>,
+        natural_only: bool,
+        boxes: Option<BoxAssignment>,
+    ) -> Result<EvaluatedCandidate, FitError> {
+        let original_box_struts = boxes.as_ref().map_or_else(Vec::new, BoxAssignment::struts);
         let position = query.position;
         let entry = super::roles::RoleEntry {
             current_first: query.indent_state.first_formatted(),
             query_start: query.start,
             query_incoming: query.incoming,
+            boxes: boxes.as_ref(),
             accepted: query.accepted_prefix,
-            preceding: preceding
-                .map(|candidate| (&candidate.finalized, candidate.amounts.as_slice())),
+            preceding: preceding.map(|candidate| {
+                (
+                    &candidate.finalized,
+                    candidate.amounts.as_slice(),
+                    candidate.boxes.as_ref(),
+                )
+            }),
         };
         (self.reset)(EncounterReset::Candidate);
         let mut height = 0.0;
@@ -728,12 +905,20 @@ where
                 request = candidate.request;
                 (self.replay)(
                     &candidate.finalized,
-                    position.replay(placed_start, preceding),
+                    position
+                        .replay(placed_start, preceding)
+                        .with_boxes(boxes.clone()),
                 )?;
-                let actual = (self.allocate)(&candidate.finalized, band, placed_start)?;
+                let actual = (self.allocate)(
+                    &candidate.finalized,
+                    band,
+                    placed_start,
+                    &original_box_struts,
+                )?;
                 if actual.atomics == request.atomics
                     && actual.controls == request.controls
                     && actual.line_strut == request.line_strut
+                    && actual.line_box_struts == request.line_box_struts
                 {
                     break (candidate.finalized, candidate.amounts, role_basis);
                 }
@@ -745,8 +930,14 @@ where
                 request.atomics = actual.atomics;
                 request.controls = actual.controls;
                 request.line_strut = actual.line_strut;
+                request.line_box_struts = actual.line_box_struts;
             };
-            let encounters = (self.replay)(&finalized, position.replay(placed_start, preceding))?;
+            let encounters = (self.replay)(
+                &finalized,
+                position
+                    .replay(placed_start, preceding)
+                    .with_boxes(boxes.clone()),
+            )?;
             let feedback = finalized.feedback();
             let actual_height = finite(feedback.line_height)?;
             let actual_start = (self.canonical)(
@@ -764,6 +955,7 @@ where
             )?;
             let basis = CandidateBasis {
                 encounters: encounters.clone(),
+                boxes: boxes.clone(),
                 request: request.clone(),
                 amounts: amounts.clone(),
                 logical_start: position.logical_start,
@@ -812,6 +1004,7 @@ where
                 let basis = role_basis.ok_or(FitError::InvalidGeometry)?;
                 let used = RoleUse {
                     request: request.clone(),
+                    boxes: boxes.clone(),
                     amounts: amounts.clone(),
                     usage,
                     outgoing: finalized.hyphenation_continuation(),
@@ -828,7 +1021,21 @@ where
                     self.roles.push(used);
                 }
             }
+            if let Some(assignment) = &boxes {
+                let used = super::boxes::BoxTrialUse {
+                    assignment: assignment.clone(),
+                    request: request.clone(),
+                    amounts: amounts.clone(),
+                    bands,
+                    encounters: encounters.clone(),
+                    placed_start,
+                };
+                if !self.box_uses.contains(&used) {
+                    self.box_uses.push(used);
+                }
+            }
             return Ok(EvaluatedCandidate {
+                boxes,
                 request,
                 finalized,
                 amounts,
@@ -951,7 +1158,7 @@ where
             }
             fitting_none |=
                 candidate.formatted && candidate.fits && candidate.request.alternative.is_none();
-            if query.rejected_choices.contains(&candidate.request) {
+            if query.rejected_choices.contains(&candidate.key()) {
                 if candidate.request.alternative.is_some() {
                     dispositions.push(ConditionalDisposition::ConsumerHyphenationPolicy(
                         candidate.finalized,
@@ -1102,7 +1309,9 @@ where
         (self.reset)(EncounterReset::Candidate);
         let encounters = (self.replay)(
             &candidate.finalized,
-            position.replay(candidate.placed_start, None),
+            position
+                .replay(candidate.placed_start, None)
+                .with_boxes(candidate.boxes.clone()),
         )?;
         let bands = query_bands(
             &mut self.band,
@@ -1114,12 +1323,17 @@ where
             &candidate.finalized,
             candidate.bands.combined(),
             candidate.placed_start,
+            &candidate
+                .boxes
+                .as_ref()
+                .map_or_else(Vec::new, BoxAssignment::struts),
         )?;
         if encounters != candidate.encounters
             || bands != candidate.bands
             || actual.atomics != candidate.request.atomics
             || actual.controls != candidate.request.controls
             || actual.line_strut != candidate.request.line_strut
+            || actual.line_box_struts != candidate.request.line_box_struts
         {
             return Err(FitError::FeedbackCycle);
         }
@@ -1130,7 +1344,9 @@ where
 impl CandidatePosition {
     fn replay(&self, placed: f64, preceding: Option<&EvaluatedCandidate>) -> EncounterReplay {
         EncounterReplay {
+            boxes: None,
             preceding: preceding.map(|candidate| PrecedingEncounter {
+                boxes: candidate.boxes.clone(),
                 line: candidate.finalized.clone(),
                 placed: candidate.placed_start,
             }),
@@ -1282,7 +1498,12 @@ pub(crate) fn fit(
     input: FitInput<'_>,
     band_source: impl FnMut(f64, f64) -> Result<Band, FitError>,
     canonical_block: impl FnMut(BlockPosition, f64) -> Result<f64, FitError>,
-    allocate: impl FnMut(&FinalizedLine, Band, f64) -> Result<LineAllocations, FitError>,
+    allocate: impl FnMut(
+        &FinalizedLine,
+        Band,
+        f64,
+        &[surgeist_text::LineBoxStrut],
+    ) -> Result<LineAllocations, FitError>,
     mut clear_source: impl FnMut(f64, &LineSelectionRequest) -> Result<Option<f64>, FitError>,
     encounters: EncounterCallbacks<
         impl FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
@@ -1318,6 +1539,7 @@ pub(crate) fn fit(
         .collect();
     let mut environment = CandidateEnvironment {
         roles: Vec::new(),
+        box_uses: Vec::new(),
         band: band_source,
         canonical: canonical_block,
         allocate,
@@ -1333,9 +1555,10 @@ pub(crate) fn fit(
     let wrapping = input
         .wrapping
         .filter(|_| matches!(input.available, Available::Definite(_)));
-    let mut visited: Vec<Vec<LineSelectionRequest>> = Vec::new();
+    let mut visited: Vec<Vec<CandidateKey>> = Vec::new();
     'sequence: loop {
         environment.roles.clear();
+        environment.box_uses.clear();
         (environment.reset)(EncounterReset::Sequence);
         let mut result: Vec<FittedLine> = Vec::new();
         let mut start = 0;
@@ -1348,14 +1571,14 @@ pub(crate) fn fit(
         // retain it in reuse, convergence and visited-choice identity.
         let mut incoming = None;
         let mut completed_end = false;
+        let mut current_boundary = boundaries
+            .first()
+            .ok_or(FitError::InvalidGeometry)?
+            .1
+            .clone();
         while !completed_end {
-            let start_boundary = boundaries
-                .iter()
-                .find(|(offset, _)| *offset == start)
-                .expect("a consumed opportunity retains its mixed boundary")
-                .1
-                .clone();
-            let rejected_choices: &[LineSelectionRequest] = if constrained {
+            let start_boundary = current_boundary.clone();
+            let rejected_choices: &[CandidateKey] = if constrained {
                 if visited.len() <= result.len() {
                     visited.push(Vec::new());
                 }
@@ -1371,6 +1594,7 @@ pub(crate) fn fit(
             };
             let mut transitions = Vec::new();
             let role_start = environment.roles.len();
+            let box_use_start = environment.box_uses.len();
             loop {
                 let mut phrase_basis = Vec::new();
                 let mut choice: Option<EvaluatedCandidate>;
@@ -1529,7 +1753,7 @@ pub(crate) fn fit(
                     if constrained && let Some(parent) = result.pop() {
                         let depth = result.len();
                         visited.truncate(depth + 1);
-                        visited[depth].push(parent.finalized.selected_line().request().clone());
+                        visited[depth].push(parent.key());
                         continue 'sequence;
                     }
                     return Err(FitError::FeedbackCycle);
@@ -1680,8 +1904,7 @@ pub(crate) fn fit(
                             if constrained && let Some(parent) = result.pop() {
                                 let depth = result.len();
                                 visited.truncate(depth + 1);
-                                visited[depth]
-                                    .push(parent.finalized.selected_line().request().clone());
+                                visited[depth].push(parent.key());
                                 continue 'sequence;
                             }
                             return Err(FitError::FeedbackCycle);
@@ -1705,6 +1928,7 @@ pub(crate) fn fit(
                 environment.restore(&candidate, &position)?;
                 let basis = (
                     candidate.request.clone(),
+                    candidate.boxes.clone(),
                     candidate.amounts.clone(),
                     candidate.encounters.clone(),
                     candidate.bands,
@@ -1726,6 +1950,7 @@ pub(crate) fn fit(
                         &candidate.finalized,
                         EncounterReplay {
                             preceding: None,
+                            boxes: candidate.boxes.clone(),
                             defer_preceding: true,
                             ..position.replay(candidate.placed_start, None)
                         },
@@ -1770,6 +1995,7 @@ pub(crate) fn fit(
                 }
                 let ending = candidate.request.context.end;
                 let end = candidate.request.end.view().participant_offset();
+                current_boundary = candidate.request.end.clone();
                 let first_formatted = indent_state.first_formatted();
                 indent_state.commit(ending == LineEnd::Forced);
                 if candidate.formatted {
@@ -1784,6 +2010,8 @@ pub(crate) fn fit(
                 incoming = candidate.finalized.hyphenation_continuation();
                 let available = candidate.finalized.metric_bounds().size.width;
                 result.push(FittedLine {
+                    boxes: candidate.boxes,
+                    box_uses: environment.box_uses.split_off(box_use_start),
                     first_formatted,
                     role_uses: environment.roles.split_off(role_start),
                     line_box_end: line_box_context,
@@ -1832,7 +2060,7 @@ pub(crate) fn fit(
             // its deepest decision. Exhausted descendants backtrack above.
             let depth = result.len() - 1;
             visited.truncate(depth + 1);
-            visited[depth].push(result[depth].finalized.selected_line().request().clone());
+            visited[depth].push(result[depth].key());
             continue 'sequence;
         }
         return Ok(result);

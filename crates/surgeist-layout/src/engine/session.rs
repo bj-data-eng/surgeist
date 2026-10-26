@@ -72,6 +72,7 @@ struct StagedInlineFragmentGroup<Node, S: LayoutScalar> {
 pub(crate) struct FloatChildPacket<Node, S: LayoutScalar> {
     wrapping: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>>,
     formatted_basis: Vec<crate::text_layout::formatted::BoundAssignment<Node, S>>,
+    boxes: Vec<crate::text_layout::boxes::BoxRunUse<Node, S>>,
     formatted: Option<crate::text_layout::formatted::FormattedState<Node, S>>,
     pub(crate) node: Node,
     pub(crate) input: ComputeInputOf<S>,
@@ -344,6 +345,7 @@ where
             .collect::<Vec<_>>()
             .into();
         text.pending.clear();
+        text.boxes.clear();
         text.scope_fragments.clear();
         text.atomic_origins.clear();
         text.absolute_baselines.clear();
@@ -815,9 +817,18 @@ where
             std::sync::Arc::from([])
         };
         let output = probe.compute_child(node, input)?;
-        let (pending, atomic_origins, absolute_baselines, scope_fragments, formatted) =
+        let (pending, atomic_origins, absolute_baselines, scope_fragments, formatted, boxes) =
             probe.text.map_or_else(
-                || (Vec::new(), Vec::new(), Vec::new(), Vec::new(), None),
+                || {
+                    (
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        None,
+                        Vec::new(),
+                    )
+                },
                 |text| {
                     (
                         text.pending,
@@ -825,11 +836,13 @@ where
                         text.absolute_baselines,
                         text.scope_fragments,
                         text.formatted,
+                        text.boxes,
                     )
                 },
             );
         let associations = self.text.as_ref().map(|text| text.associations.clone());
         Ok(std::sync::Arc::new(FloatChildPacket {
+            boxes,
             wrapping: self.wrapping.clone(),
             formatted_basis: self
                 .text
@@ -916,6 +929,9 @@ where
                     group.nodes.clone(),
                     group.fragments.clone(),
                 );
+            }
+            for uses in &packet.boxes {
+                text.record_boxes(uses.clone());
             }
             for paragraph in &packet.pending {
                 text.record(paragraph.clone());

@@ -28,6 +28,7 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
         vec![fixture.binding.clone()],
         crate::WrappingInput {
             scopes: vec![WrappingScopeInput::NativePair {
+                metric_contribution: None,
                 edges: Default::default(),
                 start: 20,
                 end: 21,

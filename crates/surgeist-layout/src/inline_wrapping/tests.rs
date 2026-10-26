@@ -80,6 +80,7 @@ fn native_scope_proof_checks_real_roles_order_and_non_crossing_pairs() {
         crate::engine::validation::validate_layout_request_with_text_graph(&tree, 0, &[], &[])
             .unwrap();
     let pair = |start, end| WrappingScopeInput::NativePair {
+        metric_contribution: None,
         edges: Default::default(),
         start,
         end,

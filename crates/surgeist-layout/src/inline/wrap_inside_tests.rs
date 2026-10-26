@@ -82,6 +82,7 @@ fn exercise<S: LayoutScalar>(
         &tree,
         &graph,
         &[WrappingScopeInput::NativePair {
+            metric_contribution: None,
             edges: Default::default(),
             start: 2,
             end: 5,

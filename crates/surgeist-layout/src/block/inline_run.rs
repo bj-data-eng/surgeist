@@ -150,6 +150,7 @@ impl VisibleInlineRunTransition {
         S: LayoutScalar,
     {
         let InlineRunTransitionState {
+            box_frontier,
             formatted,
             indent_state,
             line_box_context,
@@ -193,6 +194,7 @@ impl VisibleInlineRunTransition {
         }
         *hyphenation_state = placement.hyphenation_state;
         *line_box_context = placement.line_box_context;
+        *box_frontier = placement.box_frontier.take();
         if let Some(committed) = placement.indent_state {
             *indent_state = Some(committed);
         }
@@ -238,6 +240,7 @@ impl VisibleInlineRunTransition {
 }
 
 pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
+    pub(super) box_frontier: &'a mut Option<crate::text_layout::boxes::BoxFrontier>,
     pub(super) formatted: &'a mut Option<crate::text_layout::formatted::FormattedFlow<Node, S>>,
     pub(super) line_box_context: &'a mut crate::line_box::LineBoxContext,
     pub(super) indent_state: &'a mut Option<crate::text_indent::IndentLineState>,
@@ -261,6 +264,7 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
 }
 
 struct InlineRunPlacement<Node, S: LayoutScalar> {
+    box_frontier: Option<crate::text_layout::boxes::BoxFrontier>,
     formatted: Option<crate::text_layout::formatted::FormattedFlowItem<Node, S>>,
     line_box_context: crate::line_box::LineBoxContext,
     lines: Vec<crate::hyphenation::CommittedInlineLine>,
@@ -285,6 +289,7 @@ impl<Node, S: LayoutScalar> InlineRunPlacement<Node, S> {
 }
 
 pub(super) struct InlineRunContext<'a, S: LayoutScalar> {
+    pub(super) box_frontier: Option<crate::text_layout::boxes::BoxFrontier>,
     pub(super) line_box_context: crate::line_box::LineBoxContext,
     pub(super) tail: crate::text_layout::fit::TailContext,
     pub(super) indent_state: crate::text_indent::IndentLineState,
@@ -363,6 +368,7 @@ where
     S: LayoutScalar,
 {
     let InlineRunContext {
+        mut box_frontier,
         line_box_context,
         indent_state,
         hyphenation_state,
@@ -745,18 +751,15 @@ where
             })
             .unwrap_or_default();
         let context = crate::text_layout::run::Context {
-            wrapping: if matches!(available, AvailableOf::Definite(_)) {
-                tree.wrapping_context().and_then(|(context, graph)| {
-                    crate::text_layout::run::WrappingProjection::new(
-                        context,
-                        graph,
-                        binding,
-                        &associations,
-                    )
-                })
-            } else {
-                None
-            },
+            wrapping: tree.wrapping_context().and_then(|(context, graph)| {
+                crate::text_layout::run::WrappingProjection::new(
+                    context,
+                    graph,
+                    binding,
+                    &associations,
+                )
+                .map(|projection| projection.with_incoming(box_frontier.clone()))
+            }),
             formatted,
             frame: frame.map_or(crate::text_layout::run::Frame::Measurement, |frame| {
                 crate::text_layout::run::Frame::Canonical {
@@ -1113,6 +1116,24 @@ where
 
     let mut text_content_size = Size::ZERO;
     if let Some(output) = text_output {
+        if let Some(state) = tree.text_computation() {
+            state.record_boxes(crate::text_layout::boxes::BoxRunUse {
+                container,
+                nodes: run.to_vec(),
+                input,
+                available: match available_inline_extent {
+                    AvailableOf::Definite(value) => {
+                        crate::text_layout::fit::Available::Definite(value.to_f64())
+                    }
+                    AvailableOf::MinContent => crate::text_layout::fit::Available::Minimum,
+                    AvailableOf::MaxContent => crate::text_layout::fit::Available::Maximum,
+                },
+                trials: output.box_uses.clone(),
+            });
+        }
+        if let Some(Some(assignment)) = output.paragraph.boxes.last() {
+            box_frontier = Some(assignment.outgoing.clone());
+        }
         // Every normal-flow line allocation and actual placed metric bound
         // contributes independently, including atomic-only and terminal empty
         // lines, beside genuine source-fragment and child-box contributions.
@@ -1372,6 +1393,7 @@ where
         })
         .fold(owned_float_block_end, |a, b| a.max(b));
     Ok(InlineRunPlacement {
+        box_frontier,
         formatted: formatted_item,
         line_box_context: report.line_box_context,
         lines: report.lines,
