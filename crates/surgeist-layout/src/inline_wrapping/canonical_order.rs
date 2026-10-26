@@ -52,7 +52,10 @@ pub(crate) enum CanonicalOrderError {
 }
 
 impl CanonicalOrderInventory {
-    fn parent(&self, child: &CanonicalBox) -> Result<Option<CapturedScope>, CanonicalOrderError> {
+    pub(crate) fn parent(
+        &self,
+        child: &CanonicalBox,
+    ) -> Result<Option<CapturedScope>, CanonicalOrderError> {
         if let CanonicalBox::Scope(scope) = child {
             if scope.role() != ScopeRole::Inline {
                 return Err(CanonicalOrderError::Contradiction);
@@ -92,40 +95,105 @@ impl CanonicalOrderInventory {
         let CanonicalCoverage::Paragraphs(paragraphs) = &self.coverage else {
             return true;
         };
-        if parent.role() == ScopeRole::Inline {
-            let start = if prefix == ChildOrderCompleteness::Complete {
-                parent.enter_position()
-            } else {
-                children
-                    .first()
-                    .map_or_else(|| parent.enter_position(), CanonicalBox::position)
-            };
-            let end = if suffix == ChildOrderCompleteness::Complete {
-                parent.exit_position()
-            } else {
-                children
-                    .last()
-                    .map_or_else(|| parent.exit_position(), CanonicalBox::end)
-            };
-            return paragraphs.iter().any(|paragraph| {
-                paragraph.domain() == parent.domain()
-                    && paragraph.enter_position() < start
-                    && end < paragraph.exit_position()
-            });
+        let start = if prefix == ChildOrderCompleteness::Complete {
+            parent.enter_position()
+        } else {
+            children
+                .first()
+                .map_or_else(|| parent.enter_position(), CanonicalBox::position)
+        };
+        let end = if suffix == ChildOrderCompleteness::Complete {
+            parent.exit_position()
+        } else {
+            children
+                .last()
+                .map_or_else(|| parent.exit_position(), CanonicalBox::end)
+        };
+        let domain = parent.domain();
+        if !start.same_capture(&domain.enter_position()) || end < start {
+            return false;
         }
-        let Some(events) = parent.flow_events() else {
+        let Some(events) = domain.flow_events() else {
             return false;
         };
         let mut any = false;
+        let mut fences = Vec::new();
         for event in events {
-            if let surgeist_text::CapturedFlowEvent::ParagraphStart(paragraph) = event {
-                any = true;
-                if !paragraphs.contains(&paragraph) {
-                    return false;
+            use surgeist_text::CapturedFlowEvent as E;
+            match event {
+                E::ParagraphStart(paragraph)
+                    if paragraph.enter_position() < end && start < paragraph.exit_position() =>
+                {
+                    if paragraph.domain() != domain || !paragraphs.contains(&paragraph) {
+                        return false;
+                    }
+                    if parent.role() == ScopeRole::Inline {
+                        let Some(intersection) = paragraph
+                            .scope_intersections()
+                            .find(|row| row.scope() == *parent)
+                        else {
+                            return false;
+                        };
+                        let local_start =
+                            std::cmp::max_by(start.clone(), paragraph.enter_position(), |a, b| {
+                                a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+                            });
+                        let local_end =
+                            std::cmp::min_by(end.clone(), paragraph.exit_position(), |a, b| {
+                                a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+                            });
+                        if local_start < intersection.enter_position()
+                            || intersection.exit_position() < local_end
+                        {
+                            return false;
+                        }
+                    }
+                    any = true;
                 }
+                // These are actual parent-flow fences, not child paragraph
+                // coverage. Opaque child content never fills a missing piece
+                // of the parent's required paragraph region.
+                E::BlockStart(child)
+                    if child.enter_position() < end && start < child.exit_position() =>
+                {
+                    fences.push(child)
+                }
+                E::BlockEnd(child)
+                    if child.enter_position() < end && start < child.exit_position() =>
+                {
+                    let opened = fences.pop();
+                    if opened.as_ref() != Some(&child) {
+                        return false;
+                    }
+                }
+                _ => {}
             }
         }
-        any
+        any && fences.is_empty()
+    }
+
+    pub(crate) fn validate_sibling(
+        &self,
+        parent: &CapturedScope,
+        current: &CanonicalBox,
+        sibling: &CanonicalBox,
+        side: surgeist_text::SourceBoxSide,
+    ) -> Result<(), CanonicalOrderError> {
+        if self.parent(current)?.as_ref() != Some(parent)
+            || self.parent(sibling)?.as_ref() != Some(parent)
+            || current.domain() != sibling.domain()
+        {
+            return Err(CanonicalOrderError::Contradiction);
+        }
+        let ordered = match side {
+            surgeist_text::SourceBoxSide::Before => sibling.end() < current.position(),
+            surgeist_text::SourceBoxSide::After => current.end() < sibling.position(),
+        };
+        if ordered {
+            Ok(())
+        } else {
+            Err(CanonicalOrderError::Contradiction)
+        }
     }
 
     pub(crate) fn validate(

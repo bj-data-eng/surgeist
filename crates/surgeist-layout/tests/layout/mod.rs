@@ -4,6 +4,7 @@ mod native_scope_projection;
 
 mod numeric_box_metrics;
 mod source_edges;
-mod source_edges_propagation;
 mod source_edges_atomic_parent;
 mod source_edges_continuation_order;
+mod source_edges_empty_continuation;
+mod source_edges_propagation;

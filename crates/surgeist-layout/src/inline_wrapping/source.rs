@@ -685,7 +685,28 @@ impl<Node: Copy + Eq> ResolvedWrapEdges<Node> {
                 .associations
                 .iter()
                 .find(|a| a.pair == Some((*start, *end)))
-                .map(|a| CapturedBoxIndex::Scope(a.scope)),
+                .map(|a| CapturedBoxIndex::Scope(a.scope))
+                .or_else(|| {
+                    let first = self
+                        .occurrences
+                        .controls
+                        .iter()
+                        .find(|(_, node)| node == start)
+                        .and_then(|(i, _)| self.controls.get(*i))?;
+                    let last = self
+                        .occurrences
+                        .controls
+                        .iter()
+                        .find(|(_, node)| node == end)
+                        .and_then(|(i, _)| self.controls.get(*i))?;
+                    self.scopes
+                        .iter()
+                        .position(|scope| {
+                            scope.entry_control().as_ref() == Some(first)
+                                && scope.exit_control().as_ref() == Some(last)
+                        })
+                        .map(CapturedBoxIndex::Scope)
+                }),
             GeneratedBoxRef::Node(node) => self
                 .occurrences
                 .origins
@@ -745,57 +766,102 @@ impl<Node: Copy + Eq> ResolvedWrapEdges<Node> {
         }
     }
 
-    fn validate_capture(&self) -> Result<(), WrappingScopeError> {
+    fn canonical_ref(
+        &self,
+        box_: &GeneratedBoxRef<Node, usize>,
+    ) -> Result<CanonicalBox, WrappingScopeError> {
+        self.canonical_box(
+            self.captured_box(box_)
+                .ok_or(WrappingScopeError::SourceAssociation)?,
+        )
+    }
+
+    fn validate_parent_paths(
+        &self,
+        inventory: &CanonicalOrderInventory,
+    ) -> Result<(), WrappingScopeError> {
+        use surgeist_text::{ScopeRole, SourceBoxSide};
         for location in &self.snapshot.locations {
             if !location.effect.forced {
                 continue;
             }
-            let Some(CapturedBoxIndex::Scope(mut child)) =
-                self.captured_box(&location.declared_box)
-            else {
-                continue;
-            };
-            let target = self.captured_box(&location.box_);
-            loop {
-                let Some(parent) = self.scopes[child]
-                    .parent()
-                    .filter(|parent| parent.role() == surgeist_text::ScopeRole::Inline)
-                else {
-                    break;
-                };
-                let parent = self
-                    .scopes
-                    .iter()
-                    .position(|scope| *scope == parent)
+            let mut current = self.canonical_ref(&location.declared_box)?;
+            let mut stopped = false;
+            for step in &location.parents {
+                if stopped || self.canonical_ref(&step.child)? != current {
+                    return Err(WrappingScopeError::SourceAssociation);
+                }
+                let parent = inventory
+                    .parent(&current)
+                    .map_err(|_| WrappingScopeError::SourceAssociation)?
+                    .filter(|parent| parent.role() == ScopeRole::Inline)
                     .ok_or(WrappingScopeError::SourceAssociation)?;
-                let explicit = self.snapshot.orders.iter().any(|order| {
-                    self.captured_box(&order.parent) == Some(CapturedBoxIndex::Scope(parent))
-                        && order.children.iter().any(|entry| {
-                            self.captured_box(&entry.box_) == Some(CapturedBoxIndex::Scope(child))
-                        })
-                });
-                let physical = self
-                    .snapshot
-                    .associations
-                    .iter()
-                    .any(|a| a.scope == child && a.pair.is_some())
-                    && self
-                        .snapshot
-                        .associations
+                if self.canonical_ref(&step.parent)? != CanonicalBox::Scope(parent.clone()) {
+                    return Err(WrappingScopeError::SourceAssociation);
+                }
+                if let Some(sibling) = &step.stopped_by {
+                    if let Some(sibling) = self.captured_box(sibling) {
+                        inventory
+                            .validate_sibling(
+                                &parent,
+                                &current,
+                                &self.canonical_box(sibling)?,
+                                location.side,
+                            )
+                            .map_err(|_| WrappingScopeError::SourceAssociation)?;
+                    } else if !step.physical {
+                        // An actual native parent/window can own a numeric
+                        // sibling without inventing a Text occurrence for it.
+                        return Err(WrappingScopeError::MissingChildOrder);
+                    }
+                    stopped = true;
+                } else {
+                    let at = step
+                        .children
                         .iter()
-                        .any(|a| a.scope == parent && a.pair.is_some());
-                // An undisclosed canonical parent is not evidence that the
-                // declaration reached its formatting context. Shared policy
-                // must have had a real generated-parent proof at this step.
-                if !explicit && !physical {
-                    return Err(WrappingScopeError::MissingChildOrder);
+                        .position(|child| *child == step.child)
+                        .ok_or(WrappingScopeError::SourceAssociation)?;
+                    let needed = match location.side {
+                        SourceBoxSide::Before => &step.children[..=at],
+                        SourceBoxSide::After => &step.children[at..],
+                    };
+                    let children = needed
+                        .iter()
+                        .filter_map(|child| self.captured_box(child))
+                        .map(|key| self.canonical_box(key))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let (prefix, suffix) = match location.side {
+                        SourceBoxSide::Before => (
+                            ChildOrderCompleteness::Complete,
+                            ChildOrderCompleteness::Unknown,
+                        ),
+                        SourceBoxSide::After => (
+                            ChildOrderCompleteness::Unknown,
+                            ChildOrderCompleteness::Complete,
+                        ),
+                    };
+                    inventory
+                        .validate(&parent, &children, prefix, suffix)
+                        .map_err(|_| WrappingScopeError::MissingChildOrder)?;
+                    current = CanonicalBox::Scope(parent);
                 }
-                if target == Some(CapturedBoxIndex::Scope(child)) {
-                    break;
-                }
-                child = parent;
+            }
+            if !stopped
+                && inventory
+                    .parent(&current)
+                    .map_err(|_| WrappingScopeError::SourceAssociation)?
+                    .is_some_and(|parent| parent.role() == ScopeRole::Inline)
+            {
+                return Err(WrappingScopeError::MissingChildOrder);
+            }
+            if self.canonical_ref(&location.box_)? != current {
+                return Err(WrappingScopeError::SourceAssociation);
             }
         }
+        Ok(())
+    }
+
+    fn validate_capture(&self) -> Result<(), WrappingScopeError> {
         let inventory = CanonicalOrderInventory {
             scopes: self.scopes.clone(),
             occurrences: (0..self.origins.len())
@@ -842,6 +908,7 @@ impl<Node: Copy + Eq> ResolvedWrapEdges<Node> {
                 .validate(&parent, &children, order.prefix, order.suffix)
                 .map_err(|_| WrappingScopeError::SourceAssociation)?;
         }
+        self.validate_parent_paths(&inventory)?;
         for association in &self.snapshot.associations {
             let scope = &self.scopes[association.scope];
             if scope.role() != surgeist_text::ScopeRole::Inline {

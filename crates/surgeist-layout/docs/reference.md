@@ -154,6 +154,9 @@ endpoints. Native spans establish the physical projection; canonical capture
 facts establish the full parent/order and consumed prefix or suffix. An empty
 in-flow child still determines first/last-child propagation. Admission rejects
 contradictory or unavailable required proofs instead of dropping that child.
+Atomic exterior edges require the same parent and consumed-side proof. A
+continuing inline uses its actual parent-domain paragraph coverage; intervening
+block content retains its own domain.
 
 Both scope variants carry `metric_contribution`.
 `Some(InlineBoxMetricContribution::Strut(...))` supplies actual used geometry and

@@ -10,6 +10,17 @@ pub(crate) struct EdgeLocation<Node, Scope = surgeist_text::CapturedScope> {
     pub(crate) native: Option<NativeSpan>,
     pub(crate) side: surgeist_text::SourceBoxSide,
     pub(crate) effect: EdgeEffect,
+    pub(crate) parents: Vec<PropagationParent<Node, Scope>>,
+}
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PropagationParent<Node, Scope> {
+    pub(crate) child: GeneratedBoxRef<Node, Scope>,
+    pub(crate) parent: GeneratedBoxRef<Node, Scope>,
+    pub(crate) children: Vec<GeneratedBoxRef<Node, Scope>>,
+    pub(crate) physical: bool,
+    /// None means the original policy propagated; Some retains its real
+    /// in-flow sibling witness for the original stop decision.
+    pub(crate) stopped_by: Option<GeneratedBoxRef<Node, Scope>>,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct EdgePlan<Node> {
@@ -683,6 +694,7 @@ pub(super) fn propagate<Node: Copy + Eq, Scope: Clone + Eq>(
                 return Err(WrappingScopeError::AmbiguousNode);
             }
             let mut target = index;
+            let mut parents = Vec::new();
             if effect.forced {
                 let mut seen = Vec::new();
                 loop {
@@ -746,10 +758,19 @@ pub(super) fn propagate<Node: Copy + Eq, Scope: Clone + Eq>(
                     } else {
                         &children[at + 1..]
                     };
-                    if sibling
+                    let mut receipt = PropagationParent {
+                        child: boxes[target].box_.clone(),
+                        parent: boxes[parent].box_.clone(),
+                        children: Vec::new(),
+                        physical: boxes[parent].native.is_some() && boxes[target].native.is_some(),
+                        stopped_by: None,
+                    };
+                    if let Some(&(sibling, _)) = sibling
                         .iter()
-                        .any(|(_, p)| *p == GeneratedBoxParticipation::InFlow)
+                        .find(|(_, p)| *p == GeneratedBoxParticipation::InFlow)
                     {
+                        receipt.stopped_by = Some(boxes[sibling].box_.clone());
+                        parents.push(receipt);
                         break;
                     }
                     // A canonical boundaries-none box uses its explicit
@@ -772,6 +793,13 @@ pub(super) fn propagate<Node: Copy + Eq, Scope: Clone + Eq>(
                     if (if before { prefix } else { suffix }) != ChildOrderCompleteness::Complete {
                         return Err(WrappingScopeError::MissingChildOrder);
                     }
+                    let needed = if before {
+                        &children[..=at]
+                    } else {
+                        &children[at..]
+                    };
+                    receipt.children = needed.iter().map(|&(i, _)| boxes[i].box_.clone()).collect();
+                    parents.push(receipt);
                     target = parent;
                 }
             }
@@ -804,6 +832,7 @@ pub(super) fn propagate<Node: Copy + Eq, Scope: Clone + Eq>(
                 native: target.native.clone(),
                 side,
                 effect,
+                parents,
             });
         }
     }
