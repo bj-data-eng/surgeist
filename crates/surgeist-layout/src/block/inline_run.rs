@@ -825,6 +825,7 @@ where
             cursor_block,
             axes: constants.flow_axes,
             available,
+            wrap_style: constants.wrap_style,
             alignment: constants.text_align,
             last_alignment: constants.text_align_last,
             justification: constants.text_justification,
@@ -905,6 +906,8 @@ where
             .collect::<Result<Vec<_>, LayoutErrorOf<Tree::Node, S, M>>>()?;
         let intrinsic_max =
             !float_events.is_empty() && matches!(available, AvailableOf::MaxContent);
+        let balance = constants.wrap_style == crate::TextWrapStyle::Balance
+            && matches!(available, AvailableOf::Definite(_));
         let encounters = std::cell::RefCell::new(super::float_text::Encounters::new(
             float_events,
             exclusions.clone(),
@@ -914,8 +917,10 @@ where
             } else {
                 super::floats::FloatInlineSpace::Finite
             },
-            tail == crate::text_layout::fit::TailContext::CompleteBlock
-                && matches!(available, AvailableOf::Definite(_)),
+            balance
+                || tail == crate::text_layout::fit::TailContext::CompleteBlock
+                    && matches!(available, AvailableOf::Definite(_)),
+            balance,
         ));
         let result = crate::text_layout::run::layout(
             binding,
@@ -932,7 +937,11 @@ where
                     crate::text_layout::fit::EncounterReset::Sequence => {
                         encounters.borrow_mut().restart_sequence()
                     }
+                    crate::text_layout::fit::EncounterReset::Group => {
+                        encounters.borrow_mut().restart_group()
+                    }
                 },
+                checkpoint_group: || encounters.borrow_mut().checkpoint_group(),
                 band: |block_start, block_end| {
                     let block_start = crate::text_layout::run::number::<S>(block_start)?;
                     let block_end = crate::text_layout::run::number::<S>(block_end)?;
@@ -1075,12 +1084,15 @@ where
             margin = InlineRunMargin::Adjoins;
             cursor_block = uncollapsed_cursor_block;
         }
-        let observe_formatted = tree
-            .text_computation()
-            .is_some_and(|state| state.formatted_active());
-        layout_mixed_inline_run_with_formatted_observation(
+        let observe_formatted = constants.wrap_style == crate::TextWrapStyle::Balance
+            && matches!(available_inline_extent, AvailableOf::Definite(_))
+            || tree
+                .text_computation()
+                .is_some_and(|state| state.formatted_active());
+        let result = layout_mixed_inline_run_with_formatted_observation(
             MixedInlineRunInputOf {
                 wrapping,
+                text_wrap_style: constants.wrap_style,
                 line_box_context,
                 observe_tail: tail != crate::text_layout::fit::TailContext::Unrestricted,
                 available_inline_extent,
@@ -1133,8 +1145,13 @@ where
                     - cursor_block
             },
             observe_formatted,
-        )
-        .map_err(|error| crate::inline_wrapping::numeric_wrapping_error(container, error))?
+        );
+        // Provider errors retain their exact context even if provisional fallback
+        // geometry makes a rejected Balance trial fail its private replay proof.
+        if let Some(error) = provider_error.borrow_mut().take() {
+            return Err(error);
+        }
+        result.map_err(|error| crate::inline_wrapping::numeric_wrapping_error(container, error))?
     };
     for child in absolute_children {
         static_positions.push((

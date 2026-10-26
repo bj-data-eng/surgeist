@@ -43,7 +43,7 @@ pub(crate) fn trace_hidden_compute_session_requests<T>(
     (result, requests)
 }
 
-pub(super) struct ComputeSession<'a, Tree>
+pub(crate) struct ComputeSession<'a, Tree>
 where
     Tree: LayoutTree,
 {
@@ -148,7 +148,7 @@ impl<'a, Tree> ComputeSession<'a, Tree>
 where
     Tree: LayoutTree,
 {
-    pub(super) fn new(tree: &'a Tree, invalidated_nodes: Vec<Tree::Node>) -> Self {
+    pub(crate) fn new(tree: &'a Tree, invalidated_nodes: Vec<Tree::Node>) -> Self {
         let cache_clear_entries = invalidated_nodes
             .iter()
             .copied()
@@ -212,7 +212,7 @@ where
             .collect();
     }
 
-    pub(super) fn with_flow(
+    pub(crate) fn with_flow(
         capture: &'a crate::LayoutFlowInput<'_, Tree>,
         invalidated_nodes: Vec<Tree::Node>,
     ) -> Self {

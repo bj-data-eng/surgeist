@@ -31,6 +31,7 @@ fn run_in_band<S: LayoutScalar>(
         &[],
         &[],
         super::super::run::Context {
+            wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,
             formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
@@ -58,6 +59,7 @@ fn run_in_band<S: LayoutScalar>(
         },
         &[],
         super::super::run::LineEnvironment {
+            checkpoint_group: || {},
             reset: |_| {},
             band: |start, _| {
                 Ok(super::super::fit::Band {

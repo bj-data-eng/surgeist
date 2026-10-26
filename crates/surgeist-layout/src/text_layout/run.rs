@@ -412,6 +412,7 @@ pub(crate) struct Context<Node, S: LayoutScalar> {
     pub axes: FlowAxes,
     pub available: AvailableOf<S>,
     pub alignment: TextAlign,
+    pub wrap_style: crate::TextWrapStyle,
     pub last_alignment: TextAlignLast,
     pub justification: TextJustification,
     pub indent: crate::text_indent::ResolvedTextIndent<S>,
@@ -454,9 +455,10 @@ pub(crate) struct Output<Node, S: LayoutScalar> {
 
 /// One invocation's coupled line-band and source-event transitions. Each
 /// callback borrows the same actual provisional session, never a public root.
-pub(crate) struct LineEnvironment<Band, Clear, Replay, Accept, Reset> {
+pub(crate) struct LineEnvironment<Band, Clear, Replay, Accept, Reset, Checkpoint> {
     pub band: Band,
     pub reset: Reset,
+    pub checkpoint_group: Checkpoint,
     pub clear: Clear,
     pub replay: Replay,
     pub accept: Accept,
@@ -475,11 +477,13 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         impl FnMut(&FinalizedLine, fit::EncounterReplay) -> Result<Vec<fit::EncounterBasis>, FitError>,
         impl FnMut() -> Result<(), FitError>,
         impl FnMut(fit::EncounterReset),
+        impl FnMut(),
     >,
 ) -> Result<Output<Node, S>, FitError> {
     let LineEnvironment {
         band: band_source,
         reset: reset_candidate,
+        checkpoint_group,
         clear: clear_source,
         replay: replay_encounters,
         accept: accept_encounters,
@@ -548,6 +552,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
                 Direction::Rtl => ParagraphBaseDirection::RightToLeft,
             },
             alignment: context.alignment,
+            wrap_style: context.wrap_style,
             last_alignment: context.last_alignment,
             justification: context.justification,
             indent: context.indent.widened(),
@@ -608,6 +613,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             replay: replay_encounters,
             accept: accept_encounters,
             reset: reset_candidate,
+            checkpoint_group,
         },
     )?;
     output(
@@ -966,6 +972,8 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         line_bands: Vec::new(),
         formatted_lines: None,
     };
+    let balance = lines.first().and_then(|line| line.balance.clone());
+    let mut natural_advances = Vec::new();
     let mut placements = Vec::new();
     let mut bands = Vec::new();
     let mut flows = Vec::new();
@@ -989,6 +997,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 .any(|used| used.demanded_assignment().is_some())
         });
     for (entry_index, line) in lines.into_iter().enumerate() {
+        natural_advances.push(line.natural_advance);
         let line_index = report.line_bands.len();
         let is_formatted = line.disposition.is_formatted();
         box_assignments.push(line.boxes.clone());
@@ -1335,6 +1344,9 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             nodes: binding.nodes.clone(),
             prepared: binding.prepared.clone(),
             entries: placements,
+            wrap_style: context.wrap_style,
+            balance,
+            natural_advances,
             boxes: box_assignments,
             bands,
             flows,

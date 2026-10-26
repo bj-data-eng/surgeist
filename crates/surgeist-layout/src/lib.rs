@@ -72,7 +72,9 @@
 //! Render owns paint conversion, and Runtime owns coherent publication.
 //! The prepared-text profile supports horizontal LTR and RTL flow, signed
 //! indentation, and font-advance or CSS-stop tabs. [`TextAlign`] and
-//! [`TextAlignLast`] select line alignment. [`TextJustification::Spaces`] permits
+//! [`TextAlignLast`] select line alignment. [`TextWrapStyle`] selects ordinary
+//! or balanced breaks within each forced-break group without changing its real
+//! containing geometry or wrapping permission. [`TextJustification::Spaces`] permits
 //! explicit expansion of actual retained U+0020 slots during justification;
 //! [`TextJustification::None`]
 //! adds no expansion. Text owns line-edge and trailing-space decisions.
@@ -316,7 +318,7 @@ pub use node_input::{
     ScrollPadding, ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf, ScrollSnapAlign,
     ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType,
     ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, TextAlign, TextAlignLast, TextIndent,
-    TextIndentOf, TextJustification, VerticalAlign, WritingMode,
+    TextIndentOf, TextJustification, TextWrapStyle, VerticalAlign, WritingMode,
 };
 pub use output::{
     Baselines, BaselinesOf, CollapsibleMargin, CollapsibleMarginOf, CompletedLayoutBatch,

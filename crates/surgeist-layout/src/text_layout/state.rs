@@ -19,6 +19,9 @@ pub(crate) struct PendingParagraph<Node> {
     pub nodes: Vec<Node>,
     pub prepared: surgeist_text::PreparedText,
     pub entries: Vec<PlacementEntry>,
+    pub wrap_style: crate::TextWrapStyle,
+    pub balance: Option<std::sync::Arc<super::fit::BalanceBasis>>,
+    pub natural_advances: Vec<f64>,
     pub boxes: Vec<Option<super::boxes::BoxAssignment>>,
     pub bands: Vec<super::fit::LineBands>,
     pub flows: Vec<super::fit::LineFlow>,
@@ -37,6 +40,7 @@ pub(crate) struct PendingParagraph<Node> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct LineBasis {
+    natural_advance: f64,
     disposition: super::fit::LineDisposition,
     boxes: Option<super::boxes::BoxAssignment>,
     zone: super::fit::ZoneBasis,
@@ -63,6 +67,11 @@ pub(crate) struct PassBasis<Node, S: LayoutScalar> {
     pub tail: Vec<(Node, super::fit::TailContext)>,
     pub frames: Vec<CanonicalFrame<Node, S>>,
     pub lines: Vec<LineBasis>,
+    pub selections: Vec<(
+        Node,
+        crate::TextWrapStyle,
+        Option<std::sync::Arc<super::fit::BalanceBasis>>,
+    )>,
     pub absolute_baselines: Vec<(Node, f64)>,
     pub associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
     pub hyphenation: Vec<(
@@ -524,6 +533,11 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 .map(|p| (p.container, p.tail))
                 .collect(),
             frames,
+            selections: self
+                .pending
+                .iter()
+                .map(|p| (p.container, p.wrap_style, p.balance.clone()))
+                .collect(),
             lines: self
                 .pending
                 .iter()
@@ -538,13 +552,18 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                         .zip(&paragraph.zones)
                         .zip(&paragraph.phrases)
                         .zip(&paragraph.boxes)
+                        .zip(&paragraph.natural_advances)
                 })
                 .map(
                     |(
-                        ((((((placement, band), flow), amounts), encounters), zone), phrases),
-                        boxes,
+                        (
+                            ((((((placement, band), flow), amounts), encounters), zone), phrases),
+                            boxes,
+                        ),
+                        natural_advance,
                     )| {
                         LineBasis {
+                            natural_advance: *natural_advance,
                             boxes: boxes.clone(),
                             zone: zone.clone(),
                             phrases: phrases.clone(),

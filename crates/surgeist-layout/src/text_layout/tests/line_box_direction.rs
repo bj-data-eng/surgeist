@@ -469,6 +469,7 @@ fn intrinsic<S: LayoutScalar>(
         &[],
         &[],
         super::super::run::Context {
+            wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,
             formatted: Default::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
@@ -493,6 +494,7 @@ fn intrinsic<S: LayoutScalar>(
         },
         &[],
         super::super::run::LineEnvironment {
+            checkpoint_group: || {},
             reset: |_| {},
             band: |_, _| {
                 Ok(super::super::fit::Band {

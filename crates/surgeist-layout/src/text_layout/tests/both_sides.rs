@@ -476,6 +476,7 @@ fn assert_outgoing_counter_once(p: &text::PreparedText) {
         .collect::<Vec<_>>();
     let fitted = fit::fit(
         fit::FitInput {
+            wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,
             formatted: &super::super::formatted::FormattedTailSnapshot::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
@@ -525,6 +526,7 @@ fn assert_outgoing_counter_once(p: &text::PreparedText) {
         },
         |_, _| Ok(None),
         fit::EncounterCallbacks {
+            checkpoint_group: || {},
             replay: |_: &text::FinalizedLine, _: fit::EncounterReplay| Ok(Vec::new()),
             accept: || Ok(()),
             reset: |_| {},

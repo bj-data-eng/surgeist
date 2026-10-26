@@ -13,3 +13,4 @@ mod source_edges_propagation;
 mod terminal_box_completion;
 
 mod numeric_completion;
+mod wrap_balance;

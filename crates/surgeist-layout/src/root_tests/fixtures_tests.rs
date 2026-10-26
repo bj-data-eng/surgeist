@@ -84,6 +84,7 @@ pub(super) fn numeric_atomic_fit_with_flow<S: LayoutScalar>(
 ) -> crate::inline::MixedInlineRunReportOf<S> {
     let axes = FlowAxes::new(writing_mode, direction);
     crate::inline::layout_mixed_inline_run(crate::inline::MixedInlineRunInputOf {
+        text_wrap_style: crate::TextWrapStyle::Auto,
         wrapping: None,
         line_box_context: crate::line_box::LineBoxContext::new(
             crate::LineBoxDirectionPolicy::Normal,
@@ -563,6 +564,7 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
         ))
     };
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+        text_wrap_style: crate::TextWrapStyle::Auto,
         wrapping: None,
         line_box_context: crate::line_box::LineBoxContext::new(
             crate::LineBoxDirectionPolicy::Normal,

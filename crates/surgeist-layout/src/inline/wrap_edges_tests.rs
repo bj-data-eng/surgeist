@@ -130,6 +130,7 @@ impl<S: LayoutScalar> Fixture<S> {
             .numeric_projection(&flow.graph, 0, &self.nodes)
             .unwrap();
         MixedInlineRunInputOf {
+            text_wrap_style: crate::TextWrapStyle::Auto,
             line_box_context: crate::line_box::LineBoxContext::new(
                 crate::LineBoxDirectionPolicy::Normal,
                 self.direction,
@@ -550,6 +551,8 @@ fn propagation<S: LayoutScalar>() {
             for extent in expected_flow {
                 let selected = select_scope_inline_line(
                     NumericLineQuery {
+                        goal: None,
+                        indent: n(0.0),
                         run,
                         cursor,
                         next_boundary_descriptor: supplied.len(),
@@ -1186,6 +1189,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     .unwrap();
                 let report = layout_mixed_inline_run_with_formatted_observation(
                     MixedInlineRunInputOf {
+                        text_wrap_style: crate::TextWrapStyle::Auto,
                         line_box_context: crate::line_box::LineBoxContext::new(
                             crate::LineBoxDirectionPolicy::Normal,
                             direction,

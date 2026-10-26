@@ -79,6 +79,21 @@ pub enum TextAlignLast {
     Justify,
 }
 
+/// Preference for selecting legal line breaks in a native inline formatting run.
+///
+/// This normalized block-container value does not change wrapping permission,
+/// available geometry or intrinsic sizing. Balance operates independently on
+/// forced-break groups and may retain Auto for groups above ten formatted lines.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum TextWrapStyle {
+    /// Retain the ordinary line-selection preference.
+    #[default]
+    Auto,
+    /// Reduce variation in natural remaining inline space without changing the
+    /// ordinary formatted-line count in the supported bounded group profile.
+    Balance,
+}
+
 /// The implemented native expansion method, rather than CSS-wide `auto`.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum TextJustification {

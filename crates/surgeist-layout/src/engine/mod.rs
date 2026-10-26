@@ -2,6 +2,8 @@ pub(crate) mod contracts;
 mod root;
 mod rounding;
 mod session;
+#[cfg(test)]
+pub(crate) use session::ComputeSession;
 pub(crate) use session::FloatChildPacket;
 pub(crate) mod validation;
 
