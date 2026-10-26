@@ -190,6 +190,15 @@ custody but contributes no ordinary published line or block extent. See the
 Missing demanded box metrics still return `MissingBoxMetrics`; missing completion
 authority returns `UnsupportedIncidence`.
 
+Box/control-only native runs also distinguish nominal metrics from formatted
+line existence. Empty zero-decoration endpoints retain their metrics and
+source-indexed descendant outputs with zero used height; they do not establish
+a formatted ordinal, baseline, float band or adjoining-margin separator. A real
+in-flow atomic, each individual nonzero supported inline border or padding, and
+an actual Forced ending remain formatted even with zero extent. A terminal
+strut-only receiver does not inherit the preceding Forced status. These native
+results use the numeric owner directly and do not manufacture Text receipts.
+
 Captured paragraphs whose only prepared participants are genuine computed
 mandatory boundaries can execute without host child nodes. Layout proves their
 unique native gap from the existing capture/domain/graph associations and orders

@@ -182,19 +182,19 @@ fn fri06_c03_fixed_size_output<S: LayoutScalar>(
 
 fn assert_fri06_c03_fixed_metric_participant<S: LayoutScalar>(
     input: LayoutInputOf<S>,
-    expected_first_baseline: S,
-    expected_last_baseline: S,
+    expected_first_baseline: Option<S>,
+    expected_last_baseline: Option<S>,
 ) {
     let (output, layout_input_calls, child_compute_calls) = fri06_c03_fixed_size_output(input);
     assert_eq!(
         output.size,
         Size::new(S::from_f64(100.0), S::from_f64(50.0))
     );
-    assert_eq!(output.first_baselines.y, Some(expected_first_baseline));
-    assert_eq!(output.last_baselines.y, Some(expected_last_baseline));
+    assert_eq!(output.first_baselines.y, expected_first_baseline);
+    assert_eq!(output.last_baselines.y, expected_last_baseline);
     assert!(
         layout_input_calls > 1,
-        "metric participant must retain line layout"
+        "actual nonzero metrics must still be inspected"
     );
     assert_eq!(child_compute_calls, 0);
 }
@@ -260,8 +260,8 @@ fn fri06_c03_fixed_metric_break_retains_requested_baseline_both_scalars() {
             LayoutInputOf::line_break(LineBreakInputOf::new().with_metrics(
                 InlineMetricsOf::from_ascent_descent(S::from_f64(7.0), S::from_f64(3.0)).unwrap(),
             )),
-            S::from_f64(7.0),
-            S::from_f64(17.0),
+            Some(S::from_f64(7.0)),
+            Some(S::from_f64(7.0)),
         );
     }
     assert_lane::<f32>();
@@ -269,7 +269,7 @@ fn fri06_c03_fixed_metric_break_retains_requested_baseline_both_scalars() {
 }
 
 #[test]
-fn fri06_c03_fixed_metric_boundary_retains_requested_baseline_both_scalars() {
+fn fri06_c03_fixed_metric_zero_edge_boundary_has_no_formatted_baseline_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         assert_fri06_c03_fixed_metric_participant(
             LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
@@ -277,8 +277,27 @@ fn fri06_c03_fixed_metric_boundary_retains_requested_baseline_both_scalars() {
                 InlineMetricsOf::from_ascent_descent(S::from_f64(6.0), S::from_f64(4.0)).unwrap(),
                 crate::InlineBoundaryEdgeOf::ZERO,
             )),
-            S::from_f64(6.0),
-            S::from_f64(6.0),
+            None,
+            None,
+        );
+    }
+    assert_lane::<f32>();
+    assert_lane::<f64>();
+}
+
+#[test]
+fn fri06_c03_fixed_metric_positive_border_boundary_retains_requested_baseline_both_scalars() {
+    fn assert_lane<S: LayoutScalar>() {
+        // Unlike the original zero-edge case, this actual inline border makes
+        // the line real. Its own 6/10 metrics supply the exported baseline.
+        assert_fri06_c03_fixed_metric_participant(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                InlineBoundaryKind::Start,
+                InlineMetricsOf::from_ascent_descent(S::from_f64(6.0), S::from_f64(4.0)).unwrap(),
+                crate::InlineBoundaryEdgeOf::try_new(S::from_f64(1.0), S::ZERO).unwrap(),
+            )),
+            Some(S::from_f64(6.0)),
+            Some(S::from_f64(6.0)),
         );
     }
     assert_lane::<f32>();
@@ -1257,7 +1276,7 @@ fn block_line_break_metadata_positions_rtl_lines_and_preserves_two_line_extent()
 }
 
 #[test]
-fn block_line_break_metrics_create_empty_line_height() {
+fn block_line_break_metrics_create_two_forced_lines_without_phantom_receiver_height() {
     let metrics = InlineMetrics::from_line_height_and_baseline(20.0, 15.0).unwrap();
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .style(
@@ -1292,9 +1311,10 @@ fn block_line_break_metrics_create_empty_line_height() {
     )
     .unwrap();
 
-    assert_eq!(output.size.height, 60.0);
+    // Both actual Forced endings are real; their terminal Paragraph receiver is not.
+    assert_eq!(output.size.height, 40.0);
     assert_eq!(output.first_baselines.y, Some(15.0));
-    assert_eq!(output.last_baselines.y, Some(55.0));
+    assert_eq!(output.last_baselines.y, Some(35.0));
     assert_eq!(tree.layout(1).unwrap().location.y, 15.0);
     assert_eq!(tree.layout(2).unwrap().location.y, 35.0);
 }
@@ -2309,9 +2329,11 @@ fn line_break_clear_at_run_end_moves_following_block_below_float() {
     );
     assert_eq!(
         tree.final_layout(4).unwrap().location,
-        Point::new(0.0, 60.0)
+        Point::new(0.0, 50.0)
     );
-    assert_eq!(tree.final_layout(0).unwrap().size, Size::new(200.0, 70.0));
+    // The real Forced line clears to the float bottom at 50. A phantom
+    // Paragraph receiver adds no further 10px before the following block.
+    assert_eq!(tree.final_layout(0).unwrap().size, Size::new(200.0, 60.0));
 }
 
 #[test]

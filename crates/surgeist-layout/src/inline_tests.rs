@@ -149,18 +149,17 @@ fn fri06_mr02_inline_linear_empty_strut_and_forced_clear_preserve_metrics_both_s
         .unwrap();
 
         assert_eq!(report.inline_extent, S::ZERO);
-        assert_eq!(report.block_extent, S::from_f64(24.0));
+        // Only the actual Forced selection is formatted; its nominal
+        // Paragraph receiver has no independent content or Forced ending.
+        assert_eq!(report.block_extent, S::from_f64(12.0));
         assert_eq!(report.first_baseline, Some(S::from_f64(9.0)));
-        assert_eq!(report.last_baseline, Some(S::from_f64(21.0)));
+        assert_eq!(report.last_baseline, Some(S::from_f64(9.0)));
         assert!(report.atomics.is_empty());
         assert_eq!(report.controls.len(), 1);
         assert_eq!(report.controls[0].source_index, 7);
         assert_eq!(report.controls[0].line_index, 0);
         assert_eq!(report.controls[0].visual_index, None);
-        assert_eq!(
-            report.post_line_clear_intents,
-            [PostLineClearIntent::Both, PostLineClearIntent::None]
-        );
+        assert_eq!(report.post_line_clear_intents, [PostLineClearIntent::Both]);
     }
 
     assert_lane::<f32>();
@@ -228,9 +227,11 @@ fn supplied_edges_and_real_atomic_overflow_preserve_discard_and_endpoint_roles_b
         assert_eq!(endpoint_breaks.atomics.len(), 2);
         assert_eq!(endpoint_breaks.atomics[0].line_index, 0);
         assert_eq!(endpoint_breaks.atomics[1].line_index, 1);
-        assert_eq!(endpoint_breaks.line_bands.len(), 3);
+        // Both real atomics remain formatted; the final mandatory edge
+        // does not turn its empty Paragraph receiver into a third line.
+        assert_eq!(endpoint_breaks.line_bands.len(), 2);
         assert_eq!(endpoint_breaks.first_baseline, Some(S::from_f64(8.0)));
-        assert_eq!(endpoint_breaks.last_baseline, Some(S::from_f64(28.0)));
+        assert_eq!(endpoint_breaks.last_baseline, Some(S::from_f64(18.0)));
     }
     assert_lane::<f32>();
     assert_lane::<f64>();
@@ -721,13 +722,12 @@ fn fri06_c03_strut_private_builder_retains_control_baselines_and_post_line_inten
         })
         .unwrap();
 
-        assert_eq!(report.block_extent, S::from_f64(40.0));
+        // Boundary13/5 and actual Forced15/5 share one20px line.
+        // The pending Paragraph strut preserves metrics without a new line.
+        assert_eq!(report.block_extent, S::from_f64(20.0));
         assert_eq!(report.first_baseline, Some(S::from_f64(15.0)));
-        assert_eq!(report.last_baseline, Some(S::from_f64(35.0)));
-        assert_eq!(
-            report.post_line_clear_intents,
-            [PostLineClearIntent::Both, PostLineClearIntent::None]
-        );
+        assert_eq!(report.last_baseline, Some(S::from_f64(15.0)));
+        assert_eq!(report.post_line_clear_intents, [PostLineClearIntent::Both]);
         assert_eq!(report.controls[0].visual_index, Some(0));
         assert_eq!(report.controls[1].visual_index, None);
     }
@@ -1985,14 +1985,16 @@ fn assert_mandatory_atomic_queries_are_confined_to_each_actual_line<S: LayoutSca
         assert_eq!(report.inline_extent, S::ONE);
         assert_eq!(
             report.block_extent,
-            S::from_f64(f64::from(u32::try_from(count + 1).unwrap()) * 10.0)
+            S::from_f64(f64::from(u32::try_from(count).unwrap()) * 10.0)
         );
-        assert_eq!(report.line_bands.len(), count + 1);
+        // Every mandatory atomic is real, including the last. Its empty
+        // Paragraph completion adds no band, baseline or unit-query work.
+        assert_eq!(report.line_bands.len(), count);
         assert_eq!(report.first_baseline, Some(S::from_f64(8.0)));
         assert_eq!(
             report.last_baseline,
             Some(S::from_f64(
-                f64::from(u32::try_from(count).unwrap()) * 10.0 + 8.0
+                f64::from(u32::try_from(count - 1).unwrap()) * 10.0 + 8.0
             ))
         );
         assert_eq!(
@@ -2167,12 +2169,11 @@ fn last_tail_observations_keep_actual_numeric_endings_and_zero_atomic_content() 
                 .iter()
                 .map(|line| (line.end, line.content, line.hyphenated))
                 .collect::<Vec<_>>(),
-            [
-                (surgeist_text::LineEnd::Forced, false, false),
-                (surgeist_text::LineEnd::Paragraph, false, false)
-            ]
+            [(surgeist_text::LineEnd::Forced, false, false)]
         );
-        assert_eq!(report.line_bands.len(), 2);
+        // The real empty Forced remains in the tail; its nonformatted
+        // Paragraph receiver is absent. The following zero atomics stay real.
+        assert_eq!(report.line_bands.len(), 1);
         let report = observe(mr02_input(
             AvailableOf::definite(S::ZERO),
             vec![

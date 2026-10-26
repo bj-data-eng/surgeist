@@ -658,7 +658,7 @@ fn fri06_c07_logical_clear_vertical_control_and_float_projection_both_scalars() 
                         baselines,
                         BaselinesOf {
                             first: Point::new(Some(S::from_f64(25.0)), None),
-                            last: Point::new(Some(S::from_f64(5.0)), None),
+                            last: Point::new(Some(S::from_f64(25.0)), None),
                         },
                         "{} {} root baselines",
                         row.source,
@@ -673,8 +673,8 @@ fn fri06_c07_logical_clear_vertical_control_and_float_projection_both_scalars() 
                     );
                     assert_eq!(
                         root_output.size.width - baselines.last.x.unwrap(),
-                        S::from_f64(35.0),
-                        "{} {} following-strut logical block baseline",
+                        S::from_f64(15.0),
+                        "{} {} last real Forced logical block baseline",
                         row.source,
                         row.variant,
                     );

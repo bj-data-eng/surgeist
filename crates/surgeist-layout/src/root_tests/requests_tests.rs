@@ -964,7 +964,7 @@ fn fri06_c03_control_forced_break_splits_min_content_indivisible_groups_both_sca
 }
 
 #[test]
-fn fri06_c03_strut_adjacent_final_breaks_preserve_empty_following_line_both_scalars() {
+fn fri06_c03_strut_adjacent_final_breaks_keep_only_actual_forced_lines_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let metrics =
             InlineMetricsOf::from_line_height_and_baseline(S::from_f64(20.0), S::from_f64(15.0))
@@ -987,7 +987,7 @@ fn fri06_c03_strut_adjacent_final_breaks_preserve_empty_following_line_both_scal
 
         assert_eq!(
             fri06_c02_final_node(&batch, 0).size.height,
-            S::from_f64(60.0)
+            S::from_f64(40.0)
         );
         assert_eq!(
             fri06_c02_final_node(&batch, 1).location.y,
@@ -1050,7 +1050,7 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
         );
         assert_eq!(
             fri06_c02_final_node(&trailing, 0).size.height,
-            S::from_f64(40.0)
+            S::from_f64(20.0)
         );
         assert_eq!(
             fri06_c02_final_node(&trailing, 3).location,
@@ -1067,9 +1067,11 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
         );
         assert_eq!(
             fri06_c02_final_node(&only_break, 0).size.height,
-            S::from_f64(40.0)
+            S::from_f64(20.0)
         );
 
+        // Actual struts alone do not create a formatted line. Its endpoint
+        // descendants use the zero-height used origin, not nominal baseline15.
         let only_boundary = fri06_c03_mixed_batch(
             vec![(
                 1,
@@ -1082,13 +1084,10 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
             )],
             AvailableOf::MAX_CONTENT,
         );
-        assert_eq!(
-            fri06_c02_final_node(&only_boundary, 0).size.height,
-            S::from_f64(20.0)
-        );
+        assert_eq!(fri06_c02_final_node(&only_boundary, 0).size.height, S::ZERO);
         assert_eq!(
             fri06_c02_final_node(&only_boundary, 1).location,
-            Point::new(S::ZERO, S::from_f64(15.0))
+            Point::ZERO
         );
 
         let adjacent_boundaries = fri06_c03_mixed_batch(
@@ -1115,12 +1114,16 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
             AvailableOf::MAX_CONTENT,
         );
         assert_eq!(
+            fri06_c02_final_node(&adjacent_boundaries, 0).size.height,
+            S::ZERO
+        );
+        assert_eq!(
             fri06_c02_final_node(&adjacent_boundaries, 1).location,
-            Point::new(S::ZERO, S::from_f64(15.0))
+            Point::ZERO
         );
         assert_eq!(
             fri06_c02_final_node(&adjacent_boundaries, 2).location,
-            Point::new(S::ZERO, S::from_f64(15.0))
+            Point::ZERO
         );
 
         let boundaries = fri06_c03_mixed_batch(

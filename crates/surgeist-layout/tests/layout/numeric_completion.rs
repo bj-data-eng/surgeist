@@ -382,3 +382,7 @@ fn phantom_numeric_endpoint_run_preserves_adjoining_real_block_margins() {
         phantom_gap_preserves_block_margins::<f64>(direction);
     }
 }
+
+mod decoration;
+
+mod warm_cache;

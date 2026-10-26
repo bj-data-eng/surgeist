@@ -385,15 +385,14 @@ fn empty_edges<S: LayoutScalar>() {
             false,
         );
         let r = layout_mixed_inline_run(terminal.numeric()).unwrap();
-        assert_eq!(groups(&r), [vec![1, 2, 3], vec![]]);
-        assert_eq!(
-            r.lines.iter().map(|l| l.end).collect::<Vec<_>>(),
-            [Forced, Paragraph]
-        );
-        assert_eq!(r.block_extent, n(20.0));
+        // The genuine terminal Force ends the atomic line; its pending
+        // Paragraph strut does not supply another formatted line.
+        assert_eq!(groups(&r), [vec![1, 2, 3]]);
+        assert_eq!(r.lines.iter().map(|l| l.end).collect::<Vec<_>>(), [Forced]);
+        assert_eq!(r.block_extent, n(10.0));
         assert_eq!(r.first_baseline, Some(n(10.0)));
-        assert_eq!(r.last_baseline, Some(n(20.0)));
-        assert_eq!(output(&terminal.compute(), 0).size.height, n(20.0));
+        assert_eq!(r.last_baseline, Some(n(10.0)));
+        assert_eq!(output(&terminal.compute(), 0).size.height, n(10.0));
         edges = [WrapEdges::AUTO; 3];
         edges[0].after = WrapEdge::Line;
         edges[1].before = WrapEdge::Line;
@@ -1096,7 +1095,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     before: WrapEdge::Auto,
                     after: WrapEdge::Line,
                 },
-                [0.0, 10.0, 20.0, 40.0],
+                [0.0, 10.0, 20.0, 30.0],
             ),
             (
                 WrapEdges {
@@ -1112,7 +1111,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     after: WrapEdge::Line,
                 },
                 WrapEdges::AUTO,
-                [0.0, 20.0, 30.0, 40.0],
+                [0.0, 10.0, 20.0, 30.0],
             ),
             (
                 WrapEdges {
@@ -1123,7 +1122,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     before: WrapEdge::Line,
                     after: WrapEdge::Auto,
                 },
-                [0.0, 20.0, 30.0, 40.0],
+                [0.0, 10.0, 20.0, 30.0],
             ),
             (
                 WrapEdges {
@@ -1134,7 +1133,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     before: WrapEdge::Auto,
                     after: WrapEdge::Line,
                 },
-                [0.0, 20.0, 30.0, 50.0],
+                [0.0, 10.0, 20.0, 30.0],
             ),
         ] {
             // The normal block is an actual run separator. All three boxes
@@ -1167,10 +1166,96 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                 );
             }
             let batch = crate::compute_layout(&tree, 0, request(n(100.0))).unwrap();
+            // Equal geometry after phantom suppression cannot by itself prove
+            // locality. Observe each actual run through its own host-derived
+            // projection: an after force must end only that owner's atomic.
+            let flow =
+                LayoutFlowInput::try_new(&tree, 0, vec![], WrappingInput::default()).unwrap();
+            for (node, edges) in [(1, early), (3, late)] {
+                // Allocation fields are genuine owner inputs from the already
+                // required unrounded public batch, never ending/cursor oracles.
+                let allocation = batch
+                    .unrounded_entries()
+                    .iter()
+                    .find(|entry| entry.node() == node)
+                    .unwrap()
+                    .output();
+                let projection = flow
+                    .wrapping
+                    .numeric_projection(&flow.graph, 0, &[node])
+                    .unwrap();
+                let report = layout_mixed_inline_run_with_formatted_observation(
+                    MixedInlineRunInputOf {
+                        line_box_context: crate::line_box::LineBoxContext::new(
+                            crate::LineBoxDirectionPolicy::Normal,
+                            direction,
+                        ),
+                        observe_tail: false,
+                        wrapping: Some(projection),
+                        available_inline_extent: AvailableOf::definite(n(100.0)),
+                        flow_axes: FlowAxes::new(WritingMode::HorizontalTb, direction),
+                        text_align: TextAlign::Start,
+                        text_align_last: crate::TextAlignLast::Auto,
+                        indent: crate::text_indent::ResolvedTextIndent::ZERO,
+                        indent_state: crate::text_indent::IndentLineState::default(),
+                        // Empty blocks have no inner baseline. The numeric
+                        // owner uses their actual block-end fallback (10+0),
+                        // rather than a fabricated Some(10) baseline witness.
+                        // The declared Visible overflow reserves no scrollbar.
+                        participants: vec![MixedInlineParticipantOf::Atomic {
+                            item: AtomicInlineBoxParticipant {
+                                source_index: allocation.source_index.get(),
+                                size: allocation.size,
+                                content_size: allocation.content_size,
+                                margin: allocation.margin,
+                                padding: allocation.padding,
+                                border: allocation.border,
+                                scrollbar_size: Size::ZERO,
+                                first_baseline: None,
+                                alignment: InlineControlAlignment::Baseline,
+                            },
+                            participation: participation(InlineBreakOpportunity::Allowed),
+                        }],
+                    },
+                    |_, _| LogicalLineBandQueryResultOf {
+                        inline_start: S::ZERO,
+                        inline_end: n(100.0),
+                        next_transition: None,
+                    },
+                    |block, _| block,
+                    true,
+                )
+                .unwrap();
+                let mut expected_endings = Vec::new();
+                if edges.before == WrapEdge::Line {
+                    expected_endings.push((surgeist_text::LineEnd::Forced, 0, 0));
+                }
+                expected_endings.push((
+                    if edges.after == WrapEdge::Line {
+                        surgeist_text::LineEnd::Forced
+                    } else {
+                        surgeist_text::LineEnd::Paragraph
+                    },
+                    1,
+                    1,
+                ));
+                assert_eq!(
+                    report
+                        .formatted_lines
+                        .as_ref()
+                        .unwrap()
+                        .iter()
+                        .map(|line| (line.ending, line.source_end, line.descriptor_end))
+                        .collect::<Vec<_>>(),
+                    expected_endings,
+                    "actual run owner {node}, declarations {early:?}/{late:?}"
+                );
+            }
             // An owner's before force starts its own run with the already
-            // qualified zero-metric numeric leading line. Its after force
-            // retains only its own real10/0 terminal receiving strut. Neither
-            // belongs to the other run across the intervening block box.
+            // qualified zero-metric numeric leading Forced line. Its after
+            // force retains a nominal10/0 terminal strut, but the empty
+            // Paragraph receiver is nonformatted. Neither force can spend
+            // height in the other run across the actual intervening block.
             for entries in [batch.unrounded_entries(), batch.final_entries()] {
                 let get = |node| {
                     entries
