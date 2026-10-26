@@ -136,6 +136,13 @@ fn qualify<S: l::LayoutScalar>(direction: l::Direction) {
                 } else {
                     [0.0, 30.0, 50.0, 0.0]
                 };
+                // All supplied RTL levels are1. L2 reverses the actual slots;
+                // Start alignment anchors each row at physical right60.
+                let expected_rtl_x = if balanced {
+                    [30.0, 40.0, 30.0, 20.0]
+                } else {
+                    [30.0, 10.0, 0.0, 50.0]
+                };
                 for (index, (id, width)) in [(2, 30.0), (3, 20.0), (5, 10.0), (6, 10.0)]
                     .into_iter()
                     .enumerate()
@@ -150,6 +157,12 @@ fn qualify<S: l::LayoutScalar>(direction: l::Direction) {
                         assert_eq!(
                             actual.location.x,
                             S::from_f64(expected_ltr_x[index]),
+                            "direction={direction:?} style={style:?} inside={inside:?} node={id} actual={actual:?}"
+                        );
+                    } else {
+                        assert_eq!(
+                            actual.location.x,
+                            S::from_f64(expected_rtl_x[index]),
                             "direction={direction:?} style={style:?} inside={inside:?} node={id} actual={actual:?}"
                         );
                     }
@@ -213,6 +226,13 @@ fn qualify<S: l::LayoutScalar>(direction: l::Direction) {
                     assert_eq!(
                         end.location.x,
                         S::from_f64(if balanced { 20.0 } else { 50.0 })
+                    );
+                } else {
+                    // End is between B and C in the actual logical stream.
+                    // Its zero-width L2 attachment is10 on ABC,40 on BCD.
+                    assert_eq!(
+                        end.location.x,
+                        S::from_f64(if balanced { 40.0 } else { 10.0 })
                     );
                 }
             }

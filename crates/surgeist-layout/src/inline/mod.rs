@@ -1715,7 +1715,15 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
     for (visual_index, (source_index, _)) in visual_order.iter().enumerate() {
         visual_indices[source_index] = visual_index;
     }
-    let mut inline_start = line_inline_start;
+    // L2 orders slots from line-left to line-right. A containing RTL flow
+    // numbers logical coordinates from the opposite side of the occupied
+    // interval, independently of its physical writing-mode progression.
+    let rtl_flow = flow_axes.direction() == Direction::Rtl;
+    let mut inline_start = if rtl_flow {
+        line_inline_start + line.used_inline_extent
+    } else {
+        line_inline_start
+    };
     for (source_index, _) in visual_order.iter() {
         let selected = line.units[source_index];
         let selected_inline_extent = if selected.discarded {
@@ -1723,8 +1731,13 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
         } else {
             selected.participant.inline_advance(flow_axes)
         };
+        if rtl_flow {
+            inline_start = inline_start - selected_inline_extent;
+        }
         inline_starts[source_index] = inline_start;
-        inline_start = inline_start + selected_inline_extent;
+        if !rtl_flow {
+            inline_start = inline_start + selected_inline_extent;
+        }
     }
     (line_inline_start, visual_indices, inline_starts)
 }
@@ -3275,5 +3288,7 @@ pub(super) fn inline_run_max_content_width<S: LayoutScalar>(items: &[InlineParti
 
 #[cfg(test)]
 mod balance_tests;
+#[cfg(test)]
+mod bidi_order_tests;
 #[cfg(test)]
 mod phantom_completion_tests;

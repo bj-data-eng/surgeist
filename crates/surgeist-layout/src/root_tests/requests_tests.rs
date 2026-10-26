@@ -2990,7 +2990,7 @@ fn numeric_rtl_visual_placement_and_internal_supplied_edge_semantics_all_flows_b
                     report.atomics[0].inline_start,
                     report.atomics[2].inline_start
                 ],
-                [S::from_f64(35.0), S::ZERO]
+                [S::ZERO, S::from_f64(25.0)]
             );
             let containing =
                 axes.physical_size(LogicalSizeOf::new(S::from_f64(100.0), S::from_f64(160.0)));
@@ -3948,8 +3948,8 @@ fn fri06_c07_sideways_lr_rtl_all_atomic_odd_bidi_keeps_visual_placement_both_sca
             second_source.size,
             Size::new(S::from_f64(20.0), S::from_f64(20.0))
         );
-        assert_eq!(first_source.location.y, S::from_f64(20.0));
-        assert_eq!(second_source.location.y, S::ZERO);
+        assert_eq!(first_source.location.y, S::ZERO);
+        assert_eq!(second_source.location.y, S::from_f64(10.0));
     }
 
     assert_lane::<f32>();

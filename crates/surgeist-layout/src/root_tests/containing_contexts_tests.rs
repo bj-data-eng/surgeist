@@ -124,7 +124,12 @@ fn fri06_c03_projection_soft_and_forced_unequal_atomic_lines_align_per_line_in_a
                     (
                         2,
                         (
-                            expected_offset(align, decreases, 40.0, 40.0),
+                            expected_offset(align, decreases, 40.0, 40.0)
+                                + if direction == Direction::Rtl {
+                                    10.0
+                                } else {
+                                    0.0
+                                },
                             10.0,
                             30.0,
                             10.0,
@@ -133,7 +138,12 @@ fn fri06_c03_projection_soft_and_forced_unequal_atomic_lines_align_per_line_in_a
                     (
                         3,
                         (
-                            expected_offset(align, decreases, 40.0, 40.0) + 30.0,
+                            expected_offset(align, decreases, 40.0, 40.0)
+                                + if direction == Direction::Rtl {
+                                    0.0
+                                } else {
+                                    30.0
+                                },
                             10.0,
                             10.0,
                             10.0,
@@ -1317,12 +1327,25 @@ fn numeric_fitter_flow_projects_rect_baseline_and_empty_anchor_all_mappings_both
             );
             let containing =
                 axes.physical_size(LogicalSizeOf::new(S::from_f64(100.0), report.block_extent));
-            for (fragment, (start, extent, block, baseline)) in report.atomics.iter().zip([
-                (50.0, 10.0, 0.0, 8.0),
-                (40.0, 10.0, 0.0, 8.0),
-                (51.0, 4.0, 10.0, 18.0),
-                (45.0, 6.0, 10.0, 18.0),
-            ]) {
+            // These are flow-logical starts; L2 is ordered from line-left.
+            let expected_rows = if direction == Direction::Rtl {
+                [
+                    (40.0, 10.0, 0.0, 8.0),
+                    (50.0, 10.0, 0.0, 8.0),
+                    (45.0, 4.0, 10.0, 18.0),
+                    (49.0, 6.0, 10.0, 18.0),
+                ]
+            } else {
+                [
+                    (50.0, 10.0, 0.0, 8.0),
+                    (40.0, 10.0, 0.0, 8.0),
+                    (51.0, 4.0, 10.0, 18.0),
+                    (45.0, 6.0, 10.0, 18.0),
+                ]
+            };
+            for (fragment, (start, extent, block, baseline)) in
+                report.atomics.iter().zip(expected_rows)
+            {
                 assert_eq!(
                     axes.physical_rect(
                         crate::geometry::LogicalRectOf::new(

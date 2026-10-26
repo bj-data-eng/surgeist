@@ -142,6 +142,12 @@ fn assert_numeric_receipts<S: LayoutScalar>(
     assert_eq!(report.line_bands.len(), 2);
     assert_eq!(report.inline_extent, S::from_f64(20.0));
     assert_eq!(report.block_extent, S::from_f64(20.0));
+    // These are flow-logical border starts, not physical x. The level0
+    // atomics keep L2 indices0/2/0; RTL logical coordinates run oppositely.
+    let starts = match direction {
+        Direction::Ltr => [5.0, 15.0, 5.0],
+        Direction::Rtl => [15.0, 5.0, 5.0],
+    };
     assert_eq!(
         report
             .atomics
@@ -154,10 +160,18 @@ fn assert_numeric_receipts<S: LayoutScalar>(
             ))
             .collect::<Vec<_>>(),
         [
-            (0, 0, S::from_f64(5.0), S::ZERO),
-            (2, 0, S::from_f64(15.0), S::ZERO),
-            (3, 1, S::from_f64(5.0), S::from_f64(10.0)),
+            (0, 0, S::from_f64(starts[0]), S::ZERO),
+            (2, 0, S::from_f64(starts[1]), S::ZERO),
+            (3, 1, S::from_f64(starts[2]), S::from_f64(10.0)),
         ]
+    );
+    assert_eq!(
+        report
+            .atomics
+            .iter()
+            .map(|row| (row.item.source_index, row.visual_index))
+            .collect::<Vec<_>>(),
+        [(0, Some(0)), (2, Some(2)), (3, Some(0))]
     );
     assert_eq!(
         report
@@ -253,8 +267,10 @@ fn assert_layout_placement<S: LayoutScalar>(
         );
         let starts = match direction {
             Direction::Ltr => [5.0, 15.0, 5.0],
-            // RTL right origin25: border x = 25 - logical start - border width10.
-            Direction::Rtl => [10.0, 0.0, 10.0],
+            // Level0 atoms retain physical left-to-right source order. The
+            // two-box RTL row starts at25-20=5, then physical margin-left -5;
+            // the single-box row starts at25-10=15 with the same -5 margin.
+            Direction::Rtl => [0.0, 10.0, 10.0],
         };
         for ((node, source_index), (x, y)) in [1, 3, 4]
             .into_iter()

@@ -1252,11 +1252,11 @@ fn fri06_c12_t08_float_shape_slots_follow_visual_order_before_physical_projectio
             .collect::<Vec<_>>();
         let expected = match direction {
             Direction::Ltr => vec![S::ZERO, S::from_f64(66.0)],
-            Direction::Rtl => vec![S::from_f64(66.0), S::from_f64(180.0)],
+            Direction::Rtl => vec![S::from_f64(180.0), S::from_f64(114.0)],
         };
         assert_eq!(
             flow_inline_starts, expected,
-            "logical slots are LTR 0/66 and RTL 114/0 before FlowAxes projects them",
+            "L2 places RTL B114/A66 from line-left; their physical right edges are A180/B114",
         );
     }
 
