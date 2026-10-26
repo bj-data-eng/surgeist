@@ -119,3 +119,5 @@ fn visible_shared_block_excludes_float_height_while_root_contains_it_f64() {
 }
 
 mod placement;
+
+mod bfc_auto_sizing;
