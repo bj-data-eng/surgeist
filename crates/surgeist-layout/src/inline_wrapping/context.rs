@@ -149,14 +149,14 @@ fn captured_contains(a: &CapturedScope, b: &CapturedScope) -> bool {
     false
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Relation {
+pub(super) enum Relation {
     Before,
     After,
     Contains,
     Within,
     Crossing,
 }
-fn interval_relation<T: PartialOrd>(a: &T, b: &T, c: &T, d: &T) -> Relation {
+pub(super) fn interval_relation<T: PartialOrd>(a: &T, b: &T, c: &T, d: &T) -> Relation {
     if b < c {
         Relation::Before
     } else if d < a {

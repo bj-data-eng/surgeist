@@ -1,32 +1,50 @@
 //! One canonical generated-order check shared by both capture phases.
 
-use super::ChildOrderCompleteness;
-use surgeist_text::{CapturedEventPosition, CapturedParagraph, CapturedScope, ScopeRole};
+use super::{
+    ChildOrderCompleteness,
+    context::{Relation, interval_relation},
+};
+use surgeist_text::{
+    CapturedControl, CapturedEventPosition, CapturedParagraph, CapturedScope, ParagraphControlKind,
+    ScopeRole,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum CanonicalBox {
     Scope(CapturedScope),
+    NativePair {
+        start: CapturedControl,
+        end: CapturedControl,
+    },
     Occurrence {
         position: CapturedEventPosition,
         domain: CapturedScope,
     },
 }
 impl CanonicalBox {
+    pub(crate) fn is_inline(&self) -> bool {
+        matches!(self, Self::NativePair { .. })
+            || matches!(self, Self::Scope(scope) if scope.role() == ScopeRole::Inline)
+    }
+
     pub(crate) fn domain(&self) -> CapturedScope {
         match self {
             Self::Scope(scope) => scope.domain(),
+            Self::NativePair { start, .. } => start.paragraph().domain(),
             Self::Occurrence { domain, .. } => domain.clone(),
         }
     }
     fn position(&self) -> CapturedEventPosition {
         match self {
             Self::Scope(scope) => scope.enter_position(),
+            Self::NativePair { start, .. } => start.event_position(),
             Self::Occurrence { position, .. } => position.clone(),
         }
     }
     fn end(&self) -> CapturedEventPosition {
         match self {
             Self::Scope(scope) => scope.exit_position(),
+            Self::NativePair { end, .. } => end.event_position(),
             Self::Occurrence { position, .. } => position.clone(),
         }
     }
@@ -52,42 +70,111 @@ pub(crate) enum CanonicalOrderError {
 }
 
 impl CanonicalOrderInventory {
+    pub(crate) fn native_pair(
+        &self,
+        start: CapturedControl,
+        end: CapturedControl,
+    ) -> Result<CanonicalBox, CanonicalOrderError> {
+        if *start.kind() != ParagraphControlKind::InlineBoundaryStart
+            || *end.kind() != ParagraphControlKind::InlineBoundaryEnd
+            || start.paragraph().domain() != end.paragraph().domain()
+            || start.event_position().partial_cmp(&end.event_position())
+                != Some(std::cmp::Ordering::Less)
+        {
+            return Err(CanonicalOrderError::Contradiction);
+        }
+        for scope in &self.scopes {
+            let first = scope.entry_control().as_ref() == Some(&start);
+            let last = scope.exit_control().as_ref() == Some(&end);
+            if first || last {
+                if first && last {
+                    return Ok(CanonicalBox::Scope(scope.clone()));
+                }
+                return Err(CanonicalOrderError::Contradiction);
+            }
+        }
+        Ok(CanonicalBox::NativePair { start, end })
+    }
+
+    pub(crate) fn validate_native(
+        &self,
+        native: &[CanonicalBox],
+    ) -> Result<(), CanonicalOrderError> {
+        for (i, pair) in native.iter().enumerate() {
+            if !matches!(pair, CanonicalBox::NativePair { .. }) {
+                continue;
+            }
+            for other in self
+                .scopes
+                .iter()
+                .filter(|scope| scope.role() == ScopeRole::Inline)
+                .cloned()
+                .map(CanonicalBox::Scope)
+                .chain(native[..i].iter().cloned())
+            {
+                if other.domain() == pair.domain()
+                    && other != *pair
+                    && interval_relation(
+                        &pair.position(),
+                        &pair.end(),
+                        &other.position(),
+                        &other.end(),
+                    ) == Relation::Crossing
+                {
+                    return Err(CanonicalOrderError::Contradiction);
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn parent(
         &self,
         child: &CanonicalBox,
-    ) -> Result<Option<CapturedScope>, CanonicalOrderError> {
-        if let CanonicalBox::Scope(scope) = child {
-            if scope.role() != ScopeRole::Inline {
-                return Err(CanonicalOrderError::Contradiction);
-            }
-            return Ok(scope.parent());
-        }
-        let position = child.position();
+        native: &[CanonicalBox],
+    ) -> Result<Option<CanonicalBox>, CanonicalOrderError> {
         let domain = child.domain();
-        if !position.same_capture(&domain.enter_position()) {
+        if !child.position().same_capture(&domain.enter_position()) {
             return Err(CanonicalOrderError::Unavailable);
         }
-        Ok(self
+        let mut closest: Option<CanonicalBox> = None;
+        for candidate in self
             .scopes
             .iter()
-            .filter(|scope| {
-                scope.role() == ScopeRole::Inline
-                    && scope.domain() == domain
-                    && scope.enter_position() < position
-                    && position < scope.exit_position()
-            })
-            .max_by(|a, b| {
-                a.enter_position()
-                    .partial_cmp(&b.enter_position())
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
+            .filter(|scope| scope.role() == ScopeRole::Inline)
             .cloned()
-            .or(Some(domain)))
+            .map(CanonicalBox::Scope)
+            .chain(native.iter().cloned())
+        {
+            if candidate == *child || candidate.domain() != domain {
+                continue;
+            }
+            if interval_relation(
+                &candidate.position(),
+                &candidate.end(),
+                &child.position(),
+                &child.end(),
+            ) != Relation::Contains
+            {
+                continue;
+            }
+            if closest.as_ref().is_none_or(|prior| {
+                interval_relation(
+                    &prior.position(),
+                    &prior.end(),
+                    &candidate.position(),
+                    &candidate.end(),
+                ) == Relation::Contains
+            }) {
+                closest = Some(candidate);
+            }
+        }
+        Ok(closest.or(Some(CanonicalBox::Scope(domain))))
     }
 
     fn covers(
         &self,
-        parent: &CapturedScope,
+        parent: &CanonicalBox,
         children: &[CanonicalBox],
         prefix: ChildOrderCompleteness,
         suffix: ChildOrderCompleteness,
@@ -96,18 +183,18 @@ impl CanonicalOrderInventory {
             return true;
         };
         let start = if prefix == ChildOrderCompleteness::Complete {
-            parent.enter_position()
+            parent.position()
         } else {
             children
                 .first()
-                .map_or_else(|| parent.enter_position(), CanonicalBox::position)
+                .map_or_else(|| parent.position(), CanonicalBox::position)
         };
         let end = if suffix == ChildOrderCompleteness::Complete {
-            parent.exit_position()
+            parent.end()
         } else {
             children
                 .last()
-                .map_or_else(|| parent.exit_position(), CanonicalBox::end)
+                .map_or_else(|| parent.end(), CanonicalBox::end)
         };
         let domain = parent.domain();
         if !start.same_capture(&domain.enter_position()) || end < start {
@@ -127,10 +214,12 @@ impl CanonicalOrderInventory {
                     if paragraph.domain() != domain || !paragraphs.contains(&paragraph) {
                         return false;
                     }
-                    if parent.role() == ScopeRole::Inline {
+                    if let CanonicalBox::Scope(scope) = parent
+                        && scope.role() == ScopeRole::Inline
+                    {
                         let Some(intersection) = paragraph
                             .scope_intersections()
-                            .find(|row| row.scope() == *parent)
+                            .find(|row| row.scope() == *scope)
                         else {
                             return false;
                         };
@@ -174,13 +263,14 @@ impl CanonicalOrderInventory {
 
     pub(crate) fn validate_sibling(
         &self,
-        parent: &CapturedScope,
+        parent: &CanonicalBox,
         current: &CanonicalBox,
         sibling: &CanonicalBox,
         side: surgeist_text::SourceBoxSide,
+        native: &[CanonicalBox],
     ) -> Result<(), CanonicalOrderError> {
-        if self.parent(current)?.as_ref() != Some(parent)
-            || self.parent(sibling)?.as_ref() != Some(parent)
+        if self.parent(current, native)?.as_ref() != Some(parent)
+            || self.parent(sibling, native)?.as_ref() != Some(parent)
             || current.domain() != sibling.domain()
         {
             return Err(CanonicalOrderError::Contradiction);
@@ -198,16 +288,17 @@ impl CanonicalOrderInventory {
 
     pub(crate) fn validate(
         &self,
-        parent: &CapturedScope,
+        parent: &CanonicalBox,
         children: &[CanonicalBox],
         prefix: ChildOrderCompleteness,
         suffix: ChildOrderCompleteness,
+        native: &[CanonicalBox],
     ) -> Result<(), CanonicalOrderError> {
         for child in children {
             if child.domain() != parent.domain() {
                 return Err(CanonicalOrderError::Contradiction);
             }
-            if self.parent(child)?.as_ref() != Some(parent) {
+            if self.parent(child, native)?.as_ref() != Some(parent) {
                 return Err(CanonicalOrderError::Contradiction);
             }
         }
@@ -218,9 +309,15 @@ impl CanonicalOrderInventory {
             .filter(|scope| scope.role() == ScopeRole::Inline)
             .cloned()
             .map(CanonicalBox::Scope)
+            .chain(
+                native
+                    .iter()
+                    .filter(|box_| matches!(box_, CanonicalBox::NativePair { .. }))
+                    .cloned(),
+            )
             .chain(self.occurrences.iter().cloned())
         {
-            if self.parent(&child)?.as_ref() == Some(parent) {
+            if self.parent(&child, native)?.as_ref() == Some(parent) {
                 actual.push(child);
             }
         }

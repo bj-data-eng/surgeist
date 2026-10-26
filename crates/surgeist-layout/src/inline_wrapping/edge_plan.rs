@@ -485,6 +485,27 @@ fn validate_canonical_orders<Node: Copy + Eq>(
     }) else {
         return Ok(());
     };
+    let mut paired = Vec::new();
+    let mut native = Vec::new();
+    for proof in proofs {
+        if let WrappingScopeProof::NativePair {
+            pair, start, end, ..
+        } = proof
+        {
+            let fact = bindings
+                .inventory
+                .native_pair(start.clone(), end.clone())
+                .map_err(|_| WrappingScopeError::CaptureAssociation)?;
+            if matches!(fact, CanonicalBox::NativePair { .. }) && !native.contains(&fact) {
+                native.push(fact.clone());
+            }
+            paired.push((*pair, fact));
+        }
+    }
+    bindings
+        .inventory
+        .validate_native(&native)
+        .map_err(|_| WrappingScopeError::CrossingScopes)?;
     let fact = |index: usize| match &boxes[index].box_ {
         GeneratedBoxRef::Inline(InlineBoxRef::Scope(scope)) => {
             Some(CanonicalBox::Scope(scope.clone()))
@@ -494,7 +515,10 @@ fn validate_canonical_orders<Node: Copy + Eq>(
             .iter()
             .find(|(actual, _)| actual == node)
             .map(|(_, fact)| fact.clone()),
-        GeneratedBoxRef::Inline(InlineBoxRef::NativePair { .. }) => None,
+        GeneratedBoxRef::Inline(InlineBoxRef::NativePair { start, end }) => paired
+            .iter()
+            .find(|(pair, _)| *pair == (*start, *end))
+            .map(|(_, fact)| fact.clone()),
     };
     for order in orders {
         let children = order
@@ -503,7 +527,7 @@ fn validate_canonical_orders<Node: Copy + Eq>(
             .filter_map(|&(i, _)| fact(i))
             .collect::<Vec<_>>();
         let parent = match &boxes[order.parent].box_ {
-            GeneratedBoxRef::Inline(InlineBoxRef::Scope(scope)) => Some(scope.clone()),
+            GeneratedBoxRef::Inline(_) => fact(order.parent),
             GeneratedBoxRef::Node(node) => {
                 let mut domains = bindings
                     .flows
@@ -514,9 +538,8 @@ fn validate_canonical_orders<Node: Copy + Eq>(
                 if domains.any(|domain| Some(domain) != first.as_ref()) {
                     return Err(WrappingScopeError::UnsupportedIncidence);
                 }
-                first
+                first.map(CanonicalBox::Scope)
             }
-            GeneratedBoxRef::Inline(InlineBoxRef::NativePair { .. }) => None,
         };
         let Some(parent) = parent else {
             if order
@@ -530,7 +553,7 @@ fn validate_canonical_orders<Node: Copy + Eq>(
         };
         bindings
             .inventory
-            .validate(&parent, &children, order.prefix, order.suffix)
+            .validate(&parent, &children, order.prefix, order.suffix, &native)
             .map_err(|error| match error {
                 CanonicalOrderError::Unavailable => WrappingScopeError::UnsupportedIncidence,
                 CanonicalOrderError::Contradiction => WrappingScopeError::ChildOrder,

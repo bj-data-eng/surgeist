@@ -134,6 +134,8 @@ The operation derives applicable native forces, preserves existing computed
 requests, processes Text once, and authenticates the returned capture before
 issuing `ProcessedWrappingSource`. Its `into_parts` returns the processed source
 and an owned `ResolvedWrapEdges` receipt, ending the early host borrow.
+An explicitly declared native pair retains its real endpoint-control identity
+when the input has no matching inline scope.
 
 After normal Text preparation and host binding, `LayoutFlowInput::try_new_with_edges`
 accepts the current tree, actual paragraph bindings, final `WrappingInput`, and a

@@ -769,45 +769,138 @@ impl<Node: Copy + Eq> ResolvedWrapEdges<Node> {
     fn canonical_ref(
         &self,
         box_: &GeneratedBoxRef<Node, usize>,
+        inventory: &CanonicalOrderInventory,
     ) -> Result<CanonicalBox, WrappingScopeError> {
+        if let GeneratedBoxRef::Inline(InlineBoxRef::NativePair { start, end }) = box_ {
+            let start = self
+                .occurrences
+                .controls
+                .iter()
+                .find(|(_, node)| node == start)
+                .and_then(|(i, _)| self.controls.get(*i))
+                .ok_or(WrappingScopeError::SourceAssociation)?;
+            let end = self
+                .occurrences
+                .controls
+                .iter()
+                .find(|(_, node)| node == end)
+                .and_then(|(i, _)| self.controls.get(*i))
+                .ok_or(WrappingScopeError::SourceAssociation)?;
+            return inventory
+                .native_pair(start.clone(), end.clone())
+                .map_err(|_| WrappingScopeError::SourceAssociation);
+        }
         self.canonical_box(
             self.captured_box(box_)
                 .ok_or(WrappingScopeError::SourceAssociation)?,
         )
     }
 
+    fn canonical_fact(
+        &self,
+        box_: &GeneratedBoxRef<Node, usize>,
+        inventory: &CanonicalOrderInventory,
+    ) -> Result<Option<CanonicalBox>, WrappingScopeError> {
+        if matches!(
+            box_,
+            GeneratedBoxRef::Inline(InlineBoxRef::NativePair { .. })
+        ) {
+            return self.canonical_ref(box_, inventory).map(Some);
+        }
+        self.captured_box(box_)
+            .map(|key| self.canonical_box(key))
+            .transpose()
+    }
+
+    fn content_domain(&self, node: Node) -> Result<Option<CapturedScope>, WrappingScopeError> {
+        let Some((_, children)) = self.snapshot.flows.iter().find(|(flow, _)| *flow == node) else {
+            return Ok(None);
+        };
+        let mut domains = self
+            .snapshot
+            .associations
+            .iter()
+            .filter(|a| a.flow == node)
+            .map(|a| self.scopes[a.scope].domain())
+            .collect::<Vec<_>>();
+        for &(i, child) in &self.occurrences.origins {
+            if children.contains(&child) {
+                domains.push(
+                    self.position_domain(&self.origins[i])
+                        .ok_or(WrappingScopeError::SourceAssociation)?,
+                );
+            }
+        }
+        for &(i, child) in &self.occurrences.atomics {
+            if children.contains(&child) {
+                domains.push(
+                    self.position_domain(&self.atomics[i])
+                        .ok_or(WrappingScopeError::SourceAssociation)?,
+                );
+            }
+        }
+        for &(i, child) in &self.occurrences.controls {
+            if children.contains(&child) {
+                domains.push(self.controls[i].paragraph().domain());
+            }
+        }
+        let first = domains.first().cloned();
+        if domains.iter().any(|domain| Some(domain) != first.as_ref()) {
+            return Err(WrappingScopeError::SourceAssociation);
+        }
+        Ok(first)
+    }
+
+    fn native_boxes(
+        &self,
+        inventory: &CanonicalOrderInventory,
+    ) -> Result<Vec<CanonicalBox>, WrappingScopeError> {
+        let mut native = Vec::new();
+        for declaration in &self.snapshot.declarations {
+            if matches!(declaration.box_, InlineBoxRef::NativePair { .. }) {
+                let fact = self.canonical_ref(
+                    &GeneratedBoxRef::Inline(declaration.box_.clone()),
+                    inventory,
+                )?;
+                if matches!(fact, CanonicalBox::NativePair { .. }) && !native.contains(&fact) {
+                    native.push(fact);
+                }
+            }
+        }
+        inventory
+            .validate_native(&native)
+            .map_err(|_| WrappingScopeError::SourceAssociation)?;
+        Ok(native)
+    }
+
     fn validate_parent_paths(
         &self,
         inventory: &CanonicalOrderInventory,
+        native: &[CanonicalBox],
     ) -> Result<(), WrappingScopeError> {
-        use surgeist_text::{ScopeRole, SourceBoxSide};
+        use surgeist_text::SourceBoxSide;
         for location in &self.snapshot.locations {
             if !location.effect.forced {
                 continue;
             }
-            let mut current = self.canonical_ref(&location.declared_box)?;
+            let mut current = self.canonical_ref(&location.declared_box, inventory)?;
             let mut stopped = false;
             for step in &location.parents {
-                if stopped || self.canonical_ref(&step.child)? != current {
+                if stopped || self.canonical_ref(&step.child, inventory)? != current {
                     return Err(WrappingScopeError::SourceAssociation);
                 }
                 let parent = inventory
-                    .parent(&current)
+                    .parent(&current, native)
                     .map_err(|_| WrappingScopeError::SourceAssociation)?
-                    .filter(|parent| parent.role() == ScopeRole::Inline)
+                    .filter(CanonicalBox::is_inline)
                     .ok_or(WrappingScopeError::SourceAssociation)?;
-                if self.canonical_ref(&step.parent)? != CanonicalBox::Scope(parent.clone()) {
+                if self.canonical_ref(&step.parent, inventory)? != parent {
                     return Err(WrappingScopeError::SourceAssociation);
                 }
                 if let Some(sibling) = &step.stopped_by {
-                    if let Some(sibling) = self.captured_box(sibling) {
+                    if let Some(sibling) = self.canonical_fact(sibling, inventory)? {
                         inventory
-                            .validate_sibling(
-                                &parent,
-                                &current,
-                                &self.canonical_box(sibling)?,
-                                location.side,
-                            )
+                            .validate_sibling(&parent, &current, &sibling, location.side, native)
                             .map_err(|_| WrappingScopeError::SourceAssociation)?;
                     } else if !step.physical {
                         // An actual native parent/window can own a numeric
@@ -827,9 +920,11 @@ impl<Node: Copy + Eq> ResolvedWrapEdges<Node> {
                     };
                     let children = needed
                         .iter()
-                        .filter_map(|child| self.captured_box(child))
-                        .map(|key| self.canonical_box(key))
-                        .collect::<Result<Vec<_>, _>>()?;
+                        .map(|child| self.canonical_fact(child, inventory))
+                        .collect::<Result<Vec<_>, _>>()?
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<_>>();
                     let (prefix, suffix) = match location.side {
                         SourceBoxSide::Before => (
                             ChildOrderCompleteness::Complete,
@@ -841,20 +936,23 @@ impl<Node: Copy + Eq> ResolvedWrapEdges<Node> {
                         ),
                     };
                     inventory
-                        .validate(&parent, &children, prefix, suffix)
+                        .validate(&parent, &children, prefix, suffix, native)
                         .map_err(|_| WrappingScopeError::MissingChildOrder)?;
-                    current = CanonicalBox::Scope(parent);
+                    current = parent;
                 }
             }
             if !stopped
                 && inventory
-                    .parent(&current)
+                    .parent(&current, native)
                     .map_err(|_| WrappingScopeError::SourceAssociation)?
-                    .is_some_and(|parent| parent.role() == ScopeRole::Inline)
+                    .is_some_and(|parent| parent.is_inline())
             {
                 return Err(WrappingScopeError::MissingChildOrder);
             }
-            if self.canonical_ref(&location.box_)? != current {
+            if self.canonical_ref(&location.box_, inventory)? != current {
+                return Err(WrappingScopeError::SourceAssociation);
+            }
+            if self.content_domain(location.flow)?.as_ref() != Some(&current.domain()) {
                 return Err(WrappingScopeError::SourceAssociation);
             }
         }
@@ -871,33 +969,21 @@ impl<Node: Copy + Eq> ResolvedWrapEdges<Node> {
                 .collect::<Result<Vec<_>, _>>()?,
             coverage: CanonicalCoverage::WholeInput,
         };
+        let native = self.native_boxes(&inventory)?;
         // Canonical parent/domain/order comes from Text, never an event parser.
         for order in &self.snapshot.orders {
-            let parent = match self.captured_box(&order.parent) {
-                Some(CapturedBoxIndex::Scope(i)) => Some(self.scopes[i].clone()),
-                Some(CapturedBoxIndex::Atomic(_)) | None => {
-                    let mut domains = self
-                        .snapshot
-                        .associations
-                        .iter()
-                        .filter(|a| matches!(order.parent, GeneratedBoxRef::Node(node) if a.flow == node))
-                        .map(|a| self.scopes[a.scope].domain());
-                    let first = domains.next();
-                    if domains.any(|domain| Some(domain) != first) {
-                        return Err(WrappingScopeError::SourceAssociation);
-                    }
-                    first
-                }
-                Some(CapturedBoxIndex::Origin(_)) => {
-                    return Err(WrappingScopeError::SourceAssociation);
-                }
+            let parent = match &order.parent {
+                GeneratedBoxRef::Inline(_) => Some(self.canonical_ref(&order.parent, &inventory)?),
+                GeneratedBoxRef::Node(node) => self.content_domain(*node)?.map(CanonicalBox::Scope),
             };
             let children = order
                 .children
                 .iter()
-                .filter_map(|child| self.captured_box(&child.box_))
-                .map(|key| self.canonical_box(key))
-                .collect::<Result<Vec<_>, _>>()?;
+                .map(|child| self.canonical_fact(&child.box_, &inventory))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
             let Some(parent) = parent else {
                 if !children.is_empty() {
                     return Err(WrappingScopeError::SourceAssociation);
@@ -905,10 +991,10 @@ impl<Node: Copy + Eq> ResolvedWrapEdges<Node> {
                 continue;
             };
             inventory
-                .validate(&parent, &children, order.prefix, order.suffix)
+                .validate(&parent, &children, order.prefix, order.suffix, &native)
                 .map_err(|_| WrappingScopeError::SourceAssociation)?;
         }
-        self.validate_parent_paths(&inventory)?;
+        self.validate_parent_paths(&inventory, &native)?;
         for association in &self.snapshot.associations {
             let scope = &self.scopes[association.scope];
             if scope.role() != surgeist_text::ScopeRole::Inline {
