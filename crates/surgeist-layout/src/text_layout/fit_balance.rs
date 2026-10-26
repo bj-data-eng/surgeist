@@ -563,3 +563,7 @@ mod tests {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "fit_balance_completion_tests.rs"]
+mod completion_tests;
