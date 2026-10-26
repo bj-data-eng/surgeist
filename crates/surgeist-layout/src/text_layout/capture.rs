@@ -26,12 +26,40 @@ type ResultOf<Tree, T> = crate::LayoutResultOf<
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ParagraphClass {
     Flow,
+    SemanticFlow,
     AssociationOnly,
 }
 
 pub(crate) fn classify<Node>(paragraph: &TextParagraphBinding<Node>) -> Result<ParagraphClass, E> {
     if !paragraph.nodes.is_empty() {
         return Ok(ParagraphClass::Flow);
+    }
+    let computed_only = paragraph.prepared.captured_paragraph().is_some()
+        && paragraph.prepared.origin_views().next().is_none()
+        && paragraph.prepared.control_views().next().is_none()
+        && paragraph.prepared.atomic_views().next().is_none()
+        && paragraph.prepared.virtual_separators().next().is_none()
+        && paragraph.origins.is_empty()
+        && paragraph.controls.is_empty()
+        && paragraph.atomics.is_empty();
+    if computed_only {
+        let mut computed = false;
+        let mut forced = paragraph
+            .prepared
+            .opportunity_views()
+            .filter(|offer| offer.kind() == surgeist_text::PreparedBreakKind::Forced)
+            .map(|offer| offer.computed_line_boundary());
+        let all_computed = paragraph.prepared.participants().all(|participant| {
+            let surgeist_text::PreparedParticipant::ComputedLineBoundary(boundary) = participant
+            else {
+                return false;
+            };
+            computed = true;
+            forced.next().flatten().as_ref() == Some(&boundary)
+        });
+        if computed && all_computed && forced.next().is_none() {
+            return Ok(ParagraphClass::SemanticFlow);
+        }
     }
     if paragraph.prepared.captured_paragraph().is_some()
         && paragraph.prepared.origin_views().next().is_none()
@@ -59,6 +87,20 @@ pub(crate) struct ScopeAssociations<Node> {
     regions: Vec<CapturedScope>,
     structural: Vec<CapturedScope>,
     computed: Vec<ComputedIncidence>,
+    slots: Vec<SemanticParagraphSlot<Node>>,
+}
+
+/// A checked native gap is a coordinate, never a paragraph identity. Actual
+/// capture/preparation handles retain distinct semantic occurrences at that gap.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct SemanticParagraphSlot<Node> {
+    pub(crate) captured: CapturedParagraph,
+    pub(crate) prepared: PreparedText,
+    pub(crate) container: Node,
+    pub(crate) gap: usize,
+    previous: Option<CapturedEventPosition>,
+    next: Option<CapturedEventPosition>,
+    key: (usize, u8),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -149,10 +191,25 @@ impl<Node> Default for ScopeAssociations<Node> {
             regions: Vec::new(),
             structural: Vec::new(),
             computed: Vec::new(),
+            slots: Vec::new(),
         }
     }
 }
 impl<Node: Copy + Eq> ScopeAssociations<Node> {
+    pub(crate) fn semantic_slots(
+        &self,
+        container: Node,
+    ) -> impl Iterator<Item = &SemanticParagraphSlot<Node>> {
+        self.slots
+            .iter()
+            .filter(move |slot| slot.container == container)
+    }
+    pub(crate) fn semantic_slot(
+        &self,
+        prepared: &PreparedText,
+    ) -> Option<&SemanticParagraphSlot<Node>> {
+        self.slots.iter().find(|slot| &slot.prepared == prepared)
+    }
     pub(crate) fn native_pairs(&self) -> impl Iterator<Item = (&CapturedScope, (Node, Node))> {
         self.inline
             .iter()
@@ -265,10 +322,25 @@ struct Origin<Node> {
     node: Node,
     paragraph: usize,
 }
+enum ActualOwner<Node> {
+    Physical(Node),
+    Semantic {
+        container: Node,
+        paragraph: CapturedParagraph,
+    },
+}
 struct Actual<Node> {
     event: Event,
-    node: Node,
+    owner: ActualOwner<Node>,
     key: (usize, u8),
+}
+impl<Node: Copy> Actual<Node> {
+    fn subject(&self) -> Node {
+        match &self.owner {
+            ActualOwner::Physical(node) => *node,
+            ActualOwner::Semantic { container, .. } => *container,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -287,6 +359,7 @@ struct ExpectedFlow {
     previous: Vec<Option<usize>>,
     next: Vec<Option<usize>>,
 }
+#[derive(Clone, Copy)]
 struct GapScan<'a> {
     previous: Option<&'a Event>,
     next: Option<&'a Event>,
@@ -400,6 +473,7 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
         }
     }
     proof.close_associations()?;
+    proof.semantic_slots()?;
     // Unexpected real observations inside a region are retained too. Their
     // structural identities need validation but never activate another A region.
     for region in &regions {
@@ -558,6 +632,19 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         after: bool,
     ) -> ResultOf<Tree, usize> {
         let binding = &self.paragraphs[paragraph];
+        if binding.nodes.is_empty() {
+            if self.result.semantic_slot(&binding.prepared).is_none() {
+                return Err(self.computed_error(paragraph));
+            }
+            let owner = self.require_node(binding.container)?;
+            let mut branch = self.require_node(node)?;
+            while self.graph.parents[branch].first().copied() != Some(owner) {
+                branch = *self.graph.parents[branch]
+                    .first()
+                    .ok_or_else(|| self.computed_error(paragraph))?;
+            }
+            return Ok(0);
+        }
         if let Some(index) = binding.nodes.iter().position(|&n| n == node) {
             return Ok(index + usize::from(after));
         }
@@ -604,6 +691,30 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                     .paragraph(p)
                     .ok_or_else(|| self.computed_error(paragraph))?;
                 let nodes = &self.paragraphs[index].nodes;
+                if nodes.is_empty()
+                    && self
+                        .result
+                        .semantic_slot(&self.paragraphs[index].prepared)
+                        .is_some()
+                {
+                    if binding.nodes.is_empty() {
+                        return Ok(0);
+                    }
+                    let slot = self
+                        .result
+                        .semantic_slot(&self.paragraphs[index].prepared)
+                        .expect("validated semantic slot");
+                    let owner = self.require_node(binding.container)?;
+                    if slot.container != binding.container {
+                        return Err(self.computed_error(paragraph));
+                    }
+                    let first = self.require_node(binding.nodes[0])?;
+                    let offset = self.graph.children[owner]
+                        .iter()
+                        .position(|&node| node == first)
+                        .ok_or_else(|| self.computed_error(paragraph))?;
+                    return Ok(slot.gap.saturating_sub(offset).min(binding.nodes.len()));
+                }
                 let after = matches!(event, Event::ParagraphEnd(_));
                 let node = if after { nodes.last() } else { nodes.first() }
                     .copied()
@@ -1126,7 +1237,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                         container: paragraph.container,
                     });
                 }
-                if class == ParagraphClass::AssociationOnly {
+                if class != ParagraphClass::Flow {
                     push_unique(&mut self.domains, domain);
                 }
             }
@@ -1583,6 +1694,72 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         domain: &CapturedScope,
         roots: Vec<usize>,
         strict: bool,
+        gap: Option<GapScan<'_>>,
+        region: Option<&CapturedScope>,
+    ) -> ResultOf<Tree, Vec<Actual<Tree::Node>>> {
+        let bounds = roots
+            .first()
+            .zip(roots.last())
+            .map(|(&first, &last)| ((self.enter[first], 0), (self.exit[last], 5)));
+        let mut actual = self.actual_physical(domain, roots, strict, gap)?;
+        if gap.is_some() {
+            return Ok(actual);
+        }
+        for slot in &self.result.slots {
+            if slot.captured.domain() != *domain {
+                continue;
+            }
+            if let Some(region) = region
+                && region.role() == ScopeRole::Inline
+                && !(slot.captured.enter_position() < region.exit_position()
+                    && region.enter_position() < slot.captured.exit_position())
+            {
+                continue;
+            }
+            let included = bounds.is_none_or(|(first, last)| first <= slot.key && slot.key <= last);
+            if !included {
+                continue;
+            }
+            for event in [
+                Event::ParagraphStart(slot.captured.clone()),
+                Event::ParagraphEnd(slot.captured.clone()),
+            ] {
+                self.require_expected(&event)?;
+                let at = actual
+                    .iter()
+                    .position(|row| {
+                        row.key > slot.key
+                            || row.key == slot.key
+                                && match &row.owner {
+                                    ActualOwner::Physical(_) => true,
+                                    ActualOwner::Semantic { paragraph, .. } => {
+                                        paragraph.domain() != slot.captured.domain()
+                                            || event_position(&row.event) > event_position(&event)
+                                    }
+                                }
+                    })
+                    .unwrap_or(actual.len());
+                actual.insert(
+                    at,
+                    Actual {
+                        event,
+                        owner: ActualOwner::Semantic {
+                            container: slot.container,
+                            paragraph: slot.captured.clone(),
+                        },
+                        key: slot.key,
+                    },
+                );
+            }
+        }
+        Ok(actual)
+    }
+
+    fn actual_physical(
+        &self,
+        domain: &CapturedScope,
+        roots: Vec<usize>,
+        strict: bool,
         mut gap: Option<GapScan<'_>>,
     ) -> ResultOf<Tree, Vec<Actual<Tree::Node>>> {
         let mut result = Vec::new();
@@ -1601,7 +1778,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                 {
                     let item = Actual {
                         event: event.clone(),
-                        node,
+                        owner: ActualOwner::Physical(node),
                         key: (
                             if opaque {
                                 self.enter[index]
@@ -1630,7 +1807,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
             {
                 let item = Actual {
                     event: event.clone(),
-                    node,
+                    owner: ActualOwner::Physical(node),
                     key: (self.enter[index], 0),
                 };
                 if self.observe(item, strict, &mut gap, &mut result)? {
@@ -1644,7 +1821,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
             {
                 let item = Actual {
                     event: event.clone(),
-                    node,
+                    owner: ActualOwner::Physical(node),
                     key: (self.enter[index], 1),
                 };
                 if self.observe(item, strict, &mut gap, &mut result)? {
@@ -1672,7 +1849,11 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                         (Event::BlockEnd(child.scope.clone()), (self.exit[index], 0)),
                     ] {
                         if self.observe(
-                            Actual { event, node, key },
+                            Actual {
+                                event,
+                                owner: ActualOwner::Physical(node),
+                                key,
+                            },
                             strict,
                             &mut gap,
                             &mut result,
@@ -1713,14 +1894,14 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         if let Some(gap) = gap {
             if !gap.inside {
                 if gap.previous == Some(&item.event) {
-                    self.require_node(item.node)?;
+                    self.require_node(item.subject())?;
                     gap.inside = true;
                     result.push(item);
                 }
             } else {
-                self.require_node(item.node)?;
+                self.require_node(item.subject())?;
                 if gap.next != Some(&item.event) {
-                    return Err(binding_error(item.node, E::ScopeAssociation));
+                    return Err(binding_error(item.subject(), E::ScopeAssociation));
                 }
                 gap.complete = true;
                 result.push(item);
@@ -1728,7 +1909,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
             }
         } else {
             if strict {
-                self.require_node(item.node)?;
+                self.require_node(item.subject())?;
             }
             result.push(item);
         }
@@ -1764,7 +1945,13 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
     }
     fn compare_native_region(&self, region: &NativeRegion<Tree::Node>) -> ResultOf<Tree, ()> {
         let expected = self.expected_events(self.native_selected(region))?;
-        let mut actual = self.actual(&region.domain(), self.native_roots(region), true, None)?;
+        let mut actual = self.actual(
+            &region.domain(),
+            self.native_roots(region),
+            true,
+            None,
+            None,
+        )?;
         let lower = (self.enter[self.require_node(region.pair.0)?], 1);
         let upper = (self.enter[self.require_node(region.pair.1)?], 1);
         actual.retain(|row| lower <= row.key && row.key <= upper);
@@ -1777,7 +1964,13 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         let mut expected = self.expected_events(self.selected(region))?;
         let semantic = self.semantic.contains(region)
             && !self.result.inline.iter().any(|s| &s.scope == region);
-        let mut actual = self.actual(&region.domain(), self.roots(region)?, true, None)?;
+        let mut actual = self.actual(
+            &region.domain(),
+            self.roots(region)?,
+            true,
+            None,
+            Some(region),
+        )?;
         if semantic {
             // Without physical edges, authentic adjacent flow events close
             // both semantic edges. They prove order, not allocated BP extent.
@@ -1830,6 +2023,183 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         }
         Ok(())
     }
+    fn native_event_gap(
+        &self,
+        domain: &CapturedScope,
+        event: &Event,
+        after: bool,
+    ) -> ResultOf<Tree, usize> {
+        let owner = self.require_node(self.domain(domain)?.container)?;
+        if matches!(event, Event::BlockStart(scope) | Event::BlockEnd(scope) if scope == domain) {
+            return Ok(if matches!(event, Event::BlockEnd(_)) {
+                self.graph.children[owner].len()
+            } else {
+                0
+            });
+        }
+        let mut branch = self.require_node(self.event_node(event)?)?;
+        while self.graph.parents[branch].first().copied() != Some(owner) {
+            branch = *self.graph.parents[branch]
+                .first()
+                .ok_or_else(|| binding_error(self.graph.nodes[branch], E::ScopeAssociation))?;
+        }
+        let rank = self.graph.children[owner]
+            .iter()
+            .position(|&node| node == branch)
+            .ok_or_else(|| binding_error(self.graph.nodes[owner], E::ScopeAssociation))?;
+        Ok(rank + usize::from(after))
+    }
+
+    fn semantic_slots(&mut self) -> ResultOf<Tree, ()> {
+        for (index, paragraph) in self.result.paragraphs.iter().enumerate() {
+            if paragraph.class != ParagraphClass::SemanticFlow {
+                continue;
+            }
+            let captured = paragraph
+                .captured
+                .as_ref()
+                .expect("semantic flow has actual capture");
+            let domain = captured.domain();
+            let flow = &self.expected[&domain];
+            let &(first, last) = flow
+                .paragraphs
+                .get(captured)
+                .ok_or_else(|| binding_error(paragraph.container, E::ScopeAssociation))?;
+            if last != first + 1 {
+                return Err(binding_error(paragraph.container, E::ScopeAssociation));
+            }
+            let before = flow.previous[first].map(|at| &flow.events[at].event);
+            let after = flow.next[last].map(|at| &flow.events[at].event);
+            for event in [before, after].into_iter().flatten() {
+                self.require_expected(event)?;
+            }
+            self.actual_physical(
+                &domain,
+                self.gap_roots(&domain, before, after)?,
+                false,
+                Some(GapScan {
+                    previous: before,
+                    next: after,
+                    inside: before.is_none(),
+                    complete: false,
+                }),
+            )?;
+            let owner = self.require_node(paragraph.container)?;
+            let lower = before
+                .map(|event| self.native_event_gap(&domain, event, true))
+                .transpose()?
+                .unwrap_or(0);
+            let upper = after
+                .map(|event| self.native_event_gap(&domain, event, false))
+                .transpose()?
+                .unwrap_or(self.graph.children[owner].len());
+            if lower != upper {
+                return Err(binding_error(paragraph.container, E::ScopeAssociation));
+            }
+            for other in self
+                .paragraphs
+                .iter()
+                .filter(|other| other.container == paragraph.container && !other.nodes.is_empty())
+            {
+                let start = self.graph.children[owner]
+                    .iter()
+                    .position(|&node| self.graph.nodes[node] == other.nodes[0])
+                    .ok_or_else(|| binding_error(paragraph.container, E::RunMembership))?;
+                if start < lower && lower < start + other.nodes.len() {
+                    return Err(binding_error(paragraph.container, E::RunMembership));
+                }
+            }
+            if let Some(other) = self
+                .result
+                .slots
+                .iter()
+                .find(|slot| slot.container == paragraph.container && slot.gap == lower)
+                && (other.captured.domain() != domain
+                    || !other
+                        .captured
+                        .enter_position()
+                        .same_capture(&captured.enter_position()))
+            {
+                return Err(binding_error(paragraph.container, E::ScopeAssociation));
+            }
+            let key = if let Some(&child) = self.graph.children[owner].get(lower) {
+                (self.enter[child], 0)
+            } else if let Some(&child) = self.graph.children[owner].last() {
+                (self.exit[child], 5)
+            } else {
+                (self.enter[owner], 5)
+            };
+            self.result.slots.push(SemanticParagraphSlot {
+                captured: captured.clone(),
+                prepared: self.paragraphs[index].prepared.clone(),
+                container: paragraph.container,
+                gap: lower,
+                previous: before.map(event_position),
+                next: after.map(event_position),
+                key,
+            });
+        }
+        // BlockEnd is actual terminal authority, not an empty-vector shortcut.
+        for binding in self.paragraphs {
+            if binding.prepared.terminal_edge() != surgeist_text::ParagraphTerminalEdge::BlockEnd {
+                continue;
+            }
+            let owner = self.require_node(binding.container)?;
+            let end = if let Some(slot) = self.result.semantic_slot(&binding.prepared) {
+                slot.gap
+            } else if let Some(last) = binding.nodes.last() {
+                self.graph.children[owner]
+                    .iter()
+                    .position(|&node| self.graph.nodes[node] == *last)
+                    .ok_or_else(|| binding_error(binding.container, E::RunMembership))?
+                    + 1
+            } else {
+                continue;
+            };
+            let later_slot = self.result.slots.iter().any(|slot| {
+                slot.container == binding.container
+                    && slot.prepared != binding.prepared
+                    && slot.gap >= end
+                    && binding
+                        .prepared
+                        .captured_paragraph()
+                        .is_some_and(|paragraph| {
+                            paragraph
+                                .exit_position()
+                                .same_capture(&slot.captured.enter_position())
+                                && paragraph.exit_position() < slot.captured.enter_position()
+                        })
+            });
+            let later_child = self.result.semantic_slot(&binding.prepared).is_some()
+                && self.graph.children[owner][end..].iter().any(|&node| {
+                    self.tree
+                        .layout_input(self.graph.nodes[node])
+                        .as_box()
+                        .is_none_or(|input| {
+                            input.display != crate::Display::None
+                                && input.position != crate::Position::Absolute
+                        })
+                });
+            if later_slot || later_child {
+                return Err(binding_error(binding.container, E::TerminalBlockEdge));
+            }
+        }
+        let graph = self.graph;
+        self.result.slots.sort_by(|a, b| {
+            graph
+                .index(a.container)
+                .cmp(&graph.index(b.container))
+                .then(a.gap.cmp(&b.gap))
+                .then_with(|| {
+                    a.captured
+                        .enter_position()
+                        .partial_cmp(&b.captured.enter_position())
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+        });
+        Ok(())
+    }
+
     fn metadata_slot(&self, index: usize) -> ResultOf<Tree, ()> {
         let paragraph = self.result.paragraphs[index]
             .captured
@@ -1882,6 +2252,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                         inside: before.is_none(),
                         complete: false,
                     }),
+                    None,
                 )?;
             }
             self.metadata.insert(captured.clone());
@@ -1939,6 +2310,44 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         next: Option<&Event>,
     ) -> ResultOf<Tree, Vec<usize>> {
         let container = self.require_node(self.domain(domain)?.container)?;
+        let semantic_gap = |event: Option<&Event>| match event {
+            Some(Event::ParagraphStart(paragraph) | Event::ParagraphEnd(paragraph)) => self
+                .result
+                .slots
+                .iter()
+                .find(|slot| &slot.captured == paragraph)
+                .map(|slot| slot.gap),
+            _ => None,
+        };
+        let left_gap = semantic_gap(previous);
+        let right_gap = semantic_gap(next);
+        if left_gap.is_some() || right_gap.is_some() {
+            let first = left_gap.map_or_else(
+                || {
+                    previous
+                        .map(|event| self.native_event_gap(domain, event, false))
+                        .transpose()
+                        .map(|gap| gap.unwrap_or(0))
+                },
+                Ok,
+            )?;
+            let last = right_gap.map_or_else(
+                || {
+                    next.map(|event| self.native_event_gap(domain, event, true))
+                        .transpose()
+                        .map(|gap| gap.unwrap_or(self.graph.children[container].len()))
+                },
+                Ok,
+            )?;
+            if first > last {
+                return Err(binding_error(
+                    self.graph.nodes[container],
+                    E::ScopeAssociation,
+                ));
+            }
+            return Ok(self.graph.children[container][first..last].to_vec());
+        }
+
         let left = previous
             .map(|e| self.event_node(e).and_then(|n| self.require_node(n)))
             .transpose()?;
@@ -2026,7 +2435,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                     let (first, last) = self.expected[&p.domain()].paragraphs[p];
                     last != first + 1
                 },
-                |i| self.result.paragraphs[i].class == ParagraphClass::Flow,
+                |i| self.result.paragraphs[i].class != ParagraphClass::AssociationOnly,
             ),
             _ => true,
         }
@@ -2143,7 +2552,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
             push_unique(&mut domains, region.domain());
         }
         for paragraph in &self.result.paragraphs {
-            if paragraph.class == ParagraphClass::AssociationOnly {
+            if paragraph.class != ParagraphClass::Flow {
                 push_unique(
                     &mut domains,
                     paragraph
@@ -2218,10 +2627,13 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         // Source-neighbor Block slots used to locate supplied empty incidence
         // are C obligations, not new A regions.
         for paragraph in &self.result.paragraphs {
-            if paragraph.class != ParagraphClass::AssociationOnly {
+            if paragraph.class == ParagraphClass::Flow {
                 continue;
             }
-            let captured = paragraph.captured.as_ref().expect("captured metadata");
+            let captured = paragraph
+                .captured
+                .as_ref()
+                .expect("captured node-free paragraph");
             let flow = &self.expected[&captured.domain()];
             let (first, last) = flow.paragraphs[captured];
             for i in [flow.previous[first], flow.next[last]]

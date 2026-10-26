@@ -243,9 +243,16 @@ line box through its actual owner. Retain appropriate source and nonvisual
 provenance without dropping the final receipt or switching to partial coverage.
 Raw standalone Text's native numerical metric policy is separate.
 
-Within an already scheduled nonempty Text run, the existing genuine terminal
-selection can perform this completion. Wholly node-free paragraph admission is a
-separate scheduling scope and must apply the same CSS disposition once admitted.
+The genuine terminal selection performs this completion within an actual scheduled
+paragraph. A captured paragraph containing only genuine computed mandatory
+participants can occupy a proved native child gap without a placeholder child.
+Its exact capture, preparation and container retain identity; canonical original
+event order governs several paragraphs at the same gap. Dispatch uses the existing
+formatter, including empty-container, leading and trailing gaps, and preserves real
+Block interruptions. Missing or ambiguous native correspondence refuses rather
+than choosing a binding-vector order or source offset. Strict zero-participation
+association metadata remains nonrendering. The same CSS disposition applies to
+these semantic paragraphs; numerical struts alone do not schedule a line.
 When neither an authenticated prefix placement nor a genuine completion
 transition closes local boxes, Layout returns `UnsupportedIncidence` before
 publishing geometry; it must not forge an exterior incidence or source participant.

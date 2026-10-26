@@ -180,7 +180,7 @@ box assignment or float clearance.
 At paragraph completion, the outgoing frontier must close inline boxes whose
 genuine exits precede that paragraph's exit. After an actual Forced selection,
 Text's issued ParagraphEnd selection can complete remaining boxes within the
-same scheduled nonempty run. Layout retains this proof separately
+same actual scheduled paragraph. Layout retains this proof separately
 from the preceding original pin, which remains unchanged. The proof carries the
 genuine selected sequence, incoming box attribution and captured paragraph horizon
 through measurement, replay and reuse. CSS phantom disposition is independent of
@@ -188,8 +188,19 @@ numerical metric completeness: a strut-only Paragraph receiver retains completio
 custody but contributes no ordinary published line or block extent. See the
 [completion and disposition contract](../../../references/text-wrap-edges--native-determination.md#paragraph-completion-and-retained-pins).
 Missing demanded box metrics still return `MissingBoxMetrics`; missing completion
-authority returns `UnsupportedIncidence`. Wholly node-free paragraph scheduling
-remains separate and follows the same disposition when admitted.
+authority returns `UnsupportedIncidence`.
+
+Captured paragraphs whose only prepared participants are genuine computed
+mandatory boundaries can execute without host child nodes. Layout proves their
+unique native gap from the existing capture/domain/graph associations and orders
+shared-gap paragraphs by canonical events. Empty, leading and trailing gaps use
+the same block/float/fitter path as ordinary runs. Exact preparation and paragraph
+identity prevent empty-vector lookup and result collisions through replay and
+publication. Real Block interruptions retain their child-domain associations;
+missing, foreign or ambiguous correspondence refuses. Strict zero-participation
+AssociationOnly metadata stays nonrendering, and numerical struts alone do not
+create work. Known-size and cache paths retain actual semantic baseline/metric
+work; whole-paragraph placement applies the same phantom disposition above.
 
 Native non-atomic endpoints currently carry their actual border and padding;
 they do not represent signed inline margins. That remaining geometry capability

@@ -81,6 +81,7 @@ pub(crate) struct PassBasis<Node, S: LayoutScalar> {
 #[derive(Clone)]
 pub(crate) struct ScopeFragmentGroup<Node, S: LayoutScalar> {
     pub container: Node,
+    pub prepared: surgeist_text::PreparedText,
     pub nodes: Vec<Node>,
     pub fragments: Vec<crate::InlineFragmentOutputEntryOf<Node, S>>,
 }
@@ -407,6 +408,33 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             })
     }
 
+    pub(crate) fn semantic_slots(
+        &self,
+        container: Node,
+    ) -> Vec<super::capture::SemanticParagraphSlot<Node>> {
+        self.associations
+            .semantic_slots(container)
+            .cloned()
+            .collect()
+    }
+    pub(crate) fn has_semantic(&self, container: Node) -> bool {
+        self.associations.semantic_slots(container).next().is_some()
+    }
+    pub(crate) fn semantic_paragraph(
+        &self,
+        container: Node,
+        prepared: &surgeist_text::PreparedText,
+    ) -> Option<&'input TextParagraphBinding<Node>> {
+        let slot = self.associations.semantic_slot(prepared)?;
+        if slot.container != container {
+            return None;
+        }
+        self.paragraphs.iter().find(|binding| {
+            binding.container == container
+                && binding.prepared == *prepared
+                && binding.prepared.captured_paragraph().as_ref() == Some(&slot.captured)
+        })
+    }
     pub fn frame(&self, node: Node) -> Option<CanonicalFrame<Node, S>> {
         self.frames.iter().find(|frame| frame.node == node).copied()
     }
@@ -418,11 +446,11 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     }
 
     pub fn record(&mut self, paragraph: PendingParagraph<Node>) {
-        if let Some(old) = self
-            .pending
-            .iter_mut()
-            .find(|old| old.container == paragraph.container && old.nodes == paragraph.nodes)
-        {
+        if let Some(old) = self.pending.iter_mut().find(|old| {
+            old.container == paragraph.container
+                && old.nodes == paragraph.nodes
+                && old.prepared == paragraph.prepared
+        }) {
             *old = paragraph;
         } else {
             self.pending.push(paragraph);
@@ -432,18 +460,18 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     pub fn record_scope_fragments(
         &mut self,
         container: Node,
+        prepared: surgeist_text::PreparedText,
         nodes: Vec<Node>,
         fragments: Vec<crate::InlineFragmentOutputEntryOf<Node, S>>,
     ) {
-        if let Some(old) = self
-            .scope_fragments
-            .iter_mut()
-            .find(|group| group.container == container && group.nodes == nodes)
-        {
+        if let Some(old) = self.scope_fragments.iter_mut().find(|group| {
+            group.container == container && group.nodes == nodes && group.prepared == prepared
+        }) {
             old.fragments = fragments;
         } else {
             self.scope_fragments.push(ScopeFragmentGroup {
                 container,
+                prepared,
                 nodes,
                 fragments,
             });

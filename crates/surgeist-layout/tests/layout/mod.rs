@@ -1,6 +1,7 @@
 mod browser_parity;
 mod intrinsic_grid_gutters;
 mod native_scope_projection;
+mod node_free_completion;
 
 mod numeric_box_metrics;
 mod source_edges;

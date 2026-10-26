@@ -216,6 +216,13 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                     return Err(error(TextBindingError::TabReferenceDirection));
                 }
             }
+            if class == capture::ParagraphClass::SemanticFlow {
+                if tree.layout_input(paragraph.container).as_box().is_none() {
+                    return Err(error(TextBindingError::ScopeAssociation));
+                }
+                influencing.push(paragraph.container);
+                continue;
+            }
             if paragraph.nodes.is_empty() {
                 return Err(error(TextBindingError::EmptyRun));
             }

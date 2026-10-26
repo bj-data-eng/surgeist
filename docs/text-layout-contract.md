@@ -174,6 +174,17 @@ It retains capture/cache/invalidation identity but produces no additional line,
 glyph, fragment or placed Text result; the box keeps its ordinary layout behavior.
 Missing source bindings or removed-only source cannot masquerade as emptiness.
 
+A distinct computed-only captured paragraph can be scheduled without host children
+when its genuine mandatory participants and unique native child gap are proved.
+Retain exact paragraph, preparation and container identity through lookup, pending
+results, box custody, replay and cache ownership; an empty node vector is not a
+run identity or a prefix match. Shared gaps use canonical same-capture event order,
+including real child-Block fences. Empty-container and trailing gaps execute once
+through Layout's existing formatter and flow transitions. Unproven or ambiguous
+native placement refuses; no child, origin or source offset may be invented to
+make a slot. Strict association metadata remains separate. Numerical finalization
+and CSS phantom disposition follow the same complete placement contract below.
+
 Output preserves the whole scope association and each fragment's own local
 prepared/placed occurrence. For a virtual-separator Scope fragment, boundary
 nodes prove association rather than substitute geometric anchors: never
