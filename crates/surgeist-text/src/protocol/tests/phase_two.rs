@@ -279,7 +279,7 @@ fn allocated_zero_retains_natural_eligibility_and_real_source_geometry_both_dire
         let layout = Layout::from_finalized_lines(PlacementRequest {
             prepared: p,
             coverage: PlacementCoverage::WholeParagraph,
-            lines: vec![LinePlacement {
+            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
                 line: actual,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -287,7 +287,7 @@ fn allocated_zero_retains_natural_eligibility_and_real_source_geometry_both_dire
                 },
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
-            }],
+            })],
         })
         .unwrap();
         assert_eq!(layout.source().text().code_units(), &[88, 32]);
@@ -482,7 +482,7 @@ fn preserve_spaces_uses_its_real_processed_space_without_inventing_a_forced_end(
         let layout = Layout::from_finalized_lines(PlacementRequest {
             prepared: p,
             coverage: PlacementCoverage::WholeParagraph,
-            lines: vec![LinePlacement {
+            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
                 line: actual,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -490,7 +490,7 @@ fn preserve_spaces_uses_its_real_processed_space_without_inventing_a_forced_end(
                 },
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
-            }],
+            })],
         })
         .unwrap();
         assert_eq!(
@@ -652,7 +652,7 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
                 start: p.boundary_views().next().unwrap().handle(),
                 end,
             },
-            lines: vec![LinePlacement {
+            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -660,7 +660,7 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
                 },
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
-            }],
+            })],
         })
         .unwrap();
         assert_eq!(

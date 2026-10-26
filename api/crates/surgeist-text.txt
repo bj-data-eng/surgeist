@@ -559,6 +559,11 @@ pub surgeist_text::PlacementCoverage::Range
 pub surgeist_text::PlacementCoverage::Range::end: surgeist_text::PreparedBoundary
 pub surgeist_text::PlacementCoverage::Range::start: surgeist_text::PreparedBoundary
 pub surgeist_text::PlacementCoverage::WholeParagraph
+pub enum surgeist_text::PlacementEntry
+pub surgeist_text::PlacementEntry::Formatted(surgeist_text::LinePlacement)
+pub surgeist_text::PlacementEntry::NonFormatted(surgeist_text::NonFormattedLinePlacement)
+impl surgeist_text::PlacementEntry
+pub fn surgeist_text::PlacementEntry::finalized_line(&self) -> &surgeist_text::FinalizedLine
 pub enum surgeist_text::PlaintextItem<'a>
 pub surgeist_text::PlaintextItem::InlineBox(surgeist_text::ProcessedInlineBox<'a>)
 pub surgeist_text::PlaintextItem::Text(surgeist_text::ProcessedText<'a>)
@@ -738,6 +743,9 @@ pub surgeist_text::ProtocolError::MissingSpacingSlot
 pub surgeist_text::ProtocolError::MissingSpacingSlot::slot: usize
 pub surgeist_text::ProtocolError::MissingWrappingPolicy
 pub surgeist_text::ProtocolError::MissingWrappingPolicy::relation: usize
+pub surgeist_text::ProtocolError::NoFormattedLineGeometry
+pub surgeist_text::ProtocolError::NonFormattedForcedLine
+pub surgeist_text::ProtocolError::NonFormattedInFlowContent
 pub surgeist_text::ProtocolError::OriginTextMismatch
 pub surgeist_text::ProtocolError::OriginTextMismatch::aggregate: usize
 pub surgeist_text::ProtocolError::OriginTextMismatch::local: usize
@@ -1453,6 +1461,7 @@ pub fn surgeist_text::FinalizedLine::outline_ink(&self) -> surgeist_text::Result
 pub fn surgeist_text::FinalizedLine::run_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::FinalizedRunView<'_>>
 impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::has_in_flow_content(&self) -> bool
+pub fn surgeist_text::FinalizedLine::nonformatted(&self) -> surgeist_text::Result<surgeist_text::NonFormattedLine>
 pub fn surgeist_text::FinalizedLine::spacing_slots(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SpacingSlotFeedback> + '_
 impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::hyphenation_continuation(&self) -> core::option::Option<surgeist_text::HyphenationContinuation>
@@ -1471,6 +1480,7 @@ pub struct surgeist_text::FinalizedPrefixView<'a>
 impl surgeist_text::FinalizedPrefixView<'_>
 pub fn surgeist_text::FinalizedPrefixView<'_>::advance(&self) -> f64
 pub fn surgeist_text::FinalizedPrefixView<'_>::finalized_line(&self) -> &surgeist_text::FinalizedLine
+pub fn surgeist_text::FinalizedPrefixView<'_>::has_in_flow_content(&self) -> bool
 pub fn surgeist_text::FinalizedPrefixView<'_>::has_retained_flow_participation(&self) -> bool
 pub fn surgeist_text::FinalizedPrefixView<'_>::interior_unit(&self) -> core::option::Option<surgeist_text::FinalizedSharedUnitView<'_>>
 pub fn surgeist_text::FinalizedPrefixView<'_>::seam(&self) -> &surgeist_text::TextSeam
@@ -1494,6 +1504,7 @@ pub fn surgeist_text::FinalizedSharedUnitView<'_>::source_pieces(&self) -> impl 
 pub fn surgeist_text::FinalizedSharedUnitView<'_>::source_range(&self) -> surgeist_text::Range
 pub struct surgeist_text::FlowObservation
 impl surgeist_text::FlowObservation
+pub fn surgeist_text::FlowObservation::has_in_flow_content(&self) -> bool
 pub fn surgeist_text::FlowObservation::has_retained_flow_participation(&self) -> bool
 pub fn surgeist_text::FlowObservation::request(&self) -> &surgeist_text::FlowObservationRequest
 pub fn surgeist_text::FlowObservation::segment(&self) -> surgeist_text::PreparedFlowSegment
@@ -1725,6 +1736,7 @@ pub fn surgeist_text::Layout::decoration_views(&self) -> impl core::iter::traits
 pub fn surgeist_text::Layout::run_views(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::RunView<'_>>
 impl surgeist_text::Layout
 pub fn surgeist_text::Layout::from_finalized_lines(request: surgeist_text::PlacementRequest) -> surgeist_text::Result<Self>
+pub fn surgeist_text::Layout::nonformatted_lines(&self) -> impl core::iter::traits::iterator::Iterator<Item = &surgeist_text::NonFormattedLinePlacement>
 impl surgeist_text::Layout
 pub fn surgeist_text::Layout::source_range_fragments(&self, origin: &surgeist_text::PreparedOrigin, local: surgeist_text::Range) -> surgeist_text::Result<surgeist_text::SourceRangeFragments<'_>>
 impl core::fmt::Debug for surgeist_text::Layout
@@ -1834,6 +1846,16 @@ pub fn surgeist_text::NativeHyphenationConvention::language_script(locale: &str,
 pub fn surgeist_text::NativeHyphenationConvention::locale(&self) -> core::option::Option<&str>
 pub const fn surgeist_text::NativeHyphenationConvention::placement(&self) -> surgeist_text::HyphenationPlacement
 pub fn surgeist_text::NativeHyphenationConvention::script(&self) -> &str
+pub struct surgeist_text::NonFormattedLine
+impl surgeist_text::NonFormattedLine
+pub fn surgeist_text::NonFormattedLine::finalized_line(&self) -> &surgeist_text::FinalizedLine
+impl core::cmp::PartialEq for surgeist_text::NonFormattedLine
+pub fn surgeist_text::NonFormattedLine::eq(&self, other: &Self) -> bool
+pub struct surgeist_text::NonFormattedLinePlacement
+pub surgeist_text::NonFormattedLinePlacement::atomics: alloc::vec::Vec<surgeist_text::AtomicPlacement>
+pub surgeist_text::NonFormattedLinePlacement::line: surgeist_text::NonFormattedLine
+pub surgeist_text::NonFormattedLinePlacement::orientation: surgeist_text::LineOrientation
+pub surgeist_text::NonFormattedLinePlacement::origin: surgeist_text::Point
 pub struct surgeist_text::Options
 pub surgeist_text::Options::alignment: surgeist_text::Alignment
 pub surgeist_text::Options::indent: surgeist_text::Indent
@@ -1931,7 +1953,7 @@ pub const fn surgeist_text::PlacedSelectionPiece::local_range(&self) -> surgeist
 pub fn surgeist_text::PlacedSelectionPiece::origin(&self) -> &surgeist_text::PreparedOrigin
 pub struct surgeist_text::PlacementRequest
 pub surgeist_text::PlacementRequest::coverage: surgeist_text::PlacementCoverage
-pub surgeist_text::PlacementRequest::lines: alloc::vec::Vec<surgeist_text::LinePlacement>
+pub surgeist_text::PlacementRequest::entries: alloc::vec::Vec<surgeist_text::PlacementEntry>
 pub surgeist_text::PlacementRequest::prepared: surgeist_text::PreparedText
 pub struct surgeist_text::PlaintextItems<'a>
 impl<'a> core::iter::traits::iterator::Iterator for surgeist_text::PlaintextItems<'a>

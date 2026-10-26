@@ -135,6 +135,7 @@ pub(crate) struct EncounterBasis {
 
 #[derive(Clone, Debug, PartialEq)]
 struct CandidateBasis {
+    disposition: LineDisposition,
     encounters: Vec<EncounterBasis>,
     request: LineSelectionRequest,
     boxes: Option<BoxAssignment>,
@@ -160,7 +161,50 @@ pub(crate) struct LineFlow {
     pub next: f64,
 }
 
+/// Numerical finalization and used CSS line existence are distinct. The
+/// nonformatted capability retains the exact receipt without allocating a line.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum LineDisposition {
+    Formatted,
+    NonFormatted(surgeist_text::NonFormattedLine),
+}
+impl LineDisposition {
+    pub(crate) fn resolve(line: &FinalizedLine) -> Result<Self, FitError> {
+        let selected = line.selected_line();
+        let request = selected.request();
+        if request.context.end == LineEnd::Forced
+            || line.has_in_flow_content()
+            || request
+                .controls
+                .iter()
+                .any(|control| control.boundary.is_some_and(|edge| edge.advance() != 0.0))
+        {
+            Ok(Self::Formatted)
+        } else {
+            Ok(Self::NonFormatted(line.nonformatted()?))
+        }
+    }
+    pub(crate) fn is_formatted(&self) -> bool {
+        matches!(self, Self::Formatted)
+    }
+    pub(crate) fn height(&self, line: &FinalizedLine) -> f64 {
+        if self.is_formatted() {
+            line.feedback().line_height
+        } else {
+            0.0
+        }
+    }
+    pub(crate) fn baseline(&self, line: &FinalizedLine) -> f64 {
+        if self.is_formatted() {
+            line.feedback().baseline
+        } else {
+            0.0
+        }
+    }
+}
+
 pub(crate) struct FittedLine {
+    pub disposition: LineDisposition,
     pub boxes: Option<BoxAssignment>,
     pub box_uses: Vec<super::boxes::BoxTrialUse>,
     pub first_formatted: bool,
@@ -554,12 +598,13 @@ struct EvaluatedCandidate {
     bands: LineBands,
     placed_start: f64,
     fits: bool,
-    formatted: bool,
+    disposition: LineDisposition,
 }
 
 impl EvaluatedCandidate {
     fn basis(&self, position: &CandidatePosition) -> CandidateBasis {
         CandidateBasis {
+            disposition: self.disposition.clone(),
             encounters: self.encounters.clone(),
             boxes: self.boxes.clone(),
             request: self.request.clone(),
@@ -567,7 +612,7 @@ impl EvaluatedCandidate {
             logical_start: position.logical_start,
             placed_start: self.placed_start,
             bands: self.bands,
-            height: self.finalized.feedback().line_height,
+            height: self.disposition.height(&self.finalized),
             minimum_block: position.minimum_block,
         }
     }
@@ -576,7 +621,7 @@ impl EvaluatedCandidate {
         ObservedCandidateBasis {
             candidate: self.basis(position),
             fits: self.fits,
-            formatted: self.formatted,
+            formatted: self.disposition.is_formatted(),
             usage: self.finalized.measurements().formatted_line_usage(),
             feedback: self.finalized.feedback(),
             fit: self.finalized.measurements().fit(),
@@ -608,7 +653,9 @@ struct FittingEnds {
 
 impl FittingEnds {
     fn observe(&mut self, candidate: &EvaluatedCandidate) {
-        if !candidate.fits || !candidate.formatted || candidate.request.context.end != LineEnd::Soft
+        if !candidate.fits
+            || !candidate.disposition.is_formatted()
+            || candidate.request.context.end != LineEnd::Soft
         {
             return;
         }
@@ -968,14 +1015,14 @@ where
                     .replay(placed_start, preceding)
                     .with_boxes(boxes.clone()),
             )?;
-            let feedback = finalized.feedback();
-            let actual_height = finite(feedback.line_height)?;
+            let disposition = LineDisposition::resolve(&finalized)?;
+            let actual_height = finite(disposition.height(&finalized))?;
             let actual_start = (self.canonical)(
                 BlockPosition {
                     proposed: position.logical_start,
                     minimum: position.minimum_block,
                 },
-                feedback.baseline,
+                disposition.baseline(&finalized),
             )?;
             let actual_bands = query_bands(
                 &mut self.band,
@@ -984,6 +1031,7 @@ where
                 actual_height,
             )?;
             let basis = CandidateBasis {
+                disposition: disposition.clone(),
                 encounters: encounters.clone(),
                 boxes: boxes.clone(),
                 request: request.clone(),
@@ -1003,18 +1051,6 @@ where
                 placed_start = actual_start;
                 continue;
             }
-            // Retain the genuine receipt even for a phantom Soft trial.
-            // The conditional query authenticates complete earlier inventory.
-            let formatted = if request.context.end == LineEnd::Soft {
-                match request.participants.last() {
-                    Some(last) => finalized
-                        .prefix_at(&surgeist_text::TextSeam::AfterParticipant(last.clone()))?
-                        .has_retained_flow_participation(),
-                    None => false,
-                }
-            } else {
-                true
-            };
             let fit_width = match input.available {
                 Available::Minimum => Some(finite((band.end - band.start).max(0.0))?),
                 Available::Definite(_) | Available::Maximum => request.context.available_inline,
@@ -1025,14 +1061,16 @@ where
                 Available::Definite(_) => finalized.measurements().fit(),
             };
             let occupied = finite(measurement.occupied_end() - measurement.occupied_start())?;
-            let fits = fit_width.is_none_or(|width| {
-                measurement.advance() <= width - request.context.indent
-                    && occupied <= width - request.context.indent
-            });
+            let fits = !disposition.is_formatted()
+                || fit_width.is_none_or(|width| {
+                    measurement.advance() <= width - request.context.indent
+                        && occupied <= width - request.context.indent
+                });
             let usage = finalized.measurements().formatted_line_usage();
             if usage.first() || usage.last() {
                 let basis = role_basis.ok_or(FitError::InvalidGeometry)?;
                 let used = RoleUse {
+                    disposition: disposition.clone(),
                     request: request.clone(),
                     boxes: boxes.clone(),
                     amounts: amounts.clone(),
@@ -1053,6 +1091,7 @@ where
             }
             if let Some(assignment) = &boxes {
                 let used = super::boxes::BoxTrialUse {
+                    disposition: disposition.clone(),
                     assignment: assignment.clone(),
                     request: request.clone(),
                     amounts: amounts.clone(),
@@ -1073,7 +1112,7 @@ where
                 bands,
                 placed_start,
                 fits,
-                formatted,
+                disposition,
             });
         }
     }
@@ -1132,7 +1171,7 @@ where
                         query.line_box_context,
                     )?;
                     let trial = self.evaluate_mode(input, request, query, None, true)?;
-                    if !trial.formatted {
+                    if !trial.disposition.is_formatted() {
                         continue;
                     }
                     if fallback.is_none() || trial.fits {
@@ -1186,8 +1225,9 @@ where
                 ));
                 continue;
             }
-            fitting_none |=
-                candidate.formatted && candidate.fits && candidate.request.alternative.is_none();
+            fitting_none |= candidate.disposition.is_formatted()
+                && candidate.fits
+                && candidate.request.alternative.is_none();
             if query.rejected_choices.contains(&candidate.key()) {
                 if candidate.request.alternative.is_some() {
                     dispositions.push(ConditionalDisposition::ConsumerHyphenationPolicy(
@@ -1196,7 +1236,7 @@ where
                 } else {
                     // An unselected meaningful None is still an ordinary
                     // barrier; rejection does not turn it into phantom.
-                    ordinary_formatted |= candidate.formatted;
+                    ordinary_formatted |= candidate.disposition.is_formatted();
                 }
                 continue;
             }
@@ -1246,7 +1286,9 @@ where
                     continue;
                 }
             }
-            if !candidate.formatted {
+            if !candidate.disposition.is_formatted()
+                && candidate.request.context.end == LineEnd::Soft
+            {
                 dispositions.push(ConditionalDisposition::Phantom(candidate.finalized));
                 continue;
             }
@@ -1262,7 +1304,7 @@ where
                 dispositions.push(ConditionalDisposition::Exhausted(
                     candidate.finalized.clone(),
                 ));
-            } else {
+            } else if candidate.disposition.is_formatted() {
                 ordinary_formatted = true;
             }
             let fits = candidate.fits;
@@ -1347,7 +1389,7 @@ where
             &mut self.band,
             position.logical_start,
             candidate.placed_start,
-            candidate.finalized.feedback().line_height,
+            candidate.disposition.height(&candidate.finalized),
         )?;
         let actual = (self.allocate)(
             &candidate.finalized,
@@ -1708,7 +1750,7 @@ pub(crate) fn fit(
                             }
                             if comparison_basis.is_some()
                                 && candidate.fits
-                                && candidate.formatted
+                                && candidate.disposition.is_formatted()
                                 && candidate.request.context.end == LineEnd::Soft
                             {
                                 scoped.consider(
@@ -1877,7 +1919,10 @@ pub(crate) fn fit(
                                     if wrapping.is_some() {
                                         ends.observe(&trial);
                                     }
-                                    if comparison_basis.is_some() && trial.fits && trial.formatted {
+                                    if comparison_basis.is_some()
+                                        && trial.fits
+                                        && trial.disposition.is_formatted()
+                                    {
                                         scoped.consider(
                                             wrapping.expect("comparison has a scope loan"),
                                             trial.clone(),
@@ -2012,12 +2057,17 @@ pub(crate) fn fit(
                 // Deferred replay above may have been a no-op. Restore the exact
                 // candidate once more before any clear/accept operation observes it.
                 environment.restore(&candidate, &position)?;
-                let feedback = candidate.finalized.feedback();
-                let logical_end = finite(position.logical_start + feedback.line_height)?;
-                let cleared = clear_source(logical_end, &candidate.request)?
-                    .map(finite)
-                    .transpose()?
-                    .map_or(logical_end, |minimum| minimum.max(logical_end));
+                let logical_end = finite(
+                    position.logical_start + candidate.disposition.height(&candidate.finalized),
+                )?;
+                let cleared = if candidate.disposition.is_formatted() {
+                    clear_source(logical_end, &candidate.request)?
+                        .map(finite)
+                        .transpose()?
+                        .map_or(logical_end, |minimum| minimum.max(logical_end))
+                } else {
+                    logical_end
+                };
                 minimum_block = position.minimum_block;
                 if cleared > logical_end {
                     minimum_block =
@@ -2027,12 +2077,14 @@ pub(crate) fn fit(
                 let end = candidate.request.end.view().participant_offset();
                 current_boundary = candidate.request.end.clone();
                 let first_formatted = indent_state.first_formatted();
-                indent_state.commit(ending == LineEnd::Forced);
-                if candidate.formatted {
+                if candidate.disposition.is_formatted() {
+                    indent_state.commit(ending == LineEnd::Forced);
                     line_box_context.commit(candidate.request.context.line_box_direction);
                 }
                 accept_encounters()?;
-                if matches!(input.available, Available::Definite(_)) && candidate.formatted {
+                if matches!(input.available, Available::Definite(_))
+                    && candidate.disposition.is_formatted()
+                {
                     hyphenation_state.commit(candidate.request.alternative.is_some());
                 }
                 // Trials and hypothetical manual portions do not mutate this
@@ -2040,6 +2092,7 @@ pub(crate) fn fit(
                 incoming = candidate.finalized.hyphenation_continuation();
                 let available = candidate.finalized.metric_bounds().size.width;
                 result.push(FittedLine {
+                    disposition: candidate.disposition,
                     boxes: candidate.boxes,
                     box_uses: environment.box_uses.split_off(box_use_start),
                     first_formatted,

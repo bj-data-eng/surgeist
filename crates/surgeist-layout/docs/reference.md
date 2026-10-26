@@ -313,8 +313,9 @@ accepted candidates publish their actual float placements once.
 Retained source participation determines whether an encounter has preceding
 in-flow content, independently of zero or signed prefix advance. Hidden and
 absolute participants retain their own traversal and static-position effects.
-Separate paragraph bindings retain their terminal lines, including genuine
-empty terminal lines. A discarded-only soft endpoint contributes no phantom
+Separate paragraph bindings retain their genuine terminal receipts. A
+strut-only Paragraph completion publishes no ordinary line; actual Forced
+endings remain real. A discarded-only soft endpoint contributes no phantom
 line. Minimum sizing includes the largest individual float contribution;
 maximum sizing combines each actual line with its applicable float occupation
 before the final finite placement pass. Clearance and expired float cohorts

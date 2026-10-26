@@ -301,7 +301,7 @@ fn selected_placed(system: &mut text::System, value: &str) -> text::Layout {
     text::Layout::from_finalized_lines(text::PlacementRequest {
         prepared,
         coverage: text::PlacementCoverage::WholeParagraph,
-        lines: vec![text::LinePlacement {
+        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
             line,
             anchor: text::LineAnchor {
                 inline_origin: 2.0,
@@ -309,7 +309,7 @@ fn selected_placed(system: &mut text::System, value: &str) -> text::Layout {
             },
             orientation: text::LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap()
 }

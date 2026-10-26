@@ -938,7 +938,7 @@ fn tab_range_and_cursor_use_the_same_resolved_allocation() {
     let layout = crate::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        lines: vec![LinePlacement {
+        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 7.0,
@@ -946,7 +946,7 @@ fn tab_range_and_cursor_use_the_same_resolved_allocation() {
             },
             orientation: LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap();
     let fragments = layout
@@ -1621,7 +1621,7 @@ fn zero_tab_layout_keeps_source_and_refuses_fabricated_range_font_metrics() {
     let layout = crate::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        lines: vec![LinePlacement {
+        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -1629,7 +1629,7 @@ fn zero_tab_layout_keeps_source_and_refuses_fabricated_range_font_metrics() {
             },
             orientation: LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap();
     assert!(matches!(

@@ -606,7 +606,7 @@ standalone Text placement retains its separate native metric policy.
 
 Retain the normalized formatter's deterministic alignment-group policy: let `b` and `a` be the independent maxima of signed before/after contributions in the baseline group, and `T`/`B` the largest top/bottom-aligned extents when present. Set `u = max(b + a, T)` and extend above by `max(B - u, 0)`; the resulting baseline is `b` plus that extension and the physical line extent is `max(0, u, B)`. An absent alignment group supplies no constraint, and an absent baseline group uses zero only as its coordinate origin. Preserve signed baseline contributions, font half-leading and overflowing box geometry; only the overall physical extent has a zero floor. This preserves the existing box/control formatter's choice where the pinned CSS Inline draft leaves tall top/bottom content positioning underdetermined; it is a Surgeist placement policy, not a claim that the draft specifies a unique baseline.
 
-A native empty origin retains a zero-width, zero-height source-fragment anchor at its actual finalized baseline and inline position. Its occurrence carries no independently captured font, so its fragment bounds cannot borrow a neighboring font or the whole line enlarged by unrelated boxes. Caret and accessibility geometry retain their separate actual line-strut semantics. Raw standalone fragment geometry retains its characterized behavior.
+A native empty origin retains a zero-width, zero-height nominal source-fragment anchor at its actual finalized baseline and inline position. Its occurrence carries no independently captured font, so its fragment bounds cannot borrow a neighboring font or the whole line enlarged by unrelated boxes. Nonformatted placement retains this occurrence on its genuine finalized receipt without publishing a source or caret rectangle. Caret and accessibility geometry come from actual formatted lines. Raw standalone fragment geometry retains its characterized behavior.
 
 The standalone `System::layout` convenience path retains the currently supported wrapping/alignment behavior by choosing lines through the same preparation/finalization machinery. Its simple paragraph chooser is private to text; layout’s composed CSS formatter does not use it as a second formatter. Unsupported style combinations remain explicit errors until the owning standards issue implements them.
 
@@ -648,8 +648,10 @@ whitespace authority. Candidate-specific roles belong to exact request/replay
 identity, rather than a conditional search's stable branch context.
 
 Layout owns actual formatted-line chronology and container/child propagation.
-Accepted empty, Forced and numeric-only lines count; rejected phantom trials do
-not. Last dependencies use authentic terminal mixed occurrences and actual
+Only actual formatted lines count, including empty Forced lines and real
+numeric-only atomic content. Retained nonformatted completions and rejected
+phantom trials consume no formatted ordinal or role. Last dependencies use
+authentic terminal mixed occurrences and actual
 in-flow child summaries through the existing unpublished pass/replay gate.
 Validate every consumed assumption before publishing geometry. A demanded cached
 subtree without a matching summary is a semantic miss; no-demand formatting

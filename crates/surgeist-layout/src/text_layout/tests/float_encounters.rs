@@ -1277,13 +1277,27 @@ fn trailing_float_after_terminal_forced_break_retains_the_real_empty_paragraph_l
     let batch = compute_layout_with_flow(&capture, 2, request(40.0)).unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.source().text().code_units(), [65, 10]);
-    assert_eq!(layout.lines().len(), 2);
+    assert_eq!(layout.lines().len(), 1);
     assert_eq!(layout.lines()[0].range(), text::Range::new(0, 2));
-    assert_eq!(layout.lines()[1].range(), text::Range::new(2, 2));
     assert_eq!(layout.lines()[0].baseline(), 8.0);
-    assert_eq!(layout.lines()[1].baseline(), 18.0);
+    assert_eq!(layout.metrics().size().height, 10.0);
+    let completions = layout.nonformatted_lines().collect::<Vec<_>>();
+    assert_eq!(completions.len(), 1);
+    assert_eq!(completions[0].origin.y, 10.0);
+    let receipt = completions[0].line.finalized_line();
+    assert_eq!(receipt.prepared_text(), paragraph.prepared);
+    assert!(!receipt.has_in_flow_content());
+    assert_eq!(receipt.feedback().line_height, 10.0);
+    let selected = receipt.selected_line();
+    assert_eq!(selected.request().context.end, text::LineEnd::Paragraph);
+    assert!(matches!(&selected.request().termination,
+        text::PreparedTermination::Ordinary(offer)
+            if offer.view().kind() == text::PreparedBreakKind::ParagraphEnd));
     assert_eq!(output(&batch, 30).location, Point::new(0.0, 10.0));
-    assert_eq!(output(&batch, 2).size.height, 20.0);
+    // The phantom contributes no line height. The genuine8x4 float still
+    // sets its owner's auto bottom to10+4, independently of Text's10px extent.
+    assert_eq!(output(&batch, 30).size, Size::new(8.0, 4.0));
+    assert_eq!(output(&batch, 2).size.height, 14.0);
 }
 
 fn assert_max_float_cohort<S: LayoutScalar>(
@@ -1805,8 +1819,37 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
     let batch = compute_layout_with_flow(&capture, 2, request).unwrap();
     let layout = batch.placed_text()[0].layout();
     assert!(layout.source().text().code_units().is_empty());
-    assert_eq!(layout.lines().len(), 1);
-    assert_eq!(layout.lines()[0].bounds().size.height, 0.0);
+    assert!(layout.lines().is_empty());
+    assert_eq!(layout.metrics().line_count(), 0);
+    assert_eq!(layout.metrics().first_baseline(), None);
+    assert_eq!(layout.metrics().last_baseline(), None);
+    assert_eq!(layout.metrics().size().height, 0.0);
+    let completions = layout.nonformatted_lines().collect::<Vec<_>>();
+    assert_eq!(completions.len(), 1);
+    let receipt = completions[0].line.finalized_line();
+    assert_eq!(receipt.prepared_text(), paragraph.prepared);
+    assert!(!receipt.has_in_flow_content());
+    assert_eq!(receipt.feedback().advance, 0.0);
+    assert_eq!(receipt.feedback().line_height, 0.0);
+    let selected = receipt.selected_line();
+    let terminal = selected.request();
+    assert_eq!(terminal.context.end, text::LineEnd::Paragraph);
+    assert!(terminal.atomics.is_empty());
+    assert_eq!(terminal.controls.len(), 2);
+    for control in &terminal.controls {
+        assert_eq!(control.boundary.unwrap().advance(), 0.0);
+        let strut = control.strut.unwrap();
+        assert_eq!(strut.baseline, 0.0);
+        assert_eq!(strut.line_extent, 0.0);
+    }
+    // These zero-size endpoint nodes use their genuine nonformatted placement
+    // origin, not the nominal line's baseline or a fabricated visible rect.
+    for node in [10, 11] {
+        let control = output(&batch, node);
+        assert_eq!(control.size, Size::ZERO);
+        assert_eq!(control.location.x.to_f64(), completions[0].origin.x);
+        assert_eq!(control.location.y.to_f64(), completions[0].origin.y);
+    }
     let geometry = (0..floats.len())
         .map(|i| {
             let actual = output(&batch, 30 + i as u32);
@@ -1817,6 +1860,14 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
         .collect();
     let warm = compute_layout_with_flow(&capture, 2, request).unwrap();
     assert_eq!(warm.final_entries(), batch.final_entries());
+    assert_eq!(
+        warm.placed_text()[0]
+            .layout()
+            .nonformatted_lines()
+            .cloned()
+            .collect::<Vec<_>>(),
+        layout.nonformatted_lines().cloned().collect::<Vec<_>>()
+    );
     (output(&batch, 2).size.width.to_f64(), geometry)
 }
 fn zero_height_captured_max_cohort<S: LayoutScalar>(right: bool) -> f64 {
@@ -1838,8 +1889,8 @@ fn zero_height_captured_max_cohort<S: LayoutScalar>(right: bool) -> f64 {
 
 #[test]
 fn captured_review_zero_height_control_line_retains_the_actual_float_cohort_width() {
-    // Two positive-height floats share a real4px cohort even though the actual
-    // allocated structural control struts make the Text line exactly0 high.
+    // Two positive-height floats share a real4px cohort. Structural controls
+    // retain a genuine zero-metric receipt, without publishing a Text line.
     let actual = [
         zero_height_captured_max_cohort::<f32>(false),
         zero_height_captured_max_cohort::<f64>(false),

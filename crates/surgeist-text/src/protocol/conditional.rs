@@ -489,11 +489,7 @@ fn validate_frontier(
                         return Err(invalid());
                     }
                     if matches!(disposition, ConditionalDisposition::Phantom(_)) {
-                        let last = request.participants.last().ok_or_else(invalid)?;
-                        if receipt
-                            .prefix_at(&crate::TextSeam::AfterParticipant(last.clone()))?
-                            .has_retained_flow_participation()
-                        {
+                        if receipt.nonformatted().is_err() {
                             return Err(protocol_error(ProtocolError::RetainedConditionalPrefix {
                                 opportunity: index,
                                 alternative: variant,
@@ -1124,13 +1120,7 @@ impl PreparedConditionalBatch {
                 }
                 match disposition {
                     ConditionalDisposition::Phantom(_) => {
-                        let last = request.participants.last().ok_or_else(|| {
-                            protocol_error(ProtocolError::InvalidConditionalStage)
-                        })?;
-                        if receipt
-                            .prefix_at(&crate::TextSeam::AfterParticipant(last.clone()))?
-                            .has_retained_flow_participation()
-                        {
+                        if receipt.nonformatted().is_err() {
                             return Err(protocol_error(ProtocolError::InvalidConditionalStage));
                         }
                         identity.kind = 0;

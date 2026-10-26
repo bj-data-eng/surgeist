@@ -216,8 +216,8 @@ fn positive_end_owns_its_interval_and_stops_hanging_without_donating_source_geom
     let layout = t::Layout::from_finalized_lines(t::PlacementRequest {
         prepared: p.clone(),
         coverage: t::PlacementCoverage::WholeParagraph,
-        lines: vec![
-            t::LinePlacement {
+        entries: vec![
+            t::PlacementEntry::Formatted(t::LinePlacement {
                 line: positive,
                 anchor: t::LineAnchor {
                     inline_origin: 0.0,
@@ -225,8 +225,8 @@ fn positive_end_owns_its_interval_and_stops_hanging_without_donating_source_geom
                 },
                 orientation: t::LineOrientation::Horizontal,
                 atomics: vec![],
-            },
-            t::LinePlacement {
+            }),
+            t::PlacementEntry::Formatted(t::LinePlacement {
                 line: last,
                 anchor: t::LineAnchor {
                     inline_origin: 0.0,
@@ -234,7 +234,7 @@ fn positive_end_owns_its_interval_and_stops_hanging_without_donating_source_geom
                 },
                 orientation: t::LineOrientation::Horizontal,
                 atomics: vec![],
-            },
+            }),
         ],
     })
     .unwrap();

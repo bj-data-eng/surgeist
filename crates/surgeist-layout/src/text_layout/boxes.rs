@@ -397,6 +397,7 @@ pub(crate) trait BoxResolver {
 /// it. Rejected trials can influence the selected fit, hyphen policy or frame.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct BoxTrialUse {
+    pub disposition: super::fit::LineDisposition,
     pub assignment: BoxAssignment,
     pub request: surgeist_text::LineSelectionRequest,
     pub amounts: Vec<f64>,

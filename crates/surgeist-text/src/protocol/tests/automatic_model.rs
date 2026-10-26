@@ -133,7 +133,7 @@ fn place_first(p: &PreparedText, line: FinalizedLine) -> crate::Layout {
             start: value.request().start.clone(),
             end: value.request().end.clone(),
         },
-        lines: vec![LinePlacement {
+        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -141,7 +141,7 @@ fn place_first(p: &PreparedText, line: FinalizedLine) -> crate::Layout {
             },
             orientation: LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap()
 }
@@ -361,7 +361,7 @@ fn measurement_portions_keep_indication_and_refuse_placement_and_foreign_owners(
                 start: part.start(),
                 end: part.end(),
             },
-            lines: vec![LinePlacement {
+            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -369,7 +369,7 @@ fn measurement_portions_keep_indication_and_refuse_placement_and_foreign_owners(
                 },
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
-            }],
+            })],
         })
         .unwrap_err();
         assert_eq!(reason(&error), &ProtocolError::MeasurementNotPlaceable);

@@ -348,7 +348,7 @@ fn placed(prepared: PreparedText) -> Layout {
     Layout::from_finalized_lines(PlacementRequest {
         prepared,
         coverage: PlacementCoverage::WholeParagraph,
-        lines: vec![LinePlacement {
+        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -356,7 +356,7 @@ fn placed(prepared: PreparedText) -> Layout {
             },
             orientation: LineOrientation::Horizontal,
             atomics,
-        }],
+        })],
     })
     .unwrap()
 }
@@ -1956,7 +1956,7 @@ fn boundaries_retain_both_original_incident_endpoints_across_a_child_hole() {
             start: prepared.boundary_views().nth(2).unwrap().handle(),
             end: prepared.boundary_views().last().unwrap().handle(),
         },
-        lines: vec![LinePlacement {
+        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
             line: right,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -1964,7 +1964,7 @@ fn boundaries_retain_both_original_incident_endpoints_across_a_child_hole() {
             },
             orientation: LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap();
     assert_eq!(layout.lines()[0].range(), Range::new(2, 3));

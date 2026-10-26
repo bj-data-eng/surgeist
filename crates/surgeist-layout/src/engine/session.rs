@@ -332,12 +332,12 @@ where
             .iter()
             .flat_map(|paragraph| {
                 paragraph
-                    .lines
+                    .entries
                     .iter()
                     .zip(&paragraph.amounts)
                     .map(
                         |(placement, amounts)| crate::text_layout::fit::ReusableLine {
-                            finalized: placement.line.clone(),
+                            finalized: placement.finalized_line().clone(),
                             amounts: amounts.clone(),
                         },
                     )
@@ -1877,7 +1877,11 @@ mod grid_overflow_observation_tests {
         let available = Size::splat(AvailableOf::MAX_CONTENT);
         super::super::root::compute_root(&mut session, 0, available).unwrap();
         super::super::rounding::round_layout(&mut session, 0).unwrap();
-        let initial = session.text.as_ref().unwrap().pending[0].lines[0].clone();
+        let surgeist_text::PlacementEntry::Formatted(initial) =
+            session.text.as_ref().unwrap().pending[0].entries[0].clone()
+        else {
+            panic!("native translated line remains formatted");
+        };
         let frames = session.canonical_frames(0).unwrap();
         assert_eq!(
             frames
@@ -1891,7 +1895,11 @@ mod grid_overflow_observation_tests {
         session.begin_text_pass(frames);
         super::super::root::compute_root(&mut session, 0, available).unwrap();
         super::super::rounding::round_layout(&mut session, 0).unwrap();
-        let canonical = &session.text.as_ref().unwrap().pending[0].lines[0];
+        let surgeist_text::PlacementEntry::Formatted(canonical) =
+            &session.text.as_ref().unwrap().pending[0].entries[0]
+        else {
+            panic!("native translated line remains formatted");
+        };
         assert_eq!(initial.line, canonical.line);
         assert_eq!(initial.anchor.inline_origin, 0.0);
         assert_eq!(canonical.anchor.inline_origin, 25.0);

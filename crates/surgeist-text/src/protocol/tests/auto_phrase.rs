@@ -1056,17 +1056,19 @@ fn a_restored_cut_reissues_only_the_actual_remaining_phrase_on_the_next_line() {
     let layout = Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        lines: [first, second]
+        entries: [first, second]
             .into_iter()
             .enumerate()
-            .map(|(i, line)| LinePlacement {
-                line,
-                anchor: LineAnchor {
-                    inline_origin: 0.0,
-                    baseline: 8.0 + i as f64 * 10.0,
-                },
-                orientation: LineOrientation::Horizontal,
-                atomics: vec![],
+            .map(|(i, line)| {
+                crate::PlacementEntry::Formatted(LinePlacement {
+                    line,
+                    anchor: LineAnchor {
+                        inline_origin: 0.0,
+                        baseline: 8.0 + i as f64 * 10.0,
+                    },
+                    orientation: LineOrientation::Horizontal,
+                    atomics: vec![],
+                })
             })
             .collect(),
     })
@@ -1513,17 +1515,19 @@ fn after_and_both_latent_controls_require_real_counts_and_exact_incoming_custody
             Layout::from_finalized_lines(PlacementRequest {
                 prepared: p.clone(),
                 coverage: PlacementCoverage::WholeParagraph,
-                lines: lines
+                entries: lines
                     .into_iter()
                     .enumerate()
-                    .map(|(i, line)| LinePlacement {
-                        line,
-                        anchor: LineAnchor {
-                            inline_origin: 0.0,
-                            baseline: 8.0 + i as f64 * 10.0,
-                        },
-                        orientation: LineOrientation::Horizontal,
-                        atomics: vec![],
+                    .map(|(i, line)| {
+                        crate::PlacementEntry::Formatted(LinePlacement {
+                            line,
+                            anchor: LineAnchor {
+                                inline_origin: 0.0,
+                                baseline: 8.0 + i as f64 * 10.0,
+                            },
+                            orientation: LineOrientation::Horizontal,
+                            atomics: vec![],
+                        })
                     })
                     .collect(),
             })

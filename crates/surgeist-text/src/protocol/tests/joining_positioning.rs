@@ -142,17 +142,19 @@ fn placed(prepared: &PreparedText, first: FinalizedLine, second: FinalizedLine) 
     crate::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        lines: [first, second]
+        entries: [first, second]
             .into_iter()
             .enumerate()
-            .map(|(index, line)| LinePlacement {
-                line,
-                anchor: LineAnchor {
-                    inline_origin: 0.0,
-                    baseline: 16.0 + 20.0 * index as f64,
-                },
-                orientation: LineOrientation::Horizontal,
-                atomics: vec![],
+            .map(|(index, line)| {
+                crate::PlacementEntry::Formatted(LinePlacement {
+                    line,
+                    anchor: LineAnchor {
+                        inline_origin: 0.0,
+                        baseline: 16.0 + 20.0 * index as f64,
+                    },
+                    orientation: LineOrientation::Horizontal,
+                    atomics: vec![],
+                })
             })
             .collect(),
     })

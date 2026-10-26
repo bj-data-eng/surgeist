@@ -263,9 +263,50 @@ fn real_zero_atomic_and_out_of_flow_tails_do_not_share_content_authority() {
                 if inflow {
                     vec![Range::new(0, 9), Range::new(9, 15), Range::new(15, 15)]
                 } else {
-                    vec![Range::new(0, 5), Range::new(5, 15), Range::new(15, 15)]
+                    vec![Range::new(0, 5), Range::new(5, 15)]
                 }
             );
+            if inflow {
+                assert_eq!(layout.nonformatted_lines().count(), 0);
+                assert_eq!(layout.lines()[2].baseline(), 28.0);
+                assert_eq!(layout.lines()[2].bounds().size.height, 10.0);
+                let atomics = layout.inline_boxes();
+                assert_eq!(atomics.len(), 1);
+                assert_eq!(atomics[0].kind(), surgeist_text::InlineBoxKind::InFlow);
+                assert_eq!(atomics[0].line(), 2);
+                assert_eq!(atomics[0].rect().size, surgeist_text::Size::new(0.0, 0.0));
+            } else {
+                let completions = layout.nonformatted_lines().collect::<Vec<_>>();
+                assert_eq!(completions.len(), 1);
+                let completion = completions[0];
+                assert_eq!(completion.origin, surgeist_text::Point::new(0.0, 20.0));
+                let receipt = completion.line.finalized_line();
+                assert_eq!(receipt.prepared_text(), p.prepared);
+                assert!(!receipt.has_in_flow_content());
+                let selected = receipt.selected_line();
+                assert_eq!(
+                    selected.request().context.end,
+                    surgeist_text::LineEnd::Paragraph
+                );
+                assert_eq!(selected.request().atomics.len(), 1);
+                assert!(matches!(
+                    selected.request().atomics[0].allocation,
+                    surgeist_text::AtomicLineAllocation::OutOfFlow
+                ));
+                assert_eq!(completion.atomics.len(), 1);
+                assert_eq!(
+                    completion.atomics[0].occurrence,
+                    selected.request().atomics[0].occurrence
+                );
+                let native = batch
+                    .final_entries()
+                    .iter()
+                    .find(|row| row.node() == 2)
+                    .unwrap()
+                    .output();
+                assert_eq!(native.location, Point::new(S::ZERO, S::from_f64(20.0)));
+                assert_eq!(native.size, Size::ZERO);
+            }
             let first = batch
                 .final_inline_fragments()
                 .iter()

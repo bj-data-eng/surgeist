@@ -53,7 +53,16 @@ pub(crate) fn caret_at(stops: &[usize], index: usize, affinity: Affinity) -> usi
     }
 }
 
-pub(crate) fn prepare(prepared: &PreparedData, lines: &[PlacedLine]) -> Result<InteractionData> {
+pub(crate) fn prepare(
+    prepared: &PreparedData,
+    lines: &[PlacedLine],
+    cuts: &[usize],
+) -> Result<InteractionData> {
+    if cuts.len() != lines.len() {
+        return Err(crate::protocol::protocol_error(
+            crate::protocol::ProtocolError::IncompleteLineCoverage { line: cuts.len() },
+        ));
+    }
     let mut intervals: Vec<_> = lines
         .iter()
         .flat_map(|line| {
@@ -71,7 +80,7 @@ pub(crate) fn prepare(prepared: &PreparedData, lines: &[PlacedLine]) -> Result<I
     // need not itself be an original caret boundary. Exact output positions
     // are admitted independently by the selected presentation owner.
     let stops = legal_stops(&prepared.analyzed.host_projection.graphemes, &intervals);
-    let positions = position::prepare(lines);
+    let positions = position::prepare(lines, cuts);
     Ok(InteractionData { stops, positions })
 }
 

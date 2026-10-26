@@ -149,7 +149,7 @@ fn native_and_dirty_atomic_invalidation_union_keeps_nonmonotonic_source_tree_ord
     assert_native_invalidation_source_order::<f64>();
 }
 
-fn assert_terminal_empty_line_scroll<S: LayoutScalar>() {
+fn assert_terminal_phantom_completion_scroll<S: LayoutScalar>() {
     let paragraph = PreparedParagraph::plain(1, Source::new("X\n"), ahem_style(10.0, 10.0));
     let tree = PublicLayoutTreeOf::<S>::new()
         .children(0, [1])
@@ -180,18 +180,50 @@ fn assert_terminal_empty_line_scroll<S: LayoutScalar>() {
     let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
     let placed = batch.placed_text()[0].layout();
     let lines = placed.lines();
-    // The retained Ahem face supplies ascent 8, descent 2 at 10px. The
-    // terminal empty line retains that same real default-font strut.
-    assert_eq!(lines.len(), 2);
+    // The actual Forced line uses Ahem ascent8/descent2. Its strut-only
+    // Paragraph receiver retains those nominal metrics without a CSS line box.
+    assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].range(), surgeist_text::Range::new(0, 2));
-    assert_eq!(lines[1].range(), surgeist_text::Range::new(2, 2));
-    for (line, top, baseline) in [(&lines[0], 0.0, 8.0), (&lines[1], 10.0, 18.0)] {
-        assert_eq!(line.baseline(), baseline);
-        assert_eq!(
-            line.bounds(),
-            surgeist_text::Rect::new(0.0, top, 20.0, 10.0)
-        );
-    }
+    assert_eq!(lines[0].baseline(), 8.0);
+    assert_eq!(
+        lines[0].bounds(),
+        surgeist_text::Rect::new(0.0, 0.0, 20.0, 10.0)
+    );
+    let completions = placed.nonformatted_lines().collect::<Vec<_>>();
+    assert_eq!(completions.len(), 1);
+    let completion = completions[0].line.finalized_line();
+    assert_eq!(completion.prepared_text(), paragraph.prepared);
+    assert_eq!(
+        (
+            completion
+                .selected_line()
+                .request()
+                .start
+                .view()
+                .source_before()
+                .get(),
+            completion
+                .selected_line()
+                .request()
+                .end
+                .view()
+                .source_after()
+                .get()
+        ),
+        (2, 2)
+    );
+    assert!(!completion.has_in_flow_content());
+    assert_eq!(completion.feedback().baseline, 8.0);
+    assert_eq!(completion.feedback().line_height, 10.0);
+    assert_eq!(completions[0].origin.y, 10.0);
+    let selected = completion.selected_line();
+    let request = selected.request();
+    assert_eq!(request.context.end, surgeist_text::LineEnd::Paragraph);
+    assert!(matches!(&request.termination,
+        surgeist_text::PreparedTermination::Ordinary(offer)
+            if offer.view().kind() == surgeist_text::PreparedBreakKind::ParagraphEnd));
+    assert_eq!(request.start, request.end);
+    assert!(request.participants.is_empty());
     assert_eq!(placed.source().text().code_units(), &[0x58, 0x0a]);
     assert_eq!(
         placed
@@ -210,16 +242,16 @@ fn assert_terminal_empty_line_scroll<S: LayoutScalar>() {
         assert_eq!(root.size, Size::new(S::from_f64(20.0), S::from_f64(10.0)));
         let range = root.scroll_geometry.unwrap().physical_range();
         assert_eq!(range.x().maximum(), S::ZERO);
-        // Overflow 3 includes every directly contained line box. The final
-        // line ends at 20 although its empty source has no painted glyph.
-        assert_eq!(range.y().maximum(), S::from_f64(10.0));
+        // Only the real 10px Forced line contributes to this 10px scrollport.
+        // The semantic receiver adds no rendered line or scroll overflow.
+        assert_eq!(range.y().maximum(), S::ZERO);
     }
 }
 
 #[test]
-fn terminal_empty_native_line_contributes_its_real_font_box_to_scrollable_overflow() {
-    assert_terminal_empty_line_scroll::<f32>();
-    assert_terminal_empty_line_scroll::<f64>();
+fn terminal_strut_only_completion_retains_metrics_without_scroll_overflow() {
+    assert_terminal_phantom_completion_scroll::<f32>();
+    assert_terminal_phantom_completion_scroll::<f64>();
 }
 
 fn assert_intrinsic_line_box<S: LayoutScalar>() {
@@ -325,8 +357,11 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
     // definite allocation. Both Ahem code units advance 10px; its actual line
     // box includes the conditionally hangable space for this explicit maximum
     // contribution. Its actual Text metric frame retains the same 20px width.
+    let surgeist_text::PlacementEntry::Formatted(first) = &output.paragraph.entries[0] else {
+        panic!("native intrinsic line remains formatted");
+    };
     assert_eq!(
-        output.paragraph.lines[0]
+        first
             .line
             .selected_line()
             .request()
@@ -359,7 +394,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
     let intrinsic = surgeist_text::Layout::from_finalized_lines(surgeist_text::PlacementRequest {
         prepared: output.paragraph.prepared,
         coverage: surgeist_text::PlacementCoverage::WholeParagraph,
-        lines: output.paragraph.lines,
+        entries: output.paragraph.entries,
     })
     .unwrap();
     assert_eq!(
@@ -1812,15 +1847,57 @@ fn assert_terminal_break<S: LayoutScalar>() {
     let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
     let placed = batch.placed_text()[0].layout();
     let lines = placed.lines();
-    assert_eq!(lines.len(), 2);
+    assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].baseline(), 8.0);
-    assert_eq!(lines[1].baseline(), 18.0);
-    assert_eq!(lines[1].range(), surgeist_text::Range::new(1, 1));
+    let completions = placed.nonformatted_lines().collect::<Vec<_>>();
+    assert_eq!(completions.len(), 1);
+    let completion = completions[0].line.finalized_line();
+    assert_eq!(completion.prepared_text(), paragraph.prepared);
+    assert_eq!(
+        (
+            completion
+                .selected_line()
+                .request()
+                .start
+                .view()
+                .source_before()
+                .get(),
+            completion
+                .selected_line()
+                .request()
+                .end
+                .view()
+                .source_after()
+                .get()
+        ),
+        (1, 1)
+    );
+    assert!(!completion.has_in_flow_content());
+    assert_eq!(completion.feedback().baseline, 8.0);
+    assert_eq!(completion.feedback().line_height, 10.0);
+    assert_eq!(completions[0].origin.y, 10.0);
+    let selected = completion.selected_line();
+    let request = selected.request();
+    assert_eq!(request.context.end, surgeist_text::LineEnd::Paragraph);
+    assert!(matches!(&request.termination,
+        surgeist_text::PreparedTermination::Ordinary(offer)
+            if offer.view().kind() == surgeist_text::PreparedBreakKind::ParagraphEnd));
+    assert_eq!(request.start, request.end);
+    assert!(request.participants.is_empty());
+    let forced = batch.final_inline_fragments()[0]
+        .fragment()
+        .finalized_fragment()
+        .finalized_line();
+    assert_eq!(
+        forced.selected_line().request().context.end,
+        surgeist_text::LineEnd::Forced
+    );
+    assert_eq!(request.start, forced.selected_line().request().end);
     assert_eq!(placed.source().text().code_units(), &[88]);
 }
 
 #[test]
-fn terminal_forced_control_uses_actual_empty_paragraph_end_not_a_zero_length_forced_request() {
+fn terminal_forced_control_retains_nonformatted_paragraph_end_receipt() {
     assert_terminal_break::<f32>();
     assert_terminal_break::<f64>();
 }

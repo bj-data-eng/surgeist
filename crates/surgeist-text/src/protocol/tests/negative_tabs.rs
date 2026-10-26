@@ -199,7 +199,7 @@ fn assert_source_and_geometry(p: &PreparedText, line: FinalizedLine, advance: f6
     let layout = crate::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        lines: vec![LinePlacement {
+        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 11.0,
@@ -207,7 +207,7 @@ fn assert_source_and_geometry(p: &PreparedText, line: FinalizedLine, advance: f6
             },
             orientation: LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap();
     let observed = layout

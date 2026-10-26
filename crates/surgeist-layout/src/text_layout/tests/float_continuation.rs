@@ -216,26 +216,45 @@ fn assert_two_explicit_paragraphs<S: LayoutScalar>() {
     let second_layout = batch.placed_text()[1].layout();
     assert_eq!(first_layout.source().text().code_units(), &[65, 10]);
     assert_eq!(second_layout.source().text().code_units(), &[88]);
-    assert_eq!(first_layout.lines().len(), 2);
+    assert_eq!(first_layout.lines().len(), 1);
     assert_eq!(
         first_layout.lines()[0].range(),
         surgeist_text::Range::new(0, 2)
     );
-    assert_eq!(
-        first_layout.lines()[1].range(),
-        surgeist_text::Range::new(2, 2)
-    );
     assert_eq!(first_layout.lines()[0].baseline(), 8.0);
-    assert_eq!(first_layout.lines()[1].baseline(), 18.0);
+    let completions = first_layout.nonformatted_lines().collect::<Vec<_>>();
+    assert_eq!(completions.len(), 1);
+    let completion = completions[0];
+    assert_eq!(completion.origin, surgeist_text::Point::new(0.0, 10.0));
+    assert!(completion.atomics.is_empty());
+    let receipt = completion.line.finalized_line();
+    assert_eq!(receipt.prepared_text(), first.prepared);
+    assert!(!receipt.has_in_flow_content());
+    assert_eq!(receipt.feedback().line_height, 10.0);
+    let selected = receipt.selected_line();
+    let terminal = selected.request();
+    assert_eq!(terminal.context.end, surgeist_text::LineEnd::Paragraph);
+    assert_eq!(terminal.start.view().source_before().get(), 2);
+    assert_eq!(terminal.end.view().source_before().get(), 2);
+    assert!(matches!(&terminal.termination,
+        surgeist_text::PreparedTermination::Ordinary(offer)
+            if offer.view().kind() == surgeist_text::PreparedBreakKind::ParagraphEnd));
     assert_eq!(second_layout.lines().len(), 1);
     assert_eq!(
         second_layout.lines()[0].range(),
         surgeist_text::Range::new(0, 1)
     );
-    assert_eq!(second_layout.lines()[0].baseline(), 28.0);
-    assert_eq!(root_height(&batch), S::from_f64(30.0));
-    // This is valid two-paragraph custody, not a request to erase the first
-    // preparation's genuine terminal empty ParagraphEnd line.
+    assert_eq!(second_layout.lines()[0].baseline(), 18.0);
+    assert_eq!(root_height(&batch), S::from_f64(20.0));
+    let float = batch
+        .final_entries()
+        .iter()
+        .find(|entry| entry.node() == 9)
+        .unwrap()
+        .output();
+    assert_eq!(float.location, Point::new(S::ZERO, S::from_f64(10.0)));
+    // Separate preparations retain both source inventories and the actual
+    // terminal receipt; the phantom completion adds no formatted-line extent.
 }
 
 #[test]

@@ -2512,7 +2512,7 @@ mod tests {
         let placed = crate::Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::WholeParagraph,
-            lines: vec![LinePlacement {
+            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -2525,7 +2525,7 @@ mod tests {
                     content: Rect::new(0.0, -10.0, 4.0, 4.0),
                     baseline: -7.0,
                 }],
-            }],
+            })],
         })
         .unwrap();
         assert_eq!(placed.lines()[0].bounds().size.height, 0.0);
@@ -3093,17 +3093,19 @@ mod tests {
         let request = PlacementRequest {
             prepared: prepared.clone(),
             coverage: PlacementCoverage::WholeParagraph,
-            lines: [first.clone(), second.clone()]
+            entries: [first.clone(), second.clone()]
                 .into_iter()
                 .enumerate()
-                .map(|(index, line)| LinePlacement {
-                    anchor: LineAnchor {
-                        inline_origin: 0.0,
-                        baseline: index as f64 * 20.0 + line.feedback().baseline,
-                    },
-                    line,
-                    orientation: LineOrientation::Horizontal,
-                    atomics: vec![],
+                .map(|(index, line)| {
+                    crate::PlacementEntry::Formatted(LinePlacement {
+                        anchor: LineAnchor {
+                            inline_origin: 0.0,
+                            baseline: index as f64 * 20.0 + line.feedback().baseline,
+                        },
+                        line,
+                        orientation: LineOrientation::Horizontal,
+                        atomics: vec![],
+                    })
                 })
                 .collect(),
         };

@@ -475,8 +475,8 @@ impl Layout {
         }
         // Custody is checked independently of eligibility. Removed units retain
         // their original intervals, while alternatives/control anchors own none.
-        for placed in &self.inner.lines {
-            for unit in &placed.finalized.selected.presentation.units {
+        for receipt in &self.inner.receipts {
+            for unit in &receipt.selected.presentation.units {
                 if matches!(unit.kind, PresentationUnitKind::Text)
                     && unit.atoms.is_empty()
                     && let Some(aggregate) = overlap(unit.source, aggregate)
@@ -493,14 +493,8 @@ impl Layout {
         let map = &analyzed.transform;
         let mut seen = BTreeSet::new();
         let mut custody = Vec::new();
-        for line in &self.inner.lines {
-            for event in &line
-                .finalized
-                .selected
-                .presentation
-                .selected_relation
-                .events
-            {
+        for receipt in &self.inner.receipts {
+            for event in &receipt.selected.presentation.selected_relation.events {
                 let SelectedRelationEvent::Base { event } = *event else {
                     continue;
                 };

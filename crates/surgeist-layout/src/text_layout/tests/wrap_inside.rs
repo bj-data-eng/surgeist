@@ -1620,18 +1620,54 @@ fn replacement_and_terminal<S: LayoutScalar>() {
         AvailableOf::definite(S::from_f64(100.0)),
         false,
     );
-    assert_eq!(cuts(&batch), [3, 3]);
+    assert_eq!(cuts(&batch), [3]);
+    let placed = batch.placed_text()[0].layout();
+    let completions = placed.nonformatted_lines().collect::<Vec<_>>();
+    assert_eq!(completions.len(), 1);
+    let completion = completions[0].line.finalized_line();
+    assert_eq!(completion.prepared_text(), f.binding.prepared);
+    assert_eq!(placed.source().text(), &text::Text::from("AB\n"));
     assert_eq!(
-        batch.placed_text()[0].layout().lines()[1]
-            .bounds()
-            .size
-            .height,
-        10.0
+        (
+            completion
+                .selected_line()
+                .request()
+                .start
+                .view()
+                .source_before()
+                .get(),
+            completion
+                .selected_line()
+                .request()
+                .end
+                .view()
+                .source_after()
+                .get()
+        ),
+        (3, 3)
     );
+    assert!(!completion.has_in_flow_content());
+    assert_eq!(completion.feedback().baseline, 8.0);
+    assert_eq!(completion.feedback().line_height, 10.0);
+    assert_eq!(completions[0].origin.y, 10.0);
+    let selected = completion.selected_line();
+    let request = selected.request();
+    assert_eq!(request.context.end, text::LineEnd::Paragraph);
+    assert!(matches!(&request.termination,
+        text::PreparedTermination::Ordinary(offer)
+            if offer.view().kind() == text::PreparedBreakKind::ParagraphEnd));
+    assert_eq!(request.start, request.end);
+    assert!(request.participants.is_empty());
+    let forced = finalized(&batch).remove(0);
+    assert_eq!(
+        forced.selected_line().request().context.end,
+        text::LineEnd::Forced
+    );
+    assert_eq!(request.start, forced.selected_line().request().end);
 }
 
 #[test]
-fn empty_native_replacement_and_genuine_terminal_empty_line_keep_their_owners() {
+fn empty_native_replacement_and_nonformatted_terminal_completion_keep_their_owners() {
     replacement_and_terminal::<f32>();
     replacement_and_terminal::<f64>();
 }

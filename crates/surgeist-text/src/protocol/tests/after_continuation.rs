@@ -175,7 +175,7 @@ fn place_lines(
     crate::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
         coverage,
-        lines: lines
+        entries: lines
             .into_iter()
             .enumerate()
             .map(|(index, line)| {
@@ -197,7 +197,7 @@ fn place_lines(
                         }
                     })
                     .collect();
-                LinePlacement {
+                crate::PlacementEntry::Formatted(LinePlacement {
                     line,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -205,7 +205,7 @@ fn place_lines(
                     },
                     orientation: LineOrientation::Horizontal,
                     atomics,
-                }
+                })
             })
             .collect(),
     })

@@ -586,6 +586,56 @@ pub struct LinePlacement {
     pub orientation: LineOrientation,
     pub atomics: Vec<AtomicPlacement>,
 }
+/// Semantic eligibility for a nonformatted placement, issued only from an
+/// actual finalized line. Nominal metrics and selected correspondence remain
+/// unchanged; this capability supplies no physical line geometry.
+#[derive(Clone, Debug)]
+pub struct NonFormattedLine {
+    line: FinalizedLine,
+}
+impl NonFormattedLine {
+    #[must_use]
+    pub fn finalized_line(&self) -> &FinalizedLine {
+        &self.line
+    }
+}
+impl PartialEq for NonFormattedLine {
+    fn eq(&self, other: &Self) -> bool {
+        self.line.inner.selected.metric_policy == other.line.inner.selected.metric_policy
+            && self.line.inner.selected.request == other.line.inner.selected.request
+            && self
+                .line
+                .spacing_slots()
+                .map(|slot| slot.advance)
+                .eq(other.line.spacing_slots().map(|slot| slot.advance))
+    }
+}
+
+/// A real zero-height used origin for nonformatted descendants. It is not the
+/// nominal metric baseline, a visible line rectangle, or a caret anchor.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NonFormattedLinePlacement {
+    pub line: NonFormattedLine,
+    pub origin: Point,
+    pub orientation: LineOrientation,
+    pub atomics: Vec<AtomicPlacement>,
+}
+
+/// Complete semantic sequence with explicitly distinct physical disposition.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PlacementEntry {
+    Formatted(LinePlacement),
+    NonFormatted(NonFormattedLinePlacement),
+}
+impl PlacementEntry {
+    pub fn finalized_line(&self) -> &FinalizedLine {
+        match self {
+            Self::Formatted(line) => &line.line,
+            Self::NonFormatted(line) => line.line.finalized_line(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum PlacementCoverage {
     WholeParagraph,
@@ -598,7 +648,7 @@ pub enum PlacementCoverage {
 pub struct PlacementRequest {
     pub prepared: PreparedText,
     pub coverage: PlacementCoverage,
-    pub lines: Vec<LinePlacement>,
+    pub entries: Vec<PlacementEntry>,
 }
 
 /// Feedback is line-local, and never declares that a consumer's candidate fits.
@@ -668,6 +718,12 @@ pub enum ProtocolError {
     InvalidLineDirectionQuery,
     InvalidWordPortion,
     MeasurementNotPlaceable,
+    /// A forced ending always produces a formatted line.
+    NonFormattedForcedLine,
+    /// Retained in-flow text, atomic or boundary content cannot be suppressed.
+    NonFormattedInFlowContent,
+    /// Complete semantic coverage has no formatted line that can lend geometry.
+    NoFormattedLineGeometry,
     InvalidPhrasePortion,
     InvalidConditionalStage,
     /// Missing actual context for CSS Text Phase II: Trimming and Positioning.

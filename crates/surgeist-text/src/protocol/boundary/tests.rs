@@ -361,7 +361,7 @@ fn selected_endpoints_contribute_once_to_flow_prefix_and_exact_event_selection()
     let layout = Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        lines: vec![LinePlacement {
+        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -369,7 +369,7 @@ fn selected_endpoints_contribute_once_to_flow_prefix_and_exact_event_selection()
             },
             orientation: LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();

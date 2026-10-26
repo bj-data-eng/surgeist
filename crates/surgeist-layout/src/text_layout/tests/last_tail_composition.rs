@@ -120,8 +120,22 @@ fn check<S: LayoutScalar>(
         layout.source().text().code_units(),
         text.encode_utf16().collect::<Vec<_>>()
     );
-    assert_eq!(layout.lines().len(), expected.len());
-    for (index, (line, (range, advance, ending))) in layout.lines().iter().zip(expected).enumerate()
+    // This helper has actual text only: trailing preserved LF schedules a
+    // required Paragraph completion but leaves no retained receiving content.
+    // Retained Y, even at zero/signed advance, follows the other branch.
+    let phantom_terminal = text.ends_with('\n');
+    let formatted = if phantom_terminal {
+        assert_eq!(
+            expected.last(),
+            Some(&(Range::new(text.len(), text.len()), 0.0, LineEnd::Paragraph))
+        );
+        &expected[..expected.len() - 1]
+    } else {
+        expected
+    };
+    assert_eq!(layout.lines().len(), formatted.len());
+    for (index, (line, (range, advance, ending))) in
+        layout.lines().iter().zip(formatted).enumerate()
     {
         assert_eq!(line.range(), *range);
         assert_eq!(line.baseline(), 8.0 + 10.0 * index as f64);
@@ -129,11 +143,6 @@ fn check<S: LayoutScalar>(
             line.bounds(),
             surgeist_text::Rect::new(0.0, 10.0 * index as f64, 100.0, 10.0)
         );
-        // Empty terminal geometry is checked above without fabricating a text
-        // fragment or requiring a source-bearing glyph for that empty line.
-        if range.is_empty() {
-            continue;
-        }
         let finalized = batch
             .final_inline_fragments()
             .iter()
@@ -161,6 +170,35 @@ fn check<S: LayoutScalar>(
         }
         assert!(finalized.run_views().all(|run| run.face().bytes() == AHEM
             && run.effective_instance().unwrap().font_size() == 10.0));
+    }
+    let completions = layout.nonformatted_lines().collect::<Vec<_>>();
+    assert_eq!(completions.len(), usize::from(phantom_terminal));
+    if phantom_terminal {
+        let completion = completions[0];
+        assert_eq!(
+            completion.origin,
+            surgeist_text::Point::new(0.0, 10.0 * formatted.len() as f64)
+        );
+        assert!(completion.atomics.is_empty());
+        let receipt = completion.line.finalized_line();
+        assert_eq!(receipt.prepared_text(), paragraph.prepared);
+        assert!(!receipt.has_in_flow_content());
+        assert_eq!(receipt.feedback().advance, 0.0);
+        assert_eq!(receipt.feedback().line_height, 10.0);
+        let selected = receipt.selected_line();
+        assert_eq!(selected.request().context.end, LineEnd::Paragraph);
+        assert_eq!(
+            selected.request().start.view().source_before().get(),
+            text.len()
+        );
+        assert_eq!(
+            selected.request().end.view().source_before().get(),
+            text.len()
+        );
+        assert!(selected.request().alternative.is_none());
+        assert!(matches!(&selected.request().termination,
+            surgeist_text::PreparedTermination::Ordinary(offer)
+                if offer.view().kind() == PreparedBreakKind::ParagraphEnd));
     }
 }
 
