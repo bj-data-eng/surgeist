@@ -51,8 +51,11 @@ pub use error::{
     TextNumericError, TextNumericPhase, TextTransformError,
 };
 pub use font::{
-    EffectiveFontInstance, FontData, FontFace, FontMetrics, FontOutlineCapability,
-    FontOutlineError, FontSynthesis, GlyphOutlineGeometry, StrikeoutMetrics,
+    EffectiveFontInstance, FontBaseline, FontBaselineAbsence, FontBaselineAxis,
+    FontBaselineMeasurement, FontBaselineOutcome, FontBaselineProvenance, FontBaselineScript,
+    FontBaselineUnavailable, FontBaselineUnavailableReason, FontBaselineValue, FontData, FontFace,
+    FontMetrics, FontOutlineCapability, FontOutlineError, FontSynthesis, GlyphOutlineGeometry,
+    StrikeoutMetrics,
 };
 pub use geometry::{Point, Rect, Size};
 pub use id::Id;
@@ -153,6 +156,10 @@ mod test_wrapping;
 #[cfg(test)]
 #[path = "test_fonts/shaping.rs"]
 mod shaping_test_fonts;
+
+#[cfg(test)]
+#[path = "test_fonts/baseline.rs"]
+mod baseline_test_fonts;
 
 mod range_fragments;
 pub use range_fragments::{

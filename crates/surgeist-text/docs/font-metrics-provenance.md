@@ -23,3 +23,13 @@ copied. Canonical coordinate conversion is scoped scratch; returned metrics
 retain the original resource/instance loan. The [current metric
 contract](reference.md#glyph-free-associated-font-metrics) states the supported
 format and output conventions.
+
+The [named-baseline resolver](../src/font/metrics/baseline.rs) reads BASE through
+the same safe read-fonts reexport. Its
+[native determination](../../../references/font-baselines--native-determination.md)
+owns the axis/script/name, synthesis and unhinted coordinate contract. BASE and
+MVAR share structural store/row qualification and the provider's region-scalar
+evaluation; MVAR retains its integer delta rounding, while BASE retains
+fractional contributions for the CSS midpoint. No parser or interpolation
+implementation is copied. Stored Format2 point references reuse the owned raw
+TrueType outline qualifier without executing contour variation or hinting.

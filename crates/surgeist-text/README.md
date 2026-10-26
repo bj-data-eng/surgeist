@@ -84,6 +84,11 @@ variation data refuses even at default/inactive coordinates. Actual run instance
 retain canonical coordinates, executable x-shear and the selected translated-outline
 bold displacement; line metrics and advances receive no bold-spacing adjustment.
 
+Instances and run views expose [named font-baseline measurements](docs/reference.md#named-font-baseline-measurements)
+with retained font/script identity and unhinted horizontal-Y or vertical-X
+coordinates. Alphabetic and central availability are independent. These metrics
+leave vertical paragraph shaping and placement with their own capability gates.
+
 `EffectiveFontInstance::glyph_outline` reads conservative same-instance outline
 bounds, including synthesis, or proven empty geometry. It qualifies simple and
 dense-variable TrueType outlines and static translation-only composites; other
