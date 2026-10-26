@@ -656,3 +656,645 @@ fn semantic_declaration_mutation_refuses_even_though_prepared_forced_geometry_st
     changed_declaration::<f32>();
     changed_declaration::<f64>();
 }
+
+fn semantic_source(
+    left: &[u16],
+    right: &[u16],
+    delimiters: text::DocumentSegmentBreaks,
+    lithuanian: bool,
+) -> text::ContextualSourceInput {
+    use text::SourceProcessingEvent as E;
+    let split = left.len();
+    let mut units = left.to_vec();
+    units.extend_from_slice(right);
+    let end = units.len();
+    let source = text::Source::identified(
+        text::Text::from_code_units(units),
+        text::Id::from_u64(657000),
+        17,
+    );
+    let mut style = text::Style {
+        white_space: text::WhiteSpace::Preserve,
+        wrap: text::Wrap::None,
+        hyphens: text::Hyphens::None,
+        ..text::Style::default()
+    };
+    if lithuanian {
+        style.locale = Some("lt".into());
+        style.text_transform = text::TextTransform::Set(
+            text::TextTransformSet::none().with_case(text::CaseTransform::Uppercase),
+        );
+    }
+    // Each source occurrence selects its real half-range from the same exact
+    // aggregate source, matching the lower Text scalar/delimiter fixture.
+    text::ContextualSourceInput {
+        source: source.clone(),
+        segment_breaks: delimiters,
+        envelope: text::SourceProcessingEnvelope::Complete,
+        origins: [text::Range::new(0, split), text::Range::new(split, end)]
+            .into_iter()
+            .map(|range| text::ParagraphOrigin {
+                text_node: None,
+                source: source.clone(),
+                local: range,
+                aggregate: range,
+                kind: text::ParagraphOriginKind::Authored,
+            })
+            .collect(),
+        connections: vec![text::SourceProcessingConnection {
+            before_origin: 0,
+            after_origin: 1,
+            kind: text::ParagraphConnectionKind::Continuous,
+        }],
+        boundary_policies: vec![text::ParagraphBoundaryPolicy {
+            definition: text::ParagraphBoundaryDefinition::Connection(0),
+            preceding_wrap: text::Wrap::None,
+            following_wrap: text::Wrap::None,
+            ancestor_wrap: text::Wrap::None,
+        }],
+        controls: vec![],
+        computed_line_boundaries: vec![],
+        replacements: vec![],
+        scopes: vec![
+            text::SourceProcessingScope::Block {
+                topology: text::SourceProcessingTopology::Complete,
+                trim: Default::default(),
+                base_style: style,
+                used_direction: text::ParagraphBaseDirection::LeftToRight,
+            },
+            text::SourceProcessingScope::Inline {
+                trim: Default::default(),
+                style: None,
+                boundaries: None,
+            },
+        ],
+        paragraphs: vec![text::SourceProcessingParagraph {
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+        }],
+        events: vec![
+            E::EnterScope(0),
+            E::EnterParagraph(0),
+            E::Origin {
+                origin: 0,
+                affinity: text::Affinity::After,
+            },
+            E::EnterScope(1),
+            E::Connection(0),
+            E::Origin {
+                origin: 1,
+                affinity: text::Affinity::After,
+            },
+            E::ExitScope(1),
+            E::ExitParagraph(0),
+            E::ExitScope(0),
+        ],
+    }
+}
+fn source_phase_casing_boundary<S: layout::LayoutScalar>() {
+    for edge in [layout::WrapEdge::Auto, layout::WrapEdge::Line] {
+        let host = Host::<S>::new(true, edge, layout::Direction::Ltr);
+        let result = {
+            let view = Early(&host);
+            layout::process_wrapping_source(
+                &view,
+                0,
+                semantic_source(
+                    &[0x69],
+                    &[0x307],
+                    text::DocumentSegmentBreaks::LineFeedDefault,
+                    true,
+                ),
+                host.occurrences(),
+            )
+            .unwrap()
+        };
+        let (processed, _receipt) = result.into_parts();
+        // This is intentionally Phase-I/source proof. Casing executes in the
+        // later owned analysis transform: ProcessedSource must NOT be mistaken
+        // for its private transformed text or a font/glyph observation.
+        assert_eq!(processed.source().id(), Some(text::Id::from_u64(657000)));
+        assert_eq!(processed.source().revision(), 17);
+        assert_eq!(processed.source().text().code_units(), [0x69, 0x307]);
+        assert_eq!(processed.processed_text().code_units(), [0x69, 0x307]);
+        assert_eq!(processed.base_style().locale.as_deref(), Some("lt"));
+        assert_eq!(
+            processed.base_style().text_transform,
+            text::TextTransform::Set(
+                text::TextTransformSet::none().with_case(text::CaseTransform::Uppercase)
+            )
+        );
+        for at in 0..=2 {
+            for affinity in [text::Affinity::Before, text::Affinity::After] {
+                let original =
+                    text::SourcePosition::try_new(processed.source().text(), at).unwrap();
+                assert_eq!(
+                    processed
+                        .source_to_processed(original, affinity)
+                        .unwrap()
+                        .get(),
+                    at
+                );
+                assert_eq!(
+                    processed
+                        .processed_to_source(processed.position(at).unwrap(), affinity)
+                        .unwrap()
+                        .get(),
+                    at
+                );
+            }
+        }
+        let scope = processed.captured_scope(1).unwrap();
+        assert_eq!(scope.parent(), processed.captured_scope(0));
+        assert!(processed.captured_origin(0).is_some());
+        assert!(processed.captured_origin(1).is_some());
+        assert!(processed.captured_control(0).is_none());
+        if edge == layout::WrapEdge::Line {
+            let cause = processed.captured_computed_line_boundary(0).unwrap();
+            assert_eq!(
+                cause.target(),
+                text::CapturedComputedLineBoundaryTarget::Scope {
+                    scope,
+                    side: text::SourceBoxSide::Before
+                }
+            );
+            assert_eq!(cause.source_position().get(), 1);
+            assert_eq!(cause.domain(), processed.captured_scope(0).unwrap());
+            assert_eq!(cause.paragraph(), processed.captured_paragraph(0).unwrap());
+            assert!(processed.captured_computed_line_boundary(1).is_none());
+        } else {
+            assert!(processed.captured_computed_line_boundary(0).is_none());
+        }
+    }
+}
+#[test]
+fn source_only_lithuanian_input_keeps_phase_i_mapping_and_authentic_early_dot_boundary_cause() {
+    source_phase_casing_boundary::<f32>();
+    source_phase_casing_boundary::<f64>();
+}
+fn typed_early_text_errors<S: layout::LayoutScalar>() {
+    for (left, right, delimiters, expected) in [
+        (
+            vec![0xd83d],
+            vec![0xde00],
+            text::DocumentSegmentBreaks::LineFeedDefault,
+            text::ComputedLineBoundaryError::InsideScalar,
+        ),
+        (
+            vec![0x0d],
+            vec![0x0a],
+            text::DocumentSegmentBreaks::Defined(vec![text::Range::new(0, 2)]),
+            text::ComputedLineBoundaryError::InsideDelimiter,
+        ),
+    ] {
+        // This is the exact requested-force error profile. Do not assert a
+        // successful neutral control for defined CRLF crossing the scope:
+        // lower Text separately rejects that unforced input as DelimiterCrossing.
+        let host = Host::<S>::new(true, layout::WrapEdge::Line, layout::Direction::Ltr);
+        let result = {
+            let view = Early(&host);
+            layout::process_wrapping_source(
+                &view,
+                0,
+                semantic_source(&left, &right, delimiters, false),
+                host.occurrences(),
+            )
+        };
+        let error = match result {
+            Ok(_) => {
+                panic!("an interior decoded scalar/document delimiter is not a hard-cut target")
+            }
+            Err(error) => error,
+        };
+        match error.kind() {
+            layout::LayoutErrorKindOf::Text(cause) => assert!(
+                matches!(cause.detail(),
+                    Some(text::ErrorDetail::SourceProcessing {reason:text::SourceProcessingError::ComputedLineBoundary {request:0,reason}}) if *reason==expected
+                ),
+                "{cause:?}"
+            ),
+            other => panic!("the actual Text admission detail must be retained: {other:?}"),
+        }
+    }
+}
+#[test]
+fn source_wrapper_preserves_typed_inside_scalar_and_defined_crlf_boundary_refusals() {
+    typed_early_text_errors::<f32>();
+    typed_early_text_errors::<f64>();
+}
+
+fn association_error<S: layout::LayoutScalar>(error: layout::LayoutErrorOf<u32, S>) {
+    assert!(matches!(
+        error.kind(),
+        layout::LayoutErrorKindOf::InvalidInput(layout::LayoutInvalidInputOf::WrappingScope(
+            layout::WrappingScopeError::SourceAssociation
+        ))
+    ));
+}
+fn contrary_canonical_order<S: layout::LayoutScalar>() {
+    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+        // The source is independently valid and canonically contains A in S;
+        // the borrowed producer instead claims A followed by S containing B.
+        // Equal source lengths and a valid input-local scope ordinal do not
+        // authenticate that contrary first-child/order claim.
+        let raw = text::process_contextual_source(source(false, direction)).unwrap();
+        let scope = raw.captured_scope(1).unwrap();
+        let a = raw.captured_origin(0).unwrap();
+        let b = raw.captured_origin(1).unwrap();
+        assert!(scope.enter_position() < a);
+        assert!(raw.captured_origin(0).unwrap() < scope.exit_position());
+        assert!(scope.exit_position() < b);
+        assert_eq!(
+            scope.domain_topology(),
+            text::SourceProcessingTopology::Complete
+        );
+        assert!(raw.captured_computed_line_boundary(0).is_none());
+        let host = Host::<S>::new(true, layout::WrapEdge::Line, direction);
+        let result = layout::process_wrapping_source(
+            &Early(&host),
+            0,
+            source(false, direction),
+            host.occurrences(),
+        );
+        match result {
+            Ok(_) => panic!("a complete contrary generated order cannot issue a resolved receipt"),
+            Err(error) => association_error(error),
+        }
+    }
+}
+#[test]
+fn complete_source_capture_contradicts_claimed_generated_order_before_receipt_publication() {
+    contrary_canonical_order::<f32>();
+    contrary_canonical_order::<f64>();
+}
+
+fn coherent_foreign_capture<S: layout::LayoutScalar>() {
+    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+        let mut host = Host::<S>::new(true, layout::WrapEdge::Line, direction);
+        let process = || {
+            layout::process_wrapping_source(
+                &Early(&host),
+                0,
+                source(true, direction),
+                host.occurrences(),
+            )
+            .unwrap()
+            .into_parts()
+        };
+        let (original, receipt) = process();
+        let (foreign, foreign_receipt) = process();
+        assert_eq!(original.source().id(), foreign.source().id());
+        assert_eq!(original.source().revision(), foreign.source().revision());
+        assert_eq!(original.source().text(), foreign.source().text());
+        assert!(
+            !original
+                .captured_origin(0)
+                .unwrap()
+                .same_capture(&foreign.captured_origin(0).unwrap())
+        );
+        let foreign = Arc::new(foreign);
+        let p = normal_prepare(&foreign);
+        let binding = host.install(&p);
+        // Every supplied participant, scope and current row is internally
+        // coherent with the second capture. Its own receipt remains valid.
+        let positive = finish(
+            &host,
+            &foreign,
+            &p,
+            binding.clone(),
+            &foreign_receipt,
+            layout::InlineBoxMetricContribution::NoContribution,
+        );
+        qualify(&positive, &p, direction, true, &[10.0, 10.0], &[8.0, 18.0]);
+        let tree = Final(&host);
+        let result = layout::LayoutFlowInput::try_new_with_edges(
+            &tree,
+            0,
+            vec![binding],
+            host.final_wrapping(
+                &foreign,
+                Some(layout::InlineBoxMetricContribution::NoContribution),
+            ),
+            &receipt,
+        );
+        let error = result
+            .err()
+            .expect("equal source bytes do not make a foreign capture authentic");
+        assert!(matches!(
+            error.kind(),
+            layout::LayoutErrorKindOf::InvalidInput(layout::LayoutInvalidInputOf::WrappingScope(
+                layout::WrappingScopeError::PlanMismatch
+            ))
+        ));
+    }
+}
+#[test]
+fn internally_coherent_foreign_capture_refuses_old_receipt_despite_equal_source_and_geometry() {
+    coherent_foreign_capture::<f32>();
+    coherent_foreign_capture::<f64>();
+}
+
+fn caller_causes_and_duplicate_ordinals<S: layout::LayoutScalar>() {
+    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+        let host = Host::<S>::new(true, layout::WrapEdge::Line, direction);
+        let mut raw = source(true, direction);
+        // A caller's After cause is distinct. Two literal caller Before
+        // requests and the adapter's same genuine Before edge share one cause.
+        raw.computed_line_boundaries = vec![
+            text::ComputedLineBoundaryInput::Scope {
+                scope: 1,
+                side: text::SourceBoxSide::After,
+            },
+            text::ComputedLineBoundaryInput::Scope {
+                scope: 1,
+                side: text::SourceBoxSide::Before,
+            },
+            text::ComputedLineBoundaryInput::Scope {
+                scope: 1,
+                side: text::SourceBoxSide::Before,
+            },
+        ];
+        let (processed, _receipt) =
+            layout::process_wrapping_source(&Early(&host), 0, raw, host.occurrences())
+                .unwrap()
+                .into_parts();
+        assert_eq!(processed.source().text(), &text::Text::from("AB"));
+        assert_eq!(processed.processed_text().code_units(), [0x41, 0x42]);
+        assert!(processed.captured_control(0).is_none());
+        let after = processed.captured_computed_line_boundary(0).unwrap();
+        let before = processed.captured_computed_line_boundary(1).unwrap();
+        assert_ne!(after, before);
+        assert_eq!(
+            Some(before.clone()),
+            processed.captured_computed_line_boundary(2)
+        );
+        assert_eq!(
+            Some(before.clone()),
+            processed.captured_computed_line_boundary(3)
+        );
+        assert!(processed.captured_computed_line_boundary(4).is_none());
+        let s = processed.captured_scope(1).unwrap();
+        assert_eq!(
+            after.target(),
+            text::CapturedComputedLineBoundaryTarget::Scope {
+                scope: s.clone(),
+                side: text::SourceBoxSide::After,
+            }
+        );
+        assert_eq!(
+            before.target(),
+            text::CapturedComputedLineBoundaryTarget::Scope {
+                scope: s,
+                side: text::SourceBoxSide::Before,
+            }
+        );
+        assert_eq!(after.source_position().get(), 2);
+        assert_eq!(before.source_position().get(), 1);
+        assert!(before.preceding_event().unwrap() < before.following_event().unwrap());
+        assert_eq!(after.domain(), before.domain());
+        assert_eq!(after.paragraph(), before.paragraph());
+    }
+}
+#[test]
+fn caller_distinct_cause_survives_and_duplicate_request_ordinals_resolve_idempotently() {
+    caller_causes_and_duplicate_ordinals::<f32>();
+    caller_causes_and_duplicate_ordinals::<f64>();
+}
+
+// A separate early borrow with genuine physical source controls. It never
+// implements LayoutTree or pretends that preparation has already occurred.
+struct PairedEarly<S: layout::LayoutScalar> {
+    base: Host<S>,
+    children: [Vec<u32>; 5],
+    start: layout::InlineBoundaryInputOf<S>,
+    end: layout::InlineBoundaryInputOf<S>,
+    declarations: Vec<layout::SourceWrappingScopeInput<u32>>,
+    scopes: Vec<layout::SourceScopeAssociation<u32>>,
+}
+impl<S: layout::LayoutScalar> PairedEarly<S> {
+    fn new(direction: layout::Direction, reverse: bool) -> Self {
+        let mut base = Host::new(true, layout::WrapEdge::Line, direction);
+        let pair = layout::SourceWrappingScopeInput {
+            box_: layout::InlineBoxRef::NativePair { start: 3, end: 4 },
+            wrap_inside: layout::WrapInside::Auto,
+            edges: base.declarations[0].edges,
+        };
+        let mut declarations = vec![base.declarations[0].clone(), pair];
+        if reverse {
+            declarations.reverse();
+        }
+        let metrics = layout::InlineMetricsOf::try_new(S::ZERO, S::ZERO).unwrap();
+        let start = layout::InlineBoundaryInputOf::new(
+            layout::InlineBoundaryKind::Start,
+            metrics,
+            layout::InlineBoundaryEdgeOf::ZERO,
+        )
+        .with_direction(direction);
+        let end = layout::InlineBoundaryInputOf::new(
+            layout::InlineBoundaryKind::End,
+            metrics,
+            layout::InlineBoundaryEdgeOf::ZERO,
+        )
+        .with_direction(direction);
+        // The physical flow contains the actual pair's endpoints, while the
+        // generated tree contains the one paired inline box, not two children.
+        base.children[0] = vec![1, 3, 2, 4];
+        Self {
+            base,
+            children: [vec![1, 3, 2, 4], vec![], vec![], vec![], vec![]],
+            start,
+            end,
+            declarations,
+            scopes: vec![layout::SourceScopeAssociation {
+                scope: 1,
+                flow: 0,
+                pair: Some((3, 4)),
+            }],
+        }
+    }
+    fn occurrences(&self) -> layout::SourceOccurrenceAssociations<u32> {
+        layout::SourceOccurrenceAssociations {
+            origins: self.base.origins.clone(),
+            controls: vec![(0, 3), (1, 4)],
+            atomics: vec![],
+        }
+    }
+}
+impl<S: layout::LayoutScalar> layout::Traverse for PairedEarly<S> {
+    type Node = u32;
+    type Scalar = S;
+    type Children<'a>
+        = std::iter::Copied<slice::Iter<'a, u32>>
+    where
+        Self: 'a;
+    fn children(&self, node: u32) -> Self::Children<'_> {
+        self.children[node as usize].iter().copied()
+    }
+    fn child_count(&self, node: u32) -> usize {
+        self.children[node as usize].len()
+    }
+    fn child(&self, node: u32, index: usize) -> u32 {
+        self.children[node as usize][index]
+    }
+}
+impl<S: layout::LayoutScalar> layout::WrapEdgeSource for PairedEarly<S> {
+    fn wrap_edge_source_node(&self, node: u32) -> layout::WrapEdgeSourceNodeView<'_, S> {
+        match node {
+            0 => layout::WrapEdgeSourceNodeView::Box(&self.base.root),
+            1 => layout::WrapEdgeSourceNodeView::SourceOrigin { origin: 0 },
+            2 => layout::WrapEdgeSourceNodeView::SourceOrigin { origin: 1 },
+            3 => layout::WrapEdgeSourceNodeView::Boundary(self.start),
+            4 => layout::WrapEdgeSourceNodeView::Boundary(self.end),
+            _ => unreachable!("the fixture has exactly five genuine nodes"),
+        }
+    }
+    fn source_wrapping_scopes(&self) -> &[layout::SourceWrappingScopeInput<u32>] {
+        &self.declarations
+    }
+    fn source_scope_associations(&self) -> &[layout::SourceScopeAssociation<u32>] {
+        &self.scopes
+    }
+    fn generated_child_order(&self) -> &[layout::InlineChildOrderInput<u32, usize>] {
+        &self.base.orders
+    }
+}
+fn paired_source(direction: layout::Direction) -> text::ContextualSourceInput {
+    use text::SourceProcessingEvent as E;
+    let mut raw = source(true, direction);
+    raw.controls = vec![
+        text::ParagraphControl {
+            at: 1,
+            kind: text::ParagraphControlKind::InlineBoundaryStart,
+        },
+        text::ParagraphControl {
+            at: 2,
+            kind: text::ParagraphControlKind::InlineBoundaryEnd,
+        },
+    ];
+    let text::SourceProcessingScope::Inline { boundaries, .. } = &mut raw.scopes[1] else {
+        unreachable!()
+    };
+    *boundaries = Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 });
+    raw.events = vec![
+        E::EnterScope(0),
+        E::EnterParagraph(0),
+        E::Origin {
+            origin: 0,
+            affinity: text::Affinity::After,
+        },
+        E::Connection(0),
+        E::EnterScope(1),
+        E::Control {
+            control: 0,
+            affinity: text::Affinity::After,
+        },
+        E::Origin {
+            origin: 1,
+            affinity: text::Affinity::After,
+        },
+        E::Control {
+            control: 1,
+            affinity: text::Affinity::Before,
+        },
+        E::ExitScope(1),
+        E::ExitParagraph(0),
+        E::ExitScope(0),
+    ];
+    raw.computed_line_boundaries = vec![
+        text::ComputedLineBoundaryInput::Scope {
+            scope: 1,
+            side: text::SourceBoxSide::Before,
+        },
+        text::ComputedLineBoundaryInput::Scope {
+            scope: 1,
+            side: text::SourceBoxSide::Before,
+        },
+        text::ComputedLineBoundaryInput::Endpoint { control: 0 },
+    ];
+    raw
+}
+fn genuine_source_native_alias<S: layout::LayoutScalar>() {
+    for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
+        for reverse in [false, true] {
+            let host = PairedEarly::<S>::new(direction, reverse);
+            let (processed, _receipt) = layout::process_wrapping_source(
+                &host,
+                0,
+                paired_source(direction),
+                host.occurrences(),
+            )
+            .unwrap()
+            .into_parts();
+            let scope = processed.captured_scope(1).unwrap();
+            let start = processed.captured_control(0).unwrap();
+            let end = processed.captured_control(1).unwrap();
+            assert_eq!(scope.entry_control(), Some(start.clone()));
+            assert_eq!(scope.exit_control(), Some(end.clone()));
+            assert_eq!(
+                start.kind(),
+                &text::ParagraphControlKind::InlineBoundaryStart
+            );
+            assert_eq!(end.kind(), &text::ParagraphControlKind::InlineBoundaryEnd);
+            assert!(start.event_position() < processed.captured_origin(1).unwrap());
+            assert!(processed.captured_origin(1).unwrap() < end.event_position());
+            let before = processed.captured_computed_line_boundary(0).unwrap();
+            let endpoint = processed.captured_computed_line_boundary(2).unwrap();
+            assert_eq!(
+                Some(before.clone()),
+                processed.captured_computed_line_boundary(1)
+            );
+            assert_eq!(
+                Some(before.clone()),
+                processed.captured_computed_line_boundary(3)
+            );
+            assert!(processed.captured_computed_line_boundary(4).is_none());
+            assert_eq!(
+                before.target(),
+                text::CapturedComputedLineBoundaryTarget::Scope {
+                    scope: scope.clone(),
+                    side: text::SourceBoxSide::Before,
+                }
+            );
+            assert_eq!(
+                endpoint.target(),
+                text::CapturedComputedLineBoundaryTarget::Endpoint(start)
+            );
+            assert_ne!(before, endpoint);
+            assert_eq!(processed.source().text(), &text::Text::from("AB"));
+            assert_eq!(processed.processed_text().code_units(), [0x41, 0x42]);
+            let processed = Arc::new(processed);
+            let prepared = normal_prepare(&processed);
+            assert_eq!(prepared.control_views().count(), 2);
+            assert_eq!(
+                prepared
+                    .participants()
+                    .filter(|p| matches!(p, text::PreparedParticipant::ComputedLineBoundary(_)))
+                    .count(),
+                1
+            );
+            let offers = prepared.opportunity_views().collect::<Vec<_>>();
+            assert_eq!(
+                offers
+                    .iter()
+                    .map(|o| (o.kind(), o.boundary().view().source_before().get()))
+                    .collect::<Vec<_>>(),
+                [
+                    (text::PreparedBreakKind::Forced, 1),
+                    (text::PreparedBreakKind::ParagraphEnd, 2),
+                ]
+            );
+            let group = offers[0].computed_line_boundary().unwrap();
+            let causes = group.view().causes().collect::<Vec<_>>();
+            assert_eq!(causes.len(), 2);
+            assert_eq!(causes.iter().filter(|c| **c == before).count(), 1);
+            assert_eq!(causes.iter().filter(|c| **c == endpoint).count(), 1);
+            assert_eq!(group.view().domain(), scope.domain());
+        }
+    }
+}
+#[test]
+fn genuine_source_native_box_alias_has_one_effective_force_and_keeps_distinct_caller_endpoint_cause()
+ {
+    genuine_source_native_alias::<f32>();
+    genuine_source_native_alias::<f64>();
+}
