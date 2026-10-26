@@ -54,6 +54,21 @@ pub(crate) struct IndexPayloadCensus {
 
 #[cfg(test)]
 impl IndexPayloadCensus {
+    pub(crate) fn shared<T>(&mut self, value: &std::sync::Arc<T>) -> bool {
+        let identity = std::sync::Arc::as_ptr(value) as usize;
+        let bytes = std::mem::size_of::<T>();
+        match self.allocations.entry(identity) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(bytes);
+                true
+            }
+            std::collections::btree_map::Entry::Occupied(entry) => {
+                assert_eq!(*entry.get(), bytes);
+                false
+            }
+        }
+    }
+
     pub(crate) fn buffer<T>(&mut self, values: &Vec<T>) {
         let bytes = values.capacity() * std::mem::size_of::<T>();
         if bytes != 0 {
@@ -63,6 +78,11 @@ impl IndexPayloadCensus {
     }
 
     pub(crate) fn analyzed(&mut self, core: &AnalyzedCore) {
+        if let Some(topology) = &core.paragraph.scope_topology {
+            // Computed admission can initialize capture facts before any
+            // local ScopeCutIndex exists. Include that pre-query allocation.
+            topology.capture.canonical_payload(self);
+        }
         if !self.cores.insert(std::ptr::from_ref(core) as usize) {
             return;
         }

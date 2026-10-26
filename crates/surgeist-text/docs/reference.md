@@ -302,6 +302,14 @@ removed contributions and indivisible units constrain those choices. The
 consumer supplies actual generated-box/order evidence and an issued termination
 before selecting one; the observation creates no opportunity.
 
+Canonical ranks and scope facts are indexed lazily once per immutable capture
+and shared by its analyzed paragraphs. Each queried analysis retains its own
+executed-cut proof; preparation clones reuse that proof. The first query retains
+capture-wide metadata, so sharing reduces repeated construction and marginal
+paragraph storage rather than promising lower memory for a single query. See the
+[canonical index](../src/processing/contextual/canonical.rs) and
+[shared-capture checks](../src/protocol/tests/incidence_cost.rs).
+
 `LineSelectionRequest::line_box_struts` and the corresponding flow-observation
 field carry actual `LineBoxStrut` allocations independently of controls. Each
 pairs `LineStrut` geometry with baseline/top/bottom alignment. Text validates and

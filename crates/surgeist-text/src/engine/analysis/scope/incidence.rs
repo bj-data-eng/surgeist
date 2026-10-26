@@ -1,13 +1,13 @@
 //! Certified original placements of one fixed executed mixed prefix.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use super::{ScopeIndexCapacity, anchor_exact};
-use crate::SourceBoxSide;
 use crate::engine::AnalyzedCore;
 use crate::processing::contextual::canonical::CanonicalFlow;
 use crate::protocol::paragraph::SemanticAnchorItem;
 use crate::transform::relation::{ComponentOwner, RelationEvent};
+use crate::{SourceBoxSide, SourceProcessingEvent};
 
 // A cut before an original event sorts before that event's split body. Rank
 // removes only nonparticipating connection bookkeeping in the same domain.
@@ -44,8 +44,8 @@ struct Cut {
 
 pub(crate) struct IncidenceIndex {
     cuts: Vec<Cut>,
-    edges: Vec<usize>,
-    scopes: Vec<Option<(usize, usize)>>,
+    canonical: Arc<CanonicalFlow>,
+    paragraph_index: usize,
     paragraph: (usize, usize),
     represented: bool,
 }
@@ -54,8 +54,7 @@ pub(crate) struct IncidenceIndex {
 impl IncidenceIndex {
     pub(super) fn payload(&self, census: &mut super::IndexPayloadCensus) {
         census.buffer(&self.cuts);
-        census.buffer(&self.edges);
-        census.buffer(&self.scopes);
+        self.canonical.payload(census);
     }
 }
 
@@ -79,45 +78,11 @@ impl IncidenceIndex {
             .as_ref()
             .expect("authenticated capture");
         let capture = &topology.capture;
-        let flow = CanonicalFlow::new(capture).map_err(|_| ScopeIndexCapacity)?;
+        let flow = capture.canonical_flow().map_err(|_| ScopeIndexCapacity)?;
         let rank = |cut| flow.rank(topology.domain, cut);
         let events = &core.transform.events;
         let count = events.len().checked_add(1).ok_or(ScopeIndexCapacity)?;
-        let mut scopes = allocated(capture.scopes.len(), None)?;
-        let mut edges = Vec::new();
-        let mut transitions = Vec::new();
-        let mut aliases = BTreeMap::new();
-        for (index, scope) in capture.scopes.iter().enumerate() {
-            if scope.definition.is_some() || scope.domain != topology.domain {
-                continue;
-            }
-            let before = rank(scope.enter);
-            let after = rank(scope.exit + 1);
-            scopes[index] = Some((before, after));
-            transitions.extend([before, after]);
-            for (side, target) in [
-                (SourceBoxSide::Before, before),
-                (SourceBoxSide::After, after),
-            ] {
-                if flow.scope_paragraph(capture, index, side) == Some(topology.paragraph) {
-                    edges.push(target);
-                }
-            }
-            if let Some(pair) = scope.boundaries {
-                aliases.insert(
-                    capture.controls[pair.start].order,
-                    (before, SourceBoxSide::Before),
-                );
-                aliases.insert(
-                    capture.controls[pair.end].order,
-                    (after, SourceBoxSide::After),
-                );
-            }
-        }
-        edges.sort_unstable();
-        edges.dedup();
-        transitions.sort_unstable();
-        transitions.dedup();
+        let transitions = flow.transitions(topology.domain);
         let mut occurrences: BTreeMap<usize, Occurrence> = BTreeMap::new();
         let mut points = Vec::new();
         let mut exact_aliases = BTreeMap::new();
@@ -187,7 +152,13 @@ impl IncidenceIndex {
                     )),
                     SemanticAnchorItem::Control(control) => {
                         let original = topology.control_orders[control];
-                        if let Some(&alias) = aliases.get(&original) {
+                        let alias = match capture.events[original].event {
+                            SourceProcessingEvent::Control { control, .. } => {
+                                flow.endpoint(control)
+                            }
+                            _ => None,
+                        };
+                        if let Some(alias) = alias {
                             if anchor_exact(core, order, atom_cut) {
                                 exact_aliases.insert(original, alias);
                                 support.push(original);
@@ -278,8 +249,8 @@ impl IncidenceIndex {
         let paragraph = capture.paragraphs[topology.paragraph];
         Ok(Self {
             cuts,
-            edges,
-            scopes,
+            canonical: Arc::clone(&flow),
+            paragraph_index: topology.paragraph,
             paragraph: (rank(paragraph.enter + 1), rank(paragraph.exit)),
             represented,
         })
@@ -301,15 +272,12 @@ impl IncidenceIndex {
         if let Some(pin) = state.pin {
             return fits(Point(pin, false)).then(|| vec![Placement::Cut(pin)]);
         }
-        let start = self
-            .edges
-            .partition_point(|&edge| Point(edge, false) < state.lower);
-        let end = self
-            .edges
-            .partition_point(|&edge| Point(edge, false) <= state.upper);
+        let edges = self.canonical.edges(self.paragraph_index);
+        let start = edges.partition_point(|&edge| Point(edge, false) < state.lower);
+        let end = edges.partition_point(|&edge| Point(edge, false) <= state.upper);
         if start < end {
             return Some(
-                self.edges[start..end]
+                edges[start..end]
                     .iter()
                     .copied()
                     .map(Placement::Cut)
@@ -327,7 +295,7 @@ impl IncidenceIndex {
         scope: usize,
     ) -> Option<crate::CapturedScopeIncidence> {
         use crate::CapturedScopeIncidence as R;
-        let (before, after) = self.scopes.get(scope).copied().flatten()?;
+        let (before, after) = self.canonical.scope_ranks(scope)?;
         let point = placement.point();
         Some(if point == Point(before, false) {
             R::AtBefore
