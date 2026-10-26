@@ -12,6 +12,7 @@ mod conditional;
 mod count_admission;
 mod hyphenation_limits;
 mod hyphenation_policy;
+mod incidence_cost;
 mod joining_context;
 mod joining_positioning;
 mod kana;

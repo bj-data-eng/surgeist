@@ -42,6 +42,57 @@ pub(crate) struct ScopeCutIndex {
     pub(crate) incidences: std::sync::OnceLock<Result<IncidenceIndex, ScopeIndexCapacity>>,
 }
 
+/// Requested live payload of the actual lazy index buffers, excluding the
+/// already allocated capture, analysis, font and preparation objects.
+/// Allocation identity prevents counting a retained shared buffer twice.
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct IndexPayloadCensus {
+    allocations: std::collections::BTreeMap<usize, usize>,
+    cores: std::collections::BTreeSet<usize>,
+}
+
+#[cfg(test)]
+impl IndexPayloadCensus {
+    pub(crate) fn buffer<T>(&mut self, values: &Vec<T>) {
+        let bytes = values.capacity() * std::mem::size_of::<T>();
+        if bytes != 0 {
+            let previous = self.allocations.insert(values.as_ptr() as usize, bytes);
+            assert!(previous.is_none_or(|previous| previous == bytes));
+        }
+    }
+
+    pub(crate) fn analyzed(&mut self, core: &AnalyzedCore) {
+        if !self.cores.insert(std::ptr::from_ref(core) as usize) {
+            return;
+        }
+        if let Some(index) = core.scope_cuts.get() {
+            index
+                .as_ref()
+                .expect("successful factual query")
+                .payload(self);
+        }
+    }
+
+    pub(crate) fn bytes(&self) -> usize {
+        self.allocations.values().sum()
+    }
+}
+
+#[cfg(test)]
+impl ScopeCutIndex {
+    fn payload(&self, census: &mut IndexPayloadCensus) {
+        census.buffer(&self.left);
+        census.buffer(&self.right);
+        if let Some(index) = self.incidences.get() {
+            index
+                .as_ref()
+                .expect("successful incidence query")
+                .payload(census);
+        }
+    }
+}
+
 impl ScopeCutIndex {
     pub(crate) fn new(core: &AnalyzedCore) -> Result<Self, ScopeIndexCapacity> {
         let topology = core

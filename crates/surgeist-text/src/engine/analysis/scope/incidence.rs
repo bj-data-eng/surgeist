@@ -50,6 +50,15 @@ pub(crate) struct IncidenceIndex {
     represented: bool,
 }
 
+#[cfg(test)]
+impl IncidenceIndex {
+    pub(super) fn payload(&self, census: &mut super::IndexPayloadCensus) {
+        census.buffer(&self.cuts);
+        census.buffer(&self.edges);
+        census.buffer(&self.scopes);
+    }
+}
+
 fn allocated<T>(len: usize, value: T) -> Result<Vec<T>, ScopeIndexCapacity>
 where
     T: Clone,
