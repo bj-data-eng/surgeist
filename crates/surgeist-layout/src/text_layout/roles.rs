@@ -177,7 +177,7 @@ fn prospective(
         &request.termination,
     )?;
     let mut observations = Vec::new();
-    let mut box_assignments = Vec::new();
+    let mut box_assignments: Vec<Option<super::boxes::BoxAssignment>> = Vec::new();
     let box_checkpoint = if input.wrapping.is_some() {
         Some(checkpoint(input, &recipe.entry(), entry, false)?)
     } else {
@@ -211,19 +211,25 @@ fn prospective(
             entry.boxes.cloned()
         } else if let Some(resolver) = input.wrapping {
             let controls: Vec<_> = input.controls.iter().filter(|allocation| segment.participants().any(|participant| matches!(participant, text::PreparedParticipant::Control(control) if control == allocation.occurrence))).cloned().collect();
-            let choices = resolver.choices(
-                &segment.start(),
-                &segment.end(),
-                box_frontier.as_ref().map(|frontier| {
+            let choices = resolver.choices(super::boxes::BoxChoice {
+                start: &segment.start(),
+                end: &segment.end(),
+                incoming: box_frontier.as_ref().map(|frontier| {
                     if unconsumed_prefix {
                         super::boxes::BoxEntry::UnconsumedFrom(frontier)
                     } else {
                         super::boxes::BoxEntry::ConsumedTo(frontier)
                     }
                 }),
-                &controls,
-                flow_ending(&segment),
-            )?;
+                controls: &controls,
+                ending: flow_ending(&segment),
+                authority: super::boxes::BoxAuthority::Observed {
+                    recipe: &recipe,
+                    segment: &segment,
+                    observations: &observations,
+                    preceding: box_assignments.last().and_then(Option::as_ref),
+                },
+            })?;
             if entry
                 .boxes
                 .is_some_and(|target| target.incoming.boundary == segment.end())
@@ -231,9 +237,9 @@ fn prospective(
                 choices
                     .into_iter()
                     .find(|choice| {
-                        entry.boxes.is_some_and(|target| {
-                            choice.outgoing.incidence == target.incoming.incidence
-                        })
+                        entry
+                            .boxes
+                            .is_some_and(|target| choice.outgoing == target.incoming)
                     })
                     .ok_or_else(invalid_flow)
                     .map(Some)?

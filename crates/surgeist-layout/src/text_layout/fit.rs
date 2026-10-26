@@ -1,6 +1,8 @@
 //! Candidate fitting over the actual immutable Text operations.
 
-use super::boxes::{BoxAssignment, BoxEntry, BoxResolver};
+use super::boxes::{
+    BoxAssignment, BoxAuthority, BoxChoice, BoxEntry, BoxResolver, FinalizedBoxReceipt,
+};
 use super::formatted::FormattedTailSnapshot;
 pub(crate) use super::roles::{RoleBasis, RoleUse};
 use crate::{TextAlign, TextAlignLast, TextJustification};
@@ -680,24 +682,41 @@ struct EndpointContext<'a> {
     conditional: bool,
 }
 
+#[derive(Clone, Copy)]
+struct BoxCheckpoint<'a> {
+    entry: BoxEntry<'a>,
+    preceding: Option<FinalizedBoxReceipt<'a>>,
+}
+
 fn box_checkpoint<'a>(
     start: &PreparedBoundary,
     query: &'a EndpointContext<'_>,
     preceding: Option<&'a EvaluatedCandidate>,
-) -> Result<Option<BoxEntry<'a>>, FitError> {
-    let checkpoint = |line: &FinalizedLine,
+) -> Result<Option<BoxCheckpoint<'a>>, FitError> {
+    let checkpoint = |line: &'a FinalizedLine,
+                      amounts: &'a [f64],
                       boxes: Option<&'a BoxAssignment>|
-     -> Result<Option<BoxEntry<'a>>, FitError> {
+     -> Result<Option<BoxCheckpoint<'a>>, FitError> {
         let Some(boxes) = boxes else {
             return Ok(None);
         };
         let selected = line.selected_line();
         let request = selected.request();
         if request.end == *start {
-            return Ok(Some(BoxEntry::ConsumedTo(&boxes.outgoing)));
+            return Ok(Some(BoxCheckpoint {
+                entry: BoxEntry::ConsumedTo(&boxes.outgoing),
+                preceding: Some(FinalizedBoxReceipt {
+                    line,
+                    amounts,
+                    boxes,
+                }),
+            }));
         }
         if request.start == *start {
-            return Ok(Some(BoxEntry::ConsumedTo(&boxes.incoming)));
+            return Ok(Some(BoxCheckpoint {
+                entry: BoxEntry::ConsumedTo(&boxes.incoming),
+                preceding: None,
+            }));
         }
         if request.start.prepared_text() == start.prepared_text()
             && request.start.view().participant_offset() < start.view().participant_offset()
@@ -710,21 +729,28 @@ fn box_checkpoint<'a>(
                 .ok_or(FitError::InvalidGeometry)?;
             let prefix =
                 line.prefix_at(&surgeist_text::TextSeam::BeforeParticipant(participant))?;
-            return Ok(Some(if prefix.has_retained_flow_participation() {
-                BoxEntry::ConsumedTo(&boxes.incoming)
-            } else {
-                BoxEntry::UnconsumedFrom(&boxes.incoming)
+            return Ok(Some(BoxCheckpoint {
+                entry: if prefix.has_retained_flow_participation() {
+                    BoxEntry::ConsumedTo(&boxes.incoming)
+                } else {
+                    BoxEntry::UnconsumedFrom(&boxes.incoming)
+                },
+                preceding: None,
             }));
         }
         Ok(None)
     };
     if let Some(candidate) = preceding
-        && let Some(entry) = checkpoint(&candidate.finalized, candidate.boxes.as_ref())?
+        && let Some(entry) = checkpoint(
+            &candidate.finalized,
+            &candidate.amounts,
+            candidate.boxes.as_ref(),
+        )?
     {
         return Ok(Some(entry));
     }
     for line in query.accepted_prefix.iter().rev() {
-        if let Some(entry) = checkpoint(&line.finalized, line.boxes.as_ref())? {
+        if let Some(entry) = checkpoint(&line.finalized, &line.amounts, line.boxes.as_ref())? {
             return Ok(Some(entry));
         }
     }
@@ -807,13 +833,17 @@ where
             return self.evaluate_assignment(input, request, query, preceding, natural_only, None);
         };
         let incoming = box_checkpoint(&request.start, query, preceding)?;
-        let assignments = resolver.choices(
-            &request.start,
-            &request.end,
-            incoming,
-            &request.controls,
-            request.context.end,
-        )?;
+        let assignments = resolver.choices(BoxChoice {
+            start: &request.start,
+            end: &request.end,
+            incoming: incoming.map(|checkpoint| checkpoint.entry),
+            controls: &request.controls,
+            ending: request.context.end,
+            authority: BoxAuthority::Selected {
+                request: &request,
+                preceding: incoming.and_then(|checkpoint| checkpoint.preceding),
+            },
+        })?;
         let mut ordinary = None;
         let mut unrejected = None;
         let mut fitting = Vec::new();

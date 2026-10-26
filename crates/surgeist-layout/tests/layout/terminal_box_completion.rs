@@ -568,3 +568,226 @@ fn without_terminal_force_trailing_boxes_complete_on_the_existing_body_line() {
         check::<f64>(direction, false);
     }
 }
+
+impl<S: l::LayoutScalar> Fixture<S> {
+    fn try_compute_inventory(
+        &self,
+        inventory: l::WrappingInput<u32>,
+    ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
+        let flow =
+            l::LayoutFlowInput::try_new(&self.tree, 0, vec![self.binding.clone()], inventory)?;
+        let request = l::LayoutRootRequestOf::viewport(l::Size::new(
+            l::AvailableOf::definite(S::from_f64(30.0)),
+            l::AvailableOf::MAX_CONTENT,
+        ))
+        .unwrap();
+        l::compute_layout_with_flow(&flow, 0, request)
+    }
+}
+
+fn replace_t_metric(
+    inventory: &mut l::WrappingInput<u32>,
+    target: &t::CapturedScope,
+    contribution: Option<l::InlineBoxMetricContribution>,
+) {
+    let mut replaced = 0;
+    for row in &mut inventory.scopes {
+        match row {
+            l::WrappingScopeInput::Captured {
+                scope,
+                metric_contribution,
+                ..
+            } if scope == target => {
+                *metric_contribution = contribution;
+                replaced += 1;
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(
+        replaced, 1,
+        "fixture targets the actual unique T occurrence"
+    );
+}
+
+fn assert_forced_metric_result<S: l::LayoutScalar>(
+    fixture: &Fixture<S>,
+    batch: &l::CompletedLayoutBatchOf<u32, S>,
+    direction: l::Direction,
+    receiver_height: f64,
+    root_height: f64,
+) {
+    assert_eq!(batch.placed_text().len(), 1);
+    let entry = &batch.placed_text()[0];
+    assert_eq!(entry.nodes(), [1, 2]);
+    let placed = entry.layout();
+    assert_eq!(
+        placed.analyzed_source().identity(),
+        fixture.prepared.analyzed_source().identity()
+    );
+    assert_eq!(placed.source().id(), Some(t::Id::from_u64(652900)));
+    assert_eq!(placed.source().revision(), 9);
+    assert_eq!(placed.source().text().code_units(), [65, 66]);
+    let lines = placed.lines();
+    assert_eq!(
+        lines.iter().map(|line| line.range()).collect::<Vec<_>>(),
+        [t::Range::new(0, 2), t::Range::new(2, 2)]
+    );
+    assert_eq!(
+        lines
+            .iter()
+            .map(|line| line.bounds().size.height)
+            .collect::<Vec<_>>(),
+        [20.0, receiver_height]
+    );
+    assert_eq!(
+        lines.iter().map(|line| line.baseline()).collect::<Vec<_>>(),
+        [16.0, 36.0]
+    );
+    // Public bounds are supplied line frames, separate from glyph advances.
+    assert_eq!(
+        lines
+            .iter()
+            .map(|line| line.bounds().size.width)
+            .collect::<Vec<_>>(),
+        [30.0, 30.0]
+    );
+    let root = batch
+        .final_entries()
+        .iter()
+        .find(|entry| entry.node() == 0)
+        .unwrap()
+        .output();
+    assert_eq!(
+        root.size,
+        l::Size::new(S::from_f64(30.0), S::from_f64(root_height))
+    );
+    let body_entry = batch
+        .final_inline_fragments()
+        .iter()
+        .find(|entry| entry.fragment().line_index() == 0)
+        .unwrap();
+    let body = body_entry.fragment().finalized_fragment().finalized_line();
+    let selected = body.selected_line();
+    let request = selected.request();
+    let offers = fixture.offers(true);
+    assert_eq!(request.context.end, t::LineEnd::Forced);
+    assert_eq!(
+        request.termination,
+        t::PreparedTermination::Ordinary(offers[1].clone())
+    );
+    assert_eq!(request.end, offers[1].view().boundary());
+    assert_eq!(
+        request.participants,
+        fixture.prepared.participants().collect::<Vec<_>>()
+    );
+    assert_struts(&request.line_box_struts, &[metric(16.0, 20.0)]);
+    assert!(request.controls.is_empty());
+    assert!(request.atomics.is_empty());
+    let sourced = body
+        .run_views()
+        .flat_map(|run| {
+            run.glyphs()
+                .map(|glyph| (glyph.range(), glyph.id(), glyph.advance()))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        sourced,
+        [
+            (t::Range::new(0, 1), 35, 10.0),
+            (t::Range::new(1, 2), 36, 10.0)
+        ]
+    );
+    let x = if direction == l::Direction::Ltr {
+        0.0
+    } else {
+        10.0
+    };
+    let mut posed = vec![];
+    for run in placed.run_views() {
+        assert_eq!(run.face().bytes(), AHEM);
+        assert_eq!(run.font_size(), 10.0);
+        for glyph in run.glyphs() {
+            posed.push((
+                run.line(),
+                glyph.id(),
+                glyph.advance(),
+                run.origin().x + glyph.pen() + f64::from(glyph.x()),
+                run.origin().y,
+            ));
+        }
+    }
+    assert_eq!(
+        posed,
+        [(0, 35, 10.0, x, 16.0), (0, 36, 10.0, x + 10.0, 16.0)]
+    );
+    assert!(
+        batch
+            .final_inline_fragments()
+            .iter()
+            .all(|entry| entry.fragment().line_index() == 0)
+    );
+}
+
+fn missing_trailing_metric<S: l::LayoutScalar>(direction: l::Direction) {
+    let fixture = Fixture::<S>::new(direction, true);
+    let pin = fixture.pinned();
+    let mut inventory = fixture.inventory();
+    replace_t_metric(&mut inventory, &fixture.scopes[1], None);
+    let error = fixture
+        .try_compute_inventory(inventory)
+        .expect_err("the real trailing T cannot borrow S's or the paragraph font's metric witness");
+    assert!(
+        matches!(
+            error.kind(),
+            l::LayoutErrorKindOf::InvalidInput(l::LayoutInvalidInputOf::WrappingScope(
+                l::WrappingScopeError::MissingBoxMetrics
+            ))
+        ),
+        "{error:?}"
+    );
+    assert_eq!(fixture.pinned(), pin);
+    assert_eq!(fixture.prepared.participants().count(), 3);
+    assert_eq!(fixture.prepared.control_views().count(), 0);
+}
+
+fn changed_trailing_metric<S: l::LayoutScalar>(direction: l::Direction) {
+    let fixture = Fixture::<S>::new(direction, true);
+    let pin = fixture.pinned();
+    let original = fixture.compute();
+    assert_forced_metric_result(&fixture, &original, direction, 34.0, 54.0);
+    let mut inventory = fixture.inventory();
+    replace_t_metric(
+        &mut inventory,
+        &fixture.scopes[1],
+        Some(l::InlineBoxMetricContribution::Strut(metric(12.0, 40.0))),
+    );
+    let changed = fixture
+        .try_compute_inventory(inventory)
+        .expect("actual changed T metrics must be fitted on its real receiving line");
+    // T's after-baseline extent becomes28; S still owns the maximum baseline16.
+    // Receiver16+28=44, body remains20, global receiver baseline20+16=36.
+    assert_forced_metric_result(&fixture, &changed, direction, 44.0, 64.0);
+    assert_eq!(fixture.pinned(), pin);
+    // Keep the first successful immutable batch alive across the second call.
+    // Re-read literal old geometry and original request/source custody afterward.
+    assert_forced_metric_result(&fixture, &original, direction, 34.0, 54.0);
+    assert_eq!(fixture.pinned(), pin);
+}
+
+#[test]
+fn trailing_box_without_its_actual_metric_witness_refuses_precisely() {
+    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+        missing_trailing_metric::<f32>(direction);
+        missing_trailing_metric::<f64>(direction);
+    }
+}
+
+#[test]
+fn changed_trailing_metric_changes_only_receiver_and_preserves_old_batch() {
+    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+        changed_trailing_metric::<f32>(direction);
+        changed_trailing_metric::<f64>(direction);
+    }
+}

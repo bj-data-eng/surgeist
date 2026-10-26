@@ -299,7 +299,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 request.end.view().participant_offset()
             };
             let boundary_side = if event.position == end && !event.inside {
-                match boxes.as_ref().map(|assignment| &assignment.outgoing.native) {
+                match boxes
+                    .as_ref()
+                    .map(|assignment| assignment.outgoing.native())
+                {
                     Some(crate::text_layout::boxes::NativeBoxCut::Proven(cut)) => Some(
                         cut.side_of_node(event.native_offset).ok_or_else(|| {
                             super::inline_run::text_run_error(
