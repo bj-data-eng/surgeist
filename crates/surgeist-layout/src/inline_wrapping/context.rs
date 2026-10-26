@@ -7,6 +7,7 @@ pub(crate) struct CanonicalScopeProof<Node> {
     pub(crate) scope: CapturedScope,
     pub(crate) flow: Node,
     pub(crate) pair: Option<(Node, Node)>,
+    pub(crate) order: Option<Arc<CanonicalOrderBindings<Node>>>,
 }
 /// Endpoint evidence retains the explicit native identity; it does not invent
 /// a canonical scope for an additional native box.
@@ -18,6 +19,7 @@ pub(crate) enum WrappingScopeProof<Node> {
         pair: (Node, Node),
         start: surgeist_text::CapturedControl,
         end: surgeist_text::CapturedControl,
+        order: Option<Arc<CanonicalOrderBindings<Node>>>,
     },
 }
 impl<Node> WrappingScopeProof<Node> {
@@ -148,14 +150,14 @@ fn captured_contains(a: &CapturedScope, b: &CapturedScope) -> bool {
     false
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Relation {
+pub(super) enum Relation {
     Before,
     After,
     Contains,
     Within,
     Crossing,
 }
-fn interval_relation<T: PartialOrd>(a: &T, b: &T, c: &T, d: &T) -> Relation {
+pub(super) fn interval_relation<T: PartialOrd>(a: &T, b: &T, c: &T, d: &T) -> Relation {
     if b < c {
         Relation::Before
     } else if d < a {
@@ -223,6 +225,20 @@ pub(crate) fn native_span<Tree: LayoutTree>(
     end: Tree::Node,
     counts: &[u8],
 ) -> Result<(Tree::Node, NativeSpan), WrappingScopeError> {
+    native_span_with(graph, start, end, counts, |node| {
+        tree.layout_input(node)
+            .as_inline_boundary()
+            .map(|v| v.kind())
+    })
+}
+
+pub(super) fn native_span_with<Node: Copy + Eq>(
+    graph: &ValidationGraph<Node>,
+    start: Node,
+    end: Node,
+    counts: &[u8],
+    kind: impl Fn(Node) -> Option<InlineBoundaryKind>,
+) -> Result<(Node, NativeSpan), WrappingScopeError> {
     let a = graph
         .index(start)
         .ok_or(WrappingScopeError::NodeNotReachable)?;
@@ -232,14 +248,7 @@ pub(crate) fn native_span<Tree: LayoutTree>(
     if counts[a] != 1 || counts[b] != 1 {
         return Err(WrappingScopeError::AmbiguousNode);
     }
-    if tree
-        .layout_input(start)
-        .as_inline_boundary()
-        .is_none_or(|v| v.kind() != InlineBoundaryKind::Start)
-        || tree
-            .layout_input(end)
-            .as_inline_boundary()
-            .is_none_or(|v| v.kind() != InlineBoundaryKind::End)
+    if kind(start) != Some(InlineBoundaryKind::Start) || kind(end) != Some(InlineBoundaryKind::End)
     {
         return Err(WrappingScopeError::EndpointRole);
     }
@@ -356,6 +365,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                                             flow: actual,
                                             start: a,
                                             end: b,
+                                            ..
                                         } if *pair == (*start, *end) => Some(if *actual == flow {
                                             SourceExtent::native(a, b)
                                         } else {
@@ -545,7 +555,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                 subtrees: Vec::new(),
             }
         } else {
-            super::edge_plan::EdgePlan::new(tree, graph, &rows, child_order)?
+            super::edge_plan::EdgePlan::new(tree, graph, &rows, child_order, proofs)?
         };
         Ok(Self {
             rows,

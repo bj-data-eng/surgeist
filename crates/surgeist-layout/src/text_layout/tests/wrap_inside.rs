@@ -1103,9 +1103,9 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
     assert!(unmatched.scopes[0].entry_control().is_none());
     assert!(unmatched.scopes[0].exit_control().is_none());
     let tree = text_tree::<f64>(&unmatched.binding, false);
-    // Complete capture retained both actual standalone control events, but
-    // supplied no canonical pairing for them. Their roles/order alone do not
-    // authorize inventing a box. Neutral construction still permits controls.
+    // This fixture emits Start after S enters and End after S exits:
+    // S.enter < Start < S.exit < End. The asserted native pair crosses the
+    // actual source box. Neutral construction still permits the controls.
     LayoutFlowInput::try_new(
         &tree,
         0,
@@ -1126,7 +1126,7 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
         },
     )
     .err()
-    .expect("the requested pair has no canonical box in complete capture");
+    .expect("the requested native pair crosses the actual source box");
     assert!(matches!(
         error.kind(),
         LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(
