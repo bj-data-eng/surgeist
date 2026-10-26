@@ -6,7 +6,7 @@ use super::super::FinalizedLine;
 use super::{add, data::PlacedLayout};
 use crate::protocol::{
     AtomicPlacement, FinalizedLine as PublicFinalizedLine, LineAnchor, LineOrientation,
-    LinePlacement, PlacementCoverage, PlacementRequest, PreparedText,
+    LinePlacement, PlacementCoverage, PlacementEntry, PlacementRequest, PreparedText,
     placement::{PlacementMetricPolicy, place_request},
     selection::LineMetricPolicy,
 };
@@ -88,7 +88,7 @@ pub(super) fn place(finalized: Vec<Arc<FinalizedLine>>) -> Result<PlacedLayout> 
                 }
             })
             .collect();
-        lines.push(LinePlacement {
+        lines.push(PlacementEntry::Formatted(LinePlacement {
             line: PublicFinalizedLine { inner: line },
             anchor: LineAnchor {
                 inline_origin: anchor.x,
@@ -96,7 +96,7 @@ pub(super) fn place(finalized: Vec<Arc<FinalizedLine>>) -> Result<PlacedLayout> 
             },
             orientation: LineOrientation::Horizontal,
             atomics,
-        });
+        }));
         y = add(
             "paragraph height",
             TextNumericPhase::Placement,
@@ -108,7 +108,7 @@ pub(super) fn place(finalized: Vec<Arc<FinalizedLine>>) -> Result<PlacedLayout> 
         PlacementRequest {
             prepared: PreparedText { inner: prepared },
             coverage: PlacementCoverage::WholeParagraph,
-            lines,
+            entries: lines,
         },
         PlacementMetricPolicy::StandaloneStacked,
     )

@@ -169,28 +169,7 @@ impl Key {
                         end: end.clone(),
                     },
                 },
-                lines: request
-                    .lines
-                    .iter()
-                    .map(|placement| ExplicitLineKey {
-                        line: placement.line.clone(),
-                        anchor: [
-                            OrderedF64(placement.anchor.inline_origin),
-                            OrderedF64(placement.anchor.baseline),
-                        ],
-                        orientation: placement.orientation,
-                        atomics: placement
-                            .atomics
-                            .iter()
-                            .map(|atomic| ExplicitAtomicKey {
-                                occurrence: atomic.occurrence.clone(),
-                                border: rect_key(atomic.border),
-                                content: rect_key(atomic.content),
-                                baseline: OrderedF64(atomic.baseline),
-                            })
-                            .collect(),
-                    })
-                    .collect(),
+                lines: request.entries.iter().map(explicit_entry_key).collect(),
             },
         }
     }
@@ -231,11 +210,85 @@ enum ExplicitCoverageKey {
 }
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct ExplicitLineKey {
-    line: crate::FinalizedLine,
+    line: ExplicitReceiptKey,
     anchor: [OrderedF64; 2],
     orientation: crate::LineOrientation,
     atomics: Vec<ExplicitAtomicKey>,
 }
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+enum ExplicitReceiptKey {
+    Formatted(ExplicitFinalizationKey),
+    NonFormatted(ExplicitFinalizationKey),
+}
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct ExplicitFinalizationKey {
+    start: crate::PreparedBoundary,
+    end: crate::PreparedBoundary,
+    termination: crate::PreparedTermination,
+    incoming: Option<crate::HyphenationContinuation>,
+    alternative: Option<crate::PreparedAlternative>,
+    alignment: crate::Alignment,
+    context: Vec<u64>,
+    spacing: Vec<OrderedF64>,
+    profile: u8,
+}
+fn explicit_finalization_key(line: &crate::FinalizedLine) -> ExplicitFinalizationKey {
+    let request = &line.inner.selected.request;
+    ExplicitFinalizationKey {
+        start: request.start.clone(),
+        end: request.end.clone(),
+        termination: request.termination.clone(),
+        incoming: request.incoming.clone(),
+        alternative: request.alternative.clone(),
+        alignment: request.context.alignment,
+        context: crate::protocol::request_context(request.into()),
+        spacing: line
+            .spacing_slots()
+            .map(|slot| OrderedF64(slot.advance))
+            .collect(),
+        profile: line.inner.selected.metric_policy as u8,
+    }
+}
+
+fn explicit_entry_key(entry: &crate::PlacementEntry) -> ExplicitLineKey {
+    let (line, anchor, orientation, atomics) = match entry {
+        crate::PlacementEntry::Formatted(placement) => (
+            ExplicitReceiptKey::Formatted(explicit_finalization_key(&placement.line)),
+            [
+                OrderedF64(placement.anchor.inline_origin),
+                OrderedF64(placement.anchor.baseline),
+            ],
+            placement.orientation,
+            &placement.atomics,
+        ),
+        crate::PlacementEntry::NonFormatted(placement) => (
+            ExplicitReceiptKey::NonFormatted(explicit_finalization_key(
+                placement.line.finalized_line(),
+            )),
+            [
+                OrderedF64(placement.origin.x),
+                OrderedF64(placement.origin.y),
+            ],
+            placement.orientation,
+            &placement.atomics,
+        ),
+    };
+    ExplicitLineKey {
+        line,
+        anchor,
+        orientation,
+        atomics: atomics
+            .iter()
+            .map(|atomic| ExplicitAtomicKey {
+                occurrence: atomic.occurrence.clone(),
+                border: rect_key(atomic.border),
+                content: rect_key(atomic.content),
+                baseline: OrderedF64(atomic.baseline),
+            })
+            .collect(),
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct ExplicitAtomicKey {
     occurrence: crate::PreparedAtomic,

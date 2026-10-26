@@ -1207,6 +1207,31 @@ where
             }
         }
         if set_layout {
+            for (child, location) in output.nonformatted_controls {
+                let source_index = source_index_start
+                    + run
+                        .iter()
+                        .position(|node| *node == child)
+                        .expect("nonformatted descendant is an actual bound control");
+                let (border, padding) = match tree.layout_input(child) {
+                    crate::LayoutInputViewOf::InlineBoundary(boundary) => {
+                        crate::inline::InlineEndpointOf::from_input(boundary).physical_components()
+                    }
+                    _ => (Edges::ZERO, Edges::ZERO),
+                };
+                tree.set_unrounded(
+                    child,
+                    NodeOutputOf::<S> {
+                        source_index: crate::SourceIndex::new(source_index),
+                        location,
+                        border,
+                        padding,
+                        ..NodeOutputOf::new()
+                    },
+                );
+            }
+        }
+        if set_layout {
             for row in text_binding
                 .into_iter()
                 .flat_map(|binding| binding.origins.iter())

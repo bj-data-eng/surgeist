@@ -221,19 +221,19 @@ fn forced_breaks<S: LayoutScalar>() {
             assert_eq!(
                 measured
                     .paragraph
-                    .lines
+                    .entries
                     .iter()
-                    .map(|placed| placed.line.feedback().advance)
+                    .map(|placed| placed.finalized_line().feedback().advance)
                     .collect::<Vec<_>>(),
                 [10.0, 10.0, 0.0, 10.0]
             );
             assert_eq!(
                 measured
                     .paragraph
-                    .lines
+                    .entries
                     .iter()
                     .map(|placed| placed
-                        .line
+                        .finalized_line()
                         .selected_line()
                         .request()
                         .end
@@ -330,15 +330,15 @@ fn tab_contributions<S: LayoutScalar>() {
             assert_eq!(min.report.inline_extent, S::from_f64(minimum));
             assert_eq!(
                 min.paragraph
-                    .lines
+                    .entries
                     .iter()
-                    .map(|placed| placed.line.feedback().advance)
+                    .map(|placed| placed.finalized_line().feedback().advance)
                     .collect::<Vec<_>>(),
                 [40.0, 10.0]
             );
             assert_eq!(
-                min.paragraph.lines[0]
-                    .line
+                min.paragraph.entries[0]
+                    .finalized_line()
                     .measurements()
                     .min_content_contribution()
                     .advance(),
@@ -346,11 +346,14 @@ fn tab_contributions<S: LayoutScalar>() {
             );
             let max = intrinsic::<S>(&p, AvailableOf::MAX_CONTENT, rtl);
             assert_eq!(max.report.inline_extent, S::from_f64(50.0));
-            assert_eq!(max.paragraph.lines.len(), 1);
-            assert_eq!(max.paragraph.lines[0].line.feedback().advance, 50.0);
+            assert_eq!(max.paragraph.entries.len(), 1);
             assert_eq!(
-                max.paragraph.lines[0]
-                    .line
+                max.paragraph.entries[0].finalized_line().feedback().advance,
+                50.0
+            );
+            assert_eq!(
+                max.paragraph.entries[0]
+                    .finalized_line()
                     .selected_line()
                     .request()
                     .context
@@ -358,8 +361,8 @@ fn tab_contributions<S: LayoutScalar>() {
                 surgeist_text::TabContext::IntrinsicCssStops
             );
             assert_eq!(
-                max.paragraph.lines[0]
-                    .line
+                max.paragraph.entries[0]
+                    .finalized_line()
                     .selected_line()
                     .request()
                     .context

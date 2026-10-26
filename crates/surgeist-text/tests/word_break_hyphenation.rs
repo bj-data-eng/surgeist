@@ -231,7 +231,7 @@ fn copy_whole(p: &t::PreparedText, line: t::FinalizedLine, original: &t::Source)
     let layout = t::Layout::from_finalized_lines(t::PlacementRequest {
         prepared: p.clone(),
         coverage: t::PlacementCoverage::WholeParagraph,
-        lines: vec![t::LinePlacement {
+        entries: vec![t::PlacementEntry::Formatted(t::LinePlacement {
             line,
             anchor: t::LineAnchor {
                 inline_origin: 0.0,
@@ -239,7 +239,7 @@ fn copy_whole(p: &t::PreparedText, line: t::FinalizedLine, original: &t::Source)
             },
             orientation: t::LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap();
     assert_eq!(layout.source(), original);

@@ -259,7 +259,7 @@ fn kerned_period_keeps_parent_source_carets_at_the_logical_pen() {
         let layout = Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::WholeParagraph,
-            lines: vec![LinePlacement {
+            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -267,7 +267,7 @@ fn kerned_period_keeps_parent_source_carets_at_the_logical_pen() {
                 },
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
-            }],
+            })],
         })
         .unwrap();
         assert_eq!(layout.source(), &source);

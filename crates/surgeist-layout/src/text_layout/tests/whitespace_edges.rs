@@ -99,18 +99,22 @@ fn qualify<S: LayoutScalar>(
     assert_eq!(
         output
             .paragraph
-            .lines
+            .entries
             .iter()
-            .map(|p| p.line.feedback().advance)
+            .map(|p| p.finalized_line().feedback().advance)
             .collect::<Vec<_>>(),
         advances
     );
-    for line in &output.paragraph.lines {
+    for line in &output.paragraph.entries {
         assert_eq!(
-            line.line.selected_line().request().context.available_inline,
+            line.finalized_line()
+                .selected_line()
+                .request()
+                .context
+                .available_inline,
             None
         );
-        for run in line.line.run_views() {
+        for run in line.finalized_line().run_views() {
             assert_eq!(run.font_size(), 10.0);
             assert_eq!(
                 run.face().bytes(),
@@ -170,12 +174,24 @@ fn maximum_content_includes_conditional_space_in_actual_line_allocation_f64() {
 
 fn finite_fit<S: LayoutScalar>() {
     let fitting = run_in_band::<S>("X", AvailableOf::definite(S::from_f64(40.0)), true);
-    assert_eq!(fitting.paragraph.lines.len(), 1);
-    assert_eq!(fitting.paragraph.lines[0].line.feedback().advance, 10.0);
+    assert_eq!(fitting.paragraph.entries.len(), 1);
+    assert_eq!(
+        fitting.paragraph.entries[0]
+            .finalized_line()
+            .feedback()
+            .advance,
+        10.0
+    );
     assert_eq!(fitting.line_bounds[0].allocation.origin().y, S::ZERO);
     let wider = run_in_band::<S>("XX", AvailableOf::definite(S::from_f64(40.0)), true);
-    assert_eq!(wider.paragraph.lines.len(), 1);
-    assert_eq!(wider.paragraph.lines[0].line.feedback().advance, 20.0);
+    assert_eq!(wider.paragraph.entries.len(), 1);
+    assert_eq!(
+        wider.paragraph.entries[0]
+            .finalized_line()
+            .feedback()
+            .advance,
+        20.0
+    );
     assert_eq!(
         wider.line_bounds[0].allocation.origin().y,
         S::from_f64(20.0)
@@ -195,22 +211,22 @@ fn finite_fit<S: LayoutScalar>() {
     );
     let observed = output
         .paragraph
-        .lines
+        .entries
         .iter()
         .zip(&output.line_bounds)
         .map(|(p, bounds)| {
             (
                 bounds.allocation.origin().y.to_f64(),
-                p.line.selected_line().request().context.end,
-                p.line
+                p.finalized_line().selected_line().request().context.end,
+                p.finalized_line()
                     .selected_line()
                     .request()
                     .end
                     .view()
                     .source_after()
                     .get(),
-                p.line.feedback().advance,
-                p.line.feedback().hanging_end,
+                p.finalized_line().feedback().advance,
+                p.finalized_line().feedback().hanging_end,
             )
         })
         .collect::<Vec<_>>();

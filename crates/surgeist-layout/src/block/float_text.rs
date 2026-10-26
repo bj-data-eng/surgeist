@@ -367,8 +367,11 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 ));
             }
             let mut pending = event.pending.clone();
+            let used_height = crate::text_layout::fit::LineDisposition::resolve(line)
+                .map_err(|error| super::inline_run::text_run_error(container, error))?
+                .height(line);
             let encounter_floor = if preceding && replay.defer_preceding {
-                replay.logical.max(placed) + line.feedback().line_height
+                replay.logical.max(placed) + used_height
             } else {
                 replay.source_floor
             };
@@ -382,10 +385,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             }
             let encounter_floor = (pending.block_start - self.cursor).to_f64();
             let line_end = self.cursor
-                + crate::text_layout::run::number::<S>(
-                    replay.logical.max(placed) + line.feedback().line_height,
-                )
-                .map_err(|e| super::inline_run::text_run_error(container, e))?;
+                + crate::text_layout::run::number::<S>(replay.logical.max(placed) + used_height)
+                    .map_err(|e| super::inline_run::text_run_error(container, e))?;
             let provider = ProviderBandContext {
                 tree,
                 container,

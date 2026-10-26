@@ -31,6 +31,7 @@ pub struct FinalizedPrefixView<'a> {
     cut: usize,
     interior: Option<usize>,
     retained_flow: bool,
+    in_flow_content: bool,
 }
 
 impl FinalizedPrefixView<'_> {
@@ -52,6 +53,11 @@ impl FinalizedPrefixView<'_> {
     /// This does not establish visibility, positive extent or a generated line.
     pub fn has_retained_flow_participation(&self) -> bool {
         self.retained_flow
+    }
+    /// Actual retained in-flow content before this exact original seam. Unlike
+    /// retained participation, vertical control struts do not establish content.
+    pub fn has_in_flow_content(&self) -> bool {
+        self.in_flow_content
     }
     /// Some only when the original seam is strictly inside the joint unit.
     pub fn interior_unit(&self) -> Option<FinalizedSharedUnitView<'_>> {
@@ -196,7 +202,9 @@ pub(crate) struct PrefixData {
     groups: Vec<SharedUnit>,
     unit_cuts: Vec<Indices<usize>>,
     retained_prefix: Vec<bool>,
+    content_prefix: Vec<bool>,
     retained_sources: Vec<Vec<Range>>,
+    content_sources: Vec<Vec<Range>>,
     participants: Vec<Option<Indices<usize>>>,
     origins: BTreeMap<usize, Vec<OriginSpan>>,
     participant_indices: BTreeMap<(u8, usize), usize>,
@@ -216,7 +224,9 @@ impl PrefixData {
             receipts,
             unit_cuts: vec![0..0; units.len()],
             retained_prefix: vec![false],
+            content_prefix: vec![false],
             retained_sources: vec![Vec::new(); units.len()],
+            content_sources: vec![Vec::new(); units.len()],
             participants: vec![None; selected.request.participants.len()],
             ..Self::default()
         };
@@ -286,15 +296,26 @@ impl PrefixData {
                         .filter(|range| !range.is_empty()),
                 );
             }
-            result.has_in_flow_content |= match *item {
-                ShapedItem::TextCluster(index) => {
-                    retained && shaped.clusters[index].whitespace != Whitespace::Newline
-                }
-                ShapedItem::InlineBox { .. } => retained,
-                ShapedItem::Anchor { unit } => {
-                    super::boundary::advance(selected.presentation_input(), unit) > 0.0
-                }
-            };
+            let content = in_flow_item(
+                selected.presentation_input(),
+                shaped,
+                item,
+                atomics,
+                controls,
+                dispositions,
+            );
+            result.has_in_flow_content |= content;
+            result
+                .content_prefix
+                .push(*result.content_prefix.last().unwrap() || content);
+            if content && let ShapedItem::TextCluster(index) = *item {
+                result.content_sources[unit].extend(
+                    selected.presentation.projection.atoms[shaped.clusters[index].atoms.clone()]
+                        .iter()
+                        .map(|atom| atom.source)
+                        .filter(|range| !range.is_empty()),
+                );
+            }
             result
                 .retained_prefix
                 .push(*result.retained_prefix.last().unwrap() || retained);
@@ -421,7 +442,7 @@ impl FinalizedLine {
         let data = &self.inner.data.prefix;
         let selected = &self.inner.selected;
         let invalid = || protocol_error(ProtocolError::OutsideFinalizedLine);
-        let (cut, atom, retained_flow) = match seam {
+        let (cut, atom, retained_flow, in_flow_content) = match seam {
             TextSeam::BeforeParticipant(p) | TextSeam::AfterParticipant(p) => {
                 if match p {
                     PreparedParticipant::Text(p) => p.prepared_text(),
@@ -442,7 +463,12 @@ impl FinalizedLine {
                 } else {
                     row.end
                 };
-                (cut, None, data.retained_prefix[cut])
+                (
+                    cut,
+                    None,
+                    data.retained_prefix[cut],
+                    data.content_prefix[cut],
+                )
             }
             TextSeam::Origin { origin, local } => {
                 if !Arc::ptr_eq(&origin.prepared, &selected.prepared) {
@@ -486,7 +512,12 @@ impl FinalizedLine {
                         && data.retained_sources[row.unit]
                             .iter()
                             .any(|source| source.start < at);
-                (cut, atom, retained)
+                let content = data.content_prefix[cut]
+                    || interior
+                        && data.content_sources[row.unit]
+                            .iter()
+                            .any(|source| source.start < at);
+                (cut, atom, retained, content)
             }
         };
         let interior = if let Some(atom) = atom {
@@ -514,6 +545,7 @@ impl FinalizedLine {
             cut,
             interior,
             retained_flow,
+            in_flow_content,
         })
     }
 }
@@ -531,6 +563,25 @@ fn participant_key(participant: &PreparedParticipant) -> (u8, usize) {
 mod tests;
 
 /// One role-independent predicate shared by finalized prefixes and flow observations.
+/// One shared semantic content predicate for finalized and hypothetical flow.
+pub(crate) fn in_flow_item(
+    input: super::input::PresentationInput<'_>,
+    shaped: &ShapedData,
+    item: &ShapedItem,
+    atomics: &BTreeMap<usize, &super::AtomicAllocation>,
+    controls: &BTreeMap<usize, &super::ControlAllocation>,
+    dispositions: &[super::SpacingSlotDisposition],
+) -> bool {
+    let retained = retained_item(input, item, atomics, controls, dispositions);
+    match *item {
+        ShapedItem::TextCluster(index) => {
+            retained && shaped.clusters[index].whitespace != Whitespace::Newline
+        }
+        ShapedItem::InlineBox { .. } => retained,
+        ShapedItem::Anchor { unit } => super::boundary::advance(input, unit) > 0.0,
+    }
+}
+
 pub(crate) fn retained_item(
     input: super::input::PresentationInput<'_>,
     item: &ShapedItem,

@@ -422,22 +422,18 @@ fn check<S: l::LayoutScalar>(direction: l::Direction, forced: bool) {
     let lines = placed.lines();
     assert_eq!(
         lines.iter().map(|l| l.range()).collect::<Vec<_>>(),
-        if forced {
-            vec![t::Range::new(0, 2), t::Range::new(2, 2)]
-        } else {
-            vec![t::Range::new(0, 2)]
-        }
+        vec![t::Range::new(0, 2)]
     );
     assert_eq!(
         lines
             .iter()
             .map(|l| l.bounds().size.height)
             .collect::<Vec<_>>(),
-        if forced { vec![20.0, 34.0] } else { vec![34.0] }
+        if forced { vec![20.0] } else { vec![34.0] }
     );
     assert_eq!(
         lines.iter().map(|l| l.baseline()).collect::<Vec<_>>(),
-        if forced { vec![16.0, 36.0] } else { vec![16.0] }
+        vec![16.0]
     );
     assert_eq!(
         lines
@@ -447,7 +443,7 @@ fn check<S: l::LayoutScalar>(direction: l::Direction, forced: bool) {
         // These bounds are the supplied 30-unit line frames, not glyph
         // advances. The actual body glyph advances and empty receiver are
         // checked independently below.
-        if forced { vec![30.0, 30.0] } else { vec![30.0] }
+        vec![30.0]
     );
     let root = batch
         .final_entries()
@@ -459,7 +455,7 @@ fn check<S: l::LayoutScalar>(direction: l::Direction, forced: bool) {
         root.size,
         l::Size::new(
             S::from_f64(30.0),
-            S::from_f64(if forced { 54.0 } else { 34.0 })
+            S::from_f64(if forced { 20.0 } else { 34.0 })
         )
     );
     let body_entry = batch
@@ -534,9 +530,8 @@ fn check<S: l::LayoutScalar>(direction: l::Direction, forced: bool) {
         glyphs,
         [(0, 35, 10.0, x, 16.0), (0, 36, 10.0, x + 10.0, 16.0)]
     );
-    // An empty receiver has no source fragment from which to obtain a public
-    // FinalizedLine request. Its real placed range/height/baseline and absence
-    // of paint glyphs are checked above, without adding any fake origin.
+    // Nonformatted completion has no published source fragment. Its actual
+    // retained receipt is checked separately without adding a fake origin.
     assert!(
         batch
             .final_inline_fragments()
@@ -547,14 +542,16 @@ fn check<S: l::LayoutScalar>(direction: l::Direction, forced: bool) {
     assert_eq!(prepared.control_views().count(), 0);
     assert_eq!(prepared.atomic_views().count(), 0);
     if forced {
+        assert_retained_phantom_receipt(&fixture, &batch, 30.0, 34.0);
         assert_eq!(fixture.pinned(), before);
     } else {
+        assert_eq!(placed.nonformatted_lines().count(), 0);
         fixture.offers(false);
     }
 }
 
 #[test]
-fn genuine_terminal_force_completes_real_boxes_on_one_empty_receiving_line() {
+fn genuine_terminal_force_completes_boxes_without_publishing_phantom_receiver() {
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
         check::<f32>(direction, true);
         check::<f64>(direction, true);
@@ -610,15 +607,44 @@ fn replace_t_metric(
     );
 }
 
-fn assert_forced_metric_result<S: l::LayoutScalar>(
+fn missing_trailing_metric<S: l::LayoutScalar>(direction: l::Direction) {
+    let fixture = Fixture::<S>::new(direction, true);
+    let pin = fixture.pinned();
+    let mut inventory = fixture.inventory();
+    replace_t_metric(&mut inventory, &fixture.scopes[1], None);
+    let error = fixture
+        .try_compute_inventory(inventory)
+        .expect_err("the real trailing T cannot borrow S's or the paragraph font's metric witness");
+    assert!(
+        matches!(
+            error.kind(),
+            l::LayoutErrorKindOf::InvalidInput(l::LayoutInvalidInputOf::WrappingScope(
+                l::WrappingScopeError::MissingBoxMetrics
+            ))
+        ),
+        "{error:?}"
+    );
+    assert_eq!(fixture.pinned(), pin);
+    assert_eq!(fixture.prepared.participants().count(), 3);
+    assert_eq!(fixture.prepared.control_views().count(), 0);
+}
+
+#[test]
+fn trailing_box_without_its_actual_metric_witness_refuses_precisely() {
+    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+        missing_trailing_metric::<f32>(direction);
+        missing_trailing_metric::<f64>(direction);
+    }
+}
+
+fn assert_phantom_terminal_result<S: l::LayoutScalar>(
     fixture: &Fixture<S>,
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     direction: l::Direction,
-    receiver_height: f64,
-    root_height: f64,
 ) {
     assert_eq!(batch.placed_text().len(), 1);
     let entry = &batch.placed_text()[0];
+    assert_eq!(entry.container(), 0);
     assert_eq!(entry.nodes(), [1, 2]);
     let placed = entry.layout();
     assert_eq!(
@@ -628,30 +654,22 @@ fn assert_forced_metric_result<S: l::LayoutScalar>(
     assert_eq!(placed.source().id(), Some(t::Id::from_u64(652900)));
     assert_eq!(placed.source().revision(), 9);
     assert_eq!(placed.source().text().code_units(), [65, 66]);
+    // A real Forced line is formatted; its final strut-only Paragraph receiver
+    // retains completion authority but is not an ordinary published line.
     let lines = placed.lines();
     assert_eq!(
-        lines.iter().map(|line| line.range()).collect::<Vec<_>>(),
-        [t::Range::new(0, 2), t::Range::new(2, 2)]
+        lines.len(),
+        1,
+        "the Paragraph-ended empty strut receiver is phantom"
     );
-    assert_eq!(
-        lines
-            .iter()
-            .map(|line| line.bounds().size.height)
-            .collect::<Vec<_>>(),
-        [20.0, receiver_height]
-    );
-    assert_eq!(
-        lines.iter().map(|line| line.baseline()).collect::<Vec<_>>(),
-        [16.0, 36.0]
-    );
-    // Public bounds are supplied line frames, separate from glyph advances.
-    assert_eq!(
-        lines
-            .iter()
-            .map(|line| line.bounds().size.width)
-            .collect::<Vec<_>>(),
-        [30.0, 30.0]
-    );
+    assert_eq!(lines[0].range(), t::Range::new(0, 2));
+    assert_eq!(lines[0].baseline(), 16.0);
+    assert_eq!(lines[0].bounds().size, t::Size::new(30.0, 20.0));
+    assert_eq!(placed.metrics().line_count(), 1);
+    assert_eq!(placed.metrics().first_baseline(), Some(16.0));
+    assert_eq!(placed.metrics().last_baseline(), Some(16.0));
+    assert_eq!(placed.metrics().size().height, 20.0);
+    assert_eq!(placed.bounds().size.height, 20.0);
     let root = batch
         .final_entries()
         .iter()
@@ -660,8 +678,9 @@ fn assert_forced_metric_result<S: l::LayoutScalar>(
         .output();
     assert_eq!(
         root.size,
-        l::Size::new(S::from_f64(30.0), S::from_f64(root_height))
+        l::Size::new(S::from_f64(30.0), S::from_f64(20.0))
     );
+    assert_eq!(root.content_size.height, S::from_f64(20.0));
     let body_entry = batch
         .final_inline_fragments()
         .iter()
@@ -684,6 +703,12 @@ fn assert_forced_metric_result<S: l::LayoutScalar>(
     assert_struts(&request.line_box_struts, &[metric(16.0, 20.0)]);
     assert!(request.controls.is_empty());
     assert!(request.atomics.is_empty());
+    assert_eq!(body.measurements().fit().advance(), 20.0);
+    assert_eq!(offers[2].view().kind(), t::PreparedBreakKind::ParagraphEnd);
+    assert_eq!(offers[2].view().boundary(), request.end);
+    assert!(offers[2].view().computed_line_boundary().is_none());
+    // Source-aware glyph facts come from the actual finalized body, while
+    // committed physical glyph placements intentionally carry no source range.
     let sourced = body
         .run_views()
         .flat_map(|run| {
@@ -728,35 +753,70 @@ fn assert_forced_metric_result<S: l::LayoutScalar>(
             .iter()
             .all(|entry| entry.fragment().line_index() == 0)
     );
-}
-
-fn missing_trailing_metric<S: l::LayoutScalar>(direction: l::Direction) {
-    let fixture = Fixture::<S>::new(direction, true);
-    let pin = fixture.pinned();
-    let mut inventory = fixture.inventory();
-    replace_t_metric(&mut inventory, &fixture.scopes[1], None);
-    let error = fixture
-        .try_compute_inventory(inventory)
-        .expect_err("the real trailing T cannot borrow S's or the paragraph font's metric witness");
-    assert!(
-        matches!(
-            error.kind(),
-            l::LayoutErrorKindOf::InvalidInput(l::LayoutInvalidInputOf::WrappingScope(
-                l::WrappingScopeError::MissingBoxMetrics
-            ))
-        ),
-        "{error:?}"
-    );
-    assert_eq!(fixture.pinned(), pin);
     assert_eq!(fixture.prepared.participants().count(), 3);
+    assert_eq!(fixture.prepared.origin_views().count(), 2);
     assert_eq!(fixture.prepared.control_views().count(), 0);
+    assert_eq!(fixture.prepared.atomic_views().count(), 0);
 }
 
-fn changed_trailing_metric<S: l::LayoutScalar>(direction: l::Direction) {
+fn assert_retained_phantom_receipt<S: l::LayoutScalar>(
+    fixture: &Fixture<S>,
+    batch: &l::CompletedLayoutBatchOf<u32, S>,
+    tail_extent: f64,
+    nominal_height: f64,
+) {
+    let completions = batch.placed_text()[0]
+        .layout()
+        .nonformatted_lines()
+        .collect::<Vec<_>>();
+    assert_eq!(completions.len(), 1);
+    let placement = completions[0];
+    assert!(placement.origin.x.is_finite());
+    assert_eq!(placement.origin.y, 20.0);
+    assert_eq!(placement.orientation, t::LineOrientation::Horizontal);
+    assert!(placement.atomics.is_empty());
+    let finalized = placement.line.finalized_line();
+    let selected = finalized.selected_line();
+    let request = selected.request();
+    let offers = fixture.offers(true);
+    assert_eq!(request.context.end, t::LineEnd::Paragraph);
+    assert_eq!(
+        request.termination,
+        t::PreparedTermination::Ordinary(offers[2].clone())
+    );
+    assert_eq!(request.start, offers[1].view().boundary());
+    assert_eq!(request.end, offers[2].view().boundary());
+    assert_eq!(request.start.prepared_text(), fixture.prepared);
+    assert!(request.participants.is_empty());
+    assert!(request.controls.is_empty());
+    assert!(request.atomics.is_empty());
+    assert_struts(
+        &request.line_box_struts,
+        &[metric(16.0, 20.0), metric(12.0, tail_extent)],
+    );
+    // Actual numerical receipts remain real: phantom disposition is not a
+    // zero-allocation substitution or permission to discard T's witness.
+    assert_eq!(finalized.feedback().line_height, nominal_height);
+    assert_eq!(finalized.feedback().baseline, 16.0);
+    assert_eq!(finalized.measurements().fit().advance(), 0.0);
+    assert!(!finalized.has_in_flow_content());
+}
+
+fn phantom_terminal<S: l::LayoutScalar>(direction: l::Direction) {
     let fixture = Fixture::<S>::new(direction, true);
     let pin = fixture.pinned();
-    let original = fixture.compute();
-    assert_forced_metric_result(&fixture, &original, direction, 34.0, 54.0);
+    let batch = fixture.compute();
+    assert_phantom_terminal_result(&fixture, &batch, direction);
+    assert_retained_phantom_receipt(&fixture, &batch, 30.0, 34.0);
+    assert_eq!(fixture.pinned(), pin);
+}
+
+fn phantom_t_metric<S: l::LayoutScalar>(direction: l::Direction) {
+    let fixture = Fixture::<S>::new(direction, true);
+    let pin = fixture.pinned();
+    let old = fixture.compute();
+    assert_phantom_terminal_result(&fixture, &old, direction);
+    assert_retained_phantom_receipt(&fixture, &old, 30.0, 34.0);
     let mut inventory = fixture.inventory();
     replace_t_metric(
         &mut inventory,
@@ -765,29 +825,102 @@ fn changed_trailing_metric<S: l::LayoutScalar>(direction: l::Direction) {
     );
     let changed = fixture
         .try_compute_inventory(inventory)
-        .expect("actual changed T metrics must be fitted on its real receiving line");
-    // T's after-baseline extent becomes28; S still owns the maximum baseline16.
-    // Receiver16+28=44, body remains20, global receiver baseline20+16=36.
-    assert_forced_metric_result(&fixture, &changed, direction, 44.0, 64.0);
+        .expect("real phantom completion still finalizes the supplied actual T metric");
+    // T's actual numerical receiver metrics change; no text, inline-axis BP,
+    // atomic or Forced ending appears on that receiver to make it formatted.
+    assert_phantom_terminal_result(&fixture, &changed, direction);
+    assert_retained_phantom_receipt(&fixture, &changed, 40.0, 44.0);
     assert_eq!(fixture.pinned(), pin);
-    // Keep the first successful immutable batch alive across the second call.
-    // Re-read literal old geometry and original request/source custody afterward.
-    assert_forced_metric_result(&fixture, &original, direction, 34.0, 54.0);
+    // The earlier successful immutable publication also remains unchanged.
+    assert_phantom_terminal_result(&fixture, &old, direction);
+    assert_retained_phantom_receipt(&fixture, &old, 30.0, 34.0);
     assert_eq!(fixture.pinned(), pin);
 }
 
 #[test]
-fn trailing_box_without_its_actual_metric_witness_refuses_precisely() {
+fn terminal_strut_only_paragraph_completion_has_no_published_line_or_extent() {
+    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+        phantom_terminal::<f32>(direction);
+        phantom_terminal::<f64>(direction);
+    }
+}
+
+#[test]
+fn larger_phantom_tail_metrics_do_not_create_extent_or_mutate_prior_output() {
+    for direction in [l::Direction::Ltr, l::Direction::Rtl] {
+        phantom_t_metric::<f32>(direction);
+        phantom_t_metric::<f64>(direction);
+    }
+}
+
+#[test]
+fn phantom_completion_still_requires_the_actual_trailing_metric_witness() {
+    // Existing genuine metric-demand control: None is not zero or a font proxy.
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
         missing_trailing_metric::<f32>(direction);
         missing_trailing_metric::<f64>(direction);
     }
 }
 
+fn omitted_paragraph_receipt<S: l::LayoutScalar>(direction: l::Direction) {
+    let fixture = Fixture::<S>::new(direction, true);
+    let pin = fixture.pinned();
+    let batch = fixture.compute();
+    let entry = &batch.placed_text()[0];
+    let placed = entry.layout();
+    let actual_body = batch
+        .final_inline_fragments()
+        .iter()
+        .find(|entry| entry.fragment().line_index() == 0)
+        .unwrap()
+        .fragment()
+        .finalized_fragment()
+        .finalized_line();
+    let selected = actual_body.selected_line();
+    let request = selected.request();
+    let offers = fixture.offers(true);
+    assert_eq!(request.context.end, t::LineEnd::Forced);
+    assert_eq!(
+        request.termination,
+        t::PreparedTermination::Ordinary(offers[1].clone())
+    );
+    assert_eq!(request.end, offers[2].view().boundary());
+    assert_eq!(offers[2].view().kind(), t::PreparedBreakKind::ParagraphEnd);
+    let first = placed.lines()[0];
+    let anchor = t::LineAnchor {
+        inline_origin: first.bounds().origin.x,
+        baseline: first.baseline(),
+    };
+    assert!(anchor.inline_origin.is_finite() && anchor.baseline.is_finite());
+    // Exact terminal-boundary equality is insufficient: the actual selected
+    // ending remains Forced, while WholeParagraph needs its real Paragraph receipt.
+    let error = t::Layout::from_finalized_lines(t::PlacementRequest {
+        prepared: fixture.prepared.clone(),
+        coverage: t::PlacementCoverage::WholeParagraph,
+        entries: vec![t::PlacementEntry::Formatted(t::LinePlacement {
+            line: actual_body,
+            anchor,
+            orientation: t::LineOrientation::Horizontal,
+            atomics: vec![],
+        })],
+    })
+    .expect_err("dropping the genuine ParagraphEnd receipt cannot complete WholeParagraph");
+    assert!(
+        matches!(
+            error.detail(),
+            Some(t::ErrorDetail::InvalidTextProtocol {
+                reason: t::ProtocolError::IncompleteLineCoverage { line: 0 },
+            })
+        ),
+        "{error:?}"
+    );
+    assert_eq!(fixture.pinned(), pin);
+}
+
 #[test]
-fn changed_trailing_metric_changes_only_receiver_and_preserves_old_batch() {
+fn whole_paragraph_rejects_only_forced_receipt_even_at_its_final_boundary() {
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
-        changed_trailing_metric::<f32>(direction);
-        changed_trailing_metric::<f64>(direction);
+        omitted_paragraph_receipt::<f32>(direction);
+        omitted_paragraph_receipt::<f64>(direction);
     }
 }

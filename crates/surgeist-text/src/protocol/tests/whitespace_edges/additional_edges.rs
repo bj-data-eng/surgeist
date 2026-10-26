@@ -1077,17 +1077,19 @@ fn discard_surviving_separator_stays_ordinary_at_soft_forced_and_block_ends_in_b
                 let placed = crate::Layout::from_finalized_lines(PlacementRequest {
                     prepared: p,
                     coverage: PlacementCoverage::WholeParagraph,
-                    lines: lines
+                    entries: lines
                         .into_iter()
                         .enumerate()
-                        .map(|(index, line)| LinePlacement {
-                            line,
-                            anchor: LineAnchor {
-                                inline_origin: 0.0,
-                                baseline: 8.0 + index as f64 * 20.0,
-                            },
-                            orientation: LineOrientation::Horizontal,
-                            atomics: vec![],
+                        .map(|(index, line)| {
+                            crate::PlacementEntry::Formatted(LinePlacement {
+                                line,
+                                anchor: LineAnchor {
+                                    inline_origin: 0.0,
+                                    baseline: 8.0 + index as f64 * 20.0,
+                                },
+                                orientation: LineOrientation::Horizontal,
+                                atomics: vec![],
+                            })
                         })
                         .collect(),
                 })

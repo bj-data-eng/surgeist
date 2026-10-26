@@ -5990,22 +5990,35 @@ mod tests {
         );
         let tree = TestTree::from_golden(&golden.root).unwrap();
         let batch = native_tree_compute(&tree, fri06_c06_inline_request());
-        assert_eq!(batch.unrounded_inline_fragments().len(), 2);
-        for entry in batch.unrounded_inline_fragments() {
-            let line = entry.fragment().finalized_fragment().finalized_line();
-            assert!(!line.has_in_flow_content());
-            for row in &line.selected_line().request().controls {
-                assert_eq!(
-                    row.boundary,
-                    Some(surgeist_text::InlineBoundaryAllocation::ZERO)
-                );
-                let strut = row.strut.unwrap();
-                assert_eq!((strut.baseline, strut.line_extent), (0.0, 0.0));
-            }
-            assert!(matches!(
-                entry.fragment().finalized_fragment().view().owner(),
-                surgeist_text::FinalizedFragmentOwner::Control(_)
-            ));
+        assert!(batch.unrounded_inline_fragments().is_empty());
+        assert!(batch.final_inline_fragments().is_empty());
+        let placed = batch.placed_text()[0].layout();
+        assert!(placed.lines().is_empty());
+        let receipts = placed.nonformatted_lines().collect::<Vec<_>>();
+        assert_eq!(receipts.len(), 1);
+        let line = receipts[0].line.finalized_line();
+        assert!(!line.has_in_flow_content());
+        assert_eq!(line.fragments().len(), 2);
+        for row in &line.selected_line().request().controls {
+            assert_eq!(
+                row.boundary,
+                Some(surgeist_text::InlineBoundaryAllocation::ZERO)
+            );
+            let strut = row.strut.unwrap();
+            assert_eq!((strut.baseline, strut.line_extent), (0.0, 0.0));
+        }
+        for fragment in line.fragments() {
+            let surgeist_text::FinalizedFragmentOwner::Control(control) = fragment.view().owner()
+            else {
+                panic!("the genuine nonvisual control keeps its actual owner")
+            };
+            assert!(
+                tree.paragraphs[0]
+                    .controls
+                    .iter()
+                    .any(|row| row.occurrence == control)
+            );
+            assert!(fragment.view().origin().is_none());
         }
     }
 
@@ -10951,21 +10964,51 @@ mod tests {
         let golden = native_test_golden(&[("", 10.0, 0.0)], false);
         let mut tree = TestTree::from_golden(&golden.root).unwrap();
         let origin = tree.paragraphs[0].origins[0].origin.clone();
+        let snapshot = |batch: &layout::CompletedLayoutBatch<usize>| {
+            assert!(batch.unrounded_inline_fragments().is_empty());
+            assert!(batch.final_inline_fragments().is_empty());
+            let placed = batch.placed_text()[0].layout();
+            assert!(placed.lines().is_empty());
+            let receipts = placed.nonformatted_lines().cloned().collect::<Vec<_>>();
+            assert_eq!(receipts.len(), 1);
+            let line = receipts[0].line.finalized_line();
+            assert_eq!(line.prepared_text(), origin.prepared_text());
+            assert!(!line.has_in_flow_content());
+            let fragments = line
+                .fragment_views()
+                .map(|fragment| {
+                    assert_eq!(fragment.origin(), Some(origin.clone()));
+                    assert_eq!(
+                        fragment.local_range(),
+                        Some(surgeist_text::Range::new(0, 0))
+                    );
+                    assert_eq!(
+                        fragment.aggregate_range(),
+                        Some(surgeist_text::Range::new(0, 0))
+                    );
+                    (
+                        fragment.owner(),
+                        fragment.local_range(),
+                        fragment.aggregate_range(),
+                        fragment.bounds(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                fragments.len(),
+                1,
+                "the real EmptyOrigin remains in the receipt"
+            );
+            (receipts, fragments)
+        };
         assert_eq!(tree.unrounded_inline_fragments(1), None);
         let cold = native_tree_compute(&tree, fri06_c06_inline_request());
-        assert_eq!(cold.unrounded_inline_fragments().len(), 1);
-        assert_eq!(
-            cold.unrounded_inline_fragments()[0]
-                .fragment()
-                .finalized_fragment()
-                .view()
-                .origin(),
-            Some(origin)
-        );
+        let retained = snapshot(&cold);
         tree.apply_completed_batch(&cold);
-        assert_eq!(tree.unrounded_inline_fragments(1).unwrap().len(), 1);
+        assert!(tree.unrounded_inline_fragments(1).unwrap().is_empty());
         let warm = native_tree_compute(&tree, fri06_c06_inline_request());
         assert_native_cached_source_geometry(&cold, &warm, &tree.paragraphs[0].origins[0].origin);
+        assert_eq!(snapshot(&warm), retained);
     }
 
     fn fri06_c06_shape_input_xml(float_attrs: &str, provider: &str) -> String {

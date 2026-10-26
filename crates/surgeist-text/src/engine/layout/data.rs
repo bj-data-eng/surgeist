@@ -281,6 +281,11 @@ pub(crate) struct FinalizedFragmentData {
 pub(crate) struct PlacedLayout {
     pub(crate) prepared: Arc<PreparedData>,
     pub(crate) lines: Vec<PlacedLine>,
+    /// Authentic semantic sequence, including nonformatted correspondence.
+    pub(crate) receipts: Vec<Arc<super::super::FinalizedLine>>,
+    /// Selected-event cut for each visible line in that full sequence.
+    pub(crate) line_cuts: Vec<usize>,
+    pub(crate) nonformatted: Vec<(usize, crate::NonFormattedLinePlacement)>,
     pub(crate) bounds: Rect,
     pub(crate) coverage: crate::protocol::placement::PlacedCoverage,
     pub(crate) width: f64,

@@ -141,7 +141,7 @@ fn place(
     crate::Layout::from_finalized_lines(PlacementRequest {
         prepared,
         coverage: PlacementCoverage::WholeParagraph,
-        lines: vec![LinePlacement {
+        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: x,
@@ -149,7 +149,7 @@ fn place(
             },
             orientation: LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
 }
 fn reason(error: &crate::Error) -> &ProtocolError {
@@ -511,7 +511,7 @@ fn default_empty_line_uses_the_captured_base_font_instead_of_overriding_body_spa
             start: request.start.clone(),
             end: request.end.clone(),
         },
-        lines: vec![LinePlacement {
+        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
             line,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -519,7 +519,7 @@ fn default_empty_line_uses_the_captured_base_font_instead_of_overriding_body_spa
             },
             orientation: LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap();
     let runs = placed.glyph_runs();
@@ -733,3 +733,5 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
 }
 
 mod line_box_struts;
+
+mod nonformatted_placement;

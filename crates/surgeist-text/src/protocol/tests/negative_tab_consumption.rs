@@ -89,7 +89,7 @@ fn check_negative_spacing_source_rows(tabs: TabContext) {
         let layout = crate::Layout::from_finalized_lines(PlacementRequest {
             prepared: p.clone(),
             coverage: PlacementCoverage::WholeParagraph,
-            lines: vec![LinePlacement {
+            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -97,7 +97,7 @@ fn check_negative_spacing_source_rows(tabs: TabContext) {
                 },
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
-            }],
+            })],
         })
         .unwrap();
         let fragments = layout
@@ -224,8 +224,8 @@ fn check_negative_replacement_tabs(tabs: TabContext) {
         let layout = crate::Layout::from_finalized_lines(PlacementRequest {
             prepared: p.clone(),
             coverage: PlacementCoverage::WholeParagraph,
-            lines: vec![
-                LinePlacement {
+            entries: vec![
+                crate::PlacementEntry::Formatted(LinePlacement {
                     line: first,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -233,8 +233,8 @@ fn check_negative_replacement_tabs(tabs: TabContext) {
                     },
                     orientation: LineOrientation::Horizontal,
                     atomics: vec![],
-                },
-                LinePlacement {
+                }),
+                crate::PlacementEntry::Formatted(LinePlacement {
                     line: second,
                     anchor: LineAnchor {
                         inline_origin: 0.0,
@@ -242,7 +242,7 @@ fn check_negative_replacement_tabs(tabs: TabContext) {
                     },
                     orientation: LineOrientation::Horizontal,
                     atomics: vec![],
-                },
+                }),
             ],
         })
         .unwrap();

@@ -533,8 +533,8 @@ fn independent_intrinsics<S: LayoutScalar>() {
     ] {
         for available in order {
             let output = intrinsic::<S>(&p, available);
-            assert!(output.paragraph.lines.iter().all(|line| {
-                line.line
+            assert!(output.paragraph.entries.iter().all(|line| {
+                line.finalized_line()
                     .selected_line()
                     .request()
                     .context
@@ -545,9 +545,15 @@ fn independent_intrinsics<S: LayoutScalar>() {
                 assert_eq!(output.report.inline_extent, S::from_f64(10.0));
                 let directions = output
                     .paragraph
-                    .lines
+                    .entries
                     .iter()
-                    .map(|p| p.line.selected_line().request().context.line_box_direction)
+                    .map(|p| {
+                        p.finalized_line()
+                            .selected_line()
+                            .request()
+                            .context
+                            .line_box_direction
+                    })
                     .collect::<Vec<_>>();
                 assert_eq!(
                     directions,
@@ -561,8 +567,8 @@ fn independent_intrinsics<S: LayoutScalar>() {
             } else {
                 assert_eq!(output.report.inline_extent, S::from_f64(40.0));
                 assert_eq!(
-                    output.paragraph.lines[0]
-                        .line
+                    output.paragraph.entries[0]
+                        .finalized_line()
                         .selected_line()
                         .request()
                         .context

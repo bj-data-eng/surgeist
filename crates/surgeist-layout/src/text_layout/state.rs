@@ -2,7 +2,7 @@
 
 use super::TextParagraphBinding;
 use crate::{LayoutScalar, NodeOutputOf, Point};
-use surgeist_text::{LinePlacement, PlacementCoverage, PlacementRequest};
+use surgeist_text::{PlacementCoverage, PlacementEntry, PlacementRequest};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct CanonicalFrame<Node, S: LayoutScalar> {
@@ -18,7 +18,7 @@ pub(crate) struct PendingParagraph<Node> {
     pub container: Node,
     pub nodes: Vec<Node>,
     pub prepared: surgeist_text::PreparedText,
-    pub lines: Vec<LinePlacement>,
+    pub entries: Vec<PlacementEntry>,
     pub boxes: Vec<Option<super::boxes::BoxAssignment>>,
     pub bands: Vec<super::fit::LineBands>,
     pub flows: Vec<super::fit::LineFlow>,
@@ -37,6 +37,7 @@ pub(crate) struct PendingParagraph<Node> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct LineBasis {
+    disposition: super::fit::LineDisposition,
     boxes: Option<super::boxes::BoxAssignment>,
     zone: super::fit::ZoneBasis,
     phrases: Vec<super::fit::PhraseBasis>,
@@ -500,7 +501,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 .iter()
                 .flat_map(|paragraph| {
                     paragraph
-                        .lines
+                        .entries
                         .iter()
                         .zip(&paragraph.bands)
                         .zip(&paragraph.flows)
@@ -521,9 +522,26 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                             phrases: phrases.clone(),
                             encounters: encounters.clone(),
                             amounts: amounts.clone(),
-                            request: placement.line.selected_line().request().clone(),
-                            anchor: placement.anchor,
-                            atomics: placement.atomics.clone(),
+                            request: placement.finalized_line().selected_line().request().clone(),
+                            disposition: match placement {
+                                PlacementEntry::Formatted(_) => {
+                                    super::fit::LineDisposition::Formatted
+                                }
+                                PlacementEntry::NonFormatted(line) => {
+                                    super::fit::LineDisposition::NonFormatted(line.line.clone())
+                                }
+                            },
+                            anchor: match placement {
+                                PlacementEntry::Formatted(line) => line.anchor,
+                                PlacementEntry::NonFormatted(line) => surgeist_text::LineAnchor {
+                                    inline_origin: line.origin.x,
+                                    baseline: line.origin.y,
+                                },
+                            },
+                            atomics: match placement {
+                                PlacementEntry::Formatted(line) => line.atomics.clone(),
+                                PlacementEntry::NonFormatted(line) => line.atomics.clone(),
+                            },
                             bands: *band,
                             flow: *flow,
                         }
@@ -620,19 +638,21 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                     );
                     let baseline = placement_add(node, frame.origin.y, baseline)?;
                     let baseline = (baseline + 0.5).floor();
-                    paragraph.lines[line_index]
-                        .atomics
-                        .push(surgeist_text::AtomicPlacement {
-                            occurrence,
-                            border,
-                            content,
-                            baseline,
-                        });
+                    let atomics = match &mut paragraph.entries[line_index] {
+                        PlacementEntry::Formatted(line) => &mut line.atomics,
+                        PlacementEntry::NonFormatted(line) => &mut line.atomics,
+                    };
+                    atomics.push(surgeist_text::AtomicPlacement {
+                        occurrence,
+                        border,
+                        content,
+                        baseline,
+                    });
                 }
                 let layout = surgeist_text::Layout::from_finalized_lines(PlacementRequest {
                     prepared: paragraph.prepared,
                     coverage: PlacementCoverage::WholeParagraph,
-                    lines: paragraph.lines,
+                    entries: paragraph.entries,
                 })
                 .map_err(|error| {
                     crate::LayoutErrorOf::new(

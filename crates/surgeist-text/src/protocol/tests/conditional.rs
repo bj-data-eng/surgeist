@@ -778,8 +778,8 @@ fn phantom_receipt_preserves_leading_original_custody_and_continuation() {
     let layout = crate::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        lines: vec![
-            LinePlacement {
+        entries: vec![
+            crate::PlacementEntry::Formatted(LinePlacement {
                 line: first,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -787,8 +787,8 @@ fn phantom_receipt_preserves_leading_original_custody_and_continuation() {
                 },
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
-            },
-            LinePlacement {
+            }),
+            crate::PlacementEntry::Formatted(LinePlacement {
                 line: continuation,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -796,7 +796,7 @@ fn phantom_receipt_preserves_leading_original_custody_and_continuation() {
                 },
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
-            },
+            }),
         ],
     })
     .unwrap();
@@ -1660,7 +1660,7 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
             start: cuts[1].boundary(),
             end: prepared.boundary_views().last().unwrap().handle(),
         },
-        lines: vec![LinePlacement {
+        entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
             line: continuation,
             anchor: LineAnchor {
                 inline_origin: 0.0,
@@ -1668,7 +1668,7 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
             },
             orientation: LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap();
     assert_eq!(continuation.lines()[0].range(), Range::new(2, 3));

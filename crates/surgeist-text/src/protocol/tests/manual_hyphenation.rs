@@ -245,17 +245,19 @@ fn bare_shy(primary_hyphen: bool) {
     let layout = crate::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
-        lines: [first, second]
+        entries: [first, second]
             .into_iter()
             .enumerate()
-            .map(|(index, line)| LinePlacement {
-                line,
-                anchor: LineAnchor {
-                    inline_origin: 0.0,
-                    baseline: 16.0 + index as f64 * 20.0,
-                },
-                orientation: LineOrientation::Horizontal,
-                atomics: vec![],
+            .map(|(index, line)| {
+                crate::PlacementEntry::Formatted(LinePlacement {
+                    line,
+                    anchor: LineAnchor {
+                        inline_origin: 0.0,
+                        baseline: 16.0 + index as f64 * 20.0,
+                    },
+                    orientation: LineOrientation::Horizontal,
+                    atomics: vec![],
+                })
             })
             .collect(),
     })

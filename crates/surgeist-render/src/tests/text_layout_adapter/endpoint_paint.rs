@@ -234,7 +234,7 @@ fn placed_pair(prepared: &text::PreparedText, opening: f64) -> text::Layout {
     let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
         prepared: prepared.clone(),
         coverage: text::PlacementCoverage::WholeParagraph,
-        lines: vec![text::LinePlacement {
+        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
             line,
             anchor: text::LineAnchor {
                 inline_origin: 0.0,
@@ -242,7 +242,7 @@ fn placed_pair(prepared: &text::PreparedText, opening: f64) -> text::Layout {
             },
             orientation: text::LineOrientation::Horizontal,
             atomics: vec![],
-        }],
+        })],
     })
     .unwrap();
     assert_eq!(layout.source().text(), &text::Text::from("AA"));

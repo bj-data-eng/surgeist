@@ -50,10 +50,9 @@ fn legal_cluster_edge(line: &PlacedLine, cluster: usize, atom: usize, presentati
             && atom < line.finalized.data.clusters[cluster].provider_atoms.end)
 }
 
-pub(super) fn prepare(lines: &[PlacedLine]) -> Vec<Position> {
+pub(super) fn prepare(lines: &[PlacedLine], cuts: &[usize]) -> Vec<Position> {
     let mut positions = Vec::new();
-    let mut offset = 0;
-    for (line_index, line) in lines.iter().enumerate() {
+    for (line_index, (line, &offset)) in lines.iter().zip(cuts).enumerate() {
         let presentation = &line.finalized.selected.presentation;
         let relation = &presentation.selected_relation;
         let mut local = Vec::new();
@@ -214,7 +213,6 @@ pub(super) fn prepare(lines: &[PlacedLine]) -> Vec<Position> {
             })
         });
         positions.extend(ordered.into_iter().map(|(_, row)| row));
-        offset += relation.events.len();
     }
     positions
 }
@@ -415,11 +413,10 @@ pub(crate) fn selection(
     let (start, end) = (first.cut, last.cut);
     let mut pieces = Vec::new();
     let mut selected_slot = false;
-    let mut offsets = Vec::with_capacity(layout.lines.len());
+    let offsets = &layout.line_cuts;
     let mut offset = 0;
-    for line in &layout.lines {
-        offsets.push(offset);
-        let selected = &line.finalized.selected;
+    for receipt in &layout.receipts {
+        let selected = &receipt.selected;
         let relation = &selected.presentation.selected_relation;
         let transform = &selected.prepared.analyzed.transform;
         for (index, event) in relation.events.iter().enumerate() {
@@ -693,6 +690,9 @@ pub(crate) fn validate_source(layout: &PlacedLayout, value: Cursor) -> Result<()
             index: value.index(),
             coverage,
         }));
+    }
+    if layout.lines.is_empty() {
+        return Err(protocol_error(ProtocolError::NoFormattedLineGeometry));
     }
     // Only distinct actual source-less occurrence rows create this ambiguity;
     // ordinary source edges continue to use the existing affinity policy.
@@ -1061,7 +1061,7 @@ mod tests {
         Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::WholeParagraph,
-            lines: vec![LinePlacement {
+            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -1069,7 +1069,7 @@ mod tests {
                 },
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
-            }],
+            })],
         })
         .unwrap()
     }
@@ -1675,7 +1675,10 @@ mod tests {
         Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::WholeParagraph,
-            lines,
+            entries: lines
+                .into_iter()
+                .map(crate::PlacementEntry::Formatted)
+                .collect(),
         })
         .unwrap()
     }
@@ -1862,7 +1865,7 @@ mod tests {
         Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::Range { start, end },
-            lines: vec![LinePlacement {
+            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -1870,7 +1873,7 @@ mod tests {
                 },
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
-            }],
+            })],
         })
         .unwrap()
     }
@@ -2109,7 +2112,7 @@ mod tests {
         Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::WholeParagraph,
-            lines: vec![LinePlacement {
+            entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
                 line,
                 anchor: LineAnchor {
                     inline_origin: 0.0,
@@ -2117,7 +2120,7 @@ mod tests {
                 },
                 orientation: LineOrientation::Horizontal,
                 atomics: vec![],
-            }],
+            })],
         })
         .unwrap()
     }
@@ -2502,7 +2505,10 @@ mod tests {
         Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::WholeParagraph,
-            lines,
+            entries: lines
+                .into_iter()
+                .map(crate::PlacementEntry::Formatted)
+                .collect(),
         })
         .unwrap()
     }

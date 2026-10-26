@@ -4224,12 +4224,63 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
         .unwrap();
         assert_eq!(
             mandatory.placed_text()[0].layout().metrics().line_count(),
-            3
+            2
         );
         assert_eq!(
             fri06_c02_final_node(&mandatory, 0).size.height,
-            S::from_f64(30.0)
+            S::from_f64(20.0)
         );
+        // Both actual Forced lines remain 10px. The final Paragraph receipt
+        // retains its real Ahem8/10 metrics but contributes no third CSS line.
+        let placed = mandatory.placed_text()[0].layout();
+        assert_eq!(placed.source().text().code_units(), &[88, 10, 88, 10]);
+        let completions = placed.nonformatted_lines().collect::<Vec<_>>();
+        assert_eq!(completions.len(), 1);
+        let completion = completions[0].line.finalized_line();
+        assert_eq!(
+            (
+                completion
+                    .selected_line()
+                    .request()
+                    .start
+                    .view()
+                    .source_before()
+                    .get(),
+                completion
+                    .selected_line()
+                    .request()
+                    .end
+                    .view()
+                    .source_after()
+                    .get()
+            ),
+            (4, 4)
+        );
+        assert!(!completion.has_in_flow_content());
+        assert_eq!(completion.feedback().baseline, 8.0);
+        assert_eq!(completion.feedback().line_height, 10.0);
+        assert_eq!(completions[0].origin.y, 20.0);
+        let selected = completion.selected_line();
+        let request = selected.request();
+        assert_eq!(request.context.end, surgeist_text::LineEnd::Paragraph);
+        assert!(matches!(&request.termination,
+            surgeist_text::PreparedTermination::Ordinary(offer)
+                if offer.view().kind() == surgeist_text::PreparedBreakKind::ParagraphEnd));
+        assert_eq!(request.start, request.end);
+        let forced = mandatory
+            .final_inline_fragments()
+            .iter()
+            .find(|entry| entry.fragment().line_index() == 1)
+            .unwrap()
+            .fragment()
+            .finalized_fragment()
+            .finalized_line();
+        assert_eq!(completion.prepared_text(), forced.prepared_text());
+        assert_eq!(
+            forced.selected_line().request().context.end,
+            surgeist_text::LineEnd::Forced
+        );
+        assert_eq!(request.start, forced.selected_line().request().end);
         let overwide = prepared_source_batch(
             Source::new("XXXXXX"),
             ahem_style(10.0, 10.0),

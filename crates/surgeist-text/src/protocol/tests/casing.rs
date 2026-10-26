@@ -120,17 +120,19 @@ fn layout(p: PreparedText, lines: Vec<FinalizedLine>, range: bool) -> crate::Lay
     crate::Layout::from_finalized_lines(PlacementRequest {
         prepared: p,
         coverage,
-        lines: lines
+        entries: lines
             .into_iter()
             .enumerate()
-            .map(|(index, line)| LinePlacement {
-                line,
-                anchor: LineAnchor {
-                    inline_origin: 0.0,
-                    baseline: 8.0 + index as f64 * 10.0,
-                },
-                orientation: LineOrientation::Horizontal,
-                atomics: vec![],
+            .map(|(index, line)| {
+                crate::PlacementEntry::Formatted(LinePlacement {
+                    line,
+                    anchor: LineAnchor {
+                        inline_origin: 0.0,
+                        baseline: 8.0 + index as f64 * 10.0,
+                    },
+                    orientation: LineOrientation::Horizontal,
+                    atomics: vec![],
+                })
             })
             .collect(),
     })

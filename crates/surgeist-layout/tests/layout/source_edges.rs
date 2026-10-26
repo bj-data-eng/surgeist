@@ -1300,3 +1300,5 @@ fn genuine_source_native_box_alias_has_one_effective_force_and_keeps_distinct_ca
 }
 
 mod unscoped_native_pair;
+
+mod phantom_receivers;

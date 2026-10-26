@@ -369,14 +369,8 @@ fn access_stop(state: &Accessibility, unit: usize, affinity: Affinity) -> Option
 fn placed_source_ranges(layout: &Layout) -> Vec<Range> {
     let analyzed = &layout.inner.prepared.analyzed;
     let mut source = Vec::new();
-    for line in &layout.inner.lines {
-        for event in &line
-            .finalized
-            .selected
-            .presentation
-            .selected_relation
-            .events
-        {
+    for receipt in &layout.inner.receipts {
+        for event in &receipt.selected.presentation.selected_relation.events {
             if let crate::protocol::prepared::SelectedRelationEvent::Base { event } = *event {
                 let range = analyzed.transform.event_source(
                     event,

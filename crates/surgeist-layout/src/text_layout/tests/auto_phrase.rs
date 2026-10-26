@@ -413,11 +413,11 @@ fn intrinsic_anywhere_is_independent_of_finite_phrase_restoration_and_query_orde
                         assert_eq!(measured.report.inline_extent, S::from_f64(10.0));
                         for row in measured
                             .paragraph
-                            .lines
+                            .entries
                             .iter()
-                            .take(measured.paragraph.lines.len() - 1)
+                            .take(measured.paragraph.entries.len() - 1)
                         {
-                            let selected = row.line.selected_line();
+                            let selected = row.finalized_line().selected_line();
                             let text::PreparedTermination::Conditional(offer) =
                                 &selected.request().termination
                             else {

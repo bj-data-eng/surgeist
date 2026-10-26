@@ -435,6 +435,7 @@ pub(crate) struct Output<Node, S: LayoutScalar> {
     pub fragments: Vec<(crate::InlineFragmentOwner<Node>, InlineFragmentOutputOf<S>)>,
     pub atomic_origins: Vec<(Node, Point<f64>)>,
     pub static_positions: Vec<(Node, Point<S>)>,
+    pub nonformatted_controls: Vec<(Node, Point<S>)>,
 }
 
 /// One invocation's coupled line-band and source-event transitions. Each
@@ -963,6 +964,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     let mut fragments = Vec::new();
     let mut atomic_origins = Vec::new();
     let mut static_positions = Vec::new();
+    let mut nonformatted_controls = Vec::new();
     let mut outflows = Vec::new();
     let mut formatted = super::formatted::FormattedTailUses::default();
     let observe_formatted = context.formatted.observes()
@@ -971,7 +973,9 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 .iter()
                 .any(|used| used.demanded_assignment().is_some())
         });
-    for (line_index, line) in lines.into_iter().enumerate() {
+    for (entry_index, line) in lines.into_iter().enumerate() {
+        let line_index = report.line_bands.len();
+        let is_formatted = line.disposition.is_formatted();
         box_assignments.push(line.boxes.clone());
         box_uses.extend(line.box_uses);
         for used in line.role_uses {
@@ -982,7 +986,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             }
             formatted.roles.push(used);
         }
-        if observe_formatted {
+        if observe_formatted && is_formatted {
             let selected = line.finalized.selected_line();
             formatted
                 .accepted
@@ -991,7 +995,8 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                     selected.request().alternative.clone(),
                 ));
         }
-        if context.tail != fit::TailContext::Unrestricted
+        if is_formatted
+            && context.tail != fit::TailContext::Unrestricted
             && matches!(context.available, AvailableOf::Definite(_))
         {
             let selected = line.finalized.selected_line();
@@ -1009,9 +1014,12 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             AvailableOf::MaxContent => line.finalized.measurements().max_content_contribution(),
             AvailableOf::Definite(_) => line.finalized.measurements().fit(),
         };
-        report.indent_state.commit(
-            line.finalized.selected_line().request().context.end == surgeist_text::LineEnd::Forced,
-        );
+        if is_formatted {
+            report.indent_state.commit(
+                line.finalized.selected_line().request().context.end
+                    == surgeist_text::LineEnd::Forced,
+            );
+        }
         let anchor = line_anchor(
             context,
             origin,
@@ -1020,6 +1028,66 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             line.placed_start,
             feedback.baseline,
         )?;
+        // Every semantic receipt remains ordered, including a phantom
+        // completion. Only formatted entries below create line geometry.
+        bands.push(line.bands);
+        flows.push(line.flow);
+        amounts.push(line.amounts);
+        encounters.push(line.encounters);
+        zones.push(line.zone_basis);
+        phrases.push(line.phrase_basis);
+        if let fit::LineDisposition::NonFormatted(completion) = line.disposition {
+            let used = line_anchor(
+                context,
+                origin,
+                line.inline_start,
+                line.available,
+                line.placed_start,
+                0.0,
+            )?;
+            for slot in line.finalized.control_slots() {
+                let actual = binding
+                    .controls
+                    .iter()
+                    .find(|row| row.occurrence == slot.control())
+                    .expect("retained nonformatted control has actual capture ownership");
+                let (left, _) = slot.inline_bounds();
+                nonformatted_controls.push((
+                    actual.node,
+                    Point::new(
+                        number(add(used.inline_origin, left)? - origin.x)?,
+                        number(used.baseline - origin.y)?,
+                    ),
+                ));
+            }
+            for slot in line.finalized.atomic_slots() {
+                let actual = binding
+                    .atomics
+                    .iter()
+                    .find(|row| row.occurrence == slot.occurrence)
+                    .expect("retained nonformatted outflow has actual capture ownership");
+                if !matches!(slot.allocation, AtomicLineAllocation::OutOfFlow) {
+                    return Err(FitError::InvalidGeometry);
+                }
+                static_positions.push((
+                    actual.node,
+                    Point::new(
+                        number(add(used.inline_origin, slot.origin.x)? - origin.x)?,
+                        number(used.baseline - origin.y)?,
+                    ),
+                ));
+                outflows.push((entry_index, slot.occurrence, actual.node));
+            }
+            placements.push(surgeist_text::PlacementEntry::NonFormatted(
+                surgeist_text::NonFormattedLinePlacement {
+                    line: completion,
+                    origin: surgeist_text::Point::new(used.inline_origin, used.baseline),
+                    orientation: LineOrientation::Horizontal,
+                    atomics: Vec::new(),
+                },
+            ));
+            continue;
+        }
         let local_baseline = anchor.baseline - origin.y.to_f64() - context.cursor_block.to_f64();
         // Normal-flow allocations and placed metric bounds both contribute to
         // overflow, including lines without a source fragment or ink. Intrinsic
@@ -1164,7 +1232,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                         number(anchor.baseline - feedback.baseline - origin.y)?,
                     ),
                 ));
-                outflows.push((line_index, slot.occurrence, binding.node));
+                outflows.push((entry_index, slot.occurrence, binding.node));
                 continue;
             };
             let atomic = atomics
@@ -1228,18 +1296,12 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 baseline,
             });
         }
-        bands.push(line.bands);
-        flows.push(line.flow);
-        amounts.push(line.amounts);
-        encounters.push(line.encounters);
-        zones.push(line.zone_basis);
-        phrases.push(line.phrase_basis);
-        placements.push(LinePlacement {
+        placements.push(surgeist_text::PlacementEntry::Formatted(LinePlacement {
             line: line.finalized,
             anchor,
             orientation: LineOrientation::Horizontal,
             atomics: atomic_placements,
-        });
+        }));
     }
     let indent_end = report.indent_state;
     let hyphenation_end = report.hyphenation_state;
@@ -1252,11 +1314,12 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         fragments,
         atomic_origins,
         static_positions,
+        nonformatted_controls,
         paragraph: PendingParagraph {
             container: binding.container,
             nodes: binding.nodes.clone(),
             prepared: binding.prepared.clone(),
-            lines: placements,
+            entries: placements,
             boxes: box_assignments,
             bands,
             flows,

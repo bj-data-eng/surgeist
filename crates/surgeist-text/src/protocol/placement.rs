@@ -3,8 +3,8 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use super::{
-    LineOrientation, LinePlacement, PlacementCoverage, PlacementRequest, PreparedBoundary,
-    ProtocolContextField, ProtocolError, protocol_error,
+    LineOrientation, LinePlacement, PlacementCoverage, PlacementEntry, PlacementRequest,
+    PreparedBoundary, ProtocolContextField, ProtocolError, protocol_error,
 };
 use crate::engine::{PlacedLine, PreparedData, editing, layout::data::PlacedLayout};
 use crate::{Layout, Point, Range, Rect, Result, TextNumericError, TextNumericPhase};
@@ -69,13 +69,22 @@ impl Layout {
         layout.qualify_decorations()?;
         Ok(layout)
     }
+    /// Retained semantic completions with zero used line extent. These are not
+    /// visible lines or caret targets; their original nominal metrics remain
+    /// available from the genuine finalized receipt.
+    pub fn nonformatted_lines(&self) -> impl Iterator<Item = &super::NonFormattedLinePlacement> {
+        self.inner
+            .nonformatted
+            .iter()
+            .map(|(_, placement)| placement)
+    }
 }
 
 pub(crate) fn place_request(
     request: PlacementRequest,
     metric_policy: PlacementMetricPolicy,
 ) -> Result<PlacedLayout> {
-    if request.lines.is_empty() {
+    if request.entries.is_empty() {
         return Err(protocol_error(ProtocolError::EmptyPlacement));
     }
     let prepared = Arc::clone(&request.prepared.inner);
@@ -121,9 +130,9 @@ pub(crate) fn place_request(
     // Semantic line order need not be monotone in original source: a delayed
     // casing emission can follow a line which already owns a later input row.
     let source = request
-        .lines
+        .entries
         .iter()
-        .map(|line| line.line.inner.selected.presentation.source)
+        .map(|entry| entry.finalized_line().inner.selected.presentation.source)
         .reduce(|a, b| Range::new(a.start.min(b.start), a.end.max(b.end)))
         .ok_or_else(|| protocol_error(ProtocolError::EmptyPlacement))?;
     let coverage = PlacedCoverage {
@@ -134,14 +143,37 @@ pub(crate) fn place_request(
     let mut next = start;
     let mut incoming = None;
     let mut seen = BTreeSet::new();
-    let count = request.lines.len();
+    let count = request.entries.len();
     let mut lines = Vec::with_capacity(count);
+    let mut nonformatted = Vec::new();
+    let mut receipts = Vec::with_capacity(count);
+    let mut line_cuts = Vec::new();
+    let mut relation_cut = 0usize;
     let mut bounds = None;
     let mut flow_bounds = None;
     let mut stacked_width = 0.0_f64;
     let mut stacked_full_width = 0.0_f64;
     let mut stacked_height = 0.0_f64;
-    for (ordinal, placement) in request.lines.into_iter().enumerate() {
+    for (ordinal, entry) in request.entries.into_iter().enumerate() {
+        let (placement, nonformatted_placement) = match entry {
+            PlacementEntry::Formatted(placement) => (placement, None),
+            PlacementEntry::NonFormatted(placement) => {
+                let line = placement.line.finalized_line().clone();
+                // The capability is opaque, but validate its semantic invariant
+                // again at the single full-sequence placement front door.
+                line.nonformatted()?;
+                let numerical = LinePlacement {
+                    line,
+                    anchor: super::LineAnchor {
+                        inline_origin: placement.origin.x,
+                        baseline: placement.origin.y,
+                    },
+                    orientation: placement.orientation,
+                    atomics: placement.atomics.clone(),
+                };
+                (numerical, Some(placement))
+            }
+        };
         let selected = &placement.line.inner.selected;
         if matches!(
             selected.request.termination,
@@ -215,6 +247,14 @@ pub(crate) fn place_request(
             atomics: placement.atomics.clone(),
         };
         validate_atomics(&prepared, ordinal, &placement, &placed)?;
+        let cut = relation_cut;
+        relation_cut += selected.presentation.selected_relation.events.len();
+        receipts.push(Arc::clone(&placement.line.inner));
+        if let Some(completion) = nonformatted_placement {
+            nonformatted.push((ordinal, completion));
+            continue;
+        }
+        line_cuts.push(cut);
         let metrics = placed.finalized.data.metrics;
         let metric_rect = crate::layout::line_rect(
             &placed,
@@ -288,18 +328,23 @@ pub(crate) fn place_request(
             line: count,
         }));
     }
-    let bounds = bounds.ok_or_else(|| protocol_error(ProtocolError::EmptyPlacement))?;
-    let flow = flow_bounds.ok_or_else(|| protocol_error(ProtocolError::EmptyPlacement))?;
+    // A complete all-nonformatted sequence has semantic coverage, but no
+    // visible allocation and therefore no fabricated strut rectangle/caret.
+    let bounds = bounds.unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0));
+    let flow = flow_bounds.unwrap_or(Rect::new(0.0, 0.0, 0.0, 0.0));
     let (width, full_width, height) = match metric_policy {
         PlacementMetricPolicy::StandaloneStacked => {
             (stacked_width, stacked_full_width, stacked_height)
         }
         PlacementMetricPolicy::Explicit => (flow.size.width, flow.size.width, flow.size.height),
     };
-    let interaction = editing::prepare(&prepared, &lines)?;
+    let interaction = editing::prepare(&prepared, &lines, &line_cuts)?;
     let placed = PlacedLayout {
         prepared,
         lines,
+        receipts,
+        line_cuts,
+        nonformatted,
         bounds,
         coverage,
         width,

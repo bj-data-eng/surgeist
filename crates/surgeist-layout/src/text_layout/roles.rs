@@ -6,6 +6,7 @@ use surgeist_text as text;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RoleUse {
+    pub(crate) disposition: super::fit::LineDisposition,
     pub(crate) request: text::LineSelectionRequest,
     pub(crate) boxes: Option<super::boxes::BoxAssignment>,
     pub(crate) amounts: Vec<f64>,
@@ -65,6 +66,7 @@ struct EntryCheckpoint {
     entry: text::PreparedBoundary,
     first: bool,
     outside: bool,
+    box_consumed: bool,
     receipts: Vec<CheckpointReceipt>,
 }
 
@@ -149,13 +151,6 @@ pub(super) fn resolve(
     };
     match role {
         text::PhaseTwoContext::FirstFormattedLine => Ok(Some(entry.current_first)),
-        // Native Soft/Forced always precedes the next emitted Paragraph end,
-        // including a genuine empty receiving line at an equal mixed endpoint.
-        text::PhaseTwoContext::LastFormattedLine
-            if request.context.end != text::LineEnd::Paragraph =>
-        {
-            Ok(Some(false))
-        }
         text::PhaseTwoContext::LastFormattedLine => {
             *assignment = input
                 .formatted
@@ -185,7 +180,7 @@ fn prospective(
     };
     let mut unconsumed_prefix = box_checkpoint
         .as_ref()
-        .is_some_and(|checkpoint| !checkpoint.outside);
+        .is_some_and(|checkpoint| !checkpoint.box_consumed);
     let mut box_frontier = box_checkpoint
         .as_ref()
         .and_then(|checkpoint| checkpoint.receipts.last())
@@ -254,9 +249,9 @@ fn prospective(
         let forced = segment
             .mandatory_end()
             .is_some_and(|offer| offer.view().kind() == text::PreparedBreakKind::Forced);
-        let emitted = retained || forced;
+        let emitted = observation.has_in_flow_content() || forced;
         if let Some(boxes) = &boxes {
-            if emitted {
+            if retained || forced {
                 box_frontier = Some(boxes.outgoing.clone());
                 unconsumed_prefix = false;
             } else {
@@ -276,17 +271,11 @@ fn prospective(
             }
             text::FlowSegmentRole::PriorPartition => prior |= emitted,
             text::FlowSegmentRole::Target => {
-                // A real manual partition cut is not the Soft marker used by
-                // an unbroken measurement. Its receiving end remains real.
-                following |=
-                    segment.alternative().is_some() || forced || segment.outgoing().is_some();
+                // The target's real cut/continuation remains in its receipt.
+                // Only actual later emitted content/Forced segments establish
+                // a following formatted line; a strut-only receiver does not.
             }
-            text::FlowSegmentRole::Remaining => {
-                following |= emitted
-                    || segment.incoming().is_some()
-                    || segment.outgoing().is_some()
-                    || segment.alternative().is_some();
-            }
+            text::FlowSegmentRole::Remaining => following |= emitted,
         }
         observations.push(observation);
     }
@@ -296,6 +285,7 @@ fn prospective(
             entry: recipe.entry(),
             first: entry.current_first,
             outside: false,
+            box_consumed: false,
             receipts: Vec::new(),
         }
     } else {
@@ -352,16 +342,19 @@ fn checkpoint(
             continue;
         }
         if from <= at {
-            let outside = if at == from {
-                false
+            let (outside, box_consumed) = if at == from {
+                (false, false)
             } else {
                 let participant = input
                     .prepared
                     .participants()
                     .nth(at)
                     .ok_or_else(invalid_flow)?;
-                line.prefix_at(&text::TextSeam::BeforeParticipant(participant))?
-                    .has_retained_flow_participation()
+                let prefix = line.prefix_at(&text::TextSeam::BeforeParticipant(participant))?;
+                (
+                    prefix.has_in_flow_content(),
+                    prefix.has_retained_flow_participation(),
+                )
             };
             receipts.push(CheckpointReceipt {
                 line: line.clone(),
@@ -372,17 +365,40 @@ fn checkpoint(
                 entry: entry_boundary.clone(),
                 first,
                 outside: outside || observed_outside,
+                box_consumed,
                 receipts,
             });
         }
     }
     // The recipe's EntryPrefix observations supply an unaccepted entry. Any
     // real accepted line before that entry is outside the replaced word branch.
-    let first = input.indent_state.first_formatted() && receipts.is_empty();
+    let has_formatted = receipts.iter().try_fold(false, |seen, receipt| {
+        Ok::<_, FitError>(
+            seen || super::fit::LineDisposition::resolve(&receipt.line)?.is_formatted(),
+        )
+    })?;
+    let first = input.indent_state.first_formatted() && !has_formatted;
+    let box_consumed = if let Some(receipt) = receipts.last() {
+        let selected = receipt.line.selected_line();
+        let request = selected.request();
+        if request.context.end != text::LineEnd::Soft {
+            true
+        } else if let Some(last) = request.participants.last() {
+            receipt
+                .line
+                .prefix_at(&text::TextSeam::AfterParticipant(last.clone()))?
+                .has_retained_flow_participation()
+        } else {
+            false
+        }
+    } else {
+        false
+    };
     Ok(EntryCheckpoint {
         entry: entry_boundary.clone(),
         first,
         outside: observed_outside,
+        box_consumed,
         receipts,
     })
 }
